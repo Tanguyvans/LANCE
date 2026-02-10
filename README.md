@@ -24,18 +24,43 @@ ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
 
 ## 🏗️ Architecture Réseau
 
-```
-Internet → Réseau UMONS → MikroTik RB5009 (192.168.88.1)
-                                    │
-                         Netgear GS348PP (Switch PoE 48 ports)
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-             Jetson Orin      Raspberry Pi 5    WisGate Edge
-             (.248)           (.247)            (.238)
-             Vision IA        Zigbee2MQTT       LoRaWAN Gateway
-                                    │               │
-                              Capteurs Zigbee  Capteurs LoRaWAN
+```mermaid
+flowchart TD
+    WAN[Internet] --> MK[MikroTik .1]
+    MK --> NETGEAR[Netgear PoE]
+
+    subgraph Compute
+        JETSON[Jetson .248]
+        CAM[Ubiquiti Turret]
+    end
+
+    subgraph Gateways
+        WG[WisGate .238]
+        RPI5[RPi5 .247]
+        RPI4[RPi4 MQTT]
+    end
+
+    subgraph LoRaWAN
+        EM310[EM310-UDL]
+        SENSECAP[SenseCAP S2120]
+        ELSYS[Elsys EMS]
+        DRAGINO[Dragino PS-LB]
+    end
+
+    subgraph Zigbee
+        AQVIB[Aqara Vibration]
+        AQDOOR[Aqara Door]
+    end
+
+    NETGEAR --> Compute
+    NETGEAR --> Gateways
+
+    LoRaWAN -.-> WG
+    Zigbee -.-> RPI5
+
+    WG --> RPI4
+    RPI5 --> RPI4
+    CAM --> JETSON
 ```
 
 ## 📡 Protocoles IoT
