@@ -29,7 +29,7 @@ python3 -m src.visualize
 
 - `infrastructure/nato_lab.yaml` — Single source of truth for the lab topology (devices, links, networks, external entities). All device IDs referenced in links must exist as device or external entries.
 - `src/models.py` — Pure dataclasses (`Device`, `Service`, `Link`, `Network`, `ExternalEntity`, `Infrastructure`). No ORM, no logic.
-- `src/graph_backend.py` — Abstract `GraphBackend` ABC defining the query interface (`get_neighbors`, `find_all_paths`, `get_attack_surface`, `to_dict`). `NetworkXBackend` implements it with a `nx.DiGraph`. The ABC exists so Neo4j or other backends can be swapped in.
+- `src/graph_backend.py` — Abstract `GraphBackend` ABC defining the query interface (`get_neighbors`, `find_all_paths`, `get_attack_surface`, `to_dict`). `NetworkXBackend` implements it with a `nx.DiGraph`. The ABC exists so other backends (Memgraph, Neo4j) can be swapped in if needed.
 - `src/loader.py` — `load_yaml()` parses YAML into dataclasses; `build_graph()` populates a backend. `build_graph()` is the main entry point used by tests and visualization.
 - `src/visualize.py` — Generates pyvis HTML. Color-codes nodes by device type, styles edges by protocol (ethernet/lorawan/zigbee/mqtt/wan).
 
@@ -41,3 +41,15 @@ python3 -m src.visualize
 - Link types: `ethernet`, `lorawan`, `zigbee`, `mqtt`, `wan`.
 - When modifying the YAML topology, update test assertions (device/link counts, neighbor sets) accordingly.
 - Language: code and comments in English, infrastructure descriptions in French.
+
+## Current Status & Next Steps
+
+Phase 1 (graph modeling + visualization) is complete. Phase 2 is next:
+
+1. **Scan the lab** with `nmap -sV` to detect service versions (requires physical access to the 192.168.88.0/24 network)
+2. **Collect firmware/OS versions** manually from each device (RouterOS version, Mosquitto version, JetPack version, etc.)
+3. **Extend the YAML schema** to include `os_version`, `firmware`, service `version`, and `cves` fields
+4. **Build a NIST NVD module** to auto-fetch CVEs by product/version
+5. **Score nodes** by risk (CVSS + network exposure)
+
+The lab devices do not have known versions yet — they need to be collected on-site.

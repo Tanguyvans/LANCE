@@ -142,6 +142,55 @@ NATO-SmartCity-IoT/
 └── requirements.txt
 ```
 
+## 🗺️ Roadmap
+
+### Phase 1 — Modélisation du réseau ✅
+
+- Modèle YAML déclaratif de l'infrastructure
+- Backend graphe NetworkX avec interface abstraite (interchangeable)
+- Visualisation interactive pyvis (HTML)
+- Tests unitaires (chargement, chemins, surface d'attaque)
+
+### Phase 2 — Enrichissement CVE (prochaine étape)
+
+1. **Scanner le lab** avec `nmap -sV` pour détecter les versions de services
+2. **Relever les versions firmware/OS** sur chaque device (RouterOS, JetPack, Mosquitto, etc.)
+3. **Enrichir le YAML** avec les versions exactes et les CVE connues
+4. **Module NIST NVD** : interrogation automatique de l'API pour récupérer les CVE par produit/version
+5. **Scoring de risque** par noeud (basé sur CVSS et exposition réseau)
+
+### Phase 3 — Analyse des chemins d'attaque
+
+- Pondération des arêtes par difficulté d'exploitation
+- Détection des chemins d'attaque critiques (ex: Internet → MikroTik → MQTT broker)
+- Identification des points de pivot (noeuds à haute centralité)
+
+### Phase 4 — Agents LLM (approche LLMDFA)
+
+Agents spécialisés qui interrogent le graphe enrichi :
+- **Agent reconnaissance** : cartographie la surface d'attaque
+- **Agent lateral movement** : trouve les chemins de propagation
+- **Agent impact assessment** : évalue les conséquences
+- **Orchestrateur** : coordonne les agents et produit un rapport
+
+Mode semi-autonome : l'agent raisonne et génère les commandes, l'opérateur valide et exécute.
+
+### Phase 5 — Pentest progressif
+
+Tester les scénarios d'attaque sur le lab physique, par difficulté croissante :
+
+| Niveau | Scénario | Exemple |
+|--------|----------|---------|
+| 1 | Device unique, service exposé | Exploit HTTP sur WisGate |
+| 2 | Device unique, MQTT sans auth | Interception données capteurs sur RPi4 |
+| 3 | Chaînage 2 hops | Capteur LoRaWAN → WisGate → RPi4 |
+| 4 | Scénario complet multi-hop | Internet → MikroTik → pivot LAN → cible interne |
+
+### Phase 6 — Dashboard + Backend graphe avancé (optionnel)
+
+- Dashboard web temps réel (état du réseau, alertes, chemins d'attaque visualisés)
+- Si besoin de performances ou de requêtes plus complexes : implémenter un backend Memgraph ou Neo4j (l'ABC `GraphBackend` est prête pour ça)
+
 ## 👥 Équipe
 
 - Tanguy Vansnick
