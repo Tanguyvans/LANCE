@@ -1,0 +1,220 @@
+metadata:
+  name: "NATO Smart City IoT Lab"
+  version: "1.0"
+  last_updated: "2025-02-12"
+
+networks:
+  - id: lan
+    name: "LAN Principal"
+    subnet: "192.168.88.0/24"
+    vlan: null
+
+devices:
+  - id: mikrotik
+    name: "MikroTik RB5009"
+    type: router
+    ip: "192.168.88.1"
+    network: lan
+    role: "Routeur/Firewall"
+    os: "RouterOS"
+    services:
+      - name: winbox
+        port: 8291
+        protocol: tcp
+      - name: ssh
+        port: 22
+        protocol: tcp
+      - name: http
+        port: 80
+        protocol: tcp
+
+  - id: netgear
+    name: "Netgear GS348PP"
+    type: switch
+    network: lan
+    role: "Switch PoE 48 ports"
+
+  - id: jetson
+    name: "Jetson Orin Nano"
+    type: compute
+    ip: "192.168.88.248"
+    network: lan
+    role: "Edge AI, Vision"
+    os: "JetPack/Ubuntu"
+    services:
+      - name: ssh
+        port: 22
+        protocol: tcp
+
+  - id: cam_turret
+    name: "Ubiquiti Turret"
+    type: camera
+    network: lan
+    role: "Caméra surveillance"
+
+  - id: rpi5
+    name: "Raspberry Pi 5"
+    type: gateway
+    ip: "192.168.88.247"
+    network: lan
+    role: "Gateway Zigbee"
+    os: "Raspberry Pi OS"
+    services:
+      - name: ssh
+        port: 22
+        protocol: tcp
+      - name: zigbee2mqtt_ui
+        port: 8080
+        protocol: tcp
+      - name: mqtt
+        port: 1883
+        protocol: tcp
+
+  - id: rpi4
+    name: "Raspberry Pi 4"
+    type: gateway
+    network: lan
+    role: "MQTT Broker"
+    services:
+      - name: mqtt
+        port: 1883
+        protocol: tcp
+
+  - id: wisgate
+    name: "WisGate Edge Lite 2"
+    type: gateway
+    ip: "192.168.88.238"
+    network: lan
+    role: "Gateway LoRaWAN EU868"
+    services:
+      - name: http
+        port: 80
+        protocol: tcp
+
+  - id: eap613
+    name: "TP-Link EAP613"
+    type: ap
+    ip: "192.168.88.251"
+    network: lan
+    role: "AP WiFi NATO-Lab"
+    services:
+      - name: http
+        port: 80
+        protocol: tcp
+
+  # Capteurs LoRaWAN
+  - id: em310
+    name: "Milesight EM310-UDL"
+    type: sensor
+    role: "Capteur distance ultrason"
+    protocols: [lorawan]
+
+  - id: sensecap
+    name: "SenseCAP S2120"
+    type: sensor
+    role: "Station météo"
+    protocols: [lorawan]
+
+  - id: elsys
+    name: "Elsys EMS"
+    type: sensor
+    role: "Capteur environnemental"
+    protocols: [lorawan]
+
+  - id: dragino
+    name: "Dragino PS-LB"
+    type: sensor
+    role: "Capteur pression"
+    protocols: [lorawan]
+
+  # Capteurs Zigbee
+  - id: aqara_vib
+    name: "Aqara Vibration"
+    type: sensor
+    role: "Capteur vibration"
+    protocols: [zigbee]
+
+  - id: aqara_door
+    name: "Aqara Door/Window"
+    type: sensor
+    role: "Capteur porte/fenêtre"
+    protocols: [zigbee]
+
+links:
+  - source: mikrotik
+    target: netgear
+    type: ethernet
+    description: "Uplink principal"
+
+  - source: netgear
+    target: jetson
+    type: ethernet
+
+  - source: netgear
+    target: rpi5
+    type: ethernet
+
+  - source: netgear
+    target: wisgate
+    type: ethernet
+
+  - source: netgear
+    target: eap613
+    type: ethernet
+
+  - source: netgear
+    target: rpi4
+    type: ethernet
+
+  - source: netgear
+    target: cam_turret
+    type: ethernet
+
+
+  # LoRaWAN → WisGate
+  - source: em310
+    target: wisgate
+    type: lorawan
+
+  - source: sensecap
+    target: wisgate
+    type: lorawan
+
+  - source: elsys
+    target: wisgate
+    type: lorawan
+
+  - source: dragino
+    target: wisgate
+    type: lorawan
+
+  # Zigbee → RPi5
+  - source: aqara_vib
+    target: rpi5
+    type: zigbee
+
+  - source: aqara_door
+    target: rpi5
+    type: zigbee
+
+  # MQTT forwarding
+  - source: wisgate
+    target: rpi4
+    type: mqtt
+    description: "LoRaWAN data → MQTT broker"
+
+  - source: rpi5
+    target: rpi4
+    type: mqtt
+    description: "Zigbee data → MQTT broker"
+
+  # Internet
+  - source: internet
+    target: mikrotik
+    type: wan
+    description: "Accès Internet"
+
+external:
+  - id: internet
+    name: "Internet"
+    type: external

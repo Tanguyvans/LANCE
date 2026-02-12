@@ -1,0 +1,4 @@
+networkx>=3.0
+pyyaml>=6.0
+pyvis>=0.3.2
+pytest>=8.0
