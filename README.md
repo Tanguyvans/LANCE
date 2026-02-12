@@ -144,7 +144,7 @@ NATO-SmartCity-IoT/
 
 ## 👥 Équipe
 
-- Tanguy Van Schoelandt
+- Tanguy Vansnick
 
 ## 📄 Licence
 
