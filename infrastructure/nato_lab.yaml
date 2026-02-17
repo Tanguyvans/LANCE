@@ -1,7 +1,8 @@
 metadata:
   name: "NATO Smart City IoT Lab"
-  version: "1.0"
-  last_updated: "2025-02-12"
+  version: "2.0"
+  last_updated: "2026-02-17"
+  nmap_scan: "2026-02-17"
 
 networks:
   - id: lan
@@ -17,15 +18,27 @@ devices:
     network: lan
     role: "Routeur/Firewall"
     os: "RouterOS"
+    os_version: "7.18.2"
     services:
-      - name: winbox
-        port: 8291
+      - name: ftp
+        port: 21
         protocol: tcp
+        version: "MikroTik ftpd 7.18.2"
       - name: ssh
         port: 22
         protocol: tcp
+        version: "MikroTik RouterOS sshd"
+      - name: telnet
+        port: 23
+        protocol: tcp
+      - name: dns
+        port: 53
+        protocol: tcp
       - name: http
         port: 80
+        protocol: tcp
+      - name: winbox
+        port: 8291
         protocol: tcp
 
   - id: netgear
@@ -39,12 +52,18 @@ devices:
     type: compute
     ip: "192.168.88.248"
     network: lan
-    role: "Edge AI, Vision"
-    os: "JetPack/Ubuntu"
+    role: "Edge AI, Vision, MQTT Broker"
+    os: "Ubuntu"
+    os_version: "22.04.5"
+    firmware: "JetPack R36.4.7"
     services:
       - name: ssh
         port: 22
         protocol: tcp
+      - name: mqtt
+        port: 1883
+        protocol: tcp
+        version: "Mosquitto 2.0.11"
 
   - id: cam_turret
     name: "Ubiquiti Turret"
@@ -52,13 +71,21 @@ devices:
     network: lan
     role: "Caméra surveillance"
 
+  - id: nvr
+    name: "Network Video Recorder"
+    type: compute
+    ip: "192.168.88.253"
+    network: lan
+    role: "Stockage vidéo surveillance"
+
   - id: rpi5
     name: "Raspberry Pi 5"
     type: gateway
     ip: "192.168.88.247"
     network: lan
     role: "Gateway Zigbee"
-    os: "Raspberry Pi OS"
+    os: "Debian"
+    os_version: "13 (Trixie)"
     services:
       - name: ssh
         port: 22
@@ -66,18 +93,22 @@ devices:
       - name: zigbee2mqtt_ui
         port: 8080
         protocol: tcp
+        version: "koenkk/zigbee2mqtt (Docker)"
       - name: mqtt
         port: 1883
         protocol: tcp
 
-  - id: rpi4
-    name: "Raspberry Pi 4"
+  - id: iot_hub
+    name: "Raspberry Pi 5 (IoT Hub)"
     type: gateway
+    ip: "192.168.88.231"
     network: lan
-    role: "MQTT Broker"
+    role: "IoT Hub"
+    os: "Debian"
+    os_version: "13 (Trixie)"
     services:
-      - name: mqtt
-        port: 1883
+      - name: ssh
+        port: 22
         protocol: tcp
 
   - id: wisgate
@@ -86,10 +117,20 @@ devices:
     ip: "192.168.88.238"
     network: lan
     role: "Gateway LoRaWAN EU868"
+    firmware: "RAK7268C"
     services:
+      - name: ssh
+        port: 22
+        protocol: tcp
+        version: "Dropbear sshd"
       - name: http
         port: 80
         protocol: tcp
+        version: "nginx"
+      - name: https
+        port: 443
+        protocol: tcp
+        version: "nginx"
 
   - id: eap613
     name: "TP-Link EAP613"
@@ -100,6 +141,14 @@ devices:
     services:
       - name: http
         port: 80
+        protocol: tcp
+        version: "TP-LINK HTTPD/1.0"
+      - name: https
+        port: 443
+        protocol: tcp
+        version: "TP-LINK HTTPD/1.0"
+      - name: management
+        port: 44443
         protocol: tcp
 
   # Capteurs LoRaWAN
@@ -163,13 +212,16 @@ links:
     type: ethernet
 
   - source: netgear
-    target: rpi4
-    type: ethernet
-
-  - source: netgear
     target: cam_turret
     type: ethernet
 
+  - source: netgear
+    target: iot_hub
+    type: ethernet
+
+  - source: netgear
+    target: nvr
+    type: ethernet
 
   # LoRaWAN → WisGate
   - source: em310
@@ -197,14 +249,14 @@ links:
     target: rpi5
     type: zigbee
 
-  # MQTT forwarding
+  # MQTT forwarding → Jetson (Mosquitto broker)
   - source: wisgate
-    target: rpi4
+    target: jetson
     type: mqtt
     description: "LoRaWAN data → MQTT broker"
 
   - source: rpi5
-    target: rpi4
+    target: jetson
     type: mqtt
     description: "Zigbee data → MQTT broker"
 

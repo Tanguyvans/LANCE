@@ -65,6 +65,8 @@ class NetworkXBackend(GraphBackend):
                 role="",
                 ip=None,
                 os=None,
+                os_version=None,
+                firmware=None,
                 services=[],
                 protocols=[],
             )
@@ -78,8 +80,10 @@ class NetworkXBackend(GraphBackend):
                 role=dev.role,
                 ip=dev.ip,
                 os=dev.os,
+                os_version=dev.os_version,
+                firmware=dev.firmware,
                 services=[
-                    {"name": s.name, "port": s.port, "protocol": s.protocol}
+                    {"name": s.name, "port": s.port, "protocol": s.protocol, "version": s.version}
                     for s in dev.services
                 ],
                 protocols=dev.protocols,

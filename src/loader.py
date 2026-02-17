@@ -27,6 +27,7 @@ def _parse_services(raw: list[dict] | None) -> list[Service]:
             name=s["name"],
             port=s["port"],
             protocol=s.get("protocol", "tcp"),
+            version=s.get("version"),
         )
         for s in raw
     ]
@@ -56,6 +57,8 @@ def load_yaml(path: Path = DEFAULT_YAML) -> Infrastructure:
             ip=d.get("ip"),
             network=d.get("network"),
             os=d.get("os"),
+            os_version=d.get("os_version"),
+            firmware=d.get("firmware"),
             services=_parse_services(d.get("services")),
             protocols=d.get("protocols", []),
         )

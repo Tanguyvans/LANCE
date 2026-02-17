@@ -10,6 +10,7 @@ class Service:
     name: str
     port: int
     protocol: str = "tcp"
+    version: str | None = None
 
 
 @dataclass
@@ -21,6 +22,8 @@ class Device:
     ip: str | None = None
     network: str | None = None
     os: str | None = None
+    os_version: str | None = None
+    firmware: str | None = None
     services: list[Service] = field(default_factory=list)
     protocols: list[str] = field(default_factory=list)
 
