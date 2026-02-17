@@ -52,7 +52,7 @@ devices:
     type: compute
     ip: "192.168.88.248"
     network: lan
-    role: "Edge AI, Vision, MQTT Broker"
+    role: "Edge AI, Vision"
     os: "Ubuntu"
     os_version: "22.04.5"
     firmware: "JetPack R36.4.7"
@@ -60,10 +60,6 @@ devices:
       - name: ssh
         port: 22
         protocol: tcp
-      - name: mqtt
-        port: 1883
-        protocol: tcp
-        version: "Mosquitto 2.0.11"
 
   - id: cam_turret
     name: "Ubiquiti Turret"
@@ -83,7 +79,7 @@ devices:
     type: gateway
     ip: "192.168.88.247"
     network: lan
-    role: "Gateway Zigbee"
+    role: "Gateway Zigbee, MQTT Broker"
     os: "Debian"
     os_version: "13 (Trixie)"
     services:
@@ -97,6 +93,7 @@ devices:
       - name: mqtt
         port: 1883
         protocol: tcp
+        version: "Mosquitto"
 
   - id: iot_hub
     name: "Raspberry Pi 5 (IoT Hub)"
@@ -249,16 +246,11 @@ links:
     target: rpi5
     type: zigbee
 
-  # MQTT forwarding → Jetson (Mosquitto broker)
+  # MQTT forwarding → RPi5 (Mosquitto broker)
   - source: wisgate
-    target: jetson
+    target: rpi5
     type: mqtt
     description: "LoRaWAN data → MQTT broker"
-
-  - source: rpi5
-    target: jetson
-    type: mqtt
-    description: "Zigbee data → MQTT broker"
 
   # Internet
   - source: internet

@@ -35,7 +35,7 @@ class TestYAMLLoading:
         assert len(infra.devices) == 15
 
     def test_link_count(self, infra):
-        assert len(infra.links) == 17
+        assert len(infra.links) == 16
 
     def test_network_count(self, infra):
         assert len(infra.networks) == 1
@@ -65,7 +65,7 @@ class TestGraphBackend:
 
     def test_graph_stats_edges(self, backend):
         stats = backend.get_graph_stats()
-        assert stats["edges"] == 17
+        assert stats["edges"] == 16
 
     def test_graph_is_connected(self, backend):
         stats = backend.get_graph_stats()
@@ -83,22 +83,22 @@ class TestGraphBackend:
                     "cam_turret", "iot_hub", "nvr"}
         assert set(neighbors) == expected
 
-    def test_path_em310_to_jetson(self, backend):
-        paths = backend.find_all_paths("em310", "jetson")
+    def test_path_em310_to_rpi5(self, backend):
+        paths = backend.find_all_paths("em310", "rpi5")
         assert len(paths) > 0
-        # Direct path: em310 → wisgate → jetson (via MQTT)
-        assert ["em310", "wisgate", "jetson"] in paths
+        # Direct path: em310 → wisgate → rpi5 (via MQTT)
+        assert ["em310", "wisgate", "rpi5"] in paths
 
-    def test_path_aqara_to_jetson(self, backend):
-        paths = backend.find_all_paths("aqara_vib", "jetson")
+    def test_path_aqara_to_rpi5(self, backend):
+        paths = backend.find_all_paths("aqara_vib", "rpi5")
         assert len(paths) > 0
-        assert ["aqara_vib", "rpi5", "jetson"] in paths
+        assert ["aqara_vib", "rpi5"] in paths
 
-    def test_mqtt_broker_is_jetson(self, backend):
-        dev = backend.get_device("jetson")
+    def test_mqtt_broker_is_rpi5(self, backend):
+        dev = backend.get_device("rpi5")
         mqtt_services = [s for s in dev["services"] if s["name"] == "mqtt"]
         assert len(mqtt_services) == 1
-        assert mqtt_services[0]["version"] == "Mosquitto 2.0.11"
+        assert mqtt_services[0]["version"] == "Mosquitto"
 
 
 # ------------------------------------------------------------------
@@ -137,4 +137,4 @@ class TestExport:
         assert "nodes" in data
         assert "edges" in data
         assert len(data["nodes"]) == 16
-        assert len(data["edges"]) == 17
+        assert len(data["edges"]) == 16
