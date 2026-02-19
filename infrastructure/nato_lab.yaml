@@ -62,17 +62,22 @@ devices:
         protocol: tcp
 
   - id: cam_turret
-    name: "Ubiquiti Turret"
+    name: "Ubiquiti AI Turret"
     type: camera
+    ip: "192.168.88.230"
     network: lan
     role: "Caméra surveillance"
+    firmware: "5.1.240"
 
   - id: nvr
-    name: "Network Video Recorder"
+    name: "Ubiquiti UNVR"
     type: compute
     ip: "192.168.88.253"
     network: lan
     role: "Stockage vidéo surveillance"
+    os: "UniFi OS"
+    os_version: "5.0.13"
+    firmware: "HW rev 113-03192-68"
 
   - id: rpi5
     name: "Raspberry Pi 5"

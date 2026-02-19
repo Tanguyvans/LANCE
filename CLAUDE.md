@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python3 -m pytest tests/ -v -p no:pytest_ethereum -p no:web3
 
 # Run a single test
-python3 -m pytest tests/test_loader.py::TestGraphBackend::test_path_em310_to_rpi4 -v -p no:pytest_ethereum -p no:web3
+python3 -m pytest tests/test_loader.py::TestGraphBackend::test_path_em310_to_rpi5 -v -p no:pytest_ethereum -p no:web3
 
 # Generate interactive HTML visualization
 python3 -m src.visualize
@@ -44,12 +44,26 @@ python3 -m src.visualize
 
 ## Current Status & Next Steps
 
-Phase 1 (graph modeling + visualization) is complete. Phase 2 is next:
+### Phase 1 — Graph modeling + visualization (DONE)
+- Directed graph (NetworkX DiGraph) modeling of 15 devices, 16 links
+- pyvis HTML visualization with color-coded nodes/edges
+- 20 tests passing
 
-1. **Scan the lab** with `nmap -sV` to detect service versions (requires physical access to the 192.168.88.0/24 network)
-2. **Collect firmware/OS versions** manually from each device (RouterOS version, Mosquitto version, JetPack version, etc.)
-3. **Extend the YAML schema** to include `os_version`, `firmware`, service `version`, and `cves` fields
-4. **Build a NIST NVD module** to auto-fetch CVEs by product/version
-5. **Score nodes** by risk (CVSS + network exposure)
+### Phase 2 — CVE enrichment & risk scoring (IN PROGRESS)
+Steps 1-3 done (nmap scan, SSH version collection, YAML schema extended). Remaining:
 
-The lab devices do not have known versions yet — they need to be collected on-site.
+1. ~~Scan the lab with `nmap -sV`~~ — done 2026-02-17
+2. ~~Collect firmware/OS versions via SSH~~ — done (RouterOS 7.18.2, JetPack R36.4.7, Mosquitto, Debian 13, etc.)
+3. ~~Extend YAML schema with `os_version`, `firmware`, service `version`~~ — done
+4. **Collect missing versions** — NVR (.253), cam_turret, Netgear GS348PP, LoRaWAN/Zigbee sensor firmware
+5. **Build NIST NVD module** (`src/cve_lookup.py`) — auto-fetch CVEs by CPE (product/version) from NIST NVD API
+6. **Add `cves` field to YAML** — store CVE IDs per device/service
+7. **Score nodes by risk** — CVSS score + network exposure (open ports, graph centrality, reachability from internet)
+
+### Phase 3 — LLM agent attack path analysis
+- Agent Claude analyzes the enriched graph to find multi-hop attack paths
+- Generate risk reports with exploitation scenarios and recommendations
+
+### Phase 4 — Pentest & exploitation
+- Start with isolated targets (e.g., MikroTik Telnet/FTP)
+- Progressive difficulty: chain exploits across multiple hops
