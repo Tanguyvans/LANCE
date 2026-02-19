@@ -124,15 +124,15 @@ devices:
       - name: ssh
         port: 22
         protocol: tcp
-        version: "Dropbear sshd"
+        version: "Dropbear 2020.81"
       - name: http
         port: 80
         protocol: tcp
-        version: "nginx"
+        version: "nginx 1.19.6"
       - name: https
         port: 443
         protocol: tcp
-        version: "nginx"
+        version: "nginx 1.19.6"
 
   - id: eap613
     name: "TP-Link EAP613"

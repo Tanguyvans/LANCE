@@ -16,8 +16,8 @@ iot_hub:
   - "cpe:2.3:o:debian:debian_linux:13:*:*:*:*:*:*:*"
 
 wisgate:
-  - "dropbear ssh"
-  - "nginx vulnerability"
+  - "cpe:2.3:a:dropbear_ssh_project:dropbear_ssh:2020.81:*:*:*:*:*:*:*"
+  - "cpe:2.3:a:f5:nginx:1.19.6:*:*:*:*:*:*:*"
 
 eap613:
   - "TP-LINK EAP613"
