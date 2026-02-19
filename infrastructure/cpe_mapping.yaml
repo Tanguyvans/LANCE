@@ -1,0 +1,29 @@
+# CPE/keyword mapping for NVD CVE lookups.
+# Each device_id maps to a list of queries.
+# Entries starting with "cpe:" use cpeName lookups (exact version required).
+# Other entries use keywordSearch lookups (broader, fuzzy).
+
+mikrotik:
+  - "cpe:2.3:o:mikrotik:routeros:7.18.2:*:*:*:*:*:*:*"
+
+jetson:
+  - "cpe:2.3:o:canonical:ubuntu_linux:22.04:*:*:*:*:*:*:*"
+
+rpi5:
+  - "eclipse mosquitto"
+
+iot_hub:
+  - "cpe:2.3:o:debian:debian_linux:13:*:*:*:*:*:*:*"
+
+wisgate:
+  - "dropbear ssh"
+  - "nginx vulnerability"
+
+eap613:
+  - "TP-LINK EAP613"
+
+nvr:
+  - "Ubiquiti UNVR"
+
+cam_turret:
+  - "Ubiquiti UniFi Protect camera"
