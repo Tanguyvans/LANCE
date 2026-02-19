@@ -98,7 +98,7 @@ class TestGraphBackend:
         dev = backend.get_device("rpi5")
         mqtt_services = [s for s in dev["services"] if s["name"] == "mqtt"]
         assert len(mqtt_services) == 1
-        assert mqtt_services[0]["version"] == "Mosquitto"
+        assert mqtt_services[0]["version"] == "Mosquitto 2.0.21"
 
 
 # ------------------------------------------------------------------

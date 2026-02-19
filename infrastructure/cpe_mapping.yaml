@@ -10,7 +10,7 @@ jetson:
   - "cpe:2.3:o:canonical:ubuntu_linux:22.04:*:*:*:*:*:*:*"
 
 rpi5:
-  - "eclipse mosquitto"
+  - "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"
 
 iot_hub:
   - "cpe:2.3:o:debian:debian_linux:13:*:*:*:*:*:*:*"

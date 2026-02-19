@@ -98,7 +98,7 @@ devices:
       - name: mqtt
         port: 1883
         protocol: tcp
-        version: "Mosquitto"
+        version: "Mosquitto 2.0.21"
 
   - id: iot_hub
     name: "Raspberry Pi 5 (IoT Hub)"
