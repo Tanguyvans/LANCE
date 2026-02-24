@@ -193,9 +193,22 @@ Tester les scénarios d'attaque sur le lab physique, par difficulté croissante 
 | Niveau | Scénario | Exemple |
 |--------|----------|---------|
 | 1 | Device unique, service exposé | Exploit HTTP sur WisGate |
-| 2 | Device unique, MQTT sans auth | Interception données capteurs sur RPi4 |
-| 3 | Chaînage 2 hops | Capteur LoRaWAN → WisGate → RPi4 |
+| 2 | Device unique, MQTT sans auth | Interception données capteurs |
+| 3 | Chaînage 2 hops | Capteur LoRaWAN → WisGate → MQTT broker |
 | 4 | Scénario complet multi-hop | Internet → MikroTik → pivot LAN → cible interne |
+
+#### Stratégie de test
+
+| Attaque | Environnement | Raison |
+|---------|---------------|--------|
+| MQTT sans auth (`mosquitto_sub -t '#'`) | Lab réel | Non destructif, écoute passive |
+| SSH default creds | Lab réel | Non destructif, simple test de login |
+| Terrapin SSH scan (`ssh-audit`) | Lab réel | Non destructif, scan passif |
+| DoS MikroTik (CVE-2018-5951) | Docker/GNS3 | Risque de couper le réseau |
+| RCE nginx (CVE-2021-23017) | Container `nginx:1.19.6` | Risque de crasher le WisGate |
+| Exploit Dropbear (CVE-2021-36369) | Container | Risque de perdre l'accès SSH |
+
+Les attaques destructives (DoS, RCE, exploit SSH) sont testées sur des **containers Docker** qui reproduisent les services vulnérables avec les mêmes versions que le lab réel. Cela permet de valider les exploits sans impacter l'infrastructure.
 
 ### Phase 6 — Dashboard + Backend graphe avancé (optionnel)
 
