@@ -11,9 +11,11 @@ jetson:
 
 rpi5:
   - "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"
+  - "cpe:2.3:a:openbsd:openssh:10.0:*:*:*:*:*:*:*"
 
 iot_hub:
-  - "cpe:2.3:o:debian:debian_linux:13:*:*:*:*:*:*:*"
+  - "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"
+  - "cpe:2.3:a:openbsd:openssh:10.0:*:*:*:*:*:*:*"
 
 wisgate:
   - "cpe:2.3:a:dropbear_ssh_project:dropbear_ssh:2020.81:*:*:*:*:*:*:*"

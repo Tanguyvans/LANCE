@@ -91,6 +91,7 @@ devices:
       - name: ssh
         port: 22
         protocol: tcp
+        version: "OpenSSH 10.0p1"
       - name: zigbee2mqtt_ui
         port: 8080
         protocol: tcp
@@ -112,6 +113,11 @@ devices:
       - name: ssh
         port: 22
         protocol: tcp
+        version: "OpenSSH 10.0p1"
+      - name: mqtt
+        port: 1883
+        protocol: tcp
+        version: "Mosquitto 2.0.21"
 
   - id: wisgate
     name: "WisGate Edge Lite 2"
