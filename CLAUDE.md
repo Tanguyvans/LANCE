@@ -49,21 +49,28 @@ python3 -m src.visualize
 - pyvis HTML visualization with color-coded nodes/edges
 - 20 tests passing
 
-### Phase 2 — CVE enrichment & risk scoring (IN PROGRESS)
-Steps 1-3 done (nmap scan, SSH version collection, YAML schema extended). Remaining:
+### Phase 2 — CVE enrichment & risk scoring (DONE)
 
-1. ~~Scan the lab with `nmap -sV`~~ — done 2026-02-17
-2. ~~Collect firmware/OS versions via SSH~~ — done (RouterOS 7.18.2, JetPack R36.4.7, Mosquitto, Debian 13, etc.)
+1. ~~Scan the lab with `nmap -sV`~~ — done
+2. ~~Collect firmware/OS versions via SSH~~ — done (RouterOS 7.18.2, Mosquitto 2.0.21, OpenSSH 10.0p1, Dropbear 2020.81, nginx 1.19.6, etc.)
 3. ~~Extend YAML schema with `os_version`, `firmware`, service `version`~~ — done
-4. **Collect missing versions** — NVR (.253), cam_turret, Netgear GS348PP, LoRaWAN/Zigbee sensor firmware
-5. **Build NIST NVD module** (`src/cve_lookup.py`) — auto-fetch CVEs by CPE (product/version) from NIST NVD API
-6. **Add `cves` field to YAML** — store CVE IDs per device/service
-7. **Score nodes by risk** — CVSS score + network exposure (open ports, graph centrality, reachability from internet)
+4. ~~Build NIST NVD module~~ — `src/cve_lookup.py` + `infrastructure/cpe_mapping.yaml` (exact CPE strings)
+5. ~~Risk scoring module~~ — `src/risk_scorer.py` (CVSS + network exposure + betweenness centrality)
+6. Results: 24 CVEs across 5 devices, MikroTik (6.6) and WisGate (5.6) highest risk
 
-### Phase 3 — LLM agent attack path analysis
-- Agent Claude analyzes the enriched graph to find multi-hop attack paths
-- Generate risk reports with exploitation scenarios and recommendations
+### Phase 3 — Attack path analysis
+- Pondérer les arêtes du graphe par difficulté d'exploitation
+- Détecter les chemins d'attaque critiques (ex: Internet → MikroTik → Netgear → WisGate → MQTT)
+- Identifier les points de pivot (noeuds à haute centralité : Netgear 0.72, WisGate 0.48)
+- Générer un rapport de risque avec scénarios d'exploitation
 
-### Phase 4 — Pentest & exploitation
-- Start with isolated targets (e.g., MikroTik Telnet/FTP)
-- Progressive difficulty: chain exploits across multiple hops
+### Phase 4 — LLM agent pentester (style Shannon/PentAGI)
+- Agent semi-autonome : Claude analyse le graphe enrichi + CVEs, propose des commandes
+- Outils de l'agent : nmap, ssh, curl, mosquitto_sub/pub, ssh-audit
+- Mode opérateur : l'agent raisonne, l'humain valide et exécute
+- Framework : Claude Agent SDK (comme Shannon)
+
+### Phase 5 — Pentest progressif
+- Tests safe sur le lab réel : MQTT sans auth, SSH default creds, Terrapin scan
+- Tests destructifs sur containers Docker (nginx:1.19.6, Dropbear, MikroTik CHR)
+- Difficulté croissante : device unique → chaînage 2 hops → scénario multi-hop complet
