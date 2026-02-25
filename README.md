@@ -125,7 +125,24 @@ python3 -m src.visualize
 open output/nato_lab.html
 ```
 
-### 4. Accéder au réseau physique
+### 4. Lancer l'analyse des chemins d'attaque
+
+```bash
+python3 -c "
+from src.loader import build_graph
+from src.cve_lookup import load_cpe_mapping, scan_all_devices
+from src.attack_path import analyze_attack_paths, print_attack_report
+
+backend = build_graph()
+infra = __import__('src.loader', fromlist=['load_yaml']).load_yaml()
+cpe = load_cpe_mapping('infrastructure/cpe_mapping.yaml')
+cve_reports = scan_all_devices(infra, cpe)
+report = analyze_attack_paths(backend, cve_reports)
+print_attack_report(report)
+"
+```
+
+### 5. Accéder au réseau physique
 
 Connecte-toi au WiFi `NATO-Lab` ou branche-toi sur le switch.
 
@@ -145,9 +162,15 @@ NATO-SmartCity-IoT/
 │   ├── models.py              # Dataclasses (Device, Service, Link, Network)
 │   ├── graph_backend.py       # ABC GraphBackend + implémentation NetworkX
 │   ├── loader.py              # YAML → dataclasses → graphe
+│   ├── cve_lookup.py          # Module NIST NVD (requêtes CVE par CPE)
+│   ├── risk_scorer.py         # Scoring de risque par device (CVSS + exposition + centralité)
+│   ├── attack_path.py         # Chemins d'attaque pondérés + pivots (Dijkstra)
 │   └── visualize.py           # Génération HTML interactive (pyvis)
 ├── tests/
-│   └── test_loader.py         # Tests : chargement, chemins, surface d'attaque
+│   ├── test_loader.py         # Tests : chargement, chemins, surface d'attaque
+│   ├── test_cve_lookup.py     # Tests : parsing NVD, rate limiting
+│   ├── test_risk_scorer.py    # Tests : scoring, centralité, hops
+│   └── test_attack_path.py    # Tests : poids arêtes, chemins, pivots
 ├── output/
 │   └── nato_lab.html          # Visualisation générée
 └── requirements.txt
@@ -162,20 +185,22 @@ NATO-SmartCity-IoT/
 - Visualisation interactive pyvis (HTML)
 - Tests unitaires (chargement, chemins, surface d'attaque)
 
-### Phase 2 — Enrichissement CVE (prochaine étape)
+### Phase 2 — Enrichissement CVE ✅
 
-1. **Scanner le lab** avec `nmap -sV` pour détecter les versions de services
-2. **Relever les versions firmware/OS** sur chaque device (RouterOS, JetPack, Mosquitto, etc.)
-3. **Enrichir le YAML** avec les versions exactes et les CVE connues
-4. **Module NIST NVD** : interrogation automatique de l'API pour récupérer les CVE par produit/version
-5. **Scoring de risque** par noeud (basé sur CVSS et exposition réseau)
+1. Scanner le lab avec `nmap -sV` pour détecter les versions de services
+2. Relever les versions firmware/OS via SSH (RouterOS 7.18.2, Mosquitto 2.0.21, OpenSSH 10.0p1, etc.)
+3. Enrichir le YAML avec `os_version`, `firmware`, service `version`
+4. Module NIST NVD (`src/cve_lookup.py`) + mapping CPE (`infrastructure/cpe_mapping.yaml`)
+5. Scoring de risque (`src/risk_scorer.py`) : CVSS + exposition réseau + centralité betweenness
+6. Résultats : 24 CVEs sur 5 devices, MikroTik (6.6) et WisGate (5.6) risque le plus élevé
 
-### Phase 3 — Analyse des chemins d'attaque
+### Phase 3 — Analyse des chemins d'attaque ✅
 
-- Pondération des arêtes par difficulté d'exploitation
-- Détection des chemins d'attaque critiques (ex: Internet → MikroTik → MQTT broker)
-- Identification des points de pivot (noeuds à haute centralité)
-- Scoring des chaînes d'attaque (propagation multi-hop)
+- Pondération des arêtes par difficulté d'exploitation (protocole × exploitabilité CVSS)
+- Distinction relais réseau (switch/router/ap) vs cibles d'exploitation
+- Détection des chemins d'attaque critiques via Dijkstra dirigé
+- Identification des points de pivot (Netgear betweenness 0.72, MikroTik 5 chemins)
+- Scoring des chaînes : `∏ P(hop) × impact(cible) × amplification^(n-1)`
 
 #### Méthodologie de scoring
 
