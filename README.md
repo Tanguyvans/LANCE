@@ -175,6 +175,44 @@ NATO-SmartCity-IoT/
 - Pondération des arêtes par difficulté d'exploitation
 - Détection des chemins d'attaque critiques (ex: Internet → MikroTik → MQTT broker)
 - Identification des points de pivot (noeuds à haute centralité)
+- Scoring des chaînes d'attaque (propagation multi-hop)
+
+#### Méthodologie de scoring
+
+Le scoring des chemins d'attaque repose sur trois composantes issues de la littérature :
+
+**1. Poids des arêtes — Exploitabilité CVSS v3.1**
+
+Chaque arête est pondérée par l'exploitabilité du device cible, calculée via la formule CVSS v3.1 :
+`Exploitability = 8.22 × AV × AC × PR × UI` (normalisé en probabilité [0,1]).
+Les constantes numériques (AV, AC, PR, UI) proviennent de la spécification officielle [1].
+
+**2. Facteur protocolaire**
+
+Pour les liens sans CVE associée, un facteur de difficulté basé sur le type de protocole est appliqué (ethernet, MQTT, Zigbee, LoRaWAN), reflétant le chiffrement, la portée et l'accès requis.
+
+**3. Score de chemin — Probabilité cumulative + amplification**
+
+Le score d'un chemin d'attaque combine :
+- **Probabilité cumulative** : produit des probabilités d'exploitation par hop `P(chemin) = ∏ P(hop_i)`, selon l'approche d'agrégation du NIST [2].
+- **Impact de la cible** : criticité de l'asset final (score CVSS Impact).
+- **Facteur d'amplification** : les vulnérabilités chaînées présentent un risque supérieur à la somme des risques individuels (effet "domino", 1+1 > 2) [4]. Les chemins courts avec gain de privilèges à chaque hop sont pénalisés davantage.
+- **Choke points** : les noeuds où convergent plusieurs chemins d'attaque sont identifiés via la centralité de betweenness [3].
+
+#### Références
+
+1. FIRST — *CVSS v3.1 Specification Document* : formule d'exploitabilité et constantes numériques.
+   https://www.first.org/cvss/v3-1/specification-document
+2. NIST — *Aggregating Vulnerability Metrics in Enterprise Networks using Attack Graphs* : agrégation probabiliste des scores CVSS le long des chemins d'attaque.
+   https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=926022
+3. Picus Security — *Attack Path Analysis Explained* : scoring context-aware (exploitabilité, complexité du chemin, criticité de l'asset) et concept de choke points.
+   https://www.picussecurity.com/resource/blog/what-is-attack-path-analysis
+4. Software Secured — *The Domino Effect: Chaining Medium and Low Vulnerabilities is The Path to Critical Breaches* : effet de propagation des vulnérabilités chaînées.
+   https://www.softwaresecured.com/post/the-domino-effect-chaining-medium-and-low-vulnerabilities-is-the-path-to-critical-breaches
+5. Park et al. — *Network Security Node-Edge Scoring System Using Attack Graph Based on Vulnerability Correlation*, Applied Sciences, 2022 : scoring combiné node+edge avec corrélation de vulnérabilités.
+   https://www.mdpi.com/2076-3417/12/14/6852
+6. Frigault & Wang — *Using CVSS in Attack Graphs* : conversion des scores CVSS en poids d'arêtes pour graphes d'attaque.
+   https://www.researchgate.net/publication/221326700_Using_CVSS_in_attack_graphs
 
 ### Phase 4 — Agents LLM (approche LLMDFA)
 
