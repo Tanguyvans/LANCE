@@ -19,6 +19,30 @@ log = logging.getLogger(__name__)
 # }
 
 
+OPENAI_PROVIDERS = {
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "api_key_env": "OPENROUTER_API_KEY",
+        "default_model": "anthropic/claude-sonnet-4",
+    },
+    "minimax": {
+        "base_url": "https://api.minimax.io/v1",
+        "api_key_env": "MINIMAX_API_KEY",
+        "default_model": "MiniMax-M2",
+    },
+    "glm": {
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "api_key_env": "GLM_API_KEY",
+        "default_model": "glm-4-flash",
+    },
+    "qwen": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "default_model": "qwen-plus",
+    },
+}
+
+
 class LLMProvider:
     """Unified LLM interface with synchronous tool-calling loop."""
 
@@ -28,15 +52,16 @@ class LLMProvider:
             import anthropic
             self.client = anthropic.Anthropic()
             self.model = model or "claude-sonnet-4-20250514"
-        elif provider == "openrouter":
+        elif provider in OPENAI_PROVIDERS:
             import openai
+            cfg = OPENAI_PROVIDERS[provider]
             self.client = openai.OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=os.environ.get("OPENROUTER_API_KEY"),
+                base_url=cfg["base_url"],
+                api_key=os.environ.get(cfg["api_key_env"]),
             )
-            self.model = model or "anthropic/claude-sonnet-4"
+            self.model = model or cfg["default_model"]
         else:
-            raise ValueError(f"Unknown provider: {provider}")
+            raise ValueError(f"Unknown provider: {provider}. Available: anthropic, {', '.join(OPENAI_PROVIDERS)}")
 
     def chat_with_tools(
         self,
@@ -52,7 +77,7 @@ class LLMProvider:
         if self.provider == "anthropic":
             return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker)
         else:
-            return self._openrouter_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker)
 
     # ── Anthropic (native tool_use) ──────────────────────────────
 
@@ -121,7 +146,7 @@ class LLMProvider:
 
     # ── OpenRouter / OpenAI-compatible ───────────────────────────
 
-    def _openrouter_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None):
         api_tools = [
             {
                 "type": "function",
@@ -169,7 +194,11 @@ class LLMProvider:
 
             # Execute each tool call
             for tc in message.tool_calls:
-                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                try:
+                    args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                except json.JSONDecodeError:
+                    log.warning("Bad JSON from LLM for %s: %s", tc.function.name, tc.function.arguments[:200])
+                    args = {}
                 result = self._execute_tool(tc.function.name, args, tool_map)
                 messages.append(
                     {

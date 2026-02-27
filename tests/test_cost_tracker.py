@@ -8,9 +8,9 @@ from src.agent.cost_tracker import CostTracker, PhaseUsage
 class TestPhaseUsage:
     def test_cost_calculation(self):
         usage = PhaseUsage(agent_name="test", input_tokens=1000, output_tokens=500)
-        # Default pricing: 3.0 input + 15.0 output per million
+        # Default pricing: 1.0 input + 3.0 output per million
         cost = usage.cost_usd()
-        assert cost == (1000 * 3.0 + 500 * 15.0) / 1_000_000
+        assert cost == (1000 * 1.0 + 500 * 3.0) / 1_000_000
 
     def test_cost_with_model(self):
         usage = PhaseUsage(agent_name="test", input_tokens=1_000_000, output_tokens=0)

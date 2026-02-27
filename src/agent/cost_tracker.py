@@ -6,11 +6,30 @@ from dataclasses import dataclass, field
 
 # Pricing per million tokens (USD)
 PRICING = {
+    # Anthropic
     "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
     "anthropic/claude-sonnet-4": {"input": 3.0, "output": 15.0},
+    "anthropic/claude-sonnet-4.5": {"input": 3.0, "output": 15.0},
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.0},
+    # MiniMax (direct + OpenRouter)
+    "MiniMax-M2": {"input": 0.20, "output": 1.10},
+    "MiniMax-M2.5": {"input": 0.30, "output": 1.20},
+    "minimax/MiniMax-M2": {"input": 0.20, "output": 1.10},
+    "minimax/MiniMax-M2.5": {"input": 0.30, "output": 1.20},
+    # GLM (Zhipu)
+    "glm-4-flash": {"input": 0.0, "output": 0.0},
+    "glm-4-plus": {"input": 0.50, "output": 0.50},
+    "glm-4.7": {"input": 0.50, "output": 2.20},
+    # Qwen (Alibaba)
+    "qwen-plus": {"input": 0.40, "output": 1.20},
+    "qwen-turbo": {"input": 0.05, "output": 0.20},
+    # Google Gemini
+    "google/gemini-3-flash-preview": {"input": 0.50, "output": 3.0},
+    "google/gemini-2.0-flash-001": {"input": 0.10, "output": 0.40},
+    # DeepSeek
+    "deepseek/deepseek-chat-v3-0324": {"input": 0.27, "output": 1.10},
 }
-DEFAULT_PRICING = {"input": 3.0, "output": 15.0}
+DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
 
 
 @dataclass

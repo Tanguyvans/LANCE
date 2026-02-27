@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 
 from dotenv import load_dotenv
 
@@ -18,10 +19,13 @@ def main():
     )
     parser.add_argument(
         "--provider",
-        default="anthropic",
-        choices=["anthropic", "openrouter"],
+        default=os.environ.get("AGENT_PROVIDER", "anthropic"),
+        choices=["anthropic", "openrouter", "minimax", "glm", "qwen"],
     )
-    parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("AGENT_MODEL"),
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
