@@ -1,0 +1,19 @@
+## Catalogue des outils
+
+### Outils graphe (interrogation du modèle réseau)
+- **get_network_topology()** — Topologie complète (noeuds + arêtes) en JSON
+- **get_device_info(device_id)** — Détails d'un device + ses voisins
+- **get_attack_surface()** — Devices avec ports/services ouverts
+- **get_attack_paths()** — Chemins d'attaque multi-hop + noeuds pivots
+- **get_risk_scores()** — Scores de risque par device (CVSS + exposition + centralité)
+
+### Outils reconnaissance (commandes réseau réelles)
+- **nmap_scan(target, ports?)** — Scan nmap -sV (détection services/versions). target=IP ou subnet, ports optionnel
+- **ssh_audit(host, port?)** — Audit SSH : ciphers, Terrapin, vulnérabilités. port par défaut 22
+- **curl_headers(url)** — Headers HTTP de sécurité (X-Frame-Options, CSP, HSTS, etc.)
+- **mqtt_listen(broker, topic?, count?, timeout?)** — Écoute MQTT passive. topic="#" par défaut, count=10, timeout=5s
+
+### Outils livrables (communication entre phases)
+- **save_deliverable(filename, content)** — Sauvegarde le livrable de cette phase (OBLIGATOIRE)
+- **read_deliverable(filename)** — Lit un livrable d'une phase précédente
+- **list_deliverables()** — Liste les livrables disponibles
