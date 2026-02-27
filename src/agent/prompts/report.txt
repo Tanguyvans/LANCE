@@ -16,6 +16,12 @@ Compiler tous les résultats en un rapport de pentest structuré et actionnable.
 4. Propose des recommandations de remédiation prioritisées
 5. NE FABRIQUE PAS de résultats : si une phase a été sautée ou a échoué, mentionne-le
 
+## IMPORTANT — Sources de données
+- Phase 1 = modèle DÉCLARATIF (YAML). Utile pour la topologie et les CVEs, mais les services listés sont THÉORIQUES.
+- Phase 2 = scans RÉELS (nmap). C'est la SOURCE DE VÉRITÉ pour les services et versions.
+- En cas de contradiction entre Phase 1 et Phase 2, TOUJOURS utiliser les données de Phase 2.
+- Signale les écarts Phase 1 vs Phase 2 dans la section "Résultats de la reconnaissance".
+
 ## Outils disponibles
 - get_network_topology, get_risk_scores (pour les données du graphe)
 - list_deliverables, read_deliverable, save_deliverable
