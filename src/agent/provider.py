@@ -69,19 +69,20 @@ class LLMProvider:
         user_message: str,
         tools: list[dict],
         max_turns: int = 30,
+        max_tokens: int = 4096,
         cost_tracker=None,
     ) -> str:
         """Synchronous tool-calling loop. Returns the final text response."""
         tool_map = {t["name"]: t["function"] for t in tools}
 
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens)
 
     # ── Anthropic (native tool_use) ──────────────────────────────
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096):
         api_tools = [
             {
                 "name": t["name"],
@@ -96,7 +97,7 @@ class LLMProvider:
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 system=system_prompt,
                 tools=api_tools,
                 messages=messages,
@@ -146,7 +147,7 @@ class LLMProvider:
 
     # ── OpenRouter / OpenAI-compatible ───────────────────────────
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096):
         api_tools = [
             {
                 "type": "function",
@@ -169,7 +170,7 @@ class LLMProvider:
                 model=self.model,
                 messages=messages,
                 tools=api_tools,
-                max_tokens=4096,
+                max_tokens=max_tokens,
             )
             choice = response.choices[0]
             message = choice.message

@@ -1,6 +1,7 @@
 """Cost and token tracking per agent phase and total."""
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 
@@ -111,6 +112,10 @@ class CostTracker:
                 for p in self.phases
             ],
         }
+
+    def to_json(self) -> str:
+        """Return the cost summary as a JSON string."""
+        return json.dumps(self.summary(), indent=2)
 
     def print_summary(self) -> None:
         print("\n" + "=" * 72)

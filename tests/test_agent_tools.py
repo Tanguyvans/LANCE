@@ -11,6 +11,7 @@ from src.agent.tools.recon_tools import (
     ssh_audit,
     curl_headers,
     mqtt_listen,
+    nvd_lookup,
     RECON_TOOLS,
 )
 from src.agent.tools.graph_tools import GRAPH_TOOLS
@@ -127,6 +128,44 @@ class TestReconTools:
             assert "input_schema" in tool
             assert "function" in tool
             assert callable(tool["function"])
+
+    def test_nvd_lookup_in_recon_tools(self):
+        """Verify nvd_lookup is registered in RECON_TOOLS."""
+        names = {t["name"] for t in RECON_TOOLS}
+        assert "nvd_lookup" in names
+
+    @patch("src.agent.tools.recon_tools.query_nvd")
+    def test_nvd_lookup_returns_cves(self, mock_query):
+        from src.cve_lookup import CVEResult
+        mock_query.return_value = [
+            CVEResult(
+                cve_id="CVE-2023-12345",
+                description="Test vulnerability in Mosquitto",
+                cvss_score=7.5,
+                severity="HIGH",
+                attack_vector="NETWORK",
+            ),
+            CVEResult(
+                cve_id="CVE-2023-67890",
+                description="Another vuln",
+                cvss_score=5.0,
+                severity="MEDIUM",
+                attack_vector="LOCAL",
+            ),
+        ]
+        result = json.loads(nvd_lookup("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"))
+        assert len(result) == 2
+        assert result[0]["cve_id"] == "CVE-2023-12345"
+        assert result[0]["cvss_score"] == 7.5
+        assert result[1]["severity"] == "MEDIUM"
+        mock_query.assert_called_once()
+
+    @patch("src.agent.tools.recon_tools.query_nvd")
+    def test_nvd_lookup_handles_error(self, mock_query):
+        mock_query.side_effect = Exception("NVD API timeout")
+        result = json.loads(nvd_lookup("bad query"))
+        assert "error" in result
+        assert "NVD API timeout" in result["error"]
 
 
 # ------------------------------------------------------------------

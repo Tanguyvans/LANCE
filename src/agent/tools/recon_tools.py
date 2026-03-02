@@ -7,8 +7,11 @@ All tools return {stdout, stderr, return_code} as JSON.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
+
+from src.cve_lookup import query_nvd
 
 
 def _run(cmd: list[str], timeout: int = 30) -> dict:
@@ -69,6 +72,27 @@ def mqtt_listen(broker: str, topic: str = "#", count: int = 10, timeout: int = 5
         "-W", str(timeout),
     ]
     return json.dumps(_run(cmd, timeout=timeout + 5))
+
+
+def nvd_lookup(query: str) -> str:
+    """Search NIST NVD for known CVEs by CPE string or keyword."""
+    api_key = os.environ.get("NVD_API_KEY")
+    try:
+        results = query_nvd(query, api_key)
+        return json.dumps(
+            [
+                {
+                    "cve_id": r.cve_id,
+                    "description": r.description,
+                    "cvss_score": r.cvss_score,
+                    "severity": r.severity,
+                    "attack_vector": r.attack_vector,
+                }
+                for r in results
+            ]
+        )
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 # ── Tool definitions (for the provider) ──────────────────────────
@@ -157,5 +181,20 @@ RECON_TOOLS = [
             "required": ["broker"],
         },
         "function": mqtt_listen,
+    },
+    {
+        "name": "nvd_lookup",
+        "description": "Search NIST NVD for known CVEs by CPE string or keyword. Use for versions discovered by nmap. Example: nvd_lookup('cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*') or nvd_lookup('Dropbear SSH 2020.81').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "CPE 2.3 string or keyword search (e.g. 'cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*' or 'MikroTik RouterOS 7.18')",
+                },
+            },
+            "required": ["query"],
+        },
+        "function": nvd_lookup,
     },
 ]

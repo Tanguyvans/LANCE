@@ -14,9 +14,11 @@ class AgentConfig:
     prerequisites: list[str] = field(default_factory=list)
     validator: str = "default"
     max_turns: int = 30
+    max_tokens: int = 4096
     user_message: str = ""
     conditional: str | None = None
     description: str = ""
+    has_device_agents: bool = False
 
 
 AGENTS: dict[str, AgentConfig] = {
@@ -52,9 +54,10 @@ AGENTS: dict[str, AgentConfig] = {
         tools=["graph", "recon", "deliverable"],
         prerequisites=["recon"],
         validator="json_vuln_queue",
-        max_turns=25,
-        user_message="Analyse les vulnérabilités des services découverts en Phase 2.",
-        description="SSH audit, HTTP headers, MQTT auth checks",
+        max_turns=10,
+        user_message="Agrège les résultats de vulnérabilité des sous-agents device en un livrable unifié.",
+        description="Aggregate per-device vuln results into unified queue",
+        has_device_agents=True,
     ),
     "exploitation": AgentConfig(
         name="exploitation",
@@ -78,6 +81,7 @@ AGENTS: dict[str, AgentConfig] = {
         prerequisites=[],
         validator="markdown_with_sections",
         max_turns=15,
+        max_tokens=16384,
         user_message="Compile le rapport final de pentest à partir de tous les livrables précédents.",
         description="Compile all findings into structured report",
     ),

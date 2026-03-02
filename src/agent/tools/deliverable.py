@@ -4,7 +4,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-OUTPUT_DIR = Path("output/agent")
+OUTPUT_DIR: Path = Path("output/agent")
+
+
+def set_output_dir(path: Path) -> None:
+    """Set the output directory (called by pipeline at init)."""
+    global OUTPUT_DIR
+    OUTPUT_DIR = path
 
 
 def save_deliverable(filename: str, content: str) -> str:
