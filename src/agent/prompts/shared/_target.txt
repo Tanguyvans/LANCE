@@ -1,11 +1,11 @@
-## Contexte réseau
-Lab NATO Smart City IoT — Subnet 192.168.88.0/24
-Devices: {{device_count}} | Liens: {{link_count}} | CVEs connues: {{cve_count}}
-Device le plus à risque : {{top_risk}}
+## Network context
+NATO Smart City IoT Lab — Subnet 192.168.88.0/24
+Devices: {{device_count}} | Links: {{link_count}} | Known CVEs: {{cve_count}}
+Highest risk device: {{top_risk}}
 
-## Livrables précédents disponibles
+## Available previous deliverables
 {{previous_deliverables}}
 
-## Livrable attendu pour cette phase
+## Expected deliverable for this phase
 Filename: {{expected_deliverable}}
-Tu DOIS sauvegarder ton livrable avec l'outil save_deliverable(filename, content) avant de terminer.
+You MUST save your deliverable using the save_deliverable(filename, content) tool before finishing.

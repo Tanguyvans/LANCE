@@ -172,6 +172,9 @@ class LLMProvider:
                 tools=api_tools,
                 max_tokens=max_tokens,
             )
+            if not response.choices:
+                log.warning("Empty response from API (no choices), retrying...")
+                continue
             choice = response.choices[0]
             message = choice.message
 

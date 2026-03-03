@@ -53,7 +53,7 @@ class TestLoadPrompt:
             "expected_deliverable": "01_graph_analysis.md",
         }
         prompt = load_prompt("graph_analysis", variables)
-        assert "topologie" in prompt.lower()
+        assert "topology" in prompt.lower()
         assert "@include" not in prompt
 
     def test_all_prompts_load(self):

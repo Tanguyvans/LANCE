@@ -167,7 +167,7 @@ class TestListDeliverables:
         pipeline = Pipeline(provider=mock_provider)
         result = pipeline._list_previous_deliverables()
         # run_dir exists but is empty
-        assert "Aucun" in result or result == ""
+        assert "None" in result or result == ""
 
     def test_with_files(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)

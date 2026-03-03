@@ -226,9 +226,9 @@ class Pipeline:
             self.provider.chat_with_tools(
                 system_prompt=system_prompt,
                 user_message=(
-                    f"Analyse les vulnérabilités du device {device_id} ({device_ip}). "
-                    f"Services : {services_str}. "
-                    f"Sauvegarde ton livrable dans {deliverable_file}."
+                    f"Analyze vulnerabilities for device {device_id} ({device_ip}). "
+                    f"Services: {services_str}. "
+                    f"Save your deliverable to {deliverable_file}."
                 ),
                 tools=tools,
                 max_turns=config.max_turns,
@@ -286,6 +286,6 @@ class Pipeline:
     def _list_previous_deliverables(self) -> str:
         """List available deliverables for prompt variable."""
         if not self.run_dir.exists():
-            return "Aucun (première phase)"
+            return "None (first phase)"
         files = sorted(f.name for f in self.run_dir.glob("*") if f.is_file())
-        return ", ".join(files) if files else "Aucun (première phase)"
+        return ", ".join(files) if files else "None (first phase)"
