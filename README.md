@@ -101,7 +101,11 @@ Inventaire complet sur [Homebox](http://ilia-corsair-5000x.umons.ac.be:7745)
 - **NetworkX** : Backend graphe pour la modélisation de topologie et l'analyse de chemins
 - **PyYAML** : Chargement du modèle d'infrastructure déclaratif
 - **pyvis** : Visualisation interactive du réseau (export HTML)
-- **pytest** : Tests unitaires
+- **requests** : Client HTTP pour l'API NIST NVD (lookup CVE)
+- **Anthropic SDK** : API Claude pour le pipeline d'agents LLM
+- **OpenAI SDK** : API compatible OpenAI (OpenRouter, MiniMax, GLM, Qwen)
+- **python-dotenv** : Chargement des variables d'environnement (.env)
+- **pytest** : Tests unitaires (~180 tests, 12 fichiers)
 - **Zigbee2MQTT** : Bridge Zigbee → MQTT (sur RPi5)
 
 ## 🚀 Getting Started
