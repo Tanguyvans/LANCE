@@ -19,6 +19,7 @@ from src.agent.tools.graph_tools import (
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir
+from src.agent.tools.skill_tools import SKILL_TOOLS
 from src.agent.validators import VALIDATORS
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ TOOL_GROUPS: dict[str, list[dict]] = {
     "graph": GRAPH_TOOLS,
     "recon": RECON_TOOLS,
     "deliverable": DELIVERABLE_TOOLS,
+    "skill": SKILL_TOOLS,
 }
 
 
@@ -244,13 +246,35 @@ class Pipeline:
                 )
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
-        """Resolve tool group names to actual tool definitions."""
+        """Resolve tool references to actual tool definitions.
+
+        Supports two resolution modes:
+          1. Group name (e.g. "graph", "recon") → expand entire group
+          2. Individual tool name (e.g. "nmap_scan") → find in any group
+        """
         tools = []
-        for group_name in config.tools:
-            if group_name == "recon" and self.dry_run:
+        seen_names: set[str] = set()
+
+        for ref in config.tools:
+            if ref == "recon" and self.dry_run:
                 continue
-            group = TOOL_GROUPS.get(group_name, [])
-            tools.extend(group)
+
+            # Try group resolution first
+            if ref in TOOL_GROUPS:
+                for tool in TOOL_GROUPS[ref]:
+                    if tool["name"] not in seen_names:
+                        tools.append(tool)
+                        seen_names.add(tool["name"])
+                continue
+
+            # Fall back to individual tool name lookup
+            for group in TOOL_GROUPS.values():
+                for tool in group:
+                    if tool["name"] == ref and ref not in seen_names:
+                        tools.append(tool)
+                        seen_names.add(ref)
+                        break
+
         return tools
 
     def _check_prerequisites(

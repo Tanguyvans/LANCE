@@ -1,0 +1,35 @@
+name: "mqtt_listen"
+command: "mosquitto_sub"
+args: []
+enabled: true
+timeout: 15
+short_description: "MQTT message listener"
+description: "Listen for MQTT messages on a broker to check if anonymous access is allowed and what topics are exposed."
+parameters:
+  - name: "broker"
+    type: "string"
+    description: "MQTT broker IP or hostname"
+    required: true
+    flag: "-h"
+    format: "flag"
+  - name: "topic"
+    type: "string"
+    description: "MQTT topic filter (default: '#' for all topics)"
+    required: false
+    default: "#"
+    flag: "-t"
+    format: "flag"
+  - name: "count"
+    type: "integer"
+    description: "Number of messages to capture before stopping (default: 10)"
+    required: false
+    default: 10
+    flag: "-C"
+    format: "flag"
+  - name: "timeout"
+    type: "integer"
+    description: "Max seconds to wait for messages (default: 5)"
+    required: false
+    default: 5
+    flag: "-W"
+    format: "flag"

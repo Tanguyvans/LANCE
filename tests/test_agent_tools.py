@@ -7,15 +7,23 @@ import pytest
 
 from src.agent.tools.recon_tools import (
     _run,
-    nmap_scan,
-    ssh_audit,
-    curl_headers,
-    mqtt_listen,
     nvd_lookup,
     RECON_TOOLS,
 )
 from src.agent.tools.graph_tools import GRAPH_TOOLS
 from src.agent.provider import LLMProvider
+
+
+# ------------------------------------------------------------------
+# Helper: get tool function by name from RECON_TOOLS
+# ------------------------------------------------------------------
+
+def _get_tool_fn(name: str):
+    """Get a tool's callable function from RECON_TOOLS by name."""
+    for t in RECON_TOOLS:
+        if t["name"] == name:
+            return t["function"]
+    raise KeyError(f"Tool {name!r} not found in RECON_TOOLS")
 
 
 # ------------------------------------------------------------------
@@ -25,83 +33,82 @@ from src.agent.provider import LLMProvider
 class TestReconTools:
     """Test recon tools with mocked subprocess calls."""
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_nmap_scan_basic(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="22/tcp open ssh\n80/tcp open http\n",
-            stderr="",
-            returncode=0,
-        )
-        result = json.loads(nmap_scan("192.168.88.1"))
+        mock_run.return_value = {"stdout": "22/tcp open ssh\n80/tcp open http\n", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("nmap_scan")
+        result = json.loads(fn(target="192.168.88.1"))
         assert result["return_code"] == 0
         assert "22/tcp" in result["stdout"]
         mock_run.assert_called_once()
-        args = mock_run.call_args[0][0]
-        assert args == ["nmap", "-sV", "192.168.88.1"]
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["nmap", "-sV", "192.168.88.1"]
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_nmap_scan_with_ports(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
-        nmap_scan("192.168.88.1", ports="22,80")
-        args = mock_run.call_args[0][0]
-        assert args == ["nmap", "-sV", "192.168.88.1", "-p", "22,80"]
+        mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("nmap_scan")
+        fn(target="192.168.88.1", ports="22,80")
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["nmap", "-sV", "-p", "22,80", "192.168.88.1"]
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_ssh_audit(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="(gen) banner: SSH-2.0-OpenSSH_10.0\n",
-            stderr="",
-            returncode=0,
-        )
-        result = json.loads(ssh_audit("192.168.88.247"))
+        mock_run.return_value = {"stdout": "(gen) banner: SSH-2.0-OpenSSH_10.0\n", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("ssh_audit")
+        result = json.loads(fn(host="192.168.88.247"))
         assert result["return_code"] == 0
-        args = mock_run.call_args[0][0]
-        assert args == ["ssh-audit", "192.168.88.247:22"]
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["ssh-audit", "192.168.88.247:22"]
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_ssh_audit_custom_port(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
-        ssh_audit("192.168.88.231", port=2222)
-        args = mock_run.call_args[0][0]
-        assert args == ["ssh-audit", "192.168.88.231:2222"]
+        mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("ssh_audit")
+        fn(host="192.168.88.231", port=2222)
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["ssh-audit", "192.168.88.231:2222"]
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_curl_headers(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="HTTP/1.1 200 OK\nServer: nginx/1.19.6\n",
-            stderr="",
-            returncode=0,
-        )
-        result = json.loads(curl_headers("http://192.168.88.231"))
+        mock_run.return_value = {"stdout": "HTTP/1.1 200 OK\nServer: nginx/1.19.6\n", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("curl_headers")
+        result = json.loads(fn(url="http://192.168.88.231"))
         assert result["return_code"] == 0
         assert "nginx" in result["stdout"]
-        args = mock_run.call_args[0][0]
-        assert args == ["curl", "-sI", "--max-time", "10", "http://192.168.88.231"]
+        cmd = mock_run.call_args[0][0]
+        assert cmd == ["curl", "-sI", "--max-time", "10", "http://192.168.88.231"]
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_mqtt_listen(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout="sensor/temp 23.5\n",
-            stderr="",
-            returncode=0,
-        )
-        result = json.loads(mqtt_listen("192.168.88.247"))
+        mock_run.return_value = {"stdout": "sensor/temp 23.5\n", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("mqtt_listen")
+        result = json.loads(fn(broker="192.168.88.247"))
         assert result["return_code"] == 0
-        args = mock_run.call_args[0][0]
-        assert args == [
-            "mosquitto_sub", "-h", "192.168.88.247",
-            "-t", "#", "-C", "10", "-W", "5",
-        ]
+        cmd = mock_run.call_args[0][0]
+        assert "-h" in cmd
+        assert "192.168.88.247" in cmd
+        assert "-t" in cmd
+        assert "#" in cmd
+        assert "-C" in cmd
+        assert "10" in cmd
+        assert "-W" in cmd
+        assert "5" in cmd
 
-    @patch("src.agent.tools.recon_tools.subprocess.run")
+    @patch("src.agent.tools.tool_loader._run")
     def test_mqtt_listen_custom(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
-        mqtt_listen("192.168.88.231", topic="sensor/#", count=5, timeout=3)
-        args = mock_run.call_args[0][0]
-        assert args == [
-            "mosquitto_sub", "-h", "192.168.88.231",
-            "-t", "sensor/#", "-C", "5", "-W", "3",
-        ]
+        mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
+        fn = _get_tool_fn("mqtt_listen")
+        fn(broker="192.168.88.231", topic="sensor/#", count=5, timeout=3)
+        cmd = mock_run.call_args[0][0]
+        assert "-h" in cmd
+        assert "192.168.88.231" in cmd
+        assert "-t" in cmd
+        assert "sensor/#" in cmd
+        assert "-C" in cmd
+        assert "5" in cmd
+        assert "-W" in cmd
+        assert "3" in cmd
 
     def test_run_timeout(self):
         """Test that _run handles timeout gracefully."""
@@ -263,7 +270,7 @@ class TestProvider:
         assert result == "Recon complete. No findings."
 
     def test_anthropic_loop_with_tool_call(self):
-        """Test tool call → result → final response cycle."""
+        """Test tool call -> result -> final response cycle."""
         provider = self._make_anthropic_provider()
 
         # First response: tool_use

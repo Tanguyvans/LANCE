@@ -1,0 +1,11 @@
+name: "nvd_lookup"
+handler: "python"
+enabled: true
+timeout: 30
+short_description: "NIST NVD CVE search"
+description: "Search NIST NVD for known CVEs by CPE string or keyword. Use for versions discovered by nmap. Example: nvd_lookup('cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*') or nvd_lookup('Dropbear SSH 2020.81')."
+parameters:
+  - name: "query"
+    type: "string"
+    description: "CPE 2.3 string or keyword search (e.g. 'cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*' or 'MikroTik RouterOS 7.18')"
+    required: true

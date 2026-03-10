@@ -1,0 +1,19 @@
+name: "ssh_audit"
+command: "ssh-audit"
+args: []
+enabled: true
+timeout: 30
+short_description: "SSH configuration analyzer"
+description: "Run ssh-audit on a host to analyze SSH configuration: key exchange, ciphers, MACs, host keys, and known vulnerabilities like Terrapin."
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Target IP or hostname"
+    required: true
+    format: "positional"
+  - name: "port"
+    type: "integer"
+    description: "SSH port (default: 22)"
+    required: false
+    default: 22
+    format: "port_suffix"

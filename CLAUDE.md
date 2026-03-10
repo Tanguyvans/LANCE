@@ -59,14 +59,17 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/__main__.py` — CLI entry point. Accepts `--provider`, `--model`, `--dry-run`, `--phases`, `--verbose`.
 - `src/agent/provider.py` — LLM provider abstraction. Translates tool schemas between Anthropic (native `tool_use`) and OpenAI-compatible APIs (function calling). Supports multi-turn agentic loops. Providers: Anthropic, OpenRouter, MiniMax, GLM, Qwen.
 - `src/agent/registry.py` — Declarative agent config. 5 agents across 5 phases, each with name, prompt, tool groups, prerequisites, and validators.
-- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable), passes deliverables between phases, tracks cost.
+- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost.
 - `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_findings}`).
 - `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek.
 
 ### Agent Tools
 
 - `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`.
-- `src/agent/tools/recon_tools.py` — Network recon tools: `nmap_scan()`, `ssh_audit()`, `curl_headers()`, `mosquitto_subscribe()`, `mosquitto_publish()`. Executes real commands on the lab.
+- `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
+- `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports positional, flag, and port_suffix parameter formats.
+- `src/agent/tools/definitions/` — Declarative YAML tool definitions: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Add new recon tools here (no Python needed for subprocess tools).
+- `src/agent/tools/skill_tools.py` — IoT security skill tools: `list_skills()`, `load_skill()`, `search_knowledge()` (ChromaDB semantic search), `cve_search()` (cache-then-query NVD).
 - `src/agent/tools/deliverable.py` — File I/O: `save_deliverable()` (JSON/Markdown), `read_deliverable()`, `list_deliverables()`.
 - `src/agent/validators/__init__.py` — Output validators: `markdown_with_sections()`, `json_valid()`, `file_exists()`.
 
@@ -79,6 +82,13 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/prompts/exploitation.txt` — Phase 4: Exploitation strategies
 - `src/agent/prompts/report.txt` — Phase 5: Final report generation
 - `src/agent/prompts/shared/_tools.txt`, `_target.txt`, `_rules.txt` — Shared context
+
+### Knowledge Store & Skills
+
+- `src/agent/knowledge/store.py` — ChromaDB wrapper with Voyage AI embeddings (`voyage-3.5-lite`, 512 dims). Persistent storage at `data/knowledge.db`. Key functions: `search()`, `ingest()`, `get_or_fetch()` (cache-then-query).
+- `src/agent/knowledge/embedder.py` — Voyage AI embedding client. Requires `VOYAGE_API_KEY` env var.
+- `src/agent/knowledge/ingest.py` — Bulk ingestion for CVE reports and skill Markdown files. Chunks skills by `##` headings with context prefix for RAG.
+- `src/agent/skills/` — IoT security skill Markdown files with YAML frontmatter (name, tags, tools, device_types, cpe_patterns): `mqtt_security.md`, `ssh_hardening.md`, `lorawan_analysis.md`, `mikrotik_routeros.md`, `web_service_analysis.md`, `firmware_analysis.md`.
 
 ## Key Conventions
 
@@ -93,7 +103,7 @@ python3 -m src.agent --verbose           # detailed output
 
 ## Tests
 
-12 test files, ~180 test functions covering all modules:
+14 test files, ~191 test functions covering all modules:
 
 | File | Coverage |
 |------|----------|
@@ -105,7 +115,9 @@ python3 -m src.agent --verbose           # detailed output
 | `test_registry.py` | Agent config validation, unique phases, deliverables |
 | `test_prompt_manager.py` | Variable substitution, prompt loading |
 | `test_cost_tracker.py` | Token counting, pricing, per-phase costs |
-| `test_agent_tools.py` | nmap, ssh_audit, curl, mosquitto (mocked) |
+| `test_agent_tools.py` | YAML-generated recon tools (nmap, ssh_audit, curl, mqtt), nvd_lookup, provider |
+| `test_tool_loader.py` | YAML parsing, schema generation, subprocess function generation |
+| `test_skill_tools.py` | Skill listing, loading, frontmatter parsing, tool definitions |
 | `test_deliverable_tools.py` | File save/read, directory listing |
 | `test_validators.py` | Markdown validation, required sections |
 
@@ -120,6 +132,8 @@ requests>=2.31         # HTTP for NVD API
 anthropic>=0.40.0      # Anthropic API (primary LLM)
 openai>=1.50.0         # OpenAI-compatible API (OpenRouter, MiniMax, GLM, Qwen)
 python-dotenv>=1.0.0   # Environment variable loading
+chromadb>=0.5.0        # Vector database for knowledge store
+voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 ```
 
 ## Current Status & Next Steps

@@ -47,7 +47,7 @@ def main():
 
     provider = LLMProvider(provider=args.provider, model=args.model)
     pipeline = Pipeline(
-        provider=provider, dry_run=args.dry_run, phases=args.phases
+        provider=provider, dry_run=args.dry_run, phases=args.phases,
     )
     results = pipeline.run()
 
