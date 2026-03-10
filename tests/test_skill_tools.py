@@ -26,6 +26,7 @@ class TestListSkills:
         assert "mikrotik_routeros" in names
         assert "web_service_analysis" in names
         assert "firmware_analysis" in names
+        assert "zigbee_security" in names
 
     def test_skills_have_description(self):
         result = json.loads(list_skills())
