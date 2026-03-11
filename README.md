@@ -1,28 +1,27 @@
-# NATO Smart City IoT - Plateforme d'Analyse des Chemins d'Attaque
+# NATO Smart City IoT - Attack Path Analysis Platform
 
-## 🎯 Objectif
+## Overview
 
-Plateforme de cybersécurité pour infrastructures IoT Smart City. Modélisation du réseau sous forme de graphe dirigé pour analyser les vulnérabilités et détecter les chemins d'attaque multi-hop. Inspirée de l'approche Shannon/LLMDFA : des agents IA interrogent le graphe pour identifier les surfaces d'attaque.
+Cybersecurity platform for Smart City IoT infrastructures. Models a physical IoT lab network (192.168.88.0/24) as a directed graph to analyze vulnerabilities and detect multi-hop attack paths. Inspired by the Shannon/LLMDFA approach: LLM agents query the enriched graph to identify attack surfaces and generate pentest reports.
 
-## 🌐 Accès Réseau
+## Network Access
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| WisGate (LoRaWAN) | <http://192.168.88.238> | Gateway LoRaWAN EU868 |
-| Zigbee2MQTT | <http://192.168.88.247:8080> | Interface Zigbee |
-| MikroTik | 192.168.88.1 | Routeur/Firewall (WinBox) |
-| TP-Link EAP613 | <http://192.168.88.251> | AP WiFi "NATO-Lab" |
-| Homebox | <http://ilia-corsair-5000x.umons.ac.be:7745> | Inventaire matériel |
+| WisGate (LoRaWAN) | <http://192.168.88.238> | LoRaWAN Gateway EU868 |
+| Zigbee2MQTT | <http://192.168.88.247:8080> | Zigbee Interface |
+| MikroTik | 192.168.88.1 | Router/Firewall (WinBox) |
+| TP-Link EAP613 | <http://192.168.88.251> | WiFi AP "NATO-Lab" |
 
 ### SSH
 
 ```bash
 ssh nato@192.168.88.248  # Jetson Orin Nano
 ssh nato@192.168.88.247  # Raspberry Pi 5
-ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
+ssh nato@192.168.88.231  # IoT Hub
 ```
 
-## 🏗️ Architecture Réseau
+## Network Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -32,13 +31,13 @@ ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         MikroTik RB5009 (.1)                                │
-│                           Routeur/Firewall                                  │
+│                           Router/Firewall                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        Netgear GS348PP (PoE)                                │
-│                           Switch 48 ports                                   │
+│                           48-port Switch                                    │
 └─────────────────────────────────────────────────────────────────────────────┘
         │          │          │          │          │          │          │
         ▼          ▼          ▼          ▼          ▼          ▼          ▼
@@ -46,13 +45,13 @@ ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
   │TP-Link  ││WisGate  ││iot-hub  ││rpi-nato ││Jetson   ││Ubiquiti ││Ubiquiti │
   │EAP613   ││RAK7268  ││RPi5     ││RPi5     ││Orin Nano││AI Turret││NVR      │
   │.251     ││.238     ││.231     ││.247     ││.248     ││.230     ││.253     │
-  │WiFi AP  ││LoRaWAN  ││MQTT     ││Zigbee   ││Vision IA││Caméra   ││Vidéo    │
+  │WiFi AP  ││LoRaWAN  ││MQTT     ││Zigbee   ││AI Vision││Camera   ││Video    │
   └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘
        │          │          ▲          │                    │          │
        │          │          │          │                    └────┬─────┘
        ▼          │          │          │                         │
   ┌─────────┐     │          │          │                   ┌─────▼─────┐
-  │WiFi     │     │          │          │                   │Flux vidéo │
+  │WiFi     │     │          │          │                   │Video Feed │
   │Clients  │     │          │          │                   └───────────┘
   └─────────┘     │          │          │
                   │          │          │
@@ -63,7 +62,7 @@ ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
             ┌─────┴─────┐    │    ┌─────┴─────┐
             │Milesight  │    │    │Aqara      │
             │EM310-UDL  │    │    │Vibration  │
-            │(ultrason) │    │    │Sensor     │
+            │(ultrasonic)│   │    │Sensor     │
             └───────────┘    │    └───────────┘
                   │          │          │
                   │    ┌─────┴─────┐    │
@@ -72,64 +71,180 @@ ssh tanguy@ilia-corsair-5000x.umons.ac.be  # Tour UMONS
                        └───────────┘
 ```
 
-## 📡 Protocoles IoT
+## IoT Protocols
 
-| Protocole | Gateway | Capteurs |
-|-----------|---------|----------|
+| Protocol | Gateway | Sensors |
+|----------|---------|---------|
 | **LoRaWAN** | WisGate Edge Lite 2 | Milesight EM310-UDL, SenseCAP S2120, Elsys EMS, Dragino PS-LB |
 | **Zigbee** | Sonoff ZBDongle-P (RPi5) | Aqara Vibration, Aqara Door/Window |
 | **WiFi/BLE** | TP-Link EAP613 | Industrial Shields Ardbox |
 
-## 📦 Inventaire
+## Hardware Inventory
 
-Inventaire complet sur [Homebox](http://ilia-corsair-5000x.umons.ac.be:7745)
-
-### Matériel principal
-
-| Device | Rôle | IP |
+| Device | Role | IP |
 |--------|------|-----|
-| MikroTik RB5009 | Routeur/Firewall | 192.168.88.1 |
-| Netgear GS348PP | Switch PoE 48 ports | - |
+| MikroTik RB5009 | Router/Firewall | 192.168.88.1 |
+| Netgear GS348PP | 48-port PoE Switch | - |
 | Jetson Orin Nano | Edge AI, Vision | 192.168.88.248 |
-| Raspberry Pi 5 | Gateway Zigbee | 192.168.88.247 |
+| Raspberry Pi 5 | Zigbee Gateway | 192.168.88.247 |
 | Raspberry Pi 4 | MQTT Broker | - |
-| WisGate Edge Lite 2 | Gateway LoRaWAN | 192.168.88.238 |
-| TP-Link EAP613 | AP WiFi NATO-Lab | 192.168.88.251 |
+| WisGate Edge Lite 2 | LoRaWAN Gateway | 192.168.88.238 |
+| TP-Link EAP613 | WiFi AP NATO-Lab | 192.168.88.251 |
 
-## 🛠️ Stack Logicielle
+## Pipeline Architecture
 
-- **NetworkX** : Backend graphe pour la modélisation de topologie et l'analyse de chemins
-- **PyYAML** : Chargement du modèle d'infrastructure déclaratif
-- **pyvis** : Visualisation interactive du réseau (export HTML)
-- **requests** : Client HTTP pour l'API NIST NVD (lookup CVE)
-- **Anthropic SDK** : API Claude pour le pipeline d'agents LLM
-- **OpenAI SDK** : API compatible OpenAI (OpenRouter, MiniMax, GLM, Qwen)
-- **python-dotenv** : Chargement des variables d'environnement (.env)
-- **pytest** : Tests unitaires (~180 tests, 12 fichiers)
-- **Zigbee2MQTT** : Bridge Zigbee → MQTT (sur RPi5)
+```mermaid
+graph TB
+    subgraph Infrastructure["Infrastructure (YAML)"]
+        TOPO[nato_lab.yaml<br/>15 devices topology]
+        CPE[cpe_mapping.yaml<br/>CPE → NVD]
+    end
 
-## 🚀 Getting Started
+    subgraph Core["Core Engine"]
+        MODELS[models.py<br/>Dataclasses]
+        GRAPH[graph_backend.py<br/>NetworkX DiGraph]
+        LOADER[loader.py<br/>YAML → Graph]
+        CVE[cve_lookup.py<br/>NIST NVD API]
+        RISK[risk_scorer.py<br/>CVSS + Centrality]
+        ATTACK[attack_path.py<br/>Dijkstra + Pivots]
+    end
 
-### 1. Installation
+    subgraph Agent["LLM Agent Pipeline (5 phases)"]
+        P1[Phase 1<br/>Graph Analysis]
+        P2[Phase 2<br/>Recon]
+        P3[Phase 3<br/>Vuln Analysis]
+        P4[Phase 4<br/>Exploitation]
+        P5[Phase 5<br/>Report]
+    end
+
+    subgraph Tools["Agent Tools"]
+        direction LR
+        GTOOLS[Graph Tools<br/>Python]
+        RTOOLS[Recon Tools<br/>YAML definitions]
+        STOOLS[Skill Tools<br/>Markdown + frontmatter]
+        DTOOLS[Deliverable Tools<br/>JSON/Markdown I/O]
+    end
+
+    subgraph Knowledge["Knowledge Store"]
+        CHROMA[(ChromaDB<br/>data/knowledge.db)]
+        VOYAGE[Voyage AI<br/>voyage-4-lite<br/>512 dims]
+        SKILLS[Skills .md<br/>7 IoT skills]
+        INGEST[Ingestion<br/>Section chunking]
+    end
+
+    subgraph Providers["LLM Providers"]
+        ANTH[Anthropic<br/>Claude]
+        OR[OpenRouter<br/>Gemini, etc.]
+    end
+
+    TOPO --> LOADER
+    CPE --> CVE
+    LOADER --> MODELS --> GRAPH
+    GRAPH --> RISK
+    GRAPH --> ATTACK
+    CVE --> RISK
+
+    P1 --> P2 --> P3 --> P4 --> P5
+
+    GTOOLS --> GRAPH
+    RTOOLS -->|nmap, ssh-audit<br/>curl, mqtt| P2
+    STOOLS --> SKILLS
+    STOOLS -->|search_knowledge| CHROMA
+
+    SKILLS --> INGEST --> CHROMA
+    VOYAGE --> CHROMA
+
+    Agent -->|tool_use| Tools
+    Providers --> Agent
+
+    P5 -->|output/agent/| REPORT[Pentest Report<br/>Markdown]
+
+    style Infrastructure fill:#e1f5fe
+    style Core fill:#fff3e0
+    style Agent fill:#f3e5f5
+    style Tools fill:#e8f5e9
+    style Knowledge fill:#fce4ec
+    style Providers fill:#f5f5f5
+```
+
+```mermaid
+graph LR
+    subgraph YAML_Tools["Declarative Tools (definitions/*.yaml)"]
+        N[nmap.yaml] --> TL[tool_loader.py]
+        S[ssh_audit.yaml] --> TL
+        C[curl_headers.yaml] --> TL
+        M[mqtt_listen.yaml] --> TL
+        NV[nvd_lookup.yaml] --> TL
+    end
+
+    TL -->|build_input_schema| SCHEMA[JSON Schema]
+    TL -->|build_subprocess_function| FUNC[Subprocess Runner]
+    TL -->|register_python_handler| PYHANDLER[Python Handler<br/>nvd_lookup]
+
+    SCHEMA --> PROVIDER[LLM Provider<br/>tool_use / function_calling]
+    FUNC --> PROVIDER
+    PYHANDLER --> PROVIDER
+
+    style YAML_Tools fill:#e8f5e9
+```
+
+```mermaid
+graph LR
+    subgraph Skills["IoT Skills (skills/*.md)"]
+        MQTT[mqtt_security]
+        SSH[ssh_hardening]
+        LORA[lorawan_analysis]
+        MIK[mikrotik_routeros]
+        WEB[web_service_analysis]
+        FW[firmware_analysis]
+        ZIG[zigbee_security]
+    end
+
+    Skills -->|YAML frontmatter| META[Metadata<br/>tags, tools, device_types]
+    Skills -->|chunking by ##| CHUNKS[512-word chunks<br/>context prefix]
+    CHUNKS -->|Voyage AI embed| CHROMA[(ChromaDB)]
+    CHROMA -->|search_knowledge| AGENT[LLM Agent]
+    META -->|list_skills / load_skill| AGENT
+
+    style Skills fill:#fce4ec
+```
+
+## Tech Stack
+
+- **NetworkX** — Graph backend for topology modeling and path analysis
+- **PyYAML** — Declarative infrastructure model loading
+- **pyvis** — Interactive network visualization (HTML export)
+- **requests** — HTTP client for NIST NVD API (CVE lookup)
+- **Anthropic SDK** — Claude API for the LLM agent pipeline
+- **OpenAI SDK** — OpenAI-compatible API (OpenRouter, MiniMax, GLM, Qwen)
+- **ChromaDB** — Persistent vector database for the knowledge store
+- **Voyage AI** — Semantic embeddings (voyage-4-lite, 512 dims)
+- **python-dotenv** — Environment variable loading (.env)
+- **pytest** — Unit tests (~191 tests, 14 files)
+- **Zigbee2MQTT** — Zigbee → MQTT bridge (on RPi5)
+
+## Getting Started
+
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Lancer les tests
+### 2. Run tests
 
 ```bash
 python3 -m pytest tests/ -v
 ```
 
-### 3. Générer la visualisation
+### 3. Generate network visualization
 
 ```bash
 python3 -m src.visualize
 open output/nato_lab.html
 ```
 
-### 4. Lancer l'analyse des chemins d'attaque
+### 4. Run attack path analysis
 
 ```bash
 python3 -c "
@@ -146,146 +261,197 @@ print_attack_report(report)
 "
 ```
 
-### 5. Accéder au réseau physique
-
-Connecte-toi au WiFi `NATO-Lab` ou branche-toi sur le switch.
+### 5. Run the LLM agent pipeline
 
 ```bash
-# Vérifier les services
+# Dry-run (validate without LLM calls)
+python3 -m src.agent --dry-run --verbose
+
+# Full run with Anthropic
+python3 -m src.agent --provider anthropic --verbose
+
+# Specific phases only
+python3 -m src.agent --phases 1 3 5 --verbose
+```
+
+### 6. Ingest skills into the knowledge store
+
+```bash
+python3 -c "
+from dotenv import load_dotenv; load_dotenv()
+from src.agent.knowledge.ingest import ingest_skills
+print(f'{ingest_skills()} chunks ingested')
+"
+```
+
+### 7. Access the physical network
+
+Connect to the `NATO-Lab` WiFi or plug into the switch.
+
+```bash
+# Check services
 curl http://192.168.88.247:8080   # Zigbee2MQTT
 curl http://192.168.88.238        # WisGate
 ```
 
-## 📁 Structure du repo
+## Repository Structure
 
 ```
 NATO-SmartCity-IoT/
 ├── infrastructure/
-│   └── nato_lab.yaml          # Source de vérité : topologie du lab
+│   ├── nato_lab.yaml              # Source of truth: lab topology (15 devices, 16 links)
+│   └── cpe_mapping.yaml           # CPE → NVD mapping for CVE lookup
 ├── src/
-│   ├── models.py              # Dataclasses (Device, Service, Link, Network)
-│   ├── graph_backend.py       # ABC GraphBackend + implémentation NetworkX
-│   ├── loader.py              # YAML → dataclasses → graphe
-│   ├── cve_lookup.py          # Module NIST NVD (requêtes CVE par CPE)
-│   ├── risk_scorer.py         # Scoring de risque par device (CVSS + exposition + centralité)
-│   ├── attack_path.py         # Chemins d'attaque pondérés + pivots (Dijkstra)
-│   └── visualize.py           # Génération HTML interactive (pyvis)
-├── tests/
-│   ├── test_loader.py         # Tests : chargement, chemins, surface d'attaque
-│   ├── test_cve_lookup.py     # Tests : parsing NVD, rate limiting
-│   ├── test_risk_scorer.py    # Tests : scoring, centralité, hops
-│   └── test_attack_path.py    # Tests : poids arêtes, chemins, pivots
+│   ├── models.py                  # Dataclasses (Device, Service, Link, Network)
+│   ├── graph_backend.py           # ABC GraphBackend + NetworkX implementation
+│   ├── loader.py                  # YAML → dataclasses → graph
+│   ├── cve_lookup.py              # NIST NVD module (CVE queries by CPE)
+│   ├── risk_scorer.py             # Risk scoring (CVSS + exposure + centrality)
+│   ├── attack_path.py             # Weighted attack paths + pivots (Dijkstra)
+│   ├── visualize.py               # Interactive HTML generation (pyvis)
+│   └── agent/
+│       ├── __main__.py            # CLI: --provider, --model, --dry-run, --phases
+│       ├── pipeline.py            # Multi-phase orchestrator with tool resolution
+│       ├── provider.py            # LLM abstraction (Anthropic, OpenRouter, etc.)
+│       ├── registry.py            # Declarative agent config for 5 phases
+│       ├── prompt_manager.py      # Prompt templates with variable substitution
+│       ├── cost_tracker.py        # Per-phase token/cost tracking
+│       ├── tools/
+│       │   ├── graph_tools.py     # Graph tools (load_lab_context, attack_surface, etc.)
+│       │   ├── recon_tools.py     # Network recon tools (nmap, ssh-audit, curl, mqtt)
+│       │   ├── tool_loader.py     # YAML → tool engine (subprocess + schema)
+│       │   ├── skill_tools.py     # Skill tools (list, load, search, cve_search)
+│       │   ├── deliverable.py     # File I/O (save/read/list deliverables)
+│       │   └── definitions/       # YAML recon tool definitions
+│       │       ├── nmap.yaml
+│       │       ├── ssh_audit.yaml
+│       │       ├── curl_headers.yaml
+│       │       ├── mqtt_listen.yaml
+│       │       └── nvd_lookup.yaml
+│       ├── knowledge/
+│       │   ├── store.py           # ChromaDB wrapper (search, ingest, cache-then-query)
+│       │   ├── embedder.py        # Voyage AI client (voyage-4-lite, 512 dims)
+│       │   └── ingest.py          # Bulk ingestion (skill chunking by ##)
+│       ├── skills/                # IoT security skills (Markdown + YAML frontmatter)
+│       │   ├── mqtt_security.md
+│       │   ├── ssh_hardening.md
+│       │   ├── lorawan_analysis.md
+│       │   ├── mikrotik_routeros.md
+│       │   ├── web_service_analysis.md
+│       │   ├── firmware_analysis.md
+│       │   └── zigbee_security.md
+│       ├── prompts/               # Per-phase prompt templates
+│       └── validators/            # Output validators (markdown, json, file)
+├── tests/                         # 14 files, ~191 tests
+├── data/
+│   └── knowledge.db/             # Persistent ChromaDB (generated)
 ├── output/
-│   └── nato_lab.html          # Visualisation générée
+│   ├── nato_lab.html             # Network visualization
+│   └── agent/<timestamp>/        # Per-run reports (01_graph..05_report)
 └── requirements.txt
 ```
 
-## 🗺️ Roadmap
+## Roadmap
 
-### Phase 1 — Modélisation du réseau ✅
+### Phase 1 — Network Modeling ✅
 
-- Modèle YAML déclaratif de l'infrastructure
-- Backend graphe NetworkX avec interface abstraite (interchangeable)
-- Visualisation interactive pyvis (HTML)
-- Tests unitaires (chargement, chemins, surface d'attaque)
+- Declarative YAML infrastructure model
+- NetworkX graph backend with abstract interface (swappable)
+- Interactive pyvis visualization (HTML)
+- Unit tests (loading, paths, attack surface)
 
-### Phase 2 — Enrichissement CVE ✅
+### Phase 2 — CVE Enrichment ✅
 
-1. Scanner le lab avec `nmap -sV` pour détecter les versions de services
-2. Relever les versions firmware/OS via SSH (RouterOS 7.18.2, Mosquitto 2.0.21, OpenSSH 10.0p1, etc.)
-3. Enrichir le YAML avec `os_version`, `firmware`, service `version`
-4. Module NIST NVD (`src/cve_lookup.py`) + mapping CPE (`infrastructure/cpe_mapping.yaml`)
-5. Scoring de risque (`src/risk_scorer.py`) : CVSS + exposition réseau + centralité betweenness
-6. Résultats : 24 CVEs sur 5 devices, MikroTik (6.6) et WisGate (5.6) risque le plus élevé
+1. Lab scanning with `nmap -sV` for service version detection
+2. Firmware/OS version collection via SSH (RouterOS 7.18.2, Mosquitto 2.0.21, OpenSSH 10.0p1, etc.)
+3. YAML enrichment with `os_version`, `firmware`, service `version`
+4. NIST NVD module (`src/cve_lookup.py`) + CPE mapping (`infrastructure/cpe_mapping.yaml`)
+5. Risk scoring (`src/risk_scorer.py`): CVSS + network exposure + betweenness centrality
+6. Results: 24 CVEs across 5 devices, MikroTik (6.6) and WisGate (5.6) highest risk
 
-### Phase 3 — Analyse des chemins d'attaque ✅
+### Phase 3 — Attack Path Analysis ✅
 
-- Pondération des arêtes par difficulté d'exploitation (protocole × exploitabilité CVSS)
-- Distinction relais réseau (switch/router/ap) vs cibles d'exploitation
-- Détection des chemins d'attaque critiques via Dijkstra dirigé
-- Identification des points de pivot (Netgear betweenness 0.72, MikroTik 5 chemins)
-- Scoring des chaînes : `∏ P(hop) × impact(cible) × amplification^(n-1)`
+- Edge weighting by exploitation difficulty (protocol factor x CVSS exploitability)
+- Distinction between network relays (switch/router/ap) and exploitation targets
+- Critical attack path detection via directed Dijkstra
+- Pivot point identification (Netgear betweenness 0.72, MikroTik 5 paths)
+- Chain scoring: `∏ P(hop) × impact(target) × amplification^(n-1)`
 
-#### Méthodologie de scoring
+#### Scoring Methodology
 
-Le scoring des chemins d'attaque repose sur trois composantes issues de la littérature :
+Attack path scoring relies on three components from the literature:
 
-**1. Poids des arêtes — Exploitabilité CVSS v3.1**
+**1. Edge Weights — CVSS v3.1 Exploitability**
 
-Chaque arête est pondérée par l'exploitabilité du device cible, calculée via la formule CVSS v3.1 :
-`Exploitability = 8.22 × AV × AC × PR × UI` (normalisé en probabilité [0,1]).
-Les constantes numériques (AV, AC, PR, UI) proviennent de la spécification officielle [1].
+Each edge is weighted by the target device's exploitability, computed via the CVSS v3.1 formula:
+`Exploitability = 8.22 × AV × AC × PR × UI` (normalized to probability [0,1]).
+Numeric constants (AV, AC, PR, UI) come from the official specification [1].
 
-**2. Facteur protocolaire**
+**2. Protocol Factor**
 
-Pour les liens sans CVE associée, un facteur de difficulté basé sur le type de protocole est appliqué (ethernet, MQTT, Zigbee, LoRaWAN), reflétant le chiffrement, la portée et l'accès requis.
+For links without associated CVEs, a difficulty factor based on protocol type is applied (ethernet, MQTT, Zigbee, LoRaWAN), reflecting encryption, range, and required access.
 
-**3. Score de chemin — Probabilité cumulative + amplification**
+**3. Path Score — Cumulative Probability + Amplification**
 
-Le score d'un chemin d'attaque combine :
-- **Probabilité cumulative** : produit des probabilités d'exploitation par hop `P(chemin) = ∏ P(hop_i)`, selon l'approche d'agrégation du NIST [2].
-- **Impact de la cible** : criticité de l'asset final (score CVSS Impact).
-- **Facteur d'amplification** : les vulnérabilités chaînées présentent un risque supérieur à la somme des risques individuels (effet "domino", 1+1 > 2) [4]. Les chemins courts avec gain de privilèges à chaque hop sont pénalisés davantage.
-- **Choke points** : les noeuds où convergent plusieurs chemins d'attaque sont identifiés via la centralité de betweenness [3].
+Attack path scoring combines:
 
-#### Références
+- **Cumulative probability**: product of per-hop exploitation probabilities `P(path) = ∏ P(hop_i)`, following NIST's aggregation approach [2].
+- **Target impact**: criticality of the final asset (CVSS Impact score).
+- **Amplification factor**: chained vulnerabilities present greater risk than the sum of individual risks (domino effect, 1+1 > 2) [4]. Short paths with privilege escalation at each hop are penalized more.
+- **Choke points**: nodes where multiple attack paths converge, identified via betweenness centrality [3].
 
-1. FIRST — *CVSS v3.1 Specification Document* : formule d'exploitabilité et constantes numériques.
-   https://www.first.org/cvss/v3-1/specification-document
-2. NIST — *Aggregating Vulnerability Metrics in Enterprise Networks using Attack Graphs* : agrégation probabiliste des scores CVSS le long des chemins d'attaque.
-   https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=926022
-3. Picus Security — *Attack Path Analysis Explained* : scoring context-aware (exploitabilité, complexité du chemin, criticité de l'asset) et concept de choke points.
-   https://www.picussecurity.com/resource/blog/what-is-attack-path-analysis
-4. Software Secured — *The Domino Effect: Chaining Medium and Low Vulnerabilities is The Path to Critical Breaches* : effet de propagation des vulnérabilités chaînées.
-   https://www.softwaresecured.com/post/the-domino-effect-chaining-medium-and-low-vulnerabilities-is-the-path-to-critical-breaches
-5. Park et al. — *Network Security Node-Edge Scoring System Using Attack Graph Based on Vulnerability Correlation*, Applied Sciences, 2022 : scoring combiné node+edge avec corrélation de vulnérabilités.
-   https://www.mdpi.com/2076-3417/12/14/6852
-6. Frigault & Wang — *Using CVSS in Attack Graphs* : conversion des scores CVSS en poids d'arêtes pour graphes d'attaque.
-   https://www.researchgate.net/publication/221326700_Using_CVSS_in_attack_graphs
+#### References
 
-### Phase 4 — Agents LLM (approche LLMDFA)
+1. FIRST — *CVSS v3.1 Specification Document*: exploitability formula and numeric constants.
+   <https://www.first.org/cvss/v3-1/specification-document>
+2. NIST — *Aggregating Vulnerability Metrics in Enterprise Networks using Attack Graphs*: probabilistic CVSS score aggregation along attack paths.
+   <https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=926022>
+3. Picus Security — *Attack Path Analysis Explained*: context-aware scoring (exploitability, path complexity, asset criticality) and choke point concept.
+   <https://www.picussecurity.com/resource/blog/what-is-attack-path-analysis>
+4. Software Secured — *The Domino Effect: Chaining Medium and Low Vulnerabilities is The Path to Critical Breaches*: propagation effect of chained vulnerabilities.
+   <https://www.softwaresecured.com/post/the-domino-effect-chaining-medium-and-low-vulnerabilities-is-the-path-to-critical-breaches>
+5. Park et al. — *Network Security Node-Edge Scoring System Using Attack Graph Based on Vulnerability Correlation*, Applied Sciences, 2022: combined node+edge scoring with vulnerability correlation.
+   <https://www.mdpi.com/2076-3417/12/14/6852>
+6. Frigault & Wang — *Using CVSS in Attack Graphs*: converting CVSS scores to attack graph edge weights.
+   <https://www.researchgate.net/publication/221326700_Using_CVSS_in_attack_graphs>
 
-Agents spécialisés qui interrogent le graphe enrichi :
-- **Agent reconnaissance** : cartographie la surface d'attaque
-- **Agent lateral movement** : trouve les chemins de propagation
-- **Agent impact assessment** : évalue les conséquences
-- **Orchestrateur** : coordonne les agents et produit un rapport
+### Phase 4 — LLM Pentester Agents ✅
 
-Mode semi-autonome : l'agent raisonne et génère les commandes, l'opérateur valide et exécute.
+Multi-phase pipeline inspired by Shannon/LLMDFA and CyberStrikeAI:
 
-### Phase 5 — Pentest progressif
+- **5 specialized agents**: graph analysis → recon → vuln analysis → exploitation → report
+- **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini), MiniMax, GLM, Qwen
+- **Declarative YAML tools**: definitions in `definitions/*.yaml`, extensible without Python
+- **IoT skills**: 7 Markdown skills with YAML frontmatter (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web)
+- **Knowledge Store**: ChromaDB + Voyage AI (voyage-4-lite) for semantic search over CVEs and skills
+- **Cost tracking**: per-phase token/cost tracking (~$0.33 for a full run)
+- **Dry-run**: pipeline validation without LLM API calls
 
-Tester les scénarios d'attaque sur le lab physique, par difficulté croissante :
+### Phase 5 — Progressive Pentesting
 
-| Niveau | Scénario | Exemple |
-|--------|----------|---------|
-| 1 | Device unique, service exposé | Exploit HTTP sur WisGate |
-| 2 | Device unique, MQTT sans auth | Interception données capteurs |
-| 3 | Chaînage 2 hops | Capteur LoRaWAN → WisGate → MQTT broker |
-| 4 | Scénario complet multi-hop | Internet → MikroTik → pivot LAN → cible interne |
+Testing attack scenarios on the physical lab, by increasing difficulty:
 
-#### Stratégie de test
+| Level | Scenario | Example |
+|-------|----------|---------|
+| 1 | Single device, exposed service | HTTP exploit on WisGate |
+| 2 | Single device, unauthenticated MQTT | Sensor data interception |
+| 3 | 2-hop chaining | LoRaWAN sensor → WisGate → MQTT broker |
+| 4 | Full multi-hop scenario | Internet → MikroTik → LAN pivot → internal target |
 
-| Attaque | Environnement | Raison |
-|---------|---------------|--------|
-| MQTT sans auth (`mosquitto_sub -t '#'`) | Lab réel | Non destructif, écoute passive |
-| SSH default creds | Lab réel | Non destructif, simple test de login |
-| Terrapin SSH scan (`ssh-audit`) | Lab réel | Non destructif, scan passif |
-| DoS MikroTik (CVE-2018-5951) | Docker/GNS3 | Risque de couper le réseau |
-| RCE nginx (CVE-2021-23017) | Container `nginx:1.19.6` | Risque de crasher le WisGate |
-| Exploit Dropbear (CVE-2021-36369) | Container | Risque de perdre l'accès SSH |
+#### Testing Strategy
 
-Les attaques destructives (DoS, RCE, exploit SSH) sont testées sur des **containers Docker** qui reproduisent les services vulnérables avec les mêmes versions que le lab réel. Cela permet de valider les exploits sans impacter l'infrastructure.
+| Attack | Environment | Reason |
+|--------|-------------|--------|
+| Unauthenticated MQTT (`mosquitto_sub -t '#'`) | Real lab | Non-destructive, passive listening |
+| SSH default creds | Real lab | Non-destructive, simple login test |
+| Terrapin SSH scan (`ssh-audit`) | Real lab | Non-destructive, passive scan |
+| MikroTik DoS (CVE-2018-5951) | Docker/GNS3 | Risk of network outage |
+| nginx RCE (CVE-2021-23017) | Container `nginx:1.19.6` | Risk of crashing WisGate |
+| Dropbear exploit (CVE-2021-36369) | Container | Risk of losing SSH access |
 
-### Phase 6 — Dashboard + Backend graphe avancé (optionnel)
+Destructive attacks (DoS, RCE, SSH exploits) are tested on **Docker containers** that reproduce vulnerable services with the same versions as the real lab. This validates exploits without impacting the infrastructure.
 
-- Dashboard web temps réel (état du réseau, alertes, chemins d'attaque visualisés)
-- Si besoin de performances ou de requêtes plus complexes : implémenter un backend Memgraph ou Neo4j (l'ABC `GraphBackend` est prête pour ça)
+### Phase 6 — Dashboard + Advanced Graph Backend (optional)
 
-## 👥 Équipe
-
-- Tanguy Vansnick
-
-## 📄 Licence
-
-Projet NATO - Usage interne uniquement
+- Real-time web dashboard (network status, alerts, visualized attack paths)
+- If more complex queries are needed: implement a Memgraph or Neo4j backend (the `GraphBackend` ABC is ready for this)
