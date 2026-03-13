@@ -191,22 +191,19 @@ graph LR
 ```mermaid
 graph LR
     subgraph Skills["IoT Skills (skills/*.md)"]
-        MQTT[mqtt_security]
-        SSH[ssh_hardening]
-        LORA[lorawan_analysis]
-        MIK[mikrotik_routeros]
-        WEB[web_service_analysis]
-        FW[firmware_analysis]
-        ZIG[zigbee_security]
+        S1[mqtt_security.md]
+        S2[zigbee_security.md]
+        S3[... 7 skills total]
     end
 
-    Skills -->|YAML frontmatter| META[Metadata<br/>tags, tools, device_types]
-    Skills -->|chunking by ##| CHUNKS[512-word chunks<br/>context prefix]
+    S1 & S2 & S3 -->|YAML frontmatter| META[Metadata<br/>tags, tools, device_types]
+    S1 & S2 & S3 -->|chunking by ##| CHUNKS[512-word chunks<br/>context prefix]
     CHUNKS -->|Voyage AI embed| CHROMA[(ChromaDB)]
     CHROMA -->|search_knowledge| AGENT[LLM Agent]
     META -->|list_skills / load_skill| AGENT
 
     style Skills fill:#fce4ec
+    style S3 fill:#f5f5f5,stroke-dasharray: 5 5
 ```
 
 ## Tech Stack
