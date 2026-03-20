@@ -1,0 +1,66 @@
+name: "hackrf_capture"
+type: hardware
+enabled: true
+short_description: "HackRF One SDR transceiver (1 MHz – 6 GHz)"
+description: "Software Defined Radio for sniffing, replay, and jamming on IoT wireless protocols. Covers Zigbee 802.15.4, LoRaWAN EU868, sub-GHz (433/868 MHz), and BLE. Requires hackrf_transfer and GNU Radio with protocol-specific blocks."
+
+capabilities: [sniff, replay, jam, transmit]
+
+protocols:
+  - name: zigbee_802154
+    channels: "11-26 (2.405–2.480 GHz)"
+    software: [gnu_radio, gr-ieee802-15-4, wireshark]
+    commands:
+      - description: "Capture raw Zigbee on channel 15 (2.425 GHz)"
+        cmd: "hackrf_transfer -r zigbee_ch15.raw -f 2425000000 -s 4000000 -n 40000000"
+      - description: "Decode 802.15.4 frames with GNU Radio flowgraph"
+        cmd: "grcc zigbee_rx.grc"
+      - description: "Live capture to Wireshark via named pipe"
+        cmd: "mkfifo /tmp/zigbee_fifo && hackrf_transfer -r /tmp/zigbee_fifo -f 2425000000 -s 4000000"
+
+  - name: lorawan_eu868
+    channels: "868.1, 868.3, 868.5 MHz"
+    software: [gnu_radio, gr-lora, gr-lora_sdr]
+    commands:
+      - description: "Capture LoRaWAN uplink on 868.1 MHz"
+        cmd: "hackrf_transfer -r lora_868.raw -f 868100000 -s 2000000 -n 20000000"
+      - description: "Decode LoRa with gr-lora GNU Radio flowgraph"
+        cmd: "grcc lora_rx.grc"
+
+  - name: sub_ghz
+    channels: "315, 433.92, 868, 915 MHz"
+    software: [hackrf_transfer, Universal_Radio_Hacker, inspectrum]
+    commands:
+      - description: "Record 433 MHz signal (garage doors, remotes, sensors)"
+        cmd: "hackrf_transfer -r capture_433.raw -f 433920000 -s 2000000"
+      - description: "Replay captured signal"
+        cmd: "hackrf_transfer -t capture_433.raw -f 433920000 -s 2000000"
+      - description: "Analyze signal with URH"
+        cmd: "urh capture_433.raw"
+
+parameters:
+  - name: "frequency"
+    type: "string"
+    description: "Centre frequency in Hz (e.g. '2425000000' for Zigbee ch15, '868100000' for LoRa EU868)"
+    required: true
+    format: "flag"
+    flag: "-f"
+  - name: "sample_rate"
+    type: "string"
+    description: "Sample rate in Hz (e.g. '4000000' for Zigbee, '2000000' for LoRa)"
+    required: false
+    default: "2000000"
+    format: "flag"
+    flag: "-s"
+  - name: "output_file"
+    type: "string"
+    description: "Output file for raw IQ capture"
+    required: true
+    format: "flag"
+    flag: "-r"
+  - name: "num_samples"
+    type: "string"
+    description: "Number of samples to capture (0 = unlimited)"
+    required: false
+    format: "flag"
+    flag: "-n"

@@ -3,7 +3,7 @@ name: zigbee_security
 description: Zigbee/802.15.4 network security assessment for IoT smart city sensor deployments
 version: 1.1.0
 tags: [zigbee, z2m, zigbee2mqtt, iot, protocol, smart-city, wireless, 802.15.4, killerbee]
-tools: [nmap_scan, mqtt_listen, curl_headers]
+tools: [nmap_scan, mqtt_listen, curl_headers, hackrf_capture, flipper_zero]
 device_types: [gateway, sensor, compute]
 cpe_patterns: []
 ---

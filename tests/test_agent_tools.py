@@ -33,7 +33,7 @@ def _get_tool_fn(name: str):
 class TestReconTools:
     """Test recon tools with mocked subprocess calls."""
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_nmap_scan_basic(self, mock_run):
         mock_run.return_value = {"stdout": "22/tcp open ssh\n80/tcp open http\n", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("nmap_scan")
@@ -44,7 +44,7 @@ class TestReconTools:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["nmap", "-sV", "192.168.88.1"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_nmap_scan_with_ports(self, mock_run):
         mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("nmap_scan")
@@ -52,7 +52,7 @@ class TestReconTools:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["nmap", "-sV", "-p", "22,80", "192.168.88.1"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit(self, mock_run):
         mock_run.return_value = {"stdout": "(gen) banner: SSH-2.0-OpenSSH_10.0\n", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("ssh_audit")
@@ -61,7 +61,7 @@ class TestReconTools:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["ssh-audit", "192.168.88.247:22"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit_custom_port(self, mock_run):
         mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("ssh_audit")
@@ -69,7 +69,7 @@ class TestReconTools:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["ssh-audit", "192.168.88.231:2222"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_curl_headers(self, mock_run):
         mock_run.return_value = {"stdout": "HTTP/1.1 200 OK\nServer: nginx/1.19.6\n", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("curl_headers")
@@ -79,7 +79,7 @@ class TestReconTools:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["curl", "-sI", "--max-time", "10", "http://192.168.88.231"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_listen(self, mock_run):
         mock_run.return_value = {"stdout": "sensor/temp 23.5\n", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("mqtt_listen")
@@ -95,7 +95,7 @@ class TestReconTools:
         assert "-W" in cmd
         assert "5" in cmd
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_listen_custom(self, mock_run):
         mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 0}
         fn = _get_tool_fn("mqtt_listen")

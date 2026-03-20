@@ -121,6 +121,7 @@ graph TB
         direction LR
         GTOOLS[Graph Tools<br/>Python]
         RTOOLS[Recon Tools<br/>YAML definitions]
+        HTOOLS[Hardware Tools<br/>HackRF, Flipper<br/>Proxmark3, Kit]
         STOOLS[Skill Tools<br/>Markdown + frontmatter]
         DTOOLS[Deliverable Tools<br/>JSON/Markdown I/O]
     end
@@ -148,6 +149,7 @@ graph TB
 
     GTOOLS --> GRAPH
     RTOOLS -->|nmap, ssh-audit<br/>curl, mqtt| P2
+    HTOOLS -->|hackrf, flipper<br/>proxmark3, kit| P4
     STOOLS --> SKILLS
     STOOLS -->|search_knowledge| CHROMA
 
@@ -169,7 +171,7 @@ graph TB
 
 ```mermaid
 graph LR
-    subgraph YAML_Tools["Declarative Tools (definitions/*.yaml)"]
+    subgraph SW_Tools["Software Tools (definitions/*.yaml)"]
         N[nmap.yaml] --> TL[tool_loader.py]
         S[ssh_audit.yaml] --> TL
         C[curl_headers.yaml] --> TL
@@ -177,15 +179,25 @@ graph LR
         NV[nvd_lookup.yaml] --> TL
     end
 
+    subgraph HW_Tools["Hardware Tools (type: hardware)"]
+        HRF[hackrf.yaml] --> TL
+        FZ[flipper_zero.yaml] --> TL
+        PM[proxmark3.yaml] --> TL
+        EIK[exploit_iot_kit.yaml] --> TL
+    end
+
     TL -->|build_input_schema| SCHEMA[JSON Schema]
     TL -->|build_subprocess_function| FUNC[Subprocess Runner]
+    TL -->|_build_hardware_function| HWFUNC[Hardware Commands]
     TL -->|register_python_handler| PYHANDLER[Python Handler<br/>nvd_lookup]
 
     SCHEMA --> PROVIDER[LLM Provider<br/>tool_use / function_calling]
     FUNC --> PROVIDER
+    HWFUNC --> PROVIDER
     PYHANDLER --> PROVIDER
 
-    style YAML_Tools fill:#e8f5e9
+    style SW_Tools fill:#e8f5e9
+    style HW_Tools fill:#fff3e0
 ```
 
 ```mermaid
@@ -217,7 +229,7 @@ graph LR
 - **ChromaDB** — Persistent vector database for the knowledge store
 - **Voyage AI** — Semantic embeddings (voyage-4-lite, 512 dims)
 - **python-dotenv** — Environment variable loading (.env)
-- **pytest** — Unit tests (~191 tests, 14 files)
+- **pytest** — Unit tests (193 tests, 14 files)
 - **Zigbee2MQTT** — Zigbee → MQTT bridge (on RPi5)
 
 ## Getting Started
@@ -316,15 +328,19 @@ NATO-SmartCity-IoT/
 │       ├── tools/
 │       │   ├── graph_tools.py     # Graph tools (load_lab_context, attack_surface, etc.)
 │       │   ├── recon_tools.py     # Network recon tools (nmap, ssh-audit, curl, mqtt)
-│       │   ├── tool_loader.py     # YAML → tool engine (subprocess + schema)
+│       │   ├── tool_loader.py     # YAML → tool engine (subprocess + hardware + schema)
 │       │   ├── skill_tools.py     # Skill tools (list, load, search, cve_search)
 │       │   ├── deliverable.py     # File I/O (save/read/list deliverables)
-│       │   └── definitions/       # YAML recon tool definitions
-│       │       ├── nmap.yaml
-│       │       ├── ssh_audit.yaml
-│       │       ├── curl_headers.yaml
-│       │       ├── mqtt_listen.yaml
-│       │       └── nvd_lookup.yaml
+│       │   └── definitions/       # YAML tool definitions (software + hardware)
+│       │       ├── nmap.yaml            # Software: nmap -sV scanner
+│       │       ├── ssh_audit.yaml       # Software: SSH config analyzer
+│       │       ├── curl_headers.yaml    # Software: HTTP header checker
+│       │       ├── mqtt_listen.yaml     # Software: MQTT passive listener
+│       │       ├── nvd_lookup.yaml      # Software: NVD CVE search (Python handler)
+│       │       ├── hackrf.yaml          # Hardware: SDR 1-6 GHz (Zigbee, LoRa, sub-GHz)
+│       │       ├── flipper_zero.yaml    # Hardware: multi-tool (sub-GHz, RFID, NFC, IR)
+│       │       ├── proxmark3.yaml       # Hardware: RFID/NFC badge cracking
+│       │       └── exploit_iot_kit.yaml # Hardware: UART/JTAG/SPI/I2C/glitching
 │       ├── knowledge/
 │       │   ├── store.py           # ChromaDB wrapper (search, ingest, cache-then-query)
 │       │   ├── embedder.py        # Voyage AI client (voyage-4-lite, 512 dims)
@@ -339,7 +355,11 @@ NATO-SmartCity-IoT/
 │       │   └── zigbee_security.md
 │       ├── prompts/               # Per-phase prompt templates
 │       └── validators/            # Output validators (markdown, json, file)
-├── tests/                         # 14 files, ~191 tests
+├── report/
+│   ├── q4-2025.tex                # Q4 2025 progress report
+│   ├── q1-2026.tex                # Q1 2026 progress report
+│   └── slides-q1-2026.tex         # Q1 2026 presentation (Beamer)
+├── tests/                         # 14 files, 193 tests
 ├── data/
 │   └── knowledge.db/             # Persistent ChromaDB (generated)
 ├── output/
@@ -418,10 +438,11 @@ Multi-phase pipeline inspired by Shannon/LLMDFA and CyberStrikeAI:
 
 - **5 specialized agents**: graph analysis → recon → vuln analysis → exploitation → report
 - **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini), MiniMax, GLM, Qwen
-- **Declarative YAML tools**: definitions in `definitions/*.yaml`, extensible without Python
-- **IoT skills**: 7 Markdown skills with YAML frontmatter (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web)
-- **Knowledge Store**: ChromaDB + Voyage AI (voyage-4-lite) for semantic search over CVEs and skills
-- **Cost tracking**: per-phase token/cost tracking (~$0.33 for a full run)
+- **Declarative YAML tools**: 9 tools in `definitions/*.yaml` (5 software + 4 hardware), extensible without Python
+- **Hardware attack tools**: HackRF One (SDR), Flipper Zero (multi-tool), Proxmark3 Easy (RFID/NFC), Exploit IoT Kit (UART/JTAG/SPI). `type: hardware` returns operator command suggestions
+- **IoT skills**: 7 Markdown skills with YAML frontmatter (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web). Skills cross-reference hardware tools
+- **Knowledge Store**: ChromaDB + Voyage AI (voyage-3.5-lite, 512 dims) for semantic search over CVEs and skills (46 chunks)
+- **Cost tracking**: per-phase token/cost tracking (~$0.38 for a full run)
 - **Dry-run**: pipeline validation without LLM API calls
 
 ### Phase 5 — Progressive Pentesting
@@ -447,6 +468,17 @@ Testing attack scenarios on the physical lab, by increasing difficulty:
 | Dropbear exploit (CVE-2021-36369) | Container | Risk of losing SSH access |
 
 Destructive attacks (DoS, RCE, SSH exploits) are tested on **Docker containers** that reproduce vulnerable services with the same versions as the real lab. This validates exploits without impacting the infrastructure.
+
+#### Hardware Attack Tools
+
+| Tool | Type | Lab Applications |
+|------|------|-----------------|
+| **HackRF One** | SDR (1-6 GHz) | Zigbee 802.15.4 sniffing (ch 11-26), LoRaWAN EU868 capture, GNU Radio decoding |
+| **Flipper Zero** | Multi-tool | Sub-GHz replay, RFID/NFC emulation, GPIO/UART bridging |
+| **Proxmark3 Easy** | RFID/NFC | Mifare Classic cracking (darkside, hardnested), badge cloning |
+| **Exploit IoT Kit** | HW hacking | UART console on WisGate, JTAG debug, SPI flash dump, firmware extraction |
+
+Hardware tools are integrated as declarative YAML definitions (`type: hardware`). The agent recommends protocol-specific commands; the operator executes with physical access. Available in Phases 2-4 via the `recon` tool group.
 
 ### Phase 6 — Dashboard + Advanced Graph Backend (optional)
 

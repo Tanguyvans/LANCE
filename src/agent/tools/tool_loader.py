@@ -15,13 +15,12 @@ from typing import Any, Callable
 
 import yaml
 
-from src.agent.tools.recon_tools import _run
-
 log = logging.getLogger(__name__)
 
 DEFINITIONS_DIR = Path(__file__).parent / "definitions"
 
 REQUIRED_KEYS = {"name", "description", "parameters"}
+HARDWARE_KEYS = {"name", "description"}
 
 
 def load_tool_yaml(path: Path) -> dict[str, Any]:
@@ -29,7 +28,9 @@ def load_tool_yaml(path: Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
-    missing = REQUIRED_KEYS - set(data.keys())
+    is_hardware = data.get("type") == "hardware"
+    required = HARDWARE_KEYS if is_hardware else REQUIRED_KEYS
+    missing = required - set(data.keys())
     if missing:
         raise ValueError(f"Tool YAML {path.name} missing keys: {missing}")
 
@@ -104,11 +105,73 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         if "timeout" in kwargs:
             effective_timeout = int(kwargs["timeout"]) + 5
 
+        from src.agent.tools.recon_tools import _run
         return json.dumps(_run(cmd, timeout=effective_timeout))
 
     generated_fn.__name__ = tool_def["name"]
     generated_fn.__doc__ = tool_def["description"]
     return generated_fn
+
+
+def _build_hardware_description(tool_def: dict[str, Any]) -> str:
+    """Build a rich description for hardware tools, embedding protocol commands."""
+    lines = [tool_def["description"]]
+    lines.append(f"\nCapabilities: {', '.join(tool_def.get('capabilities', []))}")
+
+    for proto in tool_def.get("protocols", []):
+        lines.append(f"\n## {proto['name']} ({proto.get('channels', 'N/A')})")
+        lines.append(f"Software: {', '.join(proto.get('software', []))}")
+        for cmd in proto.get("commands", []):
+            lines.append(f"  - {cmd['description']}: `{cmd['cmd']}`")
+
+    return "\n".join(lines)
+
+
+def _build_hardware_function(tool_def: dict[str, Any]) -> Callable[..., str]:
+    """Generate a function for hardware tools that returns command suggestions."""
+    protocols = {p["name"]: p for p in tool_def.get("protocols", [])}
+
+    def hardware_fn(**kwargs: Any) -> str:
+        # If the tool has a command (e.g. hackrf_transfer), try to run it
+        if "command" in tool_def:
+            cmd = [tool_def["command"]] + list(tool_def.get("args", []))
+            for param in tool_def.get("parameters", []):
+                value = kwargs.get(param["name"], param.get("default"))
+                if value is None:
+                    continue
+                fmt = param.get("format", "positional")
+                if fmt == "flag":
+                    cmd.extend([param["flag"], str(value)])
+                elif fmt == "positional":
+                    cmd.append(str(value))
+            timeout = tool_def.get("timeout", 60)
+            from src.agent.tools.recon_tools import _run
+            return json.dumps(_run(cmd, timeout=timeout))
+
+        # Otherwise return protocol-specific command suggestions
+        target_proto = kwargs.get("protocol", kwargs.get("interface"))
+        if target_proto and target_proto in protocols:
+            proto = protocols[target_proto]
+            return json.dumps({
+                "type": "hardware_commands",
+                "protocol": target_proto,
+                "channels": proto.get("channels", "N/A"),
+                "software": proto.get("software", []),
+                "commands": proto.get("commands", []),
+            })
+
+        # Return all available protocols and commands
+        return json.dumps({
+            "type": "hardware_commands",
+            "available_protocols": list(protocols.keys()),
+            "all_commands": {
+                name: p.get("commands", []) for name, p in protocols.items()
+            },
+        })
+
+    hardware_fn.__name__ = tool_def["name"]
+    hardware_fn.__doc__ = tool_def["description"]
+    return hardware_fn
 
 
 def load_all_tools(directory: Path | None = None) -> list[dict[str, Any]]:
@@ -117,8 +180,10 @@ def load_all_tools(directory: Path | None = None) -> list[dict[str, Any]]:
     Returns tool dicts in the same format as RECON_TOOLS:
     [{"name", "description", "input_schema", "function"}, ...]
 
-    Python-only tools (handler: python) are included without a function;
-    use register_python_handler() to attach one.
+    Supports three tool types:
+      - subprocess (default): auto-generated shell commands
+      - handler: python: Python-only, attach via register_python_handler()
+      - type: hardware: physical attack tools with protocol-specific commands
     """
     directory = directory or DEFINITIONS_DIR
     tools: list[dict[str, Any]] = []
@@ -138,20 +203,41 @@ def load_all_tools(directory: Path | None = None) -> list[dict[str, Any]]:
             log.info("Skipping disabled tool: %s", tool_def["name"])
             continue
 
-        tool_dict: dict[str, Any] = {
-            "name": tool_def["name"],
-            "description": tool_def["description"],
-            "input_schema": build_input_schema(tool_def),
-        }
+        is_hardware = tool_def.get("type") == "hardware"
 
-        if tool_def.get("handler") == "python":
-            tool_dict["function"] = None
+        if is_hardware:
+            tool_dict: dict[str, Any] = {
+                "name": tool_def["name"],
+                "description": _build_hardware_description(tool_def),
+                "input_schema": build_input_schema(tool_def) if tool_def.get("parameters") else {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+                "function": _build_hardware_function(tool_def),
+                "hardware": True,
+            }
+        elif tool_def.get("handler") == "python":
+            tool_dict = {
+                "name": tool_def["name"],
+                "description": tool_def["description"],
+                "input_schema": build_input_schema(tool_def),
+                "function": None,
+            }
         else:
-            tool_dict["function"] = build_subprocess_function(tool_def)
+            tool_dict = {
+                "name": tool_def["name"],
+                "description": tool_def["description"],
+                "input_schema": build_input_schema(tool_def),
+                "function": build_subprocess_function(tool_def),
+            }
 
         tools.append(tool_dict)
 
-    log.info("Loaded %d tools from %s", len(tools), directory)
+    hw_count = sum(1 for t in tools if t.get("hardware"))
+    sw_count = len(tools) - hw_count
+    log.info("Loaded %d tools (%d software, %d hardware) from %s",
+             len(tools), sw_count, hw_count, directory)
     return tools
 
 

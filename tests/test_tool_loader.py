@@ -73,7 +73,7 @@ class TestBuildInputSchema:
 class TestBuildSubprocessFunction:
     """Test auto-generated subprocess functions."""
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_nmap_positional(self, mock_run):
         mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "nmap.yaml")
@@ -83,7 +83,7 @@ class TestBuildSubprocessFunction:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["nmap", "-sV", "192.168.88.1"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_nmap_with_ports(self, mock_run):
         mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "nmap.yaml")
@@ -92,7 +92,7 @@ class TestBuildSubprocessFunction:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["nmap", "-sV", "-p", "22,80", "192.168.88.1"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_curl_positional(self, mock_run):
         mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "curl_headers.yaml")
@@ -101,7 +101,7 @@ class TestBuildSubprocessFunction:
         cmd = mock_run.call_args[0][0]
         assert cmd == ["curl", "-sI", "--max-time", "10", "http://192.168.88.1"]
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_flags_and_defaults(self, mock_run):
         mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
@@ -115,7 +115,7 @@ class TestBuildSubprocessFunction:
         assert "-C" in cmd
         assert "10" in cmd
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit_port_suffix(self, mock_run):
         mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "ssh_audit.yaml")
@@ -124,7 +124,7 @@ class TestBuildSubprocessFunction:
         cmd = mock_run.call_args[0][0]
         assert "192.168.88.1:22" in cmd
 
-    @patch("src.agent.tools.tool_loader._run")
+    @patch("src.agent.tools.recon_tools._run")
     def test_function_returns_json(self, mock_run):
         mock_run.return_value = {"stdout": "test", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "nmap.yaml")
@@ -207,8 +207,24 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 5
+        assert len(tools) == 9
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
-        assert names == {"nmap_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup"}
+        expected_sw = {"nmap_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup"}
+        expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
+        assert names == expected_sw | expected_hw
+
+    def test_hardware_tools_flagged(self):
+        tools = load_all_tools()
+        hw_tools = [t for t in tools if t.get("hardware")]
+        assert len(hw_tools) == 4
+        hw_names = {t["name"] for t in hw_tools}
+        assert hw_names == {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
+
+    def test_hardware_tools_have_function(self):
+        tools = load_all_tools()
+        for t in tools:
+            if t.get("hardware"):
+                assert t["function"] is not None
+                assert callable(t["function"])

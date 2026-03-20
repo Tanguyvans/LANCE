@@ -1,0 +1,77 @@
+name: "proxmark3"
+type: hardware
+enabled: true
+short_description: "Proxmark3 Easy RFID/NFC reader, writer, and cloner (125 kHz + 13.56 MHz)"
+description: "Proxmark3 512M for RFID (125 kHz) and NFC (13.56 MHz) security testing. Reads, cracks, clones, and emulates access control badges. Supports Mifare Classic cracking (darkside, hardnested, mfkey32), UID cloning, and sniffing reader-to-card communication."
+
+capabilities: [read, crack, clone, emulate, sniff, write, bruteforce]
+
+protocols:
+  - name: hf_mifare_classic
+    channels: "13.56 MHz (ISO 14443A)"
+    software: [proxmark3_client, pm3]
+    commands:
+      - description: "Auto-detect and crack Mifare Classic card"
+        cmd: "pm3 -c 'hf mf autopwn'"
+      - description: "Read all sectors with known keys"
+        cmd: "pm3 -c 'hf mf rdbl --blk 0 -k FFFFFFFFFFFF'"
+      - description: "Darkside attack (one unknown key)"
+        cmd: "pm3 -c 'hf mf darkside'"
+      - description: "Hardnested attack (one known key, one unknown)"
+        cmd: "pm3 -c 'hf mf hardnested --blk 0 -a -k FFFFFFFFFFFF --tblk 4 --ta'"
+      - description: "Clone card to UID-writable card"
+        cmd: "pm3 -c 'hf mf cload -f dump.bin'"
+      - description: "Sniff reader-to-card communication"
+        cmd: "pm3 -c 'hf 14a sniff'"
+
+  - name: hf_ntag
+    channels: "13.56 MHz (ISO 14443A)"
+    software: [proxmark3_client]
+    commands:
+      - description: "Read NTAG/Ultralight"
+        cmd: "pm3 -c 'hf mfu rdbl --blk 0 --cnt 16'"
+      - description: "Clone NTAG to Magic NTAG"
+        cmd: "pm3 -c 'hf mfu cload -f ntag_dump.bin'"
+
+  - name: hf_desfire
+    channels: "13.56 MHz (ISO 14443A)"
+    software: [proxmark3_client]
+    commands:
+      - description: "Get DESFire card info"
+        cmd: "pm3 -c 'hf mfdes info'"
+      - description: "List DESFire applications"
+        cmd: "pm3 -c 'hf mfdes lsapp'"
+
+  - name: lf_em4100
+    channels: "125 kHz"
+    software: [proxmark3_client]
+    commands:
+      - description: "Read EM4100 badge"
+        cmd: "pm3 -c 'lf em 410x reader'"
+      - description: "Clone EM4100 to T5577 card"
+        cmd: "pm3 -c 'lf em 410x clone --id 0102030405'"
+      - description: "Bruteforce EM4100 IDs"
+        cmd: "pm3 -c 'lf em 410x brute --delay 20'"
+
+  - name: lf_hid
+    channels: "125 kHz"
+    software: [proxmark3_client]
+    commands:
+      - description: "Read HID Prox badge"
+        cmd: "pm3 -c 'lf hid reader'"
+      - description: "Clone HID badge to T5577"
+        cmd: "pm3 -c 'lf hid clone -r 2006ec0c86'"
+      - description: "Bruteforce HID facility codes"
+        cmd: "pm3 -c 'lf hid brute --fc 101 --cn 1 --up 1000'"
+
+parameters:
+  - name: "protocol"
+    type: "string"
+    description: "Protocol: hf_mifare_classic, hf_ntag, hf_desfire, lf_em4100, lf_hid"
+    required: true
+    format: "positional"
+  - name: "action"
+    type: "string"
+    description: "Action: read, crack, clone, sniff, emulate, bruteforce"
+    required: true
+    format: "positional"

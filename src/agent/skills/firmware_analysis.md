@@ -3,7 +3,7 @@ name: firmware_analysis
 description: IoT firmware extraction and vulnerability analysis
 version: 1.0.0
 tags: [firmware, binwalk, embedded, credentials, binary, smart-city]
-tools: [nmap_scan, curl_headers]
+tools: [nmap_scan, curl_headers, exploit_iot_kit]
 device_types: [gateway, sensor, camera, ap, router]
 cpe_patterns: []
 ---

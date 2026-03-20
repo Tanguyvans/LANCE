@@ -1,0 +1,75 @@
+name: "flipper_zero"
+type: hardware
+enabled: true
+short_description: "Flipper Zero multi-tool (sub-GHz, RFID, NFC, IR, GPIO)"
+description: "Portable multi-protocol tool for IoT security testing. Covers sub-GHz replay/bruteforce, RFID 125 kHz cloning, NFC 13.56 MHz emulation, infrared replay, and GPIO/UART bridging for hardware debug interfaces."
+
+capabilities: [sniff, replay, bruteforce, emulate, clone, bridge]
+
+protocols:
+  - name: sub_ghz
+    channels: "300-928 MHz"
+    software: [flipper_firmware, ufbt, qFlipper]
+    commands:
+      - description: "Capture sub-GHz signal via Flipper CLI"
+        cmd: "flipper_cli subghz rx -f 433920000"
+      - description: "Replay captured .sub file"
+        cmd: "flipper_cli subghz tx -f captured_signal.sub"
+      - description: "Bruteforce fixed-code remotes (e.g. CAME 12-bit)"
+        cmd: "flipper_cli subghz bruteforce -p CAME_12bit -f 433920000"
+
+  - name: rfid_125khz
+    channels: "125 kHz"
+    software: [flipper_firmware]
+    commands:
+      - description: "Read RFID badge (EM4100, HID Prox)"
+        cmd: "flipper_cli rfid read"
+      - description: "Emulate cloned badge"
+        cmd: "flipper_cli rfid emulate -f badge.rfid"
+
+  - name: nfc_13mhz
+    channels: "13.56 MHz"
+    software: [flipper_firmware, mfkey32]
+    commands:
+      - description: "Read NFC tag (Mifare Classic, NTAG)"
+        cmd: "flipper_cli nfc read"
+      - description: "Crack Mifare Classic keys via mfkey32 attack"
+        cmd: "flipper_cli nfc mfkey32"
+      - description: "Emulate NFC tag"
+        cmd: "flipper_cli nfc emulate -f tag.nfc"
+
+  - name: infrared
+    channels: "IR (38 kHz carrier)"
+    software: [flipper_firmware, IRDB]
+    commands:
+      - description: "Learn IR signal from remote"
+        cmd: "flipper_cli ir rx"
+      - description: "Replay IR command"
+        cmd: "flipper_cli ir tx -f ac_power.ir"
+
+  - name: gpio_uart
+    channels: "GPIO (3.3V/5V UART, SPI, I2C)"
+    software: [flipper_firmware, minicom]
+    commands:
+      - description: "UART bridge at 115200 baud"
+        cmd: "flipper_cli gpio uart_bridge -b 115200"
+      - description: "Scan common UART baud rates"
+        cmd: "flipper_cli gpio uart_scan"
+
+parameters:
+  - name: "protocol"
+    type: "string"
+    description: "Protocol to use: sub_ghz, rfid, nfc, ir, gpio"
+    required: true
+    format: "positional"
+  - name: "action"
+    type: "string"
+    description: "Action to perform: read, emulate, tx, rx, bruteforce"
+    required: true
+    format: "positional"
+  - name: "frequency"
+    type: "string"
+    description: "Frequency in Hz (for sub-GHz operations)"
+    required: false
+    format: "flag"
+    flag: "-f"

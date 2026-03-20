@@ -67,8 +67,8 @@ python3 -m src.agent --verbose           # detailed output
 
 - `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`.
 - `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
-- `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports positional, flag, and port_suffix parameter formats.
-- `src/agent/tools/definitions/` — Declarative YAML tool definitions: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Add new recon tools here (no Python needed for subprocess tools).
+- `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
+- `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
 - `src/agent/tools/skill_tools.py` — IoT security skill tools: `list_skills()`, `load_skill()`, `search_knowledge()` (ChromaDB semantic search), `cve_search()` (cache-then-query NVD).
 - `src/agent/tools/deliverable.py` — File I/O: `save_deliverable()` (JSON/Markdown), `read_deliverable()`, `list_deliverables()`.
 - `src/agent/validators/__init__.py` — Output validators: `markdown_with_sections()`, `json_valid()`, `file_exists()`.

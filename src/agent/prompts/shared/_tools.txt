@@ -14,6 +14,12 @@
 - **mqtt_listen(broker, topic?, count?, timeout?)** — Passive MQTT listener. topic="#" by default, count=10, timeout=5s
 - **nvd_lookup(query)** — Search NIST NVD for known CVEs by CPE string or keyword
 
+### Physical attack tools (hardware — require physical lab access)
+- **hackrf_capture(frequency, output_file, sample_rate?, num_samples?)** — HackRF One SDR for RF sniffing and replay. Covers Zigbee 802.15.4 (2.4 GHz), LoRaWAN EU868 (868 MHz), sub-GHz (433 MHz). Returns protocol-specific commands.
+- **flipper_zero(protocol, action, frequency?)** — Flipper Zero multi-tool for sub-GHz replay/bruteforce, RFID 125 kHz cloning, NFC 13.56 MHz emulation, IR replay, GPIO/UART bridging.
+- **proxmark3(protocol, action)** — Proxmark3 Easy for RFID/NFC badge cracking and cloning. Mifare Classic (darkside, hardnested), NTAG, DESFire, EM4100, HID Prox.
+- **exploit_iot_kit(interface, device?, baudrate?)** — Hardware exploit kit for debug interface access (UART, JTAG, SWD), flash memory dumping (SPI, I2C), firmware extraction, and voltage glitching.
+
 ### Deliverable tools (inter-phase communication)
 - **save_deliverable(filename, content)** — Save this phase's deliverable (MANDATORY)
 - **read_deliverable(filename)** — Read a previous phase's deliverable

@@ -3,7 +3,7 @@ name: lorawan_analysis
 description: LoRaWAN network security analysis for smart city sensor deployments
 version: 1.0.0
 tags: [lorawan, lora, sensor, gateway, rak, chirpstack, smart-city]
-tools: [nmap_scan, curl_headers, mqtt_listen]
+tools: [nmap_scan, curl_headers, mqtt_listen, hackrf_capture]
 device_types: [gateway, sensor]
 cpe_patterns: []
 ---

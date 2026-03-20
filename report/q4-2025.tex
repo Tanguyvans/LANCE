@@ -1,0 +1,250 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{textcomp}
+\usepackage[T1]{fontenc}
+
+\geometry{margin=1in}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    escapechar=@
+}
+
+\lstset{style=mystyle}
+
+\title{\textbf{NATO Smart City IoT advancements}\\
+\large University of Mons}
+\author{Tanguy Vansnick, Mathis Delehouzée, Islam Hentous, Saïd Mahmoudi}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\begin{abstract}
+This internal technical report documents the development and implementation of the NATO IoT Attack Path Analysis platform. The system combines Neo4j graph database, automated NIST NVD vulnerability enrichment, and Model Context Protocol (MCP) integration to identify exploitable attack chains in IoT networks. The current implementation processes JSON-formatted IoT architecture specifications, performs automated CVE scanning with MongoDB caching, executes multi-hop attack path discovery algorithms, and provides AI-powered natural language querying via Ollama LLM.
+\end{abstract}
+
+\section{Project Overview}
+
+The NATO IoT Attack Path Analysis platform addresses the critical challenge of identifying and analyzing exploitable attack chains in smart city infrastructure. The system transforms complex IoT network topologies into graph-based representations, enabling automated discovery of multi-hop lateral movement routes that adversaries could exploit.
+
+At its core, the platform ingests JSON-formatted architecture specifications describing device topologies, software components with CPE identifiers, network connections, and VLAN configurations. Through integration with the NIST National Vulnerability Database, the system automatically enriches this topology data with current vulnerability intelligence. A MongoDB caching layer eliminates API rate limiting issues while ensuring access to up-to-date CVE information.
+
+The platform's analysis engine traverses the network graph to identify potential attack paths, applying risk scoring algorithms that consider both vulnerability severity and network position. Security analysts interact with the system through a unified command-line interface or leverage natural language queries via the integrated Model Context Protocol server connected to Ollama LLM. Validation has been performed on representative test networks comprising traffic controllers, environmental sensors, lighting gateways, and network infrastructure.
+
+\newpage
+\section{System Architecture}
+
+The platform implements a multi-tier architecture integrating graph databases, document stores, external APIs, and AI capabilities. The design emphasizes modularity and scalability while maintaining clear separation of concerns across functional layers, as illustrated in Figure \ref{fig:high_level_arch}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/high_level_architecture.png}
+    \caption{High-Level System Architecture - Structural Organization}
+    \label{fig:high_level_arch}
+\end{figure}
+
+The architecture flows from JSON input specifications through a unified analysis engine that coordinates vulnerability scanning and attack path discovery. Neo4j serves as the primary graph database for topology modeling, while MongoDB provides persistent caching of vulnerability data. External enrichment occurs through the NIST NVD API, with intelligent request management preventing rate limit violations. The MCP Neo4j server exposes graph operations to AI agents, enabling natural language interaction with the security data. The output layer generates comprehensive security reports with actionable findings and prioritized recommendations.
+
+\subsection{Model Context Protocol Integration}
+
+The platform leverages the Model Context Protocol, an open standard by Anthropic for connecting AI systems to external data sources. Through the MCP Neo4j server, security analysts can query the system using natural language rather than manual Cypher queries. Questions like "Show me all devices with critical vulnerabilities that have network paths to the gateway" are automatically translated into graph traversal operations, significantly reducing the technical barrier for security assessment.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Tool} & \textbf{Purpose} \\
+\hline
+\texttt{find\_attack\_paths} & Discover multi-hop attack chains to target devices \\
+\texttt{calculate\_blast\_radius} & Analyze impact scope if device is compromised \\
+\texttt{list\_vulnerable\_connections} & Identify unencrypted/unauthenticated connections \\
+\texttt{get\_remediation\_plan} & Generate prioritized security fixes (P0/P1/P2) \\
+\texttt{get\_security\_summary} & Overall network security posture assessment \\
+\hline
+\end{tabular}
+\caption{MCP Security Analysis Tools}
+\label{tab:mcp_tools}
+\end{table}
+
+\subsection{Data Processing Pipeline}
+
+The data processing pipeline, illustrated in Figure \ref{fig:high_level_arch}, demonstrates the flow from raw IoT architecture specifications through vulnerability enrichment to final security analysis. The process begins with JSON-formatted specifications that define the network topology and component inventory. The core analysis engine coordinates vulnerability scanning through the NIST NVD API while maintaining a MongoDB cache to optimize subsequent analyses. 
+
+Discovered vulnerabilities are linked to affected devices in the Neo4j graph, enabling path-based queries that identify how attackers could chain exploits across multiple network hops. The AI integration layer provides natural language access to this graph-based security intelligence, while the reporting engine generates actionable findings with prioritized remediation guidance.
+
+\section{CLI Management Interface}
+
+The platform provides a streamlined command-line interface through \texttt{manage.py} that consolidates all analysis operations. Database initialization from architecture specifications occurs through the \texttt{create-graph} command, which parses JSON input and constructs the Neo4j topology model. The \texttt{analyze-vulnerabilities} command triggers CPE-based vulnerability scanning with automatic NIST NVD enrichment and MongoDB caching. Attack path analysis targeting specific devices executes via the \texttt{attack-paths} command with customizable target parameters. Database validation and clearing operations support iterative testing workflows.
+
+\begin{lstlisting}[language=bash, caption=Core CLI Commands]
+# Initialize graph database from architecture specification
+python manage.py create-graph
+
+# Scan components for vulnerabilities via NIST NVD
+python manage.py analyze-vulnerabilities
+
+# Generate attack path analysis report
+python manage.py attack-paths --target gateway
+
+# Validate database connectivity
+python manage.py validate
+
+# Clear graph database for re-initialization
+python manage.py clear-graph
+\end{lstlisting}
+
+\newpage
+\section{Practical Application and Results}
+
+\subsection{Input Data Structure}
+
+The platform ingests IoT network architectures through JSON-formatted specifications. The schema defines devices, software components, network connections, and VLAN segmentation:
+
+\begin{lstlisting}[language=json, caption=IoT Architecture JSON Structure]
+{
+  "devices": [{
+    "device_id": "device_001",
+    "device_name": "Traffic Controller",
+    "device_type": "controller",
+    "ip_address": "10.0.1.10",
+    "vlan_id": "vlan_100",
+    "manufacturer": "Siemens",
+    "firmware_version": "3.2.1"
+  }],
+  "components": [{
+    "component_id": "comp_001",
+    "device_id": "device_001",
+    "software_name": "Linux Kernel",
+    "version": "5.10.0",
+    "cpe_string": "cpe:2.3:o:linux:linux_kernel:5.10.0:*:*:*:*:*:*:*"
+  }],
+  "connections": [{
+    "source_device": "device_002",
+    "target_device": "device_003",
+    "protocol": "MQTT",
+    "port": 1883,
+    "encryption": "none",
+    "authentication": "username/password"
+  }],
+  "vlans": [{
+    "vlan_id": "vlan_100",
+    "name": "IoT_Sensors",
+    "subnet": "10.0.1.0/24"
+  }]
+}
+\end{lstlisting}
+
+The CPE strings enable automated CVE matching through NIST NVD queries, while connection metadata supports protocol-level vulnerability analysis. VLAN configuration informs network segmentation assessment.
+
+\subsection{Test Network Configuration}
+
+Validation has been performed using JSON-formatted IoT architecture specifications representing realistic smart city infrastructure. The test configurations define device nodes with properties including type, IP address, firmware version, and manufacturer. Software component inventories specify CPE strings enabling automated vulnerability matching. Network connection topologies document communication paths with security metadata covering protocol, port, encryption, and authentication mechanisms. VLAN segmentation data supports network isolation analysis.
+
+\newpage
+\subsection{Analysis Results}
+
+The platform was validated against a representative smart city IoT network. Table \ref{tab:results} summarizes the key metrics from the analysis pipeline.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|}
+\hline
+\textbf{Metric} & \textbf{Value} \\
+\hline
+Devices analyzed & 4 \\
+Components scanned & 13 \\
+CVEs discovered & 2,235 \\
+Vulnerable connections & 2 \\
+Attack paths identified & 3 \\
+Risk level & HIGH \\
+\hline
+\end{tabular}
+\caption{Test Network Analysis Results}
+\label{tab:results}
+\end{table}
+
+The high CVE count (2,235) reflects comprehensive scanning of all software components, including the Linux kernel which accounts for the majority of findings. The platform filters these to prioritize CRITICAL and HIGH severity vulnerabilities that enable practical attack chains.
+
+\subsection{Attack Chain Case Study}
+
+Analysis of test networks has revealed critical multi-hop lateral movement paths. In one scenario, an environmental sensor vulnerable to mbedTLS CVE-2022-35409 (CVSS 9.1 - CRITICAL) provides initial access. Exploitation enables lateral movement to a lighting gateway running Apache Tomcat with CVE-2023-41080 (CVSS 7.5 - HIGH). This second compromise positions the attacker for a final pivot to the network gateway, achieving complete network control through a three-hop attack chain discovered by graph traversal.
+
+\begin{figure}[H]
+\centering
+\begin{verbatim}
+[Sensor 192.168.1.25] --CVE-2022-35409--> [Lighting GW] --MQTT 1883--> [Gateway]
+     mbedTLS                                Apache Tomcat              Target
+\end{verbatim}
+\caption{Three-Hop Attack Chain: Sensor → Lighting Gateway → Network Gateway}
+\label{fig:attack_chain}
+\end{figure}
+
+The platform's analysis prioritizes remediation efforts: patching the mbedTLS vulnerability on the environmental sensor addresses the initial access vector, while upgrading Apache Tomcat on the lighting gateway closes the lateral movement path. Network segmentation recommendations would further limit attacker mobility, and intrusion detection deployment at the gateway provides monitoring for unusual traffic patterns. This demonstrates how graph-based analysis identifies compound risks that isolated vulnerability scanners would miss.
+
+\subsection{Vulnerability Detection Capabilities}
+
+The scanning engine automatically identifies CRITICAL severity vulnerabilities (CVSS $\geq$ 9.0) and HIGH severity issues (CVSS 7.0-8.9) affecting device components. Beyond simple vulnerability enumeration, the platform maps multi-hop attack paths through network topology and calculates device risk scores based on network position.
+
+\newpage
+\subsection{Key Features}
+
+The platform's vulnerability enrichment system performs CPE-based matching to discover applicable CVEs for each software component through NIST NVD API queries. A MongoDB caching layer stores CVE records and CPE-to-CVE mappings, enabling subsequent analyses to complete in seconds without additional API calls. Severity filtering focuses on CRITICAL and HIGH vulnerabilities to reduce noise and prioritize actionable findings.
+
+Device risk scores synthesize multiple factors: CVSS base scores weighted by exploitability, network position analysis identifying blast radius potential, path criticality for devices on routes to high-value targets, and component count reflecting attack surface size. This multi-dimensional approach enables security teams to focus remediation efforts on vulnerabilities that pose the greatest organizational risk rather than addressing highest CVSS scores in isolation.
+\section{Comparative Analysis with Existing Solutions}
+
+\subsection{Commercial Vulnerability Scanners}
+
+The platform occupies a distinct position in the IoT security ecosystem compared to established commercial solutions. Traditional vulnerability scanners such as Nessus, Qualys, and Rapid7 InsightVM excel at comprehensive device-level assessment through authenticated scanning, extensive protocol coverage, and mature compliance reporting capabilities. These tools maintain databases of tens of thousands of vulnerability checks, support authenticated credential-based scanning, and provide enterprise-grade features including role-based access control, scheduled scanning, and regulatory compliance mapping.
+
+However, these commercial solutions primarily operate at the individual device level. A typical Nessus scan identifies vulnerabilities on each device independently but provides limited insight into how an attacker could chain these vulnerabilities across network topology to reach critical assets. The assessment output consists of device-by-device vulnerability lists without contextual understanding of lateral movement paths or compound attack scenarios.
+
+\subsection{Graph-Based Attack Path Analysis}
+
+The platform's primary differentiation lies in its graph-based topology modeling and multi-hop attack path discovery. By representing the entire network as a connected graph structure, the system identifies how an initial compromise on a peripheral device could enable lateral movement through multiple network hops to reach high-value targets. This compound risk analysis reveals attack scenarios that remain invisible to device-centric scanning approaches.
+
+The integration of natural language querying through the Model Context Protocol represents another distinction. Security analysts can explore attack paths using conversational queries rather than learning Cypher query syntax or navigating complex GUI interfaces. Questions like "Show me all three-hop paths from vulnerable sensors to the network gateway" execute automatically through AI-powered query generation.
+
+\subsection{Current Implementation Limitations}
+
+The platform currently implements CVE-based vulnerability detection through NIST NVD integration. Connection-level security analysis including weak TLS version detection, default credential scanning, and protocol-specific vulnerability checks remains in the architectural design phase but is not yet operational.
+
+The platform's architecture anticipates larger deployments but requires additional testing and potential optimization of graph traversal algorithms for production-scale networks. The platform does not currently support authenticated scanning, active exploitation verification, or compliance framework mapping.
+
+\section{Conclusion}
+
+By combining graph database technology with automated vulnerability enrichment and AI-powered analysis through MCP integration, the platform provides security teams with topology-aware visibility into complex attack surfaces.
+
+The system's graph-based approach captures both device vulnerabilities and network topology relationships, enabling discovery of compound attack chains that device-centric scanning approaches do not reveal. Integration of the MCP Neo4j server enables natural language security queries and AI-assisted analysis workflows, reducing the technical barrier for security assessment. The vulnerability enrichment system leveraging NIST NVD REST API with intelligent MongoDB caching addresses rate limiting while ensuring data currency.
+
+\end{document}
