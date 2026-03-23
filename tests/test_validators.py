@@ -8,6 +8,7 @@ from src.agent.validators import (
     validate_default,
     validate_markdown_with_sections,
     validate_json_vuln_queue,
+    validate_json_exploitation,
     VALIDATORS,
     OUTPUT_DIR,
 )
@@ -84,6 +85,35 @@ class TestValidateJsonQueue:
         assert ok  # Valid structure, just empty
 
 
+class TestValidateJsonExploitation:
+    def test_invalid_json(self, clean_output):
+        (clean_output / "bad.json").write_text("not json")
+        ok, msg = validate_json_exploitation("bad.json")
+        assert not ok
+        assert "Invalid JSON" in msg
+
+    def test_missing_tests_key(self, clean_output):
+        (clean_output / "nokey.json").write_text('{"other": []}')
+        ok, msg = validate_json_exploitation("nokey.json")
+        assert not ok
+        assert "tests" in msg
+
+    def test_tests_not_array(self, clean_output):
+        (clean_output / "notarray.json").write_text('{"tests": "string"}')
+        ok, msg = validate_json_exploitation("notarray.json")
+        assert not ok
+        assert "array" in msg
+
+    def test_valid_exploitation(self, clean_output):
+        data = {
+            "summary": {"total_tested": 1, "confirmed": 1},
+            "tests": [{"vuln_id": "VULN-001", "status": "CONFIRMED"}],
+        }
+        (clean_output / "good.json").write_text(json.dumps(data))
+        ok, msg = validate_json_exploitation("good.json")
+        assert ok
+
+
 class TestValidatorsRegistry:
     def test_all_validators_callable(self):
         for name, fn in VALIDATORS.items():
@@ -93,3 +123,4 @@ class TestValidatorsRegistry:
         assert "default" in VALIDATORS
         assert "markdown_with_sections" in VALIDATORS
         assert "json_vuln_queue" in VALIDATORS
+        assert "json_exploitation" in VALIDATORS

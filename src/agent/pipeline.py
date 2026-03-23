@@ -19,7 +19,7 @@ from src.agent.tools.graph_tools import (
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir
-from src.agent.tools.skill_tools import SKILL_TOOLS
+from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
 from src.agent.validators import VALIDATORS
 
 log = logging.getLogger(__name__)
@@ -110,10 +110,23 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
+        # Ingest run findings into ChromaDB for episodic memory
+        try:
+            from src.agent.knowledge.ingest import ingest_run_findings
+            ingested = ingest_run_findings(self.run_dir, self.provider.model)
+            if ingested:
+                log.info("Ingested %d findings into run_history", ingested)
+        except Exception as e:
+            log.warning("Run history ingestion failed (non-fatal): %s", e)
+
         return results
 
     def _run_agent(self, config: AgentConfig) -> str:
         """Run a single agent phase."""
+        # Set skill filter for this phase (hard filtering)
+        filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
+        set_skill_filter(filter_tags)
+
         # If this phase has device sub-agents, run them first
         if config.has_device_agents:
             self._run_device_agents(config)
@@ -124,6 +137,7 @@ class Pipeline:
         variables = {**self.context}
         variables["previous_deliverables"] = self._list_previous_deliverables()
         variables["expected_deliverable"] = config.deliverable_file
+        variables["available_skills"] = self._filter_skills(config)
 
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
@@ -182,6 +196,10 @@ class Pipeline:
         print(f"  Launching {len(surface)} device-specific vulnerability agents")
         print(f"{'=' * 60}\n")
 
+        # Compute once — these are the same for all device sub-agents
+        available_skills = self._filter_skills(config)
+        previous_deliverables = self._list_previous_deliverables()
+
         for device in surface:
             device_id = device["id"]
             device_ip = device.get("ip", "unknown")
@@ -208,8 +226,9 @@ class Pipeline:
 
             # Build variables for per-device prompt
             variables = {**self.context}
-            variables["previous_deliverables"] = self._list_previous_deliverables()
+            variables["previous_deliverables"] = previous_deliverables
             variables["expected_deliverable"] = deliverable_file
+            variables["available_skills"] = available_skills
             variables["device_id"] = device_id
             variables["device_ip"] = device_ip
             variables["device_type"] = device_type
@@ -251,6 +270,8 @@ class Pipeline:
         Supports two resolution modes:
           1. Group name (e.g. "graph", "recon") → expand entire group
           2. Individual tool name (e.g. "nmap_scan") → find in any group
+
+        Tool functions are wrapped to log calls and results to tool_calls.jsonl.
         """
         tools = []
         seen_names: set[str] = set()
@@ -263,7 +284,7 @@ class Pipeline:
             if ref in TOOL_GROUPS:
                 for tool in TOOL_GROUPS[ref]:
                     if tool["name"] not in seen_names:
-                        tools.append(tool)
+                        tools.append(self._wrap_tool(tool))
                         seen_names.add(tool["name"])
                 continue
 
@@ -271,11 +292,36 @@ class Pipeline:
             for group in TOOL_GROUPS.values():
                 for tool in group:
                     if tool["name"] == ref and ref not in seen_names:
-                        tools.append(tool)
+                        tools.append(self._wrap_tool(tool))
                         seen_names.add(ref)
                         break
 
         return tools
+
+    def _wrap_tool(self, tool: dict) -> dict:
+        """Wrap a tool function to log its calls and results to tool_calls.jsonl."""
+        original_fn = tool["function"]
+        if original_fn is None:
+            return tool
+
+        log_path = self.run_dir / "tool_calls.jsonl"
+        tool_name = tool["name"]
+
+        def logged_fn(**kwargs):
+            result = original_fn(**kwargs)
+            try:
+                entry = json.dumps({
+                    "tool": tool_name,
+                    "args": kwargs,
+                    "result": result[:5000] if isinstance(result, str) else str(result)[:5000],
+                }, ensure_ascii=False, default=str)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(entry + "\n")
+            except Exception:
+                pass  # Never break the pipeline for logging
+            return result
+
+        return {**tool, "function": logged_fn}
 
     def _check_prerequisites(
         self, config: AgentConfig, results: dict[str, str]
@@ -306,6 +352,33 @@ class Pipeline:
             return len(vulns) > 0
         except (json.JSONDecodeError, KeyError):
             return False
+
+    def _filter_skills(self, config: AgentConfig) -> str:
+        """Filter skills by tag intersection with config.skill_filter.
+
+        Returns a formatted string listing matching skills for prompt injection.
+        """
+        if not config.skill_filter:
+            return ""
+
+        filter_tags = set(config.skill_filter.get("tags", []))
+        if not filter_tags:
+            return ""
+
+        matched = [
+            skill for skill in get_skills_metadata()
+            if set(skill.get("tags", [])) & filter_tags
+        ]
+
+        if not matched:
+            return "No matching skills for this phase."
+
+        lines = []
+        for s in matched:
+            tags_str = ", ".join(s["tags"])
+            lines.append(f"- **{s['name']}**: {s['description']} (tags: {tags_str})")
+
+        return "\n".join(lines)
 
     def _list_previous_deliverables(self) -> str:
         """List available deliverables for prompt variable."""

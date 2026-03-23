@@ -356,6 +356,52 @@ class TestDeviceAgents:
         assert status == "completed"
 
 
+class TestSkillFiltering:
+    def test_no_filter_returns_empty(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="test", phase=1, prompt_template="t",
+            deliverable_file="t.md", tools=["graph"],
+            skill_filter=None,
+        )
+        result = pipeline._filter_skills(config)
+        assert result == ""
+
+    def test_filter_by_tags(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="test", phase=2, prompt_template="t",
+            deliverable_file="t.md", tools=["graph", "skill"],
+            skill_filter={"tags": ["mqtt"]},
+        )
+        result = pipeline._filter_skills(config)
+        assert "mqtt_security" in result
+        # Should not include unrelated skills
+        assert "report_methodology" not in result
+
+    def test_filter_report_tags(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="test", phase=5, prompt_template="t",
+            deliverable_file="t.md", tools=["graph", "skill"],
+            skill_filter={"tags": ["report", "methodology"]},
+        )
+        result = pipeline._filter_skills(config)
+        assert "report_methodology" in result
+
+    def test_skill_tools_resolved(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="test", phase=2, prompt_template="t",
+            deliverable_file="t.md", tools=["graph", "skill"],
+        )
+        tools = pipeline._resolve_tools(config)
+        tool_names = {t["name"] for t in tools}
+        assert "list_skills" in tool_names
+        assert "load_skill" in tool_names
+        assert "search_history" in tool_names
+
+
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
     @patch("src.agent.pipeline.load_prompt")

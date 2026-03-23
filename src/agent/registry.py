@@ -19,6 +19,7 @@ class AgentConfig:
     conditional: str | None = None
     description: str = ""
     has_device_agents: bool = False
+    skill_filter: dict[str, list[str]] | None = None
 
 
 AGENTS: dict[str, AgentConfig] = {
@@ -39,50 +40,54 @@ AGENTS: dict[str, AgentConfig] = {
         phase=2,
         prompt_template="recon",
         deliverable_file="02_recon.md",
-        tools=["graph", "recon", "deliverable"],
+        tools=["graph", "recon", "deliverable", "skill"],
         prerequisites=["graph_analysis"],
         validator="markdown_with_sections",
         max_turns=30,
         user_message="Run network reconnaissance on the lab based on the Phase 1 analysis.",
         description="nmap scan, service discovery, compare with YAML model",
+        skill_filter={"tags": ["mqtt", "ssh", "http", "lorawan", "zigbee", "router"]},
     ),
     "vuln_analysis": AgentConfig(
         name="vuln_analysis",
         phase=3,
         prompt_template="vuln_analysis",
         deliverable_file="03_vuln_analysis.json",
-        tools=["graph", "recon", "deliverable"],
+        tools=["graph", "recon", "deliverable", "skill"],
         prerequisites=["recon"],
         validator="json_vuln_queue",
         max_turns=10,
         user_message="Aggregate vulnerability results from device sub-agents into a unified deliverable.",
         description="Aggregate per-device vuln results into unified queue",
         has_device_agents=True,
+        skill_filter={"tags": ["mqtt", "ssh", "http", "firmware", "lorawan", "zigbee", "router"]},
     ),
     "exploitation": AgentConfig(
         name="exploitation",
         phase=4,
         prompt_template="exploitation",
-        deliverable_file="04_exploitation.md",
-        tools=["recon", "deliverable"],
+        deliverable_file="04_exploitation.json",
+        tools=["recon", "deliverable", "skill"],
         prerequisites=["vuln_analysis"],
-        validator="markdown_with_sections",
+        validator="json_exploitation",
         max_turns=20,
         user_message="Execute safe exploitation tests on the vulnerability queue.",
         conditional="03_vuln_analysis.json",
         description="Safe exploitation: MQTT no-auth, default creds check",
+        skill_filter={"tags": ["mqtt", "ssh", "http", "firmware"]},
     ),
     "report": AgentConfig(
         name="report",
         phase=5,
         prompt_template="report",
         deliverable_file="05_report.md",
-        tools=["graph", "deliverable"],
+        tools=["graph", "deliverable", "skill"],
         prerequisites=[],
         validator="markdown_with_sections",
         max_turns=15,
         max_tokens=16384,
         user_message="Compile the final pentest report from all previous deliverables.",
         description="Compile all findings into structured report",
+        skill_filter={"tags": ["report", "methodology"]},
     ),
 }

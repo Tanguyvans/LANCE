@@ -207,11 +207,11 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 9
+        assert len(tools) == 11
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
-        expected_sw = {"nmap_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup"}
+        expected_sw = {"nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup"}
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
         assert names == expected_sw | expected_hw
 

@@ -1,0 +1,8 @@
+name: "arp_scan"
+command: "bash"
+args: ["scripts/arp_scan.sh"]
+enabled: true
+timeout: 60
+short_description: "ARP table discovery (Layer 2)"
+description: "Ping-sweep the subnet then dump the ARP table. Finds ALL active devices on the LAN (Layer 2), including those blocking ICMP/TCP probes. Returns IP and MAC address for every host. Use this as the PRIMARY discovery tool."
+parameters: []

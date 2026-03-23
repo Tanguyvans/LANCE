@@ -130,17 +130,31 @@ class LLMProvider:
             # Add assistant message (with all content blocks)
             messages.append({"role": "assistant", "content": response.content})
 
-            # Execute each tool call and collect results
-            tool_results = []
-            for tc in tool_calls:
-                result = self._execute_tool(tc.name, tc.input, tool_map)
-                tool_results.append(
-                    {
+            # Execute tool calls in parallel when multiple are requested
+            if len(tool_calls) > 1:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                futures = {}
+                with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
+                    for tc in tool_calls:
+                        f = pool.submit(self._execute_tool, tc.name, tc.input, tool_map)
+                        futures[f] = tc
+                tool_results = []
+                for tc in tool_calls:
+                    f = next(f for f, t in futures.items() if t is tc)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tc.id,
+                        "content": f.result(),
+                    })
+            else:
+                tool_results = []
+                for tc in tool_calls:
+                    result = self._execute_tool(tc.name, tc.input, tool_map)
+                    tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
                         "content": result,
-                    }
-                )
+                    })
             messages.append({"role": "user", "content": tool_results})
 
         return "(max turns reached)"
@@ -196,21 +210,39 @@ class LLMProvider:
             # Add assistant message
             messages.append(message)
 
-            # Execute each tool call
+            # Parse tool call arguments
+            parsed_calls = []
             for tc in message.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except json.JSONDecodeError:
                     log.warning("Bad JSON from LLM for %s: %s", tc.function.name, tc.function.arguments[:200])
                     args = {}
-                result = self._execute_tool(tc.function.name, args, tool_map)
-                messages.append(
-                    {
+                parsed_calls.append((tc, args))
+
+            # Execute tool calls in parallel when multiple are requested
+            if len(parsed_calls) > 1:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=min(len(parsed_calls), 8)) as pool:
+                    futures = {
+                        pool.submit(self._execute_tool, tc.function.name, args, tool_map): tc
+                        for tc, args in parsed_calls
+                    }
+                for tc, args in parsed_calls:
+                    f = next(f for f, t in futures.items() if t is tc)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": f.result(),
+                    })
+            else:
+                for tc, args in parsed_calls:
+                    result = self._execute_tool(tc.function.name, args, tool_map)
+                    messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
                         "content": result,
-                    }
-                )
+                    })
 
         return "(max turns reached)"
 

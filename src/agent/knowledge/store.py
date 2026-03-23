@@ -162,7 +162,9 @@ def get_or_fetch(
 
     ingest(collection_name, documents=documents, ids=ids, metadatas=metadatas)
 
-    return search(collection_name, query, top_k=top_k, threshold=threshold)
+    # Re-search without threshold: we just ingested live results,
+    # so we trust the top-k are relevant even if similarity is low
+    return search(collection_name, query, top_k=top_k, threshold=0.0)
 
 
 def collection_stats(collection_name: str) -> dict[str, Any]:

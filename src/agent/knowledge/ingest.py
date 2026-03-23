@@ -7,7 +7,9 @@ Supports:
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -168,6 +170,89 @@ def _chunk_by_sections(content: str, max_chunk_size: int = 512) -> list[str]:
             final_chunks.append(chunk)
 
     return final_chunks
+
+
+def ingest_run_findings(run_dir: Path, model: str) -> int:
+    """Ingest findings from a pipeline run into the run_history collection.
+
+    Reads Phase 3 (03_vuln_analysis.json) and Phase 4 (04_exploitation.json),
+    creates one document per finding with metadata for episodic memory.
+    """
+    documents = []
+    metadatas = []
+    ids = []
+
+    run_date = datetime.now().isoformat()
+    run_id = run_dir.name  # timestamp directory name
+
+    # Parse Phase 3 vulnerabilities
+    vuln_path = run_dir / "03_vuln_analysis.json"
+    phase3_vulns: dict[str, dict] = {}
+    if vuln_path.exists():
+        try:
+            data = json.loads(vuln_path.read_text(encoding="utf-8"))
+            for vuln in data.get("vulnerabilities", []):
+                vuln_id = vuln.get("id", vuln.get("vuln_id", ""))
+                if vuln_id:
+                    phase3_vulns[vuln_id] = vuln
+        except (json.JSONDecodeError, KeyError) as e:
+            log.warning("Failed to parse Phase 3 vulns: %s", e)
+
+    # Parse Phase 4 exploitation tests
+    exploit_path = run_dir / "04_exploitation.json"
+    phase4_tests: dict[str, dict] = {}
+    if exploit_path.exists():
+        try:
+            data = json.loads(exploit_path.read_text(encoding="utf-8"))
+            for test in data.get("tests", []):
+                vuln_id = test.get("vuln_id", "")
+                if vuln_id:
+                    phase4_tests[vuln_id] = test
+        except (json.JSONDecodeError, KeyError) as e:
+            log.warning("Failed to parse Phase 4 tests: %s", e)
+
+    # Merge: start from Phase 3 vulns, enrich with Phase 4 results
+    all_vuln_ids = sorted(set(phase3_vulns.keys()) | set(phase4_tests.keys()))
+
+    for vuln_id in all_vuln_ids:
+        vuln = phase3_vulns.get(vuln_id, {})
+        test = phase4_tests.get(vuln_id, {})
+
+        device_id = test.get("device_id", vuln.get("device_id", "unknown"))
+        status = test.get("status", "UNTESTED")
+        vuln_type = test.get("vuln_type", vuln.get("type", "unknown"))
+        severity = vuln.get("severity", "UNKNOWN")
+        evidence = test.get("evidence", "")
+        description = test.get("description", vuln.get("description", ""))
+
+        doc = (
+            f"[{vuln_id}] {vuln_type} on {device_id}: {description}. "
+            f"Status: {status}. Severity: {severity}."
+        )
+        if evidence:
+            doc += f" Evidence: {evidence[:200]}"
+
+        documents.append(doc)
+        metadatas.append({
+            "vuln_id": vuln_id,
+            "device_id": device_id,
+            "status": status,
+            "vuln_type": vuln_type,
+            "severity": severity,
+            "phase": "merged",
+            "run_date": run_date,
+            "run_id": run_id,
+            "model": model,
+        })
+        ids.append(f"run_{run_id}_{vuln_id}")
+
+    if not documents:
+        log.info("No findings to ingest from run %s", run_id)
+        return 0
+
+    count = ingest("run_history", documents=documents, metadatas=metadatas, ids=ids)
+    log.info("Ingested %d findings into run_history from run %s", count, run_id)
+    return count
 
 
 def ingest_all() -> dict[str, int]:

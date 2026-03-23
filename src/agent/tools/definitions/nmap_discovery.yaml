@@ -1,0 +1,13 @@
+name: "nmap_discovery"
+command: "nmap"
+args: ["-sn"]
+enabled: true
+timeout: 30
+short_description: "Host discovery (ping scan)"
+description: "Run an nmap ping scan (-sn) to discover live hosts on a subnet. No port scanning — only detects which IPs are up. Much faster than nmap_scan for subnet-wide discovery. Use this FIRST to find all hosts, then use nmap_scan on specific IPs for service detection."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target subnet (e.g. '192.168.88.0/24') or IP range"
+    required: true
+    format: "positional"

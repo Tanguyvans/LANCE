@@ -29,8 +29,10 @@ def validate_markdown_with_sections(filename: str) -> tuple[bool, str]:
     return True, "OK"
 
 
-def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
-    """Check JSON file is valid and has a 'vulnerabilities' key."""
+def _validate_json_with_key(
+    filename: str, key: str, expect_list: bool = False
+) -> tuple[bool, str]:
+    """Check JSON file is valid and contains a required key."""
     ok, msg = validate_default(filename)
     if not ok:
         return ok, msg
@@ -39,13 +41,26 @@ def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
         data = json.loads(content)
     except json.JSONDecodeError as e:
         return False, f"Invalid JSON: {e}"
-    if "vulnerabilities" not in data:
-        return False, "Missing 'vulnerabilities' key"
+    if key not in data:
+        return False, f"Missing '{key}' key"
+    if expect_list and not isinstance(data[key], list):
+        return False, f"'{key}' must be an array"
     return True, "OK"
+
+
+def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
+    """Check JSON file is valid and has a 'vulnerabilities' list."""
+    return _validate_json_with_key(filename, "vulnerabilities", expect_list=True)
+
+
+def validate_json_exploitation(filename: str) -> tuple[bool, str]:
+    """Check JSON file is valid and has a 'tests' array."""
+    return _validate_json_with_key(filename, "tests", expect_list=True)
 
 
 VALIDATORS = {
     "default": validate_default,
     "markdown_with_sections": validate_markdown_with_sections,
     "json_vuln_queue": validate_json_vuln_queue,
+    "json_exploitation": validate_json_exploitation,
 }

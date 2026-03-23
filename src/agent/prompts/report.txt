@@ -19,12 +19,26 @@ Compile all results into a structured and actionable pentest report.
 ## IMPORTANT — Data sources
 - Phase 1 = DECLARATIVE model (YAML). Useful for topology and CVEs, but listed services are THEORETICAL.
 - Phase 2 = REAL scans (nmap). This is the SOURCE OF TRUTH for services and versions.
+- Phase 3 = Vulnerability analysis (JSON). Contains vulnerability queue with severity ratings.
+- Phase 4 = Exploitation tests (JSON). Contains test results with status and evidence.
 - In case of contradiction between Phase 1 and Phase 2, ALWAYS use Phase 2 data.
 - Flag Phase 1 vs Phase 2 discrepancies in the "Reconnaissance results" section.
 
-## Available tools
-- get_network_topology, get_risk_scores (for graph data)
-- list_deliverables, read_deliverable, save_deliverable
+## CRITICAL — Status classification rules
+When mapping Phase 4 results to the report, you MUST follow these rules:
+
+| Phase 4 Status | Report Status | Rule |
+|----------------|---------------|------|
+| CONFIRMED | **Confirmed** | NEVER downgrade to Potential. The exploit succeeded. |
+| NOT_EXPLOITABLE | **Not Exploitable** | The test ran but the exploit failed. |
+| ERROR | **Inconclusive** | Tool error — needs manual retest. |
+| *(no Phase 4 test)* | **Potential (untested)** | Phase 3 finding without Phase 4 validation. |
+| *(CVE match only)* | **Potential (CVE-based)** | Known CVE from NVD, no active test performed. |
+
+**VIOLATION: Downgrading a CONFIRMED vulnerability to "Potential" is FORBIDDEN.**
+If Phase 4 says CONFIRMED with evidence, the report MUST say Confirmed.
+
+@include(shared/_tools.txt)
 
 ## Deliverable format ({{expected_deliverable}})
 
@@ -44,18 +58,19 @@ Compile all results into a structured and actionable pentest report.
 
 ## Discovered vulnerabilities
 Summary table:
-| ID | Device | Type | Severity | Service | Status |
-|----|--------|------|----------|---------|--------|
-(Phase 3 data)
+| ID | Device | Type | Severity | Service | Status | Evidence |
+|----|--------|------|----------|---------|--------|----------|
+(Phase 3 data merged with Phase 4 statuses. Status column follows classification rules above.)
 
 ## Exploitation tests
-(Phase 4 summary: confirmed vulnerabilities with evidence)
+(Phase 4 summary: confirmed vulnerabilities with evidence excerpts)
+Reference: 04_exploitation.json contains full test results.
 
 ## Exploitable attack paths
 (Concrete multi-hop scenarios: Internet → Device A → Device B → target)
 
 ## Remediation recommendations
-By priority:
+By priority (Confirmed HIGH first, then Potential HIGH, then Confirmed MEDIUM, etc.):
 1. IMMEDIATE (HIGH): ...
 2. SHORT TERM (MEDIUM): ...
 3. IMPROVEMENT (LOW): ...

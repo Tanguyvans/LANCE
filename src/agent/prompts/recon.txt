@@ -15,35 +15,68 @@ Active network reconnaissance: scan the real subnet and COMPARE with the declara
 Your results are the SOURCE OF TRUTH for all subsequent phases (not the YAML model).
 
 ## Methodology
-1. Read the Phase 1 deliverable: read_deliverable("01_graph_analysis.md") — this is the THEORETICAL model to validate
-2. Check the DECLARED attack surface from the graph: get_attack_surface()
-3. Run an nmap scan on subnet 192.168.88.0/24 to discover ACTUALLY open services
-4. For each device in the attack surface, run a targeted nmap scan with expected ports
-5. SYSTEMATICALLY compare nmap results with the graph model:
-   - Service present in nmap but absent from model → **new_service** (discovery)
-   - Service absent from nmap but present in model → **missing_service** (filtered or closed port)
-   - Different version between nmap and model → **version_mismatch** (update or YAML error)
-6. Document unreachable devices (timeout, filtering)
-7. CLEARLY flag discrepancies: this is the key value of this phase
+
+### Step 1 — FULL SUBNET DISCOVERY (do this FIRST, before anything else)
+Run BOTH of these in parallel as your FIRST tool calls:
+1. arp_scan() — Layer 2 ARP table: finds ALL devices on the LAN, even those blocking ICMP/TCP. This is the most complete discovery method.
+2. nmap_discovery(target="192.168.88.0/24") — ping scan as backup
+
+Merge results: any IP in EITHER scan is a live host.
+Filter to 192.168.88.x IPs only. Deduplicate by IP. Note the MAC addresses from ARP for device identification.
+
+### Step 2 — Read the theoretical model
+- read_deliverable("01_graph_analysis.md")
+- get_attack_surface()
+Build a list of YAML-declared devices with their expected IPs and services.
+
+### Step 3 — Targeted service scans per device
+Call nmap_scan on each live IP individually. Call ALL scans in a SINGLE turn so they run in parallel.
+Example — call all of these at once in one response:
+  - nmap_scan(target="192.168.88.1")
+  - nmap_scan(target="192.168.88.202")
+  - nmap_scan(target="192.168.88.207")
+  - nmap_scan(target="192.168.88.247", ports="22,1883,8080")
+  - nmap_scan(target="192.168.88.253")
+DO NOT wait for one scan to finish before starting the next.
+DO NOT put multiple IPs in one target string — use separate tool calls.
+
+### Step 4 — Compare subnet scan results vs YAML model
+For EVERY IP found in Step 1:
+- If the IP matches a YAML device → compare ports/services (new_service, missing_service, version_mismatch)
+- If the IP does NOT match any YAML device → it is an **undocumented_device** (shadow IT)
+For EVERY device in YAML:
+- If not found in Step 1 → it is **unreachable** (filtered, offline, or wrong IP)
+
+### Step 5 — Document everything and save deliverable
 
 ## Deliverable format ({{expected_deliverable}})
 
 ## Summary
-(Number of devices scanned, services found, discrepancies detected)
+(Total live hosts found on subnet, devices from model, undocumented devices, discrepancies)
+
+## Subnet discovery results
+(Full list of IPs that responded to the subnet scan — this is the ground truth)
 
 ## Discovered services per device (NETWORK REALITY)
-(For each device: IP, ACTUALLY open ports, versions detected by nmap)
+(For each KNOWN device: IP, ACTUALLY open ports, versions detected by nmap)
+
+## Undocumented devices (discovered but not in YAML model)
+(Hosts found by subnet scan that are NOT in the YAML topology)
+For each: IP, MAC address if available, open ports, best guess of device type.
+IMPORTANT: any IP responding to nmap that has no matching device in the model MUST be listed here.
+A count of 0 undocumented devices is suspicious on an IoT network — double-check.
 
 ## YAML model vs reality discrepancies
 (EXHAUSTIVE table: device | discrepancy type | YAML value | nmap value | security impact)
 IMPORTANT: list ALL discrepancies, including ports declared in YAML but filtered/closed in reality.
 
 ## Unreachable devices
-(List of timed-out devices with hypotheses)
+(YAML devices not found in subnet scan, with hypotheses)
 
 ## Recommendations for Phase 3
 (Which services to test first, based on REAL results — not the YAML model)
 
 ## Completion criteria
 You are done when you have called save_deliverable("{{expected_deliverable}}", full_content).
+The deliverable MUST contain the subnet discovery results and the undocumented devices section.
 DO NOT finish without saving the deliverable.

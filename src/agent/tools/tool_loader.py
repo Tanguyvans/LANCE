@@ -89,7 +89,11 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             fmt = param.get("format", "positional")
 
             if fmt == "positional":
-                positional_values.append(str(value))
+                # Split on commas/spaces so multi-target strings
+                # (e.g. "192.168.88.1,192.168.88.2") become separate args
+                raw = str(value)
+                parts = raw.replace(",", " ").split()
+                positional_values.extend(parts)
             elif fmt == "flag":
                 flag = param["flag"]
                 cmd.extend([flag, str(value)])

@@ -58,7 +58,7 @@ class TestAgentsRegistry:
             )
 
     def test_tool_groups_valid(self):
-        valid_groups = {"graph", "recon", "deliverable"}
+        valid_groups = {"graph", "recon", "deliverable", "skill"}
         for config in AGENTS.values():
             for tool in config.tools:
                 assert tool in valid_groups, (

@@ -45,12 +45,37 @@ def _parse_skill_file(path: Path) -> dict[str, Any]:
     return {"meta": meta, "content": content}
 
 
+# ── Active skill filter (set by pipeline per phase) ─────────────
+
+_active_filter_tags: set[str] | None = None
+
+
+def set_skill_filter(tags: list[str] | None) -> None:
+    """Set the active skill filter (called by pipeline before each phase).
+
+    When set, list_skills() and load_skill() only expose skills
+    whose tags intersect with the filter. Pass None to clear.
+    """
+    global _active_filter_tags
+    _active_filter_tags = set(tags) if tags else None
+
+
+def _skill_matches_filter(skill_tags: list[str]) -> bool:
+    """Check if a skill's tags pass the active filter."""
+    if _active_filter_tags is None:
+        return True
+    return bool(set(skill_tags) & _active_filter_tags)
+
+
 # ── Skill functions ──────────────────────────────────────────────
 
-def list_skills() -> str:
-    """List available IoT security skills with metadata."""
+def get_skills_metadata() -> list[dict]:
+    """Return skill metadata as Python objects (internal API).
+
+    Not affected by the active filter — returns all skills.
+    """
     if not SKILLS_DIR.exists():
-        return json.dumps({"error": "Skills directory not found"})
+        return []
 
     skills = []
     for md_file in sorted(SKILLS_DIR.glob("*.md")):
@@ -66,37 +91,79 @@ def list_skills() -> str:
             "file": md_file.name,
         })
 
+    return skills
+
+
+def list_skills() -> str:
+    """List available IoT security skills with metadata.
+
+    Respects the active skill filter set by the pipeline.
+    """
+    skills = [s for s in get_skills_metadata() if _skill_matches_filter(s["tags"])]
+    if not skills and not SKILLS_DIR.exists():
+        return json.dumps({"error": "Skills directory not found"})
     return json.dumps(skills, ensure_ascii=False)
 
 
 def load_skill(skill_name: str) -> str:
-    """Load a full skill document by name, including metadata."""
+    """Load a full skill document by name, including metadata.
+
+    Respects the active skill filter — blocks loading skills outside the filter.
+    """
     md_path = SKILLS_DIR / f"{skill_name}.md"
     if not md_path.exists():
-        available = [f.stem for f in SKILLS_DIR.glob("*.md")]
+        available = [s["name"] for s in get_skills_metadata() if _skill_matches_filter(s["tags"])]
         return json.dumps({
             "error": f"Skill '{skill_name}' not found",
             "available": available,
         })
 
     parsed = _parse_skill_file(md_path)
+    meta = parsed["meta"]
+
+    # Hard filter: block loading skills outside the active filter
+    if not _skill_matches_filter(meta.get("tags", [])):
+        available = [s["name"] for s in get_skills_metadata() if _skill_matches_filter(s["tags"])]
+        return json.dumps({
+            "error": f"Skill '{skill_name}' is not available for this phase",
+            "available": available,
+        })
+
     return json.dumps({
         "skill": skill_name,
-        "meta": parsed["meta"],
+        "meta": meta,
         "content": parsed["content"],
     }, ensure_ascii=False)
 
 
 # ── Knowledge search functions ───────────────────────────────────
 
-def search_knowledge(query: str, collection: str = "cve_knowledge", top_k: int = 5) -> str:
+def search_knowledge(
+    query: str,
+    collection: str = "cve_knowledge",
+    top_k: int = 5,
+    where: dict | None = None,
+) -> str:
     """Semantic search across knowledge store collections.
 
-    Collections: cve_knowledge, skills
+    Collections: cve_knowledge, skills, run_history
+    When searching 'skills', results are filtered by the active skill filter.
     """
     try:
         from src.agent.knowledge.store import search
-        results = search(collection, query, top_k=top_k)
+        results = search(collection, query, top_k=top_k, where=where)
+
+        # Hard filter: when searching skills, only return chunks from allowed skills
+        if collection == "skills" and _active_filter_tags is not None:
+            allowed_names = {
+                s["name"] for s in get_skills_metadata()
+                if _skill_matches_filter(s["tags"])
+            }
+            results = [
+                r for r in results
+                if r.get("metadata", {}).get("skill_name") in allowed_names
+            ]
+
         return json.dumps(results, ensure_ascii=False)
     except Exception as e:
         log.error("Knowledge search failed: %s", e)
@@ -139,6 +206,17 @@ def cve_search(query: str, top_k: int = 5) -> str:
     except Exception as e:
         log.error("CVE search failed: %s", e)
         return json.dumps({"error": str(e)})
+
+
+# ── Run history search ──────────────────────────────────────────
+
+def search_history(query: str, device_id: str | None = None, top_k: int = 5) -> str:
+    """Search previous run findings for a device or vulnerability type.
+
+    Delegates to search_knowledge with run_history collection and optional device filter.
+    """
+    where = {"device_id": device_id} if device_id else None
+    return search_knowledge(query, collection="run_history", top_k=top_k, where=where)
 
 
 # ── Tool definitions (for the provider) ──────────────────────────
@@ -209,5 +287,29 @@ SKILL_TOOLS = [
             "required": ["query"],
         },
         "function": cve_search,
+    },
+    {
+        "name": "search_history",
+        "description": "Search previous pipeline run findings. Returns past vulnerability test results for a device or vulnerability type. Useful to avoid re-testing known issues or to compare results across runs.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language query (e.g. 'MQTT anonymous access on rpi5', 'SSH weak ciphers')",
+                },
+                "device_id": {
+                    "type": "string",
+                    "description": "Optional device ID to filter results (e.g. 'rpi5', 'mikrotik')",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of results to return (default: 5)",
+                    "default": 5,
+                },
+            },
+            "required": ["query"],
+        },
+        "function": search_history,
     },
 ]
