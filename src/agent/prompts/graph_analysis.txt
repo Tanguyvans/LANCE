@@ -20,30 +20,14 @@ Your role is to produce a theoretical mapping and a scan plan for Phase 2 (activ
 5. For each high-risk device, retrieve details with get_device_info
 
 ## Deliverable format ({{expected_deliverable}})
-Structured markdown with the following sections:
+You MUST use this EXACT template structure. Fill in all tables and sections with real data.
+Do NOT reorganize, merge, or skip sections. Keep all headers and table formats as-is.
 
-## Executive summary
-(3-5 lines: number of DECLARED devices, THEORETICAL attack surface, ESTIMATED main risk)
-
-## Network topology (declarative model)
-(Description of segments, role of each device type — from YAML, to be validated in Phase 2)
-
-## Theoretical attack surface
-(Table of devices DECLARED as exposing services — to be confirmed by nmap in Phase 2)
-
-## Critical attack paths (graph analysis)
-(Top 5 multi-hop paths with exploitability score — based on known CVEs)
-
-## Pivot nodes
-(High-centrality devices that enable lateral movement)
-
-## Risk scores
-(Ranking by descending score — theoretical scores based on CVEs + centrality)
-
-## Scan plan for Phase 2
-(Which devices to scan first, which ports to check, which discrepancies to anticipate.
-Phase 2 will determine which services are ACTUALLY open vs declared.)
+```markdown
+{{deliverable_template}}
+```
 
 ## Completion criteria
 You are done when you have called save_deliverable("{{expected_deliverable}}", full_content).
+The deliverable MUST follow the template structure with all 7 sections.
 DO NOT finish without saving the deliverable.

@@ -139,6 +139,14 @@ class Pipeline:
         variables["expected_deliverable"] = config.deliverable_file
         variables["available_skills"] = self._filter_skills(config)
 
+        # Inject deliverable template if one exists
+        template_path = Path(__file__).parent / "templates" / config.deliverable_file
+        if template_path.exists():
+            template = template_path.read_text(encoding="utf-8")
+            template = template.replace("{{run_date}}", self.run_dir.name)
+            template = template.replace("{{model}}", self.provider.model)
+            variables["deliverable_template"] = template
+
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
 
