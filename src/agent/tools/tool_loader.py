@@ -97,6 +97,10 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             elif fmt == "flag":
                 flag = param["flag"]
                 cmd.extend([flag, str(value)])
+            elif fmt == "boolean_flag":
+                if value:
+                    flag = param["flag"]
+                    cmd.append(flag)
             elif fmt == "port_suffix":
                 if positional_values:
                     positional_values[-1] = f"{positional_values[-1]}:{value}"

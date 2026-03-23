@@ -38,13 +38,17 @@ Call BOTH in a single turn:
 - get_attack_surface()
 
 ## Step 3 — Service scans (call ALL in a single turn for parallel execution)
-For EVERY IP found in Step 1, call nmap_scan(target="<single_IP>").
-Launch all scans at once — one tool call per IP.
+For EVERY IP found in Step 1, call nmap_scan with IoT-relevant ports.
+- For Raspberry Pi / gateways: nmap_scan(target="<IP>", ports="22,80,443,1883,3000,8080,8083,8086,9090", skip_discovery=true)
+- For ESP32 / sensors: nmap_scan(target="<IP>", ports="22,80,443,1883,5683,8080", skip_discovery=true)
+- For YAML-known devices: nmap_scan(target="<IP>") with default ports is fine
+- Always use skip_discovery=true for undocumented devices (they often block ICMP)
+Launch ALL scans in a single turn — one tool call per IP.
 
 ## Step 4 — Deep scans on interesting services
 For devices with SSH: ssh_audit(host)
 For devices with HTTP: curl_headers(url)
-For devices with MQTT: mqtt_listen(broker, topic="#", count=5, timeout=5)
+For devices with MQTT (port 1883): mqtt_listen(broker, topic="#", count=5, timeout=5)
 
 ## Step 5 — Compare and document
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.

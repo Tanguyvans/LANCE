@@ -26,7 +26,7 @@ class TestLoadToolYaml:
         assert data["name"] == "nmap_scan"
         assert data["command"] == "nmap"
         assert data["enabled"] is True
-        assert len(data["parameters"]) == 2
+        assert len(data["parameters"]) == 3
 
     def test_load_ssh_audit(self):
         data = load_tool_yaml(DEFINITIONS_DIR / "ssh_audit.yaml")

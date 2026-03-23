@@ -4,7 +4,7 @@ args: ["-sV"]
 enabled: true
 timeout: 300
 short_description: "Network port and service scanner"
-description: "Run an nmap service version scan (-sV) on a target IP or subnet. Returns open ports, services, and versions."
+description: "Run an nmap service version scan (-sV) on a target IP or subnet. Returns open ports, services, and versions. If a host was found by ARP but nmap says 'Host seems down', retry with skip_discovery=true to force scanning."
 parameters:
   - name: "target"
     type: "string"
@@ -17,3 +17,9 @@ parameters:
     required: false
     flag: "-p"
     format: "flag"
+  - name: "skip_discovery"
+    type: "boolean"
+    description: "Skip host discovery (-Pn). Use when ARP confirms the host is up but nmap says 'Host seems down'."
+    required: false
+    flag: "-Pn"
+    format: "boolean_flag"
