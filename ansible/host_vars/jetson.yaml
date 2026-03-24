@@ -1,0 +1,3 @@
+# Variables spécifiques au Jetson Orin Nano (Edge AI)
+host_firewall_rules: []
+# Seul SSH est nécessaire (port 22, déjà dans les règles par défaut)

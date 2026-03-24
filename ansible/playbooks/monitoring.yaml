@@ -1,0 +1,99 @@
+# monitoring.yaml - Déploiement du monitoring sur les hosts Linux
+# Usage: ansible-playbook playbooks/monitoring.yaml
+#
+# Ce que fait ce playbook :
+# - Installe et configure fail2ban (protection brute-force SSH)
+# - Configure la rotation des logs
+# - Installe un script de vérification de santé réseau
+
+- name: Monitoring & protection sur les hosts Linux
+  hosts: linux_hosts
+  become: true
+
+  vars:
+    fail2ban_ssh_maxretry: 3
+    fail2ban_ssh_bantime: 3600
+    fail2ban_ssh_findtime: 600
+
+  tasks:
+    # ── Fail2ban (anti brute-force) ──
+    - name: Installer fail2ban
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+        update_cache: true
+      tags: [install, fail2ban]
+
+    - name: Configurer fail2ban pour SSH
+      ansible.builtin.copy:
+        content: |
+          # Fail2ban - Protection SSH
+          # Généré par Ansible
+          [sshd]
+          enabled = true
+          port = ssh
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = {{ fail2ban_ssh_maxretry }}
+          bantime = {{ fail2ban_ssh_bantime }}
+          findtime = {{ fail2ban_ssh_findtime }}
+          action = %(action_)s
+        dest: /etc/fail2ban/jail.local
+        mode: "0644"
+      notify: restart fail2ban
+      tags: [config, fail2ban]
+
+    - name: Activer et démarrer fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true
+      tags: [fail2ban]
+
+    # ── Script de health check ──
+    - name: Déployer le script de health check réseau
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # health_check.sh - Vérifie la connectivité du lab IoT
+          # Généré par Ansible
+
+          LOG="/var/log/nato-lab-health.log"
+          TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+
+          declare -A HOSTS=(
+            ["mikrotik"]="192.168.88.1"
+            ["rpi5"]="192.168.88.247"
+            ["iot_hub"]="192.168.88.231"
+            ["wisgate"]="192.168.88.238"
+            ["jetson"]="192.168.88.248"
+            ["nvr"]="192.168.88.253"
+            ["eap613"]="192.168.88.251"
+            ["cam_turret"]="192.168.88.230"
+          )
+
+          echo "[$TIMESTAMP] === Health Check ===" >> "$LOG"
+          for name in "${!HOSTS[@]}"; do
+            ip="${HOSTS[$name]}"
+            if ping -c 1 -W 2 "$ip" &>/dev/null; then
+              echo "[$TIMESTAMP] OK   $name ($ip)" >> "$LOG"
+            else
+              echo "[$TIMESTAMP] FAIL $name ($ip)" >> "$LOG"
+            fi
+          done
+        dest: /usr/local/bin/health_check.sh
+        mode: "0755"
+      tags: [monitoring]
+
+    - name: Planifier le health check toutes les 5 minutes
+      ansible.builtin.cron:
+        name: "NATO Lab Health Check"
+        minute: "*/5"
+        job: "/usr/local/bin/health_check.sh"
+      tags: [monitoring, cron]
+
+  handlers:
+    - name: restart fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted

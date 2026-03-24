@@ -1,0 +1,67 @@
+# firewall.yaml - Configuration du firewall sur les hosts Linux
+# Usage: ansible-playbook playbooks/firewall.yaml
+#
+# Ce que fait ce playbook :
+# - Installe ufw (Uncomplicated Firewall)
+# - Politique par défaut : deny incoming, allow outgoing
+# - Ouvre uniquement les ports nécessaires par device
+# - Active le firewall
+
+- name: Configuration firewall (ufw) sur les hosts Linux
+  hosts: linux_hosts
+  become: true
+
+  vars:
+    # Ports ouverts par défaut pour tous les hosts
+    firewall_default_rules:
+      - { port: 22, proto: tcp, comment: "SSH" }
+
+    # Ports additionnels par host (définis dans host_vars ou ici)
+    firewall_extra_rules: "{{ host_firewall_rules | default([]) }}"
+
+  tasks:
+    - name: Installer ufw
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+      tags: [install]
+
+    - name: Politique par défaut - refuser les connexions entrantes
+      community.general.ufw:
+        direction: incoming
+        default: deny
+      tags: [config]
+
+    - name: Politique par défaut - autoriser les connexions sortantes
+      community.general.ufw:
+        direction: outgoing
+        default: allow
+      tags: [config]
+
+    - name: Autoriser les ports par défaut
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+        src: "192.168.88.0/24"
+      loop: "{{ firewall_default_rules }}"
+      tags: [rules]
+
+    - name: Autoriser les ports spécifiques au device
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        comment: "{{ item.comment }}"
+        src: "{{ item.src | default('192.168.88.0/24') }}"
+      loop: "{{ firewall_extra_rules }}"
+      when: firewall_extra_rules | length > 0
+      tags: [rules]
+
+    - name: Activer ufw
+      community.general.ufw:
+        state: enabled
+        logging: "on"
+      tags: [enable]

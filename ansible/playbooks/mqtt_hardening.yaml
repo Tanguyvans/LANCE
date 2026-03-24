@@ -1,0 +1,139 @@
+# mqtt_hardening.yaml - Sécurisation du broker MQTT Mosquitto
+# Usage: ansible-playbook playbooks/mqtt_hardening.yaml
+#
+# Ce que fait ce playbook :
+# - Active l'authentification MQTT (user/password)
+# - Désactive les connexions anonymes
+# - Configure les ACL (qui peut publier/souscrire à quoi)
+# - Active TLS (optionnel)
+# - Restreint le listener au réseau local
+# - Restart Mosquitto
+
+- name: Sécurisation MQTT Mosquitto
+  hosts: mqtt_devices
+  become: true
+
+  vars:
+    mosquitto_conf_dir: /etc/mosquitto
+    mosquitto_data_dir: /var/lib/mosquitto
+    mqtt_port: 1883
+    mqtt_tls_port: 8883
+    mqtt_enable_tls: false
+    # Utilisateurs MQTT à créer
+    mqtt_users:
+      - username: wisgate
+        password: "{{ vault_mqtt_wisgate_password | default('ChangeMePlease!') }}"
+        acl: "topic readwrite lorawan/#"
+      - username: zigbee2mqtt
+        password: "{{ vault_mqtt_zigbee_password | default('ChangeMePlease!') }}"
+        acl: "topic readwrite zigbee2mqtt/#"
+      - username: monitoring
+        password: "{{ vault_mqtt_monitoring_password | default('ChangeMePlease!') }}"
+        acl: "topic read #"
+
+  tasks:
+    # ── Vérification que Mosquitto est installé ──
+    - name: Vérifier que Mosquitto est installé
+      ansible.builtin.command: mosquitto -h
+      register: mosquitto_check
+      changed_when: false
+      failed_when: false
+      tags: [check]
+
+    - name: Afficher un warning si Mosquitto absent
+      ansible.builtin.debug:
+        msg: "⚠ Mosquitto n'est pas installé sur {{ inventory_hostname }}"
+      when: mosquitto_check.rc != 0 and mosquitto_check.rc != 3
+      tags: [check]
+
+    # ── Configuration principale ──
+    - name: Déployer la configuration Mosquitto sécurisée
+      ansible.builtin.copy:
+        content: |
+          # ── Mosquitto - Configuration sécurisée ──
+          # Généré par Ansible - ne pas éditer manuellement
+
+          # Listener principal - réseau local uniquement
+          listener {{ mqtt_port }} 192.168.88.0
+          protocol mqtt
+
+          # Désactiver les connexions anonymes
+          allow_anonymous false
+
+          # Fichier de mots de passe (hashés)
+          password_file {{ mosquitto_conf_dir }}/passwd
+
+          # ACL - contrôle d'accès par topic
+          acl_file {{ mosquitto_conf_dir }}/acl
+
+          # Persistence des messages
+          persistence true
+          persistence_location {{ mosquitto_data_dir }}/
+
+          # Logging
+          log_dest file /var/log/mosquitto/mosquitto.log
+          log_type all
+          log_timestamp true
+          log_timestamp_format %Y-%m-%dT%H:%M:%S
+
+          # Limites de sécurité
+          max_connections 50
+          max_inflight_messages 20
+          max_queued_messages 1000
+          message_size_limit 65536
+        dest: "{{ mosquitto_conf_dir }}/mosquitto.conf"
+        mode: "0644"
+        backup: true
+      notify: restart mosquitto
+      tags: [config]
+
+    # ── Gestion des utilisateurs MQTT ──
+    - name: Créer le fichier de mots de passe Mosquitto
+      ansible.builtin.shell: |
+        rm -f {{ mosquitto_conf_dir }}/passwd
+        {% for user in mqtt_users %}
+        mosquitto_passwd -b {{ mosquitto_conf_dir }}/passwd {{ user.username }} '{{ user.password }}'
+        {% endfor %}
+      notify: restart mosquitto
+      tags: [users]
+
+    # ── ACL (Access Control Lists) ──
+    - name: Déployer les ACL MQTT
+      ansible.builtin.copy:
+        content: |
+          # ── MQTT ACL - Contrôle d'accès par topic ──
+          # Généré par Ansible
+
+          {% for user in mqtt_users %}
+          user {{ user.username }}
+          {{ user.acl }}
+
+          {% endfor %}
+          # Refuser tout le reste par défaut
+          # (allow_anonymous false + pas de règle = refusé)
+        dest: "{{ mosquitto_conf_dir }}/acl"
+        mode: "0644"
+      notify: restart mosquitto
+      tags: [acl]
+
+    # ── TLS (optionnel) ──
+    - name: Configurer TLS pour MQTT
+      ansible.builtin.blockinfile:
+        path: "{{ mosquitto_conf_dir }}/mosquitto.conf"
+        marker: "# {mark} ANSIBLE MANAGED - TLS"
+        block: |
+          # Listener TLS
+          listener {{ mqtt_tls_port }}
+          cafile /etc/mosquitto/certs/ca.crt
+          certfile /etc/mosquitto/certs/server.crt
+          keyfile /etc/mosquitto/certs/server.key
+          tls_version tlsv1.2
+      when: mqtt_enable_tls
+      notify: restart mosquitto
+      tags: [tls]
+
+  handlers:
+    - name: restart mosquitto
+      ansible.builtin.service:
+        name: mosquitto
+        state: restarted

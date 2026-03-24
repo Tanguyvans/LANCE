@@ -1,0 +1,20 @@
+# site.yaml - Playbook principal : applique TOUT le hardening sur le lab
+# Usage: ansible-playbook playbooks/site.yaml
+#
+# Ce playbook orchestre tous les sous-playbooks dans l'ordre :
+# 1. Hardening SSH sur tous les devices accessibles
+# 2. Sécurisation MQTT (Mosquitto)
+# 3. Règles firewall
+# 4. Monitoring & alertes
+
+- name: "Phase 1 — Hardening SSH"
+  ansible.builtin.import_playbook: ssh_hardening.yaml
+
+- name: "Phase 2 — Sécurisation MQTT"
+  ansible.builtin.import_playbook: mqtt_hardening.yaml
+
+- name: "Phase 3 — Firewall"
+  ansible.builtin.import_playbook: firewall.yaml
+
+- name: "Phase 4 — Monitoring"
+  ansible.builtin.import_playbook: monitoring.yaml
