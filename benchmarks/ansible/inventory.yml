@@ -1,0 +1,38 @@
+# Inventaire Ansible pour le benchmark Proxmox
+# Réseau de management : accès SSH direct sur le nœud Proxmox
+#
+# Avant de lancer :
+#   1. Renseigner ansible_host avec l'IP de votre Proxmox
+#   2. Copier votre clé SSH sur le Proxmox : ssh-copy-id root@<IP>
+#   3. Créer le token API (fait par 00_proxmox_init.yml ou manuellement)
+#   4. Renseigner vault_proxmox_token dans un fichier Ansible Vault
+
+all:
+  hosts:
+    proxmox:
+      ansible_host: 192.168.10.245      # IP Proxmox réseau 192.168.10.0/24
+      ansible_user: root
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
+  vars:
+    # ── Proxmox API (utilisé par les modules community.general.proxmox_kvm) ──
+    proxmox_api_host: "{{ hostvars['proxmox']['ansible_host'] }}"
+    proxmox_api_user: "ansible@pam"
+    proxmox_api_token_id: "benchmark"
+    proxmox_api_token_secret: "{{ vault_proxmox_token }}"   # Ansible Vault
+    proxmox_node: "pve"                 # Nom du nœud Proxmox (vérifier dans l'UI)
+
+    # ── Stockage Proxmox ──
+    proxmox_storage: "local-lvm"        # Stockage des disques VM
+    proxmox_iso_storage: "local"        # Stockage des images/ISOs (local:iso/)
+    proxmox_images_dir: "/var/lib/vz/template/iso"
+
+    # ── Réseau benchmark ──
+    benchmark_bridge: "vmbr1"           # Bridge dédié aux VMs benchmark
+    benchmark_network: "192.168.100.0/24"
+    benchmark_gateway: "192.168.100.1"
+
+    # ── IDs de VM (plage réservée aux templates) ──
+    tpl_debian_vmid: 9000
+    tpl_openwrt_vmid: 9001
+    tpl_nginx_vmid: 9002

@@ -1,0 +1,195 @@
+# 02_config_openwrt.yml — Configuration du template OpenWrt
+# Usage : ansible-playbook -i inventory.yml playbooks/02_config_openwrt.yml --ask-vault-pass
+#
+# Ce que fait ce playbook :
+#   1. Retire l'IP 192.168.100.1 de vmbr1 sur Proxmox (conflit avec OpenWrt LAN)
+#   2. Ajoute une IP temporaire 192.168.1.100/24 sur vmbr1 pour joindre OpenWrt
+#   3. Clone et démarre le template OpenWrt (9001 → 9010)
+#   4. Configure OpenWrt via SSH (LAN=192.168.100.1, SSH WAN autorisé, NAT)
+#   5. Retire l'IP temporaire de vmbr1
+#   6. Arrête la VM, remplace le template 9001 par la version configurée
+#
+# Après ce playbook :
+#   - tpl-openwrt (9001) est configuré avec LAN=192.168.100.1 et SSH WAN activé
+#   - vmbr1 est un bridge pur sans IP sur Proxmox
+#   - OpenWrt est joignable via son IP WAN (DHCP sur 192.168.10.x)
+
+- name: "Étape 1 — Préparer Proxmox"
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    openwrt_tmp_vmid: 9010
+    openwrt_tmp_name: openwrt-config-tmp
+    openwrt_default_lan: "192.168.1.1"
+    openwrt_tmp_proxy_ip: "192.168.1.100"
+
+  tasks:
+
+    - name: Retirer l'IP 192.168.100.1 de vmbr1 dans /etc/network/interfaces
+      ansible.builtin.replace:
+        path: /etc/network/interfaces
+        regexp: |
+          # BEGIN ANSIBLE MANAGED - vmbr1 benchmark
+          auto vmbr1
+          iface vmbr1 inet static
+              address 192\.168\.100\.1/24
+              bridge-ports none
+              bridge-stp off
+              bridge-fd 0
+              # Bridge interne pour les VMs benchmark \(pas de NIC physique\)
+          # END ANSIBLE MANAGED - vmbr1 benchmark
+        replace: |
+          # BEGIN ANSIBLE MANAGED - vmbr1 benchmark
+          auto vmbr1
+          iface vmbr1 inet manual
+              bridge-ports none
+              bridge-stp off
+              bridge-fd 0
+              # Bridge interne pour les VMs benchmark (pas de NIC physique)
+          # END ANSIBLE MANAGED - vmbr1 benchmark
+
+    - name: Appliquer la nouvelle config vmbr1 (sans IP)
+      ansible.builtin.command: ifreload -a
+      changed_when: true
+
+    - name: Supprimer manuellement l'IP résiduelle sur vmbr1 si encore présente
+      ansible.builtin.command: ip addr del 192.168.100.1/24 dev vmbr1
+      failed_when: false
+      changed_when: true
+
+    - name: Ajouter IP temporaire 192.168.1.100 sur vmbr1 pour joindre OpenWrt LAN
+      ansible.builtin.command: ip addr add {{ openwrt_tmp_proxy_ip }}/24 dev vmbr1
+      failed_when: false
+      changed_when: true
+
+    - name: Détruire la VM temporaire 9010 si elle existe déjà (nettoyage)
+      block:
+        - ansible.builtin.command: qm stop {{ openwrt_tmp_vmid }} --skiplock
+          failed_when: false
+        - ansible.builtin.command: qm destroy {{ openwrt_tmp_vmid }} --purge
+          failed_when: false
+
+    - name: Cloner le template OpenWrt vers une VM temporaire (9010)
+      ansible.builtin.command: >-
+        qm clone {{ tpl_openwrt_vmid }} {{ openwrt_tmp_vmid }}
+        --name {{ openwrt_tmp_name }}
+        --full
+
+    - name: Démarrer la VM OpenWrt temporaire
+      ansible.builtin.command: qm start {{ openwrt_tmp_vmid }}
+
+    - name: Attendre que OpenWrt soit prêt (SSH sur 192.168.1.1)
+      ansible.builtin.wait_for:
+        host: "{{ openwrt_default_lan }}"
+        port: 22
+        timeout: 90
+        delay: 15
+
+
+- name: "Étape 2 — Configurer OpenWrt via SSH depuis Proxmox"
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    openwrt_default_lan: "192.168.1.1"
+    openwrt_lan_ip: "192.168.100.1"
+    openwrt_lan_mask: "255.255.255.0"
+
+  tasks:
+
+    - name: Configurer le LAN OpenWrt (192.168.100.1)
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
+        uci set network.lan.ipaddr="{{ openwrt_lan_ip }}"
+        uci set network.lan.netmask="{{ openwrt_lan_mask }}"
+        uci commit network
+        '
+      changed_when: true
+
+    - name: Autoriser SSH sur l'interface WAN
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
+        uci add firewall rule
+        uci set firewall.@rule[-1].name="Allow-SSH-WAN"
+        uci set firewall.@rule[-1].src="wan"
+        uci set firewall.@rule[-1].dest_port="22"
+        uci set firewall.@rule[-1].proto="tcp"
+        uci set firewall.@rule[-1].target="ACCEPT"
+        uci commit firewall
+        '
+      changed_when: true
+
+    - name: Vérifier que le masquerade NAT est actif (devrait l'être par défaut)
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
+        uci show firewall | grep masq
+        '
+      register: masq_check
+      changed_when: false
+      failed_when: false
+
+    - name: Activer le masquerade NAT si absent
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
+        uci set firewall.@zone[1].masq="1"
+        uci commit firewall
+        '
+      when: "'masq=1' not in masq_check.stdout"
+      changed_when: true
+
+    - name: Redémarrer le réseau et le firewall OpenWrt (connexion 192.168.1.1 va couper)
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
+        /etc/init.d/network restart
+        /etc/init.d/firewall restart
+        ' || true
+      changed_when: true
+
+
+- name: "Étape 3 — Finaliser le template sur Proxmox"
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    openwrt_tmp_vmid: 9010
+    openwrt_tmp_proxy_ip: "192.168.1.100"
+    openwrt_lan_ip: "192.168.100.1"
+
+  tasks:
+
+    - name: Retirer l'IP temporaire 192.168.1.100 de vmbr1
+      ansible.builtin.command: ip addr del {{ openwrt_tmp_proxy_ip }}/24 dev vmbr1
+      failed_when: false
+      changed_when: true
+
+    - name: Attendre que OpenWrt soit accessible sur son nouveau LAN (192.168.100.1)
+      ansible.builtin.wait_for:
+        host: "{{ openwrt_lan_ip }}"
+        port: 22
+        timeout: 60
+        delay: 10
+
+    - name: Arrêter la VM OpenWrt configurée
+      ansible.builtin.command: qm stop {{ openwrt_tmp_vmid }}
+
+    - name: Supprimer l'ancien template brut (9001)
+      ansible.builtin.command: qm destroy {{ tpl_openwrt_vmid }} --purge
+
+    - name: Renommer la VM configurée en tpl-openwrt
+      ansible.builtin.command: qm set {{ openwrt_tmp_vmid }} --name tpl-openwrt
+
+    - name: Convertir en template (nouveau 9001)
+      ansible.builtin.command: qm template {{ openwrt_tmp_vmid }}
+
+    - name: Résumé
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════
+          Template OpenWrt configuré :
+            LAN  : 192.168.100.1/24 (vmbr1)
+            WAN  : DHCP (vmbr0, réseau 192.168.10.x)
+            SSH  : autorisé sur WAN
+            NAT  : actif
+          vmbr1 sur Proxmox : bridge pur, sans IP
+          ══════════════════════════════════════════════════════

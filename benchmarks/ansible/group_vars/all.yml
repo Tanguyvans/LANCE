@@ -1,0 +1,30 @@
+# Variables globales du benchmark
+# Les secrets (vault_proxmox_token) sont dans vault.yml (chiffré Ansible Vault)
+
+# ── Proxmox ──
+proxmox_node: "pve"
+proxmox_storage: "local-lvm"
+proxmox_iso_storage: "local"
+proxmox_images_dir: "/var/lib/vz/template/iso"
+
+# ── Réseau ──
+benchmark_bridge: "vmbr1"
+benchmark_network: "192.168.100.0/24"
+benchmark_gateway: "192.168.100.1"
+
+# ── IDs templates ──
+tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
+tpl_openwrt_vmid: 9001   # KVM    — OpenWrt x86-64 (routeur/firewall uniquement)
+
+# ── IDs scénarios (plage 100-199 par scénario) ──
+scenario_vmid_ranges:
+  "1": 100   # S1 Flat       → 100-109
+  "2": 110   # S2 Gateway    → 110-119
+  "3": 120   # S3 NATO Lab   → 120-129
+  "4": 130   # S4 Segmenté   → 130-149
+  "5": 150   # S5 Building   → 150-169
+
+# ── Credentials par défaut injectés dans les VMs (failles F1) ──
+# Ces valeurs sont volontairement faibles : c'est le but du benchmark
+vm_default_user: "pi"
+vm_default_password: "benchmark"   # Remplacé par les failles selon le scénario

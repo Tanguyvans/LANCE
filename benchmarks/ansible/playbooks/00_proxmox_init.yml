@@ -1,0 +1,145 @@
+# 00_proxmox_init.yml — Configuration initiale du nœud Proxmox
+# Usage : ansible-playbook -i inventory.yml playbooks/00_proxmox_init.yml
+#
+# Ce que fait ce playbook :
+#   1. Passe le repo sur no-subscription (évite l'erreur apt enterprise)
+#   2. Met à jour les paquets
+#   3. Crée le bridge vmbr1 dédié aux VMs benchmark
+#   4. Crée l'utilisateur et le token API pour Ansible
+#   5. Installe les dépendances Python nécessaires aux modules proxmox
+
+- name: Initialisation du nœud Proxmox
+  hosts: proxmox
+  gather_facts: true
+
+  tasks:
+
+    # ── Repo no-subscription ──
+    - name: Désactiver le repo enterprise (évite l'erreur apt sans licence)
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/pve-enterprise.list
+        regexp: '^deb '
+        replace: '# deb '
+      ignore_errors: true
+
+    - name: Ajouter le repo no-subscription Proxmox
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pve-no-subscription.list
+        content: |
+          deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription
+        mode: "0644"
+
+    - name: Désactiver le repo ceph enterprise si présent
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ceph.list
+        regexp: '^deb '
+        replace: '# deb '
+      ignore_errors: true
+
+    - name: Mise à jour des paquets
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: safe
+      tags: [apt]
+
+    - name: Installer les dépendances Python pour modules Ansible Proxmox
+      ansible.builtin.apt:
+        name:
+          - python3-proxmoxer
+          - python3-requests
+          - python3-pip
+        state: present
+      tags: [deps]
+
+    # ── Bridge réseau vmbr1 ──
+    - name: Vérifier si vmbr1 existe déjà
+      ansible.builtin.command: ip link show {{ benchmark_bridge }}
+      register: bridge_check
+      changed_when: false
+      failed_when: false
+
+    - name: Créer le bridge vmbr1 (réseau interne benchmark)
+      ansible.builtin.blockinfile:
+        path: /etc/network/interfaces
+        marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
+        block: |
+          auto {{ benchmark_bridge }}
+          iface {{ benchmark_bridge }} inet static
+              address {{ benchmark_gateway }}/24
+              bridge-ports none
+              bridge-stp off
+              bridge-fd 0
+              # Bridge interne pour les VMs benchmark (pas de NIC physique)
+      when: bridge_check.rc != 0
+
+    - name: Activer le bridge vmbr1 immédiatement (sans reboot)
+      ansible.builtin.command: ifreload -a
+      when: bridge_check.rc != 0
+      changed_when: true
+
+    - name: Activer le forwarding IP (pour le routage entre VMs)
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        sysctl_set: true
+        state: present
+        reload: true
+
+    # ── Utilisateur et token API Ansible ──
+    - name: Créer l'utilisateur ansible@pam (compte Linux)
+      ansible.builtin.user:
+        name: ansible
+        comment: "Ansible automation user"
+        shell: /bin/bash
+        state: present
+      tags: [api]
+
+    - name: Ajouter ansible au groupe sudo Proxmox
+      ansible.builtin.command: pveum user add ansible@pam --comment "Ansible benchmark user"
+      register: user_add
+      changed_when: "'already exists' not in user_add.stderr"
+      failed_when: user_add.rc != 0 and 'already exists' not in user_add.stderr
+      tags: [api]
+
+    - name: Créer le rôle BenchmarkRole avec les permissions nécessaires
+      ansible.builtin.command: >-
+        pveum role add BenchmarkRole
+        --privs
+        VM.Allocate,VM.Clone,VM.Config.CDROM,VM.Config.CPU,VM.Config.Cloudinit,VM.Config.Disk,VM.Config.HWType,VM.Config.Memory,VM.Config.Network,VM.Config.Options,VM.PowerMgmt,VM.Snapshot,VM.Snapshot.Rollback,Datastore.AllocateSpace,Datastore.AllocateTemplate,Datastore.Audit,Sys.Audit,SDN.Use
+      register: role_add
+      changed_when: "'already exists' not in role_add.stderr"
+      failed_when: role_add.rc != 0 and 'already exists' not in role_add.stderr
+      tags: [api]
+
+    - name: Assigner le rôle à ansible@pam sur /
+      ansible.builtin.command: pveum aclmod / -user ansible@pam -role BenchmarkRole
+      changed_when: true
+      tags: [api]
+
+    - name: Créer le token API ansible@pam!benchmark
+      ansible.builtin.command: pveum user token add ansible@pam benchmark --privsep 0
+      register: token_result
+      changed_when: true
+      failed_when: token_result.rc != 0 and 'already exists' not in token_result.stderr
+      tags: [api]
+
+    - name: Afficher le token API (à sauvegarder dans Ansible Vault !)
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║  TOKEN API PROXMOX — À sauvegarder maintenant !             ║
+          ║                                                              ║
+          ║  {{ token_result.stdout | default('Token déjà existant') }}
+          ║                                                              ║
+          ║  Commande pour créer le vault :                             ║
+          ║  ansible-vault encrypt_string '<TOKEN>' \                   ║
+          ║    --name vault_proxmox_token >> group_vars/vault.yml       ║
+          ╚══════════════════════════════════════════════════════════════╝
+      when: token_result.changed
+      tags: [api]
+
+  handlers:
+    - name: restart networking
+      ansible.builtin.service:
+        name: networking
+        state: restarted

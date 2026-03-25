@@ -1,0 +1,235 @@
+# 01_create_templates.yml — Création des templates pour le benchmark
+# Usage : ansible-playbook -i inventory.yml playbooks/01_create_templates.yml --ask-vault-pass
+#
+# Templates créés :
+#   9000 (CT)  - tpl-debian  : LXC Debian 13 (MQTT, SSH, web, IoT Hub, DB...)
+#   9001 (KVM) - tpl-openwrt : OpenWrt x86-64 23.x (routeur/firewall)
+#
+# Approche hybride :
+#   - LXC pour tous les services Linux → léger, rapide, clonable en secondes
+#   - KVM uniquement pour OpenWrt → nécessite son propre kernel (NAT, routing)
+
+- name: Nettoyage des anciennes VMs KVM debian/nginx si présentes
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Arrêter et supprimer tpl-debian KVM (9000) si présent
+      block:
+        - ansible.builtin.command: qm stop 9000 --skiplock
+          failed_when: false
+        - ansible.builtin.command: qm destroy 9000 --purge
+          failed_when: false
+      tags: [cleanup]
+
+    - name: Arrêter et supprimer tpl-nginx KVM (9002) si présent
+      block:
+        - ansible.builtin.command: qm stop 9002 --skiplock
+          failed_when: false
+        - ansible.builtin.command: qm destroy 9002 --purge
+          failed_when: false
+      tags: [cleanup]
+
+
+- name: Template LXC — Debian 13
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    debian_lxc_vmid: 9000
+    debian_lxc_name: tpl-debian
+
+  tasks:
+    - name: Mettre à jour la liste des templates LXC disponibles
+      ansible.builtin.command: pveam update
+      changed_when: false
+      tags: [lxc]
+
+    - name: Récupérer le nom exact du template Debian 13 disponible
+      ansible.builtin.command: pveam available --section system
+      register: pveam_list
+      changed_when: false
+      tags: [lxc]
+
+    - name: Extraire le nom du template Debian 13
+      ansible.builtin.set_fact:
+        # Format pveam : "system   debian-13-standard_x.y_amd64.tar.zst   232 MiB"
+        # split()[1] = deuxième colonne = nom du template
+        debian_lxc_tpl: "{{ (pveam_list.stdout_lines
+                            | select('search', 'debian-13')
+                            | list | first).split()[1] }}"
+      tags: [lxc]
+
+    - name: Afficher le template sélectionné
+      ansible.builtin.debug:
+        msg: "Template LXC sélectionné : {{ debian_lxc_tpl }}"
+      tags: [lxc]
+
+    - name: Télécharger le template Debian 13 sur le stockage local
+      ansible.builtin.command: pveam download local {{ debian_lxc_tpl }}
+      register: pveam_dl
+      changed_when: "'already exists' not in pveam_dl.stderr"
+      failed_when: pveam_dl.rc != 0 and 'already exists' not in pveam_dl.stderr
+      tags: [lxc]
+
+    - name: Vérifier si le CT tpl-debian (9000) existe déjà
+      ansible.builtin.command: pct status {{ debian_lxc_vmid }}
+      register: ct_debian_check
+      changed_when: false
+      failed_when: false
+      tags: [lxc]
+
+    - name: Créer le CT LXC Debian 13 de base
+      ansible.builtin.command: >-
+        pct create {{ debian_lxc_vmid }}
+        local:vztmpl/{{ debian_lxc_tpl }}
+        --hostname {{ debian_lxc_name }}
+        --memory 512
+        --swap 0
+        --cores 1
+        --net0 name=eth0,bridge=vmbr0,ip=dhcp
+        --unprivileged 1
+        --features nesting=1
+        --storage local-lvm
+        --rootfs local-lvm:5
+        --password benchmark
+        --ssh-public-keys /root/.ssh/authorized_keys
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: Démarrer le CT pour l'initialiser
+      ansible.builtin.command: pct start {{ debian_lxc_vmid }}
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: Attendre que le CT soit prêt
+      ansible.builtin.pause:
+        seconds: 10
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: Installer les paquets de base dans le CT
+      ansible.builtin.command: >-
+        pct exec {{ debian_lxc_vmid }} --
+        bash -c "apt-get update -qq &&
+                 apt-get install -y -qq openssh-server python3 curl wget"
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: Arrêter le CT avant de le convertir en template
+      ansible.builtin.command: pct stop {{ debian_lxc_vmid }}
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: Convertir le CT en template LXC
+      ansible.builtin.command: pct template {{ debian_lxc_vmid }}
+      when: ct_debian_check.rc != 0
+      tags: [lxc]
+
+    - name: "[tpl-debian LXC] OK"
+      ansible.builtin.debug:
+        msg: "Template LXC tpl-debian ({{ debian_lxc_vmid }}) prêt"
+
+
+- name: Template KVM — OpenWrt (routeur/firewall)
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    openwrt_vmid: 9001
+    openwrt_img: "openwrt-23.05-x86-64-combined-ext4.img"
+    openwrt_url: "https://downloads.openwrt.org/releases/23.05.5/targets/x86/64/openwrt-23.05.5-x86-64-generic-ext4-combined.img.gz"
+
+  tasks:
+    - name: Vérifier si tpl-openwrt (9001) existe déjà
+      ansible.builtin.command: qm status {{ openwrt_vmid }}
+      register: tpl_openwrt_check
+      changed_when: false
+      failed_when: false
+      tags: [tpl-openwrt]
+
+    - name: Télécharger l'image OpenWrt
+      ansible.builtin.get_url:
+        url: "{{ openwrt_url }}"
+        dest: "{{ proxmox_images_dir }}/{{ openwrt_img }}.gz"
+        mode: "0644"
+        timeout: 300
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: Décompresser l'image OpenWrt
+      ansible.builtin.command:
+        cmd: gunzip -f "{{ proxmox_images_dir }}/{{ openwrt_img }}.gz"
+        creates: "{{ proxmox_images_dir }}/{{ openwrt_img }}"
+      when: tpl_openwrt_check.rc != 0
+      failed_when: false
+      tags: [tpl-openwrt]
+
+    - name: Convertir l'image OpenWrt en qcow2
+      ansible.builtin.command:
+        cmd: >-
+          qemu-img convert -f raw -O qcow2
+          {{ proxmox_images_dir }}/{{ openwrt_img }}
+          {{ proxmox_images_dir }}/openwrt-23.05-x86-64.qcow2
+        creates: "{{ proxmox_images_dir }}/openwrt-23.05-x86-64.qcow2"
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: Créer la VM OpenWrt
+      ansible.builtin.command: >-
+        qm create {{ openwrt_vmid }}
+        --name tpl-openwrt
+        --memory 256
+        --cores 1
+        --net0 virtio,bridge=vmbr0
+        --net1 virtio,bridge={{ benchmark_bridge }}
+        --ostype l26
+        --serial0 socket
+        --vga serial0
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: Importer le disque OpenWrt
+      ansible.builtin.command: >-
+        qm importdisk {{ openwrt_vmid }}
+        {{ proxmox_images_dir }}/openwrt-23.05-x86-64.qcow2
+        {{ proxmox_storage }}
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: Configurer le boot OpenWrt
+      ansible.builtin.command: >-
+        qm set {{ openwrt_vmid }}
+        --scsihw virtio-scsi-pci
+        --virtio0 {{ proxmox_storage }}:vm-{{ openwrt_vmid }}-disk-0
+        --boot c
+        --bootdisk virtio0
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: Redimensionner le disque OpenWrt à 1 Go
+      ansible.builtin.command: qm disk resize {{ openwrt_vmid }} virtio0 1G
+      when: tpl_openwrt_check.rc != 0
+      failed_when: false
+      tags: [tpl-openwrt]
+
+    - name: Convertir la VM OpenWrt en template
+      ansible.builtin.command: qm template {{ openwrt_vmid }}
+      when: tpl_openwrt_check.rc != 0
+      tags: [tpl-openwrt]
+
+    - name: "[tpl-openwrt KVM] OK"
+      ansible.builtin.debug:
+        msg: "Template KVM tpl-openwrt ({{ openwrt_vmid }}) prêt"
+
+
+    # ── Résumé ──
+    - name: Résumé des templates
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════════════
+          Templates disponibles :
+            {{ debian_lxc_vmid | default(9000) }}  (CT  LXC) tpl-debian  → Debian 13, base pour tous les services
+            {{ openwrt_vmid }}  (KVM    ) tpl-openwrt → OpenWrt 23.05, routeur/firewall
+          ═══════════════════════════════════════════════════════
+          Prochaine étape : 02_deploy_scenario.yml --extra-vars "scenario_id=1"
