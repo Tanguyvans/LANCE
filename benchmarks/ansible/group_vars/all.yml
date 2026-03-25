@@ -17,15 +17,76 @@ benchmark_dns: "192.168.100.1"   # dnsmasq OpenWrt (UDP 53 vers WAN filtré)
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
 tpl_openwrt_vmid: 9010   # KVM    — OpenWrt x86-64 configuré (LAN=192.168.100.1)
 
-# ── IDs scénarios (plage 100-199 par scénario) ──
+# ── IDs scénarios (plage de 10 VMIDs par scénario : base → base+9) ──
+# base+0   : router OpenWrt
+# base+1…N : services LXC (vmid_offset défini dans scenarios ci-dessous)
 scenario_vmid_ranges:
   "1": 100   # S1 Flat       → 100-109
   "2": 110   # S2 Gateway    → 110-119
   "3": 120   # S3 NATO Lab   → 120-129
-  "4": 130   # S4 Segmenté   → 130-149
-  "5": 150   # S5 Building   → 150-169
+  "4": 130   # S4 Segmenté   → 130-139
+  "5": 150   # S5 Building   → 150-159
 
 # ── Credentials par défaut injectés dans les VMs (failles F1) ──
 # Ces valeurs sont volontairement faibles : c'est le but du benchmark
 vm_default_user: "pi"
 vm_default_password: "benchmark"   # Remplacé par les failles selon le scénario
+
+# ── Définition des scénarios ──
+# Source unique de vérité pour 03_deploy_scenario, 04_inject_vulns, 05_populate_services, 06_verify
+# Chaque service : { name, vmid_offset, ip, role }
+# router_vulns  : liste des vulnérabilités OpenWrt à activer (telnet, admin_wan, ftp)
+scenarios:
+  "1":
+    name: "Réseau plat"
+    router_vulns: [telnet]
+    services:
+      - { name: mqtt,  vmid_offset: 1, ip: "192.168.100.11", role: "mqtt_broker"  }
+      - { name: web,   vmid_offset: 2, ip: "192.168.100.12", role: "web_server"   }
+      - { name: ssh,   vmid_offset: 3, ip: "192.168.100.13", role: "ssh_server"   }
+
+  "2":
+    name: "Gateway exposée"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: web,    vmid_offset: 1, ip: "192.168.100.11", role: "web_server"   }
+      - { name: mqtt,   vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker"  }
+      - { name: iot-gw, vmid_offset: 3, ip: "192.168.100.13", role: "iot_gateway"  }
+      - { name: db,     vmid_offset: 4, ip: "192.168.100.14", role: "db_server"    }
+      - { name: jump,   vmid_offset: 5, ip: "192.168.100.15", role: "ssh_server"   }
+
+  "3":
+    name: "Réplique NATO Lab"
+    router_vulns: [telnet, ftp]
+    services:
+      - { name: wisgate,  vmid_offset: 1, ip: "192.168.100.11", role: "iot_gateway"  }
+      - { name: rpi5,     vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker"  }
+      - { name: iot-hub,  vmid_offset: 3, ip: "192.168.100.13", role: "mqtt_broker"  }
+      - { name: jetson,   vmid_offset: 4, ip: "192.168.100.14", role: "ssh_server"   }
+      - { name: ap,       vmid_offset: 5, ip: "192.168.100.15", role: "web_server"   }
+      - { name: cam,      vmid_offset: 6, ip: "192.168.100.16", role: "web_server"   }
+      - { name: nvr,      vmid_offset: 7, ip: "192.168.100.17", role: "ssh_server"   }
+
+  "4":
+    name: "Réseau segmenté"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: admin,     vmid_offset: 1, ip: "192.168.100.11", role: "ssh_server"    }
+      - { name: webapp,    vmid_offset: 2, ip: "192.168.100.12", role: "web_upload"    }
+      - { name: mqtt,      vmid_offset: 3, ip: "192.168.100.13", role: "mqtt_broker"   }
+      - { name: lora-gw,   vmid_offset: 4, ip: "192.168.100.14", role: "iot_gateway"   }
+      - { name: plc,       vmid_offset: 5, ip: "192.168.100.15", role: "modbus_server" }
+      - { name: hmi,       vmid_offset: 6, ip: "192.168.100.16", role: "web_server"    }
+      - { name: historian, vmid_offset: 7, ip: "192.168.100.17", role: "db_server"     }
+
+  "5":
+    name: "Smart Building"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: cam1,        vmid_offset: 1, ip: "192.168.100.11", role: "camera_server" }
+      - { name: cam2,        vmid_offset: 2, ip: "192.168.100.12", role: "camera_server" }
+      - { name: nvr,         vmid_offset: 3, ip: "192.168.100.13", role: "nvr_server"    }
+      - { name: access-ctrl, vmid_offset: 4, ip: "192.168.100.14", role: "web_server"    }
+      - { name: hvac,        vmid_offset: 5, ip: "192.168.100.15", role: "web_server"    }
+      - { name: mqtt,        vmid_offset: 6, ip: "192.168.100.16", role: "mqtt_broker"   }
+      - { name: web,         vmid_offset: 7, ip: "192.168.100.17", role: "web_server"    }

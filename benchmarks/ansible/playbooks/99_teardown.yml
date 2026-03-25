@@ -9,7 +9,7 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    # Nombre max de VMs par scénario (plage de 10 VMIDs)
+    # Plage de 10 VMIDs par scénario (base+0 router, base+1..9 services)
     vmid_range: "{{ range(base_vmid | int, base_vmid | int + 10) | list }}"
 
   tasks:

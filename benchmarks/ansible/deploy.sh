@@ -96,10 +96,10 @@ RUNNING=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$(grep ansibl
 CONFLICT_SCENARIO=""
 for vmid in $RUNNING; do
   [[ "$vmid" -lt 100 || "$vmid" -gt 199 ]] 2>/dev/null && continue
-  [[ "$vmid" -ge "$BASE" && "$vmid" -lt "$((BASE+20))" ]] && continue
+  [[ "$vmid" -ge "$BASE" && "$vmid" -lt "$((BASE+10))" ]] && continue
   for s in 1 2 3 4 5; do
     case $s in 1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;; esac
-    if [[ "$vmid" -ge "$b" && "$vmid" -lt "$((b+20))" ]]; then
+    if [[ "$vmid" -ge "$b" && "$vmid" -lt "$((b+10))" ]]; then
       CONFLICT_SCENARIO="$s"
       break
     fi

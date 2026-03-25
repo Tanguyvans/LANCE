@@ -17,59 +17,7 @@
   vars:
     scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-
-    # ── Définition des scénarios ──
-    # Chaque service = { name, ip, role }
-    # Le router OpenWrt est toujours VMID base+0, IP 192.168.100.1
-    scenarios:
-      "1":
-        name: "Réseau plat"
-        services:
-          - { name: mqtt,  ip: "192.168.100.11", role: "mqtt_broker"  }
-          - { name: web,   ip: "192.168.100.12", role: "web_server"   }
-          - { name: ssh,   ip: "192.168.100.13", role: "ssh_server"   }
-
-      "2":
-        name: "Gateway exposée"
-        services:
-          - { name: web,    ip: "192.168.100.11", role: "web_server"   }
-          - { name: mqtt,   ip: "192.168.100.12", role: "mqtt_broker"  }
-          - { name: iot-gw, ip: "192.168.100.13", role: "iot_gateway"  }
-          - { name: db,     ip: "192.168.100.14", role: "db_server"    }
-          - { name: jump,   ip: "192.168.100.15", role: "ssh_server"   }
-
-      "3":
-        name: "Réplique NATO Lab"
-        services:
-          - { name: wisgate,  ip: "192.168.100.11", role: "iot_gateway"  }
-          - { name: rpi5,     ip: "192.168.100.12", role: "mqtt_broker"  }
-          - { name: iot-hub,  ip: "192.168.100.13", role: "mqtt_broker"  }
-          - { name: jetson,   ip: "192.168.100.14", role: "ssh_server"   }
-          - { name: ap,       ip: "192.168.100.15", role: "web_server"   }
-          - { name: cam,      ip: "192.168.100.16", role: "web_server"   }
-          - { name: nvr,      ip: "192.168.100.17", role: "ssh_server"   }
-
-      "4":
-        name: "Réseau segmenté"
-        services:
-          - { name: admin,     ip: "192.168.100.11", role: "ssh_server"     }
-          - { name: webapp,    ip: "192.168.100.12", role: "web_upload"     }
-          - { name: mqtt,      ip: "192.168.100.13", role: "mqtt_broker"    }
-          - { name: lora-gw,   ip: "192.168.100.14", role: "iot_gateway"    }
-          - { name: plc,       ip: "192.168.100.15", role: "modbus_server"  }
-          - { name: hmi,       ip: "192.168.100.16", role: "web_server"     }
-          - { name: historian, ip: "192.168.100.17", role: "db_server"      }
-
-      "5":
-        name: "Smart Building"
-        services:
-          - { name: cam1,         ip: "192.168.100.11", role: "camera_server" }
-          - { name: cam2,         ip: "192.168.100.12", role: "camera_server" }
-          - { name: nvr,          ip: "192.168.100.13", role: "nvr_server"    }
-          - { name: access-ctrl,  ip: "192.168.100.14", role: "web_server"    }
-          - { name: hvac,         ip: "192.168.100.15", role: "web_server"    }
-          - { name: mqtt,         ip: "192.168.100.16", role: "mqtt_broker"   }
-          - { name: web,          ip: "192.168.100.17", role: "web_server"    }
+    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
 
@@ -88,12 +36,12 @@
         for vmid in $running; do
           [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 199 ] 2>/dev/null && continue
           base={{ base_vmid }}
-          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 20))" ] && continue
+          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
           for s in 1 2 3 4 5; do
             case $s in
               1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;;
             esac
-            if [ "$vmid" -ge "$b" ] && [ "$vmid" -lt "$((b + 20))" ]; then
+            if [ "$vmid" -ge "$b" ] && [ "$vmid" -lt "$((b + 10))" ]; then
               conflict_scenario="$s"
               break
             fi
@@ -147,7 +95,7 @@
 
     # ── Services LXC ──
     - name: Vérifier si chaque CT service existe déjà
-      ansible.builtin.command: pct status {{ base_vmid | int + idx + 1 }}
+      ansible.builtin.command: pct status {{ base_vmid | int + item.vmid_offset }}
       register: ct_checks
       changed_when: false
       failed_when: false
@@ -157,7 +105,7 @@
 
     - name: Cloner le template Debian pour chaque service
       ansible.builtin.command: >-
-        pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + idx + 1 }}
+        pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + item.vmid_offset }}
         --hostname s{{ scenario_id }}-{{ item.name }}
         --full
       loop: "{{ scenarios[scenario_id].services }}"
@@ -167,7 +115,7 @@
 
     - name: Configurer le réseau et le DNS de chaque CT
       ansible.builtin.command: >-
-        pct set {{ base_vmid | int + idx + 1 }}
+        pct set {{ base_vmid | int + item.vmid_offset }}
         --net0 name=eth0,bridge={{ benchmark_bridge }},ip={{ item.ip }}/24,gw={{ benchmark_gateway }}
         --nameserver {{ benchmark_dns }}
       loop: "{{ scenarios[scenario_id].services }}"
@@ -176,19 +124,26 @@
       when: ct_checks.results[idx].rc != 0
 
     - name: Démarrer chaque CT service
-      ansible.builtin.command: pct start {{ base_vmid | int + idx + 1 }}
+      ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
 
-    - name: Attendre que les CTs soient prêts
-      ansible.builtin.pause:
-        seconds: 15
+    - name: Attendre que chaque CT soit prêt (SSH actif)
+      ansible.builtin.command: >-
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        sh -c "ss -tlnp | grep -q ':22'"
+      loop: "{{ scenarios[scenario_id].services }}"
+      register: ct_ssh_ready
+      until: ct_ssh_ready is succeeded
+      retries: 12
+      delay: 5
+      changed_when: false
 
     - name: Vérifier la connectivité réseau de chaque CT
       ansible.builtin.command: >-
-        pct exec {{ base_vmid | int + idx + 1 }} -- ping -c1 -W2 {{ benchmark_gateway }}
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2 {{ benchmark_gateway }}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
@@ -203,8 +158,8 @@
           Scénario S{{ scenario_id }} — {{ scenarios[scenario_id].name }} déployé
           ──────────────────────────────────────────────────────────
           {{ base_vmid }}  s{{ scenario_id }}-router  192.168.100.1  (OpenWrt WAN=DHCP)
-          {% for idx in range(scenarios[scenario_id].services | length) %}
-          {{ base_vmid | int + idx + 1 }}  s{{ scenario_id }}-{{ scenarios[scenario_id].services[idx].name }}  {{ scenarios[scenario_id].services[idx].ip }}  [{{ 'OK' if ct_ping.results[idx].rc == 0 else 'NO PING' }}]
+          {% for svc in scenarios[scenario_id].services %}
+          {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  {{ svc.ip }}  [{{ 'OK' if ct_ping.results[loop.index0].rc == 0 else 'NO PING' }}]
           {% endfor %}
           ──────────────────────────────────────────────────────────
           Prochaine étape : 04_inject_vulns.yml --extra-vars "scenario_id={{ scenario_id }}"

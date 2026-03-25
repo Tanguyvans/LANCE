@@ -18,51 +18,7 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-
-    scenarios:
-      "1":
-        services:
-          - { name: mqtt,  vmid_offset: 1, role: mqtt_broker  }
-          - { name: web,   vmid_offset: 2, role: web_server   }
-          - { name: ssh,   vmid_offset: 3, role: ssh_server   }
-
-      "2":
-        services:
-          - { name: web,    vmid_offset: 1, role: web_server   }
-          - { name: mqtt,   vmid_offset: 2, role: mqtt_broker  }
-          - { name: iot-gw, vmid_offset: 3, role: iot_gateway  }
-          - { name: db,     vmid_offset: 4, role: db_server    }
-          - { name: jump,   vmid_offset: 5, role: ssh_server   }
-
-      "3":
-        services:
-          - { name: wisgate, vmid_offset: 1, role: iot_gateway  }
-          - { name: rpi5,    vmid_offset: 2, role: mqtt_broker  }
-          - { name: iot-hub, vmid_offset: 3, role: mqtt_broker  }
-          - { name: jetson,  vmid_offset: 4, role: ssh_server   }
-          - { name: ap,      vmid_offset: 5, role: web_server   }
-          - { name: cam,     vmid_offset: 6, role: web_server   }
-          - { name: nvr,     vmid_offset: 7, role: ssh_server   }
-
-      "4":
-        services:
-          - { name: admin,     vmid_offset: 1, role: ssh_server    }
-          - { name: webapp,    vmid_offset: 2, role: web_upload    }
-          - { name: mqtt,      vmid_offset: 3, role: mqtt_broker   }
-          - { name: lora-gw,   vmid_offset: 4, role: iot_gateway   }
-          - { name: plc,       vmid_offset: 5, role: modbus_server }
-          - { name: hmi,       vmid_offset: 6, role: web_server    }
-          - { name: historian, vmid_offset: 7, role: db_server     }
-
-      "5":
-        services:
-          - { name: cam1,        vmid_offset: 1, role: camera_server }
-          - { name: cam2,        vmid_offset: 2, role: camera_server }
-          - { name: nvr,         vmid_offset: 3, role: nvr_server    }
-          - { name: access-ctrl, vmid_offset: 4, role: web_server    }
-          - { name: hvac,        vmid_offset: 5, role: web_server    }
-          - { name: mqtt,        vmid_offset: 6, role: mqtt_broker   }
-          - { name: web,         vmid_offset: 7, role: web_server    }
+    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
 

@@ -21,56 +21,7 @@
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
     proxmox_tmp_ip: "192.168.100.254"   # IP temp sur vmbr1 pour joindre OpenWrt
-
-    scenarios:
-      "1":
-        services:
-          - { name: mqtt, vmid_offset: 1, role: mqtt_broker  }
-          - { name: web,  vmid_offset: 2, role: web_server   }
-          - { name: ssh,  vmid_offset: 3, role: ssh_server   }
-        router_vulns: [telnet]
-
-      "2":
-        services:
-          - { name: web,    vmid_offset: 1, role: web_server   }
-          - { name: mqtt,   vmid_offset: 2, role: mqtt_broker  }
-          - { name: iot-gw, vmid_offset: 3, role: iot_gateway  }
-          - { name: db,     vmid_offset: 4, role: db_server    }
-          - { name: jump,   vmid_offset: 5, role: ssh_server   }
-        router_vulns: [telnet, admin_wan]
-
-      "3":
-        services:
-          - { name: wisgate, vmid_offset: 1, role: iot_gateway  }
-          - { name: rpi5,    vmid_offset: 2, role: mqtt_broker  }
-          - { name: iot-hub, vmid_offset: 3, role: mqtt_broker  }
-          - { name: jetson,  vmid_offset: 4, role: ssh_server   }
-          - { name: ap,      vmid_offset: 5, role: web_server   }
-          - { name: cam,     vmid_offset: 6, role: web_server   }
-          - { name: nvr,     vmid_offset: 7, role: ssh_server   }
-        router_vulns: [telnet, ftp]
-
-      "4":
-        services:
-          - { name: admin,     vmid_offset: 1, role: ssh_server    }
-          - { name: webapp,    vmid_offset: 2, role: web_upload    }
-          - { name: mqtt,      vmid_offset: 3, role: mqtt_broker   }
-          - { name: lora-gw,   vmid_offset: 4, role: iot_gateway   }
-          - { name: plc,       vmid_offset: 5, role: modbus_server }
-          - { name: hmi,       vmid_offset: 6, role: web_server    }
-          - { name: historian, vmid_offset: 7, role: db_server     }
-        router_vulns: [telnet, admin_wan]
-
-      "5":
-        services:
-          - { name: cam1,        vmid_offset: 1, role: camera_server }
-          - { name: cam2,        vmid_offset: 2, role: camera_server }
-          - { name: nvr,         vmid_offset: 3, role: nvr_server    }
-          - { name: access-ctrl, vmid_offset: 4, role: web_server    }
-          - { name: hvac,        vmid_offset: 5, role: web_server    }
-          - { name: mqtt,        vmid_offset: 6, role: mqtt_broker   }
-          - { name: web,         vmid_offset: 7, role: web_server    }
-        router_vulns: [telnet, admin_wan]
+    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
 
@@ -80,13 +31,15 @@
         pct set {{ base_vmid | int + item.vmid_offset }}
         --nameserver {{ benchmark_dns }}
       loop: "{{ scenarios[scenario_id].services }}"
-      changed_when: true
+      register: dns_set
+      changed_when: dns_set.rc == 0
 
     # ── IP temporaire sur vmbr1 pour joindre OpenWrt LAN ──
     - name: Ajouter IP temporaire {{ proxmox_tmp_ip }} sur vmbr1 (accès OpenWrt)
       ansible.builtin.command: ip addr add {{ proxmox_tmp_ip }}/24 dev vmbr1
+      register: add_tmp_ip
       failed_when: false
-      changed_when: true
+      changed_when: add_tmp_ip.rc == 0
 
 
     # ════════════════════════════════════════════════════
@@ -509,7 +462,7 @@
 
     - name: "[OpenWrt] Activer Telnet (port 23) via socat"
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
           'opkg install socat 2>/dev/null || true
            socat TCP-LISTEN:23,reuseaddr,fork EXEC:/bin/ash &
@@ -520,7 +473,7 @@
 
     - name: "[OpenWrt] Exposer l'interface web admin sur WAN (port 80)"
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
           'uci set uhttpd.main.listen_http="0.0.0.0:80"
            uci commit uhttpd
@@ -530,7 +483,7 @@
 
     - name: "[OpenWrt] Activer FTP (port 21) via vsftpd"
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
           'opkg update && opkg install vsftpd &&
            echo "anonymous_enable=YES" >> /etc/vsftpd.conf &&

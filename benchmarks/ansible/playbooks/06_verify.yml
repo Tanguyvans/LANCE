@@ -16,47 +16,7 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-
-    scenarios:
-      "1":
-        services:
-          - { name: mqtt,  vmid_offset: 1, ip: "192.168.100.11", role: mqtt_broker  }
-          - { name: web,   vmid_offset: 2, ip: "192.168.100.12", role: web_server   }
-          - { name: ssh,   vmid_offset: 3, ip: "192.168.100.13", role: ssh_server   }
-      "2":
-        services:
-          - { name: web,    vmid_offset: 1, ip: "192.168.100.11", role: web_server   }
-          - { name: mqtt,   vmid_offset: 2, ip: "192.168.100.12", role: mqtt_broker  }
-          - { name: iot-gw, vmid_offset: 3, ip: "192.168.100.13", role: iot_gateway  }
-          - { name: db,     vmid_offset: 4, ip: "192.168.100.14", role: db_server    }
-          - { name: jump,   vmid_offset: 5, ip: "192.168.100.15", role: ssh_server   }
-      "3":
-        services:
-          - { name: wisgate, vmid_offset: 1, ip: "192.168.100.11", role: iot_gateway }
-          - { name: rpi5,    vmid_offset: 2, ip: "192.168.100.12", role: mqtt_broker }
-          - { name: iot-hub, vmid_offset: 3, ip: "192.168.100.13", role: mqtt_broker }
-          - { name: jetson,  vmid_offset: 4, ip: "192.168.100.14", role: ssh_server  }
-          - { name: ap,      vmid_offset: 5, ip: "192.168.100.15", role: web_server  }
-          - { name: cam,     vmid_offset: 6, ip: "192.168.100.16", role: web_server  }
-          - { name: nvr,     vmid_offset: 7, ip: "192.168.100.17", role: ssh_server  }
-      "4":
-        services:
-          - { name: admin,     vmid_offset: 1, ip: "192.168.100.11", role: ssh_server    }
-          - { name: webapp,    vmid_offset: 2, ip: "192.168.100.12", role: web_upload    }
-          - { name: mqtt,      vmid_offset: 3, ip: "192.168.100.13", role: mqtt_broker   }
-          - { name: lora-gw,   vmid_offset: 4, ip: "192.168.100.14", role: iot_gateway   }
-          - { name: plc,       vmid_offset: 5, ip: "192.168.100.15", role: modbus_server }
-          - { name: hmi,       vmid_offset: 6, ip: "192.168.100.16", role: web_server    }
-          - { name: historian, vmid_offset: 7, ip: "192.168.100.17", role: db_server     }
-      "5":
-        services:
-          - { name: cam1,        vmid_offset: 1, ip: "192.168.100.11", role: camera_server }
-          - { name: cam2,        vmid_offset: 2, ip: "192.168.100.12", role: camera_server }
-          - { name: nvr,         vmid_offset: 3, ip: "192.168.100.13", role: nvr_server    }
-          - { name: access-ctrl, vmid_offset: 4, ip: "192.168.100.14", role: web_server    }
-          - { name: hvac,        vmid_offset: 5, ip: "192.168.100.15", role: web_server    }
-          - { name: mqtt,        vmid_offset: 6, ip: "192.168.100.16", role: mqtt_broker   }
-          - { name: web,         vmid_offset: 7, ip: "192.168.100.17", role: web_server    }
+    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
 
@@ -258,10 +218,11 @@
       register: webupload_port_check
       changed_when: false
 
-    - name: "[web_upload] Vérifier PHP-FPM actif et webshell uploadé"
+    - name: "[web_upload] Vérifier que PHP-FPM répond et que l'upload est accessible"
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        bash -c "[ -f /var/www/html/uploads/shell.php ] && echo OK || echo FAIL"
+        bash -c "curl -s http://127.0.0.1/index.php | grep -qi 'upload\|firmware' &&
+                 [ -d /var/www/html/uploads ] && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'web_upload'
       register: webupload_shell_check
@@ -469,7 +430,7 @@
           {% endfor %}
           {% for r in (webupload_shell_check.results | default([])) %}
           {% if not r.skipped | default(false) %}
-            shell.php  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+            PHP upload : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
           {% endif %}
           {% endfor %}
 
