@@ -359,6 +359,13 @@ NATO-SmartCity-IoT/
 │   ├── q4-2025.tex                # Q4 2025 progress report
 │   ├── q1-2026.tex                # Q1 2026 progress report
 │   └── slides-q1-2026.tex         # Q1 2026 presentation (Beamer)
+├── benchmarks/                    # IoT Security Benchmark (Proxmox + Ansible)
+│   ├── bench.sh                   # CLI: deploy, run, reset, teardown
+│   ├── config.yml                 # Proxmox connection config
+│   ├── scenarios/                 # 1 folder per scenario (topology + ground truth)
+│   ├── ansible/roles/             # svc_* (services) + vuln_* (vulnerabilities)
+│   ├── scripts/proxmox_vms.py     # VM management
+│   └── results/                   # Benchmark outputs
 ├── tests/                         # 14 files, 193 tests
 ├── data/
 │   └── knowledge.db/             # Persistent ChromaDB (generated)
@@ -480,7 +487,18 @@ Destructive attacks (DoS, RCE, SSH exploits) are tested on **Docker containers**
 
 Hardware tools are integrated as declarative YAML definitions (`type: hardware`). The agent recommends protocol-specific commands; the operator executes with physical access. Available in Phases 2-4 via the `recon` tool group.
 
-### Phase 6 — Dashboard + Advanced Graph Backend (optional)
+### Phase 6 — IoT Security Benchmark ✅
+
+Benchmark reproductible pour évaluer les LLMs sur la détection de vulnérabilités IoT :
+
+- **8 architectures** réseau (flat → multi-site VPN) × **10 packs de failles** (auth → insecure update)
+- **20 scénarios** de difficulté croissante avec ground truth
+- **Proxmox** hyperviseur sur mini PC BMAX + **Ansible** pour l'injection de failles
+- **Couverture** : OWASP IoT Top 10 (9/10), MITRE ATT&CK ICS (9/12)
+- **1 commande** pour déployer/détruire un scénario : `./bench.sh deploy s01`
+- Voir [benchmarks/README.md](benchmarks/README.md) pour la documentation complète
+
+### Phase 7 — Dashboard + Advanced Graph Backend (optional)
 
 - Real-time web dashboard (network status, alerts, visualized attack paths)
 - If more complex queries are needed: implement a Memgraph or Neo4j backend (the `GraphBackend` ABC is ready for this)

@@ -72,9 +72,10 @@ def cmd_create(args, config):
 
         tpl_id = tpl_map.get(vm.get("template", "tpl-debian"), str(config["proxmox"]["template_id"]))
 
+        dns_name = name.replace("_", "-")
         print(f"  Creating VM {vmid} ({name})...")
         cmds = [
-            f"qm clone {tpl_id} {vmid} --name bench-{name} --full",
+            f"qm clone {tpl_id} {vmid} --name bench-{dns_name} --full",
             f"qm set {vmid} --cores {vm.get('cores', 1)} --memory {vm.get('memory', 512)}",
             f"qm set {vmid} --ciuser {config['vm_defaults']['user']} --cipassword {password}",
             f'qm set {vmid} --cicustom "user=local:snippets/userconfig.yml"',
