@@ -1,0 +1,355 @@
+# 06_verify.yml — Vérification que toutes les vulnérabilités sont actives
+# Usage : ansible-playbook -i inventory.yml playbooks/06_verify.yml \
+#           --ask-vault-pass --extra-vars "scenario_id=1"
+#
+# Pour chaque vulnérabilité injectée, ce playbook vérifie que :
+#   - Les ports attendus sont ouverts
+#   - Les services acceptent les connexions non authentifiées
+#   - Les fichiers sensibles sont accessibles
+#
+# Résultat : tableau récapitulatif avec OK / FAIL par vulnérabilité
+
+- name: Vérification des vulnérabilités — Scénario {{ scenario_id | default('?') }}
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    scenario_id: "1"
+    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+
+    scenarios:
+      "1":
+        services:
+          - { name: mqtt,  vmid_offset: 1, ip: "192.168.100.11", role: mqtt_broker  }
+          - { name: web,   vmid_offset: 2, ip: "192.168.100.12", role: web_server   }
+          - { name: ssh,   vmid_offset: 3, ip: "192.168.100.13", role: ssh_server   }
+      "2":
+        services:
+          - { name: web,    vmid_offset: 1, ip: "192.168.100.11", role: web_server   }
+          - { name: mqtt,   vmid_offset: 2, ip: "192.168.100.12", role: mqtt_broker  }
+          - { name: iot-gw, vmid_offset: 3, ip: "192.168.100.13", role: iot_gateway  }
+          - { name: db,     vmid_offset: 4, ip: "192.168.100.14", role: db_server    }
+          - { name: jump,   vmid_offset: 5, ip: "192.168.100.15", role: ssh_server   }
+      "3":
+        services:
+          - { name: wisgate, vmid_offset: 1, ip: "192.168.100.11", role: iot_gateway }
+          - { name: rpi5,    vmid_offset: 2, ip: "192.168.100.12", role: mqtt_broker }
+          - { name: iot-hub, vmid_offset: 3, ip: "192.168.100.13", role: mqtt_broker }
+          - { name: jetson,  vmid_offset: 4, ip: "192.168.100.14", role: ssh_server  }
+          - { name: ap,      vmid_offset: 5, ip: "192.168.100.15", role: web_server  }
+          - { name: cam,     vmid_offset: 6, ip: "192.168.100.16", role: web_server  }
+          - { name: nvr,     vmid_offset: 7, ip: "192.168.100.17", role: ssh_server  }
+
+  tasks:
+
+    - name: Vérifier que le scénario est défini
+      ansible.builtin.fail:
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3"
+      when: scenario_id not in scenarios
+
+    # ── Ajouter IP temporaire pour accès aux CTs via vmbr1 ──
+    - name: Ajouter IP temporaire 192.168.100.254 sur vmbr1
+      ansible.builtin.command: ip addr add 192.168.100.254/24 dev vmbr1
+      failed_when: false
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # VÉRIFICATIONS PAR RÔLE
+    # ════════════════════════════════════════════════════
+
+    # ── MQTT : connexion anonyme ──
+    - name: "[mqtt_broker] Vérifier port 1883 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':1883' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker'
+      register: mqtt_port_check
+      changed_when: false
+
+    - name: "[mqtt_broker] Vérifier allow_anonymous dans la config"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "grep -r 'allow_anonymous true' /etc/mosquitto/ && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker'
+      register: mqtt_anon_check
+      changed_when: false
+
+    - name: "[mqtt_broker] Tester connexion anonyme réelle (publish + subscribe)"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "mosquitto_pub -h 127.0.0.1 -t 'verify/test' -m 'ok' 2>&1 &&
+                 mosquitto_sub -h 127.0.0.1 -t 'verify/test' -C 1 -W 3 2>&1 | grep -q 'ok' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker'
+      register: mqtt_conn_check
+      changed_when: false
+      failed_when: false
+
+    # ── Web : directory listing ──
+    - name: "[web_server] Vérifier port 80 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':80' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server'
+      register: web_port_check
+      changed_when: false
+
+    - name: "[web_server] Vérifier autoindex on dans nginx"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "grep -r 'autoindex on' /etc/nginx/ && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server'
+      register: web_autoindex_check
+      changed_when: false
+
+    - name: "[web_server] Vérifier accès au fichier sensible /backup/"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "curl -s http://127.0.0.1/backup/ | grep -qi 'db_backup\|config\|Index' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server'
+      register: web_listing_check
+      changed_when: false
+      failed_when: false
+
+    # ── SSH : creds par défaut ──
+    - name: "[ssh_server] Vérifier port 22 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':22' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server'
+      register: ssh_port_check
+      changed_when: false
+
+    - name: "[ssh_server] Vérifier PasswordAuthentication yes"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "grep -i 'PasswordAuthentication yes' /etc/ssh/sshd_config && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server'
+      register: ssh_pwauth_check
+      changed_when: false
+
+    - name: "[ssh_server] Vérifier existence user admin avec mot de passe 'admin'"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "id admin &>/dev/null &&
+                 python3 -c \"import crypt,spwd; h=spwd.getspnam('admin').sp_pwdp;
+                 print('OK' if crypt.crypt('admin',h)==h else 'FAIL')\" 2>/dev/null ||
+                 echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server'
+      register: ssh_creds_check
+      changed_when: false
+      failed_when: false
+
+    # ── IoT Gateway : Dropbear + HTTP ──
+    - name: "[iot_gateway] Vérifier Dropbear ou SSH sur port 22"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':22' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'iot_gateway'
+      register: iotgw_ssh_check
+      changed_when: false
+
+    - name: "[iot_gateway] Vérifier version Dropbear (Terrapin)"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "dropbear -V 2>&1 | head -1; echo OK"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'iot_gateway'
+      register: iotgw_dropbear_version
+      changed_when: false
+      failed_when: false
+
+    - name: "[iot_gateway] Vérifier endpoint /admin sans auth"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "curl -s http://127.0.0.1/admin | grep -qi 'admin\|no auth' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'iot_gateway'
+      register: iotgw_http_check
+      changed_when: false
+      failed_when: false
+
+    # ── DB : root sans mot de passe ──
+    - name: "[db_server] Vérifier port 3306 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':3306' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server'
+      register: db_port_check
+      changed_when: false
+
+    - name: "[db_server] Vérifier connexion root sans mot de passe"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "mysql -u root -e 'SELECT 1' &>/dev/null && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server'
+      register: db_nopass_check
+      changed_when: false
+
+    - name: "[db_server] Vérifier table users avec passwords en clair"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "mysql -u root -e 'SELECT COUNT(*) FROM smartcity.users' 2>/dev/null | grep -q '[0-9]' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server'
+      register: db_data_check
+      changed_when: false
+      failed_when: false
+
+    # ── Router : Telnet + FTP ──
+    - name: "[router] Vérifier port Telnet (23)"
+      ansible.builtin.shell: >
+        nmap -p 23 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '23/tcp open' &&
+        echo OK || echo FAIL
+      register: router_telnet_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[router] Vérifier port FTP (21) — scénarios 3 uniquement"
+      ansible.builtin.shell: >
+        nmap -p 21 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '21/tcp open' &&
+        echo OK || echo FAIL
+      register: router_ftp_check
+      changed_when: false
+      failed_when: false
+      when: scenario_id == "3"
+
+    - name: "[router] Vérifier interface web admin sur WAN (80) — scénario 2"
+      ansible.builtin.shell: >
+        nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
+        echo OK || echo FAIL
+      register: router_wan_check
+      changed_when: false
+      failed_when: false
+      when: scenario_id == "2"
+
+
+    # ── Retirer IP temporaire ──
+    - name: Retirer l'IP temporaire de vmbr1
+      ansible.builtin.command: ip addr del 192.168.100.254/24 dev vmbr1
+      failed_when: false
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # RAPPORT FINAL
+    # ════════════════════════════════════════════════════
+
+    - name: Rapport de vérification
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════════════════
+          Rapport de vérification — Scénario S{{ scenario_id }}
+          ══════════════════════════════════════════════════════════════════
+
+          MQTT (allow_anonymous + port 1883)
+          {% for r in (mqtt_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 1883  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (mqtt_anon_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            allow_anon : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (mqtt_conn_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Connexion  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          Web Server (nginx autoindex + fichiers exposés)
+          {% for r in (web_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (web_autoindex_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            autoindex  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (web_listing_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            /backup/   : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          SSH Server (admin/admin + PasswordAuth)
+          {% for r in (ssh_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (ssh_pwauth_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            PwdAuth    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (ssh_creds_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            admin:admin: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          IoT Gateway (Dropbear + HTTP sans auth)
+          {% for r in (iotgw_ssh_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (iotgw_dropbear_version.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Dropbear   : {{ r.stdout_lines[0] | default('?') }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (iotgw_http_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            /admin     : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          DB Server (root sans password + bind 0.0.0.0)
+          {% for r in (db_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 3306  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (db_nopass_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            root/vide  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (db_data_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            users table: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          Router OpenWrt
+            Telnet (23) : {{ '✓ OK' if 'OK' in router_telnet_check.stdout else '✗ FAIL' }}
+          {% if scenario_id == "2" %}
+            Web WAN (80): {{ '✓ OK' if 'OK' in router_wan_check.stdout else '✗ FAIL' }}
+          {% endif %}
+          {% if scenario_id == "3" %}
+            FTP (21)    : {{ '✓ OK' if 'OK' in (router_ftp_check.stdout | default('')) else '✗ FAIL' }}
+          {% endif %}
+
+          ══════════════════════════════════════════════════════════════════

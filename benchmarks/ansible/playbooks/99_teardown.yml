@@ -14,20 +14,24 @@
 
   tasks:
 
-    - name: Arrêter et supprimer toutes les VMs KVM du scénario
-      block:
-        - ansible.builtin.command: qm stop {{ item }} --skiplock
-          failed_when: false
-        - ansible.builtin.command: qm destroy {{ item }} --purge
-          failed_when: false
+    - name: Arrêter toutes les VMs KVM du scénario
+      ansible.builtin.command: qm stop {{ item }} --skiplock
+      failed_when: false
       loop: "{{ vmid_range }}"
 
-    - name: Arrêter et supprimer tous les CTs LXC du scénario
-      block:
-        - ansible.builtin.command: pct stop {{ item }} --skiplock
-          failed_when: false
-        - ansible.builtin.command: pct destroy {{ item }}
-          failed_when: false
+    - name: Supprimer toutes les VMs KVM du scénario
+      ansible.builtin.command: qm destroy {{ item }} --purge
+      failed_when: false
+      loop: "{{ vmid_range }}"
+
+    - name: Arrêter tous les CTs LXC du scénario
+      ansible.builtin.command: pct stop {{ item }} --skiplock
+      failed_when: false
+      loop: "{{ vmid_range }}"
+
+    - name: Supprimer tous les CTs LXC du scénario
+      ansible.builtin.command: pct destroy {{ item }}
+      failed_when: false
       loop: "{{ vmid_range }}"
 
     - name: Scénario S{{ scenario_id }} supprimé

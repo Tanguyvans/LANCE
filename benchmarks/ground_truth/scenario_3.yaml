@@ -1,0 +1,296 @@
+# Ground Truth — Scénario 3 : Réplique NATO Lab
+# Vulnérabilités réellement injectées par 04_inject_vulns.yml + 05_populate_services.yml
+
+scenario_id: "3"
+scenario_name: "Réplique NATO Lab"
+difficulty: "hard"
+description: >
+  Réplique du lab IoT NATO (192.168.88.0/24 → 192.168.100.0/24).
+  8 devices reproduisant la topologie réelle : WisGate (iot_gateway),
+  RPi5 et IoT-Hub (MQTT brokers), Jetson et NVR (SSH), AP et CAM (web).
+  Le routeur expose Telnet et FTP. Deux brokers MQTT anonymes coexistent.
+  Deux serveurs SSH avec default creds. Deux serveurs web avec directory listing.
+
+topology:
+  router:
+    name: s3-router
+    vmid: 120
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s3-wisgate, vmid: 121, ip: "192.168.100.11", role: iot_gateway }
+    - { name: s3-rpi5,    vmid: 122, ip: "192.168.100.12", role: mqtt_broker }
+    - { name: s3-iot-hub, vmid: 123, ip: "192.168.100.13", role: mqtt_broker }
+    - { name: s3-jetson,  vmid: 124, ip: "192.168.100.14", role: ssh_server  }
+    - { name: s3-ap,      vmid: 125, ip: "192.168.100.15", role: web_server  }
+    - { name: s3-cam,     vmid: 126, ip: "192.168.100.16", role: web_server  }
+    - { name: s3-nvr,     vmid: 127, ip: "192.168.100.17", role: ssh_server  }
+
+vulnerabilities:
+
+  - id: V1
+    device: s3-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur (port 23)"
+    description: >
+      telnetd actif sur OpenWrt. Protocole en clair, pas d'authentification
+      par défaut sur les versions OpenWrt sans mot de passe root configuré.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V2
+    device: s3-router
+    ip: "192.168.100.1"
+    role: router
+    title: "FTP anonyme activé sur le routeur (port 21)"
+    description: >
+      vsftpd installé avec anonymous_enable=YES. Permet la connexion
+      FTP sans credentials, accès potentiel aux fichiers de configuration.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 21/tcp ouvert sur 192.168.100.1"
+      - "Connexion FTP anonyme acceptée"
+    verification: "ftp 192.168.100.1 (user: anonymous)"
+    confidence_required: medium
+
+  - id: V3
+    device: s3-wisgate
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
+    description: >
+      Dropbear version 2020.81 (ou version repos Debian si archive indisponible).
+      Vulnérable à Terrapin (CVE-2023-48795), attaque MITM sur la négociation SSH.
+      Simule la WisGate Edge du lab réel.
+    severity: high
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    cve_cvss: 5.9
+    indicators:
+      - "Port 22/tcp ouvert sur 192.168.100.11"
+      - "Banner SSH Dropbear version <= 2022.82"
+      - "Support chacha20-poly1305 et CBC-ETM (vulnérable Terrapin)"
+    verification: "ssh-audit 192.168.100.11"
+    confidence_required: high
+
+  - id: V4
+    device: s3-wisgate
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Interface HTTP admin sans authentification (WisGate simulé)"
+    description: >
+      nginx expose /admin sur port 80 sans authentification.
+      /api/devices et /api/status exposent la topologie complète du réseau.
+      Simule l'interface admin HTTP de la WisGate Edge réelle.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection, Discovery"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin → 200 'Admin panel — no auth required'"
+      - "GET /api/devices → liste JSON des devices du réseau"
+      - "GET /api/status → forwarding vers DB (100.14:3306) exposé"
+    verification: "curl http://192.168.100.11/api/devices"
+    confidence_required: medium
+
+  - id: V5
+    device: s3-rpi5
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT sans authentification (RPi5)"
+    description: >
+      Mosquitto sur le RPi5 (simulé) avec allow_anonymous true.
+      Simule la configuration réelle du RPi5 du lab NATO.
+      Topics actifs : capteurs T°, humidité, accès bâtiment, caméras.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert sur 192.168.100.12"
+      - "Connexion anonyme acceptée"
+      - "Topics smartcity/# publiés en continu (données capteurs)"
+      - "Topic smartcity/admin/credentials expose des secrets"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    confidence_required: high
+
+  - id: V6
+    device: s3-iot-hub
+    ip: "192.168.100.13"
+    role: mqtt_broker
+    title: "MQTT sans authentification (IoT Hub)"
+    description: >
+      Second broker MQTT anonyme. Simule l'IoT Hub du lab.
+      Même vulnérabilité que V5 mais sur un device distinct.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert sur 192.168.100.13"
+      - "Connexion anonyme acceptée"
+    verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v"
+    confidence_required: high
+
+  - id: V7
+    device: s3-jetson
+    ip: "192.168.100.14"
+    role: ssh_server
+    title: "Credentials SSH par défaut sur Jetson (admin/admin)"
+    description: >
+      Compte admin:admin, root:root. PasswordAuthentication yes.
+      Simule le Jetson Orin du lab avec accès SSH direct.
+      Le fichier /etc/iot/config.json expose les credentials de tous les services.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert sur 192.168.100.14"
+      - "Login SSH admin:admin réussi"
+      - "/etc/iot/config.json expose mqtt.broker, database.host/user/password, api_key"
+    verification: "ssh admin@192.168.100.14 && cat /etc/iot/config.json"
+    confidence_required: high
+
+  - id: V8
+    device: s3-ap
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Directory listing nginx (Access Point simulé)"
+    description: >
+      nginx avec autoindex on. /backup/ et /config/ exposent des credentials.
+      Simule l'AP WiFi du lab avec interface web non sécurisée.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur 192.168.100.15"
+      - "GET /backup/ retourne listing"
+      - "GET /config/app.config expose credentials"
+    verification: "curl http://192.168.100.15/backup/"
+    confidence_required: medium
+
+  - id: V9
+    device: s3-cam
+    ip: "192.168.100.16"
+    role: web_server
+    title: "Directory listing nginx (Caméra IP simulée)"
+    description: >
+      nginx avec autoindex on. Simule la caméra IP du lab.
+      /backup/ expose un dump SQL avec credentials utilisateurs en clair.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur 192.168.100.16"
+      - "GET /backup/db_backup_2024-01-15.sql accessible"
+    verification: "curl http://192.168.100.16/backup/"
+    confidence_required: medium
+
+  - id: V10
+    device: s3-nvr
+    ip: "192.168.100.17"
+    role: ssh_server
+    title: "Credentials SSH par défaut sur NVR (admin/admin)"
+    description: >
+      Même configuration que V7 (admin:admin, root:root).
+      Simule le NVR (Network Video Recorder) du lab.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert sur 192.168.100.17"
+      - "Login SSH admin:admin réussi"
+    verification: "ssh admin@192.168.100.17 (password: admin)"
+    confidence_required: high
+
+attack_paths:
+
+  - id: P1
+    title: "Accès MQTT RPi5 via routeur Telnet"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",          action: "Telnet vers routeur"          }
+      - { hop: 2, device: "s3-router (100.1)",  action: "Accès admin shell"           }
+      - { hop: 3, device: "s3-rpi5 (100.12)",  action: "Subscribe MQTT sans auth"    }
+    vulnerabilities_used: [V1, V5]
+    impact: "Lecture de tous les topics capteurs + credentials admin via MQTT"
+
+  - id: P2
+    title: "Découverte réseau via API WisGate → pivot DB"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",            action: "HTTP vers 192.168.100.11"         }
+      - { hop: 2, device: "s3-wisgate (100.11)", action: "GET /api/status → 100.14:3306"   }
+      - { hop: 3, device: "s3-wisgate (100.11)", action: "GET /api/devices → topologie"    }
+    vulnerabilities_used: [V4]
+    impact: "Cartographie complète du réseau depuis un seul endpoint HTTP non authentifié"
+
+  - id: P3
+    title: "Compromission SSH Jetson → exfiltration credentials → pivot MQTT"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",            action: "SSH admin:admin"                       }
+      - { hop: 2, device: "s3-jetson (100.14)",  action: "cat /etc/iot/config.json"             }
+      - { hop: 3, device: "s3-rpi5 (100.12)",   action: "Subscribe MQTT avec credentials MQTT" }
+      - { hop: 4, device: "s3-iot-hub (100.13)", action: "Subscribe second broker MQTT"        }
+    vulnerabilities_used: [V7, V5, V6]
+    impact: "Accès aux deux brokers MQTT, lecture de tous les capteurs et credentials"
+
+  - id: P4
+    title: "MITM Terrapin WisGate → accès admin IoT"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",            action: "Position MITM réseau"                }
+      - { hop: 2, device: "s3-wisgate (100.11)", action: "Exploit CVE-2023-48795 (Terrapin)"  }
+      - { hop: 3, device: "s3-wisgate (100.11)", action: "Accès /admin + /api/devices"        }
+      - { hop: 4, device: "s3-rpi5 (100.12)",   action: "Subscribe MQTT anonyme"             }
+    vulnerabilities_used: [V3, V4, V5]
+    impact: "Contrôle de la gateway IoT principale, accès au réseau de capteurs"
+
+  - id: P5
+    title: "Chaîne complète FTP → credentials → pivot multi-hop"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",            action: "FTP anonyme sur routeur"              }
+      - { hop: 2, device: "s3-router (100.1)",   action: "Exfiltration fichiers config"        }
+      - { hop: 3, device: "s3-jetson (100.14)",  action: "SSH avec credentials trouvés"       }
+      - { hop: 4, device: "s3-iot-hub (100.13)", action: "MQTT subscribe → données capteurs"  }
+      - { hop: 5, device: "s3-nvr (100.17)",     action: "SSH admin:admin → accès NVR"        }
+    vulnerabilities_used: [V2, V7, V6, V10]
+    impact: "Compromission complète du réseau NATO Lab simulé en 5 étapes"
+
+scoring:
+  total_vulnerabilities: 10
+  total_attack_paths: 5
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 26   # V1:2 + V2:2 + V3:3 + V4:3 + V5:3 + V6:3 + V7:3 + V8:2 + V9:2 + V10:3

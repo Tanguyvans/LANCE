@@ -110,16 +110,10 @@
           set -e
           export DEBIAN_FRONTEND=noninteractive
 
-          # Installer nginx (version disponible) depuis le repo officiel nginx/Debian
-          apt-get install -y -qq curl gnupg2 ca-certificates
-          curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
-            -o /usr/share/keyrings/nginx-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
-            http://nginx.org/packages/mainline/debian bookworm nginx" \
-            > /etc/apt/sources.list.d/nginx.list
+          # Installer nginx depuis les repos Debian (version disponible)
+          # La faille benchmark est l'autoindex on, pas la version exacte
           apt-get update -qq
-          # Pinning sur 1.19.6 depuis le repo mainline (ou la plus proche disponible)
-          apt-get install -y -qq nginx || apt-get install -y -qq nginx
+          apt-get install -y -qq nginx
 
           # Faille V2 + V5 : directory listing + pas de restriction
           cat > /etc/nginx/conf.d/default.conf << 'EOF'
@@ -194,15 +188,18 @@
         mode: "0755"
         content: |
           #!/bin/bash
-          set -e
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq wget
 
           # Faille V3/V4 : Dropbear 2020.81 (Terrapin CVE-2023-48795)
-          # Télécharge le .deb depuis les archives Debian Bullseye
-          wget -q -O /tmp/dropbear.deb \
-            "http://archive.debian.org/debian/pool/main/d/dropbear/dropbear_2020.81-3_amd64.deb"
-          dpkg -i /tmp/dropbear.deb || apt-get install -f -y -qq
+          # Télécharge le .deb depuis les archives Debian Bullseye (timeout 30s)
+          if wget -q --timeout=30 -O /tmp/dropbear.deb \
+            "http://archive.debian.org/debian/pool/main/d/dropbear/dropbear_2020.81-3_amd64.deb"; then
+            dpkg -i /tmp/dropbear.deb || apt-get install -f -y -qq
+          else
+            echo "[WARN] Dropbear archive inaccessible, installation depuis les repos"
+            apt-get install -y -qq dropbear
+          fi
 
           # Désactiver OpenSSH, activer Dropbear sur port 22
           sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear 2>/dev/null || true

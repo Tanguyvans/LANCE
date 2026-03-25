@@ -1,0 +1,240 @@
+# Ground Truth — Scénario 2 : Gateway exposée
+# Vulnérabilités réellement injectées par 04_inject_vulns.yml + 05_populate_services.yml
+
+scenario_id: "2"
+scenario_name: "Gateway exposée"
+difficulty: "medium"
+description: >
+  Réseau IoT avec 6 services : web, MQTT, IoT gateway, base de données, jump host.
+  Le routeur expose son interface admin sur le WAN. La gateway IoT utilise
+  Dropbear vulnérable. La DB est accessible sans mot de passe depuis tout le réseau.
+
+topology:
+  router:
+    name: s2-router
+    vmid: 110
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s2-web,    vmid: 111, ip: "192.168.100.11", role: web_server   }
+    - { name: s2-mqtt,   vmid: 112, ip: "192.168.100.12", role: mqtt_broker  }
+    - { name: s2-iot-gw, vmid: 113, ip: "192.168.100.13", role: iot_gateway  }
+    - { name: s2-db,     vmid: 114, ip: "192.168.100.14", role: db_server    }
+    - { name: s2-jump,   vmid: 115, ip: "192.168.100.15", role: ssh_server   }
+
+vulnerabilities:
+
+  - id: V1
+    device: s2-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Interface web admin OpenWrt accessible depuis le WAN"
+    description: >
+      uhttpd est configuré pour écouter sur 0.0.0.0:80, rendant l'interface
+      LuCI accessible depuis le WAN (port 80). Pas d'authentification supplémentaire.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur l'IP WAN du routeur"
+      - "Interface LuCI accessible sans restriction réseau"
+    verification: "curl http://<WAN_IP>:80 → LuCI login page"
+    confidence_required: high
+
+  - id: V2
+    device: s2-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur (port 23)"
+    description: >
+      telnetd actif sur le routeur OpenWrt, accessible depuis le LAN.
+      Protocole non chiffré, credentials transmis en clair.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V3
+    device: s2-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT sans authentification"
+    description: >
+      Mosquitto avec allow_anonymous true. Accès en lecture/écriture
+      à tous les topics, y compris smartcity/admin/credentials.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion anonyme acceptée"
+      - "Topic smartcity/admin/credentials expose des secrets"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    confidence_required: high
+
+  - id: V4
+    device: s2-iot-gw
+    ip: "192.168.100.13"
+    role: iot_gateway
+    title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
+    description: >
+      Dropbear version 2020.81 installé. Vulnérable à l'attaque Terrapin
+      (CVE-2023-48795) qui permet une attaque MITM sur la négociation SSH
+      pour downgrader les algorithmes de chiffrement.
+    severity: high
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    cve_cvss: 5.9
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Banner SSH : dropbear_2020.81 ou version <= 2022.82"
+      - "Algorithmes chacha20-poly1305 et CBC avec ETM disponibles"
+    verification: "ssh-audit 192.168.100.13 | grep -i terrapin"
+    confidence_required: high
+
+  - id: V5
+    device: s2-iot-gw
+    ip: "192.168.100.13"
+    role: iot_gateway
+    title: "Interface HTTP admin sans authentification (port 80)"
+    description: >
+      nginx exposé sur port 80 avec un endpoint /admin accessible
+      sans authentification. Retourne des informations système.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin retourne 200 avec message 'no auth required'"
+      - "GET /api/devices expose la liste des devices du réseau"
+      - "GET /api/status expose les connexions internes"
+    verification: "curl http://192.168.100.13/admin"
+    confidence_required: medium
+
+  - id: V6
+    device: s2-db
+    ip: "192.168.100.14"
+    role: db_server
+    title: "MariaDB root sans mot de passe, accessible réseau"
+    description: >
+      MariaDB configuré avec un compte root sans mot de passe.
+      bind-address = 0.0.0.0 permet les connexions depuis tout le réseau.
+      La base smartcity contient des credentials en clair dans la table users.
+    severity: critical
+    category: default_credentials
+    owasp_iot: "I1 - Weak Passwords"
+    mitre_ics: "Collection, Impact"
+    cve: null
+    indicators:
+      - "Port 3306/tcp ouvert et accessible réseau"
+      - "mysql -h 192.168.100.14 -u root sans mot de passe fonctionne"
+      - "Table users contient passwords en clair (P@ssw0rd123, operator123)"
+    verification: "mysql -h 192.168.100.14 -u root -e 'SELECT * FROM smartcity.users;'"
+    confidence_required: high
+
+  - id: V7
+    device: s2-jump
+    ip: "192.168.100.15"
+    role: ssh_server
+    title: "Credentials SSH par défaut (admin/admin)"
+    description: >
+      Compte admin avec mot de passe 'admin', PermitRootLogin yes,
+      MaxAuthTries 10 (brute-force facilité). Root accessible avec 'root'.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Connexion SSH réussie avec admin:admin"
+      - "PasswordAuthentication yes"
+    verification: "ssh admin@192.168.100.15 (password: admin)"
+    confidence_required: high
+
+  - id: V8
+    device: s2-web
+    ip: "192.168.100.11"
+    role: web_server
+    title: "Directory listing + fichiers sensibles exposés"
+    description: >
+      nginx avec autoindex on. /backup/ et /config/ exposent
+      des dumps SQL et fichiers de configuration avec credentials.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "GET /backup/ retourne listing avec db_backup.sql"
+      - "GET /config/app.config expose DB password, API key, SMTP credentials"
+      - "GET /logs/access.log expose l'historique des accès"
+    verification: "curl http://192.168.100.11/backup/"
+    confidence_required: medium
+
+attack_paths:
+
+  - id: P1
+    title: "Accès direct à l'interface admin routeur depuis WAN"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",          action: "HTTP vers WAN IP:80"         }
+      - { hop: 2, device: "s2-router (100.1)",  action: "LuCI admin panel accessible" }
+    vulnerabilities_used: [V1]
+    impact: "Contrôle total du routeur, modification des règles firewall, accès LAN"
+
+  - id: P2
+    title: "Exfiltration DB via interface admin IoT Gateway"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",           action: "HTTP vers 192.168.100.13/api/status" }
+      - { hop: 2, device: "s2-iot-gw (100.13)", action: "Récupération topologie réseau interne" }
+      - { hop: 3, device: "s2-db (100.14)",     action: "Connexion MySQL root sans password"   }
+      - { hop: 4, device: "s2-db (100.14)",     action: "SELECT * FROM users → credentials"   }
+    vulnerabilities_used: [V5, V6]
+    impact: "Dump complet de la base, credentials de tous les utilisateurs"
+
+  - id: P3
+    title: "Compromission SSH + pivot via credentials MQTT"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",            action: "SSH admin:admin"                    }
+      - { hop: 2, device: "s2-jump (100.15)",    action: "Accès shell"                        }
+      - { hop: 3, device: "s2-mqtt (100.12)",    action: "Subscribe MQTT, récupère credentials" }
+      - { hop: 4, device: "s2-db (100.14)",      action: "Connexion DB avec credentials MQTT" }
+    vulnerabilities_used: [V7, V3, V6]
+    impact: "Pivot complet du réseau, accès à tous les services internes"
+
+  - id: P4
+    title: "MITM SSH via Terrapin → escalade"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",            action: "Position MITM sur connexion SSH"      }
+      - { hop: 2, device: "s2-iot-gw (100.13)",  action: "Exploitation CVE-2023-48795 Terrapin" }
+      - { hop: 3, device: "s2-iot-gw (100.13)",  action: "Accès /admin → topologie réseau"     }
+      - { hop: 4, device: "s2-mqtt (100.12)",    action: "Subscribe MQTT sans auth"             }
+    vulnerabilities_used: [V4, V5, V3]
+    impact: "Interception des sessions SSH, accès au broker MQTT, espionnage du réseau IoT"
+
+scoring:
+  total_vulnerabilities: 8
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 27   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3
