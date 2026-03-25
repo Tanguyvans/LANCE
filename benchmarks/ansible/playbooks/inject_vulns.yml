@@ -1,0 +1,14 @@
+---
+- name: Inject vulnerabilities into benchmark VMs
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Apply vulnerability roles (service dependencies auto-resolved)
+      ansible.builtin.include_role:
+        name: "{{ role_item }}"
+      loop: "{{ vuln_roles.split() | select() | list }}"
+      loop_control:
+        loop_var: role_item
+      when: vuln_roles is defined and vuln_roles | length > 0

@@ -1,0 +1,26 @@
+---
+- name: Install SNMP daemon
+  ansible.builtin.apt:
+    name:
+      - snmpd
+      - snmp
+    state: present
+    update_cache: true
+
+- name: Configure SNMP with default community string
+  ansible.builtin.copy:
+    dest: /etc/snmp/snmpd.conf
+    content: |
+      # VULN F1: Default SNMP community string
+      rocommunity public
+      rwcommunity private
+      syslocation "IoT Sensor Lab"
+      syscontact "admin@benchmark.local"
+      agentaddress udp:161
+    mode: '0644'
+
+- name: Restart SNMP daemon
+  ansible.builtin.systemd:
+    name: snmpd
+    state: restarted
+    enabled: true
