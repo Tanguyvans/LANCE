@@ -50,6 +50,28 @@
           - { name: nvr,     vmid_offset: 7, role: ssh_server   }
         router_vulns: [telnet, ftp]
 
+      "4":
+        services:
+          - { name: admin,     vmid_offset: 1, role: ssh_server    }
+          - { name: webapp,    vmid_offset: 2, role: web_upload    }
+          - { name: mqtt,      vmid_offset: 3, role: mqtt_broker   }
+          - { name: lora-gw,   vmid_offset: 4, role: iot_gateway   }
+          - { name: plc,       vmid_offset: 5, role: modbus_server }
+          - { name: hmi,       vmid_offset: 6, role: web_server    }
+          - { name: historian, vmid_offset: 7, role: db_server     }
+        router_vulns: [telnet, admin_wan]
+
+      "5":
+        services:
+          - { name: cam1,        vmid_offset: 1, role: camera_server }
+          - { name: cam2,        vmid_offset: 2, role: camera_server }
+          - { name: nvr,         vmid_offset: 3, role: nvr_server    }
+          - { name: access-ctrl, vmid_offset: 4, role: web_server    }
+          - { name: hvac,        vmid_offset: 5, role: web_server    }
+          - { name: mqtt,        vmid_offset: 6, role: mqtt_broker   }
+          - { name: web,         vmid_offset: 7, role: web_server    }
+        router_vulns: [telnet, admin_wan]
+
   tasks:
 
     # ── DNS : nécessaire pour apt-get dans les CTs ──
@@ -265,6 +287,220 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'db_server'
+      changed_when: true
+
+
+    # ── Modbus Server : pymodbus sans authentification (port 502) ──
+    - name: "[modbus_server] Écrire le script d'injection Modbus"
+      ansible.builtin.copy:
+        dest: /tmp/inject_modbus.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq python3 python3-pip
+          pip3 install pymodbus --quiet
+
+          # Faille : serveur Modbus TCP sans authentification (standard industriel)
+          cat > /opt/modbus_server.py << 'EOF'
+          #!/usr/bin/env python3
+          """Serveur Modbus TCP — benchmark vuln : pas d'auth, registres exposés"""
+          from pymodbus.server import StartTcpServer
+          from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
+
+          store = ModbusSlaveContext(
+              di=ModbusSequentialDataBlock(0, [1]*100),
+              co=ModbusSequentialDataBlock(0, [0]*100),
+              hr=ModbusSequentialDataBlock(0, [i*10 for i in range(100)]),
+              ir=ModbusSequentialDataBlock(0, [i*5  for i in range(100)]),
+          )
+          context = ModbusServerContext(slaves=store, single=True)
+          print("[OK] Modbus TCP démarré sur 0.0.0.0:502 (sans authentification)")
+          StartTcpServer(context=context, address=("0.0.0.0", 502))
+          EOF
+
+          cat > /etc/systemd/system/modbus.service << 'EOF'
+          [Unit]
+          Description=Modbus TCP Server (benchmark)
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/modbus_server.py
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl daemon-reload
+          systemctl enable modbus
+          systemctl start modbus
+          echo "[OK] Modbus TCP sur port 502 (sans auth)"
+
+    - name: "[modbus_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_modbus.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'modbus_server'
+      changed_when: true
+
+
+    # ── Web Upload : nginx + PHP upload sans validation ──
+    - name: "[web_upload] Écrire le script d'injection web upload"
+      ansible.builtin.copy:
+        dest: /tmp/inject_webupload.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq nginx php-fpm
+
+          # Faille : upload de fichier sans validation (RCE potentiel)
+          mkdir -p /var/www/html/uploads
+          chmod 777 /var/www/html/uploads
+
+          cat > /var/www/html/index.php << 'EOF'
+          <?php
+          if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['file'])) {
+              $dest = '/var/www/html/uploads/' . basename($_FILES['file']['name']);
+              move_uploaded_file($_FILES['file']['tmp_name'], $dest);
+              echo "<p>Fichier uploadé : <a href='/uploads/" . htmlspecialchars(basename($_FILES['file']['name'])) . "'>" . htmlspecialchars(basename($_FILES['file']['name'])) . "</a></p>";
+          }
+          ?>
+          <!DOCTYPE html><html><body>
+          <h2>IoT Firmware Update Portal</h2>
+          <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file"><br><br>
+            <input type="submit" value="Upload">
+          </form>
+          <?php if (is_dir('/var/www/html/uploads')) {
+            echo "<h3>Fichiers uploadés :</h3><ul>";
+            foreach (glob('/var/www/html/uploads/*') as $f) echo "<li><a href='/uploads/".basename($f)."'>".basename($f)."</a></li>";
+            echo "</ul>";
+          } ?>
+          </body></html>
+          EOF
+
+          PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+          cat > /etc/nginx/conf.d/upload.conf << EOF
+          server {
+              listen 80 default_server;
+              server_name _;
+              root /var/www/html;
+              index index.php;
+              location / { try_files \$uri \$uri/ =404; }
+              location ~ \.php$ {
+                  include fastcgi_params;
+                  fastcgi_pass unix:/run/php/php${PHP_VERSION}-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+              }
+              location /uploads { autoindex on; }
+          }
+          EOF
+
+          rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+          systemctl enable nginx php${PHP_VERSION}-fpm
+          systemctl restart php${PHP_VERSION}-fpm nginx
+          echo "[OK] Web upload PHP configuré (sans validation)"
+
+    - name: "[web_upload] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_webupload.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_upload'
+      changed_when: true
+
+
+    # ── Camera Server : nginx fake RTSP/camera UI sans auth ──
+    - name: "[camera_server] Écrire le script d'injection caméra"
+      ansible.builtin.copy:
+        dest: /tmp/inject_camera.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq nginx
+
+          mkdir -p /var/www/html/stream /var/www/html/snapshot
+
+          # Page UI caméra factice accessible sans authentification
+          cat > /var/www/html/index.html << 'EOF'
+          <!DOCTYPE html><html><head><title>IP Camera — Live View</title></head><body>
+          <h2>IP Camera — Live View (No Auth Required)</h2>
+          <img src="/snapshot/latest.jpg" alt="Camera feed" style="border:1px solid #ccc">
+          <p>RTSP stream: rtsp://192.168.100.x:554/stream1</p>
+          <p>Admin panel: <a href="/admin">/admin</a></p>
+          </body></html>
+          EOF
+
+          # Snapshot factice
+          dd if=/dev/urandom bs=1024 count=10 2>/dev/null | \
+            base64 > /var/www/html/snapshot/latest.jpg
+
+          cat > /etc/nginx/conf.d/camera.conf << 'EOF'
+          server {
+              listen 80 default_server;
+              server_name _;
+              root /var/www/html;
+              autoindex on;
+              location / { try_files $uri $uri/ =404; }
+              location /admin { return 200 "Admin panel — default creds admin:admin"; add_header Content-Type text/plain; }
+              location /api/stream { return 200 '{"status":"streaming","url":"rtsp://0.0.0.0:554/stream1"}'; add_header Content-Type application/json; }
+          }
+          EOF
+
+          rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+          systemctl enable nginx
+          systemctl restart nginx
+          echo "[OK] Camera server nginx configuré (sans auth)"
+
+    - name: "[camera_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_camera.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'camera_server'
+      changed_when: true
+
+
+    # ── NVR Server : SSH avec creds ubnt/ubnt (Ubiquiti défaut) ──
+    - name: "[nvr_server] Écrire le script d'injection NVR"
+      ansible.builtin.copy:
+        dest: /tmp/inject_nvr.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y -qq openssh-server
+
+          # Faille : creds par défaut Ubiquiti UniFi NVR (ubnt/ubnt)
+          useradd -m -s /bin/bash ubnt 2>/dev/null || true
+          echo "ubnt:ubnt" | chpasswd
+          echo "admin:admin" | chpasswd root 2>/dev/null || true
+
+          sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sed -i 's/^#\?MaxAuthTries.*/MaxAuthTries 10/' /etc/ssh/sshd_config
+
+          # Faux répertoire NVR avec données sensibles
+          mkdir -p /opt/nvr/recordings /opt/nvr/config
+          echo '{"admin_password":"ubnt","cameras":["192.168.100.11","192.168.100.12"],"recording_path":"/opt/nvr/recordings"}' \
+            > /opt/nvr/config/system.json
+          chmod -R 644 /opt/nvr/config/
+
+          systemctl enable ssh
+          systemctl restart ssh
+          echo "[OK] NVR SSH configuré (ubnt/ubnt)"
+
+    - name: "[nvr_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_nvr.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nvr_server'
       changed_when: true
 
 

@@ -1,0 +1,238 @@
+# Ground Truth — Scénario 5 : Smart Building
+# Vulnérabilités réellement injectées par 04_inject_vulns.yml + 05_populate_services.yml
+# Référence pour l'évaluateur automatique (src/benchmark/evaluator.py)
+
+scenario_id: "5"
+scenario_name: "Smart Building"
+difficulty: "medium"
+description: >
+  Infrastructure de surveillance d'un bâtiment intelligent : 2 caméras IP, 1 NVR,
+  contrôle d'accès, HVAC, MQTT et portail web. 8 VMs sur 192.168.100.0/24.
+  Simule un bâtiment connecté avec des équipements Ubiquiti/Hikvision vulnérables
+  et une absence totale d'authentification sur les systèmes de surveillance.
+
+topology:
+  router:
+    name: s5-router
+    vmid: 150
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s5-cam1,        vmid: 151, ip: "192.168.100.11", role: camera_server }
+    - { name: s5-cam2,        vmid: 152, ip: "192.168.100.12", role: camera_server }
+    - { name: s5-nvr,         vmid: 153, ip: "192.168.100.13", role: nvr_server    }
+    - { name: s5-access-ctrl, vmid: 154, ip: "192.168.100.14", role: web_server    }
+    - { name: s5-hvac,        vmid: 155, ip: "192.168.100.15", role: web_server    }
+    - { name: s5-mqtt,        vmid: 156, ip: "192.168.100.16", role: mqtt_broker   }
+    - { name: s5-web,         vmid: 157, ip: "192.168.100.17", role: web_server    }
+
+# ── Vulnérabilités plantées ──────────────────────────────────────────────────
+vulnerabilities:
+
+  - id: V1
+    device: s5-cam1
+    ip: "192.168.100.11"
+    role: camera_server
+    title: "Caméra IP sans authentification (Hikvision simulé)"
+    description: >
+      Caméra IP avec interface HTTP accessible sans authentification.
+      L'endpoint /admin répond sans credentials. L'API /api/info expose
+      le modèle, le firmware, l'URL RTSP avec credentials admin:admin, et
+      confirme que auth_required est false. /config/camera.conf expose
+      les credentials de connexion au NVR (ubnt/ubnt).
+    severity: high
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "T0801 - Monitor Process State"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin répond sans authentification"
+      - "GET /api/info expose rtsp://admin:admin@... et auth_required=false"
+      - "GET /config/camera.conf expose credentials NVR (ubnt/ubnt)"
+    verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/info"
+    confidence_required: high
+
+  - id: V2
+    device: s5-cam2
+    ip: "192.168.100.12"
+    role: camera_server
+    title: "Caméra IP sans authentification (identique cam1)"
+    description: >
+      Deuxième caméra IP avec les mêmes vulnérabilités que cam1.
+      Interface HTTP sans auth, API expose credentials RTSP et NVR.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "T0801 - Monitor Process State"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin répond sans authentification"
+      - "GET /api/info expose credentials"
+    verification: "curl http://192.168.100.12/api/info"
+    confidence_required: high
+
+  - id: V3
+    device: s5-nvr
+    ip: "192.168.100.13"
+    role: nvr_server
+    title: "NVR Ubiquiti UniFi avec credentials par défaut (ubnt/ubnt)"
+    description: >
+      Network Video Recorder avec credentials par défaut Ubiquiti (ubnt/ubnt).
+      PasswordAuthentication activé. Le fichier /opt/nvr/config/system.json
+      expose les credentials de toutes les caméras, le chemin des enregistrements,
+      et les credentials SMTP pour les alertes.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "T0822 - External Remote Services"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Connexion SSH réussie avec ubnt:ubnt"
+      - "/opt/nvr/config/system.json accessible — credentials caméras + SMTP exposés"
+      - "/opt/nvr/logs/nvr.log — historique des accès"
+    verification: "ssh ubnt@192.168.100.13 (password: ubnt)"
+    confidence_required: high
+
+  - id: V4
+    device: s5-access-ctrl
+    ip: "192.168.100.14"
+    role: web_server
+    title: "Contrôle d'accès bâtiment — HTTP sans authentification"
+    description: >
+      Interface de contrôle d'accès (portes, badges) accessible via HTTP sans
+      authentification. Directory listing activé. Les fichiers de configuration
+      exposent les données des badges et les credentials des systèmes connectés.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "T0832 - Manipulation of View, T0831 - Manipulation of Control"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "Interface contrôle d'accès accessible sans login"
+      - "Directory listing activé sur /backup/ et /config/"
+    verification: "curl http://192.168.100.14/"
+    confidence_required: medium
+
+  - id: V5
+    device: s5-hvac
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Système HVAC — HTTP sans authentification"
+    description: >
+      Système de climatisation/chauffage (HVAC) accessible via HTTP sans authentification.
+      Un attaquant peut accéder aux paramètres de régulation thermique et aux données
+      de consommation énergétique du bâtiment.
+    severity: medium
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "T0831 - Manipulation of Control"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "Interface HVAC accessible sans authentification"
+      - "Directory listing activé"
+    verification: "curl http://192.168.100.15/"
+    confidence_required: medium
+
+  - id: V6
+    device: s5-mqtt
+    ip: "192.168.100.16"
+    role: mqtt_broker
+    title: "MQTT sans authentification — données bâtiment exposées"
+    description: >
+      Mosquitto avec allow_anonymous true. Les topics MQTT transportent
+      les données de surveillance du bâtiment (caméras, accès, HVAC, alarmes)
+      et le topic admin/credentials expose les credentials en clair.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "T0830 - Man in the Middle, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion possible sans username/password"
+      - "Topics building/* exposent statut caméras, accès, HVAC"
+      - "Topic smartcity/admin/credentials expose db_pass et api_key"
+    verification: "mosquitto_sub -h 192.168.100.16 -t '#' -v"
+    confidence_required: high
+
+  - id: V7
+    device: s5-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé + interface web admin exposée WAN"
+    description: >
+      Le routeur OpenWrt expose Telnet (port 23) en clair et son interface
+      web LuCI accessible depuis le WAN (port 80).
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert (Telnet)"
+      - "Port 80/tcp ouvert sur WAN (interface LuCI)"
+    verification: "nmap -p 23,80 192.168.100.1"
+    confidence_required: medium
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "Accès caméra → credentials NVR → pivot complet"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",              action: "GET /api/info sans auth"                    }
+      - { hop: 2, device: "s5-cam1 (100.11)",      action: "Récupération credentials NVR (ubnt/ubnt)"  }
+      - { hop: 3, device: "s5-nvr (100.13)",       action: "SSH ubnt:ubnt → config/system.json"        }
+      - { hop: 4, device: "s5-cam1+cam2",          action: "Accès complet flux vidéo + config caméras" }
+    vulnerabilities_used: [V1, V3]
+    impact: "Accès total au système de surveillance : vidéo en direct, enregistrements, config"
+
+  - id: P2
+    title: "MQTT → écoute surveillance bâtiment → sabotage"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",          action: "Subscribe MQTT sans auth"                  }
+      - { hop: 2, device: "s5-mqtt (100.16)",  action: "Écoute topics building/* (accès, HVAC)"   }
+      - { hop: 3, device: "s5-hvac (100.15)",  action: "Accès HTTP HVAC — modification paramètres" }
+    vulnerabilities_used: [V6, V5]
+    impact: "Surveillance complète du bâtiment + manipulation système HVAC"
+
+  - id: P3
+    title: "NVR compromis → pivot vers caméras + contrôle accès"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",              action: "SSH ubnt:ubnt vers NVR"                    }
+      - { hop: 2, device: "s5-nvr (100.13)",       action: "Lecture system.json — credentials caméras" }
+      - { hop: 3, device: "s5-cam1 (100.11)",      action: "Accès caméra — désactivation flux"        }
+      - { hop: 4, device: "s5-access-ctrl (100.14)", action: "HTTP accès contrôle portes sans auth"   }
+    vulnerabilities_used: [V3, V2, V4]
+    impact: "Désactivation surveillance + accès contrôle portes du bâtiment"
+
+  - id: P4
+    title: "Chaîne complète : MQTT → credentials → NVR → surveillance totale"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",              action: "Subscribe MQTT — topic admin/credentials"  }
+      - { hop: 2, device: "s5-mqtt (100.16)",      action: "Récupération credentials db et api_key"   }
+      - { hop: 3, device: "s5-nvr (100.13)",       action: "SSH ubnt:ubnt — exfiltration config"      }
+      - { hop: 4, device: "s5-cam1+cam2",          action: "Accès flux vidéo + snapshots en direct"   }
+      - { hop: 5, device: "s5-access-ctrl (100.14)", action: "Accès contrôle d'accès bâtiment"       }
+    vulnerabilities_used: [V6, V3, V1, V4]
+    impact: "Compromission totale du bâtiment : surveillance, accès physique, HVAC"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 7
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 18   # V1:3 + V2:3 + V3:3 + V4:3 + V5:2 + V6:3 + V7:2 - 1 (overlap)

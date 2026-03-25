@@ -49,11 +49,33 @@
           - { name: cam,      ip: "192.168.100.16", role: "web_server"   }
           - { name: nvr,      ip: "192.168.100.17", role: "ssh_server"   }
 
+      "4":
+        name: "Réseau segmenté"
+        services:
+          - { name: admin,     ip: "192.168.100.11", role: "ssh_server"     }
+          - { name: webapp,    ip: "192.168.100.12", role: "web_upload"     }
+          - { name: mqtt,      ip: "192.168.100.13", role: "mqtt_broker"    }
+          - { name: lora-gw,   ip: "192.168.100.14", role: "iot_gateway"    }
+          - { name: plc,       ip: "192.168.100.15", role: "modbus_server"  }
+          - { name: hmi,       ip: "192.168.100.16", role: "web_server"     }
+          - { name: historian, ip: "192.168.100.17", role: "db_server"      }
+
+      "5":
+        name: "Smart Building"
+        services:
+          - { name: cam1,         ip: "192.168.100.11", role: "camera_server" }
+          - { name: cam2,         ip: "192.168.100.12", role: "camera_server" }
+          - { name: nvr,          ip: "192.168.100.13", role: "nvr_server"    }
+          - { name: access-ctrl,  ip: "192.168.100.14", role: "web_server"    }
+          - { name: hvac,         ip: "192.168.100.15", role: "web_server"    }
+          - { name: mqtt,         ip: "192.168.100.16", role: "mqtt_broker"   }
+          - { name: web,          ip: "192.168.100.17", role: "web_server"    }
+
   tasks:
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3"
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
       when: scenario_id not in scenarios
 
     - name: Détecter si un autre scénario est déjà en cours

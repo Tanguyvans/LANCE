@@ -39,12 +39,30 @@
           - { name: ap,      vmid_offset: 5, ip: "192.168.100.15", role: web_server  }
           - { name: cam,     vmid_offset: 6, ip: "192.168.100.16", role: web_server  }
           - { name: nvr,     vmid_offset: 7, ip: "192.168.100.17", role: ssh_server  }
+      "4":
+        services:
+          - { name: admin,     vmid_offset: 1, ip: "192.168.100.11", role: ssh_server    }
+          - { name: webapp,    vmid_offset: 2, ip: "192.168.100.12", role: web_upload    }
+          - { name: mqtt,      vmid_offset: 3, ip: "192.168.100.13", role: mqtt_broker   }
+          - { name: lora-gw,   vmid_offset: 4, ip: "192.168.100.14", role: iot_gateway   }
+          - { name: plc,       vmid_offset: 5, ip: "192.168.100.15", role: modbus_server }
+          - { name: hmi,       vmid_offset: 6, ip: "192.168.100.16", role: web_server    }
+          - { name: historian, vmid_offset: 7, ip: "192.168.100.17", role: db_server     }
+      "5":
+        services:
+          - { name: cam1,        vmid_offset: 1, ip: "192.168.100.11", role: camera_server }
+          - { name: cam2,        vmid_offset: 2, ip: "192.168.100.12", role: camera_server }
+          - { name: nvr,         vmid_offset: 3, ip: "192.168.100.13", role: nvr_server    }
+          - { name: access-ctrl, vmid_offset: 4, ip: "192.168.100.14", role: web_server    }
+          - { name: hvac,        vmid_offset: 5, ip: "192.168.100.15", role: web_server    }
+          - { name: mqtt,        vmid_offset: 6, ip: "192.168.100.16", role: mqtt_broker   }
+          - { name: web,         vmid_offset: 7, ip: "192.168.100.17", role: web_server    }
 
   tasks:
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3"
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
       when: scenario_id not in scenarios
 
     # ── Ajouter IP temporaire pour accès aux CTs via vmbr1 ──
@@ -212,6 +230,100 @@
       changed_when: false
       failed_when: false
 
+    # ── Modbus : port 502 sans auth ──
+    - name: "[modbus_server] Vérifier port 502 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':502' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'modbus_server'
+      register: modbus_port_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[modbus_server] Vérifier processus modbus actif"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "systemctl is-active modbus 2>/dev/null && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'modbus_server'
+      register: modbus_svc_check
+      changed_when: false
+      failed_when: false
+
+    # ── Web Upload : PHP upload sans validation ──
+    - name: "[web_upload] Vérifier port 80 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':80' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_upload'
+      register: webupload_port_check
+      changed_when: false
+
+    - name: "[web_upload] Vérifier PHP-FPM actif et webshell uploadé"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /var/www/html/uploads/shell.php ] && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_upload'
+      register: webupload_shell_check
+      changed_when: false
+      failed_when: false
+
+    # ── Camera Server : HTTP sans auth ──
+    - name: "[camera_server] Vérifier port 80 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':80' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'camera_server'
+      register: camera_port_check
+      changed_when: false
+
+    - name: "[camera_server] Vérifier accès /admin sans auth"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "curl -s http://127.0.0.1/admin | grep -qi 'admin' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'camera_server'
+      register: camera_admin_check
+      changed_when: false
+      failed_when: false
+
+    # ── NVR Server : ubnt/ubnt ──
+    - name: "[nvr_server] Vérifier port 22 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':22' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nvr_server'
+      register: nvr_port_check
+      changed_when: false
+
+    - name: "[nvr_server] Vérifier existence user ubnt avec mot de passe 'ubnt'"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "id ubnt &>/dev/null &&
+                 python3 -c \"import crypt,spwd; h=spwd.getspnam('ubnt').sp_pwdp;
+                 print('OK' if crypt.crypt('ubnt',h)==h else 'FAIL')\" 2>/dev/null ||
+                 echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nvr_server'
+      register: nvr_creds_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[nvr_server] Vérifier config NVR avec credentials exposés"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /opt/nvr/config/system.json ] && grep -q 'ubnt' /opt/nvr/config/system.json && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nvr_server'
+      register: nvr_config_check
+      changed_when: false
+      failed_when: false
+
     # ── Router : Telnet + FTP ──
     - name: "[router] Vérifier port Telnet (23)"
       ansible.builtin.shell: >
@@ -221,7 +333,7 @@
       changed_when: false
       failed_when: false
 
-    - name: "[router] Vérifier port FTP (21) — scénarios 3 uniquement"
+    - name: "[router] Vérifier port FTP (21) — scénario 3 uniquement"
       ansible.builtin.shell: >
         nmap -p 21 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '21/tcp open' &&
         echo OK || echo FAIL
@@ -230,14 +342,14 @@
       failed_when: false
       when: scenario_id == "3"
 
-    - name: "[router] Vérifier interface web admin sur WAN (80) — scénario 2"
+    - name: "[router] Vérifier interface web admin sur WAN (80) — scénarios 2/4/5"
       ansible.builtin.shell: >
         nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
         echo OK || echo FAIL
       register: router_wan_check
       changed_when: false
       failed_when: false
-      when: scenario_id == "2"
+      when: scenario_id in ["2", "4", "5"]
 
 
     # ── Retirer IP temporaire ──
@@ -343,10 +455,63 @@
           {% endif %}
           {% endfor %}
 
+          Modbus Server (port 502 sans auth)
+          {% for r in (modbus_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 502   : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (modbus_svc_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Service    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          Web Upload (PHP sans validation)
+          {% for r in (webupload_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (webupload_shell_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            shell.php  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          Camera Server (HTTP sans auth)
+          {% for r in (camera_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (camera_admin_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            /admin     : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          NVR Server (ubnt/ubnt)
+          {% for r in (nvr_port_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (nvr_creds_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            ubnt:ubnt  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (nvr_config_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            config.json: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
           Router OpenWrt
             Telnet (23) : {{ '✓ OK' if 'OK' in router_telnet_check.stdout else '✗ FAIL' }}
-          {% if scenario_id == "2" %}
-            Web WAN (80): {{ '✓ OK' if 'OK' in router_wan_check.stdout else '✗ FAIL' }}
+          {% if scenario_id in ["2", "4", "5"] %}
+            Web WAN (80): {{ '✓ OK' if 'OK' in (router_wan_check.stdout | default('')) else '✗ FAIL' }}
           {% endif %}
           {% if scenario_id == "3" %}
             FTP (21)    : {{ '✓ OK' if 'OK' in (router_ftp_check.stdout | default('')) else '✗ FAIL' }}

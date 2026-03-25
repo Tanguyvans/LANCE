@@ -68,9 +68,11 @@ declare -A SCENARIO_NAMES=(
   [1]="Réseau plat        (4 VMs  — mqtt, web, ssh)"
   [2]="Gateway exposée    (6 VMs  — web, mqtt, iot-gw, db, jump)"
   [3]="Réplique NATO Lab  (8 VMs  — wisgate, rpi5, iot-hub, jetson, ap, cam, nvr)"
+  [4]="Réseau segmenté    (8 VMs  — admin, webapp, mqtt, lora-gw, plc, hmi, historian)"
+  [5]="Smart Building     (8 VMs  — cam1, cam2, nvr, access-ctrl, hvac, mqtt, web)"
 )
 
-declare -A SCENARIO_BASES=([1]=100 [2]=110 [3]=120)
+declare -A SCENARIO_BASES=([1]=100 [2]=110 [3]=120 [4]=130 [5]=150)
 
 echo -e "\n${BOLD}╔══════════════════════════════════════════════════════════╗"
 echo -e "║     Benchmark IoT — Déploiement automatique              ║"
@@ -164,6 +166,23 @@ case $SCENARIO_ID in
     echo -e "  RPi5    : mosquitto_sub -h 192.168.100.12 -t '#' -v"
     echo -e "  IoT Hub : mosquitto_sub -h 192.168.100.13 -t '#' -v"
     echo -e "  Jetson  : ssh admin@192.168.100.14  (password: admin)"
+    ;;
+  4)
+    echo -e "  Router  : ssh root@192.168.100.1  (+ admin WAN exposé)"
+    echo -e "  Admin   : ssh admin@192.168.100.11  (password: admin)"
+    echo -e "  Webapp  : curl http://192.168.100.12/  (upload PHP sans validation)"
+    echo -e "  MQTT    : mosquitto_sub -h 192.168.100.13 -t '#' -v"
+    echo -e "  PLC     : python3 -c \"from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('192.168.100.15'); c.connect(); print(c.read_holding_registers(0,10))\""
+    echo -e "  HMI     : curl http://192.168.100.16/"
+    echo -e "  DB      : mysql -h 192.168.100.17 -u root smartcity"
+    ;;
+  5)
+    echo -e "  Router  : ssh root@192.168.100.1  (+ admin WAN exposé)"
+    echo -e "  Cam1    : curl http://192.168.100.11/admin  (no auth)"
+    echo -e "  Cam2    : curl http://192.168.100.12/api/info"
+    echo -e "  NVR     : ssh ubnt@192.168.100.13  (password: ubnt)"
+    echo -e "  MQTT    : mosquitto_sub -h 192.168.100.16 -t '#' -v"
+    echo -e "  Web     : curl http://192.168.100.17/"
     ;;
 esac
 

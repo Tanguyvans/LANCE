@@ -44,6 +44,26 @@
           - { name: cam,     vmid_offset: 6, role: web_server   }
           - { name: nvr,     vmid_offset: 7, role: ssh_server   }
 
+      "4":
+        services:
+          - { name: admin,     vmid_offset: 1, role: ssh_server    }
+          - { name: webapp,    vmid_offset: 2, role: web_upload    }
+          - { name: mqtt,      vmid_offset: 3, role: mqtt_broker   }
+          - { name: lora-gw,   vmid_offset: 4, role: iot_gateway   }
+          - { name: plc,       vmid_offset: 5, role: modbus_server }
+          - { name: hmi,       vmid_offset: 6, role: web_server    }
+          - { name: historian, vmid_offset: 7, role: db_server     }
+
+      "5":
+        services:
+          - { name: cam1,        vmid_offset: 1, role: camera_server }
+          - { name: cam2,        vmid_offset: 2, role: camera_server }
+          - { name: nvr,         vmid_offset: 3, role: nvr_server    }
+          - { name: access-ctrl, vmid_offset: 4, role: web_server    }
+          - { name: hvac,        vmid_offset: 5, role: web_server    }
+          - { name: mqtt,        vmid_offset: 6, role: mqtt_broker   }
+          - { name: web,         vmid_offset: 7, role: web_server    }
+
   tasks:
 
     # ════════════════════════════════════════════════════
@@ -561,6 +581,291 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'db_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # MODBUS SERVER — données PLC industrielles réalistes
+    # ════════════════════════════════════════════════════
+
+    - name: "[modbus_server] Écrire le script de peuplement Modbus/PLC"
+      ansible.builtin.copy:
+        dest: /tmp/populate_modbus.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          # Documentation PLC exposée (faille : accès sans auth)
+          mkdir -p /opt/plc/config /opt/plc/logs /opt/plc/programs
+
+          cat > /opt/plc/config/plc_config.json << 'CFG'
+          {
+            "device": "Siemens S7-1200 (simulé)",
+            "modbus_address": "0.0.0.0",
+            "modbus_port": 502,
+            "unit_id": 1,
+            "authentication": false,
+            "registers": {
+              "holding": {"0-9": "process_vars", "10-19": "setpoints", "20-29": "alarms"},
+              "input":   {"0-9": "sensor_readings", "10-19": "counters"}
+            },
+            "scada_host": "192.168.100.16",
+            "historian_host": "192.168.100.17",
+            "emergency_stop_coil": 0
+          }
+          CFG
+
+          cat > /opt/plc/logs/plc_events.log << 'LOG'
+          2024-01-15 08:00:00 [INFO] PLC started — Modbus TCP listening on 0.0.0.0:502
+          2024-01-15 08:01:12 [INFO] SCADA connected from 192.168.100.16
+          2024-01-15 09:15:33 [INFO] Setpoint HR[10] changed: 75 → 80 (operator)
+          2024-01-15 10:22:05 [WARN] Temperature sensor IR[2] reading high: 87°C (threshold: 85)
+          2024-01-15 11:45:00 [INFO] Historian sync to 192.168.100.17 — 1440 records
+          2024-01-15 14:00:01 [WARN] Unauthorized Modbus READ from 192.168.100.99 — allowed (no auth)
+          2024-01-15 14:00:03 [WARN] Modbus WRITE coil[0]=1 from 192.168.100.99 — EMERGENCY STOP TRIGGERED
+          LOG
+
+          cat > /opt/plc/programs/main.st << 'ST'
+          (* Structured Text — PLC Program Main *)
+          PROGRAM Main
+          VAR
+            TempSensor1 : REAL := 72.5;  (* °C *)
+            TempSensor2 : REAL := 68.3;  (* °C *)
+            PressurePump : REAL := 3.2;  (* bar *)
+            ValveOpen : BOOL := TRUE;
+            EmergencyStop : BOOL := FALSE;
+            AlarmActive : BOOL := FALSE;
+          END_VAR
+
+          IF TempSensor1 > 85.0 OR TempSensor2 > 85.0 THEN
+            AlarmActive := TRUE;
+            ValveOpen := FALSE;
+          END_IF;
+
+          IF EmergencyStop THEN
+            ValveOpen := FALSE;
+            AlarmActive := TRUE;
+          END_IF;
+          END_PROGRAM
+          ST
+
+          echo "[OK] Données PLC/SCADA déployées (/opt/plc/)"
+
+    - name: "[modbus_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_modbus.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'modbus_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # WEB UPLOAD — fichiers industriels pré-uploadés
+    # ════════════════════════════════════════════════════
+
+    - name: "[web_upload] Écrire le script de peuplement web upload"
+      ansible.builtin.copy:
+        dest: /tmp/populate_webupload.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          # Fichiers déjà uploadés (faille : directory listing + exécution PHP)
+          mkdir -p /var/www/html/uploads
+
+          # Faux firmware uploadé (crédible pour un portail firmware)
+          echo "FAKE_FIRMWARE_BINARY_v2.3.1" > /var/www/html/uploads/firmware_v2.3.1.bin
+          echo '{"version":"2.3.1","target":"iot-gateway","sha256":"fake","release":"2024-01-10"}' \
+            > /var/www/html/uploads/firmware_v2.3.1.json
+
+          # "Backdoor" PHP uploadée (faille RCE simulée — fichier inoffensif)
+          cat > /var/www/html/uploads/shell.php << 'PHP'
+          <?php
+          // Benchmark vuln: unrestricted file upload → RCE
+          // This file simulates a webshell uploaded by an attacker
+          echo "<pre>Simulated webshell — benchmark only\n";
+          echo "Server: " . php_uname() . "\n";
+          echo "User: " . shell_exec('id') . "</pre>";
+          PHP
+
+          cat > /var/www/html/uploads/config_backup.json << 'CFG'
+          {
+            "exported_by": "admin",
+            "export_date": "2024-01-14",
+            "plc_host": "192.168.100.15",
+            "modbus_port": 502,
+            "db_host": "192.168.100.17",
+            "db_user": "root",
+            "db_pass": "",
+            "mqtt_broker": "192.168.100.13",
+            "api_key": "sk-nato-lab-9f3a2b"
+          }
+          CFG
+
+          systemctl reload nginx 2>/dev/null || true
+          echo "[OK] Portail firmware peuplé (uploads + webshell simulé)"
+
+    - name: "[web_upload] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_webupload.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_upload'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # CAMERA SERVER — flux et métadonnées réalistes
+    # ════════════════════════════════════════════════════
+
+    - name: "[camera_server] Écrire le script de peuplement caméra"
+      ansible.builtin.copy:
+        dest: /tmp/populate_camera.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          mkdir -p /var/www/html/api /var/www/html/snapshot /var/www/html/config
+
+          # API caméra simulée
+          cat > /var/www/html/api/info << 'JSON'
+          {
+            "model": "Hikvision DS-2CD2143G2-I (simulé)",
+            "firmware": "V5.7.15 build 221208",
+            "serial": "DS-CAM-BENCH-001",
+            "ip": "192.168.100.11",
+            "mac": "DE:AD:BE:EF:00:01",
+            "rtsp_url": "rtsp://admin:admin@192.168.100.x:554/stream1",
+            "http_port": 80,
+            "rtsp_port": 554,
+            "auth_required": false,
+            "motion_detection": true,
+            "recording": true,
+            "nvr": "192.168.100.13"
+          }
+          JSON
+
+          cat > /var/www/html/api/snapshot << 'JSON'
+          {
+            "timestamp": "2024-01-15T14:22:09Z",
+            "resolution": "2560x1440",
+            "format": "JPEG",
+            "url": "/snapshot/latest.jpg",
+            "motion_detected": false
+          }
+          JSON
+
+          cat > /var/www/html/config/camera.conf << 'CFG'
+          [camera]
+          model=Hikvision DS-2CD2143G2-I
+          admin_user=admin
+          admin_pass=admin
+          rtsp_port=554
+          http_port=80
+          auth=disabled
+
+          [recording]
+          nvr_host=192.168.100.13
+          nvr_user=ubnt
+          nvr_pass=ubnt
+          path=/opt/nvr/recordings
+
+          [network]
+          ip=192.168.100.x
+          gateway=192.168.100.1
+          dns=8.8.8.8
+          CFG
+
+          systemctl reload nginx 2>/dev/null || true
+          echo "[OK] Caméra IP peuplée (API + config exposée)"
+
+    - name: "[camera_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_camera.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'camera_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # NVR SERVER — enregistrements et config Ubiquiti
+    # ════════════════════════════════════════════════════
+
+    - name: "[nvr_server] Écrire le script de peuplement NVR"
+      ansible.builtin.copy:
+        dest: /tmp/populate_nvr.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          mkdir -p /opt/nvr/recordings /opt/nvr/config /opt/nvr/logs
+          chmod -R 755 /opt/nvr
+
+          cat > /opt/nvr/config/system.json << 'CFG'
+          {
+            "product": "UniFi Protect NVR (simulé)",
+            "version": "2.10.7",
+            "host": "192.168.100.13",
+            "admin_user": "ubnt",
+            "admin_pass": "ubnt",
+            "cameras": [
+              {"id": "cam-01", "ip": "192.168.100.11", "user": "admin", "pass": "admin"},
+              {"id": "cam-02", "ip": "192.168.100.12", "user": "admin", "pass": "admin"}
+            ],
+            "storage_path": "/opt/nvr/recordings",
+            "retention_days": 30,
+            "motion_alerts": true,
+            "smtp": {
+              "host": "mail.smartbuilding.local",
+              "user": "nvr@smartbuilding.local",
+              "pass": "NVR-Alert2024!"
+            }
+          }
+          CFG
+
+          # Faux enregistrements (metadata)
+          for i in 01 02 03 04 05; do
+            echo "{\"file\":\"2024-01-15_${i}0000_cam-01.mp4\",\"duration\":3600,\"size_mb\":850,\"motion\":false}" \
+              > "/opt/nvr/recordings/2024-01-15_${i}0000_cam-01.json"
+          done
+
+          cat > /opt/nvr/logs/nvr.log << 'LOG'
+          2024-01-15 08:00:00 [INFO] UniFi Protect NVR started
+          2024-01-15 08:00:05 [INFO] Camera cam-01 connected (192.168.100.11)
+          2024-01-15 08:00:06 [INFO] Camera cam-02 connected (192.168.100.12)
+          2024-01-15 09:14:33 [WARN] SSH login: ubnt from 192.168.100.99 — SUCCESS
+          2024-01-15 09:15:01 [WARN] File read: /opt/nvr/config/system.json by 192.168.100.99
+          2024-01-15 11:00:00 [INFO] Motion detected — cam-01 — clip saved
+          2024-01-15 14:22:09 [INFO] Scheduled retention cleanup — 0 files removed
+          LOG
+
+          # MOTD NVR
+          cat > /etc/motd << 'MOTD'
+
+          ╔══════════════════════════════════════════════════════════╗
+          ║     UniFi Protect NVR — Smart Building Security        ║
+          ╠══════════════════════════════════════════════════════════╣
+          ║  Cameras   : 2 connected (cam-01, cam-02)               ║
+          ║  Storage   : /opt/nvr/recordings (2.1 TB used)          ║
+          ║  Default   : ubnt / ubnt                                ║
+          ╚══════════════════════════════════════════════════════════╝
+
+          MOTD
+
+          echo "[OK] NVR Ubiquiti peuplé (config + logs + recordings index)"
+
+    - name: "[nvr_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_nvr.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nvr_server'
       changed_when: true
 
 

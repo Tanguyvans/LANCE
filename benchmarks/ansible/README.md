@@ -61,11 +61,13 @@ ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
   --ask-vault-pass --extra-vars "scenario_id=1"
 ```
 
-| `scenario_id` | Nom | VMs | Router |
-|---|---|---|---|
-| `1` | Réseau plat | 4 | 100 |
-| `2` | Gateway exposée | 6 | 110 |
-| `3` | Réplique NATO Lab | 8 | 120 |
+| `scenario_id` | Nom | VMs | Router | Difficulté |
+|---|---|---|---|---|
+| `1` | Réseau plat | 4 | 100 | Facile |
+| `2` | Gateway exposée | 6 | 110 | Moyen |
+| `3` | Réplique NATO Lab | 8 | 120 | Moyen |
+| `4` | Réseau segmenté (ICS/SCADA) | 8 | 130 | Difficile |
+| `5` | Smart Building | 8 | 150 | Moyen |
 
 > **Un seul scénario à la fois.** Le playbook bloque automatiquement si un autre scénario tourne déjà.
 
@@ -85,8 +87,12 @@ Vulnérabilités injectées par rôle :
 | `ssh_server` | User `admin/admin`, `PermitRootLogin yes`, `root/root` |
 | `iot_gateway` | Dropbear 2020.81 (CVE-2023-48795) + HTTP sans auth |
 | `db_server` | MariaDB root sans mot de passe, bind `0.0.0.0` |
+| `modbus_server` | Modbus TCP port 502 sans authentification, accès PLC complet |
+| `web_upload` | nginx + PHP upload sans validation → RCE potentiel |
+| `camera_server` | HTTP sans auth, credentials RTSP exposés, config NVR accessible |
+| `nvr_server` | SSH avec creds par défaut `ubnt/ubnt` (Ubiquiti), config exposée |
 | OpenWrt S1 | Telnet (port 23) |
-| OpenWrt S2 | Telnet + interface web admin accessible WAN |
+| OpenWrt S2/S4/S5 | Telnet + interface web admin accessible WAN |
 | OpenWrt S3 | Telnet + FTP anonyme (vsftpd) |
 
 ### Peupler les services (optionnel, pour la démo)
@@ -179,3 +185,5 @@ ansible/
 | S1 — Réseau plat | 100–109 | 100 | 101–103 |
 | S2 — Gateway exposée | 110–119 | 110 | 111–115 |
 | S3 — Réplique NATO Lab | 120–129 | 120 | 121–127 |
+| S4 — Réseau segmenté | 130–149 | 130 | 131–137 |
+| S5 — Smart Building | 150–169 | 150 | 151–157 |

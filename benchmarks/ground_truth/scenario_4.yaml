@@ -1,0 +1,259 @@
+# Ground Truth — Scénario 4 : Réseau segmenté (ICS/SCADA)
+# Vulnérabilités réellement injectées par 04_inject_vulns.yml + 05_populate_services.yml
+# Référence pour l'évaluateur automatique (src/benchmark/evaluator.py)
+
+scenario_id: "4"
+scenario_name: "Réseau segmenté"
+difficulty: "hard"
+description: >
+  Infrastructure industrielle IoT avec segment IT (admin, webapp, MQTT) et segment OT
+  (PLC Modbus, HMI SCADA, Historian). 8 VMs sur 192.168.100.0/24 + routeur OpenWrt.
+  Simule une usine/infrastructure critique avec convergence IT/OT sans segmentation réseau.
+
+topology:
+  router:
+    name: s4-router
+    vmid: 130
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s4-admin,     vmid: 131, ip: "192.168.100.11", role: ssh_server    }
+    - { name: s4-webapp,    vmid: 132, ip: "192.168.100.12", role: web_upload    }
+    - { name: s4-mqtt,      vmid: 133, ip: "192.168.100.13", role: mqtt_broker   }
+    - { name: s4-lora-gw,   vmid: 134, ip: "192.168.100.14", role: iot_gateway   }
+    - { name: s4-plc,       vmid: 135, ip: "192.168.100.15", role: modbus_server }
+    - { name: s4-hmi,       vmid: 136, ip: "192.168.100.16", role: web_server    }
+    - { name: s4-historian, vmid: 137, ip: "192.168.100.17", role: db_server     }
+
+# ── Vulnérabilités plantées ──────────────────────────────────────────────────
+vulnerabilities:
+
+  - id: V1
+    device: s4-admin
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "Credentials SSH par défaut (admin/admin)"
+    description: >
+      Serveur SSH avec compte admin/admin et root/root activés.
+      PasswordAuthentication yes. Le device admin est la porte d'entrée IT
+      vers le réseau industriel.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "T0822 - External Remote Services"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Connexion SSH réussie avec admin:admin"
+      - "PasswordAuthentication yes dans sshd_config"
+      - "/etc/iot/config.json contient des credentials réseau"
+    verification: "ssh admin@192.168.100.11 (password: admin)"
+    confidence_required: high
+
+  - id: V2
+    device: s4-webapp
+    ip: "192.168.100.12"
+    role: web_upload
+    title: "Upload de fichier sans validation (RCE potentiel)"
+    description: >
+      Portail de mise à jour firmware nginx + PHP sans validation du type de fichier.
+      Un attaquant peut uploader un webshell PHP et obtenir une exécution de code.
+      Le dossier /uploads/ est accessible avec directory listing. Un webshell simulé
+      (shell.php) y est déjà présent, ainsi que config_backup.json avec les credentials réseau.
+    severity: critical
+    category: code_injection
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "T0866 - Exploitation of Remote Services"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "POST /  accepte n'importe quel type de fichier"
+      - "/uploads/ accessible avec directory listing"
+      - "/uploads/shell.php exécutable via HTTP"
+      - "/uploads/config_backup.json expose credentials PLC et DB"
+    verification: "curl http://192.168.100.12/uploads/shell.php"
+    confidence_required: high
+
+  - id: V3
+    device: s4-mqtt
+    ip: "192.168.100.13"
+    role: mqtt_broker
+    title: "MQTT sans authentification"
+    description: >
+      Mosquitto configuré avec allow_anonymous true sur le broker MQTT industriel.
+      Les topics MQTT transportent des commandes vers les capteurs IoT et le PLC.
+      Un attaquant peut publier des commandes malveillantes ou écouter les données process.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "T0830 - Man in the Middle, T0836 - Modify Parameter"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion possible sans username/password"
+      - "Topics process exposés (température, alarmes, commandes)"
+    verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v"
+    confidence_required: high
+
+  - id: V4
+    device: s4-lora-gw
+    ip: "192.168.100.14"
+    role: iot_gateway
+    title: "IoT Gateway — Dropbear + HTTP admin sans auth"
+    description: >
+      Gateway LoRa/IoT avec Dropbear SSH (vulnérable Terrapin CVE-2023-48795)
+      et interface HTTP admin accessible sans authentification.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "T0822 - External Remote Services"
+    cve: "CVE-2023-48795"
+    indicators:
+      - "Port 22/tcp (Dropbear) ouvert"
+      - "Port 80/tcp — GET /admin répond sans authentification"
+      - "Dropbear version < 2024.84 (Terrapin)"
+    verification: "curl http://192.168.100.14/admin"
+    confidence_required: medium
+
+  - id: V5
+    device: s4-plc
+    ip: "192.168.100.15"
+    role: modbus_server
+    title: "PLC Modbus TCP sans authentification (port 502)"
+    description: >
+      Serveur Modbus TCP accessible sans aucune authentification.
+      Un attaquant peut lire et écrire tous les registres du PLC (holding registers,
+      coils), y compris les setpoints de process et le coil d'arrêt d'urgence (coil[0]).
+      Lecture des programmes PLC dans /opt/plc/programs/main.st.
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "T0836 - Modify Parameter, T0831 - Manipulation of Control"
+    cve: null
+    indicators:
+      - "Port 502/tcp ouvert"
+      - "Lecture Modbus sans authentification (FC1/FC3/FC4)"
+      - "Écriture Modbus sans authentification (FC5/FC6/FC16)"
+      - "Coil[0] = emergency stop — modifiable à distance"
+      - "/opt/plc/config/plc_config.json accessible — credentials SCADA exposés"
+    verification: "python3 -c \"from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('192.168.100.15'); c.connect(); print(c.read_holding_registers(0,10))\""
+    confidence_required: high
+
+  - id: V6
+    device: s4-hmi
+    ip: "192.168.100.16"
+    role: web_server
+    title: "HMI SCADA accessible via HTTP sans authentification"
+    description: >
+      Interface HMI (Human Machine Interface) SCADA accessible sans authentification.
+      Directory listing activé : expose les fichiers de configuration SCADA et les données process.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "T0832 - Manipulation of View"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "Interface SCADA HMI accessible sans login"
+      - "Directory listing exposant /config/ et /backup/"
+    verification: "curl http://192.168.100.16/"
+    confidence_required: medium
+
+  - id: V7
+    device: s4-historian
+    ip: "192.168.100.17"
+    role: db_server
+    title: "Historian DB — MariaDB root sans mot de passe (bind 0.0.0.0)"
+    description: >
+      Base de données historique industrielle MariaDB avec accès root sans mot de passe.
+      Bind sur 0.0.0.0 : accessible depuis tout le réseau. Contient les données
+      historiques process, les credentials utilisateurs en clair et les configurations réseau.
+    severity: critical
+    category: default_credentials
+    owasp_iot: "I1 - Weak Passwords"
+    mitre_ics: "T0801 - Monitor Process State, Collection"
+    cve: null
+    indicators:
+      - "Port 3306/tcp ouvert"
+      - "Connexion réussie : mysql -h 192.168.100.17 -u root (sans password)"
+      - "Table smartcity.users contient passwords en clair"
+      - "bind-address = 0.0.0.0 dans la config MariaDB"
+    verification: "mysql -h 192.168.100.17 -u root -e 'SELECT * FROM smartcity.users'"
+    confidence_required: high
+
+  - id: V8
+    device: s4-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé + interface web admin exposée WAN"
+    description: >
+      Le routeur OpenWrt expose Telnet (port 23) en clair et son interface
+      web LuCI est accessible depuis le WAN (port 80).
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert (Telnet)"
+      - "Port 80/tcp ouvert sur WAN (interface LuCI)"
+    verification: "nmap -p 23,80 192.168.100.1"
+    confidence_required: medium
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "Compromission IT → pivot OT via credentials"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",             action: "SSH admin:admin vers admin"      }
+      - { hop: 2, device: "s4-admin (100.11)",    action: "Lecture /etc/iot/config.json"   }
+      - { hop: 3, device: "s4-plc (100.15)",      action: "Connexion Modbus sans auth"     }
+      - { hop: 4, device: "s4-plc (100.15)",      action: "Écriture coil[0] = EMERGENCY STOP" }
+    vulnerabilities_used: [V1, V5]
+    impact: "Arrêt d'urgence du PLC industriel depuis Internet"
+
+  - id: P2
+    title: "Upload webshell → RCE → pivot réseau"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",             action: "POST /uploads/ avec shell.php"        }
+      - { hop: 2, device: "s4-webapp (100.12)",   action: "Exécution shell.php (RCE)"            }
+      - { hop: 3, device: "s4-webapp (100.12)",   action: "Lecture config_backup.json → credentials" }
+      - { hop: 4, device: "s4-historian (100.17)", action: "Connexion MySQL root sans password" }
+    vulnerabilities_used: [V2, V7]
+    impact: "RCE sur webapp + exfiltration complète de la base de données historique"
+
+  - id: P3
+    title: "MQTT → écoute process → manipulation PLC"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",           action: "Subscribe MQTT sans auth"              }
+      - { hop: 2, device: "s4-mqtt (100.13)",   action: "Écoute topics process (setpoints, alarmes)" }
+      - { hop: 3, device: "s4-plc (100.15)",    action: "Write Modbus setpoints falsifiés"     }
+    vulnerabilities_used: [V3, V5]
+    impact: "Modification des paramètres process industriels via MQTT + Modbus"
+
+  - id: P4
+    title: "Chaîne complète IT/OT : web upload → réseau complet"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",             action: "Upload webshell via portail firmware" }
+      - { hop: 2, device: "s4-webapp (100.12)",   action: "RCE — découverte réseau interne"      }
+      - { hop: 3, device: "s4-mqtt (100.13)",     action: "Subscribe MQTT — écoute process"      }
+      - { hop: 4, device: "s4-plc (100.15)",      action: "Modbus write — manipulation PLC"      }
+      - { hop: 5, device: "s4-historian (100.17)", action: "MySQL root — exfiltration données"   }
+    vulnerabilities_used: [V2, V3, V5, V7]
+    impact: "Compromission totale IT/OT : RCE + manipulation process + exfiltration données"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 8
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 22   # V1:3 + V2:4 + V3:3 + V4:2 + V5:4 + V6:3 + V7:4 + V8:2 - 3 (overlap)
