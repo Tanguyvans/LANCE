@@ -91,8 +91,11 @@ START_TIME=$(date +%s)
 # ── Étape 0 : Teardown si un autre scénario tourne ──
 log_step "Vérification des scénarios actifs..."
 
-RUNNING=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$(grep ansible_host "$INVENTORY" | head -1 | awk '{print $2}' | cut -d: -f2) \
-  "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$1}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$1}'" 2>/dev/null || true)
+PROXMOX_IP=$(grep ansible_host "$INVENTORY" | head -1 | awk '{print $2}' | cut -d: -f2)
+RUNNING=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
+  root@"$PROXMOX_IP" \
+  "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$1}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$1}'" 2>/dev/null) \
+  || { log_warn "SSH vers Proxmox ($PROXMOX_IP) inaccessible — détection de conflit ignorée"; RUNNING=""; }
 CONFLICT_SCENARIO=""
 for vmid in $RUNNING; do
   [[ "$vmid" -lt 100 || "$vmid" -gt 199 ]] 2>/dev/null && continue

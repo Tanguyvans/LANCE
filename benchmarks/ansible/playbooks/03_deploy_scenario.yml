@@ -60,10 +60,10 @@
     - name: Bloquer si un autre scénario tourne déjà
       ansible.builtin.fail:
         msg: |
-          Le scénario S{{ conflict_check.stdout | regex_replace('CONFLICT:(\\d+).*', '\\1') }} est déjà en cours sur vmbr1.
+          Le scénario S{{ conflict_check.stdout | regex_replace('CONFLICT:(\d+).*', '\1') }} est déjà en cours sur vmbr1.
           Les scénarios partagent le même réseau 192.168.100.0/24 — un seul à la fois.
           Teardown d'abord :
-            ansible-playbook playbooks/99_teardown.yml --extra-vars "scenario_id={{ conflict_check.stdout | regex_replace('CONFLICT:(\\d+).*', '\\1') }}"
+            ansible-playbook playbooks/99_teardown.yml --extra-vars "scenario_id={{ conflict_check.stdout | regex_replace('CONFLICT:(\d+).*', '\1') }}"
       when: conflict_check.rc != 0
 
     - name: Afficher le scénario à déployer
