@@ -1,0 +1,584 @@
+# 05_populate_services.yml — Peuplement des services avec des données IoT réalistes
+# Usage : ansible-playbook -i inventory.yml playbooks/05_populate_services.yml \
+#           --ask-vault-pass --extra-vars "scenario_id=1"
+#
+# Ce playbook ajoute du contenu réaliste sur les services déjà vulnérables :
+#   mqtt_broker  → publisher Python qui simule des capteurs IoT (température, humidité, portes)
+#   web_server   → dashboard HTML/JS temps réel + fichiers "sensibles" crédibles
+#   ssh_server   → motd, config files industriels, historique de commandes réaliste
+#   iot_gateway  → API REST minimaliste (nginx) + données de routage
+#   db_server    → tables sensors/events/users + données historiques (30 jours)
+#
+# Dépendances : 04_inject_vulns.yml doit avoir été exécuté avant
+
+- name: Peuplement des services — Scénario {{ scenario_id | default('?') }}
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    scenario_id: "1"
+    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+
+    scenarios:
+      "1":
+        services:
+          - { name: mqtt,  vmid_offset: 1, role: mqtt_broker  }
+          - { name: web,   vmid_offset: 2, role: web_server   }
+          - { name: ssh,   vmid_offset: 3, role: ssh_server   }
+
+      "2":
+        services:
+          - { name: web,    vmid_offset: 1, role: web_server   }
+          - { name: mqtt,   vmid_offset: 2, role: mqtt_broker  }
+          - { name: iot-gw, vmid_offset: 3, role: iot_gateway  }
+          - { name: db,     vmid_offset: 4, role: db_server    }
+          - { name: jump,   vmid_offset: 5, role: ssh_server   }
+
+      "3":
+        services:
+          - { name: wisgate, vmid_offset: 1, role: iot_gateway  }
+          - { name: rpi5,    vmid_offset: 2, role: mqtt_broker  }
+          - { name: iot-hub, vmid_offset: 3, role: mqtt_broker  }
+          - { name: jetson,  vmid_offset: 4, role: ssh_server   }
+          - { name: ap,      vmid_offset: 5, role: web_server   }
+          - { name: cam,     vmid_offset: 6, role: web_server   }
+          - { name: nvr,     vmid_offset: 7, role: ssh_server   }
+
+  tasks:
+
+    # ════════════════════════════════════════════════════
+    # MQTT BROKER — capteurs IoT simulés en continu
+    # ════════════════════════════════════════════════════
+
+    - name: "[mqtt_broker] Écrire le script de simulation capteurs"
+      ansible.builtin.copy:
+        dest: /tmp/populate_mqtt.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+
+          # Script de publication MQTT (bash + mosquitto_pub, déjà installé)
+          cat > /usr/local/bin/iot-simulator.sh << 'SCRIPT'
+          #!/bin/bash
+          # Simulateur de capteurs IoT — SmartCity Building A
+          BROKER="localhost"
+
+          publish_sensors() {
+            # Température et humidité — 8 capteurs
+            for i in 1 2 3 4 5 6 7 8; do
+              TEMP=$(( RANDOM % 12 + 18 ))  # 18-30°C
+              HUM=$(( RANDOM % 30 + 40 ))   # 40-70%
+              mosquitto_pub -h $BROKER -t "smartcity/building-a/floor-$((i/3+1))/sensor-0$i/temperature" \
+                -m "{\"device\":\"sensor-0$i\",\"value\":$TEMP,\"unit\":\"C\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+              mosquitto_pub -h $BROKER -t "smartcity/building-a/floor-$((i/3+1))/sensor-0$i/humidity" \
+                -m "{\"device\":\"sensor-0$i\",\"value\":$HUM,\"unit\":\"%\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            done
+
+            # Capteurs de portes/accès
+            for door in "main-entrance" "server-room" "parking-gate" "roof-access"; do
+              STATUS=$([ $(( RANDOM % 10 )) -gt 7 ] && echo "open" || echo "closed")
+              mosquitto_pub -h $BROKER -t "smartcity/building-a/access/$door/status" \
+                -m "{\"device\":\"$door\",\"status\":\"$STATUS\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            done
+
+            # Caméras — statut de flux
+            for cam in 1 2 3; do
+              mosquitto_pub -h $BROKER -t "smartcity/building-a/cameras/cam-0$cam/status" \
+                -m "{\"device\":\"cam-0$cam\",\"streaming\":true,\"fps\":25,\"resolution\":\"1080p\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            done
+
+            # Alarmes — état système
+            mosquitto_pub -h $BROKER -t "smartcity/building-a/alarm/status" \
+              -m "{\"armed\":false,\"zones_active\":4,\"last_trigger\":null,\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+
+            # Topic admin — données sensibles exposées (faille intentionnelle)
+            mosquitto_pub -h $BROKER -t "smartcity/admin/credentials" \
+              -m "{\"db_user\":\"admin\",\"db_pass\":\"P@ssw0rd123\",\"api_key\":\"sk-nato-lab-9f3a2b\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+          }
+
+          while true; do
+            publish_sensors
+            sleep 10
+          done
+          SCRIPT
+          chmod +x /usr/local/bin/iot-simulator.sh
+
+          # Service systemd pour démarrage automatique
+          cat > /etc/systemd/system/iot-simulator.service << 'UNIT'
+          [Unit]
+          Description=IoT Sensor Simulator — SmartCity Building A
+          After=mosquitto.service
+          Requires=mosquitto.service
+
+          [Service]
+          ExecStart=/usr/local/bin/iot-simulator.sh
+          Restart=always
+          RestartSec=5
+          User=root
+
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+
+          systemctl daemon-reload
+          systemctl enable iot-simulator
+          systemctl restart iot-simulator
+          echo "[OK] Simulateur IoT démarré (10 topics actifs)"
+
+    - name: "[mqtt_broker] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # WEB SERVER — dashboard IoT temps réel
+    # ════════════════════════════════════════════════════
+
+    - name: "[web_server] Écrire le script de peuplement web"
+      ansible.builtin.copy:
+        dest: /tmp/populate_web.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          # Dashboard principal
+          cat > /var/www/html/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html lang="fr">
+          <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="10">
+            <title>SmartCity Building A — Dashboard IoT</title>
+            <style>
+              body { font-family: monospace; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+              h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+              .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+              .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 15px; }
+              .card h3 { color: #79c0ff; margin: 0 0 10px; font-size: 0.85em; text-transform: uppercase; }
+              .value { font-size: 2em; font-weight: bold; color: #3fb950; }
+              .unit { font-size: 0.8em; color: #8b949e; }
+              .status-ok { color: #3fb950; }
+              .status-warn { color: #d29922; }
+              .alert { background: #1a1a2e; border: 1px solid #f85149; border-radius: 4px; padding: 10px; margin-top: 20px; color: #f85149; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              td, th { padding: 8px; text-align: left; border-bottom: 1px solid #30363d; font-size: 0.85em; }
+              th { color: #8b949e; }
+              footer { margin-top: 30px; color: #484f58; font-size: 0.75em; }
+            </style>
+          </head>
+          <body>
+            <h1>SmartCity Building A — IoT Monitoring Dashboard</h1>
+            <p>Réseau: 192.168.100.0/24 | Broker MQTT: 192.168.100.11:1883 | <span class="status-ok">● ONLINE</span></p>
+
+            <div class="grid">
+              <div class="card">
+                <h3>Température moyenne</h3>
+                <div class="value">23.4 <span class="unit">°C</span></div>
+                <div class="unit">8 capteurs actifs</div>
+              </div>
+              <div class="card">
+                <h3>Humidité moyenne</h3>
+                <div class="value">56 <span class="unit">%</span></div>
+                <div class="unit">8 capteurs actifs</div>
+              </div>
+              <div class="card">
+                <h3>Accès bâtiment</h3>
+                <div class="value status-warn">1 <span class="unit">ouvert</span></div>
+                <div class="unit">parking-gate</div>
+              </div>
+              <div class="card">
+                <h3>Caméras</h3>
+                <div class="value">3/3 <span class="unit">actives</span></div>
+                <div class="unit">1080p @ 25fps</div>
+              </div>
+              <div class="card">
+                <h3>Alarme</h3>
+                <div class="value status-ok">OFF</div>
+                <div class="unit">4 zones surveillées</div>
+              </div>
+              <div class="card">
+                <h3>Dernière sync</h3>
+                <div class="value" style="font-size:1.1em">10s ago</div>
+                <div class="unit">auto-refresh actif</div>
+              </div>
+            </div>
+
+            <div class="alert">⚠ MQTT broker accessible sans authentification — CVE potentielle détectée</div>
+
+            <h2 style="color:#79c0ff;margin-top:30px">Devices connectés</h2>
+            <table>
+              <tr><th>Device</th><th>IP</th><th>Type</th><th>Status</th><th>Last seen</th></tr>
+              <tr><td>sensor-01..08</td><td>MQTT</td><td>Capteur T°/H</td><td class="status-ok">OK</td><td>10s</td></tr>
+              <tr><td>cam-01..03</td><td>192.168.100.x</td><td>Caméra IP</td><td class="status-ok">Streaming</td><td>5s</td></tr>
+              <tr><td>door-controller</td><td>192.168.100.13</td><td>Contrôleur SSH</td><td class="status-ok">OK</td><td>2m</td></tr>
+              <tr><td>iot-gateway</td><td>192.168.100.1</td><td>Router/GW</td><td class="status-ok">NAT actif</td><td>1s</td></tr>
+            </table>
+
+            <footer>SmartCity Building Management System v2.3.1 | © 2024 NATO Lab</footer>
+          </body>
+          </html>
+          HTML
+
+          # Fichiers "sensibles" accessibles via directory listing (faille V2)
+          mkdir -p /var/www/html/backup /var/www/html/config /var/www/html/logs
+
+          cat > /var/www/html/backup/db_backup_2024-01-15.sql << 'SQL'
+          -- SmartCity Database Backup — 2024-01-15 03:00:01
+          -- Host: 192.168.100.14    Database: smartcity
+          CREATE DATABASE IF NOT EXISTS smartcity;
+          USE smartcity;
+          INSERT INTO users VALUES (1,'admin','P@ssw0rd123','admin@smartcity.local','superadmin');
+          INSERT INTO users VALUES (2,'operator','operator123','ops@smartcity.local','operator');
+          INSERT INTO users VALUES (3,'viewer','viewer','monitor@smartcity.local','readonly');
+          SQL
+
+          cat > /var/www/html/config/app.config << 'CFG'
+          [database]
+          host=192.168.100.14
+          port=3306
+          user=root
+          password=
+          database=smartcity
+
+          [mqtt]
+          broker=192.168.100.11
+          port=1883
+          auth=false
+          topic_prefix=smartcity/
+
+          [api]
+          key=sk-nato-lab-9f3a2b
+          secret=nato-smartcity-2024-secret
+
+          [smtp]
+          host=mail.smartcity.local
+          user=alerts@smartcity.local
+          password=Alerts2024!
+          CFG
+
+          cat > /var/www/html/logs/access.log << 'LOG'
+          192.168.100.1 - admin [15/Jan/2024:08:23:11] "GET /config/app.config HTTP/1.1" 200 312
+          192.168.100.13 - - [15/Jan/2024:09:14:05] "GET /backup/ HTTP/1.1" 200 -
+          10.0.0.55 - - [15/Jan/2024:11:45:22] "GET /admin HTTP/1.1" 404 12
+          192.168.100.12 - operator [15/Jan/2024:14:02:33] "POST /api/sensors HTTP/1.1" 200 89
+          LOG
+
+          systemctl reload nginx 2>/dev/null || true
+          echo "[OK] Dashboard IoT + fichiers sensibles déployés"
+
+    - name: "[web_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_web.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # SSH SERVER — device industriel réaliste
+    # ════════════════════════════════════════════════════
+
+    - name: "[ssh_server] Écrire le script de peuplement SSH"
+      ansible.builtin.copy:
+        dest: /tmp/populate_ssh.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          # MOTD réaliste (message d'accueil industriel)
+          cat > /etc/motd << 'MOTD'
+
+          ╔══════════════════════════════════════════════════════════╗
+          ║     SmartCity IoT Controller — Building A               ║
+          ║     NATO Lab Environment — Authorized Access Only       ║
+          ╠══════════════════════════════════════════════════════════╣
+          ║  Device  : IoT Door Controller v3.1                     ║
+          ║  Network : 192.168.100.0/24                             ║
+          ║  Broker  : mqtt://192.168.100.11:1883                   ║
+          ║  Admin   : admin@smartcity.local                        ║
+          ╚══════════════════════════════════════════════════════════╝
+
+          WARNING: All connections are logged and monitored.
+
+          MOTD
+
+          # Fichiers de config IoT crédibles
+          mkdir -p /etc/iot /var/log/iot /opt/iot-controller
+
+          cat > /etc/iot/config.json << 'CFG'
+          {
+            "device_id": "door-controller-01",
+            "location": "Building A — Main Entrance",
+            "mqtt": {
+              "broker": "192.168.100.11",
+              "port": 1883,
+              "username": "",
+              "password": "",
+              "topics": {
+                "status": "smartcity/building-a/access/+/status",
+                "command": "smartcity/building-a/access/+/command",
+                "alert": "smartcity/building-a/alarm/trigger"
+              }
+            },
+            "database": {
+              "host": "192.168.100.14",
+              "port": 3306,
+              "user": "root",
+              "password": "",
+              "db": "smartcity"
+            },
+            "api_key": "sk-nato-lab-9f3a2b",
+            "admin_password": "admin",
+            "debug": true
+          }
+          CFG
+
+          cat > /var/log/iot/controller.log << 'LOG'
+          2024-01-15 08:00:01 [INFO] IoT Controller v3.1 started
+          2024-01-15 08:00:02 [INFO] Connected to MQTT broker 192.168.100.11:1883 (no auth)
+          2024-01-15 08:00:03 [INFO] Subscribed to 3 topics
+          2024-01-15 08:12:44 [INFO] Door main-entrance: OPEN (badge #4821 — Jean Dupont)
+          2024-01-15 08:12:46 [INFO] Door main-entrance: CLOSED
+          2024-01-15 09:05:11 [WARN] Failed login attempt from 192.168.100.99 (user: root)
+          2024-01-15 09:05:14 [WARN] Failed login attempt from 192.168.100.99 (user: admin)
+          2024-01-15 09:05:17 [INFO] Login successful from 192.168.100.99 (user: admin)
+          2024-01-15 11:30:00 [INFO] Scheduled backup to 192.168.100.12/backup/ — OK
+          2024-01-15 14:22:09 [INFO] Door server-room: OPEN (badge #0042 — Sysadmin)
+          LOG
+
+          # Historique bash réaliste pour user admin
+          mkdir -p /home/admin
+          cat > /home/admin/.bash_history << 'HIST'
+          ls /etc/iot/
+          cat /etc/iot/config.json
+          mosquitto_sub -h 192.168.100.11 -t '#' -v
+          ping 192.168.100.14
+          mysql -h 192.168.100.14 -u root smartcity
+          ssh admin@192.168.100.14
+          tail -f /var/log/iot/controller.log
+          systemctl status iot-controller
+          curl http://192.168.100.12/api/sensors
+          HIST
+          chown admin:admin /home/admin/.bash_history
+
+          echo "[OK] Device IoT réaliste configuré (motd + config + logs)"
+
+    - name: "[ssh_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_ssh.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # IOT GATEWAY — API REST + données de routage
+    # ════════════════════════════════════════════════════
+
+    - name: "[iot_gateway] Écrire le script de peuplement gateway"
+      ansible.builtin.copy:
+        dest: /tmp/populate_iotgw.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          mkdir -p /var/www/html/api
+
+          # API REST simulée via fichiers JSON statiques servis par nginx
+          cat > /var/www/html/api/devices << 'JSON'
+          {
+            "devices": [
+              {"id": "sensor-01", "type": "temperature", "ip": null, "protocol": "mqtt", "status": "online"},
+              {"id": "sensor-02", "type": "humidity",    "ip": null, "protocol": "mqtt", "status": "online"},
+              {"id": "cam-01",    "type": "camera",      "ip": "192.168.100.16", "protocol": "rtsp", "status": "streaming"},
+              {"id": "cam-02",    "type": "camera",      "ip": "192.168.100.16", "protocol": "rtsp", "status": "streaming"},
+              {"id": "door-ctrl", "type": "actuator",    "ip": "192.168.100.13", "protocol": "ssh",  "status": "online"}
+            ],
+            "count": 5,
+            "gateway": "192.168.100.13",
+            "uptime": "14d 6h 23m"
+          }
+          JSON
+
+          cat > /var/www/html/api/status << 'JSON'
+          {
+            "gateway_id": "iotgw-building-a",
+            "firmware": "OpenWrt-IoT-GW 2.1.0",
+            "uptime": "14d 6h 23m",
+            "cpu_load": 0.12,
+            "memory": {"used": 48, "total": 256, "unit": "MB"},
+            "connections": {"mqtt": 5, "ssh": 1, "http": 2},
+            "forwarding": {
+              "mqtt_broker": "192.168.100.11:1883",
+              "web_dashboard": "192.168.100.12:80",
+              "db": "192.168.100.14:3306"
+            }
+          }
+          JSON
+
+          # Config nginx pour servir l'API JSON
+          cat > /etc/nginx/conf.d/admin.conf << 'NGINX'
+          server {
+              listen 80 default_server;
+              server_name _;
+              root /var/www/html;
+
+              location /api/ {
+                  default_type application/json;
+                  try_files $uri $uri/ =404;
+              }
+
+              location /admin {
+                  return 200 '{"status":"ok","user":"admin","auth":false,"message":"Admin panel — no authentication required"}';
+                  default_type application/json;
+              }
+
+              location / {
+                  autoindex on;
+              }
+          }
+          NGINX
+
+          nginx -t && systemctl reload nginx
+          echo "[OK] API REST IoT Gateway déployée (/api/devices, /api/status, /admin)"
+
+    - name: "[iot_gateway] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_iotgw.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'iot_gateway'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # DB SERVER — vraie base avec données IoT historiques
+    # ════════════════════════════════════════════════════
+
+    - name: "[db_server] Écrire le script de peuplement DB"
+      ansible.builtin.copy:
+        dest: /tmp/populate_db.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+
+          mysql -u root << 'SQL'
+          CREATE DATABASE IF NOT EXISTS smartcity;
+          USE smartcity;
+
+          -- Table des devices
+          CREATE TABLE IF NOT EXISTS devices (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            device_id VARCHAR(50) UNIQUE,
+            name VARCHAR(100),
+            type VARCHAR(50),
+            ip VARCHAR(15),
+            location VARCHAR(100),
+            status VARCHAR(20) DEFAULT 'online',
+            last_seen DATETIME
+          );
+
+          -- Table des mesures capteurs
+          CREATE TABLE IF NOT EXISTS sensor_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            device_id VARCHAR(50),
+            metric VARCHAR(50),
+            value FLOAT,
+            unit VARCHAR(10),
+            recorded_at DATETIME DEFAULT NOW()
+          );
+
+          -- Table des événements d'accès
+          CREATE TABLE IF NOT EXISTS access_events (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            door_id VARCHAR(50),
+            badge_id VARCHAR(20),
+            user_name VARCHAR(100),
+            action VARCHAR(20),
+            timestamp DATETIME DEFAULT NOW()
+          );
+
+          -- Table des utilisateurs (credentials en clair — faille intentionnelle)
+          CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) UNIQUE,
+            password VARCHAR(100),
+            email VARCHAR(100),
+            role VARCHAR(20),
+            created_at DATETIME DEFAULT NOW()
+          );
+
+          -- Peuplement des devices
+          INSERT IGNORE INTO devices VALUES
+            (1, 'sensor-01', 'Capteur Temp Floor 1', 'temperature', NULL, 'Building A — Floor 1', 'online', NOW()),
+            (2, 'sensor-02', 'Capteur Hum Floor 1',  'humidity',    NULL, 'Building A — Floor 1', 'online', NOW()),
+            (3, 'cam-01',    'Caméra Entrée',         'camera',      '192.168.100.16', 'Main Entrance', 'streaming', NOW()),
+            (4, 'cam-02',    'Caméra Parking',        'camera',      '192.168.100.16', 'Parking',       'streaming', NOW()),
+            (5, 'door-ctrl', 'Contrôleur Portes',     'actuator',    '192.168.100.13', 'Building A',    'online', NOW());
+
+          -- Données historiques capteurs (simulées)
+          INSERT IGNORE INTO sensor_data (device_id, metric, value, unit, recorded_at) VALUES
+            ('sensor-01', 'temperature', 21.3, 'C',  DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+            ('sensor-01', 'temperature', 22.1, 'C',  DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+            ('sensor-01', 'temperature', 23.4, 'C',  DATE_SUB(NOW(), INTERVAL 10 MINUTE)),
+            ('sensor-02', 'humidity',    55.0, '%',   DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+            ('sensor-02', 'humidity',    57.2, '%',   DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+            ('sensor-02', 'humidity',    56.8, '%',   DATE_SUB(NOW(), INTERVAL 10 MINUTE));
+
+          -- Événements d'accès récents
+          INSERT IGNORE INTO access_events (door_id, badge_id, user_name, action, timestamp) VALUES
+            ('main-entrance', '4821', 'Jean Dupont',   'OPEN',  DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+            ('main-entrance', '4821', 'Jean Dupont',   'CLOSE', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+            ('server-room',   '0042', 'Admin Sysadmin','OPEN',  DATE_SUB(NOW(), INTERVAL 1 HOUR)),
+            ('parking-gate',  '1337', 'Marie Martin',  'OPEN',  DATE_SUB(NOW(), INTERVAL 30 MINUTE));
+
+          -- Utilisateurs (mots de passe en clair — faille V5)
+          INSERT IGNORE INTO users (username, password, email, role) VALUES
+            ('admin',    'P@ssw0rd123',  'admin@smartcity.local',    'superadmin'),
+            ('operator', 'operator123',  'ops@smartcity.local',      'operator'),
+            ('viewer',   'viewer',       'monitor@smartcity.local',  'readonly'),
+            ('api_user', 'sk-nato-lab-9f3a2b', 'api@smartcity.local', 'api');
+
+          SQL
+
+          echo "[OK] Base smartcity peuplée (devices, sensor_data, access_events, users)"
+
+    - name: "[db_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_db.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # RÉSUMÉ
+    # ════════════════════════════════════════════════════
+
+    - name: Résumé du peuplement
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════════
+          Services peuplés — Scénario S{{ scenario_id }}
+          ──────────────────────────────────────────────────────────
+          mqtt_broker  → 10 topics actifs (T°, humidité, portes, caméras, admin/credentials)
+          web_server   → Dashboard IoT + /backup/db_backup.sql + /config/app.config
+          ssh_server   → MOTD industriel + /etc/iot/config.json + logs réalistes
+          iot_gateway  → API REST /api/devices + /api/status + /admin
+          db_server    → DB smartcity (devices, sensor_data, access_events, users en clair)
+          ──────────────────────────────────────────────────────────
+          Démo : http://192.168.100.12 — mqtt://192.168.100.11:1883 — ssh admin@192.168.100.13
+          ══════════════════════════════════════════════════════════

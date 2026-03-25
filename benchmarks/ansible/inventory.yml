@@ -20,19 +20,5 @@ all:
     proxmox_api_user: "ansible@pam"
     proxmox_api_token_id: "benchmark"
     proxmox_api_token_secret: "{{ vault_proxmox_token }}"   # Ansible Vault
-    proxmox_node: "pve"                 # Nom du nœud Proxmox (vérifier dans l'UI)
 
-    # ── Stockage Proxmox ──
-    proxmox_storage: "local-lvm"        # Stockage des disques VM
-    proxmox_iso_storage: "local"        # Stockage des images/ISOs (local:iso/)
-    proxmox_images_dir: "/var/lib/vz/template/iso"
-
-    # ── Réseau benchmark ──
-    benchmark_bridge: "vmbr1"           # Bridge dédié aux VMs benchmark
-    benchmark_network: "192.168.100.0/24"
-    benchmark_gateway: "192.168.100.1"
-
-    # ── IDs de VM (plage réservée aux templates) ──
-    tpl_debian_vmid: 9000
-    tpl_openwrt_vmid: 9001
-    tpl_nginx_vmid: 9002
+    # Les autres variables (réseau, stockage, VMIDs) sont dans group_vars/all.yml

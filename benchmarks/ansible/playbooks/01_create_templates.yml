@@ -14,19 +14,19 @@
   gather_facts: false
 
   tasks:
-    - name: Arrêter et supprimer tpl-debian KVM (9000) si présent
+    - name: Arrêter et supprimer tpl-debian LXC (9000) si présent
       block:
-        - ansible.builtin.command: qm stop 9000 --skiplock
+        - ansible.builtin.command: pct stop 9000 --skiplock
           failed_when: false
-        - ansible.builtin.command: qm destroy 9000 --purge
+        - ansible.builtin.command: pct destroy 9000
           failed_when: false
       tags: [cleanup]
 
-    - name: Arrêter et supprimer tpl-nginx KVM (9002) si présent
+    - name: Arrêter et supprimer tpl-openwrt KVM (9001) si présent
       block:
-        - ansible.builtin.command: qm stop 9002 --skiplock
+        - ansible.builtin.command: qm stop 9001 --skiplock
           failed_when: false
-        - ansible.builtin.command: qm destroy 9002 --purge
+        - ansible.builtin.command: qm destroy 9001 --purge
           failed_when: false
       tags: [cleanup]
 
@@ -181,8 +181,8 @@
         --name tpl-openwrt
         --memory 256
         --cores 1
-        --net0 virtio,bridge=vmbr0
-        --net1 virtio,bridge={{ benchmark_bridge }}
+        --net0 virtio,bridge={{ benchmark_bridge }}
+        --net1 virtio,bridge=vmbr0
         --ostype l26
         --serial0 socket
         --vga serial0
@@ -229,7 +229,7 @@
         msg: |
           ═══════════════════════════════════════════════════════
           Templates disponibles :
-            {{ debian_lxc_vmid | default(9000) }}  (CT  LXC) tpl-debian  → Debian 13, base pour tous les services
-            {{ openwrt_vmid }}  (KVM    ) tpl-openwrt → OpenWrt 23.05, routeur/firewall
+            9000  (CT  LXC) tpl-debian  → Debian 13, base pour tous les services
+            {{ openwrt_vmid }}  (KVM    ) tpl-openwrt → OpenWrt 23.05, routeur/firewall (brut)
           ═══════════════════════════════════════════════════════
-          Prochaine étape : 02_deploy_scenario.yml --extra-vars "scenario_id=1"
+          Prochaine étape : 02_config_openwrt.yml (configure le template OpenWrt → VMID 9010)

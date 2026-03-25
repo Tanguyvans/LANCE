@@ -19,35 +19,25 @@
   gather_facts: false
 
   vars:
-    openwrt_tmp_vmid: 9010
+    openwrt_raw_vmid: 9001        # VMID du template brut créé par 01_create_templates.yml
+    openwrt_tmp_vmid: 9010        # VMID de travail et du template final configuré
     openwrt_tmp_name: openwrt-config-tmp
     openwrt_default_lan: "192.168.1.1"
     openwrt_tmp_proxy_ip: "192.168.1.100"
 
   tasks:
 
-    - name: Retirer l'IP 192.168.100.1 de vmbr1 dans /etc/network/interfaces
-      ansible.builtin.replace:
+    - name: Retirer l'IP 192.168.100.1 de vmbr1 (passer à inet manual)
+      ansible.builtin.blockinfile:
         path: /etc/network/interfaces
-        regexp: |
-          # BEGIN ANSIBLE MANAGED - vmbr1 benchmark
-          auto vmbr1
-          iface vmbr1 inet static
-              address 192\.168\.100\.1/24
-              bridge-ports none
-              bridge-stp off
-              bridge-fd 0
-              # Bridge interne pour les VMs benchmark \(pas de NIC physique\)
-          # END ANSIBLE MANAGED - vmbr1 benchmark
-        replace: |
-          # BEGIN ANSIBLE MANAGED - vmbr1 benchmark
+        marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
+        block: |
           auto vmbr1
           iface vmbr1 inet manual
               bridge-ports none
               bridge-stp off
               bridge-fd 0
               # Bridge interne pour les VMs benchmark (pas de NIC physique)
-          # END ANSIBLE MANAGED - vmbr1 benchmark
 
     - name: Appliquer la nouvelle config vmbr1 (sans IP)
       ansible.builtin.command: ifreload -a
@@ -70,9 +60,9 @@
         - ansible.builtin.command: qm destroy {{ openwrt_tmp_vmid }} --purge
           failed_when: false
 
-    - name: Cloner le template OpenWrt vers une VM temporaire (9010)
+    - name: Cloner le template OpenWrt brut (9001) vers une VM temporaire (9010)
       ansible.builtin.command: >-
-        qm clone {{ tpl_openwrt_vmid }} {{ openwrt_tmp_vmid }}
+        qm clone {{ openwrt_raw_vmid }} {{ openwrt_tmp_vmid }}
         --name {{ openwrt_tmp_name }}
         --full
 
@@ -138,13 +128,14 @@
       when: "'masq=1' not in masq_check.stdout"
       changed_when: true
 
-    - name: Redémarrer le réseau et le firewall OpenWrt (connexion 192.168.1.1 va couper)
+    - name: Redémarrer le réseau et le firewall OpenWrt (en arrière-plan pour éviter le hang)
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
-        /etc/init.d/network restart
-        /etc/init.d/firewall restart
-        ' || true
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+            -o ServerAliveInterval=5 -o ServerAliveCountMax=1 \
+            root@{{ openwrt_default_lan }} \
+            'nohup sh -c "/etc/init.d/network restart && /etc/init.d/firewall restart" >/dev/null 2>&1 &'
       changed_when: true
+      failed_when: false
 
 
 - name: "Étape 3 — Finaliser le template sur Proxmox"
@@ -163,18 +154,15 @@
       failed_when: false
       changed_when: true
 
-    - name: Attendre que OpenWrt soit accessible sur son nouveau LAN (192.168.100.1)
-      ansible.builtin.wait_for:
-        host: "{{ openwrt_lan_ip }}"
-        port: 22
-        timeout: 60
-        delay: 10
+    - name: Attendre que OpenWrt finisse son redémarrage réseau
+      ansible.builtin.pause:
+        seconds: 20
 
     - name: Arrêter la VM OpenWrt configurée
       ansible.builtin.command: qm stop {{ openwrt_tmp_vmid }}
 
     - name: Supprimer l'ancien template brut (9001)
-      ansible.builtin.command: qm destroy {{ tpl_openwrt_vmid }} --purge
+      ansible.builtin.command: qm destroy {{ openwrt_raw_vmid }} --purge
 
     - name: Renommer la VM configurée en tpl-openwrt
       ansible.builtin.command: qm set {{ openwrt_tmp_vmid }} --name tpl-openwrt
@@ -182,11 +170,18 @@
     - name: Convertir en template (nouveau 9001)
       ansible.builtin.command: qm template {{ openwrt_tmp_vmid }}
 
+    - name: Mettre à jour tpl_openwrt_vmid dans group_vars/all.yml (→ 9010)
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/../group_vars/all.yml"
+        regexp: "^tpl_openwrt_vmid:.*"
+        replace: "tpl_openwrt_vmid: {{ openwrt_tmp_vmid }}   # KVM — OpenWrt x86-64 configuré (LAN=192.168.100.1)"
+      delegate_to: localhost
+
     - name: Résumé
       ansible.builtin.debug:
         msg: |
           ══════════════════════════════════════════════════════
-          Template OpenWrt configuré :
+          Template OpenWrt configuré (VMID {{ openwrt_tmp_vmid }}) :
             LAN  : 192.168.100.1/24 (vmbr1)
             WAN  : DHCP (vmbr0, réseau 192.168.10.x)
             SSH  : autorisé sur WAN

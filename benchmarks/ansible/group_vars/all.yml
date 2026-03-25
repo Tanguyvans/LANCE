@@ -11,10 +11,11 @@ proxmox_images_dir: "/var/lib/vz/template/iso"
 benchmark_bridge: "vmbr1"
 benchmark_network: "192.168.100.0/24"
 benchmark_gateway: "192.168.100.1"
+benchmark_dns: "192.168.100.1"   # dnsmasq OpenWrt (UDP 53 vers WAN filtré)
 
 # ── IDs templates ──
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
-tpl_openwrt_vmid: 9001   # KVM    — OpenWrt x86-64 (routeur/firewall uniquement)
+tpl_openwrt_vmid: 9010   # KVM    — OpenWrt x86-64 configuré (LAN=192.168.100.1)
 
 # ── IDs scénarios (plage 100-199 par scénario) ──
 scenario_vmid_ranges:

@@ -58,14 +58,13 @@
       changed_when: false
       failed_when: false
 
-    - name: Créer le bridge vmbr1 (réseau interne benchmark)
+    - name: Créer le bridge vmbr1 (réseau interne benchmark, sans IP — OpenWrt sera 192.168.100.1)
       ansible.builtin.blockinfile:
         path: /etc/network/interfaces
         marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
         block: |
           auto {{ benchmark_bridge }}
-          iface {{ benchmark_bridge }} inet static
-              address {{ benchmark_gateway }}/24
+          iface {{ benchmark_bridge }} inet manual
               bridge-ports none
               bridge-stp off
               bridge-fd 0
@@ -138,8 +137,3 @@
       when: token_result.changed
       tags: [api]
 
-  handlers:
-    - name: restart networking
-      ansible.builtin.service:
-        name: networking
-        state: restarted

@@ -1,0 +1,149 @@
+# 03_deploy_scenario.yml — Déploiement des VMs d'un scénario benchmark
+# Usage : ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
+#           --ask-vault-pass --extra-vars "scenario_id=1"
+#
+# Scénarios disponibles :
+#   1 — Réseau plat       (4 VMs : router + mqtt + web + ssh)
+#   2 — Gateway exposée   (6 VMs : router + web + mqtt + iot-gw + db + jump)
+#   3 — Réplique NATO Lab (8 VMs : router + mikrotik-sim + wisgate + rpi5 + iot-hub + jetson + ap + cam)
+#
+# Chaque scénario tourne de façon isolée sur vmbr1 (un seul scénario à la fois).
+# Pour supprimer un scénario : 99_teardown.yml --extra-vars "scenario_id=1"
+
+- name: Déploiement du scénario {{ scenario_id | default('?') }}
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
+    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+
+    # ── Définition des scénarios ──
+    # Chaque service = { name, ip, role }
+    # Le router OpenWrt est toujours VMID base+0, IP 192.168.100.1
+    scenarios:
+      "1":
+        name: "Réseau plat"
+        services:
+          - { name: mqtt,  ip: "192.168.100.11", role: "mqtt_broker"  }
+          - { name: web,   ip: "192.168.100.12", role: "web_server"   }
+          - { name: ssh,   ip: "192.168.100.13", role: "ssh_server"   }
+
+      "2":
+        name: "Gateway exposée"
+        services:
+          - { name: web,    ip: "192.168.100.11", role: "web_server"   }
+          - { name: mqtt,   ip: "192.168.100.12", role: "mqtt_broker"  }
+          - { name: iot-gw, ip: "192.168.100.13", role: "iot_gateway"  }
+          - { name: db,     ip: "192.168.100.14", role: "db_server"    }
+          - { name: jump,   ip: "192.168.100.15", role: "ssh_server"   }
+
+      "3":
+        name: "Réplique NATO Lab"
+        services:
+          - { name: wisgate,  ip: "192.168.100.11", role: "iot_gateway"  }
+          - { name: rpi5,     ip: "192.168.100.12", role: "mqtt_broker"  }
+          - { name: iot-hub,  ip: "192.168.100.13", role: "mqtt_broker"  }
+          - { name: jetson,   ip: "192.168.100.14", role: "ssh_server"   }
+          - { name: ap,       ip: "192.168.100.15", role: "web_server"   }
+          - { name: cam,      ip: "192.168.100.16", role: "web_server"   }
+          - { name: nvr,      ip: "192.168.100.17", role: "ssh_server"   }
+
+  tasks:
+
+    - name: Vérifier que le scénario est défini
+      ansible.builtin.fail:
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3"
+      when: scenario_id not in scenarios
+
+    - name: Afficher le scénario à déployer
+      ansible.builtin.debug:
+        msg: |
+          Déploiement : S{{ scenario_id }} — {{ scenarios[scenario_id].name }}
+          VMID router  : {{ base_vmid }}
+          VMID services: {{ base_vmid | int + 1 }} → {{ base_vmid | int + scenarios[scenario_id].services | length }}
+
+
+    # ── Router OpenWrt ──
+    - name: Vérifier si le router du scénario existe déjà
+      ansible.builtin.command: qm status {{ base_vmid }}
+      register: router_check
+      changed_when: false
+      failed_when: false
+
+    - name: Cloner le template OpenWrt pour le router du scénario
+      ansible.builtin.command: >-
+        qm clone {{ tpl_openwrt_vmid }} {{ base_vmid }}
+        --name s{{ scenario_id }}-router
+        --full
+      when: router_check.rc != 0
+
+    - name: Démarrer le router OpenWrt
+      ansible.builtin.command: qm start {{ base_vmid }}
+      when: router_check.rc != 0
+
+
+    # ── Services LXC ──
+    - name: Vérifier si chaque CT service existe déjà
+      ansible.builtin.command: pct status {{ base_vmid | int + idx + 1 }}
+      register: ct_checks
+      changed_when: false
+      failed_when: false
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+
+    - name: Cloner le template Debian pour chaque service
+      ansible.builtin.command: >-
+        pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + idx + 1 }}
+        --hostname s{{ scenario_id }}-{{ item.name }}
+        --full
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when: ct_checks.results[idx].rc != 0
+
+    - name: Configurer le réseau et le DNS de chaque CT
+      ansible.builtin.command: >-
+        pct set {{ base_vmid | int + idx + 1 }}
+        --net0 name=eth0,bridge={{ benchmark_bridge }},ip={{ item.ip }}/24,gw={{ benchmark_gateway }}
+        --nameserver {{ benchmark_dns }}
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when: ct_checks.results[idx].rc != 0
+
+    - name: Démarrer chaque CT service
+      ansible.builtin.command: pct start {{ base_vmid | int + idx + 1 }}
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when: ct_checks.results[idx].rc != 0
+
+    - name: Attendre que les CTs soient prêts
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Vérifier la connectivité réseau de chaque CT
+      ansible.builtin.command: >-
+        pct exec {{ base_vmid | int + idx + 1 }} -- ping -c1 -W2 {{ benchmark_gateway }}
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      register: ct_ping
+      changed_when: false
+      failed_when: false
+
+    - name: Résumé du déploiement
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════════
+          Scénario S{{ scenario_id }} — {{ scenarios[scenario_id].name }} déployé
+          ──────────────────────────────────────────────────────────
+          {{ base_vmid }}  s{{ scenario_id }}-router  192.168.100.1  (OpenWrt WAN=DHCP)
+          {% for idx in range(scenarios[scenario_id].services | length) %}
+          {{ base_vmid | int + idx + 1 }}  s{{ scenario_id }}-{{ scenarios[scenario_id].services[idx].name }}  {{ scenarios[scenario_id].services[idx].ip }}  [{{ 'OK' if ct_ping.results[idx].rc == 0 else 'NO PING' }}]
+          {% endfor %}
+          ──────────────────────────────────────────────────────────
+          Prochaine étape : 04_inject_vulns.yml --extra-vars "scenario_id={{ scenario_id }}"
+          ══════════════════════════════════════════════════════════
