@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(gh api:*)",
-      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --extra-vars \"scenario_id=2\")"
+      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --extra-vars \"scenario_id=2\")",
+      "Bash(ssh:*)"
     ]
   }
 }

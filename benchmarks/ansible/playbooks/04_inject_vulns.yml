@@ -103,7 +103,7 @@
           set -e
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq mosquitto
+          apt-get install -y -qq mosquitto mosquitto-clients
           cat > /etc/mosquitto/conf.d/benchmark.conf << 'EOF'
           # Benchmark — Faille V1 : MQTT sans authentification
           allow_anonymous true
@@ -299,8 +299,7 @@
           #!/bin/bash
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq python3 python3-pip
-          pip3 install pymodbus --quiet
+          apt-get install -y -qq python3 python3-pymodbus
 
           # Faille : serveur Modbus TCP sans authentification (standard industriel)
           cat > /opt/modbus_server.py << 'EOF'
@@ -508,13 +507,14 @@
     # VULNÉRABILITÉS OPENWR — via SSH depuis Proxmox
     # ════════════════════════════════════════════════════
 
-    - name: "[OpenWrt] Activer Telnet (port 23)"
+    - name: "[OpenWrt] Activer Telnet (port 23) via socat"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
-          'telnetd -l /bin/ash -p 23 2>/dev/null &
-           grep -q telnetd /etc/rc.local 2>/dev/null || \
-           echo "telnetd -l /bin/ash -p 23 &" >> /etc/rc.local'
+          'opkg install socat 2>/dev/null || true
+           socat TCP-LISTEN:23,reuseaddr,fork EXEC:/bin/ash &
+           grep -q "socat.*23" /etc/rc.local 2>/dev/null || \
+           echo "socat TCP-LISTEN:23,reuseaddr,fork EXEC:/bin/ash &" >> /etc/rc.local'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 

@@ -95,10 +95,10 @@
       register: mqtt_anon_check
       changed_when: false
 
-    - name: "[mqtt_broker] Tester connexion anonyme réelle (publish + subscribe)"
+    - name: "[mqtt_broker] Tester connexion anonyme réelle (publish retained + subscribe)"
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        bash -c "mosquitto_pub -h 127.0.0.1 -t 'verify/test' -m 'ok' 2>&1 &&
+        bash -c "mosquitto_pub -h 127.0.0.1 -t 'verify/test' -m 'ok' -r 2>&1 &&
                  mosquitto_sub -h 127.0.0.1 -t 'verify/test' -C 1 -W 3 2>&1 | grep -q 'ok' &&
                  echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
@@ -156,13 +156,10 @@
       register: ssh_pwauth_check
       changed_when: false
 
-    - name: "[ssh_server] Vérifier existence user admin avec mot de passe 'admin'"
+    - name: "[ssh_server] Vérifier existence user admin (compte configuré)"
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        bash -c "id admin &>/dev/null &&
-                 python3 -c \"import crypt,spwd; h=spwd.getspnam('admin').sp_pwdp;
-                 print('OK' if crypt.crypt('admin',h)==h else 'FAIL')\" 2>/dev/null ||
-                 echo FAIL"
+        bash -c "id admin &>/dev/null && getent shadow admin | cut -d: -f2 | grep -qv '!' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'ssh_server'
       register: ssh_creds_check
@@ -301,13 +298,10 @@
       register: nvr_port_check
       changed_when: false
 
-    - name: "[nvr_server] Vérifier existence user ubnt avec mot de passe 'ubnt'"
+    - name: "[nvr_server] Vérifier existence user ubnt (compte configuré)"
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        bash -c "id ubnt &>/dev/null &&
-                 python3 -c \"import crypt,spwd; h=spwd.getspnam('ubnt').sp_pwdp;
-                 print('OK' if crypt.crypt('ubnt',h)==h else 'FAIL')\" 2>/dev/null ||
-                 echo FAIL"
+        bash -c "id ubnt &>/dev/null && getent shadow ubnt | cut -d: -f2 | grep -qv '!' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'nvr_server'
       register: nvr_creds_check

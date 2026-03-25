@@ -56,33 +56,35 @@ while [[ $# -gt 0 ]]; do
       sed -n '2,14p' "$0" | sed 's/^# \?//'
       exit 0 ;;
     *)
-      log_error "Argument inconnu : $1. Usage : ./deploy.sh <1|2|3> [--no-populate]"
+      log_error "Argument inconnu : $1. Usage : ./deploy.sh <1|2|3|4|5> [--no-populate]"
       ;;
   esac
 done
 
-[[ -z "$SCENARIO_ID" ]] && log_error "scenario_id manquant. Usage : ./deploy.sh <1|2|3>"
+[[ -z "$SCENARIO_ID" ]] && log_error "scenario_id manquant. Usage : ./deploy.sh <1|2|3|4|5>"
 
 # ── Résumé scénarios ──
-declare -A SCENARIO_NAMES=(
-  [1]="Réseau plat        (4 VMs  — mqtt, web, ssh)"
-  [2]="Gateway exposée    (6 VMs  — web, mqtt, iot-gw, db, jump)"
-  [3]="Réplique NATO Lab  (8 VMs  — wisgate, rpi5, iot-hub, jetson, ap, cam, nvr)"
-  [4]="Réseau segmenté    (8 VMs  — admin, webapp, mqtt, lora-gw, plc, hmi, historian)"
-  [5]="Smart Building     (8 VMs  — cam1, cam2, nvr, access-ctrl, hvac, mqtt, web)"
-)
+case $SCENARIO_ID in
+  1) SCENARIO_NAME="Réseau plat        (4 VMs  — mqtt, web, ssh)" ;;
+  2) SCENARIO_NAME="Gateway exposée    (6 VMs  — web, mqtt, iot-gw, db, jump)" ;;
+  3) SCENARIO_NAME="Réplique NATO Lab  (8 VMs  — wisgate, rpi5, iot-hub, jetson, ap, cam, nvr)" ;;
+  4) SCENARIO_NAME="Réseau segmenté    (8 VMs  — admin, webapp, mqtt, lora-gw, plc, hmi, historian)" ;;
+  5) SCENARIO_NAME="Smart Building     (8 VMs  — cam1, cam2, nvr, access-ctrl, hvac, mqtt, web)" ;;
+esac
 
-declare -A SCENARIO_BASES=([1]=100 [2]=110 [3]=120 [4]=130 [5]=150)
+case $SCENARIO_ID in
+  1) BASE=100 ;; 2) BASE=110 ;; 3) BASE=120 ;; 4) BASE=130 ;; 5) BASE=150 ;;
+esac
 
 echo -e "\n${BOLD}╔══════════════════════════════════════════════════════════╗"
 echo -e "║     Benchmark IoT — Déploiement automatique              ║"
 echo -e "╚══════════════════════════════════════════════════════════╝${NC}"
-echo -e "  Scénario  : ${BOLD}S${SCENARIO_ID} — ${SCENARIO_NAMES[$SCENARIO_ID]}${NC}"
+echo -e "  Scénario  : ${BOLD}S${SCENARIO_ID} — ${SCENARIO_NAME}${NC}"
 echo -e "  Populate  : $([ "$POPULATE" = true ] && echo "${GREEN}oui${NC}" || echo "${YELLOW}non${NC}")"
 echo -e "  Répertoire: $SCRIPT_DIR"
 echo ""
 
-ANSIBLE_CMD="ansible-playbook -i $INVENTORY $VAULT_ARGS"
+run_playbook() { ansible-playbook -i "$INVENTORY" $VAULT_ARGS "$@"; }
 EXTRA="--extra-vars scenario_id=$SCENARIO_ID"
 START_TIME=$(date +%s)
 
@@ -91,8 +93,6 @@ log_step "Vérification des scénarios actifs..."
 
 RUNNING=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$(grep ansible_host "$INVENTORY" | head -1 | awk '{print $2}' | cut -d: -f2) \
   "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$1}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$1}'" 2>/dev/null || true)
-
-BASE=${SCENARIO_BASES[$SCENARIO_ID]}
 CONFLICT_SCENARIO=""
 for vmid in $RUNNING; do
   [[ "$vmid" -lt 100 || "$vmid" -gt 199 ]] 2>/dev/null && continue
@@ -109,7 +109,7 @@ done
 
 if [[ -n "$CONFLICT_SCENARIO" ]]; then
   log_warn "Scénario S${CONFLICT_SCENARIO} actif détecté — teardown en cours..."
-  $ANSIBLE_CMD "$PLAYBOOKS/99_teardown.yml" --extra-vars "scenario_id=$CONFLICT_SCENARIO" \
+  run_playbook "$PLAYBOOKS/99_teardown.yml" --extra-vars "scenario_id=$CONFLICT_SCENARIO" \
     || log_error "Teardown S${CONFLICT_SCENARIO} échoué"
   log_ok "Scénario S${CONFLICT_SCENARIO} supprimé"
 else
@@ -117,21 +117,21 @@ else
 fi
 
 # ── Étape 1 : Déploiement ──
-log_step "Déploiement S${SCENARIO_ID} — ${SCENARIO_NAMES[$SCENARIO_ID]}"
-$ANSIBLE_CMD "$PLAYBOOKS/03_deploy_scenario.yml" $EXTRA \
+log_step "Déploiement S${SCENARIO_ID} — ${SCENARIO_NAME}"
+run_playbook "$PLAYBOOKS/03_deploy_scenario.yml" $EXTRA \
   || log_error "Déploiement échoué (03_deploy_scenario.yml)"
 log_ok "VMs déployées et connectées"
 
 # ── Étape 2 : Injection des vulnérabilités ──
 log_step "Injection des vulnérabilités..."
-$ANSIBLE_CMD "$PLAYBOOKS/04_inject_vulns.yml" $EXTRA \
+run_playbook "$PLAYBOOKS/04_inject_vulns.yml" $EXTRA \
   || log_error "Injection échouée (04_inject_vulns.yml)"
 log_ok "Vulnérabilités injectées"
 
 # ── Étape 3 : Peuplement (optionnel) ──
 if [[ "$POPULATE" = true ]]; then
   log_step "Peuplement des services (données IoT réalistes)..."
-  $ANSIBLE_CMD "$PLAYBOOKS/05_populate_services.yml" $EXTRA \
+  run_playbook "$PLAYBOOKS/05_populate_services.yml" $EXTRA \
     || log_warn "Peuplement partiellement échoué (05_populate_services.yml) — non bloquant"
   log_ok "Services peuplés"
 fi
