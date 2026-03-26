@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.provider import LLMProvider
 from src.agent.prompt_manager import load_prompt
@@ -41,10 +43,12 @@ class Pipeline:
         provider: LLMProvider,
         dry_run: bool = False,
         phases: list[int] | None = None,
+        scenario_id: int | None = None,
     ):
         self.provider = provider
         self.dry_run = dry_run
         self.phases = phases
+        self.scenario_id = scenario_id
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -67,6 +71,7 @@ class Pipeline:
             "link_count": str(lab["link_count"]),
             "cve_count": str(lab["cve_count"]),
             "top_risk": str(lab["top_risk"]),
+            "scenario_context": "",
         }
 
         print("Loading lab context...")
@@ -74,6 +79,17 @@ class Pipeline:
             f"  Devices: {lab['device_count']}, Links: {lab['link_count']}, "
             f"CVEs: {lab['cve_count']}, Top risk: {lab['top_risk']}"
         )
+
+        # Load benchmark scenario context if specified
+        if self.scenario_id is not None:
+            scenario_context = self._load_scenario_context(self.scenario_id)
+            if scenario_context:
+                self.context["scenario_context"] = scenario_context
+                print(f"  Benchmark scenario: S{self.scenario_id} — {scenario_context.splitlines()[0]}")
+
+            # Save scenario metadata for evaluator
+            meta = {"scenario_id": self.scenario_id, "run_dir": str(self.run_dir)}
+            (self.run_dir / "scenario_meta.json").write_text(json.dumps(meta, indent=2))
 
         # Get agents sorted by phase
         agents = sorted(AGENTS.values(), key=lambda a: a.phase)
@@ -120,6 +136,20 @@ class Pipeline:
             log.warning("Run history ingestion failed (non-fatal): %s", e)
 
         return results
+
+    def _load_scenario_context(self, scenario_id: int) -> str:
+        """Load benchmark scenario IPs from ground_truth YAML and return a context string."""
+        gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
+        if not gt_path.exists():
+            log.warning("Scenario ground truth not found: %s", gt_path)
+            return ""
+        data = yaml.safe_load(gt_path.read_text())
+        lines = [f"Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}"]
+        lines.append(f"Network: 192.168.100.0/24 — Gateway: 192.168.100.1 (OpenWrt)")
+        lines.append("Target hosts:")
+        for svc in data.get("topology", {}).get("services", []):
+            lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
+        return "\n".join(lines)
 
     def _run_agent(self, config: AgentConfig) -> str:
         """Run a single agent phase."""

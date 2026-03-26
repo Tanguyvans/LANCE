@@ -22,7 +22,7 @@
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5, 6, 7"
       when: scenario_id not in scenarios
 
     # ── Ajouter IP temporaire pour accès aux CTs via vmbr1 ──
@@ -281,6 +281,32 @@
       changed_when: false
       failed_when: false
 
+    # ── S7 : Bridge MQTT config avec credentials ──
+    - name: "[mqtt_broker / S7] Vérifier bridge.conf avec credentials exposés"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /etc/mosquitto/conf.d/bridge.conf ] &&
+                 grep -q 'bridge_password' /etc/mosquitto/conf.d/bridge.conf &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: scenario_id == "7" and item.role == 'mqtt_broker'
+      register: s7_bridge_check
+      changed_when: false
+      failed_when: false
+
+    # ── S7 : Backup SQL cloud exposé ──
+    - name: "[web_upload / S7] Vérifier backup cloud_db_backup.sql accessible"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /var/www/html/backup/cloud_db_backup.sql ] &&
+                 curl -s http://127.0.0.1/backup/cloud_db_backup.sql | grep -qi 'INSERT INTO users' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: scenario_id == "7" and item.role == 'web_upload'
+      register: s7_backup_check
+      changed_when: false
+      failed_when: false
+
     # ── Router : Telnet + FTP ──
     - name: "[router] Vérifier port Telnet (23)"
       ansible.builtin.shell: >
@@ -299,14 +325,14 @@
       failed_when: false
       when: scenario_id == "3"
 
-    - name: "[router] Vérifier interface web admin sur WAN (80) — scénarios 2/4/5"
+    - name: "[router] Vérifier interface web admin sur WAN (80) — scénarios 2/4/5/6/7"
       ansible.builtin.shell: >
         nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
         echo OK || echo FAIL
       register: router_wan_check
       changed_when: false
       failed_when: false
-      when: scenario_id in ["2", "4", "5"]
+      when: scenario_id in ["2", "4", "5", "6", "7"]
 
 
     # ── Retirer IP temporaire ──
@@ -465,9 +491,23 @@
           {% endif %}
           {% endfor %}
 
+          {% if scenario_id == "7" %}
+          S7 — Spécifiques Edge-Cloud
+          {% for r in (s7_bridge_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            bridge.conf: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+          {% for r in (s7_backup_check.results | default([])) %}
+          {% if not r.skipped | default(false) %}
+            backup SQL : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
+          {% endif %}
+          {% endfor %}
+
+          {% endif %}
           Router OpenWrt
             Telnet (23) : {{ '✓ OK' if 'OK' in router_telnet_check.stdout else '✗ FAIL' }}
-          {% if scenario_id in ["2", "4", "5"] %}
+          {% if scenario_id in ["2", "4", "5", "6", "7"] %}
             Web WAN (80): {{ '✓ OK' if 'OK' in (router_wan_check.stdout | default('')) else '✗ FAIL' }}
           {% endif %}
           {% if scenario_id == "3" %}

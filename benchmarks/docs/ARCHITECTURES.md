@@ -805,6 +805,31 @@ graph TB
     style F10 fill:#6c3483,color:#fff
 ```
 
+### Scénarios implémentés (déployables via Ansible)
+
+| # | Nom | Architecture | Packs | Difficulté | Vulns | VMIDs |
+|---|---|---|---|---|---|---|
+| S1 | Réseau plat | A1 Flat | F1+F2 | Easy | 3 | 100-109 |
+| S2 | Gateway exposée | A3 Gateway | F1+F3+F8 | Medium | 8 | 110-119 |
+| S3 | Réplique NATO Lab | A1 Flat | F1+F3 | Medium | 7 | 120-129 |
+| S4 | Réseau segmenté | A4 Segmenté | F1+F4+F5+F7 | Hard | 8 | 130-139 |
+| S5 | Smart Building | A2 Star | F1+F4+F8 | Medium | 8 | 150-159 |
+| S6 | Domotique centralisée | A2 Star | F1+F4+F8 | Medium | 9 | 160-169 |
+| S7 | Edge-Cloud pivot | A7 Edge-Cloud | F3+F7+F8 | Hard | 8 | 170-179 |
+
+```bash
+# Déployer un scénario
+ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --ask-vault-pass --extra-vars "scenario_id=6"
+
+# Lancer le pipeline LLM sur ce scénario
+python3 -m src.agent --provider anthropic --model claude-sonnet-4-20250514 --scenario 6
+
+# Évaluer les résultats
+python3 -m src.benchmark.evaluator --run-dir output/agent/<timestamp> --ground-truth benchmarks/ground_truth/scenario_6.yaml
+```
+
+---
+
 ### Scénarios proposés (8 × 10 = 80 combinaisons possibles, 20 sélectionnées)
 
 | # | Architecture | Packs | Difficulté | Vulns | Focus |

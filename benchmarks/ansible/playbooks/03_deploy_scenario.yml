@@ -26,6 +26,28 @@
         msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
       when: scenario_id not in scenarios
 
+    - name: Vérifier que le template Debian ({{ tpl_debian_vmid }}) existe
+      ansible.builtin.command: pct status {{ tpl_debian_vmid }}
+      register: tpl_debian_check
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si template Debian absent
+      ansible.builtin.fail:
+        msg: "Template Debian ({{ tpl_debian_vmid }}) introuvable. Lancer d'abord : ansible-playbook -i inventory.yml playbooks/01_create_templates.yml --ask-vault-pass"
+      when: tpl_debian_check.rc != 0
+
+    - name: Vérifier que le template OpenWrt ({{ tpl_openwrt_vmid }}) existe
+      ansible.builtin.command: qm status {{ tpl_openwrt_vmid }}
+      register: tpl_openwrt_check
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si template OpenWrt absent
+      ansible.builtin.fail:
+        msg: "Template OpenWrt ({{ tpl_openwrt_vmid }}) introuvable. Lancer d'abord : ansible-playbook -i inventory.yml playbooks/02_config_openwrt.yml --ask-vault-pass"
+      when: tpl_openwrt_check.rc != 0
+
     - name: Détecter si un autre scénario est déjà en cours
       ansible.builtin.shell: |
         running=$(

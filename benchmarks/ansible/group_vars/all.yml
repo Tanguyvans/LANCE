@@ -22,11 +22,13 @@ tpl_openwrt_vmid: 9010   # KVM    — OpenWrt x86-64 configuré (LAN=192.168.100
 # base+0   : router OpenWrt
 # base+1…N : services LXC (vmid_offset défini dans scenarios ci-dessous)
 scenario_vmid_ranges:
-  "1": 100   # S1 Flat       → 100-109
-  "2": 110   # S2 Gateway    → 110-119
-  "3": 120   # S3 NATO Lab   → 120-129
-  "4": 130   # S4 Segmenté   → 130-139
-  "5": 150   # S5 Building   → 150-159
+  "1": 100   # S1 Flat              → 100-109
+  "2": 110   # S2 Gateway           → 110-119
+  "3": 120   # S3 NATO Lab          → 120-129
+  "4": 130   # S4 Segmenté          → 130-139
+  "5": 150   # S5 Building          → 150-159
+  "6": 160   # S6 Domotique         → 160-169
+  "7": 170   # S7 Edge-Cloud pivot  → 170-179
 
 # ── Credentials par défaut injectés dans les VMs (failles F1) ──
 # Ces valeurs sont volontairement faibles : c'est le but du benchmark
@@ -91,3 +93,23 @@ scenarios:
       - { name: hvac,        vmid_offset: 5, ip: "192.168.100.15", role: "web_server"    }
       - { name: mqtt,        vmid_offset: 6, ip: "192.168.100.16", role: "mqtt_broker"   }
       - { name: web,         vmid_offset: 7, ip: "192.168.100.17", role: "web_server"    }
+
+  "6":
+    name: "Domotique centralisée"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: hub,  vmid_offset: 1, ip: "192.168.100.11", role: "iot_gateway"    }
+      - { name: mqtt, vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker"    }
+      - { name: db,   vmid_offset: 3, ip: "192.168.100.13", role: "db_server"      }
+      - { name: cam,  vmid_offset: 4, ip: "192.168.100.14", role: "camera_server"  }
+      - { name: web,  vmid_offset: 5, ip: "192.168.100.15", role: "web_server"     }
+
+  "7":
+    name: "Edge-Cloud pivot"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: edge-gw,      vmid_offset: 1, ip: "192.168.100.11", role: "iot_gateway" }
+      - { name: edge-mqtt,    vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker" }
+      - { name: edge-compute, vmid_offset: 3, ip: "192.168.100.13", role: "ssh_server"  }
+      - { name: cloud-api,    vmid_offset: 4, ip: "192.168.100.14", role: "web_upload"  }
+      - { name: cloud-db,     vmid_offset: 5, ip: "192.168.100.15", role: "db_server"   }

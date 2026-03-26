@@ -1,0 +1,67 @@
+# 08_reset_scenario.yml — Remet un scénario à l'état vulnérable sans teardown/redéploiement
+# Usage : ansible-playbook -i inventory.yml playbooks/08_reset_scenario.yml --ask-vault-pass --extra-vars "scenario_id=2"
+#
+# Utile quand un run LLM a modifié des configs ou des fichiers sur les VMs.
+# Plus rapide que 99_teardown + 03_deploy + 04_inject + 05_populate.
+#
+# Ce que fait ce playbook :
+#   1. Vérifie que les VMs du scénario existent et tournent
+#   2. Redémarre chaque CT/VM proprement
+#   3. Relance 04_inject_vulns sur les VMs existantes
+#   4. Relance 05_populate_services
+
+- name: Reset scénario {{ scenario_id | default('?') }}
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    scenario_id: "1"
+    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+
+  tasks:
+
+    - name: Vérifier que le scénario est défini
+      ansible.builtin.fail:
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
+      when: scenario_id not in scenarios
+
+    - name: Vérifier que le router du scénario existe
+      ansible.builtin.command: qm status {{ base_vmid }}
+      register: router_check
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si le scénario n'est pas déployé
+      ansible.builtin.fail:
+        msg: "Scénario S{{ scenario_id }} non déployé (router VMID {{ base_vmid }} introuvable). Lancer d'abord 03_deploy_scenario.yml."
+      when: router_check.rc != 0
+
+    - name: Afficher le scénario à resetter
+      ansible.builtin.debug:
+        msg: "Reset S{{ scenario_id }} — {{ scenarios[scenario_id].name }} (VMIDs {{ base_vmid }}–{{ base_vmid | int + scenarios[scenario_id].services | length }})"
+
+    # ── Redémarrage des CTs ──
+    - name: Redémarrer chaque CT service
+      ansible.builtin.shell: |
+        pct stop {{ base_vmid | int + item.vmid_offset }} 2>/dev/null || true
+        sleep 2
+        pct start {{ base_vmid | int + item.vmid_offset }}
+      loop: "{{ scenarios[scenario_id].services }}"
+      changed_when: true
+
+    - name: Attendre que les CTs soient prêts (SSH actif)
+      ansible.builtin.command: >-
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        sh -c "ss -tlnp | grep -q ':22'"
+      loop: "{{ scenarios[scenario_id].services }}"
+      register: ct_ssh_ready
+      until: ct_ssh_ready is succeeded
+      retries: 12
+      delay: 5
+      changed_when: false
+
+- name: Ré-injection des vulnérabilités
+  ansible.builtin.import_playbook: 04_inject_vulns.yml
+
+- name: Ré-peuplement des services
+  ansible.builtin.import_playbook: 05_populate_services.yml

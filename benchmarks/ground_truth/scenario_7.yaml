@@ -1,0 +1,253 @@
+# Ground Truth — Scénario 7 : Edge-Cloud pivot
+# Architecture A7 Edge-Cloud + Packs F3 (software outdated) + F7 (pivot chains) + F8 (data exposure)
+# Difficulté : Hard
+
+scenario_id: "7"
+scenario_name: "Edge-Cloud pivot"
+difficulty: "hard"
+description: >
+  Architecture edge-cloud avec un edge gateway local relié à un "cloud" simulé.
+  L'edge gateway tourne Dropbear 2020.81 vulnérable (Terrapin) avec une interface
+  HTTP admin sans auth. Le broker MQTT edge expose ses credentials de bridge dans
+  sa configuration. L'edge compute a des credentials SSH par défaut. L'API cloud
+  accepte des uploads sans validation (RCE possible). La base cloud expose un backup
+  SQL via directory listing et stocke des données PII non chiffrées.
+
+topology:
+  router:
+    name: s7-router
+    vmid: 170
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s7-edge-gw,      vmid: 171, ip: "192.168.100.11", role: iot_gateway }
+    - { name: s7-edge-mqtt,    vmid: 172, ip: "192.168.100.12", role: mqtt_broker  }
+    - { name: s7-edge-compute, vmid: 173, ip: "192.168.100.13", role: ssh_server   }
+    - { name: s7-cloud-api,    vmid: 174, ip: "192.168.100.14", role: web_upload   }
+    - { name: s7-cloud-db,     vmid: 175, ip: "192.168.100.15", role: db_server    }
+
+vulnerabilities:
+
+  - id: V1
+    device: s7-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur (port 23)"
+    description: >
+      telnetd actif sur le routeur OpenWrt, accessible depuis le LAN.
+      Protocole non chiffré, credentials transmis en clair.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V2
+    device: s7-edge-gw
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
+    description: >
+      Dropbear version 2020.81 installé sur l'edge gateway. Vulnérable à l'attaque
+      Terrapin (CVE-2023-48795) qui permet à un attaquant en position MITM de
+      downgrader les algorithmes de chiffrement de la session SSH.
+    severity: high
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    cve_cvss: 5.9
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Banner SSH contient dropbear_2020.81"
+      - "Algorithmes chacha20-poly1305 et CBC avec ETM disponibles"
+    verification: "ssh-audit 192.168.100.11 | grep -i terrapin"
+    confidence_required: high
+
+  - id: V3
+    device: s7-edge-gw
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Interface HTTP admin sans authentification — exposition topologie réseau"
+    description: >
+      nginx exposé sur port 80 avec /admin accessible sans authentification.
+      L'endpoint /api/devices retourne la liste des services edge et cloud.
+      L'endpoint /api/status expose les connexions MQTT et DB actives.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin retourne 200 sans login"
+      - "GET /api/devices expose les IPs edge et cloud"
+      - "GET /api/status expose les connexions internes actives"
+    verification: "curl http://192.168.100.11/api/devices"
+    confidence_required: medium
+
+  - id: V4
+    device: s7-edge-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT anonymous + credentials de bridge cloud exposés dans mosquitto.conf"
+    description: >
+      Mosquitto configuré avec allow_anonymous true. Le fichier
+      /etc/mosquitto/conf.d/bridge.conf contient les credentials du bridge
+      vers le broker cloud en clair (bridge_login, bridge_password).
+      Ces informations permettent l'accès au cloud depuis l'extérieur.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer / I1 - Weak Passwords"
+    mitre_ics: "Collection, Lateral Movement"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert, connexion anonyme acceptée"
+      - "/etc/mosquitto/conf.d/bridge.conf lisible (permissions 644)"
+      - "bridge_login: cloud-bridge-user et bridge_password en clair"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    confidence_required: medium
+
+  - id: V5
+    device: s7-edge-compute
+    ip: "192.168.100.13"
+    role: ssh_server
+    title: "Credentials SSH par défaut (admin/admin)"
+    description: >
+      Compte admin avec mot de passe 'admin', PermitRootLogin yes,
+      MaxAuthTries 10. Permet un accès direct à l'edge compute pour
+      lecture des configs et pivot vers les services internes.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Connexion SSH réussie avec admin:admin"
+      - "PasswordAuthentication yes, MaxAuthTries 10"
+    verification: "ssh admin@192.168.100.13 (password: admin)"
+    confidence_required: high
+
+  - id: V6
+    device: s7-cloud-api
+    ip: "192.168.100.14"
+    role: web_upload
+    title: "Upload de fichiers sans validation — RCE via webshell PHP"
+    description: >
+      L'endpoint POST /upload accepte des fichiers sans validation du type MIME
+      ni de l'extension. Il est possible d'uploader un fichier .php et de l'exécuter
+      via le serveur web, obtenant ainsi une exécution de code arbitraire sur
+      le serveur cloud.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution, Lateral Movement"
+    cve: null
+    indicators:
+      - "POST /upload accepte des fichiers .php sans filtrage"
+      - "Les fichiers uploadés sont accessibles via /uploads/"
+      - "Exécution PHP active sur le serveur"
+    verification: "curl -F 'file=@shell.php' http://192.168.100.14/upload && curl 'http://192.168.100.14/uploads/shell.php?cmd=id'"
+    confidence_required: high
+
+  - id: V7
+    device: s7-cloud-api
+    ip: "192.168.100.14"
+    role: web_upload
+    title: "Backup base de données exposé via directory listing"
+    description: >
+      nginx avec autoindex on expose /backup/ contenant cloud_db_backup.sql.
+      Ce backup contient le dump complet de la base MariaDB avec données PII
+      (noms, emails, tokens d'authentification) et les credentials DB en clair.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "GET /backup/ retourne listing avec cloud_db_backup.sql"
+      - "Le dump SQL contient INSERT INTO users avec passwords et tokens"
+    verification: "curl http://192.168.100.14/backup/cloud_db_backup.sql | head -30"
+    confidence_required: medium
+
+  - id: V8
+    device: s7-cloud-db
+    ip: "192.168.100.15"
+    role: db_server
+    title: "MariaDB root sans mot de passe avec données PII accessibles réseau"
+    description: >
+      MariaDB accessible depuis tout le réseau (bind-address = 0.0.0.0).
+      La base smartcity contient des données PII non chiffrées (noms, emails,
+      tokens d'accès, historique des événements) dans les tables users et access_events.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection / I1 - Weak Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 3306/tcp ouvert et accessible réseau"
+      - "mysql -h 192.168.100.15 -u root sans mot de passe fonctionne"
+      - "Table users contient emails, passwords en clair, tokens API"
+    verification: "mysql -h 192.168.100.15 -u root -e 'SELECT * FROM smartcity.users;'"
+    confidence_required: medium
+
+attack_paths:
+
+  - id: P1
+    title: "Exploitation Terrapin sur SSH edge-gateway"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",              action: "Position MITM sur connexion SSH"        }
+      - { hop: 2, device: "s7-edge-gw (100.11)",   action: "CVE-2023-48795 — downgrade algorithmes" }
+      - { hop: 3, device: "s7-edge-gw (100.11)",   action: "Interception des credentials SSH"       }
+    vulnerabilities_used: [V2]
+    impact: "Interception des sessions SSH, récupération des credentials en clair"
+
+  - id: P2
+    title: "SSH edge-compute → config MQTT → credentials cloud"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",                  action: "SSH admin:admin vers edge-compute"         }
+      - { hop: 2, device: "s7-edge-compute (100.13)",  action: "Accès shell, reconnaissance réseau interne" }
+      - { hop: 3, device: "s7-edge-mqtt (100.12)",     action: "Lecture config bridge → cloud credentials"  }
+      - { hop: 4, device: "s7-cloud-api (100.14)",     action: "Accès cloud avec credentials récupérés"     }
+    vulnerabilities_used: [V5, V4]
+    impact: "Accès au cluster cloud via credentials de bridge MQTT"
+
+  - id: P3
+    title: "Upload webshell → RCE → dump base de données cloud"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",               action: "POST /upload avec fichier .php malveillant" }
+      - { hop: 2, device: "s7-cloud-api (100.14)",  action: "Exécution du webshell uploadé"              }
+      - { hop: 3, device: "s7-cloud-api (100.14)",  action: "Accès filesystem → lecture config DB"        }
+      - { hop: 4, device: "s7-cloud-db (100.15)",   action: "Connexion MariaDB root → dump users PII"     }
+    vulnerabilities_used: [V6, V8]
+    impact: "Exécution de code sur le serveur cloud, exfiltration complète des données PII"
+
+  - id: P4
+    title: "Pivot multi-hop complet : edge → MQTT → RCE cloud → DB"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",                  action: "SSH admin:admin → edge-compute"              }
+      - { hop: 2, device: "s7-edge-compute (100.13)",  action: "cat bridge.conf → cloud credentials"         }
+      - { hop: 3, device: "s7-edge-mqtt (100.12)",     action: "Subscribe MQTT avec creds → topics internes"  }
+      - { hop: 4, device: "s7-cloud-api (100.14)",     action: "Upload webshell → RCE"                        }
+      - { hop: 5, device: "s7-cloud-db (100.15)",      action: "Dump MariaDB → exfiltration PII complète"      }
+    vulnerabilities_used: [V5, V4, V6, V8]
+    impact: "Compromission complète edge-to-cloud, exfiltration de toutes les données PII"
+
+scoring:
+  total_vulnerabilities: 8
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 26   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3

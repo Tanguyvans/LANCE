@@ -72,6 +72,14 @@
             # Topic admin — données sensibles exposées (faille intentionnelle)
             mosquitto_pub -h $BROKER -t "smartcity/admin/credentials" \
               -m "{\"db_user\":\"admin\",\"db_pass\":\"P@ssw0rd123\",\"api_key\":\"sk-nato-lab-9f3a2b\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+
+            # Topics domotique — codes et flux sensibles
+            mosquitto_pub -h $BROKER -t "home/alarm/code" \
+              -m "{\"zone\":\"building-a\",\"pin\":\"1234\",\"armed\":false,\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            mosquitto_pub -h $BROKER -t "home/camera/stream" \
+              -m "{\"cam\":\"cam-01\",\"url\":\"rtsp://admin:admin@192.168.100.x:554/stream1\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            mosquitto_pub -h $BROKER -t "system/credentials" \
+              -m "{\"service\":\"web\",\"user\":\"admin\",\"password\":\"P@ssw0rd123\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
           }
 
           while true; do
@@ -822,6 +830,98 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'nvr_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # S7 — MQTT BROKER : config bridge avec credentials exposés
+    # ════════════════════════════════════════════════════
+
+    - name: "[mqtt_broker / S7] Créer la config bridge MQTT avec credentials en clair"
+      ansible.builtin.copy:
+        dest: /tmp/populate_mqtt_bridge_s7.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          # Faille S7-V4 : credentials du bridge cloud exposés dans mosquitto.conf
+          cat > /etc/mosquitto/conf.d/bridge.conf << 'EOF'
+          # Bridge vers le broker MQTT cloud (credentials en clair — faille benchmark)
+          connection cloud-bridge
+          address 192.168.100.14:1883
+          topic smartcity/# out 0
+          topic cloud/# in 0
+          bridge_login cloud-bridge-user
+          bridge_password Cl0ud-Br1dge-S3cr3t!
+          EOF
+          chmod 644 /etc/mosquitto/conf.d/bridge.conf
+          systemctl reload mosquitto 2>/dev/null || true
+          echo "[OK] Config bridge MQTT avec credentials créée"
+      when: scenario_id == "7"
+
+    - name: "[mqtt_broker / S7] Push + exécuter dans chaque CT concerned"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt_bridge_s7.sh /tmp/populate_bridge.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_bridge.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: scenario_id == "7" and item.role == 'mqtt_broker'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # S7 — WEB UPLOAD : backup SQL cloud avec PII exposé
+    # ════════════════════════════════════════════════════
+
+    - name: "[web_upload / S7] Créer le backup SQL cloud exposé via /backup/"
+      ansible.builtin.copy:
+        dest: /tmp/populate_webupload_s7.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          # Faille S7-V7 : backup SQL de la DB cloud accessible via directory listing
+          mkdir -p /var/www/html/backup
+          cat > /var/www/html/backup/cloud_db_backup.sql << 'SQL'
+          -- Cloud Database Backup — smartcity
+          -- Host: 192.168.100.15   Database: smartcity
+          -- Exported by: root (no password required)
+          CREATE DATABASE IF NOT EXISTS smartcity;
+          USE smartcity;
+          CREATE TABLE IF NOT EXISTS users (id INT, username VARCHAR(50), password VARCHAR(100), email VARCHAR(100), role VARCHAR(20), api_token VARCHAR(64), gps_lat FLOAT, gps_lng FLOAT);
+          INSERT INTO users VALUES (1,'admin','P@ssw0rd123','admin@edge-cloud.local','superadmin','tok-admin-a1b2c3d4e5f6','48.8566','2.3522');
+          INSERT INTO users VALUES (2,'operator','op3r@t0r','ops@edge-cloud.local','operator','tok-ops-9z8y7x6w5v4u','48.8601','2.3477');
+          INSERT INTO users VALUES (3,'sensor-gw','GW-S3cret!','gw@edge-cloud.local','device','tok-gw-4a3b2c1d0e9f','48.8550','2.3500');
+          INSERT INTO users VALUES (4,'cloud-bridge','Cl0ud-Br1dge-S3cr3t!','bridge@edge-cloud.local','service','tok-bridge-ff11ee22dd33','48.8570','2.3510');
+          SQL
+          chmod 644 /var/www/html/backup/cloud_db_backup.sql
+
+          # Reconfigurer nginx pour exposer /backup/ avec autoindex
+          cat > /etc/nginx/conf.d/upload.conf << 'NGINX'
+          server {
+              listen 80 default_server;
+              server_name _;
+              root /var/www/html;
+              index index.php;
+              location / { try_files $uri $uri/ =404; }
+              location /backup { autoindex on; }
+              location /uploads { autoindex on; }
+              location ~ \.php$ {
+                  include fastcgi_params;
+                  fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+              }
+          }
+          NGINX
+          nginx -t && systemctl reload nginx
+          echo "[OK] Backup SQL cloud exposé dans /backup/"
+      when: scenario_id == "7"
+
+    - name: "[web_upload / S7] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_webupload_s7.sh /tmp/populate_s7.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_s7.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: scenario_id == "7" and item.role == 'web_upload'
       changed_when: true
 
 

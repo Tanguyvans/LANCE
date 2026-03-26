@@ -10,8 +10,8 @@
 #   db_server    → MariaDB root sans mot de passe
 #
 # Vulnérabilités OpenWrt (injectées via SSH depuis Proxmox) :
-#   S1 router    → Telnet activé (port 23)
-#   S2 router    → Telnet + interface web admin accessible WAN (port 80)
+#   S1/S3 router → Telnet activé (port 23)
+#   S2/S4/S5/S6/S7 router → Telnet + interface web admin accessible WAN (port 80)
 
 - name: Injection des vulnérabilités — Scénario {{ scenario_id | default('?') }}
   hosts: proxmox

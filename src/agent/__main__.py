@@ -38,6 +38,12 @@ def main():
         help="Run specific phases only (e.g. --phases 1 2)",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--scenario",
+        type=int,
+        default=None,
+        help="Benchmark scenario ID (1-5). Loads VM IPs from ground_truth/scenario_N.yaml.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -48,6 +54,7 @@ def main():
     provider = LLMProvider(provider=args.provider, model=args.model)
     pipeline = Pipeline(
         provider=provider, dry_run=args.dry_run, phases=args.phases,
+        scenario_id=args.scenario,
     )
     results = pipeline.run()
 

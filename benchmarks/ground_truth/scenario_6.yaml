@@ -1,0 +1,263 @@
+# Ground Truth — Scénario 6 : Domotique centralisée
+# Architecture A2 Star + Packs F1 (auth faible) + F4 (protocoles IoT) + F8 (data exposure)
+# Difficulté : Medium
+
+scenario_id: "6"
+scenario_name: "Domotique centralisée"
+difficulty: "medium"
+description: >
+  Hub IoT central (Node-RED) connectant caméra, broker MQTT, base de données et portail web.
+  Le hub expose une API REST sans authentification. Le broker MQTT accepte les connexions
+  anonymes et publie des topics sensibles. La base de données est accessible sans mot de passe.
+  Le portail web expose un fichier .env et un backup SQL.
+
+topology:
+  router:
+    name: s6-router
+    vmid: 160
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s6-hub,  vmid: 161, ip: "192.168.100.11", role: iot_gateway   }
+    - { name: s6-mqtt, vmid: 162, ip: "192.168.100.12", role: mqtt_broker   }
+    - { name: s6-db,   vmid: 163, ip: "192.168.100.13", role: db_server     }
+    - { name: s6-cam,  vmid: 164, ip: "192.168.100.14", role: camera_server }
+    - { name: s6-web,  vmid: 165, ip: "192.168.100.15", role: web_server    }
+
+vulnerabilities:
+
+  - id: V1
+    device: s6-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Interface web admin OpenWrt accessible depuis le WAN"
+    description: >
+      uhttpd configuré pour écouter sur 0.0.0.0:80. L'interface LuCI est accessible
+      depuis le WAN sans restriction réseau. Permet la reconfiguration complète du routeur.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur l'IP WAN du routeur"
+      - "Interface LuCI accessible sans restriction réseau"
+    verification: "curl http://192.168.100.1:80 → LuCI login page"
+    confidence_required: high
+
+  - id: V2
+    device: s6-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur (port 23)"
+    description: >
+      telnetd actif sur le routeur OpenWrt, accessible depuis le LAN.
+      Protocole non chiffré, credentials transmis en clair.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V3
+    device: s6-hub
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Interface HTTP admin sans authentification (port 80)"
+    description: >
+      nginx exposé sur port 80 avec un endpoint /admin accessible sans authentification.
+      L'endpoint /api/devices expose la liste des équipements du réseau interne,
+      /api/status expose les connexions actives vers MQTT et DB.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces / I9 - Insecure Default Settings"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin retourne 200 avec message 'no auth required'"
+      - "GET /api/devices expose la liste des équipements du réseau"
+      - "GET /api/status expose les connexions MQTT et DB internes"
+    verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/devices"
+    confidence_required: medium
+
+  - id: V4
+    device: s6-hub
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "API REST sans authentification — exposition de la topologie"
+    description: >
+      Endpoints /api/devices et /api/status exposent la liste des devices du réseau
+      et les connexions actives, sans token ni authentification. Facilite la reconnaissance
+      du réseau interne depuis n'importe quelle IP.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /api/devices retourne la liste des équipements connectés"
+      - "GET /api/status retourne les connexions internes actives"
+    verification: "curl http://192.168.100.11/api/devices"
+    confidence_required: medium
+
+  - id: V5
+    device: s6-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT sans authentification (allow_anonymous true)"
+    description: >
+      Mosquitto configuré avec allow_anonymous true, sans ACL.
+      Accès en lecture/écriture à tous les topics depuis tout le réseau.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion anonyme acceptée sans credentials"
+      - "Subscribe # retourne tous les messages"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    confidence_required: high
+
+  - id: V6
+    device: s6-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "Topics MQTT sensibles exposés (credentials, codes d'accès)"
+    description: >
+      Des données sensibles sont publiées sur des topics MQTT accessibles anonymement :
+      smartcity/admin/credentials (db_user, db_pass, api_key en JSON),
+      home/alarm/code (code PIN en clair), home/camera/stream (URL RTSP avec creds).
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "smartcity/admin/credentials → db_user, db_pass, api_key en clair"
+      - "home/alarm/code → code PIN de l'alarme"
+      - "home/camera/stream → URL RTSP avec credentials caméra"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    confidence_required: medium
+
+  - id: V7
+    device: s6-db
+    ip: "192.168.100.13"
+    role: db_server
+    title: "MariaDB root sans mot de passe, accessible réseau"
+    description: >
+      MariaDB configuré avec un compte root sans mot de passe et bind-address = 0.0.0.0.
+      La base smartcity contient les profils utilisateurs, historique des accès et tokens API.
+    severity: critical
+    category: default_credentials
+    owasp_iot: "I1 - Weak Passwords"
+    mitre_ics: "Collection, Impact"
+    cve: null
+    indicators:
+      - "Port 3306/tcp ouvert et accessible réseau"
+      - "mysql -h 192.168.100.13 -u root sans mot de passe fonctionne"
+      - "Base smartcity avec table users (passwords en clair, tokens API)"
+    verification: "mysql -h 192.168.100.13 -u root -e 'SELECT * FROM smartcity.users;'"
+    confidence_required: high
+
+  - id: V8
+    device: s6-cam
+    ip: "192.168.100.14"
+    role: camera_server
+    title: "Flux caméra HTTP accessible sans authentification"
+    description: >
+      Serveur mjpeg-streamer exposant le flux vidéo sur port 8080 sans authentification.
+      L'interface de contrôle PTZ est également accessible sans login.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces / I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 8080/tcp ouvert"
+      - "GET http://192.168.100.14:8080/?action=stream retourne le flux vidéo"
+      - "GET http://192.168.100.14:8080/?action=snapshot retourne une image"
+    verification: "curl -o /dev/null -s -w '%{http_code}' http://192.168.100.14:8080/?action=snapshot"
+    confidence_required: medium
+
+  - id: V9
+    device: s6-web
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Directory listing + fichiers sensibles exposés (backup SQL, config)"
+    description: >
+      nginx avec autoindex on expose /backup/ et /config/ sans restriction.
+      /backup/ contient un dump SQL avec credentials en clair.
+      /config/app.config expose les credentials DB, API key et SMTP.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "GET /backup/ retourne listing avec db_backup_*.sql"
+      - "GET /config/app.config expose DB password, API key, MQTT credentials"
+      - "Le dump SQL contient INSERT INTO users avec passwords en clair"
+    verification: "curl http://192.168.100.15/backup/ && curl http://192.168.100.15/config/app.config"
+    confidence_required: medium
+
+attack_paths:
+
+  - id: P1
+    title: "Accès admin routeur depuis WAN → contrôle total réseau"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",         action: "HTTP vers 192.168.100.1:80" }
+      - { hop: 2, device: "s6-router (100.1)", action: "LuCI panel → reconfiguration firewall" }
+    vulnerabilities_used: [V1]
+    impact: "Contrôle total du routeur, exposition de tous les services au WAN"
+
+  - id: P2
+    title: "MQTT anonymous → credentials → dump base de données"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",          action: "Connexion MQTT anonyme"                   }
+      - { hop: 2, device: "s6-mqtt (100.12)",  action: "Subscribe system/credentials → user:pass" }
+      - { hop: 3, device: "s6-db (100.13)",    action: "Connexion MySQL root sans password"        }
+      - { hop: 4, device: "s6-db (100.13)",    action: "SELECT * FROM users → tokens, PII"        }
+    vulnerabilities_used: [V5, V6, V7]
+    impact: "Exfiltration complète de la base domotique, tokens API et PII utilisateurs"
+
+  - id: P3
+    title: "Node-RED RCE → pivot vers actionneurs et DB"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",          action: "Accès Node-RED sans auth"                }
+      - { hop: 2, device: "s6-hub (100.11)",   action: "Modification flow → exec commande système" }
+      - { hop: 3, device: "s6-mqtt (100.12)",  action: "Publish MQTT → commande actionneur"       }
+      - { hop: 4, device: "s6-db (100.13)",    action: "Accès DB via credentials récupérés"       }
+    vulnerabilities_used: [V3, V5, V7]
+    impact: "Exécution de commandes, contrôle des actionneurs, accès base de données"
+
+  - id: P4
+    title: "Exposition web → reconnaissance → compromission totale"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",          action: "GET /.env → credentials DB, MQTT, API" }
+      - { hop: 2, device: "s6-web (100.15)",   action: "Récupération de tous les secrets"      }
+      - { hop: 3, device: "s6-mqtt (100.12)",  action: "Connexion MQTT avec credentials réels"  }
+      - { hop: 4, device: "s6-db (100.13)",    action: "Connexion DB avec password récupéré"    }
+    vulnerabilities_used: [V9, V5, V7]
+    impact: "Compromission de tous les services avec credentials légitimes"
+
+scoring:
+  total_vulnerabilities: 9
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 28   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:2 + V7:4 + V8:2 + V9:3
