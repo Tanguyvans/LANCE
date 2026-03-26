@@ -223,6 +223,41 @@
         msg: "Template KVM tpl-openwrt ({{ openwrt_vmid }}) prêt"
 
 
+    # ── Exposition LAN sur benchmark_lan_nic ──
+    - name: "[LAN] Vérifier que {{ benchmark_lan_nic }} existe sur ce Proxmox"
+      ansible.builtin.command: ip link show {{ benchmark_lan_nic }}
+      register: lan_nic_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[LAN] Avertir si {{ benchmark_lan_nic }} absent (machine avec une seule NIC ?)"
+      ansible.builtin.debug:
+        msg: "AVERTISSEMENT : {{ benchmark_lan_nic }} introuvable sur ce Proxmox — exposition LAN ignorée. Modifier benchmark_lan_nic dans group_vars/all.yml si nécessaire."
+      when: lan_nic_check.rc != 0
+
+    - name: "[LAN] Vérifier que {{ benchmark_lan_nic }} n'est pas déjà dans vmbr1"
+      ansible.builtin.slurp:
+        src: /etc/network/interfaces
+      register: current_interfaces
+      when: lan_nic_check.rc == 0
+
+    - name: "[LAN] Ajouter {{ benchmark_lan_nic }} au bridge vmbr1"
+      ansible.builtin.replace:
+        path: /etc/network/interfaces
+        regexp: "(iface vmbr1 inet manual\n(?:.*\n)*?)(\\s+bridge-ports none)"
+        replace: "\\1        bridge-ports {{ benchmark_lan_nic }}"
+      when: lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
+      notify: reload network
+
+    - name: "[LAN] Fallback — ajouter bridge-ports si absent"
+      ansible.builtin.lineinfile:
+        path: /etc/network/interfaces
+        insertafter: "iface vmbr1 inet manual"
+        line: "        bridge-ports {{ benchmark_lan_nic }}"
+        state: present
+      when: lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
+      notify: reload network
+
     # ── Résumé ──
     - name: Résumé des templates
       ansible.builtin.debug:
@@ -231,5 +266,13 @@
           Templates disponibles :
             9000  (CT  LXC) tpl-debian  → Debian 13, base pour tous les services
             {{ openwrt_vmid }}  (KVM    ) tpl-openwrt → OpenWrt 23.05, routeur/firewall (brut)
+          ───────────────────────────────────────────────────────
+          LAN benchmark exposé sur nic1 (vmbr1)
+          Brancher un switch/PC sur nic1 → IP 192.168.100.x via DHCP OpenWrt
           ═══════════════════════════════════════════════════════
           Prochaine étape : 02_config_openwrt.yml (configure le template OpenWrt → VMID 9010)
+
+  handlers:
+    - name: reload network
+      ansible.builtin.command: ifreload -a
+      changed_when: true

@@ -12,6 +12,7 @@ benchmark_bridge: "vmbr1"
 benchmark_network: "192.168.100.0/24"
 benchmark_gateway: "192.168.100.1"
 benchmark_dns: "192.168.100.1"   # dnsmasq OpenWrt (UDP 53 vers WAN filtré)
+benchmark_lan_nic: "nic1"        # NIC physique exposé sur vmbr1 pour accès direct au réseau benchmark
 
 # ── IDs templates ──
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
