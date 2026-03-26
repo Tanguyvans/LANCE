@@ -7,3 +7,4 @@ build/
 .env
 output/
 data/
+benchmarks/ansible/group_vars/vault.yml
