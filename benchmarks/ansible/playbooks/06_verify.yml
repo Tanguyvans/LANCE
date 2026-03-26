@@ -150,6 +150,7 @@
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "curl -s http://127.0.0.1/admin | grep -qi 'admin\|no auth' &&
+                 curl -s http://127.0.0.1/api/status | grep -qi 'connections\|mqtt\|db' &&
                  echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'iot_gateway'
@@ -179,7 +180,8 @@
     - name: "[db_server] Vérifier table users avec passwords en clair"
       ansible.builtin.shell: >
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        bash -c "mysql -u root -e 'SELECT COUNT(*) FROM smartcity.users' 2>/dev/null | grep -q '[0-9]' &&
+        bash -c "mysql -u root -e 'SHOW DATABASES' 2>/dev/null | grep -q 'smartcity' &&
+                 mysql -u root -e 'SELECT COUNT(*) FROM smartcity.users' 2>/dev/null | grep -q '[0-9]' &&
                  echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'db_server'

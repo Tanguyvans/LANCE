@@ -57,8 +57,7 @@ Produit le template final `9010` utilisé par tous les scénarios.
 ### Déployer un scénario
 
 ```bash
-ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
-  --ask-vault-pass --extra-vars "scenario_id=1"
+ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --ask-vault-pass --extra-vars "scenario_id=1"
 ```
 
 | `scenario_id` | Nom | VMs | Router | Difficulté |
@@ -74,8 +73,7 @@ ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
 ### Injecter les vulnérabilités
 
 ```bash
-ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml \
-  --ask-vault-pass --extra-vars "scenario_id=1"
+ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --ask-vault-pass --extra-vars "scenario_id=1"
 ```
 
 Vulnérabilités injectées par rôle :
@@ -98,8 +96,7 @@ Vulnérabilités injectées par rôle :
 ### Peupler les services (optionnel, pour la démo)
 
 ```bash
-ansible-playbook -i inventory.yml playbooks/05_populate_services.yml \
-  --ask-vault-pass --extra-vars "scenario_id=1"
+ansible-playbook -i inventory.yml playbooks/05_populate_services.yml --ask-vault-pass --extra-vars "scenario_id=1"
 ```
 
 Ajoute du contenu réaliste : capteurs IoT simulés en temps réel, dashboard web, base de données avec historique, fichiers de config avec credentials exposés.
@@ -107,8 +104,7 @@ Ajoute du contenu réaliste : capteurs IoT simulés en temps réel, dashboard we
 ### Supprimer un scénario
 
 ```bash
-ansible-playbook -i inventory.yml playbooks/99_teardown.yml \
-  --ask-vault-pass --extra-vars "scenario_id=1"
+ansible-playbook -i inventory.yml playbooks/99_teardown.yml --ask-vault-pass --extra-vars "scenario_id=1"
 ```
 
 Supprime toutes les VMs du scénario (VMID range 100-109 pour S1, etc.).
@@ -119,20 +115,14 @@ Supprime toutes les VMs du scénario (VMID range 100-109 pour S1, etc.).
 
 ```bash
 # Déployer et tester le scénario 2
-ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
-  --ask-vault-pass --extra-vars "scenario_id=2"
-
-ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml \
-  --ask-vault-pass --extra-vars "scenario_id=2"
-
-ansible-playbook -i inventory.yml playbooks/05_populate_services.yml \
-  --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/05_populate_services.yml --ask-vault-pass --extra-vars "scenario_id=2"
 
 # ... lancer le pipeline LLM ...
 
 # Nettoyer
-ansible-playbook -i inventory.yml playbooks/99_teardown.yml \
-  --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/99_teardown.yml --ask-vault-pass --extra-vars "scenario_id=2"
 ```
 
 ---

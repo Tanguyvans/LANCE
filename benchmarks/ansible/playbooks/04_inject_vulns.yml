@@ -191,7 +191,9 @@
               listen 80 default_server;
               server_name _;
               root /var/www/html;
-              location /admin { return 200 "Admin panel — no auth required"; }
+              location /admin { return 200 "Admin panel — no auth required"; add_header Content-Type text/plain; }
+              location /api/devices { return 200 '{"devices":["192.168.100.11","192.168.100.12","192.168.100.13","192.168.100.14","192.168.100.15"]}'; add_header Content-Type application/json; }
+              location /api/status { return 200 '{"connections":{"mqtt":"192.168.100.12:1883","db":"192.168.100.14:3306"},"uptime":3600}'; add_header Content-Type application/json; }
           }
           EOF
           systemctl enable nginx && systemctl restart nginx

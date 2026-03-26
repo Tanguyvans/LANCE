@@ -2,7 +2,7 @@
 
 ## Setup initial (une seule fois)
 
-### 1. Installer les dépendances sur le Mac
+### 1. Installer les dépendances
 
 ```bash
 pip install ansible proxmoxer requests passlib
@@ -12,77 +12,58 @@ ansible-galaxy collection install community.general
 ### 2. Copier la clé SSH sur Proxmox
 
 ```bash
-ssh-copy-id root@192.168.1.100
+ssh-copy-id root@192.168.10.245
 ```
 
-### 3. Créer le template Debian avec virt-customize
+### 3. Initialiser Proxmox (bridge, user ansible, token API)
 
 ```bash
-# Copier ta clé publique sur Proxmox
-cat ~/.ssh/id_ed25519.pub | ssh root@192.168.1.100 "cat > /tmp/bench_key.pub"
-
-# Créer le template (user bench, clé SSH, password, python3, guest agent)
-ssh root@192.168.1.100 << 'REMOTE'
-wget -q https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2 -O /tmp/debian-12-cloud.qcow2
-
-apt-get install -y libguestfs-tools 2>/dev/null || true
-
-KEY=$(cat /tmp/bench_key.pub)
-
-virt-customize -a /tmp/debian-12-cloud.qcow2 \
-  --run-command 'useradd -m -s /bin/bash -G sudo bench' \
-  --run-command 'echo "bench ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/bench' \
-  --run-command 'mkdir -p /home/bench/.ssh && chmod 700 /home/bench/.ssh' \
-  --write "/home/bench/.ssh/authorized_keys:$KEY" \
-  --run-command 'chmod 600 /home/bench/.ssh/authorized_keys && chown -R bench:bench /home/bench/.ssh' \
-  --run-command 'sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication yes/" /etc/ssh/sshd_config' \
-  --run-command 'echo "bench:benchpass" | chpasswd' \
-  --run-command 'apt-get update && apt-get install -y qemu-guest-agent python3' \
-  --run-command 'systemctl enable qemu-guest-agent ssh'
-
-qm create 9000 --name tpl-debian --memory 512 --cores 1 \
-  --net0 virtio,bridge=vmbr0 --scsihw virtio-scsi-pci
-qm set 9000 --scsi0 local-lvm:0,import-from=/tmp/debian-12-cloud.qcow2
-qm set 9000 --ide2 local-lvm:cloudinit
-qm set 9000 --boot order=scsi0
-qm set 9000 --serial0 socket --vga serial0
-qm set 9000 --agent enabled=1
-qm template 9000
-
-rm -f /tmp/debian-12-cloud.qcow2
-echo "Template 9000 ready."
-REMOTE
+cd benchmarks/ansible
+ansible-playbook -i inventory.yml playbooks/00_proxmox_init.yml
 ```
 
-### 4. Recréer le template (si besoin)
+Sauvegarder le token affiché dans `group_vars/vault.yml` :
 
 ```bash
-ssh root@192.168.1.100 "qm destroy 9000 --purge"
-# Puis relancer l'étape 3
+ansible-vault encrypt_string 'VOTRE_TOKEN' --name vault_proxmox_token >> group_vars/vault.yml
 ```
+
+### 4. Créer les templates VM
+
+```bash
+ansible-playbook -i inventory.yml playbooks/01_create_templates.yml --ask-vault-pass
+ansible-playbook -i inventory.yml playbooks/02_config_openwrt.yml --ask-vault-pass
+```
+
+Crée :
+- `9000` — LXC Debian 13 (base pour tous les services Linux)
+- `9010` — KVM OpenWrt 23.05 configuré (LAN=192.168.100.1, NAT actif)
 
 ---
 
 ## Utilisation quotidienne
 
 ```bash
-# Lister les scénarios disponibles
-./bench.sh list
+cd benchmarks/ansible
 
-# Déployer un scénario
-./bench.sh deploy s01
+# Déployer un scénario (exemple : scénario 2)
+ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --ask-vault-pass --extra-vars "scenario_id=2"
+ansible-playbook -i inventory.yml playbooks/05_populate_services.yml --ask-vault-pass --extra-vars "scenario_id=2"
 
-# Voir le statut des VMs
-./bench.sh status s01
+# Vérifier que les vulnérabilités sont actives
+ansible-playbook -i inventory.yml playbooks/06_verify.yml --ask-vault-pass --extra-vars "scenario_id=2"
 
-# Lancer le benchmark LLM
-./bench.sh run s01 --model claude-sonnet-4-20250514
+# Détruire toutes les VMs du scénario
+ansible-playbook -i inventory.yml playbooks/99_teardown.yml --ask-vault-pass --extra-vars "scenario_id=2"
+```
 
-# Restaurer l'état initial entre les runs
-./bench.sh reset s01
+Ou via les wrappers :
 
-# Détruire toutes les VMs d'un scénario
-./bench.sh teardown s01
+```bash
+cd benchmarks/ansible
+./deploy.sh 2        # équivalent 03 + 04 + 05
+./verify.sh 2        # équivalent 06
 ```
 
 ---
@@ -90,22 +71,22 @@ ssh root@192.168.1.100 "qm destroy 9000 --purge"
 ## Debug
 
 ```bash
-# Tester SSH vers une VM
-ssh bench@192.168.1.201
+# Tester SSH vers une VM (exemple : s2-jump, IP 192.168.100.15)
+ssh admin@192.168.100.15
 
-# Tester Ansible
-ansible -i "192.168.1.201," -m ping -u bench all
+# Tester la connectivité Ansible vers Proxmox
+ansible -i benchmarks/ansible/inventory.yml proxmox -m ping
 
 # Relancer uniquement l'injection de failles
-ANSIBLE_CONFIG=ansible/ansible.cfg \
-ansible-playbook ansible/playbooks/inject_vulns.yml \
-  -i <(python3 scripts/proxmox_vms.py --bench-dir . inventory scenarios/s01_flat_auth/)
+ansible-playbook -i benchmarks/ansible/inventory.yml benchmarks/ansible/playbooks/04_inject_vulns.yml --ask-vault-pass --extra-vars "scenario_id=2"
 
-# Voir la config d'une VM
-ssh root@192.168.1.100 "qm config 201"
+# Voir la config d'une VM depuis Proxmox
+ssh root@192.168.10.245 "pct config 112"
+ssh root@192.168.10.245 "qm config 110"
 
-# Détruire manuellement des VMs
-for id in 201 202 203 204; do
-  ssh root@192.168.1.100 "qm stop $id; qm destroy $id --purge"
-done
+# Lister les VMs en cours sur Proxmox
+ssh root@192.168.10.245 "qm list; pct list"
+
+# Détruire manuellement un range de VMs (scénario 2 : 110-119)
+ssh root@192.168.10.245 "for id in \$(seq 110 119); do pct stop \$id 2>/dev/null; pct destroy \$id 2>/dev/null; qm stop \$id 2>/dev/null; qm destroy \$id --purge 2>/dev/null; done"
 ```
