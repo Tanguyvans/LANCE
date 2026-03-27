@@ -1,0 +1,310 @@
+---
+# Deploy Master VM - NATO Smart City IoT
+# Provisionne la VM maître sur Proxmox : LXC Debian 12, deux interfaces réseau
+# (management 192.168.88.0/24 + réseau de test 192.168.100.0/24), repo cloné,
+# dépendances installées, secrets injectés, Tailscale configuré,
+# Streamlit lancé en service systemd.
+#
+# Réseaux :
+#   eth0 (vmbr0) : 192.168.88.200/24  → management Proxmox + lab physique
+#   eth1 (vmbr1) : 192.168.100.200/24 → réseau de test benchmark
+#
+# Prérequis :
+#   1. ansible-vault edit benchmarks/ansible/group_vars/vault.yml
+#      (ajouter les clés de vault_master.yml.example)
+#   2. Clé SSH copiée sur Proxmox : ssh-copy-id root@192.168.88.10
+#   3. Template Debian 12 disponible sur Proxmox
+#
+# Usage :
+#   ansible-playbook benchmarks/ansible/playbooks/deploy_master.yml --ask-vault-pass
+
+# ══════════════════════════════════════════════════════════════
+# PLAY 1 : Créer le conteneur LXC sur Proxmox
+# ══════════════════════════════════════════════════════════════
+- name: Provision LXC master on Proxmox
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    master_vmid: 200
+    master_hostname: "nato-master"
+    master_ostemplate: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+    master_storage: "local-lvm"
+    master_disk_size: "20"
+    master_memory: 2048
+    master_cores: 2
+
+  tasks:
+    - name: Create LXC container with dual NIC
+      community.general.proxmox:
+        api_host: "{{ ansible_host }}"
+        api_user: "ansible@pam"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_token }}"
+        vmid: "{{ master_vmid }}"
+        hostname: "{{ master_hostname }}"
+        ostemplate: "{{ master_ostemplate }}"
+        storage: "{{ master_storage }}"
+        disk: "{{ master_disk_size }}"
+        memory: "{{ master_memory }}"
+        cores: "{{ master_cores }}"
+        password: "{{ vault_master_root_password }}"
+        netif:
+          # eth0 : réseau management (accès Proxmox, lab physique, SSH, Streamlit)
+          net0: "name=eth0,bridge=vmbr0,ip=192.168.88.200/24,gw=192.168.88.1"
+          # eth1 : réseau de test benchmark (accès aux VMs cibles)
+          net1: "name=eth1,bridge=vmbr1,ip=192.168.100.200/24"
+        nameserver: "1.1.1.1"
+        onboot: true
+        unprivileged: true
+        features:
+          - nesting=1
+        state: present
+
+    - name: Start LXC container
+      community.general.proxmox:
+        api_host: "{{ ansible_host }}"
+        api_user: "ansible@pam"
+        api_token_id: "{{ proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_token }}"
+        vmid: "{{ master_vmid }}"
+        state: started
+
+    - name: Wait for SSH on management interface
+      ansible.builtin.wait_for:
+        host: "192.168.88.200"
+        port: 22
+        delay: 5
+        timeout: 120
+
+# ══════════════════════════════════════════════════════════════
+# PLAY 2 : Configurer la VM maître
+# ══════════════════════════════════════════════════════════════
+- name: Configure master VM
+  hosts: master
+  gather_facts: true
+
+  vars:
+    repo_url: "https://github.com/Tanguyvans/NATO-SmartCity-IoT.git"
+    repo_dest: "/opt/nato-smartcity-iot"
+    repo_branch: "main"
+    streamlit_port: 8501
+    streamlit_script: "src/ui/app.py"
+    env_file: "/opt/nato-smartcity-iot/.env"
+
+  tasks:
+
+    # ── Système ──────────────────────────────────────────────
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      ansible.builtin.apt:
+        name:
+          - git
+          - python3
+          - python3-pip
+          - python3-venv
+          - curl
+          - nmap
+          - ansible
+          - mosquitto-clients
+          - iptables-persistent   # persistance des règles après reboot
+        state: present
+
+    # ── Firewall : protéger le réseau de management ───────────
+    # eth0 (vmbr0 / 192.168.88.0/24) : uniquement trafic légitime autorisé
+    #   → SSH vers Proxmox, API Proxmox (8006), DNS, HTTP/S (apt, git), Tailscale
+    #   → tout le reste bloqué en sortie (pas de scans offensifs sur le lab physique)
+    # eth1 (vmbr1 / 192.168.100.0/24) : tout autorisé (réseau de test isolé)
+    - name: Flush existing OUTPUT rules
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        flush: true
+
+    - name: Allow loopback output
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: lo
+        jump: ACCEPT
+
+    - name: Allow established/related output on eth0
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        ctstate: ESTABLISHED,RELATED
+        jump: ACCEPT
+
+    - name: Allow DNS on eth0
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: udp
+        destination_port: "53"
+        jump: ACCEPT
+
+    - name: Allow HTTP/HTTPS on eth0 (apt, git, pip)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: tcp
+        destination_port: "80,443"
+        jump: ACCEPT
+
+    - name: Allow SSH on eth0 (gestion Proxmox + appareils lab)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: tcp
+        destination_port: "22"
+        jump: ACCEPT
+
+    - name: Allow Proxmox API on eth0
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: tcp
+        destination_port: "8006"
+        jump: ACCEPT
+
+    - name: Allow Tailscale (UDP 41641) on eth0
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: udp
+        destination_port: "41641"
+        jump: ACCEPT
+
+    - name: Block all other output on eth0 (pas de scans offensifs)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        jump: DROP
+
+    - name: Allow all output on eth1 (réseau de test — tout est permis)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth1
+        jump: ACCEPT
+
+    - name: Save iptables rules (persistent après reboot)
+      ansible.builtin.command: netfilter-persistent save
+      changed_when: true
+
+    # ── Réseau : route vers le réseau de test ────────────────
+    - name: Ensure eth1 is configured at boot (interfaces.d)
+      ansible.builtin.copy:
+        dest: /etc/network/interfaces.d/eth1
+        mode: "0644"
+        content: |
+          auto eth1
+          iface eth1 inet static
+            address 192.168.100.200
+            netmask 255.255.255.0
+            # Pas de gateway sur eth1 : le trafic benchmark reste local
+
+    - name: Bring up eth1
+      ansible.builtin.command: ifup eth1
+      register: ifup_result
+      changed_when: ifup_result.rc == 0
+      failed_when: false
+
+    # ── Repo ─────────────────────────────────────────────────
+    - name: Clone NATO Smart City IoT repo
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dest }}"
+        version: "{{ repo_branch }}"
+        force: false
+      register: git_result
+
+    - name: Install Python dependencies
+      ansible.builtin.pip:
+        requirements: "{{ repo_dest }}/requirements.txt"
+        virtualenv: "{{ repo_dest }}/venv"
+        virtualenv_command: python3 -m venv
+
+    - name: Install Streamlit
+      ansible.builtin.pip:
+        name: streamlit
+        virtualenv: "{{ repo_dest }}/venv"
+
+    # ── Secrets (.env) ────────────────────────────────────────
+    - name: Write .env from vault
+      ansible.builtin.copy:
+        dest: "{{ env_file }}"
+        mode: "0600"
+        owner: root
+        group: root
+        content: |
+          OPENROUTER_API_KEY={{ vault_openrouter_api_key }}
+          {% if vault_voyage_api_key is defined %}
+          VOYAGE_API_KEY={{ vault_voyage_api_key }}
+          {% endif %}
+
+    # ── Tailscale ─────────────────────────────────────────────
+    - name: Download Tailscale install script
+      ansible.builtin.get_url:
+        url: https://tailscale.com/install.sh
+        dest: /tmp/tailscale_install.sh
+        mode: "0755"
+
+    - name: Install Tailscale
+      ansible.builtin.command: /tmp/tailscale_install.sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Authenticate Tailscale
+      ansible.builtin.command: tailscale up --authkey {{ vault_tailscale_auth_key }} --accept-routes
+      register: ts_result
+      changed_when: "'already authenticated' not in ts_result.stderr"
+
+    - name: Get Tailscale IP
+      ansible.builtin.command: tailscale ip -4
+      register: ts_ip
+      changed_when: false
+
+    # ── Systemd : Streamlit ───────────────────────────────────
+    - name: Deploy Streamlit systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/nato-streamlit.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=NATO Smart City IoT - Streamlit UI
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory={{ repo_dest }}
+          EnvironmentFile={{ env_file }}
+          ExecStart={{ repo_dest }}/venv/bin/streamlit run {{ streamlit_script }} \
+            --server.port {{ streamlit_port }} \
+            --server.address 0.0.0.0 \
+            --server.headless true
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable and start Streamlit service
+      ansible.builtin.systemd:
+        name: nato-streamlit
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # ── Résumé ────────────────────────────────────────────────
+    - name: Summary
+      ansible.builtin.debug:
+        msg:
+          - "Repo     : {{ repo_dest }}"
+          - "eth0     : 192.168.88.200  (management / lab physique)"
+          - "eth1     : 192.168.100.200 (réseau de test benchmark)"
+          - "Tailscale: {{ ts_ip.stdout }}"
+          - "SSH      : ssh root@{{ ts_ip.stdout }}"
+          - "Streamlit: http://{{ ts_ip.stdout }}:{{ streamlit_port }}"

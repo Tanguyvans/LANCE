@@ -1,0 +1,10 @@
+# Secrets supplémentaires pour la VM maître
+# À ajouter dans vault.yml existant ou dans un fichier séparé :
+#   ansible-vault edit benchmarks/ansible/group_vars/vault.yml
+#
+# Clés à ajouter :
+
+vault_master_root_password: "changeme"
+vault_tailscale_auth_key: "tskey-auth-xxxxxxxxxxxx"   # https://login.tailscale.com/admin/settings/keys
+vault_openrouter_api_key: "sk-or-xxxxxxxxxxxx"
+vault_voyage_api_key: "pa-xxxxxxxxxxxx"               # optionnel (knowledge store)
