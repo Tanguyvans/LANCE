@@ -10,13 +10,14 @@
 all:
   hosts:
     proxmox:
-      ansible_host: 192.168.88.10      # IP Proxmox réseau 192.168.88.0/24
+      ansible_host: 10.0.1.100
       ansible_user: root
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 
     # ── VM Maître (pentest orchestrator) ──
+    # ansible_host sera mis à jour après déploiement avec l'IP DHCP obtenue
     master:
-      ansible_host: 192.168.88.200
+      ansible_host: "{{ master_ip | default('192.168.10.30') }}"
       ansible_user: root
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 

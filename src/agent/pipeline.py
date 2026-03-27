@@ -145,15 +145,11 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
-        total_cost = sum(
-            u.cost_usd(self.tracker.model)
-            for u in self.tracker.phases.values()
-        )
         if stream_callback:
             stream_callback({
                 "type": "pipeline_done",
                 "results": results,
-                "total_cost_usd": round(total_cost, 4),
+                "total_cost_usd": round(self.tracker.total_cost(), 4),
                 "run_dir": str(self.run_dir),
             })
 

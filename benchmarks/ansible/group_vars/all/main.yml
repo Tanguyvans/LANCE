@@ -2,7 +2,7 @@
 # Les secrets (vault_proxmox_token) sont dans vault.yml (chiffré Ansible Vault)
 
 # ── Proxmox ──
-proxmox_node: "pve"
+proxmox_node: "nato-proxmox"
 proxmox_storage: "local-lvm"
 proxmox_iso_storage: "local"
 proxmox_images_dir: "/var/lib/vz/template/iso"

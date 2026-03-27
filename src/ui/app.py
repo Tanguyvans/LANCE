@@ -23,9 +23,11 @@ if str(ROOT) not in sys.path:
 # ── Constants ────────────────────────────────────────────────────────────────
 
 OPENROUTER_MODELS = [
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash-lite",   # gratuit, rapide
+    "minimax/minimax-m2.5:free",           # gratuit
     "anthropic/claude-sonnet-4",
     "anthropic/claude-opus-4",
-    "google/gemini-2.5-flash-preview",
     "google/gemini-2.5-pro-preview",
     "openai/gpt-4o",
     "meta-llama/llama-3.3-70b-instruct",
@@ -83,6 +85,9 @@ _init_state()
 def _pipeline_thread(provider_name: str, model: str, phases: list[int] | None,
                      scenario_id: int | None, eq: queue.Queue):
     try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+
         from src.agent.provider import LLMProvider
         from src.agent.pipeline import Pipeline
 
@@ -360,9 +365,12 @@ def main():
         st.session_state.thread = t
         t.start()
 
-    # Drain events from running pipeline
-    if st.session_state.running:
-        _drain_queue()
+    # Drain events — toujours, pour capturer le pipeline_done même après running=False
+    was_running = st.session_state.running
+    prev_run_dir = st.session_state.run_dir
+    _drain_queue()
+    just_finished = was_running and not st.session_state.running
+    got_run_dir = prev_run_dir is None and st.session_state.run_dir is not None
 
     # ── Layout ───────────────────────────────────────────────────────────────
     st.markdown("## 🛡️ NATO Smart City IoT — Pentest Orchestrator")
@@ -389,9 +397,11 @@ def main():
         st.subheader("📄 Deliverables")
         _render_deliverables()
 
-    # Auto-refresh while pipeline is running
+    # Auto-refresh pendant l'exécution, + un dernier rerun pour afficher les deliverables
     if st.session_state.running:
         time.sleep(0.4)
+        st.rerun()
+    elif just_finished or got_run_dir:
         st.rerun()
 
 
