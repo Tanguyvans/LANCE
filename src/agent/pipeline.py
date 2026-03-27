@@ -200,7 +200,11 @@ class Pipeline:
             stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
 
         try:
-            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600)
+            import os
+            env = os.environ.copy()
+            env["LANG"] = "en_US.UTF-8"
+            env["LC_ALL"] = "en_US.UTF-8"
+            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600, env=env)
             success = result.returncode == 0
             output = (result.stdout + result.stderr)[-3000:]
             print(output)
