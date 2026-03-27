@@ -3,10 +3,12 @@
 Supports Anthropic (native tool_use) and OpenRouter (OpenAI-compatible function_calling).
 Tools are defined once and translated to each provider's format internally.
 """
+from __future__ import annotations
 
 import json
 import logging
 import os
+from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
@@ -71,18 +73,24 @@ class LLMProvider:
         max_turns: int = 30,
         max_tokens: int = 4096,
         cost_tracker=None,
+        stream_callback: Callable[[dict], None] | None = None,
     ) -> str:
-        """Synchronous tool-calling loop. Returns the final text response."""
+        """Synchronous tool-calling loop. Returns the final text response.
+
+        Args:
+            stream_callback: Optional callback called with event dicts in real-time.
+                Event types: text_chunk, tool_call, tool_result, turn_done.
+        """
         tool_map = {t["name"]: t["function"] for t in tools}
 
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback)
 
     # ── Anthropic (native tool_use) ──────────────────────────────
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None):
         api_tools = [
             {
                 "name": t["name"],
@@ -114,6 +122,8 @@ class LLMProvider:
 
             if text_parts:
                 log.info("LLM: %s", text_parts[0][:200])
+                if stream_callback:
+                    stream_callback({"type": "text_chunk", "text": "\n".join(text_parts), "turn": turn + 1})
 
             # Track cost
             if cost_tracker and hasattr(response, "usage"):
@@ -125,14 +135,22 @@ class LLMProvider:
 
             # If no tool calls, we're done
             if not tool_calls:
+                if stream_callback:
+                    stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return "\n".join(text_parts)
+
+            if stream_callback:
+                stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
 
             # Add assistant message (with all content blocks)
             messages.append({"role": "assistant", "content": response.content})
 
             # Execute tool calls in parallel when multiple are requested
             if len(tool_calls) > 1:
-                from concurrent.futures import ThreadPoolExecutor, as_completed
+                from concurrent.futures import ThreadPoolExecutor
+                if stream_callback:
+                    for tc in tool_calls:
+                        stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
                 futures = {}
                 with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
                     for tc in tool_calls:
@@ -141,15 +159,22 @@ class LLMProvider:
                 tool_results = []
                 for tc in tool_calls:
                     f = next(f for f, t in futures.items() if t is tc)
+                    result = f.result()
+                    if stream_callback:
+                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:500]})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
-                        "content": f.result(),
+                        "content": result,
                     })
             else:
                 tool_results = []
                 for tc in tool_calls:
+                    if stream_callback:
+                        stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
                     result = self._execute_tool(tc.name, tc.input, tool_map)
+                    if stream_callback:
+                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:500]})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
@@ -161,7 +186,7 @@ class LLMProvider:
 
     # ── OpenRouter / OpenAI-compatible ───────────────────────────
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None):
         api_tools = [
             {
                 "type": "function",
@@ -202,10 +227,18 @@ class LLMProvider:
 
             # If no tool calls, we're done
             if not message.tool_calls:
+                if message.content and stream_callback:
+                    stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
+                    stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return message.content or ""
 
             if message.content:
                 log.info("LLM: %s", message.content[:200])
+                if stream_callback:
+                    stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
+
+            if stream_callback:
+                stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
 
             # Add assistant message
             messages.append(message)
@@ -223,6 +256,9 @@ class LLMProvider:
             # Execute tool calls in parallel when multiple are requested
             if len(parsed_calls) > 1:
                 from concurrent.futures import ThreadPoolExecutor
+                if stream_callback:
+                    for tc, args in parsed_calls:
+                        stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
                 with ThreadPoolExecutor(max_workers=min(len(parsed_calls), 8)) as pool:
                     futures = {
                         pool.submit(self._execute_tool, tc.function.name, args, tool_map): tc
@@ -230,14 +266,21 @@ class LLMProvider:
                     }
                 for tc, args in parsed_calls:
                     f = next(f for f, t in futures.items() if t is tc)
+                    result = f.result()
+                    if stream_callback:
+                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:500]})
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": f.result(),
+                        "content": result,
                     })
             else:
                 for tc, args in parsed_calls:
+                    if stream_callback:
+                        stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
                     result = self._execute_tool(tc.function.name, args, tool_map)
+                    if stream_callback:
+                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:500]})
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,

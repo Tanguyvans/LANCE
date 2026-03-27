@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -62,8 +63,17 @@ class Pipeline:
         import src.agent.validators as val_mod
         val_mod.OUTPUT_DIR = self.run_dir
 
-    def run(self) -> dict[str, str]:
-        """Execute the full pipeline. Returns {agent_name: status} dict."""
+    def run(
+        self,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> dict[str, str]:
+        """Execute the full pipeline. Returns {agent_name: status} dict.
+
+        Args:
+            stream_callback: Optional callback for real-time events.
+                Event types: pipeline_start, phase_start, text_chunk, tool_call,
+                tool_result, turn_done, phase_done, pipeline_done.
+        """
         # Load lab context (shared across all agents)
         lab = load_lab_context()
         self.context = {
@@ -79,6 +89,15 @@ class Pipeline:
             f"  Devices: {lab['device_count']}, Links: {lab['link_count']}, "
             f"CVEs: {lab['cve_count']}, Top risk: {lab['top_risk']}"
         )
+
+        if stream_callback:
+            stream_callback({
+                "type": "pipeline_start",
+                "device_count": lab["device_count"],
+                "link_count": lab["link_count"],
+                "cve_count": lab["cve_count"],
+                "top_risk": lab["top_risk"],
+            })
 
         # Load benchmark scenario context if specified
         if self.scenario_id is not None:
@@ -115,7 +134,7 @@ class Pipeline:
                 continue
 
             # Run the agent
-            status = self._run_agent(agent_config)
+            status = self._run_agent(agent_config, stream_callback)
             results[agent_config.name] = status
 
         # Print cost summary
@@ -125,6 +144,18 @@ class Pipeline:
         cost_path = self.run_dir / "cost_summary.json"
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
+
+        total_cost = sum(
+            u.cost_usd(self.tracker.model)
+            for u in self.tracker.phases.values()
+        )
+        if stream_callback:
+            stream_callback({
+                "type": "pipeline_done",
+                "results": results,
+                "total_cost_usd": round(total_cost, 4),
+                "run_dir": str(self.run_dir),
+            })
 
         # Ingest run findings into ChromaDB for episodic memory
         try:
@@ -151,7 +182,7 @@ class Pipeline:
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)
 
-    def _run_agent(self, config: AgentConfig) -> str:
+    def _run_agent(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
         # Set skill filter for this phase (hard filtering)
         filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
@@ -159,7 +190,7 @@ class Pipeline:
 
         # If this phase has device sub-agents, run them first
         if config.has_device_agents:
-            self._run_device_agents(config)
+            self._run_device_agents(config, stream_callback)
 
         tools = self._resolve_tools(config)
 
@@ -188,6 +219,15 @@ class Pipeline:
         print(f"  Deliverable: {config.deliverable_file}")
         print(f"{'=' * 60}\n")
 
+        if stream_callback:
+            stream_callback({
+                "type": "phase_start",
+                "phase": config.phase,
+                "name": config.name,
+                "description": getattr(config, "description", ""),
+                "deliverable": config.deliverable_file,
+            })
+
         # Run agent with cost tracking
         self.tracker.start_phase(config.name)
         result_text = self.provider.chat_with_tools(
@@ -197,6 +237,7 @@ class Pipeline:
             max_turns=config.max_turns,
             max_tokens=config.max_tokens,
             cost_tracker=self.tracker,
+            stream_callback=stream_callback,
         )
         usage = self.tracker.end_phase()
 
@@ -210,17 +251,30 @@ class Pipeline:
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
 
+        status = "completed" if valid else f"failed:{msg}"
+
         if valid:
             log.info("Phase %d deliverable validated: %s", config.phase, msg)
             print(f"  Deliverable validated: {config.deliverable_file}")
-            return "completed"
         else:
             log.error("Phase %d deliverable FAILED: %s", config.phase, msg)
             print(f"  Deliverable FAILED validation: {msg}")
             print(f"  LLM final output: {result_text[:500]}")
-            return f"failed:{msg}"
 
-    def _run_device_agents(self, config: AgentConfig) -> None:
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done",
+                "phase": config.phase,
+                "name": config.name,
+                "status": status,
+                "deliverable": config.deliverable_file,
+                "cost_usd": round(usage.cost_usd(self.tracker.model), 4) if usage else 0,
+                "turns": usage.turns if usage else 0,
+            })
+
+        return status
+
+    def _run_device_agents(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> None:
         """Run per-device sub-agents before the aggregator phase."""
         # Get devices with services from the attack surface
         surface = json.loads(get_attack_surface())
@@ -293,6 +347,7 @@ class Pipeline:
                 max_turns=config.max_turns,
                 max_tokens=config.max_tokens,
                 cost_tracker=self.tracker,
+                stream_callback=stream_callback,
             )
             usage = self.tracker.end_phase()
 
