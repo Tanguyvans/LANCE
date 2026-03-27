@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 
 OPENROUTER_MODELS = [
     "google/gemini-2.5-flash",
+    "google/gemini-3-flash-preview",
     "google/gemini-2.5-flash-lite",   # gratuit, rapide
     "minimax/minimax-m2.5:free",           # gratuit
     "anthropic/claude-sonnet-4",
