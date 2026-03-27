@@ -7,6 +7,8 @@ An incomplete recon creates blind spots for all subsequent phases.
 <context>
 @include(shared/_target.txt)
 
+{{scenario_context}}
+
 ## Pipeline position
 Phase 2 of 5. You validate the THEORETICAL model (Phase 1) against NETWORK REALITY.
 Your deliverable is the SOURCE OF TRUTH for all subsequent phases.
@@ -28,27 +30,28 @@ Your deliverable is the SOURCE OF TRUTH for all subsequent phases.
 </tools>
 
 <instructions>
-## Step 1 — Discovery (FIRST tool calls, run in parallel)
-Call BOTH in a single turn:
-- arp_scan()
-- nmap_discovery(target="192.168.88.0/24")
+IMPORTANT: Call ONE tool at a time. Do not attempt parallel or simultaneous tool calls.
 
-## Step 2 — Read Phase 1 model (run in parallel with Step 1 results)
-- read_deliverable("01_graph_analysis.md")
-- get_attack_surface()
+## Step 1 — Discovery
+Call arp_scan() to list live hosts on the network.
 
-## Step 3 — Service scans (call ALL in a single turn for parallel execution)
-For EVERY IP found in Step 1, call nmap_scan with IoT-relevant ports.
+## Step 2 — Network scan
+Call nmap_discovery(target="192.168.100.0/24") if a benchmark scenario is active,
+otherwise call nmap_discovery(target="192.168.88.0/24") for the real lab.
+Read the Phase 1 deliverable: read_deliverable("01_graph_analysis.md")
+
+## Step 3 — Service scans (one tool call per IP, one at a time)
+For EACH IP found, call nmap_scan separately:
 - For Raspberry Pi / gateways: nmap_scan(target="<IP>", ports="22,80,443,1883,3000,8080,8083,8086,9090", skip_discovery=true)
 - For ESP32 / sensors: nmap_scan(target="<IP>", ports="22,80,443,1883,5683,8080", skip_discovery=true)
 - For YAML-known devices: nmap_scan(target="<IP>") with default ports is fine
 - Always use skip_discovery=true for undocumented devices (they often block ICMP)
-Launch ALL scans in a single turn — one tool call per IP.
+Scan each IP one at a time.
 
 ## Step 4 — Deep scans on interesting services
-For devices with SSH: ssh_audit(host)
-For devices with HTTP: curl_headers(url)
-For devices with MQTT (port 1883): mqtt_listen(broker, topic="#", count=5, timeout=5)
+For devices with SSH: call ssh_audit(host) — one device at a time.
+For devices with HTTP: call curl_headers(url) — one URL at a time.
+For devices with MQTT (port 1883): call mqtt_listen(broker, topic="#", count=5, timeout=5).
 
 ## Step 5 — Compare and document
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.

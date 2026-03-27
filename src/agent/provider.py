@@ -203,6 +203,7 @@ class LLMProvider:
             {"role": "user", "content": user_message},
         ]
 
+        malformed_retries = 0
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
             response = self.client.chat.completions.create(
@@ -210,12 +211,39 @@ class LLMProvider:
                 messages=messages,
                 tools=api_tools,
                 max_tokens=max_tokens,
+                parallel_tool_calls=False,
             )
             if not response.choices:
                 log.warning("Empty response from API (no choices), retrying...")
                 continue
             choice = response.choices[0]
             message = choice.message
+
+            # Handle API errors (e.g. MALFORMED_FUNCTION_CALL from Gemini)
+            if choice.finish_reason == "error":
+                native = getattr(choice, "native_finish_reason", "") or ""
+                log.warning("API error on turn %d: %s — retrying without tools", turn + 1, native)
+                if malformed_retries < 2:
+                    malformed_retries += 1
+                    # Retry without tools to get a plain text response
+                    fallback = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                    )
+                    if fallback.choices and fallback.choices[0].message.content:
+                        fb_content = fallback.choices[0].message.content
+                        if cost_tracker and fallback.usage:
+                            cost_tracker.record_turn(
+                                input_tokens=fallback.usage.prompt_tokens or 0,
+                                output_tokens=fallback.usage.completion_tokens or 0,
+                                tool_call_count=0,
+                            )
+                        if stream_callback:
+                            stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
+                            stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
+                        return fb_content
+                continue
 
             # Track cost
             if cost_tracker and response.usage:
