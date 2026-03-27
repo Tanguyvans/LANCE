@@ -7,8 +7,6 @@ An incomplete recon creates blind spots for all subsequent phases.
 <context>
 @include(shared/_target.txt)
 
-{{scenario_context}}
-
 ## Pipeline position
 Phase 2 of 5. You validate the THEORETICAL model (Phase 1) against NETWORK REALITY.
 Your deliverable is the SOURCE OF TRUTH for all subsequent phases.
@@ -36,8 +34,7 @@ IMPORTANT: Call ONE tool at a time. Do not attempt parallel or simultaneous tool
 Call arp_scan() to list live hosts on the network.
 
 ## Step 2 — Network scan
-Call nmap_discovery(target="192.168.100.0/24") if a benchmark scenario is active,
-otherwise call nmap_discovery(target="192.168.88.0/24") for the real lab.
+Call nmap_discovery(target="{{target_subnet}}") to scan the target network.
 Read the Phase 1 deliverable: read_deliverable("01_graph_analysis.md")
 
 ## Step 3 — Service scans (one tool call per IP, one at a time)

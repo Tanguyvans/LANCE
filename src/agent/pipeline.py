@@ -79,11 +79,14 @@ class Pipeline:
         """
         # Load lab context (shared across all agents)
         lab = load_lab_context()
+        # target_subnet: benchmark network when a scenario is active, real lab otherwise
+        target_subnet = "192.168.100.0/24" if self.scenario_id is not None else "192.168.88.0/24"
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
             "cve_count": str(lab["cve_count"]),
             "top_risk": str(lab["top_risk"]),
+            "target_subnet": target_subnet,
             "scenario_context": "",
         }
 
@@ -112,6 +115,14 @@ class Pipeline:
             # Save scenario metadata for evaluator
             meta = {"scenario_id": self.scenario_id, "run_dir": str(self.run_dir)}
             (self.run_dir / "scenario_meta.json").write_text(json.dumps(meta, indent=2))
+
+            # Deploy benchmark VMs before starting the pipeline
+            if not self.dry_run:
+                deploy_ok = self._run_scenario_deploy(stream_callback)
+                if not deploy_ok:
+                    if stream_callback:
+                        stream_callback({"type": "pipeline_done", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
+                    return {}
 
         # Get agents sorted by phase
         agents = sorted(AGENTS.values(), key=lambda a: a.phase)
@@ -171,6 +182,87 @@ class Pipeline:
 
         return results
 
+    def _run_playbook(self, playbook: str, stream_callback, event_type_start: str, event_type_done: str, extra_msg: str = "") -> bool:
+        """Run an Ansible playbook and return True on success."""
+        repo_root = Path(__file__).resolve().parents[2]
+        cmd = [
+            "ansible-playbook",
+            f"benchmarks/ansible/playbooks/{playbook}",
+            "-i", "benchmarks/ansible/inventory.yml",
+            "--vault-password-file", "/root/.vault_pass",
+            "--extra-vars", f"scenario_id={self.scenario_id}",
+        ]
+        print(f"\n{'=' * 60}")
+        print(f"ANSIBLE: {playbook} (scenario {self.scenario_id})")
+        print(f"{'=' * 60}\n")
+
+        if stream_callback:
+            stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
+
+        try:
+            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600)
+            success = result.returncode == 0
+            output = (result.stdout + result.stderr)[-3000:]
+            print(output)
+        except subprocess.TimeoutExpired:
+            success = False
+            output = f"{playbook} timeout (600s)"
+        except FileNotFoundError:
+            success = False
+            output = "ansible-playbook not found — deploy skipped"
+
+        if stream_callback:
+            stream_callback({"type": event_type_done, "scenario_id": self.scenario_id, "playbook": playbook, "success": success, "output": output})
+        return success
+
+    def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
+        """Deploy and configure benchmark scenario VMs before pipeline starts."""
+        # Pre-teardown any running scenario to avoid conflicts on shared network
+        self._teardown_all_running_scenarios(stream_callback)
+
+        # 03 — deploy VMs
+        ok = self._run_playbook("03_deploy_scenario.yml", stream_callback, "deploy_start", "deploy_done")
+        if not ok:
+            log.error("Scenario deploy failed — aborting pipeline")
+            return False
+        # 04 — inject vulnerabilities
+        ok = self._run_playbook("04_inject_vulns.yml", stream_callback, "inject_start", "inject_done")
+        if not ok:
+            log.warning("Vuln injection failed — continuing anyway")
+        return True
+
+    def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
+        """Teardown any currently running scenario before deploying a new one."""
+        repo_root = Path(__file__).resolve().parents[2]
+        # All possible scenario IDs from group_vars
+        scenario_ids = [1, 2, 3, 4, 5, 6, 7]
+        for sid in scenario_ids:
+            if sid == self.scenario_id:
+                continue  # Will be redeployed fresh
+            # Check if any VM in this scenario's range exists
+            import yaml as _yaml
+            all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
+            try:
+                data = _yaml.safe_load(all_yml.read_text())
+                base = data["scenario_vmid_ranges"].get(str(sid))
+                if not base:
+                    continue
+            except Exception:
+                continue
+            check = subprocess.run(
+                ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
+                 "root@10.0.1.100", f"pct status {base} 2>/dev/null && echo EXISTS || true"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "EXISTS" not in check.stdout:
+                continue
+            # Scenario is running — teardown
+            log.info("Pre-teardown of running scenario S%d", sid)
+            old_id = self.scenario_id
+            self.scenario_id = sid
+            self._run_teardown(stream_callback)
+            self.scenario_id = old_id
+
     def _run_teardown(self, stream_callback: Callable[[dict], None] | None = None) -> None:
         """Run 99_teardown.yml to clean up benchmark VMs after pipeline completes."""
         print(f"\n{'=' * 60}")
@@ -227,9 +319,15 @@ class Pipeline:
             log.warning("Scenario ground truth not found: %s", gt_path)
             return ""
         data = yaml.safe_load(gt_path.read_text())
-        lines = [f"Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}"]
-        lines.append(f"Network: 192.168.100.0/24 — Gateway: 192.168.100.1 (OpenWrt)")
-        lines.append("Target hosts:")
+        lines = [
+            f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
+            f"Scan network: 192.168.100.0/24 (NOT 192.168.88.0/24 — that is the physical lab)",
+            f"Gateway: 192.168.100.1 (OpenWrt router)",
+            "Known target hosts (scan ALL of them):",
+        ]
+        router = data.get("topology", {}).get("router", {})
+        if router:
+            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', '192.168.100.1')}) — role: router")
         for svc in data.get("topology", {}).get("services", []):
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)

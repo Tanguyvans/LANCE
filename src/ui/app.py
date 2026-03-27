@@ -51,6 +51,10 @@ EVENT_COLORS = {
     "phase_done":     "#5cb85c",
     "pipeline_start": "#337ab7",
     "pipeline_done":  "#337ab7",
+    "deploy_start":   "#9b59b6",
+    "deploy_done":    "#9b59b6",
+    "inject_start":   "#e67e22",
+    "inject_done":    "#e67e22",
     "teardown_start": "#d9534f",
     "teardown_done":  "#d9534f",
 }
@@ -317,6 +321,28 @@ def _render_log():
             lines.append(
                 f"<div style='color:{color};'><b>🏁 Pipeline terminé</b> — "
                 f"coût total ${ev.get('total_cost_usd', 0):.4f}</div>"
+            )
+        elif t == "deploy_start":
+            lines.append(
+                f"<div style='color:{color}; margin-top:12px;'>"
+                f"<b>🚧 Déploiement S{ev['scenario_id']} — {ev['playbook']}...</b></div>"
+            )
+        elif t == "deploy_done":
+            icon = "✅" if ev["success"] else "❌"
+            lines.append(
+                f"<div style='color:{color};'>{icon} Deploy S{ev['scenario_id']} "
+                f"{'OK' if ev['success'] else 'FAILED'}</div>"
+            )
+        elif t == "inject_start":
+            lines.append(
+                f"<div style='color:{color};'>"
+                f"<b>💉 Injection vulnérabilités S{ev['scenario_id']}...</b></div>"
+            )
+        elif t == "inject_done":
+            icon = "✅" if ev["success"] else "⚠️"
+            lines.append(
+                f"<div style='color:{color};'>{icon} Injection S{ev['scenario_id']} "
+                f"{'OK' if ev['success'] else 'partielle'}</div>"
             )
         elif t == "teardown_start":
             lines.append(

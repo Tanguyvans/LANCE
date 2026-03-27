@@ -1,7 +1,9 @@
 ## Network context
-NATO Smart City IoT Lab — Subnet 192.168.88.0/24
+Target subnet: {{target_subnet}}
 Devices: {{device_count}} | Links: {{link_count}} | Known CVEs: {{cve_count}}
 Highest risk device: {{top_risk}}
+
+{{scenario_context}}
 
 ## Available previous deliverables
 {{previous_deliverables}}
