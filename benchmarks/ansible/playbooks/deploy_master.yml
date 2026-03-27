@@ -1,22 +1,19 @@
 ---
 # Deploy Master VM - NATO Smart City IoT
-# Provisionne la VM maître sur Proxmox : LXC Debian 12, deux interfaces réseau
-# (management 192.168.88.0/24 + réseau de test 192.168.100.0/24), repo cloné,
-# dépendances installées, secrets injectés, Tailscale configuré,
+# Provisionne la VM maître sur Proxmox : LXC Debian 13, deux interfaces réseau
+# (management DHCP sur vmbr0 + réseau de test 192.168.100.200/24 sur vmbr1),
+# repo cloné, dépendances installées, secrets injectés, Tailscale configuré,
 # Streamlit lancé en service systemd.
+# Le master peut ensuite déployer les scénarios benchmark de façon autonome.
 #
-# Réseaux :
-#   eth0 (vmbr0) : 192.168.88.200/24  → management Proxmox + lab physique
-#   eth1 (vmbr1) : 192.168.100.200/24 → réseau de test benchmark
-#
-# Prérequis :
-#   1. ansible-vault edit benchmarks/ansible/group_vars/vault.yml
-#      (ajouter les clés de vault_master.yml.example)
-#   2. Clé SSH copiée sur Proxmox : ssh-copy-id root@192.168.88.10
-#   3. Template Debian 12 disponible sur Proxmox
+# Prérequis (une seule fois) :
+#   1. Clé SSH locale copiée sur Proxmox : ssh-copy-id root@10.0.1.100
+#   2. Fichier vault password : echo "monmotdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass
+#   3. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 #
 # Usage :
-#   ansible-playbook benchmarks/ansible/playbooks/deploy_master.yml --ask-vault-pass
+#   ansible-playbook benchmarks/ansible/playbooks/deploy_master.yml \
+#     --vault-password-file ~/.vault_pass -i benchmarks/ansible/inventory.yml
 
 # ══════════════════════════════════════════════════════════════
 # PLAY 1 : Créer le conteneur LXC sur Proxmox
@@ -273,6 +270,31 @@
         mode: "0600"
         owner: root
         group: root
+
+    # ── Clé SSH (pour que le master puisse piloter Proxmox via Ansible) ──────
+    - name: Generate SSH key on master (if absent)
+      ansible.builtin.user:
+        name: root
+        generate_ssh_key: true
+        ssh_key_type: ed25519
+        ssh_key_file: /root/.ssh/id_ed25519
+
+    - name: Read master public key
+      ansible.builtin.slurp:
+        src: /root/.ssh/id_ed25519.pub
+      register: master_pubkey
+
+    - name: Authorize master key on Proxmox
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ master_pubkey.content | b64decode | trim }}"
+      delegate_to: proxmox
+
+    - name: Add Proxmox to master known_hosts
+      ansible.builtin.known_hosts:
+        name: "{{ hostvars['proxmox']['ansible_host'] }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -H ' + hostvars['proxmox']['ansible_host']) }}"
+        state: present
 
     # ── Secrets (.env) ────────────────────────────────────────
     - name: Write .env from vault

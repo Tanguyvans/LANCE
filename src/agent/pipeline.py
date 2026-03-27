@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -45,11 +46,13 @@ class Pipeline:
         dry_run: bool = False,
         phases: list[int] | None = None,
         scenario_id: int | None = None,
+        auto_teardown: bool = True,
     ):
         self.provider = provider
         self.dry_run = dry_run
         self.phases = phases
         self.scenario_id = scenario_id
+        self.auto_teardown = auto_teardown
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -162,7 +165,60 @@ class Pipeline:
         except Exception as e:
             log.warning("Run history ingestion failed (non-fatal): %s", e)
 
+        # Auto-teardown benchmark VMs when a scenario was deployed
+        if self.scenario_id is not None and self.auto_teardown and not self.dry_run:
+            self._run_teardown(stream_callback)
+
         return results
+
+    def _run_teardown(self, stream_callback: Callable[[dict], None] | None = None) -> None:
+        """Run 99_teardown.yml to clean up benchmark VMs after pipeline completes."""
+        print(f"\n{'=' * 60}")
+        print(f"TEARDOWN: Suppression du scénario S{self.scenario_id}")
+        print(f"{'=' * 60}\n")
+
+        if stream_callback:
+            stream_callback({
+                "type": "teardown_start",
+                "scenario_id": self.scenario_id,
+            })
+
+        repo_root = Path(__file__).resolve().parents[2]
+        cmd = [
+            "ansible-playbook",
+            "benchmarks/ansible/playbooks/99_teardown.yml",
+            "-i", "benchmarks/ansible/inventory.yml",
+            "--vault-password-file", "/root/.vault_pass",
+            "--extra-vars", f"scenario_id={self.scenario_id}",
+        ]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            success = result.returncode == 0
+            output = result.stdout[-2000:] if result.stdout else result.stderr[-2000:]
+            print(output)
+        except subprocess.TimeoutExpired:
+            success = False
+            output = "Teardown timeout (300s)"
+            log.error("Teardown timeout for scenario %d", self.scenario_id)
+        except FileNotFoundError:
+            success = False
+            output = "ansible-playbook not found — teardown skipped"
+            log.warning("ansible-playbook not in PATH, skipping teardown")
+
+        if stream_callback:
+            stream_callback({
+                "type": "teardown_done",
+                "scenario_id": self.scenario_id,
+                "success": success,
+                "output": output,
+            })
 
     def _load_scenario_context(self, scenario_id: int) -> str:
         """Load benchmark scenario IPs from ground_truth YAML and return a context string."""

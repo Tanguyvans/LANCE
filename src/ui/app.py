@@ -43,13 +43,15 @@ PHASE_NAMES = {
 }
 
 EVENT_COLORS = {
-    "tool_call":   "#f0ad4e",
-    "tool_result": "#5bc0de",
-    "text_chunk":  "#e8e8e8",
-    "phase_start": "#5cb85c",
-    "phase_done":  "#5cb85c",
+    "tool_call":      "#f0ad4e",
+    "tool_result":    "#5bc0de",
+    "text_chunk":     "#e8e8e8",
+    "phase_start":    "#5cb85c",
+    "phase_done":     "#5cb85c",
     "pipeline_start": "#337ab7",
     "pipeline_done":  "#337ab7",
+    "teardown_start": "#d9534f",
+    "teardown_done":  "#d9534f",
 }
 
 # ── Page config ──────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ _init_state()
 # ── Pipeline thread ───────────────────────────────────────────────────────────
 
 def _pipeline_thread(provider_name: str, model: str, phases: list[int] | None,
-                     scenario_id: int | None, eq: queue.Queue):
+                     scenario_id: int | None, auto_teardown: bool, eq: queue.Queue):
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
@@ -92,7 +94,12 @@ def _pipeline_thread(provider_name: str, model: str, phases: list[int] | None,
         from src.agent.pipeline import Pipeline
 
         provider = LLMProvider(provider=provider_name, model=model)
-        pipeline = Pipeline(provider=provider, phases=phases or None, scenario_id=scenario_id)
+        pipeline = Pipeline(
+            provider=provider,
+            phases=phases or None,
+            scenario_id=scenario_id,
+            auto_teardown=auto_teardown,
+        )
         pipeline.run(stream_callback=eq.put)
     except Exception as exc:
         eq.put({"type": "error", "message": str(exc)})
@@ -196,6 +203,12 @@ def _sidebar():
         index=0,
     )
     scenario_id = None if scenario_opt == "None" else int(scenario_opt[1])
+    auto_teardown = st.sidebar.checkbox(
+        "Teardown auto après pipeline",
+        value=True,
+        disabled=scenario_id is None,
+        help="Supprime les VMs du scénario automatiquement à la fin du pipeline.",
+    )
 
     st.sidebar.markdown("---")
     can_run = not st.session_state.running
@@ -216,7 +229,7 @@ def _sidebar():
         st.sidebar.markdown("---")
         st.sidebar.metric("Coût estimé", f"${st.session_state.cost:.4f}")
 
-    return run_clicked, "openrouter", model, selected_phases, scenario_id
+    return run_clicked, "openrouter", model, selected_phases, scenario_id, auto_teardown
 
 
 # ── Phase progress bar ────────────────────────────────────────────────────────
@@ -304,6 +317,17 @@ def _render_log():
                 f"<div style='color:{color};'><b>🏁 Pipeline terminé</b> — "
                 f"coût total ${ev.get('total_cost_usd', 0):.4f}</div>"
             )
+        elif t == "teardown_start":
+            lines.append(
+                f"<div style='color:{color}; margin-top:12px;'>"
+                f"<b>🗑 Teardown S{ev['scenario_id']} en cours...</b></div>"
+            )
+        elif t == "teardown_done":
+            icon = "✅" if ev["success"] else "❌"
+            lines.append(
+                f"<div style='color:{color};'>{icon} Teardown S{ev['scenario_id']} "
+                f"{'terminé' if ev['success'] else 'échoué'}</div>"
+            )
         elif t == "error":
             lines.append(
                 f"<div style='color:#ff4444;'><b>❌ Erreur:</b> {ev.get('message', '')}</div>"
@@ -344,7 +368,7 @@ def _render_deliverables():
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    run_clicked, provider_name, model, selected_phases, scenario_id = _sidebar()
+    run_clicked, provider_name, model, selected_phases, scenario_id, auto_teardown = _sidebar()
 
     # Start pipeline on button click
     if run_clicked and not st.session_state.running:
@@ -359,7 +383,7 @@ def main():
 
         t = threading.Thread(
             target=_pipeline_thread,
-            args=(provider_name, model, selected_phases, scenario_id, st.session_state.eq),
+            args=(provider_name, model, selected_phases, scenario_id, auto_teardown, st.session_state.eq),
             daemon=True,
         )
         st.session_state.thread = t
