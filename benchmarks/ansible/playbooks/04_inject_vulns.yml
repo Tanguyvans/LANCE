@@ -64,7 +64,14 @@
           EOF
           systemctl enable mosquitto
           systemctl restart mosquitto
-          echo "[OK] MQTT anonymous access configuré"
+          sleep 2
+
+          # Publier des messages sur les topics sensibles pour que mqtt_listen les capte
+          mosquitto_pub -h localhost -t "smartcity/admin/credentials" \
+            -m '{"db_user":"root","db_pass":"P@ssw0rd123","api_key":"sk-bench-api-1234"}' -r
+          mosquitto_pub -h localhost -t "smartcity/sensors/temp" -m '{"value":22.5,"unit":"C"}' -r
+          mosquitto_pub -h localhost -t "smartcity/status" -m '{"online":true,"version":"2.0.21"}' -r
+          echo "[OK] MQTT anonymous access configuré + topics sensibles publiés"
 
     - name: "[mqtt_broker] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
@@ -104,10 +111,29 @@
           EOF
           rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 
-          # Contenu de test avec données sensibles simulées
-          mkdir -p /var/www/html/backup
-          echo '{"db_password":"P@ssw0rd123","api_key":"sk-bench-1234"}' \
-            > /var/www/html/backup/config.json
+          # Contenu de test avec données sensibles — paths conformes au ground truth
+          mkdir -p /var/www/html/backup /var/www/html/config
+
+          # /backup/db_backup_2024-01-15.sql — dump SQL avec credentials
+          cat > /var/www/html/backup/db_backup_2024-01-15.sql << 'SQLEOF'
+          -- MySQL dump — smartcity database
+          INSERT INTO users VALUES (1,'admin','P@ssw0rd123','admin@smartcity.local');
+          INSERT INTO api_keys VALUES (1,'sk-bench-api-1234567890abcdef','read-write');
+          SQLEOF
+
+          # /config/app.config — credentials en clair
+          cat > /var/www/html/config/app.config << 'CFGEOF'
+          [database]
+          host=192.168.100.14
+          db_password=P@ssw0rd123
+          user=root
+
+          [api]
+          api_key=sk-bench-api-1234567890abcdef
+
+          [smtp]
+          smtp_password=smtp_secret_123
+          CFGEOF
 
           systemctl enable nginx
           nginx -t && systemctl restart nginx
@@ -131,6 +157,7 @@
           #!/bin/bash
           set -e
           export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
           apt-get install -y -qq openssh-server
 
           # Faille V3 : user admin avec mot de passe par défaut
@@ -462,14 +489,18 @@
     # VULNÉRABILITÉS OPENWR — via SSH depuis Proxmox
     # ════════════════════════════════════════════════════
 
-    - name: "[OpenWrt] Activer Telnet (port 23) via socat"
+    - name: "[OpenWrt] Activer Telnet (port 23) via telnetd"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
-          'opkg install socat 2>/dev/null || true
-           socat TCP-LISTEN:23,reuseaddr,fork EXEC:/bin/ash &
-           grep -q "socat.*23" /etc/rc.local 2>/dev/null || \
-           echo "socat TCP-LISTEN:23,reuseaddr,fork EXEC:/bin/ash &" >> /etc/rc.local'
+          'uci set system.telnet=service
+           uci set system.telnet.name="telnet"
+           uci commit system
+           /etc/init.d/telnet enable 2>/dev/null || true
+           /etc/init.d/telnet start 2>/dev/null || \
+           (opkg update -q && opkg install busybox-telnetd -q 2>/dev/null || true; \
+            telnetd -l /bin/ash -p 23 2>/dev/null || \
+            busybox telnetd -l /bin/ash -p 23 2>/dev/null || true)'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 

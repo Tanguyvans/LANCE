@@ -59,9 +59,10 @@
           [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 199 ] 2>/dev/null && continue
           base={{ base_vmid }}
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
-          for s in 1 2 3 4 5; do
+          for s in 1 2 3 4 5 6 7; do
             case $s in
               1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;;
+              6) b=160 ;; 7) b=170 ;;
             esac
             if [ "$vmid" -ge "$b" ] && [ "$vmid" -lt "$((b + 10))" ]; then
               conflict_scenario="$s"
@@ -113,6 +114,16 @@
     - name: Démarrer le router OpenWrt
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
+
+    - name: Attendre que le router OpenWrt soit prêt (port 22 ou 80)
+      ansible.builtin.command: >-
+        qm guest exec {{ base_vmid }} -- sh -c "ss -tlnp | grep -qE ':22|:80'"
+      register: router_ready
+      until: router_ready is succeeded
+      retries: 15
+      delay: 5
+      changed_when: false
+      failed_when: false
 
 
     # ── Services LXC ──
