@@ -111,7 +111,11 @@ def arp_scan() -> str:
     import logging
 
     log = logging.getLogger(__name__)
-    subnet = "192.168.88"
+    try:
+        from src.agent.tools.graph_tools import _scenario_topology
+        subnet = _scenario_topology["subnet"].rsplit(".", 1)[0] if _scenario_topology else "192.168.88"
+    except Exception:
+        subnet = "192.168.88"
 
     def ping_host(ip: str) -> None:
         try:

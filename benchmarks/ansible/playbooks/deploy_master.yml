@@ -136,6 +136,7 @@
           - mosquitto-clients
           - iptables-persistent   # persistance des règles après reboot
           - ssh-audit             # audit des serveurs SSH (ciphers, KEX, Terrapin)
+          - net-tools             # fournit la commande arp
         state: present
 
     # ── Firewall : protéger le réseau de management ───────────
