@@ -118,7 +118,15 @@ def _pipeline_thread(provider_name: str, model: str, phases: list[int] | None,
 # ── Nmap result parser ────────────────────────────────────────────────────────
 
 def _parse_nmap_result(raw: str) -> dict[str, dict]:
-    """Extract {ip: {hostname, ports, os}} from nmap text output."""
+    """Extract {ip: {hostname, ports, os}} from nmap text output (or JSON wrapper)."""
+    # Tools return JSON: {"stdout": "...", "return_code": 0} — extract stdout
+    try:
+        parsed_json = json.loads(raw)
+        if isinstance(parsed_json, dict) and "stdout" in parsed_json:
+            raw = parsed_json["stdout"]
+    except (json.JSONDecodeError, ValueError):
+        pass  # already raw text
+
     hosts: dict[str, dict] = {}
     current_ip = None
     for line in raw.splitlines():

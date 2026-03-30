@@ -177,7 +177,7 @@ class LLMProvider:
                     f = next(f for f, t in futures.items() if t is tc)
                     result = f.result()
                     if stream_callback:
-                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:500]})
+                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:2000]})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
@@ -190,7 +190,7 @@ class LLMProvider:
                         stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
                     result = self._execute_tool(tc.name, tc.input, tool_map)
                     if stream_callback:
-                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:500]})
+                        stream_callback({"type": "tool_result", "name": tc.name, "result": result[:2000]})
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
@@ -336,7 +336,7 @@ class LLMProvider:
                     f = next(f for f, t in futures.items() if t is tc)
                     result = f.result()
                     if stream_callback:
-                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:500]})
+                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:2000]})
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -348,7 +348,7 @@ class LLMProvider:
                         stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
                     result = self._execute_tool(tc.function.name, args, tool_map)
                     if stream_callback:
-                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:500]})
+                        stream_callback({"type": "tool_result", "name": tc.function.name, "result": result[:2000]})
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
