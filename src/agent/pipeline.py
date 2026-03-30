@@ -255,7 +255,7 @@ class Pipeline:
                 continue
             check = subprocess.run(
                 ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
-                 "root@10.0.1.100", f"pct status {base} 2>/dev/null && echo EXISTS || true"],
+                 "root@192.168.10.100", f"pct status {base} 2>/dev/null && echo EXISTS || true"],
                 capture_output=True, text=True, timeout=10,
             )
             if "EXISTS" not in check.stdout:

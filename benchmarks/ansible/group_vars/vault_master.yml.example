@@ -9,3 +9,4 @@ vault_tailscale_auth_key: "tskey-auth-xxxxxxxxxxxx"   # https://login.tailscale.
 vault_openrouter_api_key: "sk-or-xxxxxxxxxxxx"
 vault_voyage_api_key: "pa-xxxxxxxxxxxx"               # optionnel (knowledge store)
 vault_github_token: "ghp_xxxxxxxxxxxx"                # Personal Access Token (read:repo) — https://github.com/settings/tokens
+vault_github_runner_token: "AXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Runner registration token — https://github.com/Tanguyvans/NATO-SmartCity-IoT/settings/actions/runners/new

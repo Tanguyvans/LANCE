@@ -16,7 +16,7 @@ graph TB
         ANSIBLE_CTL[Ansible controller]
     end
 
-    subgraph Proxmox["Proxmox (10.0.1.100)"]
+    subgraph Proxmox["Proxmox (192.168.10.100)"]
         subgraph Benchmark["vmbr1 — réseau isolé"]
             DEPLOY[03 — Deploy VMs]
             INJECT[04 — Inject vulns]
@@ -53,7 +53,7 @@ graph TB
 
 ```bash
 # Prérequis : clé SSH sur Proxmox + fichier vault password
-ssh-copy-id root@10.0.1.100
+ssh-copy-id root@192.168.10.100
 echo "monmotdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass
 
 cd benchmarks/ansible
@@ -61,7 +61,9 @@ ansible-playbook playbooks/deploy_master.yml \
   --vault-password-file ~/.vault_pass -i inventory.yml
 ```
 
-Résultat : VM maître accessible via Tailscale avec Streamlit sur `:8501`.
+Résultat : VM maître (`192.168.10.30`) accessible via Tailscale avec Streamlit sur `:8501` et runner GitHub Actions actif.
+
+> **CI/CD** : à chaque push sur `main`, la VM maître se met à jour automatiquement (git pull + restart Streamlit) via le self-hosted runner. Voir [ansible/README.md](ansible/README.md#cicd--mise-à-jour-automatique) pour la mise en place.
 
 ### 2. Lancer un benchmark
 
@@ -168,7 +170,7 @@ ground_truth/
 ```
 benchmarks/
 ├── ansible/                          # Infrastructure-as-Code Proxmox
-│   ├── inventory.yml                 # Proxmox (10.0.1.100) + master (DHCP)
+│   ├── inventory.yml                 # Proxmox (192.168.10.100) + master (DHCP)
 │   ├── group_vars/
 │   │   └── all/
 │   │       ├── main.yml              # Scénarios, VMIDs, réseau (source de vérité)

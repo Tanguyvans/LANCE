@@ -7,7 +7,7 @@
 # Le master peut ensuite déployer les scénarios benchmark de façon autonome.
 #
 # Prérequis (une seule fois) :
-#   1. Clé SSH locale copiée sur Proxmox : ssh-copy-id root@10.0.1.100
+#   1. Clé SSH locale copiée sur Proxmox : ssh-copy-id root@192.168.10.100
 #   2. Fichier vault password : echo "monmotdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass
 #   3. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 #
@@ -28,7 +28,7 @@
     master_ostemplate: "local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
     master_storage: "local-lvm"
     master_disk_size: "20"
-    master_memory: 2048
+    master_memory: 4096
     master_cores: 2
 
   tasks:
@@ -135,6 +135,7 @@
           - ansible
           - mosquitto-clients
           - iptables-persistent   # persistance des règles après reboot
+          - ssh-audit             # audit des serveurs SSH (ciphers, KEX, Terrapin)
         state: present
 
     # ── Firewall : protéger le réseau de management ───────────
@@ -366,6 +367,55 @@
     - name: Enable and start Streamlit service
       ansible.builtin.systemd:
         name: nato-streamlit
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # ── GitHub Actions self-hosted runner ────────────────────
+    - name: Create runner directory
+      ansible.builtin.file:
+        path: /opt/actions-runner
+        state: directory
+        mode: "0755"
+
+    - name: Download GitHub Actions runner
+      ansible.builtin.get_url:
+        url: https://github.com/actions/runner/releases/download/v2.323.0/actions-runner-linux-x64-2.323.0.tar.gz
+        dest: /opt/actions-runner/runner.tar.gz
+        mode: "0644"
+
+    - name: Extract runner
+      ansible.builtin.unarchive:
+        src: /opt/actions-runner/runner.tar.gz
+        dest: /opt/actions-runner
+        remote_src: true
+        creates: /opt/actions-runner/config.sh
+
+    - name: Configure runner
+      ansible.builtin.command: >
+        /opt/actions-runner/config.sh
+        --url https://github.com/Tanguyvans/NATO-SmartCity-IoT
+        --token {{ vault_github_runner_token }}
+        --name nato-master
+        --labels nato-master
+        --unattended
+        --replace
+      args:
+        creates: /opt/actions-runner/.runner
+      environment:
+        RUNNER_ALLOW_RUNASROOT: "1"
+
+    - name: Install runner as systemd service
+      ansible.builtin.command: ./svc.sh install root
+      args:
+        chdir: /opt/actions-runner
+        creates: /etc/systemd/system/actions.runner.Tanguyvans-NATO-SmartCity-IoT.nato-master.service
+      environment:
+        RUNNER_ALLOW_RUNASROOT: "1"
+
+    - name: Start runner service
+      ansible.builtin.systemd:
+        name: "actions.runner.Tanguyvans-NATO-SmartCity-IoT.nato-master"
         enabled: true
         state: started
         daemon_reload: true

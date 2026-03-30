@@ -9,13 +9,13 @@ Chaque scénario déploie un réseau isolé avec des services volontairement vul
 Votre machine locale
    │  ansible-playbook deploy_master.yml
    ▼
-Proxmox (10.0.1.100)
-   ├── VM Maître LXC 200  (10.0.1.11 + Tailscale 100.x.x.x)
+Proxmox (192.168.10.100)
+   ├── VM Maître LXC 200  (192.168.10.30 + Tailscale 100.x.x.x)
    │     ├── Streamlit UI  :8501
    │     ├── Pipeline LLM  (5 phases)
    │     └── Ansible controller → lance les playbooks 03–99
    │
-   ├── vmbr0  (10.0.1.0/24)   management
+   ├── vmbr0  (192.168.10.0/24)   management
    └── vmbr1  (192.168.100.0/24)  réseau benchmark isolé
          ├── S1: 100 router + 101–103 services
          ├── S2: 110 router + 111–115 services
@@ -25,9 +25,10 @@ Proxmox (10.0.1.100)
 ## Prérequis (une seule fois)
 
 1. Ansible installé localement
-2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@10.0.1.100`
+2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@192.168.10.100`
 3. Fichier vault password : `echo "motdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass`
 4. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
+5. Token de registration GitHub Actions généré (voir section CI/CD ci-dessous)
 
 ## Déployer la VM maître
 
@@ -38,19 +39,41 @@ ansible-playbook playbooks/deploy_master.yml \
 ```
 
 Le playbook crée et configure entièrement la VM maître :
-- LXC Debian 13, dual NIC (management DHCP + benchmark 192.168.100.200)
+- LXC Debian 13, dual NIC (management `192.168.10.30` + benchmark `192.168.100.200`)
 - Repo cloné, dépendances Python installées, `.env` injecté depuis le vault
 - Clé SSH générée et autorisée sur Proxmox (pour piloter les scénarios)
 - Tailscale configuré → accès SSH/Streamlit depuis n'importe où
 - Streamlit lancé en service systemd sur `:8501`
 - iptables : tout le trafic offensif isolé sur eth1 (réseau benchmark)
+- GitHub Actions self-hosted runner installé (label `nato-master`)
 
 Le résumé final affiche :
 ```
 Streamlit : http://<tailscale-ip>:8501
 SSH WAN   : ssh root@<tailscale-ip>
-SSH LAN   : ssh root@10.0.1.11
+SSH LAN   : ssh root@192.168.10.30
 ```
+
+## CI/CD — Mise à jour automatique
+
+À chaque push sur `main`, le workflow `.github/workflows/update-master.yml` s'exécute sur le runner self-hosted de la VM maître et :
+1. Fait un `git pull` sur `/opt/nato-smartcity-iot`
+2. Installe les nouvelles dépendances Python
+3. Redémarre Streamlit
+
+**Mise en place (une seule fois, avant de lancer `deploy_master.yml`) :**
+
+1. Générer un token de registration sur GitHub :
+   `https://github.com/Tanguyvans/NATO-SmartCity-IoT/settings/actions/runners/new`
+   *(le token expire après 1h — à faire juste avant le playbook)*
+
+2. L'ajouter dans le vault :
+   ```bash
+   ansible-vault edit benchmarks/ansible/group_vars/all/vault_master.yml --vault-password-file ~/.vault_pass
+   # Ajouter : vault_github_runner_token: "AXXX..."
+   ```
+
+Le runner tourne ensuite en service systemd (`actions.runner.*.nato-master`) et se reconnecte automatiquement à GitHub. Le token n'est plus nécessaire après l'enregistrement initial.
 
 ---
 
@@ -59,7 +82,7 @@ SSH LAN   : ssh root@10.0.1.11
 Tous les playbooks de scénarios se lancent **depuis la VM maître** :
 
 ```bash
-ssh root@10.0.1.11  # ou SSH Tailscale
+ssh root@192.168.10.30  # ou SSH Tailscale
 cd /opt/nato-smartcity-iot
 ```
 
@@ -162,7 +185,7 @@ ansible-playbook benchmarks/ansible/playbooks/99_teardown.yml \
 
 ```
 ansible/
-├── inventory.yml                  # Proxmox (10.0.1.100) + master (DHCP)
+├── inventory.yml                  # Proxmox (192.168.10.100) + master (DHCP)
 ├── group_vars/
 │   └── all/
 │       ├── main.yml               # Variables globales (réseau, VMIDs, scénarios)

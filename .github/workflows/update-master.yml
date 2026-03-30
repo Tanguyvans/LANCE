@@ -1,0 +1,19 @@
+name: Update Master VM
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  update:
+    runs-on: [self-hosted, nato-master]
+
+    steps:
+      - name: Pull latest code
+        run: git -C /opt/nato-smartcity-iot pull origin main
+
+      - name: Install Python dependencies
+        run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
+
+      - name: Restart Streamlit
+        run: systemctl restart nato-streamlit
