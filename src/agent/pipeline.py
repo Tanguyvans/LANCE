@@ -446,8 +446,13 @@ class Pipeline:
         """Run per-device sub-agents before the aggregator phase."""
         # Get devices with services from the attack surface
         surface = json.loads(get_attack_surface())
+        if isinstance(surface, dict):
+            surface = surface.get("nodes", list(surface.values()) if surface else [])
         scores_raw = json.loads(get_risk_scores())
-        scores_by_id = {s["device_id"]: s for s in scores_raw}
+        if isinstance(scores_raw, list):
+            scores_by_id = {s["device_id"]: s for s in scores_raw}
+        else:
+            scores_by_id = {}
 
         tools = self._resolve_tools(config)
 
