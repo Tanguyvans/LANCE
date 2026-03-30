@@ -77,8 +77,12 @@ class Pipeline:
                 Event types: pipeline_start, phase_start, text_chunk, tool_call,
                 tool_result, turn_done, phase_done, pipeline_done.
         """
-        # Load lab context (shared across all agents)
-        lab = load_lab_context()
+        # Load lab context — scenario topology when benchmark active, physical lab otherwise
+        if self.scenario_id is not None:
+            from src.agent.tools.graph_tools import load_scenario_topology
+            lab = load_scenario_topology(self.scenario_id)
+        else:
+            lab = load_lab_context()
         # target_subnet: benchmark network when a scenario is active, real lab otherwise
         target_subnet = "192.168.100.0/24" if self.scenario_id is not None else "192.168.88.0/24"
         self.context = {

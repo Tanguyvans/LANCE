@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+import yaml as _yaml
+
 from src.loader import build_graph, load_yaml
 from src.cve_lookup import load_cpe_mapping, scan_all_devices
 from src.risk_scorer import score_all_devices
@@ -20,6 +22,9 @@ _infra = None
 _cve_reports = None
 _risk_scores = None
 _attack_report = None
+
+# Scenario override — set by load_scenario_topology() when a benchmark is active
+_scenario_topology: dict | None = None
 
 
 def load_lab_context() -> dict:
@@ -44,8 +49,67 @@ def load_lab_context() -> dict:
     }
 
 
+def load_scenario_topology(scenario_id: int) -> dict:
+    """Override graph tools with the benchmark scenario topology.
+
+    When active, get_network_topology / get_attack_surface / get_device_info
+    return the scenario VMs (192.168.100.x) instead of the physical lab.
+    Returns a summary dict (device_count, link_count, cve_count, top_risk).
+    """
+    global _scenario_topology
+
+    gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
+    if not gt_path.exists():
+        return load_lab_context()
+
+    data = _yaml.safe_load(gt_path.read_text())
+    topology = data.get("topology", {})
+    router = topology.get("router", {})
+    services = topology.get("services", [])
+
+    nodes = []
+    if router:
+        nodes.append({
+            "id": router.get("name", "router"),
+            "name": router.get("name", "router"),
+            "type": "router",
+            "role": "router",
+            "ip": router.get("ip"),
+            "os": "OpenWrt",
+            "services": [
+                {"name": "ssh", "port": 22, "protocol": "tcp"},
+                {"name": "http", "port": 80, "protocol": "tcp"},
+            ],
+        })
+    for svc in services:
+        nodes.append({
+            "id": svc["name"],
+            "name": svc["name"],
+            "type": "server",
+            "role": svc.get("role", ""),
+            "ip": svc.get("ip"),
+            "os": "Debian",
+            "services": [],
+        })
+
+    _scenario_topology = {
+        "scenario_id": scenario_id,
+        "scenario_name": data.get("scenario_name", f"S{scenario_id}"),
+        "subnet": "192.168.100.0/24",
+        "nodes": nodes,
+        "node_index": {n["id"]: n for n in nodes},
+    }
+
+    return {
+        "device_count": len(nodes),
+        "link_count": len(services),
+        "cve_count": 0,
+        "top_risk": router.get("name") if router else None,
+    }
+
+
 def _ensure_loaded():
-    if _backend is None:
+    if _scenario_topology is None and _backend is None:
         load_lab_context()
 
 
@@ -54,12 +118,23 @@ def _ensure_loaded():
 def get_network_topology() -> str:
     """Return the full network topology as JSON (nodes + edges)."""
     _ensure_loaded()
+    if _scenario_topology is not None:
+        return json.dumps({
+            "scenario": _scenario_topology["scenario_name"],
+            "subnet": _scenario_topology["subnet"],
+            "nodes": _scenario_topology["nodes"],
+        }, ensure_ascii=False)
     return json.dumps(_backend.to_dict(), ensure_ascii=False, default=str)
 
 
 def get_device_info(device_id: str) -> str:
     """Return detailed info for a specific device."""
     _ensure_loaded()
+    if _scenario_topology is not None:
+        node = _scenario_topology["node_index"].get(device_id)
+        if node:
+            return json.dumps(node, ensure_ascii=False)
+        return json.dumps({"error": f"Device '{device_id}' not found in scenario"})
     try:
         device = _backend.get_device(device_id)
         neighbors = _backend.get_neighbors(device_id)
@@ -72,12 +147,20 @@ def get_device_info(device_id: str) -> str:
 def get_attack_surface() -> str:
     """Return devices that expose services (have open ports)."""
     _ensure_loaded()
+    if _scenario_topology is not None:
+        return json.dumps(_scenario_topology["nodes"], ensure_ascii=False)
     return json.dumps(_backend.get_attack_surface(), ensure_ascii=False, default=str)
 
 
 def get_attack_paths() -> str:
     """Return the attack path analysis report."""
     _ensure_loaded()
+    if _scenario_topology is not None:
+        return json.dumps({
+            "note": "Attack paths not pre-computed for benchmark scenarios — discover via active recon.",
+            "subnet": _scenario_topology["subnet"],
+            "nodes": [n["id"] for n in _scenario_topology["nodes"]],
+        }, ensure_ascii=False)
     report = {
         "summary": _attack_report.summary,
         "critical_paths": [asdict(p) for p in _attack_report.critical_paths],
@@ -89,6 +172,11 @@ def get_attack_paths() -> str:
 def get_risk_scores() -> str:
     """Return risk scores for all devices, sorted by risk (descending)."""
     _ensure_loaded()
+    if _scenario_topology is not None:
+        return json.dumps({
+            "note": "Risk scores not pre-computed for benchmark scenarios — discover vulnerabilities via active recon.",
+            "devices": [{"id": n["id"], "ip": n["ip"], "role": n["role"]} for n in _scenario_topology["nodes"]],
+        }, ensure_ascii=False)
     scores = [asdict(s) for s in _risk_scores]
     return json.dumps(scores, ensure_ascii=False, default=str)
 
