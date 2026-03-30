@@ -258,13 +258,15 @@ class LLMProvider:
                             )
                         if stream_callback:
                             stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
-                        # Inject reminder if required tool not yet called
-                        if required_tool and not required_tool_called:
+                        # Inject reminder if required tool not yet called (max 1 time)
+                        if required_tool and not required_tool_called and malformed_retries < 2:
                             messages.append({"role": "assistant", "content": fb_content})
                             messages.append({"role": "user", "content": f"Call save_deliverable now with the complete content."})
                             log.warning("Injecting save reminder after malformed call (turn %d)", turn + 1)
-                            malformed_retries = 0
                             continue
+                        # Give up — return fallback text; pipeline.py will save it
+                        if required_tool and not required_tool_called:
+                            log.warning("Max malformed retries reached, returning fallback text (turn %d)", turn + 1)
                         if stream_callback:
                             stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                         return fb_content
