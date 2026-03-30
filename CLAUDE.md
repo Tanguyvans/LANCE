@@ -59,13 +59,13 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/__main__.py` — CLI entry point. Accepts `--provider`, `--model`, `--dry-run`, `--phases`, `--verbose`.
 - `src/agent/provider.py` — LLM provider abstraction. Translates tool schemas between Anthropic (native `tool_use`) and OpenAI-compatible APIs (function calling). Supports multi-turn agentic loops. Providers: Anthropic, OpenRouter, MiniMax, GLM, Qwen.
 - `src/agent/registry.py` — Declarative agent config. 5 agents across 5 phases, each with name, prompt, tool groups, prerequisites, and validators.
-- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost.
+- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically.
 - `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_findings}`).
 - `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek.
 
 ### Agent Tools
 
-- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`.
+- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. When a benchmark scenario is active, graph tools return the scenario VMs (`192.168.100.x`) instead of the physical lab topology.
 - `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
 - `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
 - `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
@@ -158,7 +158,11 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Cost tracking per phase with per-model pricing
 - Dry-run mode for validation without API calls
 
-### Phase 5 — Pentest progressif (IN PROGRESS)
-- Tests safe sur le lab réel : MQTT sans auth, SSH default creds, Terrapin scan
-- Tests destructifs sur containers Docker (nginx:1.19.6, Dropbear, MikroTik CHR)
-- Difficulté croissante : device unique → chaînage 2 hops → scénario multi-hop complet
+### Phase 5 — Benchmark LLM sur scénarios Proxmox (IN PROGRESS)
+- VM maître (LXC 200, `192.168.10.30`) sur Proxmox (`192.168.10.100`) — orchestre le pipeline
+- 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
+- Interface Streamlit sur `:8501` (accessible via Tailscale `100.104.69.100`)
+- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart Streamlit à chaque push)
+- Graph tools contextualisés : topologie scénario (`192.168.100.x`) vs lab physique (`192.168.88.x`)
+- ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
+- Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)
