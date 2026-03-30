@@ -60,6 +60,7 @@ class LLMProvider:
             self.client = openai.OpenAI(
                 base_url=cfg["base_url"],
                 api_key=os.environ.get(cfg["api_key_env"]),
+                timeout=120.0,
             )
             self.model = model or cfg["default_model"]
         else:
