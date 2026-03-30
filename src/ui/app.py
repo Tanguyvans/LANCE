@@ -118,7 +118,7 @@ def _pipeline_thread(provider_name: str, model: str, phases: list[int] | None,
 # ── Nmap result parser ────────────────────────────────────────────────────────
 
 def _parse_nmap_result(raw: str) -> dict[str, dict]:
-    """Extract {ip: {ports: [...], hostnames: [...]}} from nmap text output."""
+    """Extract {ip: {hostname, ports, os}} from nmap text output."""
     hosts: dict[str, dict] = {}
     current_ip = None
     for line in raw.splitlines():
@@ -126,14 +126,22 @@ def _parse_nmap_result(raw: str) -> dict[str, dict]:
         if ip_match:
             hostname = ip_match.group(1) or ""
             current_ip = ip_match.group(2)
-            hosts[current_ip] = {"hostname": hostname, "ports": []}
+            hosts[current_ip] = {"hostname": hostname, "ports": [], "os": ""}
             continue
         if current_ip:
-            port_match = re.match(r"(\d+)/(tcp|udp)\s+open\s+(\S+)", line.strip())
+            port_match = re.match(r"(\d+)/(tcp|udp)\s+open\s+(\S+)\s*(.*)", line.strip())
             if port_match:
-                hosts[current_ip]["ports"].append(
-                    f"{port_match.group(1)}/{port_match.group(2)} {port_match.group(3)}"
-                )
+                port = port_match.group(1)
+                proto = port_match.group(2)
+                svc = port_match.group(3)
+                version = port_match.group(4).strip()
+                label = f"{port}/{proto} {svc}"
+                if version:
+                    label += f" ({version[:40]})"
+                hosts[current_ip]["ports"].append(label)
+            os_match = re.search(r"OS details?: (.+)", line)
+            if os_match:
+                hosts[current_ip]["os"] = os_match.group(1).strip()
     return hosts
 
 
@@ -266,10 +274,13 @@ def _render_hosts():
         return
     rows = []
     for ip, info in sorted(st.session_state.hosts.items()):
+        hostname = info.get("hostname", "") or info.get("os", "") or "—"
+        ports = info.get("ports", [])
         rows.append({
             "IP": ip,
-            "Hostname": info.get("hostname", ""),
-            "Services": ", ".join(info.get("ports", [])) or "—",
+            "Nom / OS": hostname,
+            "Ports ouverts": len(ports),
+            "Services": " | ".join(ports) if ports else "—",
         })
     st.dataframe(rows, use_container_width=True, hide_index=True)
 
