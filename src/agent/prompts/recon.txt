@@ -52,7 +52,7 @@ For devices with MQTT (port 1883): call mqtt_listen(broker, topic="#", count=5, 
 
 ## Step 5 — Compare and document
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
-Fill the template completely, then save_deliverable.
+Fill the template completely with ALL scan results, then — and ONLY then — call save_deliverable. Do NOT call save_deliverable with an empty or partial template.
 </instructions>
 
 <output>

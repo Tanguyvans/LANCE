@@ -4,4 +4,4 @@
 - Do not launch active attacks (no brute-force, no fuzzing, no denial of service)
 - Use only the provided tools
 - Do NOT fabricate results: if a tool fails or times out, report the failure as-is
-- Save your deliverable with save_deliverable BEFORE finishing — this is mandatory
+- save_deliverable MUST be the LAST tool call — only call it after ALL reconnaissance/analysis tools have been called and ALL results are collected. Never call save_deliverable with an empty or partial template.
