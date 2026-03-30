@@ -25,10 +25,20 @@ PRICING = {
     "qwen-plus": {"input": 0.40, "output": 1.20},
     "qwen-turbo": {"input": 0.05, "output": 0.20},
     # Google Gemini
-    "google/gemini-3-flash-preview": {"input": 0.50, "output": 3.0},
     "google/gemini-2.0-flash-001": {"input": 0.10, "output": 0.40},
+    "google/gemini-2.5-flash": {"input": 0.15, "output": 0.60},
+    "google/gemini-2.5-flash-lite": {"input": 0.0, "output": 0.0},
+    "google/gemini-2.5-pro-preview": {"input": 1.25, "output": 10.0},
+    "google/gemini-3-flash-preview": {"input": 0.50, "output": 3.0},
+    # OpenAI
+    "openai/gpt-4o": {"input": 2.50, "output": 10.0},
+    # Meta
+    "meta-llama/llama-3.3-70b-instruct": {"input": 0.06, "output": 0.20},
+    # MiniMax via OpenRouter
+    "minimax/minimax-m2.5:free": {"input": 0.0, "output": 0.0},
     # DeepSeek
     "deepseek/deepseek-chat-v3-0324": {"input": 0.27, "output": 1.10},
+    "deepseek/deepseek-r1": {"input": 0.50, "output": 2.18},
 }
 DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
 

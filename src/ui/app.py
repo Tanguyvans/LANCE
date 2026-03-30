@@ -23,16 +23,21 @@ if str(ROOT) not in sys.path:
 # ── Constants ────────────────────────────────────────────────────────────────
 
 OPENROUTER_MODELS = [
-    "google/gemini-2.5-flash",
-    "google/gemini-3-flash-preview",
-    "google/gemini-2.5-flash-lite",   # gratuit, rapide
+    # ── Recommandés (tool-calling stable + prix raisonnable) ──
+    "google/gemini-2.0-flash-001",         # $0.10/$0.40 — stable, rapide, recommandé
+    "deepseek/deepseek-chat-v3-0324",      # $0.27/$1.10 — bon raisonnement sécurité
+    "google/gemini-2.5-flash",             # $0.15/$0.60 — plus récent mais parfois instable
+    # ── Premium ──────────────────────────────────────────────
+    "anthropic/claude-sonnet-4",           # $3/$15 — meilleur tool-calling
+    "google/gemini-2.5-pro-preview",       # ~$1.25/$10 — très capable
+    "openai/gpt-4o",                       # $2.50/$10
+    # ── Gratuit / très bon marché ─────────────────────────────
+    "google/gemini-2.5-flash-lite",        # gratuit (preview)
     "minimax/minimax-m2.5:free",           # gratuit
-    "anthropic/claude-sonnet-4",
-    "anthropic/claude-opus-4",
-    "google/gemini-2.5-pro-preview",
-    "openai/gpt-4o",
-    "meta-llama/llama-3.3-70b-instruct",
-    "deepseek/deepseek-r1",
+    "meta-llama/llama-3.3-70b-instruct",  # open-source
+    # ── Instable (tool-calling malformé fréquent) ─────────────
+    "google/gemini-3-flash-preview",       # MALFORMED_FUNCTION_CALL fréquent
+    "deepseek/deepseek-r1",                # raisonnement seul, pas de tool-calling fiable
 ]
 
 PHASE_NAMES = {

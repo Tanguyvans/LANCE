@@ -4,7 +4,15 @@ args: []
 enabled: true
 timeout: 15
 short_description: "MQTT message listener"
-description: "Listen for MQTT messages on a broker to check if anonymous access is allowed and what topics are exposed."
+description: |
+  Listen for MQTT messages on a broker to check if anonymous access is allowed and what topics are exposed.
+  IMPORTANT — exit code interpretation:
+    return_code=0  : received all requested messages (anonymous access CONFIRMED)
+    return_code=27 : timeout waiting for messages but connection was established (anonymous access CONFIRMED — broker is just idle)
+    return_code=5  : connection refused by broker (authentication required)
+    return_code=1  : generic error (broker unreachable or refused)
+  A return_code of 27 with empty stdout means the broker accepted the anonymous connection but had no active traffic.
+  This is a HIGH severity finding: the MQTT broker allows unauthenticated access.
 parameters:
   - name: "broker"
     type: "string"
