@@ -1,10 +1,10 @@
 name: "curl_headers"
 command: "curl"
-args: ["-sI", "--max-time", "10"]
+args: ["-s", "-D", "-", "--max-time", "10", "-L"]
 enabled: true
 timeout: 15
-short_description: "HTTP response header fetcher"
-description: "Fetch HTTP response headers from a URL to check for security headers (X-Frame-Options, CSP, HSTS, etc.) and server version."
+short_description: "HTTP headers + body fetcher"
+description: "Fetch HTTP response headers AND body from a URL. The output starts with headers (look for X-Frame-Options, CSP, HSTS, Server version), followed by a blank line, then the response body. Use this to: (1) check security headers, (2) detect directory listings (body contains 'Index of' → directory_listing vulnerability), (3) detect exposed sensitive files (body contains passwords, API keys, DB credentials → data_exposure vulnerability). Always use this on /backup/, /config/, /admin/ paths for web servers."
 parameters:
   - name: "url"
     type: "string"
