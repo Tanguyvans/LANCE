@@ -401,6 +401,16 @@ class Pipeline:
                 f"${usage.cost_usd(self.tracker.model):.4f}"
             )
 
+        # Fallback: if the LLM never called save_deliverable, save its last text output
+        deliverable_path = self.run_dir / config.deliverable_file
+        if not deliverable_path.exists() and result_text and result_text.strip():
+            log.warning(
+                "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
+                config.phase,
+            )
+            deliverable_path.write_text(result_text.strip(), encoding="utf-8")
+            print(f"  Fallback save: {config.deliverable_file}")
+
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
