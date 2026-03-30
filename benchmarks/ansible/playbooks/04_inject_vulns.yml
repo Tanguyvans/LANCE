@@ -489,11 +489,19 @@
     # VULNÉRABILITÉS OPENWR — via SSH depuis Proxmox
     # ════════════════════════════════════════════════════
 
-    - name: "[OpenWrt] Activer Telnet (port 23) via telnetd"
+    - name: "[OpenWrt] Installer socat pour Telnet (port 23)"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
-        'killall telnetd 2>/dev/null; telnetd -p 23 -l /bin/ash'
+        'opkg install socat 2>/dev/null || true'
+      when: "'telnet' in scenarios[scenario_id].router_vulns"
+      changed_when: true
+
+    - name: "[OpenWrt] Activer Telnet (port 23) via socat"
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+        root@{{ benchmark_gateway }}
+        'killall socat 2>/dev/null; socat TCP-LISTEN:23,fork,reuseaddr EXEC:/bin/ash &>/dev/null &'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 
@@ -501,7 +509,7 @@
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
-        'ss -tlnp | grep :23'
+        'netstat -tlnp | grep :23'
       register: telnet_check
       failed_when: telnet_check.rc != 0
       changed_when: false
