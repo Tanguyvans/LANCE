@@ -140,13 +140,16 @@ class LLMProvider:
             if required_tool and any(tc.name == required_tool for tc in tool_calls):
                 required_tool_called = True
 
-            # If no tool calls — check if required tool was called, otherwise remind
+            # If no tool calls — inject reminder or stop
             if not tool_calls:
-                if required_tool and not required_tool_called:
-                    reminder = f"You have not called '{required_tool}' yet. You MUST call it now with the complete content before finishing."
+                if not required_tool_called:
+                    if turn == 0:
+                        reminder = "Do not narrate. Call the first tool now without any preamble."
+                    else:
+                        reminder = f"You have not called '{required_tool}' yet. Call save_deliverable now with the complete content."
                     messages.append({"role": "assistant", "content": response.content})
                     messages.append({"role": "user", "content": reminder})
-                    log.warning("Injecting %s reminder (turn %d)", required_tool, turn + 1)
+                    log.warning("Injecting tool reminder (turn %d)", turn + 1)
                     continue
                 if stream_callback:
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
@@ -271,13 +274,16 @@ class LLMProvider:
                 if any(tc.function.name == required_tool for tc in message.tool_calls):
                     required_tool_called = True
 
-            # If no tool calls — check if required tool was called, otherwise remind
+            # If no tool calls — inject reminder or stop
             if not message.tool_calls:
-                if required_tool and not required_tool_called:
-                    reminder = f"You have not called '{required_tool}' yet. You MUST call it now with the complete content before finishing."
+                if not required_tool_called:
+                    if turn == 0:
+                        reminder = "Do not narrate. Call the first tool now without any preamble."
+                    else:
+                        reminder = f"You have not called '{required_tool}' yet. Call save_deliverable now with the complete content."
                     messages.append({"role": "assistant", "content": message.content or ""})
                     messages.append({"role": "user", "content": reminder})
-                    log.warning("Injecting %s reminder (turn %d)", required_tool, turn + 1)
+                    log.warning("Injecting tool reminder (turn %d)", turn + 1)
                     continue
                 if message.content and stream_callback:
                     stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
