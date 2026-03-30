@@ -74,23 +74,26 @@ class LLMProvider:
         max_tokens: int = 4096,
         cost_tracker=None,
         stream_callback: Callable[[dict], None] | None = None,
+        required_tool: str | None = None,
     ) -> str:
         """Synchronous tool-calling loop. Returns the final text response.
 
         Args:
             stream_callback: Optional callback called with event dicts in real-time.
                 Event types: text_chunk, tool_call, tool_result, turn_done.
+            required_tool: If set, inject a reminder if the LLM tries to finish
+                without having called this tool at least once.
         """
         tool_map = {t["name"]: t["function"] for t in tools}
 
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool)
 
     # ── Anthropic (native tool_use) ──────────────────────────────
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None):
         api_tools = [
             {
                 "name": t["name"],
@@ -100,6 +103,7 @@ class LLMProvider:
             for t in tools
         ]
         messages = [{"role": "user", "content": user_message}]
+        required_tool_called = False
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
@@ -133,8 +137,17 @@ class LLMProvider:
                     tool_call_count=len(tool_calls),
                 )
 
-            # If no tool calls, we're done
+            if required_tool and any(tc.name == required_tool for tc in tool_calls):
+                required_tool_called = True
+
+            # If no tool calls — check if required tool was called, otherwise remind
             if not tool_calls:
+                if required_tool and not required_tool_called:
+                    reminder = f"You have not called '{required_tool}' yet. You MUST call it now with the complete content before finishing."
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "user", "content": reminder})
+                    log.warning("Injecting %s reminder (turn %d)", required_tool, turn + 1)
+                    continue
                 if stream_callback:
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return "\n".join(text_parts)
@@ -186,7 +199,7 @@ class LLMProvider:
 
     # ── OpenRouter / OpenAI-compatible ───────────────────────────
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None):
         api_tools = [
             {
                 "type": "function",
@@ -204,6 +217,7 @@ class LLMProvider:
         ]
 
         malformed_retries = 0
+        required_tool_called = False
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
             response = self.client.chat.completions.create(
@@ -253,8 +267,18 @@ class LLMProvider:
                     tool_call_count=len(message.tool_calls or []),
                 )
 
-            # If no tool calls, we're done
+            if required_tool and message.tool_calls:
+                if any(tc.function.name == required_tool for tc in message.tool_calls):
+                    required_tool_called = True
+
+            # If no tool calls — check if required tool was called, otherwise remind
             if not message.tool_calls:
+                if required_tool and not required_tool_called:
+                    reminder = f"You have not called '{required_tool}' yet. You MUST call it now with the complete content before finishing."
+                    messages.append({"role": "assistant", "content": message.content or ""})
+                    messages.append({"role": "user", "content": reminder})
+                    log.warning("Injecting %s reminder (turn %d)", required_tool, turn + 1)
+                    continue
                 if message.content and stream_callback:
                     stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})

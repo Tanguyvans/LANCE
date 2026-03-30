@@ -396,6 +396,7 @@ class Pipeline:
             max_tokens=config.max_tokens,
             cost_tracker=self.tracker,
             stream_callback=stream_callback,
+            required_tool="save_deliverable",
         )
         usage = self.tracker.end_phase()
 
