@@ -258,6 +258,14 @@ class LLMProvider:
                             )
                         if stream_callback:
                             stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
+                        # Inject reminder if required tool not yet called
+                        if required_tool and not required_tool_called:
+                            messages.append({"role": "assistant", "content": fb_content})
+                            messages.append({"role": "user", "content": f"Call save_deliverable now with the complete content."})
+                            log.warning("Injecting save reminder after malformed call (turn %d)", turn + 1)
+                            malformed_retries = 0
+                            continue
+                        if stream_callback:
                             stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                         return fb_content
                 continue
