@@ -136,6 +136,7 @@
           - mosquitto-clients
           - iptables-persistent   # persistance des règles après reboot
           - ssh-audit             # audit des serveurs SSH (ciphers, KEX, Terrapin)
+          - arp-scan              # découverte réseau ARP (recon Phase 2)
           - net-tools             # fournit la commande arp
         state: present
 
@@ -340,14 +341,14 @@
       register: ts_ip
       changed_when: false
 
-    # ── Systemd : Streamlit ───────────────────────────────────
-    - name: Deploy Streamlit systemd service
+    # ── Systemd : FastAPI (uvicorn) ───────────────────────────
+    - name: Deploy FastAPI systemd service
       ansible.builtin.copy:
         dest: /etc/systemd/system/nato-streamlit.service
         mode: "0644"
         content: |
           [Unit]
-          Description=NATO Smart City IoT - Streamlit UI
+          Description=NATO Smart City IoT - Pentest Orchestrator UI
           After=network.target
 
           [Service]
@@ -355,17 +356,17 @@
           User=root
           WorkingDirectory={{ repo_dest }}
           EnvironmentFile={{ env_file }}
-          ExecStart={{ repo_dest }}/venv/bin/streamlit run {{ streamlit_script }} \
-            --server.port {{ streamlit_port }} \
-            --server.address 0.0.0.0 \
-            --server.headless true
+          ExecStart={{ repo_dest }}/venv/bin/uvicorn src.api.main:app \
+            --host 0.0.0.0 \
+            --port {{ streamlit_port }} \
+            --workers 1
           Restart=on-failure
           RestartSec=5
 
           [Install]
           WantedBy=multi-user.target
 
-    - name: Enable and start Streamlit service
+    - name: Enable and start FastAPI service
       ansible.builtin.systemd:
         name: nato-streamlit
         enabled: true

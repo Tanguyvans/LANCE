@@ -19,6 +19,7 @@ Your deliverable is a JSON of vulnerabilities for THIS device only.
 ## Expected deliverable
 Filename: {{expected_deliverable}}
 You MUST save your deliverable using save_deliverable(filename, content) before finishing.
+IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final JSON. Do NOT save intermediate drafts or re-save to revise.
 </system_architecture>
 
 <target>
@@ -42,7 +43,8 @@ You MUST save your deliverable using save_deliverable(filename, content) before 
 2. For each service on {{device_id}}, apply the appropriate tests:
 
    **SSH** (if detected):
-   - ssh_audit("{{device_ip}}", port)
+   - FIRST check read_deliverable("02_recon.md") — if ssh_audit data for {{device_ip}} is already present, use it directly. Do NOT re-run ssh_audit in that case.
+   - Only call ssh_audit("{{device_ip}}", port) if the data is missing from 02_recon.md.
    - Look for: weak ciphers, Terrapin (CVE-2023-48795), obsolete algorithms
 
    **HTTP/HTTPS** (if detected):
@@ -127,10 +129,11 @@ STRICT JSON with this structure:
 ```
 
 Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials
-Severities: INFO | LOW | MEDIUM | HIGH
+Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
-You are done when you have called save_deliverable("{{expected_deliverable}}", json_content).
+You are done when you have called save_deliverable("{{expected_deliverable}}", json_content) ONCE.
 The content MUST be valid JSON with a "vulnerabilities" key.
 DO NOT finish without saving the deliverable.
+DO NOT call save_deliverable more than once — there is no review or verification step.
 </output_format>

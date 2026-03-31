@@ -5,6 +5,8 @@ enabled: true
 timeout: 30
 short_description: "SSH configuration analyzer"
 description: "Run ssh-audit on a host to analyze SSH configuration: key exchange, ciphers, MACs, host keys, and known vulnerabilities like Terrapin."
+filter_lines: "(gen) banner|(gen) software|(gen) compat|\\[fail\\]|\\[warn\\]|CVE-"
+max_output: 2000
 parameters:
   - name: "host"
     type: "string"

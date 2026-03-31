@@ -75,6 +75,9 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
     timeout = tool_def.get("timeout", 30)
     params = tool_def["parameters"]
 
+    filter_lines = tool_def.get("filter_lines")
+    max_output = tool_def.get("max_output")
+
     def generated_fn(**kwargs: Any) -> str:
         cmd = [command] + list(fixed_args)
         positional_values = []
@@ -114,7 +117,18 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             effective_timeout = int(kwargs["timeout"]) + 5
 
         from src.agent.tools.recon_tools import _run
-        return json.dumps(_run(cmd, timeout=effective_timeout))
+        result = _run(cmd, timeout=effective_timeout)
+
+        if filter_lines and result.get("stdout"):
+            import re
+            pattern = re.compile(filter_lines)
+            lines = [l for l in result["stdout"].splitlines() if pattern.search(l)]
+            result["stdout"] = "\n".join(lines)
+
+        if max_output and result.get("stdout") and len(result["stdout"]) > max_output:
+            result["stdout"] = result["stdout"][:max_output] + "\n[truncated]"
+
+        return json.dumps(result)
 
     generated_fn.__name__ = tool_def["name"]
     generated_fn.__doc__ = tool_def["description"]

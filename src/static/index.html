@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NATO IoT Pentest Orchestrator</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Cytoscape.js — graph rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js"></script>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<div id="header">
+  <h1>🛡️ NATO Smart City IoT</h1>
+  <div id="phase-bar">
+    <div class="phase-pill" data-phase="1">1 · Graph</div>
+    <div class="phase-pill" data-phase="2">2 · Recon</div>
+    <div class="phase-pill" data-phase="3">3 · Vuln</div>
+    <div class="phase-pill" data-phase="4">4 · Exploit</div>
+    <div class="phase-pill" data-phase="5">5 · Report</div>
+  </div>
+  <div id="cost-badge">Cost: <span id="cost-val">$0.0000</span></div>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+
+    <!-- Launch form -->
+    <div class="sidebar-section">
+      <h3>New Run</h3>
+
+      <label>Model</label>
+      <select id="sel-model">
+        <option value="google/gemini-2.0-flash-001">gemini-2.0-flash (recommandé)</option>
+        <option value="deepseek/deepseek-chat-v3-0324">deepseek-v3</option>
+        <option value="google/gemini-2.5-flash">gemini-2.5-flash</option>
+        <option value="anthropic/claude-sonnet-4">claude-sonnet-4</option>
+        <option value="google/gemini-2.5-pro-preview">gemini-2.5-pro</option>
+        <option value="openai/gpt-4o">gpt-4o</option>
+        <option value="google/gemini-2.5-flash-lite">gemini-2.5-flash-lite (gratuit)</option>
+        <option value="minimax/minimax-m2.5:free">minimax-m2.5 (gratuit)</option>
+        <option value="meta-llama/llama-3.3-70b-instruct">llama-3.3-70b</option>
+      </select>
+
+      <label>Scénario</label>
+      <select id="sel-scenario" onchange="loadTopology(this.value ? parseInt(this.value) : null)">
+        <option value="">— Lab physique —</option>
+        <option value="1">S1 · Reconnaissance passive</option>
+        <option value="2">S2 · Gateway exposée</option>
+        <option value="3">S3 · MQTT compromise</option>
+        <option value="4">S4 · Firmware vulnérable</option>
+        <option value="5">S5 · Escalade de privilèges</option>
+        <option value="6">S6 · Pivot réseau</option>
+        <option value="7">S7 · APT complet</option>
+      </select>
+
+      <label>Phases</label>
+      <div class="phase-checkboxes">
+        <label><input type="checkbox" class="phase-cb" value="1" checked> 1 · Graph Analysis</label>
+        <label><input type="checkbox" class="phase-cb" value="2" checked> 2 · Recon</label>
+        <label><input type="checkbox" class="phase-cb" value="3" checked> 3 · Vuln Analysis</label>
+        <label><input type="checkbox" class="phase-cb" value="4" checked> 4 · Exploitation</label>
+        <label><input type="checkbox" class="phase-cb" value="5" checked> 5 · Report</label>
+      </div>
+
+      <label>
+        <input type="checkbox" id="cb-teardown" checked>
+        &nbsp;Auto-teardown scénario
+      </label>
+      <br>
+
+      <button id="btn-start" onclick="startRun()">▶ Lancer le pentest</button>
+      <button id="btn-stop"  onclick="stopRun()">⏹ Arrêter</button>
+    </div>
+
+    <!-- Run history -->
+    <div class="sidebar-section" style="padding-bottom:0">
+      <h3>Historique</h3>
+    </div>
+    <div id="run-list">
+      <div style="padding:12px;color:var(--muted);font-size:11px">Chargement…</div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- Graph -->
+  <div id="graph-wrap">
+    <div id="cy"></div>
+    <div id="graph-legend"></div>
+  </div>
+
+  <!-- Detail panel -->
+  <div id="detail">
+    <div id="detail-placeholder">
+      Cliquez sur un nœud<br>pour voir ses détails
+    </div>
+    <div id="detail-content"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── Log ─────────────────────────────────────────────────────────────── -->
+<div id="log-wrap">
+  <div id="log-header">
+    <span>Event Log</span>
+    <button id="log-clear" onclick="clearLog()">Effacer</button>
+  </div>
+  <div id="log"></div>
+</div>
+
+<!-- ── File modal ───────────────────────────────────────────────────────── -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <div id="modal-header">
+      <h3 id="modal-title"></h3>
+      <button id="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
