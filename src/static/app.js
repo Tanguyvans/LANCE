@@ -29,11 +29,60 @@ const TYPE_COLOR = {
   external: '#7f8c8d',
 };
 
+// ── Resize handles ─────────────────────────────────────────────────────────
+function initResizeHandles() {
+  const root = document.documentElement;
+
+  function makeDraggable(handleId, cssVar, getSize, minPx, maxPx) {
+    const handle = document.getElementById(handleId);
+    if (!handle) return;
+    let dragging = false;
+
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const newSize = Math.min(maxPx, Math.max(minPx, getSize(e)));
+      root.style.setProperty(cssVar, newSize + 'px');
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
+  const sidebar = document.getElementById('sidebar');
+  makeDraggable(
+    'resize-sidebar', '--sidebar-w',
+    e => e.clientX - sidebar.getBoundingClientRect().left,
+    160, 420
+  );
+
+  const detail = document.getElementById('detail');
+  makeDraggable(
+    'resize-detail', '--detail-w',
+    e => document.body.clientWidth - e.clientX,
+    180, 480
+  );
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
     loadTopology(this.value ? parseInt(this.value) : null);
   });
+
+  initResizeHandles();
 
   await loadTopology();
   await loadRuns();
