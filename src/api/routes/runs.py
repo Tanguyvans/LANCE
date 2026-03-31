@@ -17,7 +17,16 @@ OUTPUT_DIR = ROOT / "output" / "agent"
 
 
 def _extract_cost(run_dir: Path) -> float | None:
-    """Try to extract total cost from 05_report.md or any deliverable."""
+    """Extract total cost from cost_summary.json, falling back to markdown scan."""
+    cost_file = run_dir / "cost_summary.json"
+    if cost_file.exists():
+        try:
+            data = json.loads(cost_file.read_text())
+            val = data.get("total_cost_usd")
+            if val is not None:
+                return float(val)
+        except Exception:
+            pass
     for f in sorted(run_dir.glob("*.md"), reverse=True):
         try:
             text = f.read_text()
