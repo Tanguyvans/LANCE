@@ -7,7 +7,14 @@
       "Bash(passwordauthentication)",
       "Bash(pubkeyauthentication)",
       "Bash(port)",
-      "Bash(listenaddress\"''''\")"
+      "Bash(listenaddress\"''''\")",
+      "Bash(source venv/bin/activate)",
+      "Bash(python3 -c \":*)",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__fill",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__wait_for"
     ]
   }
 }

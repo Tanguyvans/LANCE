@@ -11,14 +11,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 
 from src.cve_lookup import query_nvd
 
+_ANSI_ESC = re.compile(r'\x1b\[[0-9;]*[mK]')
+
 
 def _run(cmd: list[str], timeout: int = 30) -> dict:
-    """Run a command and return structured output."""
+    """Run a command and return structured output (ANSI codes stripped)."""
     try:
         result = subprocess.run(
             cmd,
@@ -27,8 +30,8 @@ def _run(cmd: list[str], timeout: int = 30) -> dict:
             timeout=timeout,
         )
         return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stdout": _ANSI_ESC.sub('', result.stdout),
+            "stderr": _ANSI_ESC.sub('', result.stderr),
             "return_code": result.returncode,
         }
     except subprocess.TimeoutExpired:
