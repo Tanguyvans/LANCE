@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NATO IoT Pentest Orchestrator</title>
   <link rel="stylesheet" href="/static/style.css">
-  <!-- Cytoscape.js — graph rendering -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js"></script>
+  <!-- Cytoscape.js — graph rendering (local copy) -->
+  <script src="/static/cytoscape.min.js"></script>
 </head>
 <body>
 
@@ -33,7 +33,7 @@
     <div class="sidebar-section">
       <h3>New Run</h3>
 
-      <label>Model</label>
+      <label for="sel-model">Model</label>
       <select id="sel-model">
         <option value="google/gemini-2.0-flash-001">gemini-2.0-flash (recommandé)</option>
         <option value="deepseek/deepseek-chat-v3-0324">deepseek-v3</option>
@@ -46,8 +46,8 @@
         <option value="meta-llama/llama-3.3-70b-instruct">llama-3.3-70b</option>
       </select>
 
-      <label>Scénario</label>
-      <select id="sel-scenario" onchange="loadTopology(this.value ? parseInt(this.value) : null)">
+      <label for="sel-scenario">Scénario</label>
+      <select id="sel-scenario">
         <option value="">— Lab physique —</option>
         <option value="1">S1 · Reconnaissance passive</option>
         <option value="2">S2 · Gateway exposée</option>
@@ -109,11 +109,11 @@
     <span>Event Log</span>
     <button id="log-clear" onclick="clearLog()">Effacer</button>
   </div>
-  <div id="log"></div>
+  <div id="log" role="log" aria-live="polite" aria-atomic="false"></div>
 </div>
 
 <!-- ── File modal ───────────────────────────────────────────────────────── -->
-<div id="modal-overlay" onclick="closeModal(event)">
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" onclick="closeModal(event)">
   <div id="modal">
     <div id="modal-header">
       <h3 id="modal-title"></h3>

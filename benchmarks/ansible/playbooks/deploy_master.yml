@@ -3,7 +3,7 @@
 # Provisionne la VM maître sur Proxmox : LXC Debian 13, deux interfaces réseau
 # (management DHCP sur vmbr0 + réseau de test 192.168.100.200/24 sur vmbr1),
 # repo cloné, dépendances installées, secrets injectés, Tailscale configuré,
-# Streamlit lancé en service systemd.
+# FastAPI (uvicorn) lancé en service systemd.
 # Le master peut ensuite déployer les scénarios benchmark de façon autonome.
 #
 # Prérequis (une seule fois) :
@@ -111,8 +111,7 @@
     repo_url: "https://{{ vault_github_token }}@github.com/Tanguyvans/NATO-SmartCity-IoT.git"
     repo_dest: "/opt/nato-smartcity-iot"
     repo_branch: "main"
-    streamlit_port: 8501
-    streamlit_script: "src/ui/app.py"
+    app_port: 8501
     env_file: "/opt/nato-smartcity-iot/.env"
 
   tasks:
@@ -260,11 +259,6 @@
         virtualenv: "{{ repo_dest }}/venv"
         virtualenv_command: python3 -m venv
 
-    - name: Install Streamlit
-      ansible.builtin.pip:
-        name: streamlit
-        virtualenv: "{{ repo_dest }}/venv"
-
     # ── Vault password (pour que le master puisse lancer les playbooks) ──────
     - name: Copy vault password file to master
       ansible.builtin.copy:
@@ -358,7 +352,7 @@
           EnvironmentFile={{ env_file }}
           ExecStart={{ repo_dest }}/venv/bin/uvicorn src.api.main:app \
             --host 0.0.0.0 \
-            --port {{ streamlit_port }} \
+            --port {{ app_port }} \
             --workers 1
           Restart=on-failure
           RestartSec=5
@@ -366,11 +360,11 @@
           [Install]
           WantedBy=multi-user.target
 
-    - name: Enable and start FastAPI service
+    - name: Enable and restart FastAPI service
       ansible.builtin.systemd:
         name: nato-streamlit
         enabled: true
-        state: started
+        state: restarted
         daemon_reload: true
 
     # ── GitHub Actions self-hosted runner ────────────────────
@@ -432,4 +426,4 @@
           - "Tailscale: {{ ts_ip.stdout }}"
           - "SSH LAN  : ssh root@{{ hostvars['proxmox']['master_ip'] }}"
           - "SSH WAN  : ssh root@{{ ts_ip.stdout }}  (Tailscale)"
-          - "Streamlit: http://{{ ts_ip.stdout }}:{{ streamlit_port }}"
+          - "FastAPI  : http://{{ ts_ip.stdout }}:{{ app_port }}"

@@ -31,6 +31,10 @@ const TYPE_COLOR = {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('sel-scenario').addEventListener('change', function () {
+    loadTopology(this.value ? parseInt(this.value) : null);
+  });
+
   await loadTopology();
   await loadRuns();
   pollStatus();
@@ -361,6 +365,47 @@ async function fetchVulnResults(runIdOrDir) {
 }
 
 // ── Run history ────────────────────────────────────────────────────────────
+const RUNS_PER_PAGE = 15;
+let _allRuns = [];
+let _runsShown = RUNS_PER_PAGE;
+
+function _renderRunItem(r) {
+  const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
+  const scn = r.scenario ? `<span>${r.scenario}</span>` : '';
+  const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
+  return `
+    <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${r.id}" onclick="viewRun('${r.id}')">
+      <div class="run-item-header">
+        <span class="run-id">${ts}</span>
+        <span class="run-badge ${r.status}">${r.status}</span>
+      </div>
+      <div class="run-meta">
+        ${scn} ${cost}
+        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${r.id}')">⬇ zip</button>
+      </div>
+    </div>
+  `;
+}
+
+function _renderRunList() {
+  const list = document.getElementById('run-list');
+  const visible = _allRuns.slice(0, _runsShown);
+  let html = visible.map(_renderRunItem).join('');
+  if (_allRuns.length > _runsShown) {
+    html += `<div style="padding:8px 12px;border-top:1px solid var(--border)">
+      <button class="run-download" style="width:100%;text-align:center" onclick="_showMoreRuns()">
+        Voir plus (${_allRuns.length - _runsShown} restants)
+      </button>
+    </div>`;
+  }
+  list.innerHTML = html;
+}
+
+function _showMoreRuns() {
+  _runsShown += RUNS_PER_PAGE;
+  _renderRunList();
+}
+
 async function loadRuns() {
   const runs = await fetchJSON('/api/runs');
   const list = document.getElementById('run-list');
@@ -368,24 +413,9 @@ async function loadRuns() {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:11px">Aucun run</div>';
     return;
   }
-
-  list.innerHTML = runs.map(r => {
-    const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
-    const scn = r.scenario ? `<span>${r.scenario}</span>` : '';
-    const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
-    return `
-      <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${r.id}" onclick="viewRun('${r.id}')">
-        <div class="run-item-header">
-          <span class="run-id">${ts}</span>
-          <span class="run-badge ${r.status}">${r.status}</span>
-        </div>
-        <div class="run-meta">
-          ${scn} ${cost}
-          <button class="run-download" onclick="event.stopPropagation(); downloadRun('${r.id}')">⬇ zip</button>
-        </div>
-      </div>
-    `;
-  }).join('');
+  _allRuns = runs;
+  _runsShown = RUNS_PER_PAGE;
+  _renderRunList();
 }
 
 async function viewRun(runId) {
@@ -452,7 +482,10 @@ async function viewFile(runId, filename) {
     body.textContent = data.content;
   }
 
-  document.getElementById('modal-overlay').classList.add('open');
+  const overlay = document.getElementById('modal-overlay');
+  overlay._prevFocus = document.activeElement;
+  overlay.classList.add('open');
+  document.getElementById('modal-close').focus();
 }
 
 async function downloadRun(runId) {
@@ -461,18 +494,39 @@ async function downloadRun(runId) {
 
 // ── Modal ──────────────────────────────────────────────────────────────────
 function closeModal(e) {
-  if (!e || e.target === document.getElementById('modal-overlay') || e.type === 'click') {
-    document.getElementById('modal-overlay').classList.remove('open');
-  }
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.remove('open');
+  if (overlay._prevFocus) { overlay._prevFocus.focus(); overlay._prevFocus = null; }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => {
+  const overlay = document.getElementById('modal-overlay');
+  if (!overlay.classList.contains('open')) return;
+
+  if (e.key === 'Escape') {
+    closeModal();
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    const focusable = overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+});
 
 // ── Phase pills ────────────────────────────────────────────────────────────
 function setPhasePill(phase, status) {
   const pill = document.querySelector(`.phase-pill[data-phase="${phase}"]`);
   if (!pill) return;
   pill.className = `phase-pill ${status}`;
+  pill.setAttribute('aria-label', `Phase ${phase} ${PHASE_NAMES[phase] || ''}: ${status}`);
 }
 
 function clearPhasePills() {
