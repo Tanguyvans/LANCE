@@ -338,7 +338,7 @@
     # ── Systemd : FastAPI (uvicorn) ───────────────────────────
     - name: Deploy FastAPI systemd service
       ansible.builtin.copy:
-        dest: /etc/systemd/system/nato-streamlit.service
+        dest: /etc/systemd/system/nato-fastapi.service
         mode: "0644"
         content: |
           [Unit]
@@ -362,7 +362,7 @@
 
     - name: Enable and restart FastAPI service
       ansible.builtin.systemd:
-        name: nato-streamlit
+        name: nato-fastapi
         enabled: true
         state: restarted
         daemon_reload: true
