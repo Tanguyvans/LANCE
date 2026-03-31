@@ -117,6 +117,10 @@
   tasks:
 
     # ── Système ──────────────────────────────────────────────
+    - name: Set timezone to Europe/Paris
+      community.general.timezone:
+        name: Europe/Paris
+
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
@@ -334,6 +338,20 @@
       ansible.builtin.command: tailscale ip -4
       register: ts_ip
       changed_when: false
+
+    # ── Nettoyage ancien service Streamlit ───────────────────
+    - name: Stop and disable legacy nato-streamlit service
+      ansible.builtin.systemd:
+        name: nato-streamlit
+        enabled: false
+        state: stopped
+        daemon_reload: false
+      failed_when: false
+
+    - name: Remove legacy nato-streamlit service file
+      ansible.builtin.file:
+        path: /etc/systemd/system/nato-streamlit.service
+        state: absent
 
     # ── Systemd : FastAPI (uvicorn) ───────────────────────────
     - name: Deploy FastAPI systemd service
