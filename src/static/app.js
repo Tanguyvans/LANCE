@@ -1,0 +1,569 @@
+/* NATO Smart City IoT — Pentest Orchestrator frontend */
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let cy = null;           // Cytoscape instance
+let eventSource = null;  // SSE connection
+let activeRunId = null;  // run being viewed in detail panel
+let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
+let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
+
+const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Report'};
+
+const SEV_COLOR = {
+  CRITICAL: '#ff6b6b',
+  HIGH:     '#f0883e',
+  MEDIUM:   '#d29922',
+  LOW:      '#3fb950',
+  INFO:     '#58a6ff',
+};
+
+const TYPE_COLOR = {
+  router:   '#e74c3c',
+  switch:   '#95a5a6',
+  gateway:  '#e67e22',
+  sensor:   '#2ecc71',
+  compute:  '#3498db',
+  camera:   '#9b59b6',
+  ap:       '#1abc9c',
+  external: '#7f8c8d',
+};
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadTopology();
+  await loadRuns();
+  pollStatus();
+});
+
+// ── Cytoscape graph ────────────────────────────────────────────────────────
+async function loadTopology(scenarioId = null) {
+  const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
+  const data = await fetchJSON(url);
+  if (!data) return;
+
+  nodeVulns = {};
+  nodeHosts = {};
+
+  const elements = [
+    ...data.nodes.map(n => ({
+      group: 'nodes',
+      data: { ...n, _origColor: n.color },
+    })),
+    ...data.edges.map(e => ({
+      group: 'edges',
+      data: { ...e },
+    })),
+  ];
+
+  if (cy) cy.destroy();
+
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements,
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color':  'data(color)',
+          'label':             'data(label)',
+          'color':             '#e6edf3',
+          'font-size':         '10px',
+          'text-valign':       'bottom',
+          'text-halign':       'center',
+          'text-margin-y':     '4px',
+          'width':             '36px',
+          'height':            '36px',
+          'border-width':      '2px',
+          'border-color':      'rgba(255,255,255,.1)',
+          'text-outline-width': '2px',
+          'text-outline-color': '#0d1117',
+        },
+      },
+      {
+        selector: 'node:selected',
+        style: {
+          'border-color': '#1f6feb',
+          'border-width': '3px',
+        },
+      },
+      {
+        selector: 'edge',
+        style: {
+          'line-color':           'data(color)',
+          'target-arrow-color':   'data(color)',
+          'target-arrow-shape':   'triangle',
+          'curve-style':          'bezier',
+          'width':                2,
+          'arrow-scale':          0.8,
+          'opacity':              0.7,
+        },
+      },
+    ],
+    layout: {
+      name:            'cose',
+      animate:         false,
+      nodeRepulsion:   8000,
+      idealEdgeLength: 120,
+      padding:         30,
+    },
+  });
+
+  cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
+  cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
+
+  buildLegend(data.nodes);
+}
+
+function buildLegend(nodes) {
+  const types = [...new Set(nodes.map(n => n.type))];
+  const legend = document.getElementById('graph-legend');
+  legend.innerHTML = types.map(t =>
+    `<div class="legend-item">
+       <div class="legend-dot" style="background:${TYPE_COLOR[t] || '#888'}"></div>
+       ${t}
+     </div>`
+  ).join('');
+}
+
+function colorNodeBySeverity(nodeId, severity) {
+  const node = cy.getElementById(nodeId);
+  if (!node.length) {
+    // Try to find by IP
+    const match = cy.nodes().filter(n => n.data('ip') === nodeId);
+    if (!match.length) return;
+    match.forEach(n => _setNodeColor(n, severity));
+    return;
+  }
+  _setNodeColor(node, severity);
+}
+
+function _setNodeColor(node, severity) {
+  const color = SEV_COLOR[severity] || SEV_COLOR['INFO'];
+  node.style('background-color', color);
+  node.style('border-color', color);
+  node.style('border-width', '3px');
+}
+
+function resetNodeColors() {
+  cy.nodes().forEach(n => {
+    n.style('background-color', n.data('_origColor') || n.data('color'));
+    n.style('border-color', 'rgba(255,255,255,.1)');
+    n.style('border-width', '2px');
+  });
+}
+
+// ── Detail panel ───────────────────────────────────────────────────────────
+function showNodeDetail(data) {
+  document.getElementById('detail-placeholder').style.display = 'none';
+  const el = document.getElementById('detail-content');
+  el.style.display = 'block';
+
+  const vulns = nodeVulns[data.id] || [];
+  const hostInfo = nodeHosts[data.ip] || null;
+
+  const sevSummary = vulns.length
+    ? Object.entries(
+        vulns.reduce((acc, v) => { acc[v.severity] = (acc[v.severity]||0)+1; return acc; }, {})
+      ).map(([s,c]) => `<span class="sev ${s}">${s}:${c}</span>`).join(' ')
+    : '<span style="color:var(--muted)">Aucune vulnérabilité détectée</span>';
+
+  const services = data.services?.length
+    ? data.services.map(s => `<span class="service-tag">${s}</span>`).join('')
+    : '<span style="color:var(--muted)">—</span>';
+
+  const ports = hostInfo?.ports?.length
+    ? hostInfo.ports.map(p => `<span class="service-tag">${p}</span>`).join('')
+    : null;
+
+  const vulnHtml = vulns.map(v => `
+    <div class="vuln-item">
+      <span class="sev ${v.severity}">${v.severity}</span>
+      <strong>${v.type}</strong> — ${v.service || ''}${v.port ? ':'+v.port : ''}
+      <div style="color:var(--muted);margin-top:3px;font-size:10px">${v.details || ''}</div>
+      ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.join(', ')}</div>` : ''}
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <h2>
+      <span style="background:${data.color||'#3498db'};border-radius:4px;padding:2px 6px;font-size:11px">${data.type||'node'}</span>
+      ${data.id}
+    </h2>
+    <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${data.ip||'—'}</span></div>
+    ${hostInfo?.hostname ? `<div class="detail-row"><span class="detail-key">Hostname</span><span class="detail-val">${hostInfo.hostname}</span></div>` : ''}
+    ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${hostInfo.os}</span></div>` : ''}
+
+    <div class="detail-section">
+      <h3>Services (YAML)</h3>
+      ${services}
+    </div>
+
+    ${ports ? `<div class="detail-section"><h3>Ports détectés (nmap)</h3>${ports}</div>` : ''}
+
+    <div class="detail-section">
+      <h3>Vulnérabilités (${vulns.length})</h3>
+      ${sevSummary}
+      <div style="margin-top:8px">${vulnHtml || ''}</div>
+    </div>
+  `;
+}
+
+function hideDetail() {
+  document.getElementById('detail-placeholder').style.display = '';
+  document.getElementById('detail-content').style.display = 'none';
+}
+
+// ── Pipeline ───────────────────────────────────────────────────────────────
+async function startRun() {
+  const model    = document.getElementById('sel-model').value;
+  const scenario = document.getElementById('sel-scenario').value || null;
+  const teardown = document.getElementById('cb-teardown').checked;
+  const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
+
+  // Reset graph colors and state
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  setCost(0);
+  clearPhasePills();
+
+  // Load correct topology
+  await loadTopology(scenario ? parseInt(scenario) : null);
+
+  const body = {
+    model,
+    provider: 'openrouter',
+    scenario_id: scenario ? parseInt(scenario) : null,
+    phases: phases.length < 5 ? phases : null,
+    auto_teardown: teardown,
+  };
+
+  const res = await fetch('/api/pipeline/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    addLog({type:'error', message: err.detail || 'Erreur démarrage pipeline'});
+    return;
+  }
+
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').style.display = 'block';
+
+  startSSE();
+}
+
+function stopRun() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').style.display = 'none';
+  addLog({type:'error', message:'Run interrompu par l\'utilisateur'});
+}
+
+function startSSE() {
+  if (eventSource) eventSource.close();
+
+  eventSource = new EventSource('/api/pipeline/stream');
+
+  eventSource.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data)); }
+    catch(_) {}
+  };
+
+  eventSource.onerror = () => {
+    addLog({type:'error', message:'Connexion SSE perdue'});
+    eventSource.close();
+    eventSource = null;
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    loadRuns();
+  };
+}
+
+function handleEvent(ev) {
+  const t = ev.type;
+  addLog(ev);
+
+  if (t === 'phase_start') {
+    setPhasePill(ev.phase, 'running');
+  }
+
+  else if (t === 'phase_done') {
+    setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
+    setCost(ev.cumulative_cost_usd || 0);
+  }
+
+  else if (t === 'pipeline_done') {
+    setCost(ev.total_cost_usd || 0);
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    loadRuns();
+  }
+
+  else if (t === 'error') {
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    loadRuns();
+  }
+
+  else if (t === 'tool_result' && ev.name === 'nmap_scan') {
+    const parsed = parseNmapResult(ev.result || '');
+    Object.entries(parsed).forEach(([ip, info]) => {
+      nodeHosts[ip] = info;
+      // Find node by IP and mark as scanned
+      if (cy) {
+        cy.nodes().forEach(n => {
+          if (n.data('ip') === ip) {
+            n.style('border-color', '#58a6ff');
+            n.style('border-width', '2px');
+          }
+        });
+      }
+    });
+  }
+
+  // Vuln sub-agent done — extract vulns from deliverable name pattern
+  else if (t === 'phase_done' && ev.phase === 3) {
+    // Fetch vuln analysis deliverable to color nodes
+    fetchVulnResults(ev.run_dir);
+  }
+}
+
+async function fetchVulnResults(runDir) {
+  if (!runDir) return;
+  const runId = runDir.split('/').pop();
+  try {
+    const data = await fetchJSON(`/api/runs/${runId}/03_vuln_analysis.json`);
+    if (!data || !data.content) return;
+
+    const content = data.content;
+    const queue = Array.isArray(content) ? content : (content.vulnerabilities || []);
+
+    queue.forEach(vuln => {
+      const nodeId = vuln.device_id;
+      if (!nodeVulns[nodeId]) nodeVulns[nodeId] = [];
+      nodeVulns[nodeId].push(vuln);
+    });
+
+    // Color nodes by worst severity
+    Object.entries(nodeVulns).forEach(([nodeId, vulns]) => {
+      const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+      const worst = order.find(s => vulns.some(v => v.severity === s));
+      if (worst) colorNodeBySeverity(nodeId, worst);
+    });
+  } catch(_) {}
+}
+
+// ── Run history ────────────────────────────────────────────────────────────
+async function loadRuns() {
+  const runs = await fetchJSON('/api/runs');
+  const list = document.getElementById('run-list');
+  if (!runs || runs.length === 0) {
+    list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:11px">Aucun run</div>';
+    return;
+  }
+
+  list.innerHTML = runs.map(r => {
+    const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
+    const scn = r.scenario ? `<span>${r.scenario}</span>` : '';
+    const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
+    return `
+      <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${r.id}" onclick="viewRun('${r.id}')">
+        <div class="run-item-header">
+          <span class="run-id">${ts}</span>
+          <span class="run-badge ${r.status}">${r.status}</span>
+        </div>
+        <div class="run-meta">
+          ${scn} ${cost}
+          <button class="run-download" onclick="event.stopPropagation(); downloadRun('${r.id}')">⬇ zip</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function viewRun(runId) {
+  activeRunId = runId;
+
+  // Highlight active run
+  document.querySelectorAll('.run-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === runId);
+  });
+
+  const run = await fetchJSON(`/api/runs/${runId}`);
+  if (!run) return;
+
+  // Show files in detail panel
+  document.getElementById('detail-placeholder').style.display = 'none';
+  const el = document.getElementById('detail-content');
+  el.style.display = 'block';
+
+  const fileHtml = run.files.map(f => `
+    <div class="file-item" onclick="viewFile('${runId}', '${f}')">
+      <span>${f}</span>
+      <span style="color:var(--muted)">→</span>
+    </div>
+  `).join('');
+
+  el.innerHTML = `
+    <h2>Run ${runId.replace(/_/g, ' ')}</h2>
+    <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${run.scenario || 'Lab physique'}</span></div>
+    <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val">${run.status}</span></div>
+    <div class="detail-section">
+      <h3>Fichiers (${run.files.length})</h3>
+      <div class="file-list">${fileHtml}</div>
+    </div>
+  `;
+
+  // Load vuln data to color graph if 03_vuln_analysis.json exists
+  if (run.files.includes('03_vuln_analysis.json')) {
+    fetchVulnResults(runId.includes('/') ? runId : `output/agent/${runId}`);
+  }
+}
+
+async function viewFile(runId, filename) {
+  const data = await fetchJSON(`/api/runs/${runId}/${filename}`);
+  if (!data) return;
+
+  document.getElementById('modal-title').textContent = filename;
+  const body = document.getElementById('modal-body');
+
+  if (data.type === 'json') {
+    body.textContent = JSON.stringify(data.content, null, 2);
+  } else {
+    body.textContent = data.content;
+  }
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function downloadRun(runId) {
+  window.location.href = `/api/runs/${runId}/download/zip`;
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay') || e.type === 'click') {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Phase pills ────────────────────────────────────────────────────────────
+function setPhasePill(phase, status) {
+  const pill = document.querySelector(`.phase-pill[data-phase="${phase}"]`);
+  if (!pill) return;
+  pill.className = `phase-pill ${status}`;
+}
+
+function clearPhasePills() {
+  document.querySelectorAll('.phase-pill').forEach(p => p.className = 'phase-pill');
+}
+
+// ── Cost ───────────────────────────────────────────────────────────────────
+function setCost(val) {
+  document.getElementById('cost-val').textContent = '$' + (val || 0).toFixed(4);
+}
+
+// ── Event log ──────────────────────────────────────────────────────────────
+const MAX_LOG = 300;
+
+function addLog(ev) {
+  const log = document.getElementById('log');
+  const t = ev.type || 'info';
+
+  let text = '';
+  if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
+  else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
+  else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
+  else if (t === 'pipeline_done')  text = `Pipeline terminé — Total: $${(ev.total_cost_usd||0).toFixed(4)}`;
+  else if (t === 'tool_call')  text = `→ ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;
+  else if (t === 'tool_result') text = `← ${ev.name}: ${_truncate(String(ev.result||''), 120)}`;
+  else if (t === 'text_chunk') text = ev.text ? _truncate(ev.text, 200) : null;
+  else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
+  else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
+  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
+  else if (t === 'inject_start')   text = `Injection vulns…`;
+  else if (t === 'inject_done')    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
+  else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;
+  else if (t === 'teardown_done')  text = `Teardown terminé`;
+
+  if (!text) return;
+
+  const line = document.createElement('div');
+  line.className = `log-line ${t}`;
+  line.textContent = text;
+  log.appendChild(line);
+
+  // Trim old lines
+  while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+// ── Nmap parser ────────────────────────────────────────────────────────────
+function parseNmapResult(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.stdout) raw = parsed.stdout;
+  } catch(_) {}
+
+  const hosts = {};
+  let currentIp = null;
+
+  for (const line of raw.split('\n')) {
+    const ipMatch = line.match(/Nmap scan report for (?:(\S+) \()?(\d+\.\d+\.\d+\.\d+)\)?/);
+    if (ipMatch) {
+      currentIp = ipMatch[2];
+      hosts[currentIp] = {hostname: ipMatch[1] || '', ports: [], os: ''};
+      continue;
+    }
+    if (!currentIp) continue;
+    const portMatch = line.trim().match(/^(\d+)\/(tcp|udp)\s+open\s+(\S+)\s*(.*)/);
+    if (portMatch) {
+      const label = `${portMatch[1]}/${portMatch[2]} ${portMatch[3]}${portMatch[4] ? ' ('+portMatch[4].trim().slice(0,40)+')' : ''}`;
+      hosts[currentIp].ports.push(label);
+    }
+    const osMatch = line.match(/OS details?: (.+)/);
+    if (osMatch) hosts[currentIp].os = osMatch[1].trim();
+  }
+  return hosts;
+}
+
+// ── Status polling (catch up after page reload) ────────────────────────────
+async function pollStatus() {
+  const status = await fetchJSON('/api/pipeline/status');
+  if (!status) return;
+  setCost(status.cost);
+  if (status.running) {
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-stop').style.display = 'block';
+    startSSE();
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(_) {
+    return null;
+  }
+}
+
+function _truncate(str, n) {
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
