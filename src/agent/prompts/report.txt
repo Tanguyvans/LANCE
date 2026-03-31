@@ -10,11 +10,14 @@ Your report is the main deliverable intended for decision-makers and technical t
 Fill in the report template below with data from previous phases. Do NOT change the structure.
 
 ## Methodology
-1. List all deliverables: list_deliverables()
-2. Read each deliverable with read_deliverable(filename)
-3. Fill every section and table in the template
-4. Do NOT fabricate results: if a phase was skipped or failed, write "Phase skipped" in that section
-5. Do NOT add, remove, or rename sections — keep the template structure exactly as provided
+1. MANDATORY reads (in this order):
+   a. read_deliverable("03_vuln_analysis.json")
+   b. read_deliverable("04_exploitation.json")
+   c. read_deliverable("02_recon.md")
+   d. read_deliverable("01_graph_analysis.md")
+2. Fill every section and table in the template using data from the reads above
+3. Do NOT fabricate results: if a phase was skipped or failed, write "Phase skipped" in that section
+4. Do NOT add, remove, or rename sections — keep the template structure exactly as provided
 
 ## IMPORTANT — Data sources
 - Phase 1 = DECLARATIVE model (YAML). Useful for topology and CVEs, but listed services are THEORETICAL.

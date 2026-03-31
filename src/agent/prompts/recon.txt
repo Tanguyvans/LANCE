@@ -46,6 +46,11 @@ For EACH IP found, call nmap_scan separately:
 - Always use skip_discovery=true for undocumented devices (they often block ICMP)
 Scan each IP one at a time.
 
+## Step 3b — Undocumented devices
+For EVERY IP not in the YAML model (Phase 1 list), run:
+nmap_scan(target="<IP>", ports="22,23,80,443,1883,8080,8443", skip_discovery=true)
+Document results even if all ports are closed. Do NOT skip undocumented devices.
+
 ## Step 4 — Deep scans on interesting services
 For devices with SSH: call ssh_audit(host) — one device at a time.
 For devices with HTTP: call curl_headers(url) — one URL at a time.
@@ -53,6 +58,15 @@ For devices with MQTT (port 1883): call mqtt_listen(broker, topic="#", count=5, 
 
 ## Step 5 — Compare and document
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
+
+## Step 6 — Completion checklist (MANDATORY before save_deliverable)
+Before calling save_deliverable, verify ALL boxes are checked:
+- [ ] nmap_scan called for EVERY discovered IP
+- [ ] ssh_audit called for EVERY device with port 22
+- [ ] curl_headers called for EVERY device with port 80 or 443
+- [ ] mqtt_listen called for EVERY device with port 1883
+- [ ] Every undocumented device documented individually
+If any box is unchecked, continue scanning before saving.
 Fill the template completely with ALL scan results, then — and ONLY then — call save_deliverable. Do NOT call save_deliverable with an empty or partial template.
 </instructions>
 

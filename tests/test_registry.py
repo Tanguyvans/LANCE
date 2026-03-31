@@ -75,5 +75,5 @@ class TestAgentsRegistry:
     def test_exploitation_has_conditional(self):
         assert AGENTS["exploitation"].conditional == "03_vuln_analysis.json"
 
-    def test_report_no_prerequisites(self):
-        assert AGENTS["report"].prerequisites == []
+    def test_report_prerequisites(self):
+        assert AGENTS["report"].prerequisites == ["exploitation"]

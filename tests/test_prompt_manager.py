@@ -34,6 +34,8 @@ class TestLoadPrompt:
             "top_risk": "mikrotik",
             "previous_deliverables": "01_graph_analysis.md",
             "expected_deliverable": "02_recon.md",
+            "target_subnet": "192.168.88.0/24",
+            "scenario_context": "",
         }
         prompt = load_prompt("recon", variables)
         # Should contain content from @include(shared/_target.txt)

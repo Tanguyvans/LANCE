@@ -67,12 +67,32 @@ You MUST save your deliverable using save_deliverable(filename, content) before 
 3. **NVD LOOKUP — MANDATORY**:
    For EACH service with a known version, run nvd_lookup(query):
    - Build a CPE or keyword query from the service name/version
-   - Examples: nvd_lookup("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), nvd_lookup("Dropbear SSH 2020.81")
+   - Examples: nvd_lookup("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), nvd_lookup("OpenSSH 8.9"), nvd_lookup("nginx 1.18.0")
+   - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
    - **RULE**: every returned CVE with CVSS >= 4.0 MUST become a "known_cve" entry in your deliverable
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
+   - VALIDATION RULE: Before adding a CVE to your deliverable, verify:
+     1. The affected software matches the software detected by nmap (not just the protocol)
+     2. The affected version range includes the detected version
+     If unsure, add the CVE with a note "version match unconfirmed" rather than fabricating.
 
 4. Cross-reference with graph CVEs: get_risk_scores() and get_device_info("{{device_id}}")
 </methodology>
+
+<severity_reference>
+## Standard severity mapping — DO NOT deviate from this table
+| Vulnerability type          | Severity |
+|-----------------------------|----------|
+| weak_cipher (SHA-1 MAC)     | MEDIUM   |
+| weak_cipher (NSA curves)    | MEDIUM   |
+| terrapin (CVE-2023-48795)   | HIGH     |
+| no_auth (MQTT anonymous)    | HIGH     |
+| data_exposure (credentials) | CRITICAL |
+| directory_listing           | HIGH     |
+| missing_header              | LOW      |
+| insecure_protocol (Telnet)  | HIGH     |
+| default_credentials         | CRITICAL |
+</severity_reference>
 
 <output_format>
 ## Deliverable format ({{expected_deliverable}})
