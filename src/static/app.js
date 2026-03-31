@@ -335,9 +335,9 @@ function handleEvent(ev) {
   }
 }
 
-async function fetchVulnResults(runDir) {
-  if (!runDir) return;
-  const runId = runDir.split('/').pop();
+async function fetchVulnResults(runIdOrDir) {
+  if (!runIdOrDir) return;
+  const runId = runIdOrDir.includes('/') ? runIdOrDir.split('/').pop() : runIdOrDir;
   try {
     const data = await fetchJSON(`/api/runs/${runId}/03_vuln_analysis.json`);
     if (!data || !data.content) return;
@@ -399,6 +399,17 @@ async function viewRun(runId) {
   const run = await fetchJSON(`/api/runs/${runId}`);
   if (!run) return;
 
+  // Switch graph to this run's topology
+  const scenarioId = run.scenario ? parseInt(run.scenario.replace('S', '')) : null;
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  await loadTopology(scenarioId);
+
+  // Sync dropdown
+  const sel = document.getElementById('sel-scenario');
+  sel.value = scenarioId !== null ? String(scenarioId) : '';
+
   // Show files in detail panel
   document.getElementById('detail-placeholder').style.display = 'none';
   const el = document.getElementById('detail-content');
@@ -422,9 +433,9 @@ async function viewRun(runId) {
     </div>
   `;
 
-  // Load vuln data to color graph if 03_vuln_analysis.json exists
+  // Load vuln data to color graph nodes
   if (run.files.includes('03_vuln_analysis.json')) {
-    fetchVulnResults(runId.includes('/') ? runId : `output/agent/${runId}`);
+    await fetchVulnResults(runId);
   }
 }
 
