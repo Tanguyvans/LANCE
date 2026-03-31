@@ -47,7 +47,7 @@
       </select>
 
       <label>Scénario</label>
-      <select id="sel-scenario">
+      <select id="sel-scenario" onchange="loadTopology(this.value ? parseInt(this.value) : null)">
         <option value="">— Lab physique —</option>
         <option value="1">S1 · Reconnaissance passive</option>
         <option value="2">S2 · Gateway exposée</option>

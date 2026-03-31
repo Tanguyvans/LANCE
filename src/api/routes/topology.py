@@ -46,7 +46,7 @@ def _load_physical_lab() -> dict:
             "color": DEVICE_TYPE_COLORS.get(dev.get("type", "compute"), "#3498db"),
         })
 
-    for ext in data.get("external_entities", []):
+    for ext in data.get("external", []):
         nodes.append({
             "id": ext["id"],
             "label": ext["id"],
