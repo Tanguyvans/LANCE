@@ -33,7 +33,7 @@ const TYPE_COLOR = {
 function initResizeHandles() {
   const root = document.documentElement;
 
-  function makeDraggable(handleId, cssVar, getSize, minPx, maxPx) {
+  function makeDraggable(handleId, cssVar, cursor, getSize, minPx, maxPx) {
     const handle = document.getElementById(handleId);
     if (!handle) return;
     let dragging = false;
@@ -41,7 +41,7 @@ function initResizeHandles() {
     handle.addEventListener('mousedown', e => {
       dragging = true;
       handle.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
+      document.body.style.cursor = cursor;
       document.body.style.userSelect = 'none';
       e.preventDefault();
     });
@@ -61,18 +61,22 @@ function initResizeHandles() {
     });
   }
 
-  const sidebar = document.getElementById('sidebar');
   makeDraggable(
-    'resize-sidebar', '--sidebar-w',
-    e => e.clientX - sidebar.getBoundingClientRect().left,
+    'resize-sidebar', '--sidebar-w', 'col-resize',
+    e => e.clientX,
     160, 420
   );
 
-  const detail = document.getElementById('detail');
   makeDraggable(
-    'resize-detail', '--detail-w',
-    e => document.body.clientWidth - e.clientX,
+    'resize-detail', '--detail-w', 'col-resize',
+    e => document.documentElement.clientWidth - e.clientX,
     180, 480
+  );
+
+  makeDraggable(
+    'resize-log', '--log-h', 'row-resize',
+    e => document.documentElement.clientHeight - e.clientY,
+    60, 400
   );
 }
 

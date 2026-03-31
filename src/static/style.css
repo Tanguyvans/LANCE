@@ -177,16 +177,43 @@ button:disabled { opacity: .4; cursor: default; }
 
 /* ── Resize handles ──────────────────────────────────────────────────────── */
 .resize-handle {
-  width: 4px;
+  width: 8px;
   background: var(--border);
   cursor: col-resize;
   flex-shrink: 0;
   transition: background .15s;
   position: relative;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+/* Indicateur visuel centré (3 points verticaux) */
+.resize-handle::after {
+  content: '';
+  width: 2px;
+  height: 32px;
+  background: var(--muted);
+  border-radius: 1px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .resize-handle:hover,
-.resize-handle.dragging { background: var(--accent); }
+.resize-handle.dragging {
+  background: rgba(31,111,235,.15);
+}
+.resize-handle:hover::after,
+.resize-handle.dragging::after {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* Cacher le handle detail quand le panel est masqué */
+@media (max-width: 900px) {
+  #resize-detail { display: none; }
+}
 
 /* ── Run history ─────────────────────────────────────────────────────────── */
 #run-list { flex: 1; overflow-y: auto; }
@@ -400,6 +427,43 @@ button:disabled { opacity: .4; cursor: default; }
   cursor: pointer;
 }
 .file-item:hover { border-color: var(--accent); }
+
+/* ── Log resize handle (horizontal) ─────────────────────────────────────── */
+.resize-handle-h {
+  height: 8px;
+  background: var(--border);
+  cursor: row-resize;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background .15s;
+}
+
+.resize-handle-h::after {
+  content: '';
+  width: 32px;
+  height: 2px;
+  background: var(--muted);
+  border-radius: 1px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.resize-handle-h:hover,
+.resize-handle-h.dragging {
+  background: rgba(31,111,235,.15);
+}
+.resize-handle-h:hover::after,
+.resize-handle-h.dragging::after {
+  background: var(--accent);
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .resize-handle-h { display: none; }
+}
 
 /* ── Bottom log ──────────────────────────────────────────────────────────── */
 #log-wrap {
