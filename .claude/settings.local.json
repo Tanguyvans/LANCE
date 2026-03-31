@@ -16,7 +16,8 @@
       "mcp__chrome-devtools__navigate_page",
       "mcp__chrome-devtools__wait_for",
       "mcp__chrome-devtools__take_snapshot",
-      "mcp__chrome-devtools__resize_page"
+      "mcp__chrome-devtools__resize_page",
+      "WebFetch(domain:openrouter.ai)"
     ]
   }
 }
