@@ -138,11 +138,15 @@ def arp_scan() -> str:
             time.sleep(1)  # Wait for ARP cache to settle before pass 2
 
     # Dump ARP table directly via subprocess (not _run, to avoid interference)
+    arp_output = ""
     try:
         result = subprocess.run(
-            ["arp", "-a"], capture_output=True, text=True, timeout=30,
+            ["arp", "-a"], capture_output=True, text=True, timeout=5,
         )
         arp_output = result.stdout
+    except subprocess.TimeoutExpired as e:
+        log.warning("arp -a timed out, using partial output")
+        arp_output = e.stdout or ""
     except Exception as e:
         log.error("arp -a failed: %s", e)
         return json.dumps({"hosts": [], "count": 0, "error": str(e)})

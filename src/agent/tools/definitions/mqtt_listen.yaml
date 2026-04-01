@@ -41,3 +41,8 @@ parameters:
     default: 5
     flag: "-W"
     format: "flag"
+return_code_map:
+  0:  "anonymous_access_confirmed_messages_received"
+  27: "anonymous_access_confirmed_broker_idle"
+  5:  "connection_refused_auth_required"
+  1:  "generic_error_broker_unreachable"

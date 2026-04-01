@@ -99,7 +99,7 @@ class TestBuildSubprocessFunction:
         fn = build_subprocess_function(data)
         fn(url="http://192.168.88.1")
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["curl", "-sI", "--max-time", "10", "http://192.168.88.1"]
+        assert cmd == ["curl", "-s", "-D", "-", "--max-time", "10", "-L", "http://192.168.88.1"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_flags_and_defaults(self, mock_run):
@@ -207,11 +207,11 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 11
+        assert len(tools) == 12
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
-        expected_sw = {"nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup"}
+        expected_sw = {"nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup", "modbus_scan"}
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
         assert names == expected_sw | expected_hw
 

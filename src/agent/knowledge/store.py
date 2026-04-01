@@ -26,11 +26,15 @@ _chroma_client: chromadb.ClientAPI | None = None
 
 
 def _get_client() -> chromadb.ClientAPI:
-    """Lazy-init a persistent ChromaDB client."""
+    """Lazy-init a persistent ChromaDB client, with EphemeralClient fallback."""
     global _chroma_client
     if _chroma_client is None:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        _chroma_client = chromadb.PersistentClient(path=str(DATA_DIR))
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            _chroma_client = chromadb.PersistentClient(path=str(DATA_DIR))
+        except Exception as e:
+            log.warning("PersistentClient failed (%s), falling back to EphemeralClient", e)
+            _chroma_client = chromadb.EphemeralClient()
     return _chroma_client
 
 

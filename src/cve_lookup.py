@@ -55,14 +55,23 @@ def _rate_limit(has_api_key: bool) -> None:
 
 
 def _nvd_get(params: dict, api_key: str | None = None) -> dict:
-    """Make a rate-limited GET request to the NVD API."""
+    """Make a rate-limited GET request to the NVD API, with exponential backoff retry."""
     _rate_limit(api_key is not None)
     headers = {}
     if api_key:
         headers["apiKey"] = api_key
-    resp = requests.get(NVD_BASE_URL, params=params, headers=headers, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        if attempt > 0:
+            delay = 2 * (2 ** (attempt - 1))  # 2s, 4s
+            time.sleep(delay)
+        try:
+            resp = requests.get(NVD_BASE_URL, params=params, headers=headers, timeout=30)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            last_exc = e
+    raise last_exc  # type: ignore[misc]
 
 
 def _parse_cve_item(vuln: dict) -> CVEResult:

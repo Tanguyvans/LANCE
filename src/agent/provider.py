@@ -143,7 +143,7 @@ class LLMProvider:
 
             # If no tool calls — inject reminder or stop
             if not tool_calls:
-                if not required_tool_called:
+                if required_tool and not required_tool_called:
                     if turn == 0:
                         reminder = "Do not narrate. Call the first tool now without any preamble."
                     else:

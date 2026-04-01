@@ -10,16 +10,15 @@ from __future__ import annotations
 
 import os
 
-import voyageai
-
 EMBEDDING_MODEL = "voyage-4-lite"
 EMBEDDING_DIMS = 1024
 
-_client: voyageai.Client | None = None
+_client = None
 
 
-def _get_client() -> voyageai.Client:
+def _get_client():
     """Lazy-init the Voyage AI client."""
+    import voyageai  # lazy import — avoids hard dependency at module load time
     global _client
     if _client is None:
         api_key = os.environ.get("VOYAGE_API_KEY")

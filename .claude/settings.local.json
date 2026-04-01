@@ -17,7 +17,8 @@
       "mcp__chrome-devtools__wait_for",
       "mcp__chrome-devtools__take_snapshot",
       "mcp__chrome-devtools__resize_page",
-      "WebFetch(domain:openrouter.ai)"
+      "WebFetch(domain:openrouter.ai)",
+      "Bash(python3 -m pytest tests/test_tool_loader.py tests/test_cve_lookup.py tests/test_skill_tools.py -v -p no:pytest_ethereum -p no:web3 --tb=short)"
     ]
   }
 }

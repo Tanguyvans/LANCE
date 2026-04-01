@@ -128,6 +128,12 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         if max_output and result.get("stdout") and len(result["stdout"]) > max_output:
             result["stdout"] = result["stdout"][:max_output] + "\n[truncated]"
 
+        rc_map = tool_def.get("return_code_map")
+        if rc_map is not None:
+            rc = result.get("return_code")
+            if rc is not None:
+                result["interpretation"] = rc_map.get(rc, f"unknown_return_code_{rc}")
+
         return json.dumps(result)
 
     generated_fn.__name__ = tool_def["name"]

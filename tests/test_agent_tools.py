@@ -77,7 +77,7 @@ class TestReconTools:
         assert result["return_code"] == 0
         assert "nginx" in result["stdout"]
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["curl", "-sI", "--max-time", "10", "http://192.168.88.231"]
+        assert cmd == ["curl", "-s", "-D", "-", "--max-time", "10", "-L", "http://192.168.88.231"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_listen(self, mock_run):
@@ -348,6 +348,8 @@ class TestOrchestrator:
             "top_risk": "mikrotik",
             "previous_deliverables": "None",
             "expected_deliverable": "02_recon.md",
+            "target_subnet": "192.168.88.0/24",
+            "scenario_context": "",
         }
         prompt = load_prompt("recon", context)
         assert "192.168.88.0/24" in prompt

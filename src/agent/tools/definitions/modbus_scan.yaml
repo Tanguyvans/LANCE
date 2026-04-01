@@ -1,0 +1,24 @@
+name: "modbus_scan"
+command: "nmap"
+args: ["-sV", "-p", "502"]
+enabled: true
+timeout: 60
+short_description: "Modbus TCP port scanner (port 502)"
+description: |
+  Detect Modbus TCP service on port 502 using nmap service version detection.
+  Port 502/tcp open = Modbus TCP server present (typical on PLCs, RTUs, SCADA gateways).
+  Modbus has NO authentication — any open port is a HIGH severity finding.
+  Use this tool on ICS/SCADA devices (PLCs, HMIs, historians) detected during recon.
+  Safe: only detects exposure, no register writes.
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target IP or hostname of the suspected PLC/ICS device"
+    required: true
+    format: "positional"
+  - name: "skip_discovery"
+    type: "boolean"
+    description: "Skip host discovery (-Pn). Use when nmap reports 'Host seems down' but ARP confirms the host is up."
+    required: false
+    flag: "-Pn"
+    format: "boolean_flag"

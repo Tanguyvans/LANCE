@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+import src.agent.knowledge.store  # noqa: F401 — registers module so @patch("src.agent.knowledge.store.search") works
 from src.agent.tools.skill_tools import (
     list_skills,
     load_skill,
