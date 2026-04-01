@@ -10,12 +10,16 @@ let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Report'};
 
+function _cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 const SEV_COLOR = {
-  CRITICAL: '#ff6b6b',
-  HIGH:     '#f0883e',
-  MEDIUM:   '#d29922',
-  LOW:      '#3fb950',
-  INFO:     '#58a6ff',
+  CRITICAL: _cssVar('--sev-critical-fg') || '#ff6b6b',
+  HIGH:     _cssVar('--sev-high-fg')     || '#f0883e',
+  MEDIUM:   _cssVar('--sev-medium-fg')   || '#d29922',
+  LOW:      _cssVar('--sev-low-fg')      || '#3fb950',
+  INFO:     _cssVar('--sev-info-fg')     || '#58a6ff',
 };
 
 const TYPE_COLOR = {
@@ -28,6 +32,14 @@ const TYPE_COLOR = {
   ap:       '#1abc9c',
   external: '#7f8c8d',
 };
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 // ── Resize handles ─────────────────────────────────────────────────────────
 function initResizeHandles() {
@@ -46,10 +58,16 @@ function initResizeHandles() {
       e.preventDefault();
     });
 
+    let _rafPending = false;
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
-      const newSize = Math.min(maxPx, Math.max(minPx, getSize(e)));
-      root.style.setProperty(cssVar, newSize + 'px');
+      if (_rafPending) return;
+      _rafPending = true;
+      requestAnimationFrame(() => {
+        const newSize = Math.min(maxPx, Math.max(minPx, getSize(e)));
+        root.style.setProperty(cssVar, newSize + 'px');
+        _rafPending = false;
+      });
     });
 
     document.addEventListener('mouseup', () => {
@@ -94,10 +112,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── Cytoscape graph ────────────────────────────────────────────────────────
+const CY_LAYOUT = {
+  name:            'cose',
+  animate:         false,
+  nodeRepulsion:   8000,
+  idealEdgeLength: 120,
+  padding:         30,
+};
+
 async function loadTopology(scenarioId = null) {
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
+  const cyDiv = document.getElementById('cy');
   const data = await fetchJSON(url);
-  if (!data) return;
+  if (!data) {
+    cyDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px">Impossible de charger la topologie</div>';
+    return;
+  }
 
   nodeVulns = {};
   nodeHosts = {};
@@ -113,61 +143,59 @@ async function loadTopology(scenarioId = null) {
     })),
   ];
 
-  if (cy) cy.destroy();
+  if (cy) {
+    cy.elements().remove();
+    cy.add(elements);
+    cy.layout(CY_LAYOUT).run();
+  } else {
+    cy = cytoscape({
+      container: cyDiv,
+      elements,
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color':  'data(color)',
+            'label':             'data(label)',
+            'color':             '#e6edf3',
+            'font-size':         '10px',
+            'text-valign':       'bottom',
+            'text-halign':       'center',
+            'text-margin-y':     '4px',
+            'width':             '36px',
+            'height':            '36px',
+            'border-width':      '2px',
+            'border-color':      'rgba(255,255,255,.1)',
+            'text-outline-width': '2px',
+            'text-outline-color': '#0d1117',
+          },
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-color': '#1f6feb',
+            'border-width': '3px',
+          },
+        },
+        {
+          selector: 'edge',
+          style: {
+            'line-color':           'data(color)',
+            'target-arrow-color':   'data(color)',
+            'target-arrow-shape':   'triangle',
+            'curve-style':          'bezier',
+            'width':                2,
+            'arrow-scale':          0.8,
+            'opacity':              0.7,
+          },
+        },
+      ],
+      layout: CY_LAYOUT,
+    });
 
-  cy = cytoscape({
-    container: document.getElementById('cy'),
-    elements,
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'background-color':  'data(color)',
-          'label':             'data(label)',
-          'color':             '#e6edf3',
-          'font-size':         '10px',
-          'text-valign':       'bottom',
-          'text-halign':       'center',
-          'text-margin-y':     '4px',
-          'width':             '36px',
-          'height':            '36px',
-          'border-width':      '2px',
-          'border-color':      'rgba(255,255,255,.1)',
-          'text-outline-width': '2px',
-          'text-outline-color': '#0d1117',
-        },
-      },
-      {
-        selector: 'node:selected',
-        style: {
-          'border-color': '#1f6feb',
-          'border-width': '3px',
-        },
-      },
-      {
-        selector: 'edge',
-        style: {
-          'line-color':           'data(color)',
-          'target-arrow-color':   'data(color)',
-          'target-arrow-shape':   'triangle',
-          'curve-style':          'bezier',
-          'width':                2,
-          'arrow-scale':          0.8,
-          'opacity':              0.7,
-        },
-      },
-    ],
-    layout: {
-      name:            'cose',
-      animate:         false,
-      nodeRepulsion:   8000,
-      idealEdgeLength: 120,
-      padding:         30,
-    },
-  });
-
-  cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
-  cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
+    cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
+    cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
+  }
 
   buildLegend(data.nodes);
 }
@@ -178,7 +206,7 @@ function buildLegend(nodes) {
   legend.innerHTML = types.map(t =>
     `<div class="legend-item">
        <div class="legend-dot" style="background:${TYPE_COLOR[t] || '#888'}"></div>
-       ${t}
+       ${escapeHtml(t)}
      </div>`
   ).join('');
 }
@@ -235,21 +263,21 @@ function showNodeDetail(data) {
 
   const vulnHtml = vulns.map(v => `
     <div class="vuln-item">
-      <span class="sev ${v.severity}">${v.severity}</span>
-      <strong>${v.type}</strong> — ${v.service || ''}${v.port ? ':'+v.port : ''}
-      <div style="color:var(--muted);margin-top:3px;font-size:10px">${v.details || ''}</div>
-      ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.join(', ')}</div>` : ''}
+      <span class="sev ${escapeHtml(v.severity)}">${escapeHtml(v.severity)}</span>
+      <strong>${escapeHtml(v.type)}</strong> — ${escapeHtml(v.service || '')}${v.port ? ':'+escapeHtml(String(v.port)) : ''}
+      <div style="color:var(--muted);margin-top:3px;font-size:10px">${escapeHtml(v.details || '')}</div>
+      ${v.cve_ids?.length ? `<div style="color:#58a6ff;font-size:10px;margin-top:2px">${v.cve_ids.map(escapeHtml).join(', ')}</div>` : ''}
     </div>
   `).join('');
 
   el.innerHTML = `
     <h2>
-      <span style="background:${data.color||'#3498db'};border-radius:4px;padding:2px 6px;font-size:11px">${data.type||'node'}</span>
-      ${data.id}
+      <span style="background:${escapeHtml(data.color||'#3498db')};border-radius:4px;padding:2px 6px;font-size:11px">${escapeHtml(data.type||'node')}</span>
+      ${escapeHtml(data.id)}
     </h2>
-    <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${data.ip||'—'}</span></div>
-    ${hostInfo?.hostname ? `<div class="detail-row"><span class="detail-key">Hostname</span><span class="detail-val">${hostInfo.hostname}</span></div>` : ''}
-    ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${hostInfo.os}</span></div>` : ''}
+    <div class="detail-row"><span class="detail-key">IP</span><span class="detail-val">${escapeHtml(data.ip||'—')}</span></div>
+    ${hostInfo?.hostname ? `<div class="detail-row"><span class="detail-key">Hostname</span><span class="detail-val">${escapeHtml(hostInfo.hostname)}</span></div>` : ''}
+    ${hostInfo?.os ? `<div class="detail-row"><span class="detail-key">OS</span><span class="detail-val">${escapeHtml(hostInfo.os)}</span></div>` : ''}
 
     <div class="detail-section">
       <h3>Services (YAML)</h3>
@@ -328,7 +356,7 @@ function startSSE() {
 
   eventSource.onmessage = (e) => {
     try { handleEvent(JSON.parse(e.data)); }
-    catch(_) {}
+    catch(e) { console.warn('SSE parse error', e); }
   };
 
   eventSource.onerror = () => {
@@ -414,7 +442,7 @@ async function fetchVulnResults(runIdOrDir) {
       const worst = order.find(s => vulns.some(v => v.severity === s));
       if (worst) colorNodeBySeverity(nodeId, worst);
     });
-  } catch(_) {}
+  } catch(e) { console.warn('fetchVulnResults failed', e); }
 }
 
 // ── Run history ────────────────────────────────────────────────────────────
@@ -424,17 +452,21 @@ let _runsShown = RUNS_PER_PAGE;
 
 function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
-  const scn = r.scenario ? `<span>${r.scenario}</span>` : '';
+  const scn = r.scenario ? `<span>${escapeHtml(r.scenario)}</span>` : '';
   const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
+  const eid = escapeHtml(r.id);
   return `
-    <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${r.id}" onclick="viewRun('${r.id}')">
+    <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${eid}"
+      onclick="viewRun('${eid}')"
+      role="button" tabindex="0"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();viewRun('${eid}')}">
       <div class="run-item-header">
-        <span class="run-id">${ts}</span>
-        <span class="run-badge ${r.status}">${r.status}</span>
+        <span class="run-id">${escapeHtml(ts)}</span>
+        <span class="run-badge ${escapeHtml(r.status)}">${escapeHtml(r.status)}</span>
       </div>
       <div class="run-meta">
         ${scn} ${cost}
-        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${r.id}')">⬇ zip</button>
+        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">⬇ zip</button>
       </div>
     </div>
   `;
@@ -455,14 +487,34 @@ function _renderRunList() {
 }
 
 function _showMoreRuns() {
+  const list = document.getElementById('run-list');
+  // Remove the "show more" footer before appending
+  const footer = list.lastElementChild;
+  if (footer) list.removeChild(footer);
+
+  const prev = _runsShown;
   _runsShown += RUNS_PER_PAGE;
-  _renderRunList();
+  _allRuns.slice(prev, _runsShown).forEach(r => {
+    list.insertAdjacentHTML('beforeend', _renderRunItem(r));
+  });
+
+  if (_allRuns.length > _runsShown) {
+    list.insertAdjacentHTML('beforeend', `<div style="padding:8px 12px;border-top:1px solid var(--border)">
+      <button class="run-download" style="width:100%;text-align:center" onclick="_showMoreRuns()">
+        Voir plus (${_allRuns.length - _runsShown} restants)
+      </button>
+    </div>`);
+  }
 }
 
 async function loadRuns() {
   const runs = await fetchJSON('/api/runs');
   const list = document.getElementById('run-list');
-  if (!runs || runs.length === 0) {
+  if (runs === null) {
+    list.innerHTML = '<div style="padding:12px;color:var(--red,#ff6b6b);font-size:11px">Serveur inaccessible</div>';
+    return;
+  }
+  if (runs.length === 0) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:11px">Aucun run</div>';
     return;
   }
@@ -498,18 +550,25 @@ async function viewRun(runId) {
   const el = document.getElementById('detail-content');
   el.style.display = 'block';
 
-  const fileHtml = run.files.map(f => `
-    <div class="file-item" onclick="viewFile('${runId}', '${f}')">
-      <span>${f}</span>
+  const eRunId = escapeHtml(runId);
+  const fileHtml = run.files.map(f => {
+    const ef = escapeHtml(f);
+    return `
+    <div class="file-item"
+      onclick="viewFile('${eRunId}', '${ef}')"
+      role="button" tabindex="0"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();viewFile('${eRunId}','${ef}')}">
+      <span>${ef}</span>
       <span style="color:var(--muted)">→</span>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   el.innerHTML = `
-    <h2>Run ${runId.replace(/_/g, ' ')}</h2>
-    <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${run.scenario || 'Lab physique'}</span></div>
+    <h2>Run ${escapeHtml(runId.replace(/_/g, ' '))}</h2>
+    <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
     <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
-    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val">${run.status}</span></div>
+    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val">${escapeHtml(run.status)}</span></div>
     <div class="detail-section">
       <h3>Fichiers (${run.files.length})</h3>
       <div class="file-list">${fileHtml}</div>
@@ -635,7 +694,7 @@ function parseNmapResult(raw) {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && parsed.stdout) raw = parsed.stdout;
-  } catch(_) {}
+  } catch(e) { console.warn('parseNmapResult JSON parse failed', e); }
 
   const hosts = {};
   let currentIp = null;

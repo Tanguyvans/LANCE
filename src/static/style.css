@@ -34,6 +34,8 @@
   --sev-low-bg:      #1e3a1e;
   --sev-info-bg:     #1a2e45;
   --sev-info-fg:     #58a6ff;
+  --sev-medium-fg: var(--orange);
+  --sev-low-fg:    var(--green);
 }
 
 body {
@@ -132,7 +134,6 @@ select, input[type=text] {
   font-size: 12px;
   min-height: 32px;
   margin-bottom: 8px;
-  outline: none;
 }
 select:focus, input:focus { border-color: var(--accent); }
 
@@ -152,7 +153,6 @@ input[type=checkbox] {
 }
 
 button {
-  width: 100%;
   padding: 10px 7px;
   border-radius: 6px;
   border: none;
@@ -165,14 +165,14 @@ button {
 button:hover { opacity: .85; }
 button:disabled { opacity: .4; cursor: default; }
 
-#btn-start  { background: var(--green); color: var(--bg); }
-#btn-stop   { background: var(--red);   color: #fff; margin-top: 6px; display: none; }
+#btn-start  { width: 100%; background: var(--green); color: var(--bg); }
+#btn-stop   { width: 100%; background: var(--red);   color: #fff; margin-top: 6px; display: none; }
 
 /* ── Launch form — hauteur limitée pour laisser place à l'historique ─────── */
 #launch-section {
   flex-shrink: 0;
   overflow-y: auto;
-  max-height: 62%;
+  max-height: calc(100% - 180px);
 }
 
 /* ── Resize handles ──────────────────────────────────────────────────────── */
@@ -265,15 +265,15 @@ button:disabled { opacity: .4; cursor: default; }
 .run-download {
   margin-left: auto;
   background: none;
-  border: 1px solid var(--border) !important;
-  width: auto !important;
-  padding: 4px 8px !important;
-  min-height: 28px !important;
-  font-size: 10px !important;
-  color: var(--muted) !important;
-  border-radius: 4px !important;
+  border: 1px solid var(--border);
+  width: auto;
+  padding: 4px 8px;
+  min-height: 28px;
+  font-size: 10px;
+  color: var(--muted);
+  border-radius: 4px;
 }
-.run-download:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
+.run-download:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ── Graph area ──────────────────────────────────────────────────────────── */
 #graph-wrap {
@@ -408,8 +408,8 @@ button:disabled { opacity: .4; cursor: default; }
 }
 .sev.CRITICAL { background: var(--sev-critical-bg); color: var(--sev-critical-fg); }
 .sev.HIGH     { background: var(--sev-high-bg);     color: var(--sev-high-fg); }
-.sev.MEDIUM   { background: var(--sev-medium-bg);   color: var(--orange); }
-.sev.LOW      { background: var(--sev-low-bg);      color: var(--green); }
+.sev.MEDIUM   { background: var(--sev-medium-bg);   color: var(--sev-medium-fg); }
+.sev.LOW      { background: var(--sev-low-bg);      color: var(--sev-low-fg); }
 .sev.INFO     { background: var(--sev-info-bg);     color: var(--sev-info-fg); }
 
 .file-list { display: flex; flex-direction: column; gap: 4px; }
@@ -584,6 +584,8 @@ button:disabled { opacity: .4; cursor: default; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* ── Phase pill animation ─────────────────────────────────────────────────── */
 @keyframes pulse-border {
@@ -679,4 +681,7 @@ button:disabled { opacity: .4; cursor: default; }
 
   /* Masquer les resize handles sur mobile */
   .resize-handle { display: none; }
+
+  .run-item { min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
+  .run-download { min-height: 44px !important; }
 }
