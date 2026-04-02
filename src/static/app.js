@@ -135,8 +135,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   initResizeHandles();
   initCollapsibleSidebar();
 
-  await loadTopology();
-  await loadRuns();
+  // Load components independently to avoid one crash blocking everything
+  try {
+    await loadTopology();
+  } catch (e) {
+    console.error("Topology load failed", e);
+  }
+
+  try {
+    await loadRuns();
+  } catch (e) {
+    console.error("Runs load failed", e);
+  }
+
   pollStatus();
 });
 
@@ -212,7 +223,6 @@ function initGraphInteractions() {
 }
 
 async function loadTopology(scenarioId = null) {
-  // ... (URL, fetch, etc reste identique jusqu'à cytoscape({...}))
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
@@ -245,7 +255,7 @@ async function loadTopology(scenarioId = null) {
   if (cy) {
     cy.elements().remove();
     cy.add(elements);
-    cy.layout(CY_LAYOUT).run();
+    cy.layout(CY_LAYOUTS.cose).run();
   } else {
     cy = cytoscape({
       container: cyDiv,
@@ -344,13 +354,14 @@ function colorNodeBySeverity(nodeId, severity) {
 
 function _setNodeColor(node, severity) {
   const color = SEV_COLOR[severity] || SEV_COLOR['INFO'];
-  const glow = _cssVar(`--glow-${severity.toLowerCase()}`) || 'none';
+  // Cytoscape shadow properties expect numbers for blur
+  const blurValue = (severity === 'CRITICAL') ? 15 : (severity === 'HIGH') ? 10 : (severity === 'MEDIUM') ? 5 : 0;
 
   node.style({
     'background-color': color,
     'border-color':     color,
     'border-width':     '3px',
-    'shadow-blur':      glow !== 'none' ? 15 : 0,
+    'shadow-blur':      blurValue,
     'shadow-color':     color,
     'shadow-opacity':   0.6,
     'shadow-offset-y':  0,
