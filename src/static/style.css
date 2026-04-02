@@ -587,6 +587,19 @@ button:disabled { opacity: .4; cursor: default; }
 /* Firefox */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
+/* ── Screen-reader only ───────────────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Phase pill animation ─────────────────────────────────────────────────── */
 @keyframes pulse-border {
   0%, 100% { opacity: 1; }

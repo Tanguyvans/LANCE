@@ -79,8 +79,8 @@
       </label>
       <br>
 
-      <button id="btn-start" onclick="startRun()">▶ Lancer le pentest</button>
-      <button id="btn-stop"  onclick="stopRun()">⏹ Arrêter</button>
+      <button id="btn-start">▶ Lancer le pentest</button>
+      <button id="btn-stop">⏹ Arrêter</button>
     </div>
 
     <!-- Run history -->
@@ -98,6 +98,12 @@
   <!-- Graph -->
   <div id="graph-wrap">
     <div id="cy"></div>
+    <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>
+    <table id="topology-table" class="sr-only" aria-label="Topologie réseau">
+      <caption>Liste des équipements du réseau</caption>
+      <thead><tr><th scope="col">ID</th><th scope="col">IP</th><th scope="col">Type</th><th scope="col">Statut sécurité</th></tr></thead>
+      <tbody id="topology-tbody"></tbody>
+    </table>
     <div id="graph-legend"></div>
   </div>
 
@@ -120,17 +126,17 @@
 <div id="log-wrap">
   <div id="log-header">
     <span>Event Log</span>
-    <button id="log-clear" onclick="clearLog()">Effacer</button>
+    <button id="log-clear">Effacer</button>
   </div>
   <div id="log" role="log" aria-live="polite" aria-atomic="false"></div>
 </div>
 
 <!-- ── File modal ───────────────────────────────────────────────────────── -->
-<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" onclick="closeModal(event)">
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div id="modal">
     <div id="modal-header">
       <h3 id="modal-title"></h3>
-      <button id="modal-close" aria-label="Fermer" onclick="closeModal()">×</button>
+      <button id="modal-close" aria-label="Fermer">×</button>
     </div>
     <div id="modal-body"></div>
   </div>

@@ -103,6 +103,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
     loadTopology(this.value ? parseInt(this.value) : null);
   });
+  document.getElementById('btn-start').addEventListener('click', startRun);
+  document.getElementById('btn-stop').addEventListener('click', stopRun);
+  document.getElementById('log-clear').addEventListener('click', clearLog);
+  document.getElementById('modal-close').addEventListener('click', () => closeModal());
+  document.getElementById('modal-overlay').addEventListener('click', closeModal);
 
   initResizeHandles();
 
@@ -120,10 +125,33 @@ const CY_LAYOUT = {
   padding:         30,
 };
 
+function _updateTopologyTable(nodes) {
+  const tbody = document.getElementById('topology-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = nodes.map(n => {
+    const vulns = nodeVulns[n.id] || [];
+    const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+    const worst = order.find(s => vulns.some(v => v.severity === s)) || 'OK';
+    return `<tr>
+      <td>${escapeHtml(n.id)}</td>
+      <td>${escapeHtml(n.ip || '—')}</td>
+      <td>${escapeHtml(n.type || '—')}</td>
+      <td>${escapeHtml(worst)}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function loadTopology(scenarioId = null) {
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
+  const loading = document.getElementById('cy-loading');
+
+  if (!cy && loading) loading.style.display = 'flex';
+
   const data = await fetchJSON(url);
+
+  if (loading) loading.style.display = 'none';
+
   if (!data) {
     cyDiv.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px">Impossible de charger la topologie</div>';
     return;
@@ -198,6 +226,7 @@ async function loadTopology(scenarioId = null) {
   }
 
   buildLegend(data.nodes);
+  _updateTopologyTable(data.nodes);
 }
 
 function buildLegend(nodes) {
@@ -442,6 +471,9 @@ async function fetchVulnResults(runIdOrDir) {
       const worst = order.find(s => vulns.some(v => v.severity === s));
       if (worst) colorNodeBySeverity(nodeId, worst);
     });
+
+    // Refresh accessible table with updated severity states
+    if (cy) _updateTopologyTable(cy.nodes().map(n => n.data()));
   } catch(e) { console.warn('fetchVulnResults failed', e); }
 }
 
