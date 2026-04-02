@@ -124,7 +124,7 @@ body {
 
 label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
 
-select, input[type=text] {
+select, input[type=text], input[type=number] {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -136,6 +136,11 @@ select, input[type=text] {
   margin-bottom: 8px;
 }
 select:focus, input:focus { border-color: var(--accent); }
+
+/* Masquer les flèches spin du champ number */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
 
 .phase-checkboxes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .phase-checkboxes label {
@@ -595,8 +600,27 @@ button:disabled { opacity: .4; cursor: default; }
 .compare-cols > div {
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 12px;
+  padding: 0;
   min-width: 0;
+  overflow: hidden;
+}
+
+.compare-col-header {
+  padding: 8px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-col-body {
+  padding: 12px;
 }
 
 /* ── File viewer modal ───────────────────────────────────────────────────── */

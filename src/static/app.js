@@ -539,7 +539,10 @@ async function openCompare() {
   const pct = v => (v != null ? (v * 100).toFixed(1) + '%' : '—');
 
   const colHtml = (run, score, id) => {
-    if (!run) return `<div style="color:var(--red)">Erreur chargement</div>`;
+    const label = id.replace(/_/g, ' ');
+    if (!run) return `
+      <div class="compare-col-header">${escapeHtml(label)}</div>
+      <div class="compare-col-body" style="color:var(--red)">Erreur chargement</div>`;
     const scoreSection = score?.recall != null ? `
       <div class="detail-section">
         <h3>Score benchmark</h3>
@@ -550,14 +553,16 @@ async function openCompare() {
         <div class="detail-row"><span class="detail-key">Faux positifs</span><span class="detail-val">${score.false_positives} FP</span></div>
       </div>` : '';
     return `
-      <h3 style="font-size:12px;margin-bottom:8px;color:var(--muted)">${escapeHtml(id.replace(/_/g, ' '))}</h3>
-      <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
-      <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
-      <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
-      ${scoreSection}
-      <div class="detail-section">
-        <h3>Fichiers (${run.files.length})</h3>
-        ${run.files.map(f => `<div style="font-size:11px;padding:2px 0;color:var(--muted)">${escapeHtml(f)}</div>`).join('')}
+      <div class="compare-col-header">${escapeHtml(label)}</div>
+      <div class="compare-col-body">
+        <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
+        <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
+        <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
+        ${scoreSection}
+        <div class="detail-section">
+          <h3>Fichiers (${run.files.length})</h3>
+          ${run.files.map(f => `<div style="font-size:11px;padding:2px 0;color:var(--muted)">${escapeHtml(f)}</div>`).join('')}
+        </div>
       </div>`;
   };
 
