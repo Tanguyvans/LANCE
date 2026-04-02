@@ -1,3 +1,0 @@
-# Variables spécifiques au IoT Hub (Raspberry Pi 5)
-host_firewall_rules:
-  - { port: 1883, proto: tcp, comment: "MQTT Broker", src: "192.168.88.0/24" }

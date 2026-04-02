@@ -70,7 +70,7 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
 - `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
 - `src/agent/tools/skill_tools.py` — IoT security skill tools: `list_skills()`, `load_skill()`, `search_knowledge()` (ChromaDB semantic search), `cve_search()` (cache-then-query NVD).
-- `src/agent/tools/deliverable.py` — File I/O: `save_deliverable()` (JSON/Markdown), `read_deliverable()`, `list_deliverables()`.
+- `src/agent/tools/deliverable.py` — File I/O: `save_deliverable()` (JSON/Markdown), `read_deliverable()`, `list_deliverables()`, and `aggregate_device_results()` for parallel merging.
 - `src/agent/validators/__init__.py` — Output validators: `markdown_with_sections()`, `json_valid()`, `file_exists()`.
 
 ### Agent Prompt Templates
@@ -158,11 +158,11 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Cost tracking per phase with per-model pricing
 - Dry-run mode for validation without API calls
 
-### Phase 5 — Benchmark LLM sur scénarios Proxmox (IN PROGRESS)
+### Phase 5 — Benchmark LLM sur scénarios Proxmox ✅
 - VM maître (LXC 200, `192.168.10.30`) sur Proxmox (`192.168.10.100`) — orchestre le pipeline
 - 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
-- Interface Streamlit sur `:8501` (accessible via Tailscale `100.104.69.100`)
-- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart Streamlit à chaque push)
+- Dashboard SPA Temps-réel (HTML/JS/CSS) accessible via Tailscale `100.104.69.100:8501`
+- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart API)
 - Graph tools contextualisés : topologie scénario (`192.168.100.x`) vs lab physique (`192.168.88.x`)
 - ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
 - Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)

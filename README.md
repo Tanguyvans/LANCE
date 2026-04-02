@@ -112,7 +112,7 @@ graph TB
     subgraph Agent["LLM Agent Pipeline (5 phases)"]
         P1[Phase 1<br/>Graph Analysis]
         P2[Phase 2<br/>Recon]
-        P3[Phase 3<br/>Vuln Analysis]
+        P3[Phase 3<br/>Vuln Analysis<br/>(Parallel Sub-agents)]
         P4[Phase 4<br/>Exploitation]
         P5[Phase 5<br/>Report]
     end
@@ -123,7 +123,7 @@ graph TB
         RTOOLS[Recon Tools<br/>YAML definitions]
         HTOOLS[Hardware Tools<br/>HackRF, Flipper<br/>Proxmark3, Kit]
         STOOLS[Skill Tools<br/>Markdown + frontmatter]
-        DTOOLS[Deliverable Tools<br/>JSON/Markdown I/O]
+        DTOOLS[Deliverable Tools<br/>Aggregate Results]
     end
 
     subgraph Knowledge["Knowledge Store"]
@@ -444,8 +444,10 @@ Attack path scoring combines:
 Multi-phase pipeline inspired by Shannon/LLMDFA and CyberStrikeAI:
 
 - **5 specialized agents**: graph analysis → recon → vuln analysis → exploitation → report
-- **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini), MiniMax, GLM, Qwen
-- **Declarative YAML tools**: 9 tools in `definitions/*.yaml` (5 software + 4 hardware), extensible without Python
+- **Parallel Sub-agents (Phase 3)**: Launches per-device vulnerability analysis in parallel for massive performance gains.
+- **Multi-model Pipeline**: Support for choosing different models for each phase (Expert Mode).
+- **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini, DeepSeek, GPT-4o), MiniMax, GLM, Qwen
+- **Declarative YAML tools**: 10 tools including a new `aggregate_device_results` tool for merging parallel findings.
 - **Hardware attack tools**: HackRF One (SDR), Flipper Zero (multi-tool), Proxmark3 Easy (RFID/NFC), Exploit IoT Kit (UART/JTAG/SPI). `type: hardware` returns operator command suggestions
 - **IoT skills**: 7 Markdown skills with YAML frontmatter (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web). Skills cross-reference hardware tools
 - **Knowledge Store**: ChromaDB + Voyage AI (voyage-3.5-lite, 512 dims) for semantic search over CVEs and skills (46 chunks)
@@ -498,7 +500,10 @@ Benchmark reproductible pour évaluer les LLMs sur la détection de vulnérabili
 - **1 commande** pour déployer/détruire un scénario : `./bench.sh deploy s01`
 - Voir [benchmarks/README.md](benchmarks/README.md) pour la documentation complète
 
-### Phase 7 — Dashboard + Advanced Graph Backend (optional)
+### Phase 7 — Command & Control Dashboard ✅
 
-- Real-time web dashboard (network status, alerts, visualized attack paths)
-- If more complex queries are needed: implement a Memgraph or Neo4j backend (the `GraphBackend` ABC is ready for this)
+Real-time SPA Dashboard (HTML/JS/CSS) featuring:
+- **Interactive Graph (Cytoscape.js)**: Focus mode on hover, tactical layouts (Organic, Tree, Target), and cyber-glow severity indicators.
+- **Expert Configuration**: Dynamic multi-model assignment per phase.
+- **Live Monitoring**: SSE-streamed event logs with expandable JSON details.
+- **Benchmark Integration**: Direct scoring visualization (F1, Precision, Recall) against ground truth scenarios.

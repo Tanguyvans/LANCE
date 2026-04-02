@@ -1,4 +1,0 @@
-# Variables spécifiques au Raspberry Pi 5 (MQTT Broker + Zigbee Gateway)
-host_firewall_rules:
-  - { port: 1883, proto: tcp, comment: "MQTT Broker", src: "192.168.88.0/24" }
-  - { port: 8080, proto: tcp, comment: "Zigbee2MQTT UI", src: "192.168.88.0/24" }
