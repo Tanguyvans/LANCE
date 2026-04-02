@@ -2,11 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(gh api:*)",
-      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --extra-vars \"scenario_id=2\")",
       "Bash(ssh:*)",
-      "Bash(passwordauthentication)",
-      "Bash(pubkeyauthentication)",
-      "Bash(port)",
       "Bash(listenaddress\"''''\")",
       "Bash(source venv/bin/activate)",
       "Bash(python3 -c \":*)",
@@ -17,15 +13,11 @@
       "mcp__chrome-devtools__wait_for",
       "mcp__chrome-devtools__take_snapshot",
       "mcp__chrome-devtools__resize_page",
-      "WebFetch(domain:openrouter.ai)",
       "Bash(python3 -m pytest tests/test_tool_loader.py tests/test_cve_lookup.py tests/test_skill_tools.py -v -p no:pytest_ethereum -p no:web3 --tb=short)",
       "Bash(timeout 5 python3 -c ':*)",
       "Bash(python3 -c ':*)",
       "mcp__chrome-devtools__new_page",
-      "mcp__chrome-devtools__click",
-      "Read(//Users/gaspard/Downloads/2026-04-02_150801/**)",
-      "Read(//Users/gaspard/Downloads/2026-04-02_152921/**)",
-      "Bash(pip3 install:*)"
+      "mcp__chrome-devtools__click"
     ]
   }
 }
