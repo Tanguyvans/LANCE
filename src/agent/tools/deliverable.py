@@ -38,6 +38,25 @@ def list_deliverables() -> str:
     return json.dumps({"deliverables": [f.name for f in files if f.is_file()]})
 
 
+def aggregate_device_results(pattern: str = "03_device_*.json") -> str:
+    """Aggregate all device vulnerability files into a single list of results."""
+    results = []
+    for f in sorted(OUTPUT_DIR.glob(pattern)):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                results.extend(data)
+            elif isinstance(data, dict):
+                v = data.get("vulnerabilities", [])
+                if isinstance(v, list):
+                    results.extend(v)
+                else:
+                    results.append(data)
+        except Exception as e:
+            results.append({"error": f"Failed to parse {f.name}: {e}"})
+    return json.dumps({"vulnerabilities": results}, ensure_ascii=False)
+
+
 DELIVERABLE_TOOLS = [
     {
         "name": "save_deliverable",
@@ -81,5 +100,20 @@ DELIVERABLE_TOOLS = [
         "description": "List all available deliverables from previous phases.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
         "function": list_deliverables,
+    },
+    {
+        "name": "aggregate_device_results",
+        "description": "Aggregate all device vulnerability files (03_device_*.json) into a single list of results.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Glob pattern (default: '03_device_*.json')",
+                },
+            },
+            "required": [],
+        },
+        "function": aggregate_device_results,
     },
 ]

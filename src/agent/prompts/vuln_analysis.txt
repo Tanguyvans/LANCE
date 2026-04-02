@@ -11,10 +11,9 @@ Your role is to merge their results into a single deliverable that feeds Phase 4
 If your queue is empty, Phase 4 will be skipped.
 
 ## Methodology
-1. List available deliverables: list_deliverables()
-2. Read each 03_device_*.json file: read_deliverable(filename)
-3. Merge all vulnerabilities into a single list
-4. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
+1. Call aggregate_device_results() to get all vulnerabilities from specialized sub-agents.
+2. If no vulnerabilities found, list_deliverables() to check if files exist.
+3. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
 5. Deduplicate identical vulnerabilities (same device + same CVE or same type+service)
 6. Compute the summary: total, high, medium, low, info
 7. Save the result

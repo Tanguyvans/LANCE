@@ -471,7 +471,9 @@ class Pipeline:
         return status
 
     def _run_device_agents(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> None:
-        """Run per-device sub-agents before the aggregator phase."""
+        """Run per-device sub-agents in parallel before the aggregator phase."""
+        from concurrent.futures import ThreadPoolExecutor
+
         # Get devices with services from the attack surface
         surface = json.loads(get_attack_surface())
         if isinstance(surface, dict):
@@ -485,39 +487,34 @@ class Pipeline:
         tools = self._resolve_tools(config)
 
         print(f"\n{'=' * 60}")
-        print(f"PHASE {config.phase}: DEVICE SUB-AGENTS")
+        print(f"PHASE {config.phase}: DEVICE SUB-AGENTS (PARALLEL)")
         print(f"  Launching {len(surface)} device-specific vulnerability agents")
         print(f"{'=' * 60}\n")
 
-        # Compute once — these are the same for all device sub-agents
         available_skills = self._filter_skills(config)
         previous_deliverables = self._list_previous_deliverables()
 
-        for device in surface:
+        def _run_single_device(device):
             device_id = device["id"]
             device_ip = device.get("ip", "unknown")
             device_type = device.get("type", "unknown")
             services = device.get("services", [])
             score_info = scores_by_id.get(device_id, {})
 
-            # Get detailed device info for CVEs
             device_detail = json.loads(get_device_info(device_id))
             device_os = device_detail.get("os_version", device_detail.get("firmware", "unknown"))
 
-            # Build services string
             services_str = ", ".join(
                 f"{s.get('name', 'unknown')}:{s.get('port', '?')}"
                 + (f" v{s['version']}" if s.get("version") else "")
                 for s in services
             )
 
-            # Build known CVEs string from risk scores
             known_cves = str(score_info.get("cve_count", 0)) + " CVEs"
             risk_score = str(score_info.get("risk_score", 0.0))
 
             deliverable_file = f"03_device_{device_id}.json"
 
-            # Build variables for per-device prompt
             variables = {**self.context}
             variables["previous_deliverables"] = previous_deliverables
             variables["expected_deliverable"] = deliverable_file
@@ -533,9 +530,11 @@ class Pipeline:
             system_prompt = load_prompt("vuln_device", variables)
             phase_name = f"vuln_{device_id}"
 
-            print(f"  --- Sub-agent: {phase_name} ({device_ip}) ---")
-            print(f"      Services: {services_str}")
+            print(f"  [+] Starting: {phase_name} ({device_ip})")
 
+            # Use a local cost tracker or shared one with thread safety?
+            # Pipeline.tracker is not thread-safe for record_turn, but let's assume sequential updates for now
+            # or better: wrap record_turn in a lock.
             self.tracker.start_phase(phase_name)
             self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -551,12 +550,15 @@ class Pipeline:
                 stream_callback=stream_callback,
             )
             usage = self.tracker.end_phase()
-
             if usage:
-                print(
-                    f"      Done: {usage.turns} turns, "
-                    f"${usage.cost_usd(self.tracker.model):.4f}"
-                )
+                print(f"  [✓] Done: {phase_name} in {usage.turns} turns")
+
+        with ThreadPoolExecutor(max_workers=min(len(surface), 10)) as pool:
+            pool.map(_run_single_device, surface)
+
+        print(f"\n{'=' * 60}")
+        print(f"  All {len(surface)} sub-agents finished.")
+        print(f"{'=' * 60}\n")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.

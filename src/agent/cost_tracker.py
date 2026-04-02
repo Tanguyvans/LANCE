@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import threading
 from dataclasses import dataclass, field
 
 # Pricing per million tokens (USD)
@@ -65,63 +66,71 @@ class PhaseUsage:
 class CostTracker:
     model: str = ""
     phases: list[PhaseUsage] = field(default_factory=list)
-    _current: PhaseUsage | None = field(default=None, repr=False)
-    _start_time: float = field(default=0.0, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _thread_local: threading.local = field(default_factory=threading.local, repr=False)
 
     def start_phase(self, agent_name: str) -> None:
-        self._current = PhaseUsage(agent_name=agent_name, model=self.model)
-        self._start_time = time.monotonic()
+        self._thread_local.current = PhaseUsage(agent_name=agent_name, model=self.model)
+        self._thread_local.start_time = time.monotonic()
 
     def record_turn(
         self, input_tokens: int, output_tokens: int, tool_call_count: int = 0
     ) -> None:
-        if self._current is None:
+        current = getattr(self._thread_local, 'current', None)
+        if current is None:
             return
-        self._current.input_tokens += input_tokens
-        self._current.output_tokens += output_tokens
-        self._current.tool_calls += tool_call_count
-        self._current.turns += 1
+        with self._lock:
+            current.input_tokens += input_tokens
+            current.output_tokens += output_tokens
+            current.tool_calls += tool_call_count
+            current.turns += 1
 
     def end_phase(self) -> PhaseUsage | None:
-        if self._current is None:
+        current = getattr(self._thread_local, 'current', None)
+        start_time = getattr(self._thread_local, 'start_time', 0.0)
+        if current is None:
             return None
-        self._current.duration_s = time.monotonic() - self._start_time
-        self.phases.append(self._current)
-        usage = self._current
-        self._current = None
+        current.duration_s = time.monotonic() - start_time
+        with self._lock:
+            self.phases.append(current)
+        usage = current
+        self._thread_local.current = None
         return usage
 
     def total_cost(self) -> float:
-        return sum(p.cost_usd(self.model) for p in self.phases)
+        with self._lock:
+            return sum(p.cost_usd(self.model) for p in self.phases)
 
     def total_tokens(self) -> tuple[int, int]:
-        return (
-            sum(p.input_tokens for p in self.phases),
-            sum(p.output_tokens for p in self.phases),
-        )
+        with self._lock:
+            return (
+                sum(p.input_tokens for p in self.phases),
+                sum(p.output_tokens for p in self.phases),
+            )
 
     def summary(self) -> dict:
         in_tok, out_tok = self.total_tokens()
-        return {
-            "model": self.model,
-            "total_cost_usd": round(self.total_cost(), 4),
-            "total_input_tokens": in_tok,
-            "total_output_tokens": out_tok,
-            "total_turns": sum(p.turns for p in self.phases),
-            "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
-            "phases": [
-                {
-                    "agent": p.agent_name,
-                    "turns": p.turns,
-                    "input_tokens": p.input_tokens,
-                    "output_tokens": p.output_tokens,
-                    "tool_calls": p.tool_calls,
-                    "cost_usd": round(p.cost_usd(self.model), 4),
-                    "duration_s": round(p.duration_s, 1),
-                }
-                for p in self.phases
-            ],
-        }
+        with self._lock:
+            return {
+                "model": self.model,
+                "total_cost_usd": round(self.total_cost(), 4),
+                "total_input_tokens": in_tok,
+                "total_output_tokens": out_tok,
+                "total_turns": sum(p.turns for p in self.phases),
+                "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
+                "phases": [
+                    {
+                        "agent": p.agent_name,
+                        "turns": p.turns,
+                        "input_tokens": p.input_tokens,
+                        "output_tokens": p.output_tokens,
+                        "tool_calls": p.tool_calls,
+                        "cost_usd": round(p.cost_usd(self.model), 4),
+                        "duration_s": round(p.duration_s, 1),
+                    }
+                    for p in self.phases
+                ],
+            }
 
     def to_json(self) -> str:
         """Return the cost summary as a JSON string."""
@@ -136,7 +145,9 @@ class CostTracker:
             f"{'Cost ($)':>9} {'Duration':>9}"
         )
         print("-" * 72)
-        for p in self.phases:
+        with self._lock:
+            phases_copy = list(self.phases)
+        for p in phases_copy:
             cost = p.cost_usd(self.model)
             print(
                 f"{p.agent_name:<22} {p.turns:>6} {p.input_tokens:>11,} "
@@ -145,9 +156,11 @@ class CostTracker:
         print("-" * 72)
         in_tok, out_tok = self.total_tokens()
         total = self.total_cost()
-        total_dur = sum(p.duration_s for p in self.phases)
+        with self._lock:
+            total_turns = sum(p.turns for p in self.phases)
+            total_dur = sum(p.duration_s for p in self.phases)
         print(
-            f"{'TOTAL':<22} {sum(p.turns for p in self.phases):>6} "
+            f"{'TOTAL':<22} {total_turns:>6} "
             f"{in_tok:>11,} {out_tok:>11,} {total:>9.4f} {total_dur:>8.0f}s"
         )
         print("=" * 72)
