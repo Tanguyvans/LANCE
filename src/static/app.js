@@ -275,6 +275,8 @@ async function loadTopology(scenarioId = null) {
     cy.elements().remove();
     cy.add(elements);
     cy.layout(CY_LAYOUTS.cose).run();
+    cy.resize();
+    cy.fit();
   } else {
     cy = cytoscape({
       container: cyDiv,
@@ -283,61 +285,57 @@ async function loadTopology(scenarioId = null) {
         {
           selector: 'node',
           style: {
-            'background-color':  'data(color)',
-            'label':             'data(label)',
-            'color':             '#e6edf3',
-            'font-size':         '10px',
-            'text-valign':       'bottom',
-            'text-halign':       'center',
-            'text-margin-y':     '4px',
-            'width':             '36px',
-            'height':            '36px',
-            'border-width':      '2px',
-            'border-color':      'rgba(255,255,255,.1)',
-            'text-outline-width': '2px',
-            'text-outline-color': '#0d1117',
+            'background-color': '#3498db', // Fallback color
+            'background-image': 'none',
+            'label': 'data(label)',
+            'color': '#e6edf3',
+            'font-size': '10px',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': '4px',
+            'width': '30px',
+            'height': '30px',
+            'border-width': '2px',
+            'border-color': 'rgba(255,255,255,.2)',
           },
         },
         {
-          selector: 'node:selected',
+          selector: 'node[color]',
           style: {
-            'border-color': '#1f6feb',
-            'border-width': '3px',
-          },
+            'background-color': 'data(color)',
+          }
         },
         {
           selector: 'edge',
           style: {
-            'line-color':           'data(color)',
-            'target-arrow-color':   'data(color)',
-            'target-arrow-shape':   'triangle',
-            'curve-style':          'bezier',
-            'width':                2,
-            'arrow-scale':          0.8,
-            'opacity':              0.7,
+            'line-color': '#444',
+            'target-arrow-color': '#444',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'width': 1,
+            'opacity': 0.5,
           },
         },
         {
-          selector: '.dimmed',
+          selector: 'edge[color]',
           style: {
-            'opacity': 0.15,
-            'z-index': 1,
-          },
-        },
-        {
-          selector: '.highlighted',
-          style: {
-            'z-index': 100,
-            'width': '42px',
-            'height': '42px',
-          },
-        },
+            'line-color': 'data(color)',
+            'target-arrow-color': 'data(color)',
+          }
+        }
       ],
-      layout: CY_LAYOUTS.cose,
+      layout: { name: 'grid', padding: 50 }, // Use simple grid first
     });
 
     initGraphInteractions();
     initGraphToolbar();
+    
+    // Switch to organic layout and fit after DOM settled
+    setTimeout(() => {
+      cy.resize();
+      cy.layout(CY_LAYOUTS.cose).run();
+      cy.fit();
+    }, 200);
   }
 
   buildLegend(data.nodes);
