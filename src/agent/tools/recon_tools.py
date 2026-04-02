@@ -88,10 +88,9 @@ def _identify_vendor(mac: str) -> str:
 
 def _parse_arp_line(line: str) -> dict | None:
     """Parse a single arp -a output line into structured data."""
-    import re
     # Format: ? (192.168.88.202) at cc:50:e3:9c:13:14 on en0 ifscope [ethernet]
     # Or: router.lan (192.168.88.1) at 4:f4:1c:51:c1:3b on en0 ifscope [ethernet]
-    m = re.match(r"(\S+)\s+\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+(\S+)\s+on\s+(\S+)", line)
+    m = re.search(r"(\S+)\s+\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+(\S+)\s+on\s+(\S+)", line)
     if not m:
         return None
     hostname, ip, mac, interface = m.groups()
@@ -107,7 +106,7 @@ def _parse_arp_line(line: str) -> dict | None:
     }
 
 
-def arp_scan() -> str:
+def arp_scan(**kwargs) -> str:
     """Double ping-sweep then dump ARP table for full Layer 2 discovery."""
     import concurrent.futures
     import time
@@ -116,15 +115,17 @@ def arp_scan() -> str:
     log = logging.getLogger(__name__)
     try:
         from src.agent.tools.graph_tools import _scenario_topology
-        subnet = _scenario_topology["subnet"].rsplit(".", 1)[0] if _scenario_topology else "192.168.88"
+        # Ensure we have a string here
+        subnet = str(_scenario_topology.get("subnet", "192.168.88.0")).rsplit(".", 1)[0] if _scenario_topology else "192.168.88"
     except Exception:
         subnet = "192.168.88"
 
     def ping_host(ip: str) -> None:
         try:
+            # Force text=True to avoid byte errors
             subprocess.run(
                 ["ping", "-c", "1", "-W", "1", ip],
-                capture_output=True, timeout=5,
+                capture_output=True, text=True, timeout=5,
             )
         except Exception:
             pass  # Ignore all errors — we just want to populate ARP cache

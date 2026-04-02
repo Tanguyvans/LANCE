@@ -37,24 +37,50 @@
     <div class="sidebar-section" id="launch-section">
       <h3>New Run</h3>
 
-      <label for="sel-model">Model</label>
+      <label for="sel-model">Model global</label>
       <select id="sel-model">
         <option value="google/gemini-2.0-flash-001">gemini-2.0-flash (recommandé)</option>
         <option value="deepseek/deepseek-chat-v3-0324">deepseek-v3</option>
-        <option value="google/gemini-2.5-flash">gemini-2.5-flash</option>
         <option value="anthropic/claude-sonnet-4">claude-sonnet-4</option>
-        <option value="google/gemini-2.5-pro-preview">gemini-2.5-pro</option>
+        <option value="google/gemini-2.5-flash">gemini-2.5-flash</option>
         <option value="openai/gpt-4o">gpt-4o</option>
         <option value="meta-llama/llama-3.3-70b-instruct">llama-3.3-70b</option>
-        <option disabled>── Gratuit ──────────────────</option>
-        <option value="google/gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-        <option value="minimax/minimax-m2.5:free">minimax-m2.5</option>
-        <option value="nvidia/nemotron-3-super-120b-a12b:free">nemotron-3-super-120b</option>
-        <option value="nvidia/nemotron-3-nano-30b-a3b:free">nemotron-3-nano-30b</option>
-        <option value="stepfun/step-3.5-flash:free">step-3.5-flash</option>
-        <option disabled>── Expérimental ─────────────</option>
-        <option value="qwen/qwen3.6-plus-preview:free">qwen3.6-plus-preview</option>
       </select>
+
+      <div style="margin: 10px 0 5px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="cb-multi-model">
+          <span style="font-weight:600; color:var(--accent);">Mode Multi-modèle (Expert)</span>
+        </label>
+      </div>
+
+      <div id="multi-model-config" style="display:none; padding:8px; background:rgba(255,255,255,0.03); border-radius:6px; margin-bottom:12px; border:1px dashed var(--border);">
+        <div style="font-size:10px; color:var(--muted); margin-bottom:8px;">Choisissez un modèle par phase :</div>
+        <div class="phase-model-row" style="margin-bottom:6px;">
+          <label style="font-size:10px;">Phase 1 & 2 (Recon)</label>
+          <select class="sel-phase-model" data-phases="1,2" style="font-size:11px; padding:4px; min-height:28px;">
+            <option value="">(Global)</option>
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+          </select>
+        </div>
+        <div class="phase-model-row" style="margin-bottom:6px;">
+          <label style="font-size:10px;">Phase 3 (Vuln Analysis)</label>
+          <select class="sel-phase-model" data-phases="3" style="font-size:11px; padding:4px; min-height:28px;">
+            <option value="">(Global)</option>
+            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
+          </select>
+        </div>
+        <div class="phase-model-row" style="margin-bottom:6px;">
+          <label style="font-size:10px;">Phase 4 & 5 (Exploit & Report)</label>
+          <select class="sel-phase-model" data-phases="4,5" style="font-size:11px; padding:4px; min-height:28px;">
+            <option value="">(Global)</option>
+            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+          </select>
+        </div>
+      </div>
 
       <label for="sel-scenario">Scénario</label>
       <select id="sel-scenario">
@@ -106,6 +132,13 @@
 
   <!-- Graph -->
   <div id="graph-wrap">
+    <div id="graph-toolbar">
+      <button class="graph-btn active" id="layout-cose" title="Vue Organique (Default)">⚛</button>
+      <button class="graph-btn" id="layout-breadth" title="Vue Hiérarchique (Tree)">🌲</button>
+      <button class="graph-btn" id="layout-concentric" title="Vue Concentrique (Target)">🎯</button>
+      <div style="width:1px; background:var(--border); margin:4px 2px;"></div>
+      <button class="graph-btn" id="graph-fit" title="Ajuster la vue (Fit)">⛶</button>
+    </div>
     <div id="cy"></div>
     <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>
     <table id="topology-table" class="sr-only" aria-label="Topologie réseau">

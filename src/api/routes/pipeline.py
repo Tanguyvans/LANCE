@@ -37,6 +37,7 @@ class StartRequest(BaseModel):
     phases: list[int] | None = None
     auto_teardown: bool = True
     max_cost_usd: float | None = None
+    phase_models: dict[int, str] | None = None
 
 
 def _pipeline_thread(req: StartRequest):
@@ -48,13 +49,20 @@ def _pipeline_thread(req: StartRequest):
         from src.agent.provider import LLMProvider
         from src.agent.pipeline import Pipeline
 
-        provider = LLMProvider(provider=req.provider, model=req.model)
+        # If phase_models is provided, we'll instantiate providers dynamically in Pipeline
+        # but we need a default one for the init and cost tracking setup
+        default_model = req.model
+        if req.phase_models and req.phases and req.phases[0] in req.phase_models:
+            default_model = req.phase_models[req.phases[0]]
+
+        provider = LLMProvider(provider=req.provider, model=default_model)
         pipeline = Pipeline(
             provider=provider,
             phases=req.phases or None,
             scenario_id=req.scenario_id,
             auto_teardown=req.auto_teardown,
             max_cost_usd=req.max_cost_usd,
+            phase_models=req.phase_models, # Pass the map to the pipeline
         )
 
         def callback(event: dict):

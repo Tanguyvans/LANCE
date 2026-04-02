@@ -112,6 +112,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('compare-overlay').addEventListener('click', closeCompare);
   document.getElementById('btn-compare').addEventListener('click', openCompare);
 
+  // Multi-model toggle
+  document.getElementById('cb-multi-model').addEventListener('change', function() {
+    document.getElementById('multi-model-config').style.display = this.checked ? 'block' : 'none';
+  });
+
   // View nav (Dashboard / Benchmark)
   document.querySelectorAll('.view-btn').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
@@ -136,31 +141,78 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── Cytoscape graph ────────────────────────────────────────────────────────
-const CY_LAYOUT = {
-  name:            'cose',
-  animate:         false,
-  nodeRepulsion:   8000,
-  idealEdgeLength: 120,
-  padding:         30,
+const CY_LAYOUTS = {
+  cose: {
+    name:            'cose',
+    animate:         true,
+    animationDuration: 500,
+    nodeRepulsion:   8000,
+    idealEdgeLength: 120,
+    padding:         40,
+  },
+  breadthfirst: {
+    name:            'breadthfirst',
+    directed:        true,
+    padding:         40,
+    animate:         true,
+    animationDuration: 500,
+    spacingFactor:   1.2,
+  },
+  concentric: {
+    name:            'concentric',
+    animate:         true,
+    animationDuration: 500,
+    padding:         40,
+    concentric:      function(node){ return node.degree(); },
+    levelWidth:      function(nodes){ return 2; },
+  }
 };
 
-function _updateTopologyTable(nodes) {
-  const tbody = document.getElementById('topology-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = nodes.map(n => {
-    const vulns = nodeVulns[n.id] || [];
-    const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
-    const worst = order.find(s => vulns.some(v => v.severity === s)) || 'OK';
-    return `<tr>
-      <td>${escapeHtml(n.id)}</td>
-      <td>${escapeHtml(n.ip || '—')}</td>
-      <td>${escapeHtml(n.type || '—')}</td>
-      <td>${escapeHtml(worst)}</td>
-    </tr>`;
-  }).join('');
+function initGraphToolbar() {
+  const layouts = ['cose', 'breadthfirst', 'concentric'];
+  layouts.forEach(l => {
+    const btn = document.getElementById(`layout-${l.split('first')[0]}`);
+    if (btn) {
+      btn.onclick = () => {
+        document.querySelectorAll('.graph-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        cy.layout(CY_LAYOUTS[l]).run();
+      };
+    }
+  });
+
+  document.getElementById('graph-fit').onclick = () => {
+    cy.animate({ fit: { padding: 40 }, duration: 500 });
+  };
+}
+
+function initGraphInteractions() {
+  if (!cy) return;
+
+  // Mode Focus (Highlight on hover)
+  cy.on('mouseover', 'node', e => {
+    const node = e.target;
+    const neighborhood = node.neighborhood().add(node);
+
+    cy.elements().addClass('dimmed');
+    neighborhood.removeClass('dimmed');
+    node.addClass('highlighted');
+
+    document.body.style.cursor = 'pointer';
+  });
+
+  cy.on('mouseout', 'node', e => {
+    cy.elements().removeClass('dimmed');
+    e.target.removeClass('highlighted');
+    document.body.style.cursor = '';
+  });
+
+  cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
+  cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
 }
 
 async function loadTopology(scenarioId = null) {
+  // ... (URL, fetch, etc reste identique jusqu'à cytoscape({...}))
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
@@ -215,6 +267,8 @@ async function loadTopology(scenarioId = null) {
             'border-color':      'rgba(255,255,255,.1)',
             'text-outline-width': '2px',
             'text-outline-color': '#0d1117',
+            'transition-property': 'opacity, background-color, border-color, width, height',
+            'transition-duration': '0.2s',
           },
         },
         {
@@ -234,14 +288,31 @@ async function loadTopology(scenarioId = null) {
             'width':                2,
             'arrow-scale':          0.8,
             'opacity':              0.7,
+            'transition-property': 'opacity',
+            'transition-duration': '0.2s',
+          },
+        },
+        {
+          selector: '.dimmed',
+          style: {
+            'opacity': 0.15,
+            'z-index': 1,
+          },
+        },
+        {
+          selector: '.highlighted',
+          style: {
+            'z-index': 100,
+            'width': '42px',
+            'height': '42px',
           },
         },
       ],
-      layout: CY_LAYOUT,
+      layout: CY_LAYOUTS.cose,
     });
 
-    cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
-    cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
+    initGraphInteractions();
+    initGraphToolbar();
   }
 
   buildLegend(data.nodes);
@@ -364,6 +435,19 @@ async function startRun() {
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
 
+  // Multi-model config
+  let phaseModels = null;
+  if (document.getElementById('cb-multi-model').checked) {
+    phaseModels = {};
+    document.querySelectorAll('.sel-phase-model').forEach(sel => {
+      if (sel.value) {
+        sel.dataset.phases.split(',').forEach(p => {
+          phaseModels[parseInt(p)] = sel.value;
+        });
+      }
+    });
+  }
+
   // Reset graph colors and state
   resetNodeColors();
   nodeVulns = {};
@@ -384,6 +468,7 @@ async function startRun() {
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
+    phase_models: phaseModels, // Send the per-phase model map
   };
 
   const res = await fetch('/api/pipeline/start', {

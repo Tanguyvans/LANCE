@@ -48,6 +48,7 @@ class Pipeline:
         scenario_id: int | None = None,
         auto_teardown: bool = True,
         max_cost_usd: float | None = None,
+        phase_models: dict[int | str, str] | None = None,
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -55,6 +56,7 @@ class Pipeline:
         self.scenario_id = scenario_id
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
+        self.phase_models = phase_models or {}
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -143,6 +145,16 @@ class Pipeline:
         results: dict[str, str] = {}
 
         for agent_config in agents:
+            # Switch provider/model if specific model set for this phase
+            phase_num = agent_config.phase
+            # Handle keys from JSON as strings or ints
+            target_model = self.phase_models.get(phase_num) or self.phase_models.get(str(phase_num))
+            if target_model and target_model != self.provider.model:
+                log.info("Switching to phase %d specific model: %s", phase_num, target_model)
+                self.provider = LLMProvider(provider="openrouter", model=target_model)
+                # Note: CostTracker maintains the previous phases, but we update the current model
+                self.tracker.model = target_model
+
             # Honour stop request between phases
             if stop_event and stop_event.is_set():
                 log.info("Pipeline stop requested — halting before phase %d", agent_config.phase)

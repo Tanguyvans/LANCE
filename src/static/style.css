@@ -328,23 +328,63 @@ button:disabled { opacity: .4; cursor: default; }
   position: relative;
 }
 
-#cy {
-  flex: 1;
-  background: var(--bg);
+/* ── Graph Toolbar ───────────────────────────────────────────────────────── */
+#graph-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  background: rgba(22, 27, 34, 0.85);
+  border: 1px solid var(--border);
+  padding: 4px;
+  border-radius: 8px;
+  z-index: 20;
+  backdrop-filter: blur(4px);
 }
 
+.graph-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 16px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.graph-btn:hover {
+  background: var(--white-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.graph-btn.active {
+  background: var(--accent-bg-20);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Graph Legend (Ajustement) ───────────────────────────────────────────── */
 #graph-legend {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
-  background: rgba(22,27,34,.85);
+  bottom: 12px;
+  left: 12px;
+  background: rgba(22, 27, 34, 0.85);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 10px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
+  z-index: 15;
+  backdrop-filter: blur(4px);
 }
 
 .legend-item {
