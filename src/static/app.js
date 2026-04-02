@@ -369,17 +369,14 @@ function colorNodeBySeverity(nodeId, severity) {
 
 function _setNodeColor(node, severity) {
   const color = SEV_COLOR[severity] || SEV_COLOR['INFO'];
-  // Cytoscape shadow properties expect numbers for blur
-  const blurValue = (severity === 'CRITICAL') ? 15 : (severity === 'HIGH') ? 10 : (severity === 'MEDIUM') ? 5 : 0;
+  // Use border-width to simulate glow as shadow-blur is rejected by this version of Cytoscape
+  const borderWidth = (severity === 'CRITICAL') ? '8px' : (severity === 'HIGH') ? '6px' : (severity === 'MEDIUM') ? '4px' : '3px';
 
   node.style({
     'background-color': color,
     'border-color':     color,
-    'border-width':     '3px',
-    'shadow-blur':      blurValue,
-    'shadow-color':     color,
-    'shadow-opacity':   0.6,
-    'shadow-offset-y':  0,
+    'border-width':     borderWidth,
+    'border-opacity':   0.6
   });
 }
 
