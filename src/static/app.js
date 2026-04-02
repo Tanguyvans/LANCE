@@ -222,6 +222,22 @@ function initGraphInteractions() {
   cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
 }
 
+function _updateTopologyTable(nodes) {
+  const tbody = document.getElementById('topology-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = nodes.map(n => {
+    const vulns = nodeVulns[n.id] || [];
+    const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+    const worst = order.find(s => vulns.some(v => v.severity === s)) || 'OK';
+    return `<tr>
+      <td>${escapeHtml(n.id)}</td>
+      <td>${escapeHtml(n.ip || '—')}</td>
+      <td>${escapeHtml(n.type || '—')}</td>
+      <td>${escapeHtml(worst)}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function loadTopology(scenarioId = null) {
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
@@ -241,12 +257,15 @@ async function loadTopology(scenarioId = null) {
   nodeVulns = {};
   nodeHosts = {};
 
+  const nodes = data.nodes || [];
+  const edges = data.edges || [];
+
   const elements = [
-    ...data.nodes.map(n => ({
+    ...nodes.map(n => ({
       group: 'nodes',
       data: { ...n, _origColor: n.color },
     })),
-    ...data.edges.map(e => ({
+    ...edges.map(e => ({
       group: 'edges',
       data: { ...e },
     })),
@@ -277,8 +296,6 @@ async function loadTopology(scenarioId = null) {
             'border-color':      'rgba(255,255,255,.1)',
             'text-outline-width': '2px',
             'text-outline-color': '#0d1117',
-            'transition-property': 'opacity, background-color, border-color, width, height',
-            'transition-duration': '0.2s',
           },
         },
         {
@@ -298,8 +315,6 @@ async function loadTopology(scenarioId = null) {
             'width':                2,
             'arrow-scale':          0.8,
             'opacity':              0.7,
-            'transition-property': 'opacity',
-            'transition-duration': '0.2s',
           },
         },
         {
