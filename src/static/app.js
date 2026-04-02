@@ -157,23 +157,24 @@ const CY_LAYOUTS = {
     name:            'cose',
     animate:         true,
     animationDuration: 500,
-    nodeRepulsion:   8000,
-    idealEdgeLength: 120,
-    padding:         40,
+    nodeRepulsion:   12000,  // Augmenté (était 8000)
+    idealEdgeLength: 150,    // Augmenté (était 120)
+    padding:         50,
   },
   breadthfirst: {
     name:            'breadthfirst',
     directed:        true,
-    padding:         40,
+    padding:         50,
     animate:         true,
     animationDuration: 500,
-    spacingFactor:   1.2,
+    spacingFactor:   1.5,    // Augmenté (était 1.2)
   },
   concentric: {
     name:            'concentric',
     animate:         true,
     animationDuration: 500,
-    padding:         40,
+    padding:         50,
+    minNodeSpacing:  80,     // Ajouté pour éviter l'écrasement
     concentric:      function(node){ return node.degree(); },
     levelWidth:      function(nodes){ return 2; },
   }
@@ -322,6 +323,28 @@ async function loadTopology(scenarioId = null) {
             'line-color': 'data(color)',
             'target-arrow-color': 'data(color)',
           }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-color': '#1f6feb',
+            'border-width': '4px',
+          },
+        },
+        {
+          selector: '.dimmed',
+          style: {
+            'opacity': 0.2,
+            'z-index': 1,
+          },
+        },
+        {
+          selector: '.highlighted',
+          style: {
+            'z-index': 100,
+            'width': '40px',
+            'height': '40px',
+          },
         }
       ],
       layout: { name: 'grid', padding: 50 }, // Use simple grid first
