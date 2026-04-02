@@ -121,7 +121,7 @@ def get_benchmark():
                 try:
                     from src.benchmark.evaluator import evaluate
                     from dataclasses import asdict
-                    result = evaluate(str(d), str(gt_path))
+                    result = evaluate(d, gt_path)
                     entry["score"] = asdict(result)
                 except Exception:
                     pass
@@ -145,29 +145,6 @@ def get_run(run_id: str):
         "scenario": _detect_scenario(run_dir),
         "status": _run_status(run_dir),
     }
-
-
-@router.get("/{run_id}/{filename}")
-def get_run_file(run_id: str, filename: str):
-    """Return the content of a specific deliverable file."""
-    run_dir = OUTPUT_DIR / run_id
-    filepath = run_dir / filename
-    if not run_dir.exists() or not filepath.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    # Security: ensure path stays within run_dir
-    try:
-        filepath.resolve().relative_to(run_dir.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid path")
-
-    content = filepath.read_text(errors="replace")
-    ext = filepath.suffix.lower()
-    if ext == ".json":
-        try:
-            return {"filename": filename, "type": "json", "content": json.loads(content)}
-        except json.JSONDecodeError:
-            pass
-    return {"filename": filename, "type": "text", "content": content}
 
 
 @router.get("/{run_id}/score")
@@ -200,7 +177,7 @@ def score_run(run_id: str):
     try:
         from src.benchmark.evaluator import evaluate
         from dataclasses import asdict
-        result = evaluate(str(run_dir), str(gt_path))
+        result = evaluate(run_dir, gt_path)
         return asdict(result)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}")
@@ -224,3 +201,26 @@ def download_run(run_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={run_id}.zip"},
     )
+
+
+@router.get("/{run_id}/{filename}")
+def get_run_file(run_id: str, filename: str):
+    """Return the content of a specific deliverable file."""
+    run_dir = OUTPUT_DIR / run_id
+    filepath = run_dir / filename
+    if not run_dir.exists() or not filepath.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    # Security: ensure path stays within run_dir
+    try:
+        filepath.resolve().relative_to(run_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    content = filepath.read_text(errors="replace")
+    ext = filepath.suffix.lower()
+    if ext == ".json":
+        try:
+            return {"filename": filename, "type": "json", "content": json.loads(content)}
+        except json.JSONDecodeError:
+            pass
+    return {"filename": filename, "type": "text", "content": content}
