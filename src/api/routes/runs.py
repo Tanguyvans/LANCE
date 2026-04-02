@@ -82,6 +82,55 @@ def list_runs():
     return runs
 
 
+@router.get("/benchmark")
+def get_benchmark():
+    """Return all scenario runs with their benchmark scores."""
+    if not OUTPUT_DIR.exists():
+        return []
+
+    results = []
+    for d in sorted(OUTPUT_DIR.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        scenario = _detect_scenario(d)
+        if not scenario:
+            continue  # Only include scenario runs in benchmark view
+
+        entry = {
+            "id": d.name,
+            "scenario": scenario,
+            "cost": _extract_cost(d),
+            "status": _run_status(d),
+            "model": None,
+            "score": None,
+        }
+
+        meta_file = d / "scenario_meta.json"
+        if meta_file.exists():
+            try:
+                meta = json.loads(meta_file.read_text())
+                entry["model"] = meta.get("model")
+            except Exception:
+                pass
+
+        vuln_file = d / "03_vuln_analysis.json"
+        if vuln_file.exists():
+            sid = scenario.replace("S", "")
+            gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{sid}.yaml"
+            if gt_path.exists():
+                try:
+                    from src.benchmark.evaluator import evaluate
+                    from dataclasses import asdict
+                    result = evaluate(str(d), str(gt_path))
+                    entry["score"] = asdict(result)
+                except Exception:
+                    pass
+
+        results.append(entry)
+
+    return results
+
+
 @router.get("/{run_id}")
 def get_run(run_id: str):
     """Return metadata and file list for a specific run."""

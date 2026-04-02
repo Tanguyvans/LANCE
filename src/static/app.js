@@ -112,6 +112,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('compare-overlay').addEventListener('click', closeCompare);
   document.getElementById('btn-compare').addEventListener('click', openCompare);
 
+  // View nav (Dashboard / Benchmark)
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.view));
+  });
+
+  // Detail tabs
+  document.getElementById('detail-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.detail-tab');
+    if (tab) switchDetailTab(tab.dataset.tab);
+  });
+
+  // Benchmark controls
+  document.getElementById('bm-refresh').addEventListener('click', loadBenchmark);
+  document.getElementById('bm-filter-scenario').addEventListener('change', renderBenchmarkTable);
+
   initResizeHandles();
 
   await loadTopology();
@@ -275,6 +290,8 @@ function showNodeDetail(data) {
   document.getElementById('detail-placeholder').style.display = 'none';
   const el = document.getElementById('detail-content');
   el.style.display = 'block';
+  document.getElementById('detail-node-view').hidden = false;
+  document.getElementById('detail-run-view').hidden = true;
 
   const vulns = nodeVulns[data.id] || [];
   const hostInfo = nodeHosts[data.ip] || null;
@@ -302,7 +319,7 @@ function showNodeDetail(data) {
     </div>
   `).join('');
 
-  el.innerHTML = `
+  document.getElementById('detail-node-view').innerHTML = `
     <h2>
       <span style="background:${escapeHtml(data.color||'#3498db')};border-radius:4px;padding:2px 6px;font-size:11px">${escapeHtml(data.type||'node')}</span>
       ${escapeHtml(data.id)}
@@ -672,34 +689,29 @@ async function viewRun(runId) {
   await loadTopology(scenarioId);
 
   // Sync dropdown
-  const sel = document.getElementById('sel-scenario');
-  sel.value = scenarioId !== null ? String(scenarioId) : '';
+  document.getElementById('sel-scenario').value = scenarioId !== null ? String(scenarioId) : '';
 
-  // Show files in detail panel
+  // Show run view in detail panel
   document.getElementById('detail-placeholder').style.display = 'none';
-  const el = document.getElementById('detail-content');
-  el.style.display = 'block';
+  document.getElementById('detail-content').style.display = 'block';
+  document.getElementById('detail-node-view').hidden = true;
+  document.getElementById('detail-run-view').hidden = false;
+
+  // Title
+  const label = runId.replace(/_/g, ' ');
+  document.getElementById('detail-run-title').textContent = label;
+
+  // Ensure Info tab is active
+  switchDetailTab('info');
 
   const eRunId = escapeHtml(runId);
-  const fileHtml = run.files.map(f => {
-    const ef = escapeHtml(f);
-    return `
-    <div class="file-item"
-      onclick="viewFile('${eRunId}', '${ef}')"
-      role="button" tabindex="0"
-      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();viewFile('${eRunId}','${ef}')}">
-      <span>${ef}</span>
-      <span style="color:var(--muted)">→</span>
-    </div>
-  `;
-  }).join('');
+  const pct = v => (v != null ? (v * 100).toFixed(1) + '%' : '—');
 
-  // Score benchmark (async, only for scenario runs with Phase 3)
+  // ── Info panel ────────────────────────────────────────────────────────────
   let scoreHtml = '';
   if (run.scenario && run.files.includes('03_vuln_analysis.json')) {
     const score = await fetchJSON(`/api/runs/${eRunId}/score`);
     if (score && score.recall != null) {
-      const pct = v => (v * 100).toFixed(1) + '%';
       scoreHtml = `
         <div class="detail-section">
           <h3>Score benchmark</h3>
@@ -712,22 +724,57 @@ async function viewRun(runId) {
     }
   }
 
-  el.innerHTML = `
-    <h2>Run ${escapeHtml(runId.replace(/_/g, ' '))}</h2>
+  document.getElementById('detail-panel-info').innerHTML = `
     <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
     <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
-    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val">${escapeHtml(run.status)}</span></div>
-    <div class="detail-section">
-      <h3>Fichiers (${run.files.length})</h3>
-      <div class="file-list">${fileHtml}</div>
-    </div>
+    <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
+    <div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>
     ${scoreHtml}
   `;
+
+  // ── Fichiers panel ────────────────────────────────────────────────────────
+  const fileHtml = run.files.map(f => {
+    const ef = escapeHtml(f);
+    return `
+    <div class="file-item"
+      onclick="viewFile('${eRunId}', '${ef}')"
+      role="button" tabindex="0"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();viewFile('${eRunId}','${ef}')}">
+      <span>${ef}</span>
+      <span style="color:var(--muted)">→</span>
+    </div>`;
+  }).join('');
+  document.getElementById('detail-panel-files').innerHTML = `<div class="file-list">${fileHtml}</div>`;
+
+  // ── Rapport panel ─────────────────────────────────────────────────────────
+  const reportPanel = document.getElementById('detail-panel-report');
+  if (run.files.includes('05_report.md')) {
+    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Chargement du rapport…</div>';
+    const data = await fetchJSON(`/api/runs/${eRunId}/05_report.md`);
+    if (data && data.content) {
+      reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(data.content)}</div>`;
+    } else {
+      reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px">Rapport non disponible</div>';
+    }
+  } else {
+    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 5) non généré pour ce run.</div>';
+  }
 
   // Load vuln data to color graph nodes
   if (run.files.includes('03_vuln_analysis.json')) {
     await fetchVulnResults(runId);
   }
+}
+
+function switchDetailTab(tab) {
+  document.querySelectorAll('.detail-tab').forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.detail-panel').forEach(panel => {
+    panel.hidden = panel.id !== `detail-panel-${tab}`;
+  });
 }
 
 async function viewFile(runId, filename) {
@@ -751,6 +798,208 @@ async function viewFile(runId, filename) {
 
 async function downloadRun(runId) {
   window.location.href = `/api/runs/${runId}/download/zip`;
+}
+
+// ── Markdown renderer ──────────────────────────────────────────────────────
+
+function renderMarkdown(md) {
+  // Extract fenced code blocks first to avoid processing their contents
+  const parts = [];
+  const CODE_RE = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0, m;
+  while ((m = CODE_RE.exec(md)) !== null) {
+    if (m.index > last) parts.push({ type: 'text', src: md.slice(last, m.index) });
+    parts.push({ type: 'code', lang: m[1], src: m[2].trimEnd() });
+    last = m.index + m[0].length;
+  }
+  if (last < md.length) parts.push({ type: 'text', src: md.slice(last) });
+
+  return parts.map(p => {
+    if (p.type === 'code') {
+      return `<pre class="md-pre"><code class="md-code">${escapeHtml(p.src)}</code></pre>`;
+    }
+    return _renderMdBlock(p.src);
+  }).join('');
+}
+
+function _renderMdBlock(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let listTag = null;
+  let tableRows = [];
+  let inTable = false;
+
+  const flushList = () => {
+    if (listTag) { html += `</${listTag}>`; listTag = null; }
+  };
+  const flushTable = () => {
+    if (!inTable) return;
+    inTable = false;
+    const rows = tableRows.filter(r => r !== null);
+    if (!rows.length) { tableRows = []; return; }
+    const header = rows[0];
+    const body = rows.slice(1);
+    html += '<table class="md-table"><thead><tr>';
+    header.forEach(c => html += `<th>${_renderInline(c.trim())}</th>`);
+    html += '</tr></thead><tbody>';
+    body.forEach(row => {
+      html += '<tr>';
+      row.forEach(c => html += `<td>${_renderInline(c.trim())}</td>`);
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    tableRows = [];
+  };
+
+  for (const line of lines) {
+    // Table row
+    if (/^\|/.test(line)) {
+      flushList();
+      inTable = true;
+      const cols = line.replace(/^\||\|$/g, '').split('|');
+      // Separator row (e.g. |---|---|)
+      if (/^[\s|:\-]+$/.test(line)) { tableRows.push(null); }
+      else tableRows.push(cols);
+      continue;
+    }
+    if (inTable) flushTable();
+
+    // Heading
+    const hm = line.match(/^(#{1,4}) (.+)/);
+    if (hm) {
+      flushList();
+      const lvl = hm[1].length;
+      html += `<h${lvl} class="md-h${lvl}">${_renderInline(hm[2])}</h${lvl}>`;
+      continue;
+    }
+
+    // HR
+    if (/^---+\s*$/.test(line)) { flushList(); html += '<hr class="md-hr">'; continue; }
+
+    // Blockquote
+    if (/^> /.test(line)) {
+      flushList();
+      html += `<blockquote class="md-blockquote">${_renderInline(line.slice(2))}</blockquote>`;
+      continue;
+    }
+
+    // Unordered list
+    const ulm = line.match(/^[-*] (.+)/);
+    if (ulm) {
+      if (listTag !== 'ul') { flushList(); html += '<ul class="md-ul">'; listTag = 'ul'; }
+      html += `<li>${_renderInline(ulm[1])}</li>`;
+      continue;
+    }
+
+    // Ordered list
+    const olm = line.match(/^\d+\. (.+)/);
+    if (olm) {
+      if (listTag !== 'ol') { flushList(); html += '<ol class="md-ol">'; listTag = 'ol'; }
+      html += `<li>${_renderInline(olm[1])}</li>`;
+      continue;
+    }
+
+    // Empty line — flush structures, add spacing
+    if (!line.trim()) { flushList(); html += '<br>'; continue; }
+
+    flushList();
+    html += `<p class="md-p">${_renderInline(line)}</p>`;
+  }
+
+  flushList();
+  flushTable();
+  return html;
+}
+
+function _renderInline(text) {
+  let t = escapeHtml(text);
+  t = t.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/__(.*?)__/g, '<strong>$1</strong>');
+  t = t.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  t = t.replace(/_(.*?)_/g, '<em>$1</em>');
+  t = t.replace(/`(.*?)`/g, '<code class="md-code-inline">$1</code>');
+  return t;
+}
+
+// ── View switching (Dashboard / Benchmark) ─────────────────────────────────
+
+let _bmData = null; // cached benchmark data
+
+function switchView(view) {
+  const isMain = view === 'main';
+  const mainEl = document.getElementById('main');
+  mainEl.style.display = isMain ? 'flex' : 'none';
+  document.getElementById('benchmark-view').hidden = isMain;
+  // Log panel belongs to the dashboard only
+  document.getElementById('resize-log').style.display = isMain ? '' : 'none';
+  document.getElementById('log-wrap').style.display = isMain ? '' : 'none';
+
+  document.querySelectorAll('.view-btn').forEach(btn => {
+    const active = btn.dataset.view === view;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+
+  if (!isMain && !_bmData) loadBenchmark();
+}
+
+// ── Benchmark ──────────────────────────────────────────────────────────────
+
+async function loadBenchmark() {
+  document.getElementById('bm-table').hidden = true;
+  document.getElementById('bm-empty').hidden = true;
+  document.getElementById('bm-body').insertAdjacentHTML('afterbegin',
+    '<div id="bm-loading" style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Chargement…</div>');
+
+  _bmData = await fetchJSON('/api/runs/benchmark');
+
+  const loading = document.getElementById('bm-loading');
+  if (loading) loading.remove();
+
+  if (!_bmData || !_bmData.length) {
+    document.getElementById('bm-empty').hidden = false;
+    return;
+  }
+  document.getElementById('bm-table').hidden = false;
+  renderBenchmarkTable();
+}
+
+function renderBenchmarkTable() {
+  const filter = document.getElementById('bm-filter-scenario').value;
+  const rows = (_bmData || []).filter(r => !filter || r.scenario === filter);
+
+  const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
+  const barColor = v => {
+    if (v == null) return 'var(--muted)';
+    if (v >= 0.75) return 'var(--green)';
+    if (v >= 0.5)  return 'var(--orange)';
+    return 'var(--red)';
+  };
+
+  const tbody = document.getElementById('bm-tbody');
+  tbody.innerHTML = rows.map(r => {
+    const s = r.score;
+    const f1 = s?.f1_score;
+    const barW = f1 != null ? Math.round(f1 * 100) : 0;
+    const noScore = `<span class="bm-no-score">—</span>`;
+    const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
+    return `<tr>
+      <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
+      <td><span class="run-badge done">${escapeHtml(r.scenario)}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${modelShort}</td>
+      <td><span class="run-badge ${escapeHtml(r.status)}">${escapeHtml(r.status)}</span></td>
+      <td>${r.cost != null ? '$'+r.cost.toFixed(4) : '—'}</td>
+      <td>${s ? pct(s.recall) : noScore}</td>
+      <td>${s ? pct(s.precision) : noScore}</td>
+      <td>${s ? pct(f1) : noScore}</td>
+      <td>${s ? `${s.weighted_score}/${s.max_weighted_score}` : noScore}</td>
+      <td>
+        <div class="bm-bar-wrap" title="${f1 != null ? pct(f1)+' F1' : 'pas de score'}">
+          <div class="bm-bar" style="width:${barW}%;background:${barColor(f1)}"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────

@@ -13,6 +13,10 @@
 <!-- ── Header ──────────────────────────────────────────────────────────── -->
 <div id="header">
   <h1><span aria-hidden="true">🛡️</span> NATO Smart City IoT</h1>
+  <div id="view-nav" role="tablist" aria-label="Vue principale">
+    <button class="view-btn active" data-view="main" role="tab" aria-selected="true">Dashboard</button>
+    <button class="view-btn" data-view="benchmark" role="tab" aria-selected="false">Benchmark</button>
+  </div>
   <div id="phase-bar">
     <div class="phase-pill" data-phase="1">1 · Graph</div>
     <div class="phase-pill" data-phase="2">2 · Recon</div>
@@ -117,10 +121,70 @@
     <div id="detail-placeholder">
       Cliquez sur un nœud<br>pour voir ses détails
     </div>
-    <div id="detail-content"></div>
+    <div id="detail-content" style="display:none">
+      <!-- Node view (shown when clicking a graph node) -->
+      <div id="detail-node-view" class="detail-panel"></div>
+
+      <!-- Run view (shown when selecting a run from history) -->
+      <div id="detail-run-view" hidden>
+        <div id="detail-header">
+          <h2 id="detail-run-title"></h2>
+          <div id="detail-tabs" role="tablist" aria-label="Détail du run">
+            <button class="detail-tab active" data-tab="info" role="tab" aria-selected="true">Info</button>
+            <button class="detail-tab" data-tab="files" role="tab" aria-selected="false">Fichiers</button>
+            <button class="detail-tab" data-tab="report" role="tab" aria-selected="false">Rapport</button>
+          </div>
+        </div>
+        <div id="detail-panel-info"   class="detail-panel" role="tabpanel"></div>
+        <div id="detail-panel-files"  class="detail-panel" hidden role="tabpanel"></div>
+        <div id="detail-panel-report" class="detail-panel" hidden role="tabpanel"></div>
+      </div>
+    </div>
   </div>
 
 </div><!-- /main -->
+
+<!-- ── Benchmark view ────────────────────────────────────────────────────── -->
+<div id="benchmark-view" hidden>
+  <div id="bm-toolbar">
+    <span id="bm-title">Benchmark — comparaison des modèles</span>
+    <div id="bm-controls">
+      <select id="bm-filter-scenario" aria-label="Filtrer par scénario">
+        <option value="">Tous les scénarios</option>
+        <option value="S1">S1 · Recon passive</option>
+        <option value="S2">S2 · Gateway exposée</option>
+        <option value="S3">S3 · MQTT compromise</option>
+        <option value="S4">S4 · Firmware vulnérable</option>
+        <option value="S5">S5 · Escalade de privilèges</option>
+        <option value="S6">S6 · Pivot réseau</option>
+        <option value="S7">S7 · APT complet</option>
+      </select>
+      <button id="bm-refresh" aria-label="Rafraîchir">↻</button>
+    </div>
+  </div>
+  <div id="bm-body">
+    <div id="bm-empty" hidden style="padding:32px;text-align:center;color:var(--muted);font-size:13px">
+      Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.
+    </div>
+    <table id="bm-table" hidden>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Scénario</th>
+          <th>Modèle</th>
+          <th>Statut</th>
+          <th>Coût</th>
+          <th>Recall</th>
+          <th>Precision</th>
+          <th>F1</th>
+          <th>Score</th>
+          <th>F1 bar</th>
+        </tr>
+      </thead>
+      <tbody id="bm-tbody"></tbody>
+    </table>
+  </div>
+</div>
 
 <!-- ── Log resize handle ────────────────────────────────────────────────── -->
 <div class="resize-handle-h" id="resize-log"></div>

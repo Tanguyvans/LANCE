@@ -120,7 +120,11 @@ class Pipeline:
                 print(f"  Benchmark scenario: S{self.scenario_id} — {scenario_context.splitlines()[0]}")
 
             # Save scenario metadata for evaluator
-            meta = {"scenario_id": self.scenario_id, "run_dir": str(self.run_dir)}
+            meta = {
+                "scenario_id": self.scenario_id,
+                "run_dir": str(self.run_dir),
+                "model": getattr(self.provider, "model", None),
+            }
             (self.run_dir / "scenario_meta.json").write_text(json.dumps(meta, indent=2))
 
             # Deploy benchmark VMs before starting the pipeline
