@@ -147,7 +147,8 @@ def arp_scan(**kwargs) -> str:
         arp_output = result.stdout
     except subprocess.TimeoutExpired as e:
         log.warning("arp -a timed out, using partial output")
-        arp_output = e.stdout or ""
+        raw = e.stdout or b""
+        arp_output = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else (raw or "")
     except Exception as e:
         log.error("arp -a failed: %s", e)
         return json.dumps({"hosts": [], "count": 0, "error": str(e)})
