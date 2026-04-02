@@ -128,6 +128,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('bm-filter-scenario').addEventListener('change', renderBenchmarkTable);
 
   initResizeHandles();
+  initCollapsibleSidebar();
 
   await loadTopology();
   await loadRuns();
@@ -272,9 +273,17 @@ function colorNodeBySeverity(nodeId, severity) {
 
 function _setNodeColor(node, severity) {
   const color = SEV_COLOR[severity] || SEV_COLOR['INFO'];
-  node.style('background-color', color);
-  node.style('border-color', color);
-  node.style('border-width', '3px');
+  const glow = _cssVar(`--glow-${severity.toLowerCase()}`) || 'none';
+
+  node.style({
+    'background-color': color,
+    'border-color':     color,
+    'border-width':     '3px',
+    'shadow-blur':      glow !== 'none' ? 15 : 0,
+    'shadow-color':     color,
+    'shadow-opacity':   0.6,
+    'shadow-offset-y':  0,
+  });
 }
 
 function resetNodeColors() {
@@ -1058,13 +1067,24 @@ function addLog(ev) {
   const t = ev.type || 'info';
 
   let text = '';
+  let fullText = ''; // Store full text for expansion
+
   if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done')  text = `Pipeline terminé — Total: $${(ev.total_cost_usd||0).toFixed(4)}`;
-  else if (t === 'tool_call')  text = `→ ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;
-  else if (t === 'tool_result') text = `← ${ev.name}: ${_truncate(String(ev.result||''), 120)}`;
-  else if (t === 'text_chunk') text = ev.text ? _truncate(ev.text, 200) : null;
+  else if (t === 'tool_call') {
+    fullText = `${ev.name}(${JSON.stringify(ev.args||{}, null, 2)})`;
+    text = `→ ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;
+  }
+  else if (t === 'tool_result') {
+    fullText = String(ev.result || '');
+    text = `← ${ev.name}: ${_truncate(fullText, 120)}`;
+  }
+  else if (t === 'text_chunk') {
+    text = ev.text ? _truncate(ev.text, 200) : null;
+    fullText = ev.text || '';
+  }
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
   else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
@@ -1078,11 +1098,29 @@ function addLog(ev) {
   const line = document.createElement('div');
   line.className = `log-line ${t}`;
   line.textContent = text;
+  line.title = "Cliquer pour étendre/réduire";
+
+  if (fullText && fullText.length > text.length) {
+    line.onclick = () => {
+      line.classList.toggle('expanded');
+      line.textContent = line.classList.contains('expanded') ? fullText : text;
+    };
+  }
+
   log.appendChild(line);
 
   // Trim old lines
   while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
+}
+
+// ── Sidebar Collapsible ────────────────────────────────────────────────────
+function initCollapsibleSidebar() {
+  document.querySelectorAll('.sidebar-section h3').forEach(h3 => {
+    h3.addEventListener('click', () => {
+      h3.parentElement.classList.toggle('collapsed');
+    });
+  });
 }
 
 function clearLog() {

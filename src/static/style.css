@@ -37,12 +37,17 @@
   --sev-info-fg:     #58a6ff;
   --sev-medium-fg: var(--orange);
   --sev-low-fg:    var(--green);
+
+  /* Tactical Glows */
+  --glow-critical: 0 0 15px rgba(248, 81, 73, 0.6);
+  --glow-high:     0 0 12px rgba(210, 153, 34, 0.5);
+  --glow-medium:   0 0 10px rgba(210, 153, 34, 0.4);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 13px;
   height: 100vh;
   overflow: hidden;
@@ -109,9 +114,11 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Sidebar Sections (Collapsible) ──────────────────────────────────────── */
 .sidebar-section {
   padding: 12px;
   border-bottom: 1px solid var(--border);
+  transition: background 0.2s;
 }
 
 .sidebar-section h3 {
@@ -119,9 +126,26 @@ body {
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
 }
+
+.sidebar-section h3::after {
+  content: '▼';
+  font-size: 8px;
+  transition: transform 0.2s;
+  opacity: 0.5;
+}
+
+.sidebar-section.collapsed h3 { margin-bottom: 0; }
+.sidebar-section.collapsed h3::after { transform: rotate(-90deg); }
+.sidebar-section.collapsed > *:not(h3) { display: none; }
+.sidebar-section:hover h3 { color: var(--text); }
 
 label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 3px; }
 
@@ -528,21 +552,46 @@ button:disabled { opacity: .4; cursor: default; }
   line-height: 1.5;
 }
 
-.log-line { padding: 1px 0; }
-.log-line.tool_call    { color: #f0ad4e; }
-.log-line.tool_result  { color: #58a6ff; }
-.log-line.text_chunk   { color: #e6edf3; }
-.log-line.phase_start  { color: #3fb950; font-weight: 600; }
-.log-line.phase_done   { color: #3fb950; }
-.log-line.pipeline_start { color: #58a6ff; font-weight: 600; }
-.log-line.pipeline_done  { color: #58a6ff; font-weight: 600; }
-.log-line.deploy_start { color: #a371f7; }
-.log-line.deploy_done  { color: #a371f7; }
-.log-line.inject_start { color: #d29922; }
-.log-line.inject_done  { color: #d29922; }
-.log-line.teardown_start { color: #f85149; }
-.log-line.teardown_done  { color: #f85149; }
-.log-line.error        { color: #f85149; font-weight: 600; }
+/* ── Log Lines (Animated & Expandable) ──────────────────────────────────── */
+@keyframes logSlideIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.log-line {
+  padding: 2px 0;
+  animation: logSlideIn 0.2s ease-out forwards;
+  cursor: pointer;
+  position: relative;
+  border-left: 2px solid transparent;
+  padding-left: 8px;
+  margin-left: -8px;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.log-line:hover {
+  background: var(--white-hover);
+  border-left-color: var(--border);
+}
+
+.log-line.expanded {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px;
+  border-radius: 4px;
+  border-left: 2px solid var(--accent);
+  margin: 4px 0 4px -8px;
+}
+
+.log-line.tool_call { color: var(--orange); }
+.log-line.tool_result { color: var(--sev-info-fg); font-size: 0.95em; opacity: 0.9; }
+.log-line.text_chunk { color: var(--text); line-height: 1.4; }
+.log-line.phase_start { color: var(--green); font-weight: 600; margin-top: 8px; border-top: 1px solid rgba(48,54,61,0.3); padding-top: 8px; }
+.log-line.phase_done { color: var(--green); font-size: 0.9em; opacity: 0.8; }
+.log-line.pipeline_start { color: var(--accent); font-weight: 600; border-bottom: 1px solid var(--accent-bg-20); padding-bottom: 4px; }
+.log-line.pipeline_done { color: var(--accent); font-weight: 600; padding: 4px 0; border-top: 1px solid var(--accent-bg-20); }
+.log-line.error { color: var(--red); font-weight: 600; background: rgba(248, 81, 73, 0.1); padding: 4px 8px; border-radius: 4px; }
 
 /* ── View nav (header tabs) ──────────────────────────────────────────────── */
 #view-nav {
