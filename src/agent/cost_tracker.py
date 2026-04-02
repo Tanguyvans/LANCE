@@ -109,11 +109,13 @@ class CostTracker:
             )
 
     def summary(self) -> dict:
-        in_tok, out_tok = self.total_tokens()
         with self._lock:
+            in_tok = sum(p.input_tokens for p in self.phases)
+            out_tok = sum(p.output_tokens for p in self.phases)
+            total_cost = sum(p.cost_usd(self.model) for p in self.phases)
             return {
                 "model": self.model,
-                "total_cost_usd": round(self.total_cost(), 4),
+                "total_cost_usd": round(total_cost, 4),
                 "total_input_tokens": in_tok,
                 "total_output_tokens": out_tok,
                 "total_turns": sum(p.turns for p in self.phases),
