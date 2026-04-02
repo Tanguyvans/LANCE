@@ -157,24 +157,27 @@ const CY_LAYOUTS = {
     name:            'cose',
     animate:         true,
     animationDuration: 500,
-    nodeRepulsion:   12000,  // Augmenté (était 8000)
-    idealEdgeLength: 150,    // Augmenté (était 120)
-    padding:         50,
+    nodeRepulsion:   25000,  // Très forte répulsion
+    idealEdgeLength: 250,    // Liens plus longs
+    edgeElasticity:  100,
+    nodeOverlap:     20,
+    gravity:         1,      // Gravité réduite pour laisser le graphe s'étaler
+    padding:         80,
   },
   breadthfirst: {
     name:            'breadthfirst',
     directed:        true,
-    padding:         50,
+    padding:         80,
     animate:         true,
     animationDuration: 500,
-    spacingFactor:   1.5,    // Augmenté (était 1.2)
+    spacingFactor:   2.0,    // Beaucoup plus d'espace entre les niveaux
   },
   concentric: {
     name:            'concentric',
     animate:         true,
     animationDuration: 500,
-    padding:         50,
-    minNodeSpacing:  80,     // Ajouté pour éviter l'écrasement
+    padding:         80,
+    minNodeSpacing:  120,    // Large espace entre nœuds concentriques
     concentric:      function(node){ return node.degree(); },
     levelWidth:      function(nodes){ return 2; },
   }
