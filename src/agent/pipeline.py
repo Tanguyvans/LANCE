@@ -47,12 +47,14 @@ class Pipeline:
         phases: list[int] | None = None,
         scenario_id: int | None = None,
         auto_teardown: bool = True,
+        max_cost_usd: float | None = None,
     ):
         self.provider = provider
         self.dry_run = dry_run
         self.phases = phases
         self.scenario_id = scenario_id
         self.auto_teardown = auto_teardown
+        self.max_cost_usd = max_cost_usd
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -69,6 +71,7 @@ class Pipeline:
     def run(
         self,
         stream_callback: Callable[[dict], None] | None = None,
+        stop_event=None,
     ) -> dict[str, str]:
         """Execute the full pipeline. Returns {agent_name: status} dict.
 
@@ -136,6 +139,13 @@ class Pipeline:
         results: dict[str, str] = {}
 
         for agent_config in agents:
+            # Honour stop request between phases
+            if stop_event and stop_event.is_set():
+                log.info("Pipeline stop requested — halting before phase %d", agent_config.phase)
+                if stream_callback:
+                    stream_callback({"type": "error", "message": "Pipeline arrêté par l'utilisateur"})
+                break
+
             # Check prerequisites
             if not self._check_prerequisites(agent_config, results):
                 log.warning("Skipping %s: prerequisites not met", agent_config.name)
@@ -154,6 +164,19 @@ class Pipeline:
             # Run the agent
             status = self._run_agent(agent_config, stream_callback)
             results[agent_config.name] = status
+
+            # Enforce budget limit after each phase
+            if self.max_cost_usd is not None and self.tracker.total_cost() >= self.max_cost_usd:
+                log.warning(
+                    "Budget limit reached ($%.4f >= $%.4f) — stopping pipeline",
+                    self.tracker.total_cost(), self.max_cost_usd,
+                )
+                if stream_callback:
+                    stream_callback({
+                        "type": "error",
+                        "message": f"Budget dépassé (${self.tracker.total_cost():.4f} ≥ ${self.max_cost_usd:.4f}) — pipeline arrêté",
+                    })
+                break
 
         # Print cost summary
         self.tracker.print_summary()

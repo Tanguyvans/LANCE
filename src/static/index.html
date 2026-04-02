@@ -77,15 +77,18 @@
         <input type="checkbox" id="cb-teardown" checked>
         &nbsp;Auto-teardown scénario
       </label>
-      <br>
+
+      <label for="inp-budget">Budget max (USD, optionnel)</label>
+      <input type="number" id="inp-budget" min="0" step="0.01" placeholder="ex : 0.50">
 
       <button id="btn-start">▶ Lancer le pentest</button>
       <button id="btn-stop">⏹ Arrêter</button>
     </div>
 
     <!-- Run history -->
-    <div class="sidebar-section" style="padding-bottom:0">
+    <div class="sidebar-section" style="padding-bottom:0;display:flex;align-items:center;justify-content:space-between">
       <h3>Historique</h3>
+      <button id="btn-compare" style="display:none">⊕ Comparer (2)</button>
     </div>
     <div id="run-list">
       <div style="padding:12px;color:var(--muted);font-size:11px">Chargement…</div>
@@ -139,6 +142,17 @@
       <button id="modal-close" aria-label="Fermer">×</button>
     </div>
     <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Compare modal ───────────────────────────────────────────────────── -->
+<div id="compare-overlay" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+  <div id="compare-modal">
+    <div id="compare-header">
+      <h3 id="compare-title">Comparaison de runs</h3>
+      <button id="compare-close" aria-label="Fermer">×</button>
+    </div>
+    <div id="compare-body"></div>
   </div>
 </div>
 

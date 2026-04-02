@@ -108,6 +108,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('log-clear').addEventListener('click', clearLog);
   document.getElementById('modal-close').addEventListener('click', () => closeModal());
   document.getElementById('modal-overlay').addEventListener('click', closeModal);
+  document.getElementById('compare-close').addEventListener('click', () => closeCompare());
+  document.getElementById('compare-overlay').addEventListener('click', closeCompare);
+  document.getElementById('btn-compare').addEventListener('click', openCompare);
 
   initResizeHandles();
 
@@ -345,12 +348,16 @@ async function startRun() {
   // Load correct topology
   await loadTopology(scenario ? parseInt(scenario) : null);
 
+  const budgetRaw = document.getElementById('inp-budget').value;
+  const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
+
   const body = {
     model,
     provider: 'openrouter',
     scenario_id: scenario ? parseInt(scenario) : null,
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
+    max_cost_usd: maxCost,
   };
 
   const res = await fetch('/api/pipeline/start', {
@@ -371,11 +378,12 @@ async function startRun() {
   startSSE();
 }
 
-function stopRun() {
+async function stopRun() {
+  await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('btn-start').disabled = false;
   document.getElementById('btn-stop').style.display = 'none';
-  addLog({type:'error', message:'Run interrompu par l\'utilisateur'});
+  addLog({type:'error', message:"Run interrompu par l'utilisateur"});
 }
 
 function startSSE() {
@@ -481,14 +489,98 @@ async function fetchVulnResults(runIdOrDir) {
 const RUNS_PER_PAGE = 15;
 let _allRuns = [];
 let _runsShown = RUNS_PER_PAGE;
+const _compareSet = new Set(); // max 2 run IDs
+
+function toggleCompare(runId) {
+  if (_compareSet.has(runId)) {
+    _compareSet.delete(runId);
+  } else {
+    if (_compareSet.size >= 2) {
+      const oldest = _compareSet.values().next().value;
+      _compareSet.delete(oldest);
+      const oldEl = document.querySelector(`.run-item[data-id="${CSS.escape(oldest)}"]`);
+      if (oldEl) {
+        oldEl.classList.remove('compare-active');
+        oldEl.querySelector('.run-compare')?.classList.remove('active');
+      }
+    }
+    _compareSet.add(runId);
+  }
+  const el = document.querySelector(`.run-item[data-id="${CSS.escape(runId)}"]`);
+  if (el) {
+    const inCompare = _compareSet.has(runId);
+    el.classList.toggle('compare-active', inCompare);
+    el.querySelector('.run-compare')?.classList.toggle('active', inCompare);
+  }
+  _updateCompareButton();
+}
+
+function _updateCompareButton() {
+  const btn = document.getElementById('btn-compare');
+  if (btn) btn.style.display = _compareSet.size === 2 ? 'block' : 'none';
+}
+
+async function openCompare() {
+  const ids = [..._compareSet];
+  if (ids.length < 2) return;
+  const [idA, idB] = ids;
+
+  document.getElementById('compare-body').innerHTML =
+    '<div style="padding:20px;color:var(--muted)">Chargement…</div>';
+  document.getElementById('compare-overlay').classList.add('open');
+
+  const [runA, runB, scoreA, scoreB] = await Promise.all([
+    fetchJSON(`/api/runs/${encodeURIComponent(idA)}`),
+    fetchJSON(`/api/runs/${encodeURIComponent(idB)}`),
+    fetchJSON(`/api/runs/${encodeURIComponent(idA)}/score`),
+    fetchJSON(`/api/runs/${encodeURIComponent(idB)}/score`),
+  ]);
+
+  const pct = v => (v != null ? (v * 100).toFixed(1) + '%' : '—');
+
+  const colHtml = (run, score, id) => {
+    if (!run) return `<div style="color:var(--red)">Erreur chargement</div>`;
+    const scoreSection = score?.recall != null ? `
+      <div class="detail-section">
+        <h3>Score benchmark</h3>
+        <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
+        <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
+        <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
+        <div class="detail-row"><span class="detail-key">Score pondéré</span><span class="detail-val">${score.weighted_score} / ${score.max_weighted_score}</span></div>
+        <div class="detail-row"><span class="detail-key">Faux positifs</span><span class="detail-val">${score.false_positives} FP</span></div>
+      </div>` : '';
+    return `
+      <h3 style="font-size:12px;margin-bottom:8px;color:var(--muted)">${escapeHtml(id.replace(/_/g, ' '))}</h3>
+      <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
+      <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
+      <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
+      ${scoreSection}
+      <div class="detail-section">
+        <h3>Fichiers (${run.files.length})</h3>
+        ${run.files.map(f => `<div style="font-size:11px;padding:2px 0;color:var(--muted)">${escapeHtml(f)}</div>`).join('')}
+      </div>`;
+  };
+
+  document.getElementById('compare-body').innerHTML = `
+    <div class="compare-cols">
+      <div>${colHtml(runA, scoreA, idA)}</div>
+      <div>${colHtml(runB, scoreB, idB)}</div>
+    </div>`;
+}
+
+function closeCompare(e) {
+  if (e && e.target !== document.getElementById('compare-overlay')) return;
+  document.getElementById('compare-overlay').classList.remove('open');
+}
 
 function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
   const scn = r.scenario ? `<span>${escapeHtml(r.scenario)}</span>` : '';
   const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
+  const inCmp = _compareSet.has(r.id);
   return `
-    <div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${eid}"
+    <div class="run-item ${r.id === activeRunId ? 'active' : ''} ${inCmp ? 'compare-active' : ''}" data-id="${eid}"
       onclick="viewRun('${eid}')"
       role="button" tabindex="0"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();viewRun('${eid}')}">
@@ -498,6 +590,7 @@ function _renderRunItem(r) {
       </div>
       <div class="run-meta">
         ${scn} ${cost}
+        <button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">⊕</button>
         <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">⬇ zip</button>
       </div>
     </div>
@@ -596,6 +689,24 @@ async function viewRun(runId) {
   `;
   }).join('');
 
+  // Score benchmark (async, only for scenario runs with Phase 3)
+  let scoreHtml = '';
+  if (run.scenario && run.files.includes('03_vuln_analysis.json')) {
+    const score = await fetchJSON(`/api/runs/${eRunId}/score`);
+    if (score && score.recall != null) {
+      const pct = v => (v * 100).toFixed(1) + '%';
+      scoreHtml = `
+        <div class="detail-section">
+          <h3>Score benchmark</h3>
+          <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
+          <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
+          <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
+          <div class="detail-row"><span class="detail-key">Score pondéré</span><span class="detail-val">${score.weighted_score} / ${score.max_weighted_score}</span></div>
+          <div class="detail-row"><span class="detail-key">Faux positifs</span><span class="detail-val">${score.false_positives} FP</span></div>
+        </div>`;
+    }
+  }
+
   el.innerHTML = `
     <h2>Run ${escapeHtml(runId.replace(/_/g, ' '))}</h2>
     <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
@@ -605,6 +716,7 @@ async function viewRun(runId) {
       <h3>Fichiers (${run.files.length})</h3>
       <div class="file-list">${fileHtml}</div>
     </div>
+    ${scoreHtml}
   `;
 
   // Load vuln data to color graph nodes
@@ -649,6 +761,8 @@ document.addEventListener('keydown', e => {
   if (!overlay.classList.contains('open')) return;
 
   if (e.key === 'Escape') {
+    const cOverlay = document.getElementById('compare-overlay');
+    if (cOverlay.classList.contains('open')) { closeCompare(); return; }
     closeModal();
     return;
   }

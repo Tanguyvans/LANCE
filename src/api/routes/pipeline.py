@@ -26,6 +26,7 @@ _state: dict[str, Any] = {
     "run_dir": None,
     "queue": None,
     "loop": None,
+    "stop_event": None,   # threading.Event | None
 }
 
 
@@ -35,6 +36,7 @@ class StartRequest(BaseModel):
     scenario_id: int | None = None
     phases: list[int] | None = None
     auto_teardown: bool = True
+    max_cost_usd: float | None = None
 
 
 def _pipeline_thread(req: StartRequest):
@@ -52,6 +54,7 @@ def _pipeline_thread(req: StartRequest):
             phases=req.phases or None,
             scenario_id=req.scenario_id,
             auto_teardown=req.auto_teardown,
+            max_cost_usd=req.max_cost_usd,
         )
 
         def callback(event: dict):
@@ -69,7 +72,7 @@ def _pipeline_thread(req: StartRequest):
                 _state["run_dir"] = event.get("run_dir")
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
 
-        pipeline.run(stream_callback=callback)
+        pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
 
     except Exception as exc:
         q = _state["queue"]
@@ -97,10 +100,22 @@ async def start_pipeline(req: StartRequest):
     _state["run_dir"] = None
     _state["queue"] = asyncio.Queue()
     _state["loop"] = asyncio.get_event_loop()
+    _state["stop_event"] = threading.Event()
 
     thread = threading.Thread(target=_pipeline_thread, args=(req,), daemon=True)
     thread.start()
     return {"status": "started"}
+
+
+@router.post("/stop")
+async def stop_pipeline():
+    """Request graceful stop of the running pipeline (stops between phases)."""
+    if not _state["running"]:
+        raise HTTPException(status_code=400, detail="No pipeline running")
+    ev = _state.get("stop_event")
+    if ev:
+        ev.set()
+    return {"status": "stopping"}
 
 
 @router.get("/status")

@@ -121,6 +121,42 @@ def get_run_file(run_id: str, filename: str):
     return {"filename": filename, "type": "text", "content": content}
 
 
+@router.get("/{run_id}/score")
+def score_run(run_id: str):
+    """Score a run against its scenario ground truth using the benchmark evaluator."""
+    run_dir = OUTPUT_DIR / run_id
+    if not run_dir.exists():
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    meta_file = run_dir / "scenario_meta.json"
+    if not meta_file.exists():
+        raise HTTPException(status_code=404, detail="No scenario metadata — lab physique runs have no ground truth")
+
+    try:
+        meta = json.loads(meta_file.read_text())
+        scenario_id = meta.get("scenario_id")
+        if scenario_id is None:
+            raise HTTPException(status_code=400, detail="scenario_id missing from metadata")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Corrupt scenario_meta.json")
+
+    gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+    if not gt_path.exists():
+        raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
+
+    vuln_file = run_dir / "03_vuln_analysis.json"
+    if not vuln_file.exists():
+        raise HTTPException(status_code=404, detail="03_vuln_analysis.json not found — run Phase 3 first")
+
+    try:
+        from src.benchmark.evaluator import evaluate
+        from dataclasses import asdict
+        result = evaluate(str(run_dir), str(gt_path))
+        return asdict(result)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}")
+
+
 @router.get("/{run_id}/download/zip")
 def download_run(run_id: str):
     """Download all deliverables for a run as a zip archive."""

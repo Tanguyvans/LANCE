@@ -275,6 +275,20 @@ button:disabled { opacity: .4; cursor: default; }
 }
 .run-download:hover { border-color: var(--accent); color: var(--accent); }
 
+.run-compare {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.run-compare:hover { border-color: var(--green); color: var(--green); }
+.run-compare.active { border-color: var(--green); color: var(--green); background: var(--green-bg-20); }
+.run-item.compare-active { border-left: 3px solid var(--green); }
+
 /* ── Graph area ──────────────────────────────────────────────────────────── */
 #graph-wrap {
   flex: 1;
@@ -521,6 +535,69 @@ button:disabled { opacity: .4; cursor: default; }
 .log-line.teardown_start { color: #f85149; }
 .log-line.teardown_done  { color: #f85149; }
 .log-line.error        { color: #f85149; font-weight: 600; }
+
+/* ── Compare modal ───────────────────────────────────────────────────────── */
+#compare-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+#compare-overlay.open { display: flex; }
+
+#compare-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 90vw;
+  max-width: 1000px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#compare-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+#compare-header h3 { font-size: 13px; font-weight: 600; }
+
+#compare-close {
+  background: none;
+  border: none;
+  width: auto;
+  padding: 0 4px;
+  font-size: 18px;
+  color: var(--muted);
+  cursor: pointer;
+}
+#compare-close:hover { color: var(--text); }
+
+#compare-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.compare-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.compare-cols > div {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  min-width: 0;
+}
 
 /* ── File viewer modal ───────────────────────────────────────────────────── */
 #modal-overlay {
