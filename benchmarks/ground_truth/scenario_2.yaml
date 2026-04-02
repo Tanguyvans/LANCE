@@ -185,6 +185,24 @@ vulnerabilities:
     verification: "curl http://192.168.100.11/backup/"
     confidence_required: medium
 
+  - id: V9
+    device: s2-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT (data_exposure)"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles à toute personne connectée anonymement au broker.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -230,11 +248,17 @@ attack_paths:
     impact: "Interception des sessions SSH, accès au broker MQTT, espionnage du réseau IoT"
 
 scoring:
-  total_vulnerabilities: 8
+  total_vulnerabilities: 9
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 27   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3
+  max_weighted_score: 29   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2
+
+# Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - terrapin

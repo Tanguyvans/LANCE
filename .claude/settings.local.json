@@ -23,7 +23,9 @@
       "Bash(python3 -c ':*)",
       "mcp__chrome-devtools__new_page",
       "mcp__chrome-devtools__click",
-      "Read(//Users/gaspard/Downloads/2026-04-02_150801/**)"
+      "Read(//Users/gaspard/Downloads/2026-04-02_150801/**)",
+      "Read(//Users/gaspard/Downloads/2026-04-02_152921/**)",
+      "Bash(pip3 install:*)"
     ]
   }
 }

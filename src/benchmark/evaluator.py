@@ -56,6 +56,7 @@ class EvaluationResult:
     true_positives: int = 0
     false_negatives: int = 0
     false_positives: int = 0
+    bonus_findings: int = 0   # expected extras (weak_cipher, missing_header…) — not penalised
     total_llm_findings: int = 0
 
     # Metrics
@@ -133,6 +134,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     scenario_id = str(gt_data.get("scenario_id", "?"))
     max_score = gt_data.get("scoring", {}).get("max_weighted_score", 0)
     weights = gt_data.get("scoring", {}).get("weights", {"critical": 4, "high": 3, "medium": 2, "low": 1})
+    bonus_types = set(gt_data.get("bonus_types", []))
 
     # Load LLM findings
     vuln_file = run_dir / "03_vuln_analysis.json"
@@ -181,8 +183,12 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         result.matches.append(asdict(mr))
 
     # False positives = LLM findings not matched to any GT vuln
+    # Bonus findings (e.g. weak_cipher, missing_header) are expected extras — not penalised
     for f in llm_findings:
         if f.get("id") not in matched_llm_ids:
+            if bonus_types and f.get("type") in bonus_types:
+                result.bonus_findings += 1
+                continue
             result.false_positives += 1
             result.unmatched_llm.append({
                 "id": f.get("id"),
@@ -217,6 +223,7 @@ def print_report(result: EvaluationResult) -> None:
     print(f"  LLM findings  : {result.total_llm_findings}")
     print(f"  True positives: {result.true_positives}")
     print(f"  False positives (hallucinations): {result.false_positives}")
+    print(f"  Bonus findings (expected extras): {result.bonus_findings}")
     print(f"  False negatives (missed): {result.false_negatives}")
     print(f"{'─'*60}")
     print(f"  Detection Rate   : {result.detection_rate:.1%}")

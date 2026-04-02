@@ -236,3 +236,9 @@ scoring:
     medium: 2
     low: 1
   max_weighted_score: 18   # V1:3 + V2:3 + V3:3 + V4:3 + V5:2 + V6:3 + V7:2 - 1 (overlap)
+
+# Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - terrapin

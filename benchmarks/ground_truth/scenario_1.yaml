@@ -112,6 +112,7 @@ vulnerabilities:
     ip: "192.168.100.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
+
     description: >
       Le service telnetd est actif sur le routeur OpenWrt.
       Telnet transmet les credentials en clair sur le réseau.
@@ -124,6 +125,24 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
       - "Connexion telnet possible sans authentification (OpenWrt par défaut)"
     verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V6
+    device: s1-mqtt
+    ip: "192.168.100.11"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT (data_exposure)"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles à toute personne connectée anonymement au broker.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
@@ -171,7 +190,7 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 5
+  total_vulnerabilities: 6
   total_attack_paths: 4
   # Poids par sévérité pour le score pondéré
   weights:
@@ -179,4 +198,10 @@ scoring:
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 14   # 3+2+3+3+2
+  max_weighted_score: 16   # V1:3 + V2:2 + V3:3 + V4:3 + V5:2 + V6:2 (was 14 before V6)
+
+# Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - terrapin
