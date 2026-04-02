@@ -20,7 +20,10 @@
       "WebFetch(domain:openrouter.ai)",
       "Bash(python3 -m pytest tests/test_tool_loader.py tests/test_cve_lookup.py tests/test_skill_tools.py -v -p no:pytest_ethereum -p no:web3 --tb=short)",
       "Bash(timeout 5 python3 -c ':*)",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "mcp__chrome-devtools__new_page",
+      "mcp__chrome-devtools__click",
+      "Read(//Users/gaspard/Downloads/2026-04-02_150801/**)"
     ]
   }
 }

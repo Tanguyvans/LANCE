@@ -59,9 +59,24 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/__main__.py` — CLI entry point. Accepts `--provider`, `--model`, `--dry-run`, `--phases`, `--verbose`.
 - `src/agent/provider.py` — LLM provider abstraction. Translates tool schemas between Anthropic (native `tool_use`) and OpenAI-compatible APIs (function calling). Supports multi-turn agentic loops. Providers: Anthropic, OpenRouter, MiniMax, GLM, Qwen.
 - `src/agent/registry.py` — Declarative agent config. 5 agents across 5 phases, each with name, prompt, tool groups, prerequisites, and validators.
-- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically.
+- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically. Saves `cost_summary.json` at end of run.
 - `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_findings}`).
-- `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek.
+- `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek. `summary()` computes all metrics under a single lock (avoid deadlock on nested lock acquisition).
+
+### FastAPI Backend & Dashboard
+
+- `src/api/main.py` — FastAPI app entry point. Mounts routers, serves static files.
+- `src/api/routes/pipeline.py` — Pipeline lifecycle: `POST /api/pipeline/start`, `GET /api/pipeline/stream` (SSE), `POST /api/pipeline/stop`. Runs pipeline in a background thread, streams events to the frontend.
+- `src/api/routes/runs.py` — Run history: `GET /api/runs` (list), `GET /api/runs/{id}` (metadata), `GET /api/runs/{id}/{filename}` (file content), `GET /api/runs/{id}/score` (benchmark evaluation), `GET /api/runs/{id}/download/zip`. **Route order matters**: `score` and `download/zip` must be declared before `/{id}/{filename}`.
+- `src/api/routes/topology.py` — `GET /api/topology` — returns lab or scenario graph for Cytoscape.
+- `src/static/app.js` — Single-page dashboard (vanilla JS + Cytoscape.js). Tabs: Dashboard (run config + topology), Benchmark (Recall/Precision/F1/Score table).
+- `src/static/style.css` — Dashboard styles.
+
+### Benchmark Evaluation
+
+- `src/benchmark/evaluator.py` — Compares `03_vuln_analysis.json` against a ground truth YAML. Computes TP/FP/FN, Recall, Precision, F1, and weighted Score (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1). Matching strategy: CVE ID → IP+type → IP+category (fallback).
+- `benchmarks/ground_truth/scenario_N.yaml` — Ground truth for each of the 7 scenarios. Each file lists expected vulnerabilities with device IP, severity, category, and optional CVE ID.
+- `benchmarks/ansible/` — Ansible playbooks to deploy and inject vulnerabilities into benchmark VMs (`192.168.100.0/24`).
 
 ### Agent Tools
 
@@ -159,10 +174,11 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Dry-run mode for validation without API calls
 
 ### Phase 5 — Benchmark LLM sur scénarios Proxmox ✅
-- VM maître (LXC 200, `192.168.10.30`) sur Proxmox (`192.168.10.100`) — orchestre le pipeline
+- VM maître (LXC 200) sur Proxmox (`192.168.10.100`) — orchestre le pipeline
 - 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
-- Dashboard SPA Temps-réel (HTML/JS/CSS) accessible via Tailscale `100.104.69.100:8501`
-- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart API)
+- Dashboard FastAPI + SPA (HTML/JS/CSS) accessible via Tailscale `nato-master.tail6b8e31.ts.net:8501`
+- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart `nato-fastapi.service`)
 - Graph tools contextualisés : topologie scénario (`192.168.100.x`) vs lab physique (`192.168.88.x`)
+- Benchmark evaluator : Recall / Precision / F1 / Score pondéré par sévérité vs ground truth YAML
 - ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
 - Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)
