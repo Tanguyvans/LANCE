@@ -10,11 +10,12 @@
 ### Reconnaissance tools (real network commands)
 - **arp_scan()** — Layer 2 ARP table: lists ALL devices on the local network with IP + MAC address. Fastest and most complete discovery method. No parameters needed.
 - **nmap_discovery(target)** — Ping scan (-sn) to discover live hosts. Backup for arp_scan.
-- **nmap_scan(target, ports?)** — nmap -sV scan (service/version detection). Scan ONE IP at a time for best results.
-- **ssh_audit(host, port?)** — SSH audit: ciphers, Terrapin, vulnerabilities. Default port 22
-- **curl_headers(url)** — HTTP security headers (X-Frame-Options, CSP, HSTS, etc.)
-- **mqtt_listen(broker, topic?, count?, timeout?)** — Passive MQTT listener. topic="#" by default, count=10, timeout=5s
-- **nvd_lookup(query)** — Search NIST NVD for known CVEs by CPE string or keyword
+- **nmap_scan(target, ports?, skip_discovery?)** — nmap -sV scan (service/version detection). Scan ONE IP at a time. ALWAYS specify ports (e.g. ports="22,80,443,1883") — omitting ports triggers a slow 1000-port scan. Use skip_discovery=true if the host is up by ARP but nmap says "Host seems down".
+- **ssh_audit(host, port?)** — SSH audit: ciphers, Terrapin, vulnerabilities. Default port 22. Only call if port 22 is confirmed open.
+- **curl_headers(url)** — HTTP headers + body. Detects: missing security headers, directory listings ("Index of" in body), exposed sensitive files. Use on /backup/, /config/, /admin/ paths.
+- **mqtt_listen(broker, topic?, count?, timeout?)** — Passive MQTT listener. topic="#" by default, count=10, timeout=5s. return_code=0 or 27 → anonymous access CONFIRMED. return_code=5 → auth required.
+- **modbus_scan(target, skip_discovery?)** — nmap -sV -p 502. Port 502 open = Modbus TCP (no auth, HIGH severity). Use on PLC/SCADA/HMI devices.
+- **nvd_lookup(query)** — Search NIST NVD for known CVEs. Use CPE string when possible (e.g. "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"), or "Software Version" keyword.
 
 ### Physical attack tools (hardware — require physical lab access)
 - **hackrf_capture(frequency, output_file, sample_rate?, num_samples?)** — HackRF One SDR for RF sniffing and replay. Covers Zigbee 802.15.4 (2.4 GHz), LoRaWAN EU868 (868 MHz), sub-GHz (433 MHz). Returns protocol-specific commands.
