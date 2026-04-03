@@ -124,6 +124,7 @@ async def stop_pipeline():
     ev = _state.get("stop_event")
     if ev:
         ev.set()
+    _state["running"] = False
     return {"status": "stopping"}
 
 
