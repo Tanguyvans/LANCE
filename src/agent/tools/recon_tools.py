@@ -177,7 +177,7 @@ def arp_scan(**kwargs) -> str:
     })
 
 
-def nvd_lookup(query: str) -> str:
+def nvd_lookup(query: str, top_k: int = 10) -> str:
     """Search NIST NVD for known CVEs by CPE string or keyword."""
     api_key = os.environ.get("NVD_API_KEY")
     try:
@@ -191,7 +191,7 @@ def nvd_lookup(query: str) -> str:
                     "severity": r.severity,
                     "attack_vector": r.attack_vector,
                 }
-                for r in results
+                for r in results[:top_k]
             ]
         )
     except Exception as e:

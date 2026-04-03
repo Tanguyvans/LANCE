@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -135,6 +136,50 @@ def get_status():
         "cost": round(_state["cost"], 4),
         "run_dir": _state["run_dir"],
     }
+
+
+class TeardownRequest(BaseModel):
+    scenario_id: int
+
+
+@router.post("/teardown")
+async def teardown_scenario(req: TeardownRequest):
+    """Run 99_teardown.yml for the given scenario in a background thread."""
+    if _state["running"]:
+        raise HTTPException(status_code=409, detail="Pipeline is running — wait for it to finish before teardown")
+
+    def _run():
+        cmd = [
+            "ansible-playbook",
+            "benchmarks/ansible/playbooks/99_teardown.yml",
+            "-i", "benchmarks/ansible/inventory.yml",
+            "--vault-password-file", "/root/.vault_pass",
+            "--extra-vars", f"scenario_id={req.scenario_id}",
+        ]
+        try:
+            result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+            success = result.returncode == 0
+            output = (result.stdout + result.stderr).strip()
+        except subprocess.TimeoutExpired:
+            success = False
+            output = "Teardown timeout (300s)"
+        except FileNotFoundError:
+            success = False
+            output = "ansible-playbook not found"
+
+        loop = _state.get("loop")
+        q = _state.get("queue")
+        if loop and q:
+            loop.call_soon_threadsafe(q.put_nowait, {
+                "type": "teardown_done",
+                "scenario_id": req.scenario_id,
+                "success": success,
+                "output": output,
+            })
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return {"status": "teardown_started", "scenario_id": req.scenario_id}
 
 
 @router.get("/stream")

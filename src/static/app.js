@@ -102,9 +102,11 @@ function initResizeHandles() {
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
     loadTopology(this.value ? parseInt(this.value) : null);
+    document.getElementById('btn-teardown').disabled = !this.value;
   });
   document.getElementById('btn-start').addEventListener('click', startRun);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
+  document.getElementById('btn-teardown').addEventListener('click', teardownScenario);
   document.getElementById('log-clear').addEventListener('click', clearLog);
   document.getElementById('modal-close').addEventListener('click', () => closeModal());
   document.getElementById('modal-overlay').addEventListener('click', closeModal);
@@ -542,6 +544,33 @@ async function stopRun() {
   document.getElementById('btn-start').disabled = false;
   document.getElementById('btn-stop').style.display = 'none';
   addLog({type:'error', message:"Run interrompu par l'utilisateur"});
+}
+
+async function teardownScenario() {
+  const scenarioId = parseInt(document.getElementById('sel-scenario').value);
+  if (!scenarioId) return;
+  const btn = document.getElementById('btn-teardown');
+  btn.disabled = true;
+  btn.textContent = '⏳ Teardown…';
+  addLog({type:'info', message:`Teardown du scénario S${scenarioId} en cours…`});
+  try {
+    const r = await fetch('/api/pipeline/teardown', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({scenario_id: scenarioId}),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({detail: r.statusText}));
+      addLog({type:'error', message:`Teardown échoué : ${err.detail}`});
+    } else {
+      addLog({type:'info', message:`Teardown S${scenarioId} lancé en arrière-plan`});
+    }
+  } catch (e) {
+    addLog({type:'error', message:`Teardown erreur réseau : ${e}`});
+  } finally {
+    btn.textContent = '🗑 Teardown';
+    btn.disabled = false;
+  }
 }
 
 function startSSE() {

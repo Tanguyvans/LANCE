@@ -199,9 +199,13 @@ def cve_search(query: str, top_k: int = 5) -> str:
                 for r in results
             ]
 
-        results = get_or_fetch(
-            "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=top_k
-        )
+        try:
+            results = get_or_fetch(
+                "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=top_k
+            )
+        except Exception as store_err:
+            log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
+            results = fetch_from_nvd(query)[:top_k]
         return json.dumps(results, ensure_ascii=False)
     except Exception as e:
         log.error("CVE search failed: %s", e)
