@@ -145,6 +145,27 @@ vulnerabilities:
     verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
+  - id: V7
+    device: s1-ssh
+    ip: "192.168.100.13"
+    role: ssh_server
+    title: "SSH — ciphers et algorithmes d'échange faibles (F6)"
+    description: >
+      Serveur SSH configuré avec des ciphers dépréciés (3des-cbc, arcfour) et des MACs
+      faibles (hmac-md5, hmac-sha1). Détectable par ssh-audit. Facilite les attaques
+      de downgrade de chiffrement et l'interception de sessions.
+    severity: low
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "ssh-audit détecte 3des-cbc, arcfour256, hmac-md5"
+      - "KexAlgorithms inclut diffie-hellman-group1-sha1"
+    verification: "ssh-audit 192.168.100.13"
+    confidence_required: medium
+
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
 
@@ -190,15 +211,14 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 6
+  total_vulnerabilities: 7
   total_attack_paths: 4
-  # Poids par sévérité pour le score pondéré
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 16   # V1:3 + V2:2 + V3:3 + V4:3 + V5:2 + V6:2 (was 14 before V6)
+  max_weighted_score: 16   # V1:3 + V2:2 + V3:3 + V4:3 + V5:2 + V6:2 + V7:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

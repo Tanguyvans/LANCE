@@ -17,7 +17,8 @@
       "Bash(timeout 5 python3 -c ':*)",
       "Bash(python3 -c ':*)",
       "mcp__chrome-devtools__new_page",
-      "mcp__chrome-devtools__click"
+      "mcp__chrome-devtools__click",
+      "Bash(venv/bin/python -m pytest tests/ -q -p no:pytest_ethereum -p no:web3)"
     ]
   }
 }

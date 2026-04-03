@@ -22,10 +22,14 @@ SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0,
 
 # Ground-truth category → LLM vuln type(s)
 CATEGORY_TO_TYPE = {
-    "misconfiguration":   {"no_auth", "missing_header", "version_leak"},
-    "cve":                {"known_cve", "terrapin", "weak_cipher"},
+    "misconfiguration":    {"no_auth", "missing_header", "version_leak"},
+    "cve":                 {"known_cve", "terrapin", "weak_cipher"},
     "default_credentials": {"no_auth"},
-    "data_exposure":      {"missing_header", "version_leak", "no_auth"},
+    "data_exposure":       {"missing_header", "version_leak", "no_auth"},
+    "no_authentication":   {"no_auth", "missing_header"},
+    "code_injection":      {"rce", "code_injection", "upload_bypass", "no_auth"},
+    "weak_crypto":         {"weak_cipher", "weak_mac", "weak_kex"},
+    "insecure_update":     {"ota_no_signature", "update_no_auth", "no_auth"},
 }
 
 
@@ -42,7 +46,8 @@ class MatchResult:
     llm_id: str = ""
     llm_type: str = ""
     llm_severity: str = ""
-    match_method: str = ""  # "cve", "ip+type", "ip+category"
+    match_method: str = ""        # "cve", "ip+type", "ip+category"
+    severity_match: bool = False  # True if LLM severity == GT severity
 
 
 @dataclass
@@ -58,6 +63,7 @@ class EvaluationResult:
     false_positives: int = 0
     bonus_findings: int = 0   # expected extras (weak_cipher, missing_header…) — not penalised
     total_llm_findings: int = 0
+    severity_mismatches: int = 0  # found right vuln, wrong severity
 
     # Metrics
     detection_rate: float = 0.0
@@ -67,8 +73,10 @@ class EvaluationResult:
     hallucination_rate: float = 0.0
 
     # Weighted score (critical=4, high=3, medium=2, low=1)
+    # ip+category (loose) matches count as 0.5 to penalise guesses
     weighted_score: float = 0.0
     max_weighted_score: int = 0
+    score_pct: float = 0.0  # weighted_score / max_weighted_score * 100
 
     # Details
     matches: list[dict] = field(default_factory=list)
@@ -156,7 +164,9 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     matched_llm_ids: set[str] = set()
 
     for gt in gt_vulns:
-        match, method = match_vuln(gt, llm_findings)
+        # Exclude already-matched findings to prevent one LLM finding counting as multiple TPs
+        remaining = [f for f in llm_findings if f.get("id") not in matched_llm_ids]
+        match, method = match_vuln(gt, remaining)
         severity = gt.get("severity", "low")
         weight = weights.get(severity, 1)
 
@@ -174,9 +184,16 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             mr.llm_type = match.get("type", "")
             mr.llm_severity = match.get("severity", "")
             mr.match_method = method
+            mr.severity_match = (
+                (match.get("severity") or "").lower() == severity.lower()
+            )
             matched_llm_ids.add(match.get("id", ""))
             result.true_positives += 1
-            result.weighted_score += weight
+            if not mr.severity_match:
+                result.severity_mismatches += 1
+            # Loose matches (ip only) count as 0.5 in weighted score
+            score_weight = weight if method != "ip+category" else weight * 0.5
+            result.weighted_score += score_weight
         else:
             result.false_negatives += 1
 
@@ -211,6 +228,9 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     ) if (result.precision + result.recall) > 0 else 0.0
     result.hallucination_rate = round(fp / len(llm_findings), 3) if llm_findings else 0.0
     result.weighted_score = round(result.weighted_score, 1)
+    result.score_pct = round(
+        result.weighted_score / max_score * 100, 1
+    ) if max_score > 0 else 0.0
 
     return result
 
@@ -231,7 +251,8 @@ def print_report(result: EvaluationResult) -> None:
     print(f"  Recall           : {result.recall:.1%}")
     print(f"  F1 Score         : {result.f1_score:.3f}")
     print(f"  Hallucination    : {result.hallucination_rate:.1%}")
-    print(f"  Weighted Score   : {result.weighted_score} / {result.max_weighted_score}")
+    print(f"  Severity mismatches: {result.severity_mismatches}")
+    print(f"  Weighted Score   : {result.weighted_score} / {result.max_weighted_score} ({result.score_pct:.1f}%)")
     print(f"{'─'*60}")
     print("  Matched vulnerabilities:")
     for m in result.matches:

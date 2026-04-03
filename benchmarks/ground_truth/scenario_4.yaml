@@ -200,6 +200,70 @@ vulnerabilities:
     verification: "nmap -p 23,80 192.168.100.1"
     confidence_required: medium
 
+  - id: V9
+    device: s4-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Absence de segmentation réseau IT/OT — réseau plat (F5)"
+    description: >
+      Tous les équipements IT (admin, webapp, mqtt) et OT (PLC, HMI, Historian) partagent
+      le même sous-réseau 192.168.100.0/24 sans aucune règle de firewall inter-zone.
+      Un attaquant ayant accès à n'importe quel device IT peut directement atteindre le PLC
+      et l'HMI SCADA sans traverser de contrôle d'accès réseau.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "T0817 - Drive-by Compromise, Lateral Movement"
+    cve: null
+    indicators:
+      - "Tous les devices IT et OT répondent sur 192.168.100.0/24"
+      - "Pas de firewall entre le segment admin (100.11) et le PLC (100.15)"
+      - "nmap -sn 192.168.100.0/24 découvre IT et OT dans la même plage"
+    verification: "nmap -sn 192.168.100.0/24 | grep -E '100\\.1[0-9]'"
+    confidence_required: medium
+
+  - id: V10
+    device: s4-admin
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "SSH — ciphers et algorithmes d'échange faibles (F6)"
+    description: >
+      Serveur SSH du poste admin configuré avec des ciphers dépréciés (3des-cbc, arcfour)
+      et des MACs faibles (hmac-md5). Détectable par ssh-audit. Dans un contexte IT/OT,
+      affaiblit la sécurité de la porte d'entrée vers le réseau industriel.
+    severity: low
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "ssh-audit détecte 3des-cbc, arcfour256, hmac-md5"
+      - "KexAlgorithms inclut diffie-hellman-group1-sha1"
+    verification: "ssh-audit 192.168.100.11"
+    confidence_required: medium
+
+  - id: V11
+    device: s4-lora-gw
+    ip: "192.168.100.14"
+    role: iot_gateway
+    title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
+    description: >
+      La gateway LoRa expose un endpoint POST /update et un répertoire /firmware/ accessibles
+      sans authentification. Le firmware binaire disponible n'a pas de fichier de signature
+      associé. Un attaquant peut remplacer le firmware de la gateway pour prendre le contrôle
+      des capteurs LoRa connectés au réseau industriel.
+    severity: medium
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
+    mitre_ics: "T0839 - Module Firmware"
+    cve: null
+    indicators:
+      - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
+      - "POST /update retourne 200 sans authentification"
+    verification: "curl http://192.168.100.14/firmware/ && curl -X POST http://192.168.100.14/update"
+    confidence_required: medium
+
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
 
@@ -249,14 +313,14 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 8
+  total_vulnerabilities: 11
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 22   # V1:3 + V2:4 + V3:3 + V4:2 + V5:4 + V6:3 + V7:4 + V8:2 - 3 (overlap)
+  max_weighted_score: 32   # V1:3 + V2:4 + V3:3 + V4:2 + V5:4 + V6:3 + V7:4 + V8:2 + V9:4 + V10:1 + V11:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

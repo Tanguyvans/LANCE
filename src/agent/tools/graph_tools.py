@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 
@@ -49,6 +50,67 @@ def load_lab_context() -> dict:
     }
 
 
+_ROLE_SERVICES: dict[str, list[dict]] = {
+    "router":       [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
+    "mqtt_broker":  [{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
+    "web_server":   [{"name": "http", "port": 80, "protocol": "tcp"}],
+    "ssh_server":   [{"name": "ssh", "port": 22, "protocol": "tcp"}],
+    "db_server":    [{"name": "mysql", "port": 3306, "protocol": "tcp"}],
+    "iot_gateway":  [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
+    "ldap_server":  [{"name": "ldap", "port": 389, "protocol": "tcp"}],
+    "nfs_server":   [{"name": "nfs", "port": 2049, "protocol": "tcp"}],
+    "ftp_server":   [{"name": "ftp", "port": 21, "protocol": "tcp"}],
+}
+
+_PORT_NAME: dict[int, str] = {
+    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 80: "http",
+    389: "ldap", 443: "https", 1883: "mqtt", 2049: "nfs",
+    3306: "mysql", 5432: "postgres", 8080: "http-alt", 8883: "mqtt-tls",
+}
+
+_PORT_RE = re.compile(r'[Pp]ort (\d+)/(tcp|udp)')
+
+
+def _enrich_node_services(node: dict, vulnerabilities: list[dict]) -> None:
+    """Add services discovered from vulnerability indicators (port mentions)."""
+    existing = {s["port"] for s in node["services"]}
+    for vuln in vulnerabilities:
+        if vuln.get("device") != node["id"]:
+            continue
+        for indicator in vuln.get("indicators", []):
+            for m in _PORT_RE.finditer(indicator):
+                port, proto = int(m.group(1)), m.group(2)
+                if port not in existing:
+                    node["services"].append({"name": _PORT_NAME.get(port, f"port-{port}"), "port": port, "protocol": proto})
+                    existing.add(port)
+
+
+def _build_edges_from_attack_paths(attack_paths_data: list[dict], node_index: dict, ip_to_id: dict) -> list[dict]:
+    """Derive network edges from attack_path chains (consecutive hops)."""
+    def _resolve(chain_device: str) -> str | None:
+        if chain_device.lower() in ("internet", "wan"):
+            return "internet"
+        name = chain_device.split(" (")[0].strip()
+        if name in node_index:
+            return name
+        m = re.search(r'\(100\.(\d+)\)', chain_device)
+        if m:
+            return ip_to_id.get(f"192.168.100.{m.group(1)}")
+        return None
+
+    edges: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for path in attack_paths_data:
+        chain = path.get("chain", [])
+        for i in range(len(chain) - 1):
+            src = _resolve(chain[i]["device"])
+            dst = _resolve(chain[i + 1]["device"])
+            if src and dst and src != dst and (src, dst) not in seen:
+                seen.add((src, dst))
+                edges.append({"source": src, "target": dst})
+    return edges
+
+
 def load_scenario_topology(scenario_id: int) -> dict:
     """Override graph tools with the benchmark scenario topology.
 
@@ -66,8 +128,11 @@ def load_scenario_topology(scenario_id: int) -> dict:
     topology = data.get("topology", {})
     router = topology.get("router", {})
     services = topology.get("services", [])
+    vulnerabilities = data.get("vulnerabilities", [])
+    attack_paths_data = data.get("attack_paths", [])
 
-    nodes = []
+    # Build nodes with role-based services
+    nodes: list[dict] = []
     if router:
         nodes.append({
             "id": router.get("name", "router"),
@@ -76,35 +141,51 @@ def load_scenario_topology(scenario_id: int) -> dict:
             "role": "router",
             "ip": router.get("ip"),
             "os": "OpenWrt",
-            "services": [
-                {"name": "ssh", "port": 22, "protocol": "tcp"},
-                {"name": "http", "port": 80, "protocol": "tcp"},
-            ],
+            "services": list(_ROLE_SERVICES["router"]),
         })
     for svc in services:
+        role = svc.get("role", "")
         nodes.append({
             "id": svc["name"],
             "name": svc["name"],
             "type": "server",
-            "role": svc.get("role", ""),
+            "role": role,
             "ip": svc.get("ip"),
             "os": "Debian",
-            "services": [],
+            "services": list(_ROLE_SERVICES.get(role, [])),
         })
+
+    node_index = {n["id"]: n for n in nodes}
+    ip_to_id = {n["ip"]: n["id"] for n in nodes if n.get("ip")}
+
+    # Enrich services from vulnerability indicators (port mentions)
+    for node in nodes:
+        _enrich_node_services(node, vulnerabilities)
+
+    # Build edges from attack_path chains
+    edges = _build_edges_from_attack_paths(attack_paths_data, node_index, ip_to_id)
+
+    # Count CVEs (vulns with a real CVE ID)
+    cve_count = sum(1 for v in vulnerabilities if v.get("cve"))
+
+    # Top risk = device with highest severity vulnerability
+    sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+    top_risk = max(vulnerabilities, key=lambda v: sev_order.get(v.get("severity", ""), 0), default={}).get("device")
 
     _scenario_topology = {
         "scenario_id": scenario_id,
         "scenario_name": data.get("scenario_name", f"S{scenario_id}"),
         "subnet": "192.168.100.0/24",
         "nodes": nodes,
-        "node_index": {n["id"]: n for n in nodes},
+        "node_index": node_index,
+        "edges": edges,
     }
 
     return {
         "device_count": len(nodes),
-        "link_count": len(services),
-        "cve_count": 0,
-        "top_risk": router.get("name") if router else None,
+        "link_count": len(edges),
+        "cve_count": cve_count,
+        "top_risk": top_risk,
     }
 
 
@@ -123,6 +204,7 @@ def get_network_topology() -> str:
             "scenario": _scenario_topology["scenario_name"],
             "subnet": _scenario_topology["subnet"],
             "nodes": _scenario_topology["nodes"],
+            "edges": _scenario_topology["edges"],
         }, ensure_ascii=False)
     return json.dumps(_backend.to_dict(), ensure_ascii=False, default=str)
 
@@ -148,7 +230,8 @@ def get_attack_surface() -> str:
     """Return devices that expose services (have open ports)."""
     _ensure_loaded()
     if _scenario_topology is not None:
-        return json.dumps(_scenario_topology["nodes"], ensure_ascii=False)
+        exposed = [n for n in _scenario_topology["nodes"] if n.get("services")]
+        return json.dumps(exposed, ensure_ascii=False)
     return json.dumps(_backend.get_attack_surface(), ensure_ascii=False, default=str)
 
 

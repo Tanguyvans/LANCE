@@ -196,6 +196,48 @@ vulnerabilities:
     verification: "mysql -h 192.168.100.15 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: medium
 
+  - id: V9
+    device: s7-edge-compute
+    ip: "192.168.100.13"
+    role: ssh_server
+    title: "SSH — ciphers et algorithmes d'échange faibles (F6)"
+    description: >
+      Serveur SSH de l'edge compute configuré avec des ciphers dépréciés (3des-cbc, arcfour)
+      et des MACs faibles (hmac-md5). Dans un contexte edge-cloud, cela fragilise le lien
+      d'administration vers l'infrastructure de traitement locale.
+    severity: low
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "ssh-audit détecte 3des-cbc, arcfour256, hmac-md5"
+      - "KexAlgorithms inclut diffie-hellman-group1-sha1"
+    verification: "ssh-audit 192.168.100.13"
+    confidence_required: medium
+
+  - id: V10
+    device: s7-edge-gw
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
+    description: >
+      L'edge gateway expose un endpoint POST /update et un répertoire /firmware/
+      sans authentification ni vérification d'intégrité. Un attaquant peut remplacer
+      le firmware de la gateway pour intercepter ou modifier les données IoT avant
+      leur remontée vers le cloud.
+    severity: medium
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
+    mitre_ics: "T0839 - Module Firmware"
+    cve: null
+    indicators:
+      - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
+      - "POST /update retourne 200 sans authentification"
+    verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -243,14 +285,14 @@ attack_paths:
     impact: "Compromission complète edge-to-cloud, exfiltration de toutes les données PII"
 
 scoring:
-  total_vulnerabilities: 8
+  total_vulnerabilities: 10
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 26   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3
+  max_weighted_score: 27   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:1 + V10:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

@@ -1124,6 +1124,29 @@ function renderBenchmarkTable() {
     const barW = f1 != null ? Math.round(f1 * 100) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
+
+    // Match quality breakdown: % of each method
+    let qualityCell = noScore;
+    if (s?.matches) {
+      const matched = s.matches.filter(m => m.matched);
+      const total = matched.length;
+      if (total > 0) {
+        const byCve  = matched.filter(m => m.match_method === 'cve').length;
+        const byType = matched.filter(m => m.match_method === 'ip+type').length;
+        const byIp   = matched.filter(m => m.match_method === 'ip+category').length;
+        const parts = [];
+        if (byCve)  parts.push(`<span title="CVE exact" style="color:var(--green)">CVE:${byCve}</span>`);
+        if (byType) parts.push(`<span title="IP+type" style="color:var(--accent)">T:${byType}</span>`);
+        if (byIp)   parts.push(`<span title="IP seulement (loose)" style="color:var(--orange)">~:${byIp}</span>`);
+        qualityCell = parts.join(' ');
+      }
+    }
+
+    // score_pct
+    const scorePct = s?.score_pct != null
+      ? `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`
+      : noScore;
+
     return `<tr>
       <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
       <td><span class="run-badge done">${escapeHtml(r.scenario)}</span></td>
@@ -1134,6 +1157,8 @@ function renderBenchmarkTable() {
       <td>${s ? pct(s.precision) : noScore}</td>
       <td>${s ? pct(f1) : noScore}</td>
       <td>${s ? `${s.weighted_score}/${s.max_weighted_score}` : noScore}</td>
+      <td>${scorePct}</td>
+      <td style="font-size:11px">${qualityCell}</td>
       <td>
         <div class="bm-bar-wrap" title="${f1 != null ? pct(f1)+' F1' : 'pas de score'}">
           <div class="bm-bar" style="width:${barW}%;background:${barColor(f1)}"></div>

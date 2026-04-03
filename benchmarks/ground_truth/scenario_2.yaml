@@ -203,6 +203,28 @@ vulnerabilities:
     verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
+  - id: V10
+    device: s2-iot-gw
+    ip: "192.168.100.13"
+    role: iot_gateway
+    title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
+    description: >
+      L'interface HTTP de l'IoT Gateway expose un endpoint POST /update qui accepte
+      des mises à jour firmware sans authentification et sans vérification d'intégrité.
+      Le répertoire /firmware/ est accessible avec directory listing et contient un
+      firmware binaire sans fichier de signature (.sha256 ou .sig).
+    severity: medium
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
+    mitre_ics: "T0839 - Module Firmware"
+    cve: null
+    indicators:
+      - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
+      - "POST /update retourne 200 sans authentification"
+      - "Aucune vérification d'intégrité du firmware uploadé"
+    verification: "curl http://192.168.100.13/firmware/ && curl -X POST http://192.168.100.13/update"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -248,14 +270,14 @@ attack_paths:
     impact: "Interception des sessions SSH, accès au broker MQTT, espionnage du réseau IoT"
 
 scoring:
-  total_vulnerabilities: 9
+  total_vulnerabilities: 10
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 29   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2
+  max_weighted_score: 29   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2 + V10:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

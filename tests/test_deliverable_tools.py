@@ -70,4 +70,4 @@ class TestToolDefinitions:
 
     def test_tool_names(self):
         names = {t["name"] for t in DELIVERABLE_TOOLS}
-        assert names == {"save_deliverable", "read_deliverable", "list_deliverables"}
+        assert names == {"save_deliverable", "read_deliverable", "list_deliverables", "aggregate_device_results"}
