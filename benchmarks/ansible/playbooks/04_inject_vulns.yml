@@ -156,8 +156,10 @@
           sed -i 's/^#\?MaxAuthTries.*/MaxAuthTries 10/' /etc/ssh/sshd_config
           echo "root:root" | chpasswd
 
-          # F6 : ciphers SSH faibles (détectables par ssh-audit)
-          printf '\n# Weak ciphers intentionnels (benchmark F6)\nCiphers 3des-cbc,aes128-cbc,aes256-cbc,arcfour256,arcfour128,arcfour,aes192-cbc\nMACs hmac-md5,hmac-md5-96,hmac-sha1,hmac-sha1-96\nKexAlgorithms diffie-hellman-group1-sha1,diffie-hellman-group14-sha1\n' >> /etc/ssh/sshd_config
+          # F6 : ciphers SSH faibles (détectables par ssh-audit, compatibles OpenSSH 9+)
+          printf '\n# Weak ciphers intentionnels (benchmark F6)\nCiphers aes128-cbc,aes192-cbc,aes256-cbc\nMACs hmac-sha1,hmac-sha1-etm@openssh.com\nKexAlgorithms diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1\n' >> /etc/ssh/sshd_config
+          # Valider la config avant de redémarrer
+          sshd -t || sed -i '/# Weak ciphers/,+4d' /etc/ssh/sshd_config
 
           systemctl enable ssh
           systemctl restart ssh
