@@ -39,6 +39,8 @@ PRICING = {
     "minimax/minimax-m2.5:free": {"input": 0.0, "output": 0.0},
     # DeepSeek
     "deepseek/deepseek-chat-v3-0324": {"input": 0.27, "output": 1.10},
+    "deepseek/deepseek-v3.2": {"input": 0.26, "output": 0.38},
+    "deepseek/deepseek-v3.2-exp": {"input": 0.26, "output": 0.38},
     "deepseek/deepseek-r1": {"input": 0.50, "output": 2.18},
 }
 DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
