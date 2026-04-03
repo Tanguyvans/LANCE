@@ -45,9 +45,9 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 2. For each service on {{device_id}}, apply the appropriate tests:
 
    **SSH** (if detected):
-   - FIRST check read_deliverable("02_recon.md") — if ssh_audit data for {{device_ip}} is already present, use it directly. Do NOT re-run ssh_audit in that case.
-   - Only call ssh_audit("{{device_ip}}", port) if the data is missing from 02_recon.md.
-   - Look for: weak ciphers, Terrapin (CVE-2023-48795), obsolete algorithms
+   - ALWAYS call ssh_audit("{{device_ip}}") independently. Do NOT rely on 02_recon.md summaries — the recon agent may have misclassified results. Use 02_recon.md as context only.
+   - Look for: weak ciphers (`[fail]` lines), Terrapin (CVE-2023-48795), obsolete algorithms
+   - For ssh_server role: if PasswordAuthentication=yes is confirmed in ssh_audit output → flag type=default_credentials, severity=CRITICAL immediately ("SSH PasswordAuthentication enabled — common IoT credentials must be tested manually"). Do not wait to test actual credentials.
 
    **HTTP/HTTPS** (if detected):
    - curl_headers("http://{{device_ip}}") — check security headers and server banner
@@ -60,6 +60,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      curl_headers("http://{{device_ip}}/api/devices")
      curl_headers("http://{{device_ip}}/api/status")
      curl_headers("http://{{device_ip}}/update")
+   - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci") and check root `/` response. If the response contains "LuCI" or "OpenWrt" → type=misconfiguration, severity=CRITICAL ("Admin panel exposed without network restriction").
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
    - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL

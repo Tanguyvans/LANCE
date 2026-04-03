@@ -18,7 +18,8 @@
       "Bash(python3 -c ':*)",
       "mcp__chrome-devtools__new_page",
       "mcp__chrome-devtools__click",
-      "Bash(venv/bin/python -m pytest tests/ -q -p no:pytest_ethereum -p no:web3)"
+      "Bash(venv/bin/python -m pytest tests/ -q -p no:pytest_ethereum -p no:web3)",
+      "Bash(python3 -m pytest tests/ -v -p no:pytest_ethereum -p no:web3)"
     ]
   }
 }

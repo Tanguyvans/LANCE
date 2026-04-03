@@ -548,7 +548,7 @@ class Pipeline:
             # Pipeline.tracker is not thread-safe for record_turn, but let's assume sequential updates for now
             # or better: wrap record_turn in a lock.
             self.tracker.start_phase(phase_name)
-            self.provider.chat_with_tools(
+            result_text = self.provider.chat_with_tools(
                 system_prompt=system_prompt,
                 user_message=(
                     f"Analyze vulnerabilities for device {device_id} ({device_ip}). "
@@ -563,7 +563,17 @@ class Pipeline:
             )
             usage = self.tracker.end_phase()
             if usage:
-                print(f"  [✓] Done: {phase_name} in {usage.turns} turns")
+                print(f"  [+] Done: {phase_name} in {usage.turns} turns")
+
+            # Fallback: if the LLM never called save_deliverable, save its last text output
+            deliverable_path = self.run_dir / deliverable_file
+            if not deliverable_path.exists() and result_text and result_text.strip():
+                log.warning(
+                    "Device %s: save_deliverable was never called — saving last LLM output as fallback",
+                    device_id,
+                )
+                deliverable_path.write_text(result_text.strip(), encoding="utf-8")
+                print(f"  Fallback save: {deliverable_file}")
 
         with ThreadPoolExecutor(max_workers=min(len(surface), 10)) as pool:
             pool.map(_run_single_device, surface)

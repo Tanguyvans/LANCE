@@ -181,6 +181,7 @@
         mode: "0755"
         content: |
           #!/bin/bash
+          set -e
           export DEBIAN_FRONTEND=noninteractive
           apt-get install -y -qq wget
 
@@ -201,6 +202,7 @@
           systemctl disable ssh 2>/dev/null || true
           systemctl enable dropbear
           systemctl restart dropbear
+          systemctl is-active dropbear || { echo "[ERROR] Dropbear failed to start"; exit 1; }
 
           # Faille V5/V6 : interface HTTP nginx sans HTTPS
           apt-get install -y -qq nginx
@@ -488,7 +490,7 @@
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
-        'opkg install socat 2>/dev/null || true'
+        'opkg update && opkg install socat'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 

@@ -54,6 +54,7 @@ Document results even if all ports are closed. Do NOT skip undocumented devices.
 
 ## Step 4 — Deep scans on interesting services
 For devices with SSH: call ssh_audit(host) — one device at a time.
+- When filling the SSH Audit table: Weak Ciphers=Yes if ANY `[fail]` line appears in ssh_audit stdout. Terrapin=Yes if `CVE-2023-48795` appears in the output. Write "Secure" ONLY if there are zero `[fail]` lines in the output. Do NOT summarize as "Secure" when [fail] lines are present.
 For devices with HTTP: call curl_headers(url) — one URL at a time.
 For devices with MQTT (port 1883): call mqtt_listen(broker, topic="#", count=5, timeout=5).
 
