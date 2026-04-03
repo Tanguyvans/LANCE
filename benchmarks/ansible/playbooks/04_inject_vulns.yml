@@ -157,13 +157,7 @@
           echo "root:root" | chpasswd
 
           # F6 : ciphers SSH faibles (détectables par ssh-audit)
-          cat >> /etc/ssh/sshd_config << 'SSHCFG'
-
-# Weak ciphers intentionnels (benchmark F6)
-Ciphers 3des-cbc,aes128-cbc,aes256-cbc,arcfour256,arcfour128,arcfour,aes192-cbc
-MACs hmac-md5,hmac-md5-96,hmac-sha1,hmac-sha1-96
-KexAlgorithms diffie-hellman-group1-sha1,diffie-hellman-group14-sha1
-SSHCFG
+          printf '\n# Weak ciphers intentionnels (benchmark F6)\nCiphers 3des-cbc,aes128-cbc,aes256-cbc,arcfour256,arcfour128,arcfour,aes192-cbc\nMACs hmac-md5,hmac-md5-96,hmac-sha1,hmac-sha1-96\nKexAlgorithms diffie-hellman-group1-sha1,diffie-hellman-group14-sha1\n' >> /etc/ssh/sshd_config
 
           systemctl enable ssh
           systemctl restart ssh
@@ -497,19 +491,14 @@ SSHCFG
       changed_when: true
 
     - name: "[OpenWrt] Activer Telnet (port 23) via socat (service persistant)"
-      ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
-          root@{{ benchmark_gateway }} \
-          'cat > /etc/init.d/telnet_bench << '"'"'INITEOF'"'"'
-#!/bin/sh /etc/rc.common
-START=99
-STOP=10
-start() { socat TCP-LISTEN:23,fork,reuseaddr EXEC:/bin/ash &>/dev/null & }
-stop()  { killall socat 2>/dev/null; }
-INITEOF
-chmod +x /etc/init.d/telnet_bench
-/etc/init.d/telnet_bench enable
-/etc/init.d/telnet_bench start'
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+        root@{{ benchmark_gateway }}
+        'printf "#!/bin/sh /etc/rc.common\nSTART=99\nSTOP=10\nstart() { socat TCP-LISTEN:23,fork,reuseaddr EXEC:/bin/ash >/dev/null 2>&1 & }\nstop() { killall socat 2>/dev/null; }\n"
+        > /etc/init.d/telnet_bench &&
+        chmod +x /etc/init.d/telnet_bench &&
+        /etc/init.d/telnet_bench enable &&
+        /etc/init.d/telnet_bench start'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 
