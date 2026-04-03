@@ -113,16 +113,6 @@ def search(
     for i in range(len(results["ids"][0])):
         distance = results["distances"][0][i]
         similarity = 1.0 - distance
-        doc_preview = (results["documents"][0][i] or "")[:60]
-        log.debug(
-            "ChromaDB [%s] query=%r → id=%s sim=%.4f %s | %s",
-            collection_name,
-            query,
-            results["ids"][0][i],
-            similarity,
-            "PASS" if similarity >= threshold else "FAIL",
-            doc_preview,
-        )
 
         if similarity < threshold:
             continue
