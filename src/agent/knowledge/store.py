@@ -176,9 +176,17 @@ def get_or_fetch(
 
     ingest(collection_name, documents=documents, ids=ids, metadatas=metadatas)
 
-    # Re-search without threshold: we just ingested live results,
-    # so we trust the top-k are relevant even if similarity is low
-    return search(collection_name, query, top_k=top_k, threshold=0.0)
+    # Return the fetched items directly rather than re-searching the whole
+    # collection: re-searching with threshold=0.0 would pull in unrelated
+    # cached documents from previous queries.
+    return [
+        {
+            "id": item.get(id_field, f"fetched_{i}"),
+            "document": item.get(doc_field, str(item)),
+            "metadata": {k: v for k, v in item.items() if k not in (doc_field,)},
+        }
+        for i, item in enumerate(fetched[:top_k])
+    ]
 
 
 def collection_stats(collection_name: str) -> dict[str, Any]:
