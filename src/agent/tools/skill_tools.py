@@ -202,7 +202,7 @@ def cve_search(query: str, top_k: int = 5) -> str:
         try:
             results = get_or_fetch(
                 "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=top_k,
-                threshold=0.65,
+                threshold=0.62,
             )
         except Exception as store_err:
             log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
