@@ -23,3 +23,9 @@ parameters:
     required: false
     flag: "-Pn"
     format: "boolean_flag"
+  - name: "scripts"
+    type: "string"
+    description: "NSE scripts to run (e.g. 'mysql-empty-password', 'ssh-auth-methods', 'http-auth'). Maps to --script=<value>."
+    required: false
+    flag: "--script"
+    format: "flag"

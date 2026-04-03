@@ -49,11 +49,20 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - Look for: weak ciphers, Terrapin (CVE-2023-48795), obsolete algorithms
 
    **HTTP/HTTPS** (if detected):
-   - curl_headers("http://{{device_ip}}:port") — check security headers and server banner
-   - MANDATORY: test for directory listing and exposed files:
-     curl_headers("http://{{device_ip}}/backup/"), curl_headers("http://{{device_ip}}/config/"), curl_headers("http://{{device_ip}}/admin/")
-     If response contains "Index of" or a file listing → type=directory_listing, severity=HIGH
-     If a file exposes credentials or sensitive data → type=data_exposure, severity=HIGH
+   - curl_headers("http://{{device_ip}}") — check security headers and server banner
+   - MANDATORY path enumeration — call each one individually, do NOT skip:
+     curl_headers("http://{{device_ip}}/backup/")
+     curl_headers("http://{{device_ip}}/config/")
+     curl_headers("http://{{device_ip}}/admin")
+     curl_headers("http://{{device_ip}}/logs/")
+     curl_headers("http://{{device_ip}}/firmware/")
+     curl_headers("http://{{device_ip}}/api/devices")
+     curl_headers("http://{{device_ip}}/api/status")
+     curl_headers("http://{{device_ip}}/update")
+   - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
+   - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
+   - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL
+   - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
 
    **MQTT** (port 1883, or if device role is mqtt_broker):
    - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) even if 1883 is not listed in services
@@ -64,8 +73,21 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet
    - If port 23 is open → type=insecure_protocol, severity=HIGH (Telnet exposes credentials in cleartext)
 
+   **Database** (for db_server role — MANDATORY):
+   - ALWAYS run nmap_scan("{{device_ip}}", ports="3306,5432,27017", skip_discovery=true)
+   - If port 3306 is open: run nmap_scan("{{device_ip}}", ports="3306", scripts="mysql-empty-password", skip_discovery=true)
+     - If script confirms empty root password → type=default_credentials, severity=CRITICAL
+     - If port is merely open (no auth confirmed) → type=network_exposure, severity=HIGH ("Database port exposed to network without firewall")
+   - If port 5432 is open → type=network_exposure, severity=HIGH
+
+   **Default credentials** (for SSH with PasswordAuthentication enabled):
+   - After ssh_audit: if output contains "PasswordAuthentication: enabled" or "password -- [info]":
+     run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true)
+   - If password auth is confirmed: flag type=default_credentials, severity=CRITICAL
+     Evidence: "SSH PasswordAuthentication enabled — common IoT credentials (admin:admin, root:root) must be tested manually"
+
    **Custom ports**:
-   - nmap_scan("{{device_ip}}", "port1,port2")
+   - nmap_scan("{{device_ip}}", ports="port1,port2")
 
 3. **NVD LOOKUP — MANDATORY**:
    For EACH service with a known version, run nvd_lookup(query):
@@ -90,11 +112,13 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 | weak_cipher (NSA curves)    | MEDIUM   |
 | terrapin (CVE-2023-48795)   | HIGH     |
 | no_auth (MQTT anonymous)    | HIGH     |
+| no_auth (HTTP admin)        | HIGH     |
 | data_exposure (credentials) | CRITICAL |
 | directory_listing           | HIGH     |
 | missing_header              | LOW      |
 | insecure_protocol (Telnet)  | HIGH     |
 | default_credentials         | CRITICAL |
+| network_exposure (DB port)  | HIGH     |
 </severity_reference>
 
 <output_format>
@@ -129,7 +153,7 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials
+Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
