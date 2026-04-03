@@ -90,7 +90,7 @@ def _parse_arp_line(line: str) -> dict | None:
     """Parse a single arp -a output line into structured data."""
     # Format: ? (192.168.88.202) at cc:50:e3:9c:13:14 on en0 ifscope [ethernet]
     # Or: router.lan (192.168.88.1) at 4:f4:1c:51:c1:3b on en0 ifscope [ethernet]
-    m = re.search(r"(\S+)\s+\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+(\S+)\s+on\s+(\S+)", line)
+    m = re.search(r"(\S+)\s+\((\d+\.\d+\.\d+\.\d+)\)\s+at\s+(\S+)(?:\s+\[\w+\])?\s+on\s+(\S+)", line)
     if not m:
         return None
     hostname, ip, mac, interface = m.groups()
