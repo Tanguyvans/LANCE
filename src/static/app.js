@@ -551,8 +551,8 @@ async function teardownScenario() {
   if (!scenarioId) return;
   const btn = document.getElementById('btn-teardown');
   btn.disabled = true;
-  btn.textContent = '⏳ Teardown…';
-  addLog({type:'info', message:`Teardown du scénario S${scenarioId} en cours…`});
+  btn.textContent = 'Teardown…';
+  addLog({type:'info', message:`Teardown S${scenarioId} en cours…`});
   try {
     const r = await fetch('/api/pipeline/teardown', {
       method: 'POST',
@@ -563,12 +563,12 @@ async function teardownScenario() {
       const err = await r.json().catch(() => ({detail: r.statusText}));
       addLog({type:'error', message:`Teardown échoué : ${err.detail}`});
     } else {
-      addLog({type:'info', message:`Teardown S${scenarioId} lancé en arrière-plan`});
+      addLog({type:'info', message:`Teardown S${scenarioId} lancé`});
     }
   } catch (e) {
     addLog({type:'error', message:`Teardown erreur réseau : ${e}`});
   } finally {
-    btn.textContent = '🗑 Teardown';
+    btn.textContent = 'Teardown';
     btn.disabled = false;
   }
 }

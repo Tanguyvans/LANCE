@@ -195,8 +195,9 @@ button {
 button:hover { opacity: .85; }
 button:disabled { opacity: .4; cursor: default; }
 
-#btn-start  { width: 100%; background: var(--green); color: var(--bg); }
-#btn-stop   { width: 100%; background: var(--red);   color: #fff; margin-top: 6px; display: none; }
+#btn-start    { width: 100%; background: var(--green); color: var(--bg); }
+#btn-stop     { width: 100%; background: var(--red);   color: #fff; margin-top: 6px; display: none; }
+#btn-teardown { width: 100%; background: transparent;  color: var(--red); border: 1px solid var(--red); margin-top: 4px; }
 
 /* ── Launch form — hauteur limitée pour laisser place à l'historique ─────── */
 #launch-section {

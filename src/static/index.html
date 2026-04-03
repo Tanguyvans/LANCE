@@ -83,19 +83,17 @@
       </div>
 
       <label for="sel-scenario">Scénario</label>
-      <div style="display:flex; gap:6px; align-items:center;">
-        <select id="sel-scenario" style="flex:1;">
-          <option value="">— Lab physique —</option>
-          <option value="1">S1 · Reconnaissance passive</option>
-          <option value="2">S2 · Gateway exposée</option>
-          <option value="3">S3 · MQTT compromise</option>
-          <option value="4">S4 · Firmware vulnérable</option>
-          <option value="5">S5 · Escalade de privilèges</option>
-          <option value="6">S6 · Pivot réseau</option>
-          <option value="7">S7 · APT complet</option>
-        </select>
-        <button id="btn-teardown" title="Teardown du scénario sélectionné" style="padding:6px 10px; background:var(--red,#c0392b); color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px; white-space:nowrap;" disabled>🗑 Teardown</button>
-      </div>
+      <select id="sel-scenario">
+        <option value="">— Lab physique —</option>
+        <option value="1">S1 · Reconnaissance passive</option>
+        <option value="2">S2 · Gateway exposée</option>
+        <option value="3">S3 · MQTT compromise</option>
+        <option value="4">S4 · Firmware vulnérable</option>
+        <option value="5">S5 · Escalade de privilèges</option>
+        <option value="6">S6 · Pivot réseau</option>
+        <option value="7">S7 · APT complet</option>
+      </select>
+      <button id="btn-teardown" disabled>Teardown</button>
 
       <label>Phases</label>
       <div class="phase-checkboxes">
