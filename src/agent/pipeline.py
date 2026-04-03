@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 from collections.abc import Callable
 from datetime import datetime
@@ -379,6 +380,14 @@ class Pipeline:
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)
 
+    @staticmethod
+    def _strip_code_fences(text: str) -> str:
+        """Strip markdown code fences (```json ... ```) from LLM fallback output."""
+        text = text.strip()
+        text = re.sub(r'^```(?:json)?\s*\n', '', text)
+        text = re.sub(r'\n```\s*$', '', text)
+        return text.strip()
+
     def _run_agent(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
         # Set skill filter for this phase (hard filtering)
@@ -452,7 +461,7 @@ class Pipeline:
                 "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
                 config.phase,
             )
-            deliverable_path.write_text(result_text.strip(), encoding="utf-8")
+            deliverable_path.write_text(self._strip_code_fences(result_text), encoding="utf-8")
             print(f"  Fallback save: {config.deliverable_file}")
 
         # Validate deliverable
@@ -572,7 +581,7 @@ class Pipeline:
                     "Device %s: save_deliverable was never called — saving last LLM output as fallback",
                     device_id,
                 )
-                deliverable_path.write_text(result_text.strip(), encoding="utf-8")
+                deliverable_path.write_text(self._strip_code_fences(result_text), encoding="utf-8")
                 print(f"  Fallback save: {deliverable_file}")
 
         with ThreadPoolExecutor(max_workers=min(len(surface), 10)) as pool:

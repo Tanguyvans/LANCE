@@ -402,6 +402,122 @@ class TestSkillFiltering:
         assert "search_history" in tool_names
 
 
+class TestStripCodeFences:
+    """Tests for _strip_code_fences — the fallback content sanitizer."""
+
+    def test_strips_json_fence(self, mock_provider, output_dir):
+        raw = '```json\n{"key": "value"}\n```'
+        result = Pipeline._strip_code_fences(raw)
+        assert result == '{"key": "value"}'
+
+    def test_strips_plain_fence(self, mock_provider, output_dir):
+        raw = '```\n{"key": "value"}\n```'
+        result = Pipeline._strip_code_fences(raw)
+        assert result == '{"key": "value"}'
+
+    def test_strips_mqtt_pattern(self, mock_provider, output_dir):
+        # Exact pattern from s2-mqtt fallback: "json\n{...}" (backticks stripped by provider)
+        raw = 'json\n{"device_id": "s2-mqtt", "vulnerabilities": []}'
+        result = Pipeline._strip_code_fences(raw)
+        # "json\n..." with no opening ``` is NOT a fence — should be unchanged
+        # This confirms the fallback alone doesn't fix the mqtt case; pipeline must strip ``` first
+        assert result == raw
+
+    def test_no_fence_unchanged(self, mock_provider, output_dir):
+        raw = '{"key": "value"}'
+        assert Pipeline._strip_code_fences(raw) == raw
+
+    def test_strips_whitespace(self, mock_provider, output_dir):
+        raw = '  \n```json\n{"key": "value"}\n```\n  '
+        result = Pipeline._strip_code_fences(raw)
+        assert result == '{"key": "value"}'
+
+    def test_prose_unchanged(self, mock_provider, output_dir):
+        raw = "The device has weak ciphers and exposed admin panel."
+        assert Pipeline._strip_code_fences(raw) == raw
+
+
+class TestFallbackSave:
+    """Tests that fallback saves stripped content when save_deliverable is never called."""
+
+    DEVICE_JSON = json.dumps({
+        "device_id": "s2-mqtt",
+        "device_ip": "192.168.100.12",
+        "vulnerabilities": [{"id": "VULN-001", "type": "no_auth", "severity": "HIGH"}],
+        "summary": {"total": 1, "high": 1, "medium": 0, "low": 0, "info": 0},
+    })
+
+    FAKE_SURFACE = json.dumps([{
+        "id": "s2-mqtt", "type": "server", "ip": "192.168.100.12",
+        "services": [{"name": "mqtt", "port": 1883}],
+    }])
+    FAKE_SCORES = json.dumps([{"device_id": "s2-mqtt", "risk_score": 3.0, "cve_count": 0}])
+    FAKE_DEVICE_INFO = json.dumps({"id": "s2-mqtt", "os_version": "Debian"})
+
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_risk_scores")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_fallback_saves_valid_json_from_code_fence(
+        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        mock_provider, output_dir
+    ):
+        """When LLM returns ```json {...}``` instead of calling save_deliverable, fallback strips fences."""
+        mock_surface.return_value = self.FAKE_SURFACE
+        mock_scores.return_value = self.FAKE_SCORES
+        mock_device_info.return_value = self.FAKE_DEVICE_INFO
+        mock_prompt.return_value = "Device prompt"
+        mock_provider.chat_with_tools.return_value = f"```json\n{self.DEVICE_JSON}\n```"
+
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="vuln_device",
+            deliverable_file="03_vuln_analysis.json",
+            tools=["graph", "deliverable"],
+            has_device_agents=True, max_turns=10,
+        )
+        pipeline._run_device_agents(config)
+
+        saved = pipeline.run_dir / "03_device_s2-mqtt.json"
+        assert saved.exists(), "Fallback file should have been created"
+        parsed = json.loads(saved.read_text())
+        assert parsed["device_id"] == "s2-mqtt"
+        assert len(parsed["vulnerabilities"]) == 1
+
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_risk_scores")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_fallback_not_triggered_when_file_exists(
+        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        mock_provider, output_dir
+    ):
+        """If save_deliverable was called, fallback must NOT overwrite the file."""
+        mock_surface.return_value = self.FAKE_SURFACE
+        mock_scores.return_value = self.FAKE_SCORES
+        mock_device_info.return_value = self.FAKE_DEVICE_INFO
+        mock_prompt.return_value = "Device prompt"
+
+        pipeline = Pipeline(provider=mock_provider)
+        expected_file = pipeline.run_dir / "03_device_s2-mqtt.json"
+        original_content = json.dumps({"device_id": "s2-mqtt", "vulnerabilities": [], "summary": {}})
+
+        def side_effect(**kwargs):
+            expected_file.write_text(original_content)
+            return "Done."
+        mock_provider.chat_with_tools.side_effect = side_effect
+
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="vuln_device",
+            deliverable_file="03_vuln_analysis.json",
+            tools=["graph", "deliverable"],
+            has_device_agents=True, max_turns=10,
+        )
+        pipeline._run_device_agents(config)
+
+        assert expected_file.read_text() == original_content
+
+
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
     @patch("src.agent.pipeline.load_prompt")

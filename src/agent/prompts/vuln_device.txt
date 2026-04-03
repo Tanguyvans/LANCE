@@ -67,9 +67,10 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
 
    **MQTT** (port 1883, or if device role is mqtt_broker):
-   - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) even if 1883 is not listed in services
+   - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) — do NOT skip even if 02_recon.md already mentions anonymous access. You MUST run the tool yourself.
    - CRITICAL exit code interpretation: return_code=27 (timeout) OR return_code=0 → anonymous access CONFIRMED → type=no_auth, severity=HIGH
    - Only return_code=5 means authentication is required (no finding)
+   - If anonymous access is confirmed: examine the captured message content carefully. If any message contains passwords, tokens, API keys, credentials, or secret-like data → add a SEPARATE finding type=data_exposure, severity=MEDIUM. Evidence must quote the actual message content.
 
    **Telnet** (for routers and gateways — device type=router or gateway):
    - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet
@@ -164,4 +165,6 @@ You are done when you have called save_deliverable("{{expected_deliverable}}", j
 The content MUST be valid JSON with a "vulnerabilities" key.
 DO NOT finish without saving the deliverable.
 DO NOT call save_deliverable more than once — there is no review or verification step.
+IMPORTANT: Pass RAW JSON to save_deliverable — do NOT wrap it in markdown code blocks (no ```json ... ```).
+If no vulnerabilities are found, still call save_deliverable with: {"device_id": "{{device_id}}", "device_ip": "{{device_ip}}", "vulnerabilities": [], "summary": {"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}}
 </output_format>

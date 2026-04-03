@@ -22,14 +22,14 @@ SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0,
 
 # Ground-truth category → LLM vuln type(s)
 CATEGORY_TO_TYPE = {
-    "misconfiguration":    {"no_auth", "missing_header", "version_leak"},
+    "misconfiguration":    {"no_auth", "missing_header", "version_leak", "misconfiguration", "insecure_protocol"},
     "cve":                 {"known_cve", "terrapin", "weak_cipher"},
-    "default_credentials": {"no_auth"},
-    "data_exposure":       {"missing_header", "version_leak", "no_auth"},
+    "default_credentials": {"no_auth", "default_credentials"},
+    "data_exposure":       {"missing_header", "version_leak", "no_auth", "data_exposure", "directory_listing"},
     "no_authentication":   {"no_auth", "missing_header"},
     "code_injection":      {"rce", "code_injection", "upload_bypass", "no_auth"},
     "weak_crypto":         {"weak_cipher", "weak_mac", "weak_kex"},
-    "insecure_update":     {"ota_no_signature", "update_no_auth", "no_auth"},
+    "insecure_update":     {"ota_no_signature", "update_no_auth", "no_auth", "insecure_update"},
 }
 
 
@@ -111,10 +111,17 @@ def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | Non
 
 
 def _match_by_ip_and_service(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Loose match: same IP, any finding (last resort)."""
+    """Loose match: same IP + same severity tier (last resort). Prevents cross-vuln matches."""
     gt_ip = gt_vuln.get("ip", "")
+    gt_sev = gt_vuln.get("severity", "low").lower()
+    gt_sev_rank = SEVERITY_RANK.get(gt_sev, 0)
     for f in llm_findings:
-        if f.get("device_ip") == gt_ip:
+        if f.get("device_ip") != gt_ip:
+            continue
+        llm_sev = (f.get("severity") or "low").lower()
+        llm_sev_rank = SEVERITY_RANK.get(llm_sev, 0)
+        # Allow match only within 1 severity tier
+        if abs(gt_sev_rank - llm_sev_rank) <= 1:
             return f
     return None
 
@@ -161,11 +168,15 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         max_weighted_score=max_score,
     )
 
-    matched_llm_ids: set[str] = set()
+    # Use composite key id|device_ip to avoid collisions when multiple devices share the same VULN-00x IDs
+    matched_llm_keys: set[str] = set()
+
+    def _llm_key(f: dict) -> str:
+        return f"{f.get('id', '')}|{f.get('device_ip', '')}"
 
     for gt in gt_vulns:
         # Exclude already-matched findings to prevent one LLM finding counting as multiple TPs
-        remaining = [f for f in llm_findings if f.get("id") not in matched_llm_ids]
+        remaining = [f for f in llm_findings if _llm_key(f) not in matched_llm_keys]
         match, method = match_vuln(gt, remaining)
         severity = gt.get("severity", "low")
         weight = weights.get(severity, 1)
@@ -187,7 +198,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             mr.severity_match = (
                 (match.get("severity") or "").lower() == severity.lower()
             )
-            matched_llm_ids.add(match.get("id", ""))
+            matched_llm_keys.add(_llm_key(match))
             result.true_positives += 1
             if not mr.severity_match:
                 result.severity_mismatches += 1
@@ -202,7 +213,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     # False positives = LLM findings not matched to any GT vuln
     # Bonus findings (e.g. weak_cipher, missing_header) are expected extras — not penalised
     for f in llm_findings:
-        if f.get("id") not in matched_llm_ids:
+        if _llm_key(f) not in matched_llm_keys:
             if bonus_types and f.get("type") in bonus_types:
                 result.bonus_findings += 1
                 continue
