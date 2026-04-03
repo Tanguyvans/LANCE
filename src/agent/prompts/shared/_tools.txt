@@ -15,7 +15,7 @@
 - **curl_headers(url)** — HTTP headers + body. Detects: missing security headers, directory listings ("Index of" in body), exposed sensitive files. Use on /backup/, /config/, /admin/ paths.
 - **mqtt_listen(broker, topic?, count?, timeout?)** — Passive MQTT listener. topic="#" by default, count=10, timeout=5s. return_code=0 or 27 → anonymous access CONFIRMED. return_code=5 → auth required.
 - **modbus_scan(target, skip_discovery?)** — nmap -sV -p 502. Port 502 open = Modbus TCP (no auth, HIGH severity). Use on PLC/SCADA/HMI devices.
-- **nvd_lookup(query)** — Search NIST NVD for known CVEs. Use CPE string when possible (e.g. "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"), or "Software Version" keyword.
+- **nvd_lookup(query)** — Direct NIST NVD query (no cache). Prefer **cve_search** instead — it is faster and caches results. Use nvd_lookup only if cve_search is unavailable.
 
 ### Physical attack tools (hardware — require physical lab access)
 - **hackrf_capture(frequency, output_file, sample_rate?, num_samples?)** — HackRF One SDR for RF sniffing and replay. Covers Zigbee 802.15.4 (2.4 GHz), LoRaWAN EU868 (868 MHz), sub-GHz (433 MHz). Returns protocol-specific commands.
@@ -27,7 +27,7 @@
 - **list_skills()** — List available IoT security skills with descriptions and tags
 - **load_skill(skill_name)** — Load a full skill document for detailed methodology. Use list_skills() first to discover available skills
 - **search_knowledge(query, collection?, top_k?)** — Semantic search across CVE knowledge and skills
-- **cve_search(query, top_k?)** — Search for CVEs by CPE string or keyword (cached, falls back to live NVD)
+- **cve_search(query, top_k?)** — **Preferred CVE lookup.** Searches local cache first (fast), falls back to live NVD on miss and caches the result. Use this instead of nvd_lookup.
 - **search_history(query, device_id?, top_k?)** — Search previous run findings for a device or vulnerability type
 
 **Available skills for this phase:**

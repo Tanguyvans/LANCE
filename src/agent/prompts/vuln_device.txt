@@ -39,6 +39,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 1. Read context from previous phases (ONCE, at the start — do NOT re-read these later):
    - read_deliverable("01_graph_analysis.md") for the topology
    - read_deliverable("02_recon.md") for discovered services
+   - search_history("{{device_ip}}", device_id="{{device_id}}") — check previous run findings for this device. If a finding is already confirmed with evidence, you may include it directly without re-running the test.
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
 
 2. For each service on {{device_id}}, apply the appropriate tests:
@@ -89,10 +90,11 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    **Custom ports**:
    - nmap_scan("{{device_ip}}", ports="port1,port2")
 
-3. **NVD LOOKUP — MANDATORY**:
-   For EACH service with a known version, run nvd_lookup(query):
+3. **CVE LOOKUP — MANDATORY**:
+   For EACH service with a known version, run cve_search(query):
    - Build a CPE or keyword query from the service name/version
-   - Examples: nvd_lookup("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), nvd_lookup("OpenSSH 8.9"), nvd_lookup("nginx 1.18.0")
+   - Examples: cve_search("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), cve_search("OpenSSH 8.9"), cve_search("nginx 1.18.0")
+   - cve_search checks the local cache first (fast), then queries NVD live on cache miss. Prefer it over nvd_lookup.
    - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
    - **RULE**: every returned CVE with CVSS >= 4.0 MUST become a "known_cve" entry in your deliverable
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
