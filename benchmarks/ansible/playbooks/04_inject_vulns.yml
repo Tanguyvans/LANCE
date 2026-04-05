@@ -195,17 +195,21 @@
             apt-get install -y -qq dropbear
           fi
 
-          # Désactiver OpenSSH, activer Dropbear sur port 22
-          sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear 2>/dev/null || true
-          sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=22/' /etc/default/dropbear 2>/dev/null || \
-            echo "DROPBEAR_PORT=22" >> /etc/default/dropbear
-          systemctl disable ssh 2>/dev/null || true
+          # Désactiver OpenSSH (service + socket), activer Dropbear sur port 22
+          systemctl stop ssh.socket ssh 2>/dev/null || true
+          systemctl disable ssh.socket ssh 2>/dev/null || true
+          # Forcer DROPBEAR_PORT=22 (uncommente ou ajoute la ligne)
+          sed -i 's/^#*DROPBEAR_PORT=.*/DROPBEAR_PORT=22/' /etc/default/dropbear
+          grep -q '^DROPBEAR_PORT=' /etc/default/dropbear || echo "DROPBEAR_PORT=22" >> /etc/default/dropbear
           systemctl enable dropbear
+          systemctl reset-failed dropbear 2>/dev/null || true
           systemctl restart dropbear
           systemctl is-active dropbear || { echo "[ERROR] Dropbear failed to start"; exit 1; }
 
           # Faille V5/V6 : interface HTTP nginx sans HTTPS
           apt-get install -y -qq nginx
+          # Désactiver la config par défaut qui conflict sur port 80
+          rm -f /etc/nginx/sites-enabled/default
           # F10 : firmware OTA sans signature ni authentification
           mkdir -p /var/www/html/firmware
           echo "IOT-GW-FIRMWARE-v2.1.3-RELEASE" > /var/www/html/firmware/firmware.bin

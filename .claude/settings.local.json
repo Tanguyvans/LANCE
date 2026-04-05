@@ -19,7 +19,14 @@
       "mcp__chrome-devtools__new_page",
       "mcp__chrome-devtools__click",
       "Bash(venv/bin/python -m pytest tests/ -q -p no:pytest_ethereum -p no:web3)",
-      "Bash(python3 -m pytest tests/ -v -p no:pytest_ethereum -p no:web3)"
+      "Bash(python3 -m pytest tests/ -v -p no:pytest_ethereum -p no:web3)",
+      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml playbooks/04_inject_vulns.yml playbooks/05_populate_services.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=2\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=2\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/99_teardown.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=2\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/99_teardown.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=3\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml playbooks/04_inject_vulns.yml playbooks/05_populate_services.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=4\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/99_teardown.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=4\")",
+      "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml playbooks/04_inject_vulns.yml playbooks/05_populate_services.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=5\")"
     ]
   }
 }
