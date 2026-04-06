@@ -213,11 +213,12 @@ vulnerabilities:
   - id: V10
     device: s3-nvr
     ip: "192.168.100.17"
-    role: ssh_server
-    title: "Credentials SSH par défaut sur NVR (admin/admin)"
+    role: nvr_server
+    title: "Credentials SSH par défaut sur NVR (ubnt/ubnt, Ubiquiti défaut)"
     description: >
-      Même configuration que V7 (admin:admin, root:root).
-      Simule le NVR (Network Video Recorder) du lab.
+      Compte ubnt avec mot de passe ubnt (credentials par défaut Ubiquiti UniFi NVR).
+      PermitRootLogin yes, PasswordAuthentication yes.
+      /opt/nvr/config/system.json expose admin_password et la liste des caméras.
     severity: high
     category: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
@@ -225,8 +226,9 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 22/tcp ouvert sur 192.168.100.17"
-      - "Login SSH admin:admin réussi"
-    verification: "ssh admin@192.168.100.17 (password: admin)"
+      - "Login SSH ubnt:ubnt réussi"
+      - "/opt/nvr/config/system.json expose admin_password et la liste des caméras"
+    verification: "ssh ubnt@192.168.100.17 (password: ubnt)"
     confidence_required: high
 
 attack_paths:
@@ -281,7 +283,7 @@ attack_paths:
       - { hop: 2, device: "s3-router (100.1)",   action: "Exfiltration fichiers config"        }
       - { hop: 3, device: "s3-jetson (100.14)",  action: "SSH avec credentials trouvés"       }
       - { hop: 4, device: "s3-iot-hub (100.13)", action: "MQTT subscribe → données capteurs"  }
-      - { hop: 5, device: "s3-nvr (100.17)",     action: "SSH admin:admin → accès NVR"        }
+      - { hop: 5, device: "s3-nvr (100.17)",     action: "SSH ubnt:ubnt → accès NVR"          }
     vulnerabilities_used: [V2, V7, V6, V10]
     impact: "Compromission complète du réseau NATO Lab simulé en 5 étapes"
 

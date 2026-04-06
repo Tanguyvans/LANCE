@@ -68,7 +68,7 @@ scenarios:
       - { name: jetson,   vmid_offset: 4, ip: "192.168.100.14", role: "ssh_server"   }
       - { name: ap,       vmid_offset: 5, ip: "192.168.100.15", role: "web_server"   }
       - { name: cam,      vmid_offset: 6, ip: "192.168.100.16", role: "web_server"   }
-      - { name: nvr,      vmid_offset: 7, ip: "192.168.100.17", role: "ssh_server"   }
+      - { name: nvr,      vmid_offset: 7, ip: "192.168.100.17", role: "nvr_server"   }
 
   "4":
     name: "Réseau segmenté"
