@@ -183,31 +183,15 @@
           #!/bin/bash
           set -e
           export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y -qq wget
+          # Réparer l'état apt (broken deps possibles si le script a déjà tourné avec le downgrade Dropbear)
+          dpkg --configure -a 2>/dev/null || true
+          apt-get install -f -y -qq -o Dpkg::Options::="--force-all" 2>/dev/null || true
 
-          # Faille V3/V4 : Dropbear 2020.81 (Terrapin CVE-2023-48795)
-          # Télécharge le .deb depuis les archives Debian Bullseye (timeout 30s)
-          if wget -q --timeout=30 -O /tmp/dropbear.deb \
-            "http://archive.debian.org/debian/pool/main/d/dropbear/dropbear_2020.81-3_amd64.deb"; then
-            dpkg -i /tmp/dropbear.deb || apt-get install -f -y -qq
-          else
-            echo "[WARN] Dropbear archive inaccessible, installation depuis les repos"
-            apt-get install -y -qq dropbear
-          fi
-
-          # Désactiver OpenSSH (service + socket), activer Dropbear sur port 22
-          systemctl stop ssh.socket ssh 2>/dev/null || true
-          systemctl disable ssh.socket ssh 2>/dev/null || true
-          # Forcer DROPBEAR_PORT=22 (uncommente ou ajoute la ligne)
-          sed -i 's/^#*DROPBEAR_PORT=.*/DROPBEAR_PORT=22/' /etc/default/dropbear
-          grep -q '^DROPBEAR_PORT=' /etc/default/dropbear || echo "DROPBEAR_PORT=22" >> /etc/default/dropbear
-          systemctl enable dropbear
-          systemctl reset-failed dropbear 2>/dev/null || true
-          systemctl restart dropbear
-          systemctl is-active dropbear || { echo "[ERROR] Dropbear failed to start"; exit 1; }
-
+          # Installer les paquets nécessaires (idempotent : skip si déjà présents)
+          dpkg -l wget 2>/dev/null | grep -q '^ii' || apt-get install -y -qq wget
           # Faille V5/V6 : interface HTTP nginx sans HTTPS
-          apt-get install -y -qq nginx
+          # Installer nginx EN PREMIER (avant le downgrade Dropbear pour éviter les broken deps)
+          dpkg -l nginx 2>/dev/null | grep -q '^ii' || apt-get install -y -qq nginx
           # Désactiver la config par défaut qui conflict sur port 80
           rm -f /etc/nginx/sites-enabled/default
           # F10 : firmware OTA sans signature ni authentification
@@ -225,7 +209,54 @@
           printf '}\n'
           } > /etc/nginx/conf.d/admin.conf
           systemctl enable nginx && systemctl restart nginx
-          echo "[OK] Dropbear 2020.81 + HTTP admin + OTA sans signature configuré"
+
+          # Faille V3/V4 : Dropbear 2020.81 (Terrapin CVE-2023-48795)
+          # Installer APRÈS nginx pour éviter que le broken state bloque apt
+          # Télécharge dropbear-bin (le binaire, pas le métapackage) depuis les archives Bullseye
+          DROPBEAR_DEB="dropbear-bin_2020.81-3_amd64.deb"
+          DROPBEAR_INSTALLED=false
+          for URL in \
+            "http://archive.debian.org/debian/pool/main/d/dropbear/${DROPBEAR_DEB}" \
+            "http://snapshot.debian.org/archive/debian/20220101T000000Z/pool/main/d/dropbear/${DROPBEAR_DEB}" \
+            "http://ftp.de.debian.org/debian/pool/main/d/dropbear/${DROPBEAR_DEB}"; do
+            if wget -q --timeout=30 -O /tmp/dropbear-bin.deb "${URL}" 2>/dev/null; then
+              dpkg --force-all -i /tmp/dropbear-bin.deb && DROPBEAR_INSTALLED=true && break
+            fi
+          done
+          if [ "${DROPBEAR_INSTALLED}" = "false" ]; then
+            echo "[WARN] Dropbear 2020.81 inaccessible depuis toutes les sources"
+            apt-get install -y -qq dropbear
+          fi
+          # Bloquer les mises à jour automatiques du paquet
+          apt-mark hold dropbear-bin 2>/dev/null || true
+
+          # Désactiver OpenSSH (service + socket)
+          systemctl stop ssh.socket ssh 2>/dev/null || true
+          systemctl disable ssh.socket ssh 2>/dev/null || true
+
+          # Dropbear 2020.81 : dropbear-bin ne contient pas d'unité systemd ni d'init script
+          # → créer les clés hôtes et un service systemd minimal
+          mkdir -p /etc/dropbear
+          [ -f /etc/dropbear/dropbear_ed25519_host_key ] || \
+            dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key > /dev/null 2>&1
+          [ -f /etc/dropbear/dropbear_rsa_host_key ] || \
+            dropbearkey -t rsa -s 2048 -f /etc/dropbear/dropbear_rsa_host_key > /dev/null 2>&1
+          cat > /etc/systemd/system/dropbear.service << 'UNIT'
+          [Unit]
+          Description=Dropbear SSH server 2020.81
+          After=network.target
+          [Service]
+          Type=simple
+          ExecStart=/usr/sbin/dropbear -F -E -p 22
+          Restart=on-failure
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable dropbear
+          systemctl restart dropbear
+          systemctl is-active dropbear || { echo "[ERROR] Dropbear failed to start"; exit 1; }
+          echo "[OK] nginx HTTP admin + Dropbear 2020.81 + OTA sans signature configuré"
 
     - name: "[iot_gateway] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
