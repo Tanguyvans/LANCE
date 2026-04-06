@@ -212,7 +212,11 @@
 
           # Faille V3/V4 : Dropbear 2020.81 (Terrapin CVE-2023-48795)
           # Installer APRÈS nginx pour éviter que le broken state bloque apt
-          # Télécharge dropbear-bin (le binaire, pas le métapackage) depuis les archives Bullseye
+          # Étape 1 : installer les libs de runtime requises par Dropbear 2020.81 (Bullseye)
+          # libtomcrypt1t64 et libtommath1 fournissent libtomcrypt.so.1 / libtommath.so.1
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libtomcrypt1t64 libtommath1 2>/dev/null || \
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libtomcrypt1 libtommath1 2>/dev/null || true
+          # Étape 2 : télécharger dropbear-bin (le binaire, pas le métapackage) depuis les archives Bullseye
           DROPBEAR_DEB="dropbear-bin_2020.81-3_amd64.deb"
           DROPBEAR_INSTALLED=false
           for URL in \
