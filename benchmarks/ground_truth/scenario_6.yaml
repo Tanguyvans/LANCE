@@ -181,10 +181,10 @@ vulnerabilities:
     mitre_ics: "Collection"
     cve: null
     indicators:
-      - "Port 8080/tcp ouvert"
-      - "GET http://192.168.100.14:8080/?action=stream retourne le flux vidéo"
-      - "GET http://192.168.100.14:8080/?action=snapshot retourne une image"
-    verification: "curl -o /dev/null -s -w '%{http_code}' http://192.168.100.14:8080/?action=snapshot"
+      - "Port 80/tcp ouvert"
+      - "GET http://192.168.100.14/ retourne l'interface IP Camera sans auth"
+      - "GET http://192.168.100.14/admin retourne 200 sans authentification"
+    verification: "curl -o /dev/null -s -w '%{http_code}' http://192.168.100.14/admin"
     confidence_required: medium
 
   - id: V9
