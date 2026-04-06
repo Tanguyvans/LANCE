@@ -174,7 +174,7 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Dry-run mode for validation without API calls
 
 ### Phase 5 — Benchmark LLM sur scénarios Proxmox ✅
-- VM maître (LXC 200) sur Proxmox (`192.168.10.100`) — orchestre le pipeline
+- VM maître (LXC 200) sur Proxmox (`10.0.0.110`) — orchestre le pipeline
 - 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
 - Dashboard FastAPI + SPA (HTML/JS/CSS) accessible via Tailscale `nato-master.tail6b8e31.ts.net:8501`
 - CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart `nato-fastapi.service`)

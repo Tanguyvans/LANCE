@@ -9,8 +9,8 @@ Chaque scénario déploie un réseau isolé avec des services volontairement vul
 Votre machine locale
    │  ansible-playbook deploy_master.yml
    ▼
-Proxmox (192.168.10.100)
-   ├── VM Maître LXC 200  (192.168.10.30 + Tailscale 100.x.x.x)
+Proxmox (10.0.0.110)
+   ├── VM Maître LXC 200  (10.0.0.10 + Tailscale 100.x.x.x)
    │     ├── Streamlit UI  :8501
    │     ├── Pipeline LLM  (5 phases)
    │     └── Ansible controller → lance les playbooks 03–99
@@ -25,7 +25,7 @@ Proxmox (192.168.10.100)
 ## Prérequis (une seule fois)
 
 1. Ansible installé localement
-2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@192.168.10.100`
+2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@10.0.0.110`
 3. Fichier vault password : `echo "motdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass`
 4. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 5. Token de registration GitHub Actions généré (voir section CI/CD ci-dessous)
@@ -39,7 +39,7 @@ ansible-playbook playbooks/deploy_master.yml \
 ```
 
 Le playbook crée et configure entièrement la VM maître :
-- LXC Debian 13, dual NIC (management `192.168.10.30` + benchmark `192.168.100.200`)
+- LXC Debian 13, dual NIC (management `10.0.0.10` + benchmark `192.168.100.200`)
 - Repo cloné, dépendances Python installées, `.env` injecté depuis le vault
 - Clé SSH générée et autorisée sur Proxmox (pour piloter les scénarios)
 - Tailscale configuré → accès SSH/Streamlit depuis n'importe où
@@ -51,7 +51,7 @@ Le résumé final affiche :
 ```
 Streamlit : http://<tailscale-ip>:8501
 SSH WAN   : ssh root@<tailscale-ip>
-SSH LAN   : ssh root@192.168.10.30
+SSH LAN   : ssh root@10.0.0.10
 ```
 
 ## CI/CD — Mise à jour automatique
@@ -82,7 +82,7 @@ Le runner tourne ensuite en service systemd (`actions.runner.*.nato-master`) et 
 Tous les playbooks de scénarios se lancent **depuis la VM maître** :
 
 ```bash
-ssh root@192.168.10.30  # ou SSH Tailscale
+ssh root@10.0.0.10  # ou SSH Tailscale
 cd /opt/nato-smartcity-iot
 ```
 
@@ -185,7 +185,7 @@ ansible-playbook benchmarks/ansible/playbooks/99_teardown.yml \
 
 ```
 ansible/
-├── inventory.yml                  # Proxmox (192.168.10.100) + master (DHCP)
+├── inventory.yml                  # Proxmox (10.0.0.110) + master (DHCP)
 ├── group_vars/
 │   └── all/
 │       ├── main.yml               # Variables globales (réseau, VMIDs, scénarios)
