@@ -353,190 +353,26 @@
           Rapport de vérification — Scénario S{{ scenario_id }}
           ══════════════════════════════════════════════════════════════════
 
-    - name: Évaluer les résultats — construire la liste des checks OK/FAIL
+    - name: Évaluer les résultats — consolider les checks OK/FAIL
       ansible.builtin.set_fact:
-        _check_router_ok: "{{ 'OK' in router_telnet_check.stdout | default('') }}"
-        _check_mqtt_ok: "{{ (mqtt_conn_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (mqtt_conn_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
-        _check_db_ok: "{{ (db_nopass_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (db_nopass_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
-        _check_ssh_ok: "{{ (ssh_creds_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (ssh_creds_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
-        _check_web_ok: "{{ (web_listing_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (web_listing_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
+        _check_router_ok: "{{ 'OK' in (router_telnet_check.stdout | default('')) }}"
+        _check_mqtt_ok:   "{{ 'FAIL' not in (mqtt_conn_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_db_ok:     "{{ 'FAIL' not in (db_nopass_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_ssh_ok:    "{{ 'FAIL' not in (ssh_creds_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_web_ok:    "{{ 'FAIL' not in (web_listing_check.results | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+
+    - name: Calculer le statut global de vérification
+      ansible.builtin.set_fact:
+        _verify_all_ok: "{{ (_check_router_ok | bool) and (_check_mqtt_ok | bool) and (_check_db_ok | bool) and (_check_ssh_ok | bool) and (_check_web_ok | bool) }}"
 
     - name: Bloquer si des vulnérabilités critiques sont absentes
       ansible.builtin.fail:
         msg: |
-          VERIFICATION FAILED sur S{{ scenario_id }} — au moins une vulnérabilité critique est absente.
-          Router Telnet: {{ 'OK' if _check_router_ok else 'FAIL' }}
-          MQTT anon:     {{ 'OK' if _check_mqtt_ok else 'FAIL' }}
-          DB root:       {{ 'OK' if _check_db_ok else 'FAIL' }}
-          SSH creds:     {{ 'OK' if _check_ssh_ok else 'FAIL' }}
-          Web listing:   {{ 'OK' if _check_web_ok else 'FAIL' }}
-          Relancez 04_inject_vulns.yml avant de démarrer le pipeline LLM.
-      when: >
-        not (_check_router_ok | bool) or
-        not (_check_mqtt_ok | bool) or
-        not (_check_db_ok | bool) or
-        not (_check_ssh_ok | bool) or
-        not (_check_web_ok | bool)
-
-          MQTT (allow_anonymous + port 1883)
-          {% for r in (mqtt_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 1883  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (mqtt_anon_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            allow_anon : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (mqtt_conn_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Connexion  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          Web Server (nginx autoindex + fichiers exposés)
-          {% for r in (web_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (web_autoindex_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            autoindex  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (web_listing_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            /backup/   : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          SSH Server (admin/admin + PasswordAuth)
-          {% for r in (ssh_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (ssh_pwauth_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            PwdAuth    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (ssh_creds_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            admin:admin: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          IoT Gateway (Dropbear + HTTP sans auth)
-          {% for r in (iotgw_ssh_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (iotgw_dropbear_version.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Dropbear   : {{ r.stdout_lines[0] | default('?') }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (iotgw_http_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            /admin     : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          DB Server (root sans password + bind 0.0.0.0)
-          {% for r in (db_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 3306  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (db_nopass_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            root/vide  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (db_data_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            users table: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          Modbus Server (port 502 sans auth)
-          {% for r in (modbus_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 502   : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (modbus_svc_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Service    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          Web Upload (PHP sans validation)
-          {% for r in (webupload_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (webupload_shell_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            PHP upload : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          Camera Server (HTTP sans auth)
-          {% for r in (camera_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 80    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (camera_admin_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            /admin     : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          NVR Server (ubnt/ubnt)
-          {% for r in (nvr_port_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            Port 22    : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (nvr_creds_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            ubnt:ubnt  : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (nvr_config_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            config.json: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          {% if scenario_id == "7" %}
-          S7 — Spécifiques Edge-Cloud
-          {% for r in (s7_bridge_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            bridge.conf: {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-          {% for r in (s7_backup_check.results | default([])) %}
-          {% if not r.skipped | default(false) %}
-            backup SQL : {{ '✓ OK' if 'OK' in r.stdout else '✗ FAIL' }}  [{{ r.item.name }}]
-          {% endif %}
-          {% endfor %}
-
-          {% endif %}
-          Router OpenWrt
-            Telnet (23) : {{ '✓ OK' if 'OK' in router_telnet_check.stdout else '✗ FAIL' }}
-          {% if scenario_id in ["2", "4", "5", "6", "7"] %}
-            Web WAN (80): {{ '✓ OK' if 'OK' in (router_wan_check.stdout | default('')) else '✗ FAIL' }}
-          {% endif %}
-          {% if scenario_id == "3" %}
-            FTP (21)    : {{ '✓ OK' if 'OK' in (router_ftp_check.stdout | default('')) else '✗ FAIL' }}
-          {% endif %}
-
-          ══════════════════════════════════════════════════════════════════
+          VERIFICATION FAILED sur S{{ scenario_id }} — au moins une vulnerabilite critique est absente.
+          Router Telnet: {{ 'OK' if _check_router_ok | bool else 'FAIL' }}
+          MQTT anon:     {{ 'OK' if _check_mqtt_ok | bool else 'FAIL' }}
+          DB root:       {{ 'OK' if _check_db_ok | bool else 'FAIL' }}
+          SSH creds:     {{ 'OK' if _check_ssh_ok | bool else 'FAIL' }}
+          Web listing:   {{ 'OK' if _check_web_ok | bool else 'FAIL' }}
+          Relancez 04_inject_vulns.yml avant de demarrer le pipeline LLM.
+      when: not (_verify_all_ok | bool)

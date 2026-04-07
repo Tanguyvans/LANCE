@@ -27,7 +27,8 @@
       "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml playbooks/04_inject_vulns.yml playbooks/05_populate_services.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=4\")",
       "Bash(ansible-playbook -i inventory.yml playbooks/99_teardown.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=4\")",
       "Bash(ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml playbooks/04_inject_vulns.yml playbooks/05_populate_services.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=5\")",
-      "Bash(ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=3\")"
+      "Bash(ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml --vault-password-file /Users/gaspard/.vault_pass -e \"scenario_id=3\")",
+      "Bash(scp \"/Users/gaspard/Desktop/Code Stage/NATO-SmartCity-IoT/benchmarks/ansible/playbooks/06_verify.yml\" \"root@nato-master.tail6b8e31.ts.net:/opt/nato-smartcity-iot/benchmarks/ansible/playbooks/06_verify.yml\")"
     ]
   }
 }
