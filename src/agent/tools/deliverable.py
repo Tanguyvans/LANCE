@@ -13,10 +13,55 @@ def set_output_dir(path: Path) -> None:
     OUTPUT_DIR = path
 
 
+def _extract_json(content: str) -> str:
+    """If content is not valid JSON, try to extract the first JSON object or array from it."""
+    content = content.strip()
+    # Already valid JSON
+    try:
+        json.loads(content)
+        return content
+    except json.JSONDecodeError:
+        pass
+    # Strip markdown code fences: ```json ... ``` or ``` ... ```
+    import re
+    m = re.search(r'```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```', content)
+    if m:
+        candidate = m.group(1).strip()
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+    # Last resort: find first { ... } block
+    start = content.find('{')
+    if start != -1:
+        # Walk forward to find matching closing brace
+        depth = 0
+        for i, ch in enumerate(content[start:], start):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = content[start:i + 1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except json.JSONDecodeError:
+                        break
+    return content
+
+
 def save_deliverable(filename: str, content: str) -> str:
-    """Save a deliverable file to output/agent/."""
+    """Save a deliverable file to output/agent/.
+
+    For JSON files, automatically extracts the JSON block if the LLM wrapped it in markdown.
+    """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUTPUT_DIR / filename
+    # For JSON deliverables, strip surrounding markdown if needed
+    if filename.endswith(".json"):
+        content = _extract_json(content)
     path.write_text(content, encoding="utf-8")
     return json.dumps({"status": "saved", "path": str(path), "size": len(content)})
 

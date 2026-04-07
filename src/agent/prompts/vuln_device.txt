@@ -86,11 +86,11 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      - If port is merely open (no auth confirmed) → type=network_exposure, severity=HIGH ("Database port exposed to network without firewall")
    - If port 5432 is open → type=network_exposure, severity=HIGH
 
-   **Default credentials** (for SSH with PasswordAuthentication enabled):
-   - After ssh_audit: if output contains "PasswordAuthentication: enabled" or "password -- [info]":
-     run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true)
-   - If password auth is confirmed: flag type=default_credentials, severity=CRITICAL
-     Evidence: "SSH PasswordAuthentication enabled — common IoT credentials (admin:admin, root:root) must be tested manually"
+   **Default credentials** (for SSH):
+   - For ssh_server role: ALWAYS run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true) regardless of ssh_audit output.
+   - If result contains "password" in the auth methods list → type=default_credentials, severity=HIGH
+     Evidence: "SSH password authentication enabled — default IoT credentials (admin:admin, root:root) must be tested manually"
+   - Do NOT wait for ssh_audit to mention PasswordAuthentication — run the nmap script proactively.
 
    **Custom ports**:
    - nmap_scan("{{device_ip}}", ports="port1,port2")
@@ -139,7 +139,8 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **SSH** (if port 22 detected or device role is ssh_server/nvr_server/iot_gateway):
 - [ ] ssh_audit called independently on {{device_ip}}
-- [ ] If PasswordAuthentication=yes → default_credentials finding created
+- [ ] For ssh_server role: nmap_scan with scripts="ssh-auth-methods" called
+- [ ] If password auth confirmed → default_credentials finding created (severity=HIGH)
 
 **HTTP** (if port 80/443/8080 detected or role is web_server/iot_gateway/camera_server):
 - [ ] curl_headers called on root path /
