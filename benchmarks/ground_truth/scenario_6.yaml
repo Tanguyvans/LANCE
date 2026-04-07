@@ -173,8 +173,9 @@ vulnerabilities:
     role: camera_server
     title: "Flux caméra HTTP accessible sans authentification"
     description: >
-      Serveur mjpeg-streamer exposant le flux vidéo sur port 8080 sans authentification.
-      L'interface de contrôle PTZ est également accessible sans login.
+      Interface caméra IP nginx exposant le flux et le panneau admin sur port 80
+      sans authentification. L'endpoint /admin et la page d'accueil sont accessibles
+      sans login.
     severity: medium
     category: misconfiguration
     owasp_iot: "I3 - Insecure Ecosystem Interfaces / I6 - Insufficient Privacy Protection"

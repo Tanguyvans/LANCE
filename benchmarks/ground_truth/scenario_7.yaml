@@ -144,7 +144,7 @@ vulnerabilities:
       via le serveur web, obtenant ainsi une exécution de code arbitraire sur
       le serveur cloud.
     severity: critical
-    category: misconfiguration
+    category: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution, Lateral Movement"
     cve: null
@@ -185,7 +185,7 @@ vulnerabilities:
       La base smartcity contient des données PII non chiffrées (noms, emails,
       tokens d'accès, historique des événements) dans les tables users et access_events.
     severity: high
-    category: data_exposure
+    category: default_credentials
     owasp_iot: "I6 - Insufficient Privacy Protection / I1 - Weak Passwords"
     mitre_ics: "Collection"
     cve: null
@@ -238,6 +238,26 @@ vulnerabilities:
     verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
     confidence_required: medium
 
+  - id: V11
+    device: s7-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Interface web admin OpenWrt accessible depuis le WAN (port 80)"
+    description: >
+      uhttpd configuré pour écouter sur 0.0.0.0:80. L'interface LuCI est accessible
+      depuis le WAN sans restriction réseau, permettant la reconfiguration complète
+      du routeur edge et l'exposition de tous les services internes.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur l'IP WAN du routeur"
+      - "Interface LuCI accessible sans restriction réseau"
+    verification: "curl http://192.168.100.1:80"
+    confidence_required: high
+
 attack_paths:
 
   - id: P1
@@ -285,14 +305,14 @@ attack_paths:
     impact: "Compromission complète edge-to-cloud, exfiltration de toutes les données PII"
 
 scoring:
-  total_vulnerabilities: 10
+  total_vulnerabilities: 11
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 27   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:1 + V10:2
+  max_weighted_score: 31   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:1 + V10:2 + V11:4
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

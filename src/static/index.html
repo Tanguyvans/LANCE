@@ -87,13 +87,13 @@
       <label for="sel-scenario">Scénario</label>
       <select id="sel-scenario">
         <option value="">— Lab physique —</option>
-        <option value="1">S1 · Reconnaissance passive</option>
+        <option value="1">S1 · Réseau plat</option>
         <option value="2">S2 · Gateway exposée</option>
-        <option value="3">S3 · MQTT compromise</option>
-        <option value="4">S4 · Firmware vulnérable</option>
-        <option value="5">S5 · Escalade de privilèges</option>
-        <option value="6">S6 · Pivot réseau</option>
-        <option value="7">S7 · APT complet</option>
+        <option value="3">S3 · Réplique NATO Lab</option>
+        <option value="4">S4 · Réseau segmenté</option>
+        <option value="5">S5 · Smart Building</option>
+        <option value="6">S6 · Domotique centralisée</option>
+        <option value="7">S7 · Edge-Cloud pivot</option>
       </select>
       <button id="btn-teardown" disabled>Teardown</button>
 
@@ -189,13 +189,13 @@
     <div id="bm-controls">
       <select id="bm-filter-scenario" aria-label="Filtrer par scénario">
         <option value="">Tous les scénarios</option>
-        <option value="S1">S1 · Recon passive</option>
+        <option value="S1">S1 · Réseau plat</option>
         <option value="S2">S2 · Gateway exposée</option>
-        <option value="S3">S3 · MQTT compromise</option>
-        <option value="S4">S4 · Firmware vulnérable</option>
-        <option value="S5">S5 · Escalade de privilèges</option>
-        <option value="S6">S6 · Pivot réseau</option>
-        <option value="S7">S7 · APT complet</option>
+        <option value="S3">S3 · Réplique NATO Lab</option>
+        <option value="S4">S4 · Réseau segmenté</option>
+        <option value="S5">S5 · Smart Building</option>
+        <option value="S6">S6 · Domotique centralisée</option>
+        <option value="S7">S7 · Edge-Cloud pivot</option>
       </select>
       <button id="bm-refresh" aria-label="Rafraîchir">↻</button>
     </div>
@@ -218,6 +218,8 @@
           <th>Score</th>
           <th>Score%</th>
           <th title="CVE : correspondance CVE exacte | T : IP + type | ~ : IP + catégorie (loose)" style="cursor:help">Qualité ⓘ</th>
+          <th title="Vulnérabilités trouvées par sévérité (trouvées/total)" style="cursor:help">Sévérité ⓘ</th>
+          <th title="Taux de faux positifs (hallucinations LLM)" style="cursor:help">Halluc. ⓘ</th>
           <th>F1 bar</th>
         </tr>
       </thead>

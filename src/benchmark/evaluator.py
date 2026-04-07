@@ -111,17 +111,15 @@ def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | Non
 
 
 def _match_by_ip_and_service(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Loose match: same IP + same severity tier (last resort). Prevents cross-vuln matches."""
+    """Loose match: same IP + exact severity (last resort). Exact severity required to avoid
+    cross-vuln collisions when multiple findings share the same IP."""
     gt_ip = gt_vuln.get("ip", "")
     gt_sev = gt_vuln.get("severity", "low").lower()
-    gt_sev_rank = SEVERITY_RANK.get(gt_sev, 0)
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
         llm_sev = (f.get("severity") or "low").lower()
-        llm_sev_rank = SEVERITY_RANK.get(llm_sev, 0)
-        # Allow match only within 1 severity tier
-        if abs(gt_sev_rank - llm_sev_rank) <= 1:
+        if llm_sev == gt_sev:
             return f
     return None
 
@@ -202,8 +200,15 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             result.true_positives += 1
             if not mr.severity_match:
                 result.severity_mismatches += 1
-            # Loose matches (ip only) count as 0.5 in weighted score
-            score_weight = weight if method != "ip+category" else weight * 0.5
+            # Scoring penalties:
+            #   ip+category (loose match)  → 0.5x  (structural ambiguity)
+            #   severity mismatch          → 0.75x  (right vuln, wrong impact)
+            #   both combined              → 0.5 * 0.75 = 0.375x
+            score_weight = weight
+            if method == "ip+category":
+                score_weight *= 0.5
+            if not mr.severity_match:
+                score_weight *= 0.75
             result.weighted_score += score_weight
         else:
             result.false_negatives += 1

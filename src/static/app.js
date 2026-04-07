@@ -1195,6 +1195,25 @@ function renderBenchmarkTable() {
       ? `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`
       : noScore;
 
+    // Severity breakdown: C:found/total H:found/total M:found/total L:found/total
+    let sevCell = noScore;
+    if (s?.matches) {
+      const SEV_KEYS = [['critical','C','var(--red)'],['high','H','var(--orange)'],['medium','M','var(--yellow,#d29922)'],['low','L','var(--green)']];
+      const parts = SEV_KEYS.map(([sev, label, color]) => {
+        const total = s.matches.filter(m => m.gt_severity === sev).length;
+        if (total === 0) return null;
+        const found = s.matches.filter(m => m.gt_severity === sev && m.matched).length;
+        const col = found === total ? color : found === 0 ? 'var(--red)' : 'var(--orange)';
+        return `<span style="color:${col}" title="${sev}: ${found}/${total} trouvées">${label}:${found}/${total}</span>`;
+      }).filter(Boolean);
+      if (parts.length) sevCell = `<span style="font-size:11px">${parts.join(' ')}</span>`;
+    }
+
+    // Hallucination rate
+    const hallucCell = s?.hallucination_rate != null
+      ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${s.false_positives} faux positifs">${pct(s.hallucination_rate)}</span>`
+      : noScore;
+
     return `<tr>
       <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
       <td><span class="run-badge done">${escapeHtml(r.scenario)}</span></td>
@@ -1207,6 +1226,8 @@ function renderBenchmarkTable() {
       <td>${s ? `${s.weighted_score}/${s.max_weighted_score}` : noScore}</td>
       <td>${scorePct}</td>
       <td style="font-size:11px">${qualityCell}</td>
+      <td>${sevCell}</td>
+      <td>${hallucCell}</td>
       <td>
         <div class="bm-bar-wrap" title="${f1 != null ? pct(f1)+' F1' : 'pas de score'}">
           <div class="bm-bar" style="width:${barW}%;background:${barColor(f1)}"></div>
