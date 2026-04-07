@@ -134,6 +134,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('bm-refresh').addEventListener('click', loadBenchmark);
   document.getElementById('bm-filter-scenario').addEventListener('change', renderBenchmarkTable);
 
+  // Phase pills — naviguer vers le livrable si un run est sélectionné
+  const PHASE_FILE = {
+    1: '01_graph_analysis.md',
+    2: '02_recon.md',
+    3: '03_vuln_analysis.json',
+    4: '04_exploitation.json',
+    5: '05_report.md',
+  };
+  document.querySelectorAll('.phase-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      if (!activeRunId) return;
+      const file = PHASE_FILE[pill.dataset.phase];
+      if (file) viewFile(activeRunId, file);
+    });
+  });
+
   initResizeHandles();
   initCollapsibleSidebar();
 
@@ -239,7 +255,7 @@ function _updateTopologyTable(nodes) {
       <td>${escapeHtml(n.id)}</td>
       <td>${escapeHtml(n.ip || '—')}</td>
       <td>${escapeHtml(n.type || '—')}</td>
-      <td>${escapeHtml(worst)}</td>
+      <td><span class="sev ${worst}">${escapeHtml(worst)}</span></td>
     </tr>`;
   }).join('');
 }
@@ -767,7 +783,8 @@ function closeCompare(e) {
 
 function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
-  const scn = r.scenario ? `<span>${escapeHtml(r.scenario)}</span>` : '';
+  const scnLabel = r.scenario || 'Lab physique';
+  const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
   const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
   const inCmp = _compareSet.has(r.id);
@@ -956,6 +973,8 @@ async function viewFile(runId, filename) {
 
   if (data.type === 'json') {
     body.textContent = JSON.stringify(data.content, null, 2);
+  } else if (filename.endsWith('.md')) {
+    body.innerHTML = '<div class="md-render">' + renderMarkdown(data.content) + '</div>';
   } else {
     body.textContent = data.content;
   }

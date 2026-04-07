@@ -88,6 +88,8 @@ body {
 .phase-pill.running  { border-color: var(--accent); color: var(--accent); }
 .phase-pill.done     { border-color: var(--green);  color: var(--green);  }
 .phase-pill.failed   { border-color: var(--red);    color: var(--red);    }
+.phase-pill { cursor: pointer; }
+.phase-pill:hover    { border-color: var(--accent); color: var(--accent); }
 
 #cost-badge {
   font-size: 12px;
@@ -203,7 +205,7 @@ button:disabled { opacity: .4; cursor: default; }
 #launch-section {
   flex-shrink: 0;
   overflow-y: auto;
-  max-height: calc(100% - 180px);
+  max-height: calc(100% - 140px);
 }
 
 /* ── Resize handles ──────────────────────────────────────────────────────── */
