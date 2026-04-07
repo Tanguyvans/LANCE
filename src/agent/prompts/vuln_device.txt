@@ -70,7 +70,10 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) — do NOT skip even if 02_recon.md already mentions anonymous access. You MUST run the tool yourself.
    - CRITICAL exit code interpretation: return_code=27 (timeout) OR return_code=0 → anonymous access CONFIRMED → type=no_auth, severity=HIGH
    - Only return_code=5 means authentication is required (no finding)
-   - If anonymous access is confirmed: examine the captured message content carefully. If any message contains passwords, tokens, API keys, credentials, or secret-like data → add a SEPARATE finding type=data_exposure, severity=MEDIUM. Evidence must quote the actual message content.
+   - If anonymous access is confirmed: you MUST create TWO separate findings:
+     1. type=no_auth, severity=HIGH — "MQTT broker allows anonymous connections"
+     2. Examine message content carefully. If ANY message contains passwords, tokens, API keys, credentials, or secret-like data (even partial) → create a SECOND finding type=data_exposure, severity=MEDIUM. Quote the actual message content as evidence. Do NOT merge this into the no_auth finding.
+   - For mqtt_broker role: the minimum expected output is 2 findings (no_auth + data_exposure) if any credential-like data appears in topics.
 
    **Telnet** (for routers and gateways — device type=router or gateway):
    - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet
@@ -98,31 +101,35 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - Examples: cve_search("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), cve_search("OpenSSH 8.9"), cve_search("nginx 1.18.0")
    - cve_search checks the local cache first (fast), then queries NVD live on cache miss. Prefer it over nvd_lookup.
    - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
-   - **RULE**: every returned CVE with CVSS >= 4.0 MUST become a "known_cve" entry in your deliverable
+   - **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
+     1. The detected version is HIGHER than the vulnerable range (e.g. detected nginx 1.18, CVE affects nginx <= 0.9 → REJECT)
+     2. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
+     3. The CVE was published before 2015 unless you can confirm the exact vulnerable version is deployed → REJECT
+     4. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
+   - Only include CVEs where you are confident the version range matches. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
-   - VALIDATION RULE: Before adding a CVE to your deliverable, verify:
-     1. The affected software matches the software detected by nmap (not just the protocol)
-     2. The affected version range includes the detected version
-     If unsure, add the CVE with a note "version match unconfirmed" rather than fabricating.
 
 4. Cross-reference with graph CVEs: get_risk_scores() and get_device_info("{{device_id}}")
 </methodology>
 
 <severity_reference>
 ## Standard severity mapping — DO NOT deviate from this table
-| Vulnerability type          | Severity |
-|-----------------------------|----------|
-| weak_cipher (SHA-1 MAC)     | MEDIUM   |
-| weak_cipher (NSA curves)    | MEDIUM   |
-| terrapin (CVE-2023-48795)   | HIGH     |
-| no_auth (MQTT anonymous)    | HIGH     |
-| no_auth (HTTP admin)        | HIGH     |
-| data_exposure (credentials) | CRITICAL |
-| directory_listing           | HIGH     |
-| missing_header              | LOW      |
-| insecure_protocol (Telnet)  | HIGH     |
-| default_credentials         | CRITICAL |
-| network_exposure (DB port)  | HIGH     |
+| Vulnerability type                      | Severity |
+|-----------------------------------------|----------|
+| weak_cipher (SHA-1 MAC)                 | MEDIUM   |
+| weak_cipher (NSA curves)                | MEDIUM   |
+| terrapin (CVE-2023-48795)               | HIGH     |
+| no_auth (MQTT anonymous)                | HIGH     |
+| no_auth (HTTP admin on regular service) | HIGH     |
+| no_auth (LuCI/router admin WAN exposed) | CRITICAL |
+| data_exposure (credentials)             | CRITICAL |
+| directory_listing                       | HIGH     |
+| missing_header                          | LOW      |
+| insecure_protocol (Telnet)              | MEDIUM   |
+| insecure_update (OTA no auth/signature) | MEDIUM   |
+| default_credentials (SSH/service)       | HIGH     |
+| default_credentials (database root)    | CRITICAL |
+| network_exposure (DB port)              | HIGH     |
 </severity_reference>
 
 <pre_save_checklist>
@@ -143,8 +150,9 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **MQTT** (if port 1883 detected or role is mqtt_broker):
 - [ ] mqtt_listen called on {{device_ip}}
-- [ ] If return_code=0 or 27 → no_auth finding created
-- [ ] Message content examined for credentials → data_exposure if found
+- [ ] If return_code=0 or 27 → no_auth finding created (severity=HIGH)
+- [ ] Message content examined for credentials → SEPARATE data_exposure finding created (severity=MEDIUM)
+- [ ] For mqtt_broker role: at least 2 findings expected (no_auth + data_exposure)
 
 **Database** (if role is db_server):
 - [ ] nmap_scan with scripts="mysql-empty-password" called

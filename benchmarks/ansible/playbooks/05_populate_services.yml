@@ -411,7 +411,9 @@
           }
           JSON
 
-          # Config nginx pour servir l'API JSON
+          # Config nginx : conserver les locations vuln de 04_inject_vulns (/firmware/, /update)
+          # et ajouter /api/ servi depuis les fichiers JSON créés ci-dessus
+          rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
           cat > /etc/nginx/conf.d/admin.conf << 'NGINX'
           server {
               listen 80 default_server;
@@ -428,14 +430,23 @@
                   default_type application/json;
               }
 
+              location /firmware/ {
+                  autoindex on;
+              }
+
+              location /update {
+                  return 200 '{"status":"update accepted","version":"2.1.4"}';
+                  default_type application/json;
+              }
+
               location / {
                   autoindex on;
               }
           }
           NGINX
 
-          nginx -t && systemctl reload nginx
-          echo "[OK] API REST IoT Gateway déployée (/api/devices, /api/status, /admin)"
+          nginx -t && systemctl restart nginx
+          echo "[OK] API REST IoT Gateway déployée (/api/devices, /api/status, /admin, /firmware/, /update)"
 
     - name: "[iot_gateway] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |

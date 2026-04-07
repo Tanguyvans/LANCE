@@ -588,8 +588,16 @@ class Pipeline:
                 deliverable_path.write_text(self._strip_code_fences(result_text), encoding="utf-8")
                 print(f"  Fallback save: {deliverable_file}")
 
-        with ThreadPoolExecutor(max_workers=min(len(surface), 10)) as pool:
-            pool.map(_run_single_device, surface)
+        import time as _time
+
+        def _run_with_stagger(args):
+            idx, device = args
+            if idx > 0:
+                _time.sleep(idx * 2)  # 2s stagger between launches to avoid rate limits
+            _run_single_device(device)
+
+        with ThreadPoolExecutor(max_workers=min(len(surface), 6)) as pool:
+            pool.map(_run_with_stagger, enumerate(surface))
 
         print(f"\n{'=' * 60}")
         print(f"  All {len(surface)} sub-agents finished.")
