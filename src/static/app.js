@@ -133,6 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Benchmark controls
   document.getElementById('bm-refresh').addEventListener('click', loadBenchmark);
   document.getElementById('bm-filter-scenario').addEventListener('change', renderBenchmarkTable);
+  document.getElementById('bm-filter-model').addEventListener('change', renderBenchmarkTable);
 
   // Phase pills — naviguer vers le livrable si un run est sélectionné
   const PHASE_FILE = {
@@ -1150,12 +1151,25 @@ async function loadBenchmark() {
     return;
   }
   document.getElementById('bm-table').hidden = false;
+
+  // Peupler dynamiquement le filtre modèle avec les valeurs présentes
+  const modelSel = document.getElementById('bm-filter-model');
+  const prevModel = modelSel.value;
+  const models = [...new Set(_bmData.map(r => r.model).filter(Boolean))].sort();
+  modelSel.innerHTML = '<option value="">Tous les modèles</option>' +
+    models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m.split('/').pop())}</option>`).join('');
+  if (models.includes(prevModel)) modelSel.value = prevModel;
+
   renderBenchmarkTable();
 }
 
 function renderBenchmarkTable() {
   const filter = document.getElementById('bm-filter-scenario').value;
-  const rows = (_bmData || []).filter(r => !filter || r.scenario === filter);
+  const modelFilter = document.getElementById('bm-filter-model').value;
+  const rows = (_bmData || []).filter(r =>
+    (!filter || r.scenario === filter) &&
+    (!modelFilter || r.model === modelFilter)
+  );
 
   const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
   const barColor = v => {

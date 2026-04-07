@@ -281,6 +281,6 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - weak_cipher     # SSH weak ciphers injectés sur s2-jump (ssh_server)
+  - missing_header  # nginx sans security headers
+  - terrapin        # Dropbear injecté sur s2-iot-gw — déjà en GT (V4), bonus pour findings dupliqués

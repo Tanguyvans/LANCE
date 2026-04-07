@@ -316,6 +316,6 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - weak_cipher     # SSH weak ciphers injectés sur s7-edge-compute (ssh_server) — déjà en GT comme V9
+  - missing_header  # nginx sans security headers
+  - terrapin        # Dropbear injecté sur s7-edge-gw — déjà en GT (V2), bonus pour findings dupliqués

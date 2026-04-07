@@ -24,7 +24,7 @@ topology:
     - { name: s3-jetson,  vmid: 124, ip: "192.168.100.14", role: ssh_server  }
     - { name: s3-ap,      vmid: 125, ip: "192.168.100.15", role: web_server  }
     - { name: s3-cam,     vmid: 126, ip: "192.168.100.16", role: web_server  }
-    - { name: s3-nvr,     vmid: 127, ip: "192.168.100.17", role: ssh_server  }
+    - { name: s3-nvr,     vmid: 127, ip: "192.168.100.17", role: nvr_server  }
 
 vulnerabilities:
 
@@ -299,6 +299,6 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - weak_cipher     # SSH weak ciphers injectés sur s3-jetson (ssh_server)
+  - missing_header  # nginx sans security headers
+  - terrapin        # Dropbear injecté sur s3-wisgate — déjà en GT (V3), bonus pour findings dupliqués

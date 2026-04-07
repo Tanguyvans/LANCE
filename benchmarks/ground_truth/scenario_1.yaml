@@ -222,6 +222,5 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - weak_cipher     # SSH weak ciphers injected (ssh_server) — déjà en GT comme V7, bonus pour findings additionnels
+  - missing_header  # nginx sans security headers (X-Frame-Options, etc.)

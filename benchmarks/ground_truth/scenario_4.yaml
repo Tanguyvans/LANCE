@@ -324,6 +324,6 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - weak_cipher     # SSH weak ciphers injectés sur s4-admin (ssh_server) — déjà en GT comme V10
+  - missing_header  # nginx sans security headers sur HMI et webapp
+  - terrapin        # Dropbear injecté sur s4-lora-gw — déjà en GT (V4), bonus pour findings dupliqués

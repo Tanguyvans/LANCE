@@ -239,6 +239,4 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - missing_header  # nginx sans security headers sur les serveurs web et caméras

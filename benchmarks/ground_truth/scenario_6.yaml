@@ -285,6 +285,5 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher
-  - missing_header
-  - terrapin
+  - missing_header  # nginx sans security headers
+  - terrapin        # Dropbear injecté sur s6-hub (iot_gateway) — non en GT, valide si trouvé

@@ -17,19 +17,56 @@ import yaml
 
 # ── Severity normalisation ────────────────────────────────────────────────────
 
-SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0,
-                 "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
+SEVERITY_RANK = {
+    "critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0,
+    "CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0,
+}
 
 # Ground-truth category → LLM vuln type(s)
+# Each set covers the common ways LLMs describe this category of vulnerability.
 CATEGORY_TO_TYPE = {
-    "misconfiguration":    {"no_auth", "missing_header", "version_leak", "misconfiguration", "insecure_protocol"},
-    "cve":                 {"known_cve", "terrapin", "weak_cipher"},
-    "default_credentials": {"no_auth", "default_credentials"},
-    "data_exposure":       {"missing_header", "version_leak", "no_auth", "data_exposure", "directory_listing"},
-    "no_authentication":   {"no_auth", "missing_header"},
-    "code_injection":      {"rce", "code_injection", "upload_bypass", "no_auth"},
-    "weak_crypto":         {"weak_cipher", "weak_mac", "weak_kex"},
-    "insecure_update":     {"ota_no_signature", "update_no_auth", "no_auth", "insecure_update"},
+    "misconfiguration":    {
+        "no_auth", "missing_header", "version_leak", "misconfiguration",
+        "insecure_protocol", "weak_config", "insecure_config", "open_service",
+        "cleartext", "insecure_default", "telnet", "ftp_anonymous",
+        "open_port", "service_exposure",
+    },
+    "cve":                 {
+        "known_cve", "terrapin", "weak_cipher", "outdated_software",
+        "unpatched_vulnerability", "vulnerable_version", "known_vulnerability",
+        "cve", "ssh_vulnerability",
+    },
+    "default_credentials": {
+        "no_auth", "default_credentials", "weak_password", "hardcoded_credentials",
+        "default_password", "brute_force", "weak_auth", "credential_reuse",
+        "default_creds",
+    },
+    "data_exposure":       {
+        "missing_header", "version_leak", "no_auth", "data_exposure",
+        "directory_listing", "credential_exposure", "sensitive_data_exposure",
+        "info_disclosure", "config_exposure", "file_disclosure",
+        "plaintext_credentials", "cleartext_storage", "backup_exposure",
+    },
+    "no_authentication":   {
+        "no_auth", "missing_header", "no_auth_required", "unauthenticated_access",
+        "missing_authentication", "insecure_access", "open_access",
+        "unauthenticated", "auth_bypass",
+    },
+    "code_injection":      {
+        "rce", "code_injection", "upload_bypass", "no_auth",
+        "file_upload", "rce_webshell", "php_injection", "command_injection",
+        "unrestricted_upload", "webshell", "arbitrary_file_upload",
+    },
+    "weak_crypto":         {
+        "weak_cipher", "weak_mac", "weak_kex", "insecure_tls",
+        "deprecated_cipher", "weak_encryption", "insecure_cipher",
+        "weak_algorithm",
+    },
+    "insecure_update":     {
+        "ota_no_signature", "update_no_auth", "no_auth", "insecure_update",
+        "firmware_no_validation", "unsigned_firmware", "ota_vulnerability",
+        "insecure_firmware_update",
+    },
 }
 
 
@@ -86,12 +123,14 @@ class EvaluationResult:
 # ── Matching logic ────────────────────────────────────────────────────────────
 
 def _match_by_cve(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Match ground truth vuln to LLM finding by CVE ID."""
+    """Match ground truth vuln to LLM finding by CVE ID (case-insensitive)."""
     gt_cve = gt_vuln.get("cve")
     if not gt_cve:
         return None
+    gt_cve_norm = gt_cve.upper()
     for f in llm_findings:
-        if gt_cve in (f.get("cve_ids") or []):
+        llm_cves = [c.upper() for c in (f.get("cve_ids") or [])]
+        if gt_cve_norm in llm_cves:
             return f
     return None
 
@@ -145,9 +184,19 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     gt_data = yaml.safe_load(ground_truth_file.read_text())
     gt_vulns = gt_data.get("vulnerabilities", [])
     scenario_id = str(gt_data.get("scenario_id", "?"))
-    max_score = gt_data.get("scoring", {}).get("max_weighted_score", 0)
     weights = gt_data.get("scoring", {}).get("weights", {"critical": 4, "high": 3, "medium": 2, "low": 1})
     bonus_types = set(gt_data.get("bonus_types", []))
+
+    # Auto-compute max_weighted_score from actual vulnerabilities (authoritative).
+    # The YAML field is kept for documentation but not trusted to avoid silent typos.
+    max_score = sum(weights.get(gt.get("severity", "low").lower(), 1) for gt in gt_vulns)
+    yaml_max = gt_data.get("scoring", {}).get("max_weighted_score", 0)
+    if yaml_max > 0 and yaml_max != max_score:
+        import warnings
+        warnings.warn(
+            f"S{scenario_id}: max_weighted_score in YAML ({yaml_max}) differs from "
+            f"computed ({max_score}). Using computed value."
+        )
 
     # Load LLM findings
     vuln_file = run_dir / "03_vuln_analysis.json"
