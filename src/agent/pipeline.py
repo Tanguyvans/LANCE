@@ -277,6 +277,10 @@ class Pipeline:
         ok = self._run_playbook("04_inject_vulns.yml", stream_callback, "inject_start", "inject_done")
         if not ok:
             log.warning("Vuln injection failed — continuing anyway")
+        # 06 — verify all vulns are present before running LLM (non-blocking: warn only)
+        ok_verify = self._run_playbook("06_verify.yml", stream_callback, "verify_start", "verify_done")
+        if not ok_verify:
+            log.warning("Vuln verification found missing vulns — pipeline will run with degraded ground truth coverage")
         return True
 
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:

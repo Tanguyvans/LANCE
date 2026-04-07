@@ -353,6 +353,31 @@
           Rapport de vérification — Scénario S{{ scenario_id }}
           ══════════════════════════════════════════════════════════════════
 
+    - name: Évaluer les résultats — construire la liste des checks OK/FAIL
+      ansible.builtin.set_fact:
+        _check_router_ok: "{{ 'OK' in router_telnet_check.stdout | default('') }}"
+        _check_mqtt_ok: "{{ (mqtt_conn_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (mqtt_conn_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
+        _check_db_ok: "{{ (db_nopass_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (db_nopass_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
+        _check_ssh_ok: "{{ (ssh_creds_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (ssh_creds_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
+        _check_web_ok: "{{ (web_listing_check.results | default([]) | selectattr('skipped', 'equalto', false) | list | length == 0) or (web_listing_check.results | default([]) | selectattr('skipped', 'equalto', false) | rejectattr('stdout', 'search', 'FAIL') | list | length > 0) }}"
+
+    - name: Bloquer si des vulnérabilités critiques sont absentes
+      ansible.builtin.fail:
+        msg: |
+          VERIFICATION FAILED sur S{{ scenario_id }} — au moins une vulnérabilité critique est absente.
+          Router Telnet: {{ 'OK' if _check_router_ok else 'FAIL' }}
+          MQTT anon:     {{ 'OK' if _check_mqtt_ok else 'FAIL' }}
+          DB root:       {{ 'OK' if _check_db_ok else 'FAIL' }}
+          SSH creds:     {{ 'OK' if _check_ssh_ok else 'FAIL' }}
+          Web listing:   {{ 'OK' if _check_web_ok else 'FAIL' }}
+          Relancez 04_inject_vulns.yml avant de démarrer le pipeline LLM.
+      when: >
+        not (_check_router_ok | bool) or
+        not (_check_mqtt_ok | bool) or
+        not (_check_db_ok | bool) or
+        not (_check_ssh_ok | bool) or
+        not (_check_web_ok | bool)
+
           MQTT (allow_anonymous + port 1883)
           {% for r in (mqtt_port_check.results | default([])) %}
           {% if not r.skipped | default(false) %}

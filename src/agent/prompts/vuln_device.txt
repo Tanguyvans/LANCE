@@ -125,6 +125,47 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 | network_exposure (DB port)  | HIGH     |
 </severity_reference>
 
+<pre_save_checklist>
+## MANDATORY self-check before calling save_deliverable
+
+Go through this checklist. If any applicable item is NOT done, do it now before saving.
+
+**SSH** (if port 22 detected or device role is ssh_server/nvr_server/iot_gateway):
+- [ ] ssh_audit called independently on {{device_ip}}
+- [ ] If PasswordAuthentication=yes → default_credentials finding created
+
+**HTTP** (if port 80/443/8080 detected or role is web_server/iot_gateway/camera_server):
+- [ ] curl_headers called on root path /
+- [ ] curl_headers called on /backup/, /config/, /admin, /logs/, /firmware/, /api/devices, /api/status, /update
+- [ ] If "Index of" found → directory_listing finding created
+- [ ] If /admin or /api/* returns 200 → no_auth finding created
+- [ ] For OpenWrt/router: /cgi-bin/luci tested
+
+**MQTT** (if port 1883 detected or role is mqtt_broker):
+- [ ] mqtt_listen called on {{device_ip}}
+- [ ] If return_code=0 or 27 → no_auth finding created
+- [ ] Message content examined for credentials → data_exposure if found
+
+**Database** (if role is db_server):
+- [ ] nmap_scan with scripts="mysql-empty-password" called
+- [ ] If empty root password confirmed → default_credentials CRITICAL
+
+**Telnet** (if role is router or gateway):
+- [ ] nmap_scan on port 23
+
+**CVE lookup**:
+- [ ] cve_search called for each detected service with a known version
+
+**Minimum tool calls expected per device type**:
+- ssh_server / nvr_server: at least 3 (ssh_audit + nmap port 22 + cve_search)
+- web_server: at least 9 (curl on 8+ paths + cve_search)
+- mqtt_broker: at least 2 (mqtt_listen + cve_search)
+- iot_gateway: at least 12 (ssh_audit + 8 curl paths + mqtt_listen + nmap 23 + cve_search)
+- db_server: at least 3 (nmap 3306 + mysql-empty-password script + cve_search)
+
+If you have called fewer tools than the minimum for this device type, you MUST continue testing.
+</pre_save_checklist>
+
 <output_format>
 ## Deliverable format ({{expected_deliverable}})
 STRICT JSON with this structure:
