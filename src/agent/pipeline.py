@@ -482,6 +482,38 @@ class Pipeline:
             print(f"  Deliverable FAILED validation: {msg}")
             print(f"  LLM final output: {result_text[:500]}")
 
+            # Reflector retry for main agent
+            log.warning("Phase %d: reflector retry — prompting for save_deliverable", config.phase)
+            retry_msg = (
+                f"Your deliverable '{config.deliverable_file}' is missing or invalid.\n"
+                f"Validation error: {msg}\n\n"
+                f"Based on all the tool calls you already made in this session, "
+                f"call save_deliverable('{config.deliverable_file}', content) NOW with the complete content.\n"
+                f"Do NOT run any more tools. Write and save the deliverable immediately."
+            )
+            if result_text and result_text.strip():
+                retry_msg += f"\n\nYour last output was:\n{result_text[:2000]}"
+            self.tracker.start_phase(f"reflector_{config.name}")
+            self.provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=retry_msg,
+                tools=tools,
+                max_turns=5,
+                max_tokens=config.max_tokens,
+                cost_tracker=self.tracker,
+                stream_callback=stream_callback,
+                required_tool="save_deliverable",
+            )
+            self.tracker.end_phase()
+            # Re-validate after reflector
+            valid, msg = validator_fn(config.deliverable_file)
+            status = "completed" if valid else f"failed:{msg}"
+            if valid:
+                log.info("Phase %d reflector validated: %s", config.phase, msg)
+                print(f"  Reflector validated: {config.deliverable_file}")
+            else:
+                log.error("Phase %d reflector FAILED: %s", config.phase, msg)
+
         if stream_callback:
             stream_callback({
                 "type": "phase_done",

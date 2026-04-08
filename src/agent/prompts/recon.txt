@@ -29,6 +29,8 @@ Your deliverable is the SOURCE OF TRUTH for all subsequent phases.
 
 <instructions>
 IMPORTANT: Execute ALL steps below autonomously, one after the other, without pausing. Call tools sequentially.
+TURN BUDGET: You have at most 30 turns total. Aim to call save_deliverable by turn 25. Prioritize scanning over re-reading.
+RULE: Call read_deliverable EXACTLY ONCE per filename. Never call the same filename twice. Never call search_history more than 2 times total.
 
 ## Step 1 — Discovery
 Call arp_scan() to list live hosts on the network.
