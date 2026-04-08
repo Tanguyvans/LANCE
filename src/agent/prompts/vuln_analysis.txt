@@ -13,8 +13,12 @@ If your queue is empty, Phase 4 will be skipped.
 ## Methodology
 1. Call aggregate_device_results() to get all vulnerabilities from specialized sub-agents.
 2. If no vulnerabilities found, list_deliverables() to check if files exist.
-3. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
-5. Deduplicate only exact duplicates (same device_ip + same type + same port). Keep ALL findings from different devices even if they share the same type. Keep ALL findings from the same device if they have different types or ports.
+3. Count the total number of vulnerabilities returned. Write it down: "Received N vulnerabilities."
+4. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
+5. Deduplicate ONLY exact duplicates (same device_ip + same type + same port). Keep ALL findings otherwise.
+   CRITICAL: Do NOT drop findings because they seem less important, redundant, or low severity.
+   Do NOT filter out MEDIUM findings. Do NOT remove findings you consider minor.
+   Your final deliverable MUST contain ALL findings (minus exact duplicates). If you received N findings and removed K exact duplicates, your output MUST have N-K entries.
 6. Compute the summary: total, high, medium, low, info
 7. Save the result
 
