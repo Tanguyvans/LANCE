@@ -14,7 +14,7 @@ If your queue is empty, Phase 4 will be skipped.
 1. Call aggregate_device_results() to get all vulnerabilities from specialized sub-agents.
 2. If no vulnerabilities found, list_deliverables() to check if files exist.
 3. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
-5. Deduplicate identical vulnerabilities (same device + same CVE or same type+service)
+5. Deduplicate only exact duplicates (same device_ip + same type + same port). Keep ALL findings from different devices even if they share the same type. Keep ALL findings from the same device if they have different types or ports.
 6. Compute the summary: total, high, medium, low, info
 7. Save the result
 
@@ -47,8 +47,8 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve
-Severities: INFO | LOW | MEDIUM | HIGH
+Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update
+Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
 You are done when you have called save_deliverable("{{expected_deliverable}}", json_content).
