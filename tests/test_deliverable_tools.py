@@ -84,13 +84,13 @@ class TestAggregateDeviceResults:
         assert "error" in result["vulnerabilities"][0]
         assert "s2-jump" in result["vulnerabilities"][0]["error"]
 
-    def test_code_fence_prefix_yields_error_before_fix(self, clean_output):
-        # Reproduces the s2-mqtt bug: file starts with "json\n{...}" (raw fallback without strip)
+    def test_code_fence_prefix_parsed_by_aggregate(self, clean_output):
+        # aggregate_device_results must recover JSON even if file starts with "json\n{...}"
         raw = 'json\n{"device_id": "s2-mqtt", "vulnerabilities": [' + json.dumps(self.VULN) + ']}'
         self._write(clean_output / "03_device_s2-mqtt.json", raw)
         result = json.loads(aggregate_device_results())
-        # Without stripping, "json\n{..." is not valid JSON → error entry
-        assert "error" in result["vulnerabilities"][0]
+        assert len(result["vulnerabilities"]) == 1
+        assert result["vulnerabilities"][0]["type"] == self.VULN["type"]
 
     def test_multiple_devices_merged(self, clean_output):
         for device in ("s2-web", "s2-db"):
