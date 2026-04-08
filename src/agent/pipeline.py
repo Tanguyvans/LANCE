@@ -398,10 +398,6 @@ class Pipeline:
         filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
         set_skill_filter(filter_tags)
 
-        # If this phase has device sub-agents, run them first
-        if config.has_device_agents:
-            self._run_device_agents(config, stream_callback)
-
         tools = self._resolve_tools(config)
 
         # Build prompt variables
@@ -437,6 +433,10 @@ class Pipeline:
                 "description": getattr(config, "description", ""),
                 "deliverable": config.deliverable_file,
             })
+
+        # If this phase has device sub-agents, run them first (after phase_start so dashboard shows phase as active)
+        if config.has_device_agents:
+            self._run_device_agents(config, stream_callback)
 
         # Run agent with cost tracking
         self.tracker.start_phase(config.name)
