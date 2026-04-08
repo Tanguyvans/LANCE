@@ -79,6 +79,8 @@ class LLMProvider:
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
         reminder_sent = False
+        recent_calls: list[tuple[str, str]] = []
+        _REPEAT_THRESHOLD = 3
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
@@ -117,10 +119,19 @@ class LLMProvider:
 
             # Execute tools (parallel)
             from concurrent.futures import ThreadPoolExecutor
+
+            def _maybe_execute_anthropic(tc):
+                call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
+                if (len(recent_calls) >= _REPEAT_THRESHOLD
+                        and all(c == call_sig for c in recent_calls[-_REPEAT_THRESHOLD:])):
+                    return json.dumps({"warning": f"Tool '{tc.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
+                recent_calls.append(call_sig)
+                return self._execute_tool(tc.name, tc.input, tool_map)
+
             if stream_callback:
                 for tc in tool_calls: stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
             with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
-                futures = {pool.submit(self._execute_tool, tc.name, tc.input, tool_map): tc for tc in tool_calls}
+                futures = {pool.submit(_maybe_execute_anthropic, tc): tc for tc in tool_calls}
                 tool_results = []
                 for f, tc in futures.items():
                     res = f.result()
@@ -136,6 +147,8 @@ class LLMProvider:
         required_tool_called = False
         reminder_sent = False
         last_nonempty_text = ""
+        recent_calls: list[tuple[str, str]] = []
+        _REPEAT_THRESHOLD = 3
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
@@ -190,7 +203,14 @@ class LLMProvider:
                 try: args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except: args = {}
                 if stream_callback: stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
-                res = self._execute_tool(tc.function.name, args, tool_map)
+                call_sig = (tc.function.name, tc.function.arguments or "")
+                recent_calls.append(call_sig)
+                if (len(recent_calls) >= _REPEAT_THRESHOLD
+                        and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
+                    res = json.dumps({"warning": f"Tool '{tc.function.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
+                    log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
+                else:
+                    res = self._execute_tool(tc.function.name, args, tool_map)
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
         return "(max turns reached)"

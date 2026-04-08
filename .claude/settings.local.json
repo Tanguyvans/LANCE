@@ -32,7 +32,9 @@
       "mcp__chrome-devtools__list_network_requests",
       "Read(//Users/gaspard/Downloads/2026-04-07_150233/**)",
       "Bash(python3 -m json.tool 03_device_s2-iot-gw.json)",
-      "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/gaspard/Downloads/2026-04-07_150233/03_device_s2-router.json'\\)\\); [print\\(v['id'],v['type'],v['severity'],v.get\\('details',''\\)[:100]\\) for v in d['vulnerabilities']]\")"
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/gaspard/Downloads/2026-04-07_150233/03_device_s2-router.json'\\)\\); [print\\(v['id'],v['type'],v['severity'],v.get\\('details',''\\)[:100]\\) for v in d['vulnerabilities']]\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

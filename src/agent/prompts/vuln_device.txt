@@ -47,7 +47,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    **SSH** (if detected):
    - ALWAYS call ssh_audit("{{device_ip}}") independently. Do NOT rely on 02_recon.md summaries — the recon agent may have misclassified results. Use 02_recon.md as context only.
    - Look for: weak ciphers (`[fail]` lines), Terrapin (CVE-2023-48795), obsolete algorithms
-   - NOTE: ssh_audit does NOT reliably report PasswordAuthentication on Dropbear. Use nmap ssh-auth-methods (see Default credentials section below) as the authoritative source.
+   - If Terrapin (CVE-2023-48795) is found: create type=terrapin finding. Do NOT also create a type=known_cve finding for the same CVE — it would be a duplicate.
 
    **HTTP/HTTPS** (if detected):
    - curl_headers("http://{{device_ip}}") — check security headers and server banner
@@ -63,10 +63,10 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci"). For router role: if port 80 is open AND responds with ANY HTTP code (200, 301, 302, 403) → type=no_auth, severity=CRITICAL ("Router admin interface accessible from network — no WAN restriction"). The 403 response still confirms the service is exposed. Do NOT downgrade to HIGH for routers.
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
-   - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL
+   - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL. IMPORTANT: if MULTIPLE paths on the same device expose credentials (e.g. /backup/ AND /config/ both have sensitive data), create ONE single data_exposure finding and list all affected paths in evidence. Do NOT create one finding per path.
    - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
    - If /update returns 200 (POST or GET accepted without auth) → type=insecure_update, severity=MEDIUM ("Firmware update endpoint accessible without authentication")
-   - For iot_gateway role: if /firmware/ shows directory listing AND no .sha256 or .sig file is listed → add to insecure_update finding or create one: "OTA update endpoint unauthenticated and firmware has no integrity verification"
+   - For iot_gateway role: if /firmware/ shows directory listing AND no .sha256 or .sig file is listed → add to insecure_update finding or create one: "OTA update endpoint unauthenticated and firmware has no integrity verification". Do NOT create a separate directory_listing finding for /firmware/ on iot_gateway — it is already captured by the insecure_update finding.
 
    **MQTT** (port 1883, or if device role is mqtt_broker):
    - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) — do NOT skip even if 02_recon.md already mentions anonymous access. You MUST run the tool yourself.
@@ -88,14 +88,15 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      - If port is merely open (no auth confirmed) → type=network_exposure, severity=HIGH ("Database port exposed to network without firewall")
    - If port 5432 is open → type=network_exposure, severity=HIGH
 
-   **Default credentials** (for SSH):
-   - For ssh_server role: ALWAYS run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true) regardless of ssh_audit output.
+   **Default credentials** (for SSH — ssh_server role ONLY):
+   - ONLY for devices with role=ssh_server: run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true).
+   - For iot_gateway, router, or any other role: do NOT run ssh-auth-methods and do NOT create a default_credentials finding from SSH password auth detection. SSH password auth is expected on embedded devices.
    - Read the nmap output carefully. If the output contains "password" anywhere in the supported auth methods (e.g. "publickey, password" or "password" alone) → password authentication IS enabled → MANDATORY finding:
      type=default_credentials, severity=HIGH
      details: "SSH password authentication enabled — default IoT credentials (admin:admin, root:root) must be tested manually"
      evidence: paste the exact nmap ssh-auth-methods output line
    - "publickey, password" counts — password being one of several methods is still a finding.
-   - Do NOT skip this step even if ssh_audit showed no issues.
+   - Do NOT skip this step for ssh_server role even if ssh_audit showed no issues.
 
    **Custom ports**:
    - nmap_scan("{{device_ip}}", ports="port1,port2")
@@ -129,6 +130,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      5. The CVE was published before 2015 → REJECT unless the installed version is confirmed to be in the exact vulnerable range (e.g. nginx 0.x, not 1.x)
      6. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
      7. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
+     8. uHTTPd/OpenWrt: if the banner shows only "uhttpd" without a version number → REJECT all CVEs for uHTTPd (version unconfirmed)
    - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 
@@ -163,8 +165,9 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **SSH** (if port 22 detected or device role is ssh_server/nvr_server/iot_gateway):
 - [ ] ssh_audit called independently on {{device_ip}}
-- [ ] For ssh_server role: nmap_scan with scripts="ssh-auth-methods" called
-- [ ] If password auth confirmed → default_credentials finding created (severity=HIGH)
+- [ ] For ssh_server role ONLY: nmap_scan with scripts="ssh-auth-methods" called
+- [ ] For ssh_server role ONLY: if password auth confirmed → default_credentials finding created (severity=HIGH)
+- [ ] For iot_gateway/router role: do NOT create default_credentials from SSH auth detection
 
 **HTTP** (if port 80/443/8080 detected or role is web_server/iot_gateway/camera_server):
 - [ ] curl_headers called on root path /

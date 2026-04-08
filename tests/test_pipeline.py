@@ -238,6 +238,17 @@ class TestDeviceAgents:
         mock_prompt.return_value = "Device prompt"
 
         pipeline = Pipeline(provider=mock_provider)
+
+        # Side effect: write a valid JSON file so reflector is NOT triggered
+        def write_device_file(**kwargs):
+            user_msg = kwargs.get("user_message", "")
+            for dev_id in ("mikrotik", "rpi5"):
+                if dev_id in user_msg:
+                    path = pipeline.run_dir / f"03_device_{dev_id}.json"
+                    path.write_text(json.dumps({"device_id": dev_id, "vulnerabilities": []}))
+            return "Done."
+        mock_provider.chat_with_tools.side_effect = write_device_file
+
         config = AgentConfig(
             name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
             deliverable_file="03_vuln_analysis.json",
@@ -247,7 +258,7 @@ class TestDeviceAgents:
 
         pipeline._run_device_agents(config)
 
-        # Provider should be called once per device (2 devices)
+        # Provider should be called once per device (2 devices), reflector not triggered
         assert mock_provider.chat_with_tools.call_count == 2
 
     @patch("src.agent.pipeline.get_device_info")
@@ -308,14 +319,21 @@ class TestDeviceAgents:
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
-        # Provider writes the aggregated deliverable on the 3rd call (after 2 device agents)
+        # Side effect: device agents save valid files, aggregator saves the final deliverable
         call_count = {"n": 0}
         def side_effect(**kwargs):
             call_count["n"] += 1
-            if call_count["n"] == 3:  # aggregator call
-                (run_dir / "03_vuln_analysis.json").write_text(
-                    json.dumps({"vulnerabilities": [{"id": "VULN-001"}], "summary": {"total": 1, "high": 1, "medium": 0, "low": 0, "info": 0}})
-                )
+            user_msg = kwargs.get("user_message", "")
+            for dev_id in ("mikrotik", "rpi5"):
+                if dev_id in user_msg:
+                    (run_dir / f"03_device_{dev_id}.json").write_text(
+                        json.dumps({"device_id": dev_id, "vulnerabilities": []})
+                    )
+                    return "Done."
+            # aggregator call
+            (run_dir / "03_vuln_analysis.json").write_text(
+                json.dumps({"vulnerabilities": [{"id": "VULN-001"}], "summary": {"total": 1, "high": 1, "medium": 0, "low": 0, "info": 0}})
+            )
             return "Done."
         mock_provider.chat_with_tools.side_effect = side_effect
 
@@ -329,7 +347,7 @@ class TestDeviceAgents:
 
         status = pipeline._run_agent(config)
 
-        # 2 device agents + 1 aggregator = 3 total calls
+        # 2 device agents (no reflector) + 1 aggregator = 3 total calls
         assert mock_provider.chat_with_tools.call_count == 3
         assert status == "completed"
 
@@ -400,6 +418,175 @@ class TestSkillFiltering:
         assert "list_skills" in tool_names
         assert "load_skill" in tool_names
         assert "search_history" in tool_names
+
+
+class TestReflectorRetry:
+    """Tests for the reflector retry mechanic in _run_single_device."""
+
+    FAKE_SURFACE = json.dumps([{
+        "id": "s2-jump", "type": "ssh_server", "ip": "192.168.100.15",
+        "services": [{"name": "ssh", "port": 22}],
+    }])
+    FAKE_SCORES = json.dumps([{"device_id": "s2-jump", "risk_score": 2.0, "cve_count": 0}])
+    FAKE_DEVICE_INFO = json.dumps({"id": "s2-jump", "os_version": "Debian 12"})
+
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_risk_scores")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_reflector_triggered_when_file_missing(
+        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        mock_provider, output_dir
+    ):
+        """If device agent never saves a file, reflector must be called."""
+        mock_surface.return_value = self.FAKE_SURFACE
+        mock_scores.return_value = self.FAKE_SCORES
+        mock_device_info.return_value = self.FAKE_DEVICE_INFO
+        mock_prompt.return_value = "Device prompt"
+        # Provider never writes a file
+        mock_provider.chat_with_tools.return_value = ""
+
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
+            deliverable_file="03_vuln_analysis.json",
+            tools=["graph", "deliverable"],
+            has_device_agents=True, max_turns=10,
+        )
+        pipeline._run_device_agents(config)
+
+        # First call = device agent, second call = reflector retry
+        assert mock_provider.chat_with_tools.call_count == 2
+        reflector_call = mock_provider.chat_with_tools.call_args_list[1]
+        assert reflector_call.kwargs.get("required_tool") == "save_deliverable"
+        assert reflector_call.kwargs.get("max_turns") == 5
+
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_risk_scores")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_reflector_not_triggered_when_file_valid(
+        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        mock_provider, output_dir
+    ):
+        """If device agent saves a valid JSON file, reflector must NOT be called."""
+        mock_surface.return_value = self.FAKE_SURFACE
+        mock_scores.return_value = self.FAKE_SCORES
+        mock_device_info.return_value = self.FAKE_DEVICE_INFO
+        mock_prompt.return_value = "Device prompt"
+
+        pipeline = Pipeline(provider=mock_provider)
+
+        def write_valid_file(**kwargs):
+            path = pipeline.run_dir / "03_device_s2-jump.json"
+            path.write_text(json.dumps({
+                "device_id": "s2-jump", "device_ip": "192.168.100.15",
+                "vulnerabilities": [], "summary": {"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+            }))
+            return "Done."
+        mock_provider.chat_with_tools.side_effect = write_valid_file
+
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
+            deliverable_file="03_vuln_analysis.json",
+            tools=["graph", "deliverable"],
+            has_device_agents=True, max_turns=10,
+        )
+        pipeline._run_device_agents(config)
+
+        # Only 1 call — no reflector
+        assert mock_provider.chat_with_tools.call_count == 1
+
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_risk_scores")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_reflector_triggered_when_file_invalid_json(
+        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        mock_provider, output_dir
+    ):
+        """If device agent saves invalid JSON, reflector must be called."""
+        mock_surface.return_value = self.FAKE_SURFACE
+        mock_scores.return_value = self.FAKE_SCORES
+        mock_device_info.return_value = self.FAKE_DEVICE_INFO
+        mock_prompt.return_value = "Device prompt"
+
+        pipeline = Pipeline(provider=mock_provider)
+
+        def write_invalid_file(**kwargs):
+            path = pipeline.run_dir / "03_device_s2-jump.json"
+            path.write_text("Based on my analysis the device has weak ciphers.")
+            return "Based on my analysis the device has weak ciphers."
+        mock_provider.chat_with_tools.side_effect = write_invalid_file
+
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
+            deliverable_file="03_vuln_analysis.json",
+            tools=["graph", "deliverable"],
+            has_device_agents=True, max_turns=10,
+        )
+        pipeline._run_device_agents(config)
+
+        assert mock_provider.chat_with_tools.call_count == 2
+        reflector_call = mock_provider.chat_with_tools.call_args_list[1]
+        assert reflector_call.kwargs.get("required_tool") == "save_deliverable"
+
+
+class TestRepeatingToolDetector:
+    """Tests for the repeating tool detector in LLMProvider loops."""
+
+    def test_openai_loop_warns_on_repeat(self):
+        """Calling the same tool 3x in a row injects a warning instead of executing."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        call_count = {"n": 0}
+
+        def dummy_tool():
+            call_count["n"] += 1
+            return "result"
+
+        tool_map = {"dummy": dummy_tool}
+
+        # Simulate 4 turns: each turn the model calls dummy() with same args
+        turn = [0]
+        responses = []
+        for i in range(4):
+            msg = MagicMock()
+            msg.content = None
+            msg.tool_calls = [MagicMock()]
+            msg.tool_calls[0].function.name = "dummy"
+            msg.tool_calls[0].function.arguments = "{}"
+            msg.tool_calls[0].id = f"call_{i}"
+            choice = MagicMock()
+            choice.finish_reason = "tool_calls"
+            choice.message = msg
+            responses.append(MagicMock(choices=[choice], usage=None))
+
+        # 5th response: no tool call, end loop
+        final_msg = MagicMock()
+        final_msg.content = "Done."
+        final_msg.tool_calls = None
+        final_choice = MagicMock()
+        final_choice.finish_reason = "stop"
+        final_choice.message = final_msg
+        responses.append(MagicMock(choices=[final_choice], usage=None))
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = responses
+
+        api_tools = [{"type": "function", "function": {"name": "dummy", "description": "d", "parameters": {}}}]
+        tools = [{"name": "dummy", "description": "d", "input_schema": {}, "function": dummy_tool}]
+
+        provider.chat_with_tools(
+            system_prompt="sys", user_message="go", tools=tools, max_turns=10
+        )
+
+        # Warning triggers on 3rd identical call — only 2 actual executions
+        assert call_count["n"] == 2
 
 
 class TestStripCodeFences:

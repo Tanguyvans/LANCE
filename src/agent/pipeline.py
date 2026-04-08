@@ -556,10 +556,9 @@ class Pipeline:
             phase_name = f"vuln_{device_id}"
 
             print(f"  [+] Starting: {phase_name} ({device_ip})")
+            if stream_callback:
+                stream_callback({"type": "device_start", "device_id": device_id, "device_ip": device_ip, "phase": 3})
 
-            # Use a local cost tracker or shared one with thread safety?
-            # Pipeline.tracker is not thread-safe for record_turn, but let's assume sequential updates for now
-            # or better: wrap record_turn in a lock.
             self.tracker.start_phase(phase_name)
             result_text = self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -578,6 +577,8 @@ class Pipeline:
             usage = self.tracker.end_phase()
             if usage:
                 print(f"  [+] Done: {phase_name} in {usage.turns} turns")
+            if stream_callback:
+                stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0})
 
             # Fallback: if the LLM never called save_deliverable, save its last text output
             from src.agent.tools.deliverable import _extract_json as _exj
@@ -590,6 +591,50 @@ class Pipeline:
                 fallback_content = _exj(result_text) if deliverable_file.endswith(".json") else self._strip_code_fences(result_text)
                 deliverable_path.write_text(fallback_content, encoding="utf-8")
                 print(f"  Fallback save: {deliverable_file}")
+
+            # Reflector retry: if file is still missing or invalid JSON, re-prompt once
+            _needs_reflector = False
+            if deliverable_path.exists():
+                try:
+                    json.loads(_exj(deliverable_path.read_text(encoding="utf-8")))
+                except Exception:
+                    _needs_reflector = True  # file exists but invalid JSON
+            else:
+                _needs_reflector = True  # file never saved
+
+            if _needs_reflector:
+                log.warning("Device %s: reflector retry (file missing or invalid JSON)", device_id)
+                print(f"  [Reflector] Retrying {device_id} — deliverable missing or invalid")
+                if stream_callback:
+                    stream_callback({"type": "reflector_start", "device_id": device_id, "phase": 3})
+                retry_msg = (
+                    f"Your analysis of {device_id} ({device_ip}) ended without a valid deliverable.\n"
+                    f"Required file: {deliverable_file}\n\n"
+                )
+                if result_text and result_text.strip():
+                    retry_msg += f"Your last output:\n{result_text[:3000]}\n\n"
+                retry_msg += (
+                    f'Call save_deliverable("{deliverable_file}", json_content) NOW.\n'
+                    f"If no vulnerabilities found, use: "
+                    f'{{"device_id": "{device_id}", "device_ip": "{device_ip}", '
+                    f'"vulnerabilities": [], "summary": {{"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}}}}\n'
+                    f"Do NOT run any more tools. Call save_deliverable immediately."
+                )
+                self.tracker.start_phase(f"reflector_{device_id}")
+                self.provider.chat_with_tools(
+                    system_prompt=system_prompt,
+                    user_message=retry_msg,
+                    tools=tools,
+                    max_turns=5,
+                    max_tokens=config.max_tokens,
+                    cost_tracker=self.tracker,
+                    stream_callback=stream_callback,
+                    required_tool="save_deliverable",
+                )
+                self.tracker.end_phase()
+                print(f"  [Reflector] Done for {device_id}")
+                if stream_callback:
+                    stream_callback({"type": "reflector_done", "device_id": device_id, "phase": 3})
 
         import time as _time
 

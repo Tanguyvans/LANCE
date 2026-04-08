@@ -55,6 +55,40 @@ body {
   flex-direction: column;
 }
 
+/* ── Sub-agent progress bar ──────────────────────────────────────────────── */
+#sub-agent-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 5px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 30px;
+}
+.sa-count {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+#sub-agent-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.sa-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.sa-chip.running  { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+.sa-chip.done     { border-color: var(--green);  color: var(--green);  background: var(--green-bg-20); }
+.sa-chip.reflector{ border-color: var(--orange); color: var(--orange); background: var(--orange-bg-20); animation: pulse 1s infinite; }
+.sa-chip.retried  { border-color: var(--orange); color: var(--orange); background: var(--orange-bg-20); }
+@keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.5 } }
+
 /* ── Header ──────────────────────────────────────────────────────────────── */
 #header {
   height: var(--header-h);

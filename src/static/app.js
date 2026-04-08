@@ -98,6 +98,32 @@ function initResizeHandles() {
   );
 }
 
+// ── Sub-agent progress ─────────────────────────────────────────────────────
+const _deviceProgress = {}; // device_id → 'running'|'done'|'reflector'|'retried'
+
+function updateDeviceProgress() {
+  const bar = document.getElementById('sub-agent-bar');
+  const chips = document.getElementById('sub-agent-chips');
+  const count = document.getElementById('sub-agent-count');
+  const states = Object.values(_deviceProgress);
+  if (states.length === 0) return;
+
+  bar.hidden = false;
+  const done = states.filter(s => s === 'done' || s === 'retried').length;
+  count.textContent = `Phase 3 — ${done}/${states.length} devices`;
+
+  chips.innerHTML = Object.entries(_deviceProgress).map(([id, state]) => {
+    const icon = state === 'done' ? '✓' : state === 'running' ? '●' : state === 'reflector' ? '↺' : '↺';
+    return `<span class="sa-chip ${state}" title="${id}">${icon} ${id}</span>`;
+  }).join('');
+}
+
+function resetDeviceProgress() {
+  Object.keys(_deviceProgress).forEach(k => delete _deviceProgress[k]);
+  document.getElementById('sub-agent-bar').hidden = true;
+  document.getElementById('sub-agent-chips').innerHTML = '';
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
@@ -551,6 +577,7 @@ async function startRun() {
 
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
+  resetDeviceProgress();
 
   startSSE();
 }
@@ -616,11 +643,33 @@ function handleEvent(ev) {
 
   if (t === 'phase_start') {
     setPhasePill(ev.phase, 'running');
+    if (ev.phase === 3) resetDeviceProgress();
   }
 
   else if (t === 'phase_done') {
     setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
     setCost(ev.cumulative_cost_usd || 0);
+    if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
+  }
+
+  else if (t === 'device_start') {
+    _deviceProgress[ev.device_id] = 'running';
+    updateDeviceProgress();
+  }
+
+  else if (t === 'device_done') {
+    _deviceProgress[ev.device_id] = 'done';
+    updateDeviceProgress();
+  }
+
+  else if (t === 'reflector_start') {
+    _deviceProgress[ev.device_id] = 'reflector';
+    updateDeviceProgress();
+  }
+
+  else if (t === 'reflector_done') {
+    _deviceProgress[ev.device_id] = 'retried';
+    updateDeviceProgress();
   }
 
   else if (t === 'pipeline_done') {
@@ -1325,6 +1374,10 @@ function addLog(ev) {
     text = ev.text ? _truncate(ev.text, 200) : null;
     fullText = ev.text || '';
   }
+  else if (t === 'device_start')   text = `  ▶ ${ev.device_id} (${ev.device_ip})`;
+  else if (t === 'device_done')    text = `  ✓ ${ev.device_id} — ${ev.turns} turns`;
+  else if (t === 'reflector_start') text = `  ↺ Reflector: ${ev.device_id}`;
+  else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
   else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
