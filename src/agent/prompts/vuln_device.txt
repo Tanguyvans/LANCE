@@ -47,7 +47,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    **SSH** (if detected):
    - ALWAYS call ssh_audit("{{device_ip}}") independently. Do NOT rely on 02_recon.md summaries — the recon agent may have misclassified results. Use 02_recon.md as context only.
    - Look for: weak ciphers (`[fail]` lines), Terrapin (CVE-2023-48795), obsolete algorithms
-   - For ssh_server role: if PasswordAuthentication=yes is confirmed in ssh_audit output → flag type=default_credentials, severity=CRITICAL immediately ("SSH PasswordAuthentication enabled — common IoT credentials must be tested manually"). Do not wait to test actual credentials.
+   - NOTE: ssh_audit does NOT reliably report PasswordAuthentication on Dropbear. Use nmap ssh-auth-methods (see Default credentials section below) as the authoritative source.
 
    **HTTP/HTTPS** (if detected):
    - curl_headers("http://{{device_ip}}") — check security headers and server banner
@@ -65,6 +65,8 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
    - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL
    - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
+   - If /update returns 200 (POST or GET accepted without auth) → type=insecure_update, severity=MEDIUM ("Firmware update endpoint accessible without authentication")
+   - For iot_gateway role: if /firmware/ shows directory listing AND no .sha256 or .sig file is listed → add to insecure_update finding or create one: "OTA update endpoint unauthenticated and firmware has no integrity verification"
 
    **MQTT** (port 1883, or if device role is mqtt_broker):
    - ALWAYS call mqtt_listen("{{device_ip}}", topic="#", count=3, timeout=5) — do NOT skip even if 02_recon.md already mentions anonymous access. You MUST run the tool yourself.
@@ -88,9 +90,12 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 
    **Default credentials** (for SSH):
    - For ssh_server role: ALWAYS run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true) regardless of ssh_audit output.
-   - If result contains "password" in the auth methods list → type=default_credentials, severity=HIGH
-     Evidence: "SSH password authentication enabled — default IoT credentials (admin:admin, root:root) must be tested manually"
-   - Do NOT wait for ssh_audit to mention PasswordAuthentication — run the nmap script proactively.
+   - Read the nmap output carefully. If the output contains "password" anywhere in the supported auth methods (e.g. "publickey, password" or "password" alone) → password authentication IS enabled → MANDATORY finding:
+     type=default_credentials, severity=HIGH
+     details: "SSH password authentication enabled — default IoT credentials (admin:admin, root:root) must be tested manually"
+     evidence: paste the exact nmap ssh-auth-methods output line
+   - "publickey, password" counts — password being one of several methods is still a finding.
+   - Do NOT skip this step even if ssh_audit showed no issues.
 
    **Custom ports**:
    - nmap_scan("{{device_ip}}", ports="port1,port2")
@@ -101,13 +106,29 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - Examples: cve_search("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), cve_search("OpenSSH 8.9"), cve_search("nginx 1.18.0")
    - cve_search checks the local cache first (fast), then queries NVD live on cache miss. Prefer it over nvd_lookup.
    - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
-   - **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
-     1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT (e.g. CVE affects "before 11.8.6", detected version is 11.8.6 → NOT vulnerable → REJECT)
+
+   **MANDATORY VERSION CHECK — for EVERY CVE candidate, write this out before including it:**
+   ```
+   Detected version: [X.Y.Z]
+   CVE range: [exact wording from CVE description]
+   Is [X.Y.Z] inside the vulnerable range? YES/NO
+   Decision: INCLUDE / REJECT — reason: [...]
+   ```
+
+   **Rejection examples (memorize these patterns):**
+   - Mosquitto 2.0.21 vs CVE-2021-41039 (affects 1.6 to 2.0.11): 2.0.21 > 2.0.11 → REJECT
+   - Mosquitto 2.0.21 vs CVE-2023-28366 (before 2.0.16): 2.0.21 ≥ 2.0.16 → REJECT
+   - MariaDB 11.8.6 vs CVE affecting "before 11.8.6": 11.8.6 is NOT before 11.8.6 → REJECT
+   - nginx 1.18 vs CVE-2009-2629 (affects 0.1.0–0.8.14): 1.18 > 0.8.14 → REJECT
+
+   **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
+     1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT
      2. The detected version is HIGHER than the upper bound of the vulnerable range → REJECT
      3. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
-     4. The CVE was published before 2015 unless you can confirm the exact vulnerable version is deployed → REJECT
-     5. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
-     6. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
+     4. The CVE ID year is the current year or later (e.g. CVE-2026-XXXXX) → REJECT unconditionally — NVD does not contain future CVEs, this is a hallucination
+     5. The CVE was published before 2015 → REJECT unless the installed version is confirmed to be in the exact vulnerable range (e.g. nginx 0.x, not 1.x)
+     6. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
+     7. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
    - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 
@@ -150,6 +171,8 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] curl_headers called on /backup/, /config/, /admin, /logs/, /firmware/, /api/devices, /api/status, /update
 - [ ] If "Index of" found → directory_listing finding created
 - [ ] If /admin or /api/* returns 200 → no_auth finding created
+- [ ] If /update returns 200 → insecure_update finding created (severity=MEDIUM)
+- [ ] For iot_gateway role: if /firmware/ listing has no .sha256/.sig → insecure_update finding created
 - [ ] For OpenWrt/router: /cgi-bin/luci tested
 
 **MQTT** (if port 1883 detected or role is mqtt_broker):
