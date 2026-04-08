@@ -60,7 +60,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      curl_headers("http://{{device_ip}}/api/devices")
      curl_headers("http://{{device_ip}}/api/status")
      curl_headers("http://{{device_ip}}/update")
-   - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci") and check root `/` response. If the response contains "LuCI" or "OpenWrt" → type=misconfiguration, severity=CRITICAL ("Admin panel exposed without network restriction").
+   - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci"). For router role: if port 80 is open AND responds with ANY HTTP code (200, 301, 302, 403) → type=no_auth, severity=CRITICAL ("Router admin interface accessible from network — no WAN restriction"). The 403 response still confirms the service is exposed. Do NOT downgrade to HIGH for routers.
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
    - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL
@@ -102,11 +102,13 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - cve_search checks the local cache first (fast), then queries NVD live on cache miss. Prefer it over nvd_lookup.
    - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
    - **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
-     1. The detected version is HIGHER than the vulnerable range (e.g. detected nginx 1.18, CVE affects nginx <= 0.9 → REJECT)
-     2. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
-     3. The CVE was published before 2015 unless you can confirm the exact vulnerable version is deployed → REJECT
-     4. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
-   - Only include CVEs where you are confident the version range matches. If unsure, do NOT include.
+     1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT (e.g. CVE affects "before 11.8.6", detected version is 11.8.6 → NOT vulnerable → REJECT)
+     2. The detected version is HIGHER than the upper bound of the vulnerable range → REJECT
+     3. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
+     4. The CVE was published before 2015 unless you can confirm the exact vulnerable version is deployed → REJECT
+     5. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
+     6. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
+   - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 
 4. Cross-reference with graph CVEs: get_risk_scores() and get_device_info("{{device_id}}")
@@ -122,7 +124,8 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 | no_auth (MQTT anonymous)                | HIGH     |
 | no_auth (HTTP admin on regular service) | HIGH     |
 | no_auth (LuCI/router admin WAN exposed) | CRITICAL |
-| data_exposure (credentials)             | CRITICAL |
+| data_exposure (credentials in HTTP/file)| CRITICAL |
+| data_exposure (credentials in MQTT)     | MEDIUM   |
 | directory_listing                       | HIGH     |
 | missing_header                          | LOW      |
 | insecure_protocol (Telnet)              | MEDIUM   |

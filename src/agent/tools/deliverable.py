@@ -13,6 +13,29 @@ def set_output_dir(path: Path) -> None:
     OUTPUT_DIR = path
 
 
+def _sanitize_control_chars(s: str) -> str:
+    """Escape literal control characters inside JSON string values using a state machine."""
+    result = []
+    in_string = False
+    escape = False
+    replacements = {'\n': '\\n', '\r': '\\r', '\t': '\\t'}
+    for ch in s:
+        if escape:
+            result.append(ch)
+            escape = False
+        elif ch == '\\' and in_string:
+            result.append(ch)
+            escape = True
+        elif ch == '"':
+            result.append(ch)
+            in_string = not in_string
+        elif in_string and ch in replacements:
+            result.append(replacements[ch])
+        else:
+            result.append(ch)
+    return ''.join(result)
+
+
 def _extract_json(content: str) -> str:
     """If content is not valid JSON, try to extract the first JSON object or array from it."""
     content = content.strip()
@@ -20,6 +43,13 @@ def _extract_json(content: str) -> str:
     try:
         json.loads(content)
         return content
+    except json.JSONDecodeError:
+        pass
+    # Control characters in strings (e.g. literal \n in evidence field)
+    try:
+        sanitized = _sanitize_control_chars(content)
+        json.loads(sanitized)
+        return sanitized
     except json.JSONDecodeError:
         pass
     # Strip markdown code fences: ```json ... ``` or ``` ... ```
