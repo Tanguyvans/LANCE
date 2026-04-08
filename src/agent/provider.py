@@ -135,6 +135,7 @@ class LLMProvider:
         malformed_retries = 0
         required_tool_called = False
         reminder_sent = False
+        last_nonempty_text = ""
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
@@ -165,6 +166,9 @@ class LLMProvider:
                 if any(tc.function.name == required_tool for tc in message.tool_calls):
                     required_tool_called = True
 
+            if message.content:
+                last_nonempty_text = message.content
+
             if not message.tool_calls:
                 if required_tool and not required_tool_called and not reminder_sent:
                     if turn > 0:
@@ -175,7 +179,7 @@ class LLMProvider:
                 if message.content and stream_callback:
                     stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
-                return message.content or ""
+                return last_nonempty_text
 
             if message.content and stream_callback:
                 stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})

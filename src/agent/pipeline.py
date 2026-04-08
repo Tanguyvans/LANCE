@@ -566,7 +566,8 @@ class Pipeline:
                 user_message=(
                     f"Analyze vulnerabilities for device {device_id} ({device_ip}). "
                     f"Services: {services_str}. "
-                    f"Save your deliverable to {deliverable_file}."
+                    f"MANDATORY: Your session ends ONLY when you call save_deliverable('{deliverable_file}', json_content). "
+                    f"Do NOT finish with a text response — your final action MUST be the save_deliverable tool call."
                 ),
                 tools=tools,
                 max_turns=config.max_turns,
@@ -579,13 +580,15 @@ class Pipeline:
                 print(f"  [+] Done: {phase_name} in {usage.turns} turns")
 
             # Fallback: if the LLM never called save_deliverable, save its last text output
+            from src.agent.tools.deliverable import _extract_json as _exj
             deliverable_path = self.run_dir / deliverable_file
             if not deliverable_path.exists() and result_text and result_text.strip():
                 log.warning(
                     "Device %s: save_deliverable was never called — saving last LLM output as fallback",
                     device_id,
                 )
-                deliverable_path.write_text(self._strip_code_fences(result_text), encoding="utf-8")
+                fallback_content = _exj(result_text) if deliverable_file.endswith(".json") else self._strip_code_fences(result_text)
+                deliverable_path.write_text(fallback_content, encoding="utf-8")
                 print(f"  Fallback save: {deliverable_file}")
 
         import time as _time

@@ -24,7 +24,7 @@ def _extract_json(content: str) -> str:
         pass
     # Strip markdown code fences: ```json ... ``` or ``` ... ```
     import re
-    m = re.search(r'```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```', content)
+    m = re.search(r'```(?:json)?\s*\n?([\s\S]+?)\n?```', content)
     if m:
         candidate = m.group(1).strip()
         try:
@@ -88,7 +88,7 @@ def aggregate_device_results(pattern: str = "03_device_*.json") -> str:
     results = []
     for f in sorted(OUTPUT_DIR.glob(pattern)):
         try:
-            data = json.loads(f.read_text(encoding="utf-8"))
+            data = json.loads(_extract_json(f.read_text(encoding="utf-8")))
             if isinstance(data, list):
                 results.extend(data)
             elif isinstance(data, dict):

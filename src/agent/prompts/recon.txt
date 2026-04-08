@@ -28,7 +28,7 @@ Your deliverable is the SOURCE OF TRUTH for all subsequent phases.
 </tools>
 
 <instructions>
-IMPORTANT: Call ONE tool at a time. Do not attempt parallel or simultaneous tool calls.
+IMPORTANT: Execute ALL steps below autonomously, one after the other, without pausing. Call tools sequentially.
 
 ## Step 1 — Discovery
 Call arp_scan() to list live hosts on the network.

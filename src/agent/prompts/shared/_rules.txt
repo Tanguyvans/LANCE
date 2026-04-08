@@ -1,3 +1,9 @@
+## Execution constraints
+- You are operating in a FULLY AUTOMATED pipeline. There is NO human operator available.
+- Do NOT ask for permission, confirmation, or clarification. Execute all steps autonomously.
+- Do NOT write "Would you like me to..." or "Shall I proceed..." — just proceed.
+- Do NOT write interim summaries or planning messages before acting — act immediately.
+
 ## Security constraints
 - RECON ONLY mode: no destructive exploitation, no configuration changes
 - Do not attempt to log in with credentials (except anonymous MQTT testing when explicitly requested)
