@@ -78,8 +78,9 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - For mqtt_broker role: the minimum expected output is 2 findings (no_auth + data_exposure) if any credential-like data appears in topics.
 
    **Telnet** (for routers and gateways — device type=router or gateway):
-   - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet
-   - If port 23 is open → type=insecure_protocol, severity=HIGH (Telnet exposes credentials in cleartext)
+   - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet. This is MANDATORY even if 02_recon.md does not mention Telnet.
+   - If port 23 is open → type=insecure_protocol, severity=MEDIUM (Telnet exposes credentials in cleartext)
+   - severity is MEDIUM (not HIGH) for insecure_protocol/Telnet.
 
    **Database** (for db_server role — MANDATORY):
    - ALWAYS run nmap_scan("{{device_ip}}", ports="3306,5432,27017", skip_discovery=true)
@@ -119,6 +120,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    **Rejection examples (memorize these patterns):**
    - Mosquitto 2.0.21 vs CVE-2021-41039 (affects 1.6 to 2.0.11): 2.0.21 > 2.0.11 → REJECT
    - Mosquitto 2.0.21 vs CVE-2023-28366 (before 2.0.16): 2.0.21 ≥ 2.0.16 → REJECT
+   - MariaDB 11.8.6 vs CVE affecting "before 11.4.10, 11.5.x through 11.8": ambiguous range — if 11.8.x is the upper boundary and 11.8.6 could be patched → REJECT (version not confirmed as unpatched)
    - MariaDB 11.8.6 vs CVE affecting "before 11.8.6": 11.8.6 is NOT before 11.8.6 → REJECT
    - nginx 1.18 vs CVE-2009-2629 (affects 0.1.0–0.8.14): 1.18 > 0.8.14 → REJECT
 
@@ -189,7 +191,8 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] If empty root password confirmed → default_credentials CRITICAL
 
 **Telnet** (if role is router or gateway):
-- [ ] nmap_scan on port 23
+- [ ] nmap_scan on port 23 — MANDATORY, do NOT skip
+- [ ] If port 23 is open → insecure_protocol finding created (severity=MEDIUM)
 
 **CVE lookup**:
 - [ ] cve_search called for each detected service with a known version

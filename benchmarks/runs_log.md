@@ -154,6 +154,34 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+## Run 160046 — fixes FPs (ssh-auth-methods scope + data_exposure dédup + uHTTPd)
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :**
+- `vuln_device.txt` : ssh-auth-methods scopé ssh_server ONLY (pas iot_gateway/router)
+- `vuln_device.txt` : data_exposure web → 1 finding par device (merge multi-path)
+- `vuln_device.txt` : directory_listing /firmware/ sur iot_gateway absorbé dans insecure_update
+- `vuln_device.txt` : Terrapin known_cve doublon interdit
+- `vuln_device.txt` : uHTTPd sans version → REJECT CVEs
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 |
+|----|----|----|----|----|----|----|----|----|-----|
+| ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Recall : 9/10 — Precision : 90% — F1 : 0.900 — Score pondéré : 24.5/29 (84.5%) — Coût : $0.23**
+
+**FPs (1) :**
+- s2-db `known_cve` MariaDB 11.8.6 — range CVE ambigu ("11.5.x through 11.8") mal interprété
+
+**Manquant :**
+- V2 Telnet (port 23 sur s2-router) — nmap port 23 non appelé malgré la règle existante
+
+**À corriger :**
+- Renforcer Telnet MANDATORY dans section + pre_save_checklist
+- Exemple MariaDB 11.8.6 range ambigu → REJECT dans les exemples de rejet
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -164,6 +192,8 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | V7 default_credentials ssh_server | tous sauf 145653 | ssh-auth-methods + prompt V7 | **Fixé en 145653** |
 | V10 insecure_update iot_gateway | tous sauf 145653 | trigger /update 200 + /firmware/ | **Fixé en 145653** |
 | V4 Terrapin regression | 133632 | NOTE Dropbear supprimée | **Fixé en 145653** |
-| ssh-auth-methods étendu aux mauvais devices | 133632, 145653 (partiel) | scope → ssh_server seulement | En cours |
-| CVE hallucinations OpenWrt/uHTTPd | 145653 | version check renforcé uHTTPd | En cours |
-| data_exposure web splitté en 2 findings | 145653 | règle déduplication par device+path | En cours |
+| ssh-auth-methods étendu aux mauvais devices | 133632, 145653 | scope → ssh_server seulement | **Fixé en 160046** |
+| CVE hallucinations OpenWrt/uHTTPd | 145653 | version check renforcé uHTTPd | **Fixé en 160046** |
+| data_exposure web splitté en 2 findings | 145653 | règle déduplication par device+path | **Fixé en 160046** |
+| V2 Telnet manquant | 160046 | MANDATORY renforcé dans section + checklist | En cours |
+| CVE MariaDB range ambigu | 160046 | exemple de rejet ajouté | En cours |
