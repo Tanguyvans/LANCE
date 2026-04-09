@@ -31,7 +31,7 @@ scenario_vmid_ranges:
   "7": 170   # S7 Edge-Cloud pivot  → 170-179
   "8": 180   # S8 Multi-zone IT/IoT/OT → 180-189
   "9": 190   # S9 Mesh IoT          → 190-199
-  "10": 200  # S10 Flat variantes   → 200-209
+  "10": 210  # S10 Flat variantes   → 210-219
 
 # ── Credentials par défaut injectés dans les VMs (failles F1) ──
 # Ces valeurs sont volontairement faibles : c'est le but du benchmark

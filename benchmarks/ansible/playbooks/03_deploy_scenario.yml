@@ -55,7 +55,7 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 209 ] 2>/dev/null && continue
+          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 219 ] 2>/dev/null && continue
           base={{ base_vmid }}
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
           {% for sid, sbase in scenario_vmid_ranges.items() %}
