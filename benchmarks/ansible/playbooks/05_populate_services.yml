@@ -937,6 +937,97 @@
 
 
     # ════════════════════════════════════════════════════
+    # VARIANTES DE RÔLES — peuplement (S8-S10)
+    # ════════════════════════════════════════════════════
+
+    # ── mqtt_broker_v2 : même simulateur IoT mais avec auth ──
+    - name: "[mqtt_broker_v2] Écrire le script de simulation capteurs (auth)"
+      ansible.builtin.copy:
+        dest: /tmp/populate_mqtt_v2.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          # Réutilise le même simulateur mais avec credentials
+          cat > /usr/local/bin/iot-simulator.sh << 'SCRIPT'
+          #!/bin/bash
+          BROKER="localhost"
+          USER="test"
+          PASS="test"
+          while true; do
+            for i in 1 2 3 4; do
+              TEMP=$(( RANDOM % 12 + 18 ))
+              mosquitto_pub -h $BROKER -u $USER -P $PASS -t "smartcity/sensor-0$i/temperature" \
+                -m "{\"device\":\"sensor-0$i\",\"value\":$TEMP,\"unit\":\"C\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+            done
+            mosquitto_pub -h $BROKER -u $USER -P $PASS -t "smartcity/admin/credentials" \
+              -m "{\"db_user\":\"admin\",\"db_pass\":\"P@ssw0rd123\",\"api_key\":\"sk-nato-lab-9f3a2b\"}" -r 2>/dev/null || true
+            sleep 10
+          done
+          SCRIPT
+          chmod +x /usr/local/bin/iot-simulator.sh
+          cat > /etc/systemd/system/iot-simulator.service << 'UNIT'
+          [Unit]
+          Description=IoT Sensor Simulator (auth)
+          After=mosquitto.service
+          [Service]
+          ExecStart=/usr/local/bin/iot-simulator.sh
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          systemctl daemon-reload
+          systemctl enable iot-simulator
+          systemctl start iot-simulator
+          echo "[OK] Simulateur MQTT v2 (avec auth) démarré"
+
+    - name: "[mqtt_broker_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt_v2.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker_v2'
+      changed_when: true
+
+    # ── ssh_server_v2 : MOTD + logs réalistes (même contenu que ssh_server) ──
+    - name: "[ssh_server_v2] Écrire le script de peuplement SSH v2"
+      ansible.builtin.copy:
+        dest: /tmp/populate_ssh_v2.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          # MOTD industriel
+          cat > /etc/motd << 'MOTD'
+          ╔══════════════════════════════════════════════════════════╗
+          ║  IoT Edge Node — NATO Smart City Benchmark             ║
+          ║  Authorized access only. All sessions are logged.      ║
+          ╚══════════════════════════════════════════════════════════╝
+          MOTD
+          # Logs réalistes dans .bash_history
+          cat > /home/iot-admin/.bash_history << 'HIST'
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+          scp firmware.bin admin@192.168.100.13:/opt/firmware/
+          mosquitto_sub -h 192.168.100.12 -u bridge -P br1dg3_pass -t '#' -C 5
+          cat /etc/iot/config.json
+          redis-cli -h 192.168.100.16 KEYS '*'
+          HIST
+          echo "[OK] SSH v2 peuplé"
+
+    - name: "[ssh_server_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_ssh_v2.sh /tmp/populate.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server_v2'
+      changed_when: true
+
+    # ── web_server_v2, db_server_v2, ftp_server, snmp_server, coap_server, nodered_server ──
+    # Ces rôles sont déjà peuplés lors de l'injection (04_inject_vulns.yml) car les données
+    # sensibles font partie intégrante de la vulnérabilité. Pas de peuplement supplémentaire requis.
+
+
+    # ════════════════════════════════════════════════════
     # RÉSUMÉ
     # ════════════════════════════════════════════════════
 

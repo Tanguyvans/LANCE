@@ -22,7 +22,7 @@
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5, 6, 7"
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in scenarios
 
     # ── Ajouter IP temporaire pour accès aux CTs via vmbr1 ──
@@ -323,16 +323,185 @@
       register: router_ftp_check
       changed_when: false
       failed_when: false
-      when: scenario_id == "3"
+      when: "'ftp' in scenarios[scenario_id].router_vulns"
 
-    - name: "[router] Vérifier interface web admin sur WAN (80) — scénarios 2/4/5/6/7"
+    - name: "[router] Vérifier interface web admin sur WAN (80)"
       ansible.builtin.shell: >
         nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
         echo OK || echo FAIL
       register: router_wan_check
       changed_when: false
       failed_when: false
-      when: scenario_id in ["2", "4", "5", "6", "7"]
+      when: "'admin_wan' in scenarios[scenario_id].router_vulns"
+
+
+    # ════════════════════════════════════════════════════
+    # VÉRIFICATIONS — VARIANTES DE RÔLES (S8-S10)
+    # ════════════════════════════════════════════════════
+
+    # ── mqtt_broker_v2 : auth faible (test:test) ──
+    - name: "[mqtt_broker_v2] Vérifier port 1883 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':1883' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker_v2'
+      register: mqttv2_port_check
+      changed_when: false
+
+    - name: "[mqtt_broker_v2] Vérifier connexion avec credentials faibles (test:test)"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "mosquitto_pub -h 127.0.0.1 -u test -P test -t 'verify/test' -m 'ok' -r 2>&1 &&
+                 mosquitto_sub -h 127.0.0.1 -u test -P test -t 'verify/test' -C 1 -W 3 2>&1 | grep -q 'ok' &&
+                 echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker_v2'
+      register: mqttv2_conn_check
+      changed_when: false
+      failed_when: false
+
+    # ── ssh_server_v2 : clé privée world-readable ──
+    - name: "[ssh_server_v2] Vérifier port 22 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':22' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server_v2'
+      register: sshv2_port_check
+      changed_when: false
+
+    - name: "[ssh_server_v2] Vérifier clé privée world-readable (644)"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "stat -c '%a' /home/iot-admin/.ssh/id_ed25519 2>/dev/null | grep -q '644' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server_v2'
+      register: sshv2_key_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[ssh_server_v2] Vérifier /etc/iot/config.json existe"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /etc/iot/config.json ] && grep -q 'mqtt_pass' /etc/iot/config.json && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server_v2'
+      register: sshv2_config_check
+      changed_when: false
+      failed_when: false
+
+    # ── web_server_v2 : Flask API sans auth ──
+    - name: "[web_server_v2] Vérifier port 80 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':80' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server_v2'
+      register: webv2_port_check
+      changed_when: false
+
+    - name: "[web_server_v2] Vérifier /api/users retourne des credentials"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "curl -s http://127.0.0.1/api/users | grep -qi 'password' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server_v2'
+      register: webv2_api_check
+      changed_when: false
+      failed_when: false
+
+    # ── db_server_v2 : Redis sans auth ──
+    - name: "[db_server_v2] Vérifier port 6379 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':6379' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server_v2'
+      register: redis_port_check
+      changed_when: false
+
+    - name: "[db_server_v2] Vérifier Redis PING sans auth"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "redis-cli PING 2>/dev/null | grep -q 'PONG' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server_v2'
+      register: redis_ping_check
+      changed_when: false
+      failed_when: false
+
+    # ── ftp_server : vsftpd anonymous ──
+    - name: "[ftp_server] Vérifier port 21 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':21' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ftp_server'
+      register: ftp_port_check
+      changed_when: false
+
+    - name: "[ftp_server] Vérifier fichiers sensibles dans /srv/ftp"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "[ -f /srv/ftp/config/network.conf ] && grep -q 'password' /srv/ftp/config/network.conf && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ftp_server'
+      register: ftp_files_check
+      changed_when: false
+      failed_when: false
+
+    # ── snmp_server : community public/private ──
+    - name: "[snmp_server] Vérifier port 161/udp ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "systemctl is-active snmpd 2>/dev/null && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'snmp_server'
+      register: snmp_svc_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[snmp_server] Vérifier community string 'public' dans la config"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "grep -q 'rocommunity public' /etc/snmp/snmpd.conf && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'snmp_server'
+      register: snmp_community_check
+      changed_when: false
+      failed_when: false
+
+    # ── coap_server : CoAP sans DTLS ──
+    - name: "[coap_server] Vérifier service CoAP actif"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "systemctl is-active coap 2>/dev/null && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'coap_server'
+      register: coap_svc_check
+      changed_when: false
+      failed_when: false
+
+    # ── nodered_server : Node-RED sans auth ──
+    - name: "[nodered_server] Vérifier port 1880 ouvert"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "ss -tlnp | grep -q ':1880' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nodered_server'
+      register: nodered_port_check
+      changed_when: false
+
+    - name: "[nodered_server] Vérifier accès /admin sans auth"
+      ansible.builtin.shell: >
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        bash -c "curl -s http://127.0.0.1:1880/admin 2>/dev/null | grep -qi 'node-red\|red' && echo OK || echo FAIL"
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nodered_server'
+      register: nodered_admin_check
+      changed_when: false
+      failed_when: false
 
 
     # ── Retirer IP temporaire ──

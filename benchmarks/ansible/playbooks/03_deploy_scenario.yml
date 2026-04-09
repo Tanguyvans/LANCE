@@ -2,10 +2,9 @@
 # Usage : ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
 #           --ask-vault-pass --extra-vars "scenario_id=1"
 #
-# Scénarios disponibles :
-#   1 — Réseau plat       (4 VMs : router + mqtt + web + ssh)
-#   2 — Gateway exposée   (6 VMs : router + web + mqtt + iot-gw + db + jump)
-#   3 — Réplique NATO Lab (8 VMs : router + mikrotik-sim + wisgate + rpi5 + iot-hub + jetson + ap + cam)
+# Scénarios disponibles (définis dans group_vars/all/main.yml) :
+#   1-7  — Scénarios de base (Flat, Gateway, NATO Lab, Segmenté, Building, Domotique, Edge-Cloud)
+#   8-10 — Scénarios étendus (Multi-zone IT/IoT/OT, Mesh IoT, Flat variantes)
 #
 # Chaque scénario tourne de façon isolée sur vmbr1 (un seul scénario à la fois).
 # Pour supprimer un scénario : 99_teardown.yml --extra-vars "scenario_id=1"
@@ -23,7 +22,7 @@
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : 1, 2, 3, 4, 5"
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in scenarios
 
     - name: Vérifier que le template Debian ({{ tpl_debian_vmid }}) existe
@@ -56,19 +55,14 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 199 ] 2>/dev/null && continue
+          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 209 ] 2>/dev/null && continue
           base={{ base_vmid }}
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
-          for s in 1 2 3 4 5 6 7; do
-            case $s in
-              1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;;
-              6) b=160 ;; 7) b=170 ;;
-            esac
-            if [ "$vmid" -ge "$b" ] && [ "$vmid" -lt "$((b + 10))" ]; then
-              conflict_scenario="$s"
-              break
-            fi
-          done
+          {% for sid, sbase in scenario_vmid_ranges.items() %}
+          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + 10))" ]; then
+            conflict_scenario="{{ sid }}"
+          fi
+          {% endfor %}
           [ -n "$conflict_scenario" ] && break
         done
         if [ -n "$conflict_scenario" ]; then
