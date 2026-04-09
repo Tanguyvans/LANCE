@@ -5,42 +5,87 @@ Benchmark pour évaluer la capacité de différents LLMs à détecter et exploit
 ## Vue d'ensemble
 
 ```mermaid
-graph TB
-    subgraph Local["Machine locale"]
-        DEPLOY_MASTER[ansible-playbook deploy_master.yml]
+flowchart TD
+    subgraph PC["Poste développeur"]
+        VAULT["Ansible Vault<br/>~/.vault_pass"]
+        PB1["① deploy_master.yml"]
+        PB2["② create_templates<br/>config_openwrt"]
+        PB3["③ deploy_scenario<br/>scenario_id=N"]
+        PB4["④ inject_vulns<br/>populate / verify"]
     end
 
-    subgraph Master["VM Maître (LXC 200 — Tailscale)"]
-        STREAMLIT[Streamlit UI :8501]
-        PIPELINE[Pipeline LLM<br/>5 phases]
-        ANSIBLE_CTL[Ansible controller]
-    end
+    subgraph PROX["Proxmox — 192.168.10.100"]
+        API["API :8006<br/>Token benchmark@pam"]
 
-    subgraph Proxmox["Proxmox (10.0.0.110)"]
-        subgraph Benchmark["vmbr1 — réseau isolé"]
-            DEPLOY[03 — Deploy VMs]
-            INJECT[04 — Inject vulns]
-            POPULATE[05 — Populate]
-            TEARDOWN[99 — Teardown]
+        subgraph TMPL["Templates Proxmox"]
+            T_DEB["LXC Debian 13<br/>VMID 9000"]
+            T_OPW["KVM OpenWrt<br/>VMID 9010"]
+        end
+
+        subgraph LXC200["VM Maître — LXC 200"]
+            M_TS["Tailscale<br/>nato-master.tail6b8e31.ts.net"]
+            M_FA["FastAPI :8501<br/>nato-fastapi.service"]
+            M_GH["GitHub Actions Runner"]
+            M_PIPE["Pipeline LLM<br/>5 phases"]
+        end
+
+        subgraph VMBR1["vmbr1 — réseau test isolé 192.168.100.0/24"]
+            RT["Router OpenWrt<br/>192.168.100.1 — VMID 1N0<br/>telnet / admin_wan / ftp"]
+            subgraph SVCS["LXC Services — VMID 1N1 à 1N7"]
+                SVC1["mqtt_broker :1883 anonymous"]
+                SVC2["web_server nginx autoindex"]
+                SVC3["ssh_server admin:admin"]
+                SVC4["iot_gateway Dropbear 2020.81"]
+                SVC5["db_server MariaDB sans mdp"]
+                SVC6["modbus_server TCP :502"]
+                SVC7["camera_server / nvr_server"]
+            end
         end
     end
 
-    subgraph Eval["Évaluation"]
-        FINDINGS[Findings JSON/MD]
-        METRICS[Detection Rate<br/>Precision / Recall / F1]
+    subgraph EXT["Accès externe"]
+        GITHUB["GitHub CI/CD"]
+        LLM["OpenRouter API"]
+        BROWSER["Navigateur dashboard"]
     end
 
-    DEPLOY_MASTER --> Master
-    STREAMLIT --> PIPELINE
-    ANSIBLE_CTL --> DEPLOY --> INJECT --> POPULATE
-    PIPELINE --> FINDINGS --> METRICS
-    PIPELINE --> TEARDOWN
+    VAULT -.->|secrets| PB1
+    VAULT -.->|secrets| PB2
+    VAULT -.->|secrets| PB3
+    VAULT -.->|secrets| PB4
 
-    style Local fill:#e1f5fe
-    style Master fill:#f3e5f5
-    style Proxmox fill:#fff3e0
-    style Eval fill:#e8f5e9
+    PB1 -->|"SSH :22 — pct create LXC 200"| API
+    API -->|"start + configure"| LXC200
+    PB2 -->|"SSH :22 — création templates"| API
+    API --> T_DEB
+    API --> T_OPW
+
+    PB3 -->|"SSH :22"| API
+    T_OPW -->|"qm clone"| RT
+    T_DEB -->|"pct clone"| SVCS
+
+    PB4 -->|"SSH :22"| API
+    API -->|"pct exec inject_*.sh"| SVCS
+    API -->|"SSH OpenWrt socat/uci"| RT
+
+    M_PIPE -->|"nmap / ssh-audit / curl / mqtt — eth1"| VMBR1
+    M_PIPE -->|"appels LLM"| LLM
+    M_PIPE -->|"03_vuln_analysis.json"| EVAL["Evaluator<br/>ground_truth/scenario_N.yaml<br/>Recall / Precision / F1"]
+
+    BROWSER -->|"Tailscale HTTPS"| M_TS
+    M_TS --> M_FA
+    M_FA -->|"SSE stream"| BROWSER
+
+    GITHUB -->|"git push → git pull + restart"| M_GH
+    M_GH --> M_FA
 ```
+
+| Etape | Playbook | Ce qui se passe |
+| --- | --- | --- |
+| ① | `deploy_master.yml` | Crée LXC 200 (dual NIC), installe repo / FastAPI / Tailscale / GH Runner |
+| ② | `01_create_templates` + `02_config_openwrt` | Crée les templates Debian 13 (VMID 9000) et OpenWrt (VMID 9010) |
+| ③ | `03_deploy_scenario --extra-vars scenario_id=N` | Clone les templates → VMs sur vmbr1 (router + services LXC) |
+| ④ | `04_inject_vulns` | `pct exec` des scripts bash d'injection par rôle dans chaque CT |
 
 | Référentiel | Couverture |
 | --- | --- |

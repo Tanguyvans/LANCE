@@ -51,10 +51,17 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update
+Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
-You are done when you have called save_deliverable("{{expected_deliverable}}", json_content).
+You are done when you have called save_deliverable with the filename and the JSON content as a string.
+
+The EXACT tool call format is:
+```
+save_deliverable(filename="{{expected_deliverable}}", content="{\"vulnerabilities\": [...], \"summary\": {...}}")
+```
+
 The content MUST be valid JSON with a "vulnerabilities" key.
 DO NOT finish without saving the deliverable.
+DO NOT call save_deliverable with empty arguments ({}) — always provide filename and content.

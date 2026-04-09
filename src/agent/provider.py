@@ -93,9 +93,6 @@ class LLMProvider:
                 if block.type == "text": text_parts.append(block.text)
                 elif block.type == "tool_use": tool_calls.append(block)
 
-            if required_tool and any(tc.name == required_tool for tc in tool_calls):
-                required_tool_called = True
-
             if text_parts and stream_callback:
                 stream_callback({"type": "text_chunk", "text": "\n".join(text_parts), "turn": turn + 1})
 
@@ -135,6 +132,9 @@ class LLMProvider:
                 tool_results = []
                 for f, tc in futures.items():
                     res = f.result()
+                    # Only mark required_tool as called if it succeeded (no error)
+                    if required_tool and tc.name == required_tool and not res.startswith("Error"):
+                        required_tool_called = True
                     if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
                     tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
             messages.append({"role": "user", "content": tool_results})
@@ -175,10 +175,6 @@ class LLMProvider:
             if cost_tracker and response.usage:
                 cost_tracker.record_turn(input_tokens=response.usage.prompt_tokens or 0, output_tokens=response.usage.completion_tokens or 0, tool_call_count=len(message.tool_calls or []))
 
-            if required_tool and message.tool_calls:
-                if any(tc.function.name == required_tool for tc in message.tool_calls):
-                    required_tool_called = True
-
             if message.content:
                 last_nonempty_text = message.content
 
@@ -211,6 +207,9 @@ class LLMProvider:
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                 else:
                     res = self._execute_tool(tc.function.name, args, tool_map)
+                # Only mark required_tool as called if it succeeded (no error)
+                if required_tool and tc.function.name == required_tool and not res.startswith("Error"):
+                    required_tool_called = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
         return "(max turns reached)"

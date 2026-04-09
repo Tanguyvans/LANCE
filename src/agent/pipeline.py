@@ -605,6 +605,7 @@ class Pipeline:
                 max_tokens=config.max_tokens,
                 cost_tracker=self.tracker,
                 stream_callback=stream_callback,
+                required_tool="save_deliverable",
             )
             usage = self.tracker.end_phase()
             if usage:
@@ -639,15 +640,30 @@ class Pipeline:
                 print(f"  [Reflector] Retrying {device_id} — deliverable missing or invalid")
                 if stream_callback:
                     stream_callback({"type": "reflector_start", "device_id": device_id, "phase": 3})
+                # Read recon data to give the reflector context about what was found
+                _recon_context = ""
+                _recon_path = self.run_dir / "02_recon.md"
+                if _recon_path.exists():
+                    _recon_text = _recon_path.read_text(encoding="utf-8")
+                    # Extract the relevant device section (~500 chars around device_ip)
+                    _idx = _recon_text.find(device_ip)
+                    if _idx >= 0:
+                        _start = max(0, _idx - 200)
+                        _end = min(len(_recon_text), _idx + 600)
+                        _recon_context = f"\nRecon data for {device_ip}:\n{_recon_text[_start:_end]}\n"
+
                 retry_msg = (
-                    f"Your analysis of {device_id} ({device_ip}) ended without a valid deliverable.\n"
-                    f"Required file: {deliverable_file}\n\n"
+                    f"Your analysis of {device_id} ({device_ip}) ended without saving the deliverable.\n"
+                    f"Required file: {deliverable_file}\n"
                 )
+                if _recon_context:
+                    retry_msg += _recon_context
                 if result_text and result_text.strip():
-                    retry_msg += f"Your last output:\n{result_text[:3000]}\n\n"
+                    retry_msg += f"\nYour last output:\n{result_text[:2000]}\n"
                 retry_msg += (
-                    f'Call save_deliverable("{deliverable_file}", json_content) NOW.\n'
-                    f"If no vulnerabilities found, use: "
+                    f"\nBased on what you found for {device_id}, build the JSON deliverable and call:\n"
+                    f'save_deliverable("{deliverable_file}", json_content)\n'
+                    f"If you found no vulnerabilities, save: "
                     f'{{"device_id": "{device_id}", "device_ip": "{device_ip}", '
                     f'"vulnerabilities": [], "summary": {{"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}}}}\n'
                     f"Do NOT run any more tools. Call save_deliverable immediately."

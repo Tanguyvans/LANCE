@@ -166,11 +166,12 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
      1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT
      2. The detected version is HIGHER than the upper bound of the vulnerable range → REJECT
      3. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
-     4. The CVE ID year is the current year or later (e.g. CVE-2026-XXXXX) → REJECT unconditionally — NVD does not contain future CVEs, this is a hallucination
-     5. The CVE was published before 2015 → REJECT unless the installed version is confirmed to be in the exact vulnerable range (e.g. nginx 0.x, not 1.x)
+     4. The CVE ID year ≥ 2026 (e.g. CVE-2026-XXXXX) → REJECT unconditionally — NVD does not contain future CVEs, this is a hallucination
+     5. The CVE was published before 2015 (year ≤ 2014) → REJECT unconditionally. CVE-2009-2629 nginx, CVE-2011-4315 nginx, etc. — all pre-2015 CVEs are automatically REJECTED regardless of version. Do NOT include them.
      6. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
      7. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
      8. uHTTPd/OpenWrt: if the banner shows only "uhttpd" without a version number → REJECT all CVEs for uHTTPd (version unconfirmed)
+     9. Dropbear CVE-2025-14282: only applies to "multi-user mode" — if you cannot confirm the device runs Dropbear in multi-user mode → REJECT
    - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 

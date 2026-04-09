@@ -212,6 +212,37 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+## Run S4-093607 — recon allégé + reflector + safety net
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :**
+- `recon.txt` : Option B — nmap only, max 20 turns (recon vert en 4 turns)
+- `pipeline.py` : reflector device agents + safety net JSON vide
+- `vuln_device.txt` : search_history = optional only, always run tools
+- `vuln_analysis.txt` : keep ALL findings + count rule
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 |
+|----|----|----|----|----|----|----|----|----|-----|-----|
+| ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+**Recall : 1/11 (9.1%) — F1 : 0.167 — Score pondéré : 1.5/32 (4.7%) — Régression catastrophique**
+
+**FPs (0) — Precision : 100%**
+
+**Cause de la régression :**
+1. Device agents sans `required_tool="save_deliverable"` → s4-mqtt et s4-plc terminent en 5 turns sans sauvegarder → JSON vides
+2. Aggregation : `save_deliverable({})` appelé sans arguments → erreur → `required_tool_called=True` malgré l'échec → boucle sort → fallback sauve 1 finding halluciné → seul V4 survit
+
+**À corriger (déployé après ce run) :**
+- `provider.py` : `required_tool_called = True` seulement si résultat ne commence pas par "Error"
+- `pipeline.py` : ajouter `required_tool="save_deliverable"` aux device agents
+- `pipeline.py` : reflector inclut contexte recon (02_recon.md)
+- `vuln_analysis.txt` : format save_deliverable explicite + interdit `{}`
+- `vuln_analysis.txt` : ajouter `code_injection` aux types valides
+- `vuln_device.txt` : pre-2015 CVEs → REJECT unconditionnellement (plus de "unless exact range")
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -231,3 +262,7 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | V2 code_injection web_upload | S4-080323, S7 | section web_upload POST /upload ajoutée | En cours |
 | FPs insecure_update sur mauvais devices | S4-080323 | scope iot_gateway rule trop large | En cours |
 | Aggregation dropping findings | 160046, S4-215728 | keep ALL findings rule | **Fixé (à déployer)** |
+| required_tool_called sur échec | S4-093607 | check résultat après exécution | **Fixé** |
+| Device agents sans required_tool | S4-093607 | required_tool="save_deliverable" ajouté | **Fixé** |
+| save_deliverable({}) sans args | S4-093607 | format explicite + Completion criteria | **Fixé** |
+| pre-2015 CVEs non rejetés | S4-093607 | REJECT unconditionnellement | **Fixé** |
