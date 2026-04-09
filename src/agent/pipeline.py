@@ -576,9 +576,11 @@ class Pipeline:
             variables["previous_deliverables"] = previous_deliverables
             variables["expected_deliverable"] = deliverable_file
             variables["available_skills"] = available_skills
+            device_role = device.get("role", device_type)
             variables["device_id"] = device_id
             variables["device_ip"] = device_ip
             variables["device_type"] = device_type
+            variables["device_role"] = device_role
             variables["device_services"] = services_str
             variables["device_os"] = device_os
             variables["device_risk_score"] = risk_score

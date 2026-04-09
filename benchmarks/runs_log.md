@@ -243,6 +243,40 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+## Run S4-103113 — required_tool fix + reflector recon context
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :**
+- `provider.py` : required_tool_called = True seulement si résultat sans "Error"
+- `pipeline.py` : required_tool="save_deliverable" pour device agents + reflector avec recon context
+- `vuln_analysis.txt` : format save_deliverable explicite + code_injection dans types
+- `vuln_device.txt` : pre-2015 CVEs REJECT unconditionnellement + Dropbear CVE-2025-14282 condition
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 |
+|----|----|----|----|----|----|----|----|----|-----|-----|
+| ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Recall : 9/11 (81.8%) — Precision : 60% — F1 : 0.692 — Score pondéré : 19.8/32 (61.9%) — Coût : $0.23**
+
+**FPs (6) :**
+- s4-hmi directory_listing ×2 (/backup/, /config/) — indicateurs de V6 mais comptés FP car V6 déjà matched
+- s4-lora-gw directory_listing /firmware/ — devrait être absorbé dans insecure_update (V11)
+- s4-lora-gw insecure_update ×2 — doublon V11
+- s4-mqtt data_exposure — MQTT credentials trouvés (réel mais hors GT)
+- s4-webapp insecure_update — /update 404 mais agent a quand même créé le finding
+
+**Manquant :**
+- V2 code_injection (s4-webapp) : agent teste chemins HTTP standard (/, /backup/...) mais jamais /upload, /uploads/ — rôle web_upload non visible (device_role absent du prompt)
+- V5 Modbus (s4-plc) : modbus_scan timeout (60s) → agent sauvegarde JSON vide sans fallback nmap port 502
+
+**À corriger (déployé après ce run) :**
+- `pipeline.py` : passer device_role comme variable template
+- `vuln_device.txt` : bloc ROLE-BASED PRIORITY en tête — web_upload → /uploads/ d'abord, modbus → nmap port 502 d'abord
+- `vuln_device.txt` : nmap_scan port 502 = CRITICAL immédiatement, modbus_scan optionnel/timeout ignoré
+- `vuln_device.txt` : web_upload → /uploads/ STEP 1, /upload/ STEP 2, 405 = endpoint existe = CRITICAL
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -262,7 +296,10 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | V2 code_injection web_upload | S4-080323, S7 | section web_upload POST /upload ajoutée | En cours |
 | FPs insecure_update sur mauvais devices | S4-080323 | scope iot_gateway rule trop large | En cours |
 | Aggregation dropping findings | 160046, S4-215728 | keep ALL findings rule | **Fixé (à déployer)** |
-| required_tool_called sur échec | S4-093607 | check résultat après exécution | **Fixé** |
-| Device agents sans required_tool | S4-093607 | required_tool="save_deliverable" ajouté | **Fixé** |
-| save_deliverable({}) sans args | S4-093607 | format explicite + Completion criteria | **Fixé** |
-| pre-2015 CVEs non rejetés | S4-093607 | REJECT unconditionnellement | **Fixé** |
+| required_tool_called sur échec | S4-093607 | check résultat après exécution | **Fixé en 103113** |
+| Device agents sans required_tool | S4-093607 | required_tool="save_deliverable" ajouté | **Fixé en 103113** |
+| save_deliverable({}) sans args | S4-093607 | format explicite + Completion criteria | **Fixé en 103113** |
+| pre-2015 CVEs non rejetés | S4-093607 | REJECT unconditionnellement | **Fixé en 103113** |
+| V5 Modbus manquant (modbus_scan timeout) | S4-103113 | nmap port 502 first, modbus_scan optional | **Fixé** |
+| V2 code_injection manquant (role invisible) | S4-103113 | device_role variable + ROLE-BASED PRIORITY | **Fixé** |
+| directory_listing /firmware/ non absorbé | S4-103113, 145653 | rule présente mais non suivie | En cours |

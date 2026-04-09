@@ -27,6 +27,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 - **ID**: {{device_id}}
 - **IP**: {{device_ip}}
 - **Type**: {{device_type}}
+- **Role**: {{device_role}}
 - **Services**: {{device_services}}
 - **OS/Firmware**: {{device_os}}
 - **Risk score**: {{device_risk_score}}
@@ -34,6 +35,17 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 </target>
 
 <methodology>
+## ROLE-BASED PRIORITY — Read this first
+
+Your device has role = **{{device_role}}**.
+
+- If role = **web_upload**: Jump directly to the "File upload" section in step 2. This is your PRIMARY test. Run `/upload`, `/api/upload`, `/uploads/` BEFORE testing any other HTTP path.
+- If role = **modbus_server** or **plc**: Jump directly to the "Industrial protocols" section. Run nmap_scan port 502 BEFORE anything else. Do NOT run modbus_scan first — it times out.
+- If role = **mqtt_broker**: Run mqtt_listen FIRST. If it connects without password → no_auth HIGH.
+- If role = **ssh_server**: Run ssh-auth-methods via nmap_scan FIRST to check for default credentials.
+
+---
+
 ## Methodology — MANDATORY for each service on the device
 
 1. Read context from previous phases (ONCE, at the start — do NOT re-read these later):
@@ -99,21 +111,29 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - "publickey, password" counts — password being one of several methods is still a finding.
    - Do NOT skip this step for ssh_server role even if ssh_audit showed no issues.
 
-   **File upload** (for web_upload role — MANDATORY):
-   - curl_headers("http://{{device_ip}}/upload") and curl_headers("http://{{device_ip}}/api/upload")
-   - Test file upload without validation: curl with POST and a PHP file disguised as image
-     curl_headers("http://{{device_ip}}/upload") to confirm the endpoint exists (200 or 405)
-   - If /upload or /api/upload accepts POST (return_code=0, status 200/201/302) → type=code_injection, severity=CRITICAL
-     details: "File upload endpoint accepts files without validation — potential RCE via webshell upload"
-   - Also test: curl_headers("http://{{device_ip}}/api/files"), curl_headers("http://{{device_ip}}/uploads/")
-   - If /uploads/ lists files → type=directory_listing, severity=HIGH (uploaded files publicly accessible)
+   **File upload** (for web_upload role — MANDATORY, run BEFORE generic HTTP paths):
+   - STEP 1: curl_headers("http://{{device_ip}}/uploads/") — check if upload directory is accessible
+     If 200 with listing → type=directory_listing, severity=HIGH
+   - STEP 2: curl_headers("http://{{device_ip}}/upload") and curl_headers("http://{{device_ip}}/api/upload")
+     If either returns 200 or 405 → upload endpoint exists
+   - STEP 3: If upload endpoint exists (200/405/302) → type=code_injection, severity=CRITICAL
+     details: "File upload endpoint accessible — no file type validation, potential RCE via webshell"
+     evidence: "POST / or POST /upload returns 200/405 without authentication"
+   - IMPORTANT: 405 Method Not Allowed also means the endpoint EXISTS (just requires POST, not GET)
+     → still create code_injection CRITICAL finding
+   - Also test: curl_headers("http://{{device_ip}}/"), curl_headers("http://{{device_ip}}/uploads/shell.php")
+   - If /uploads/shell.php returns 200 → code_injection CRITICAL (webshell already present)
 
    **Industrial protocols** (for modbus_server, plc role — MANDATORY):
-   - ALWAYS run nmap_scan("{{device_ip}}", ports="502,102,44818,47808", skip_discovery=true)
-   - Port 502 open (Modbus TCP) → type=no_auth, severity=CRITICAL ("PLC/Modbus TCP accessible without authentication — critical OT exposure")
-   - Port 102 open (S7comm/Siemens) → type=no_auth, severity=CRITICAL
-   - Port 44818 open (EtherNet/IP) → type=no_auth, severity=CRITICAL
-   - These OT protocols have NO authentication by design → always CRITICAL when exposed on network
+   - STEP 1: Run nmap_scan("{{device_ip}}", ports="502,102,44818,47808", skip_discovery=true)
+     This is FAST (~2s). Do this BEFORE modbus_scan or any other tool.
+   - STEP 2: Read the nmap output:
+     - Port 502/tcp open → type=no_auth, severity=CRITICAL ("Modbus TCP accessible without authentication — attacker can read/write PLC registers including emergency stop coil")
+     - Port 102/tcp open → type=no_auth, severity=CRITICAL ("S7comm/Siemens PLC without authentication")
+     - Port 44818/tcp open → type=no_auth, severity=CRITICAL ("EtherNet/IP without authentication")
+     DO NOT wait for modbus_scan to confirm. nmap open port = CRITICAL finding immediately.
+   - STEP 3 (optional): modbus_scan("{{device_ip}}") — only if you want deeper confirmation. If it times out, IGNORE the timeout and rely on the nmap result from step 1.
+   - These OT protocols have NO authentication by design → ALWAYS CRITICAL when port is open
 
    **Camera / NVR** (for camera_server, nvr_server role — MANDATORY):
    - ALWAYS run nmap_scan("{{device_ip}}", ports="80,443,554,8080,8554,8000", skip_discovery=true)
@@ -244,8 +264,10 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] If port 502/102/44818 open → no_auth finding created (severity=CRITICAL)
 
 **File upload** (if role is web_upload):
-- [ ] curl_headers called on /upload, /api/upload, /uploads/
-- [ ] If upload endpoint responds 200/201/405 → code_injection finding created (severity=CRITICAL)
+- [ ] curl_headers("/uploads/") called — check for directory listing
+- [ ] curl_headers("/upload") and curl_headers("/api/upload") called
+- [ ] If any upload endpoint responds 200/405 → code_injection CRITICAL finding created
+- [ ] If /uploads/ returns 200 with listing → directory_listing HIGH finding created
 
 **Camera / NVR** (if role is camera_server or nvr_server):
 - [ ] curl_headers on /, /live, /snapshot, /video, /api/, /cgi-bin/
