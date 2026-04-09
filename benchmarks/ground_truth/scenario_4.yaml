@@ -24,6 +24,14 @@ topology:
     - { name: s4-plc,       vmid: 135, ip: "192.168.100.15", role: modbus_server }
     - { name: s4-hmi,       vmid: 136, ip: "192.168.100.16", role: web_server    }
     - { name: s4-historian, vmid: 137, ip: "192.168.100.17", role: db_server     }
+  # Liens inter-segments IT ↔ IoT ↔ OT
+  links:
+    - { source: s4-admin,     target: s4-mqtt,      protocol: ethernet }  # IT admin → broker
+    - { source: s4-mqtt,      target: s4-lora-gw,   protocol: mqtt     }  # broker → IoT gateway
+    - { source: s4-lora-gw,   target: s4-plc,       protocol: ethernet }  # IoT → OT PLC
+    - { source: s4-hmi,       target: s4-plc,       protocol: ethernet }  # HMI → PLC
+    - { source: s4-hmi,       target: s4-historian,  protocol: ethernet }  # HMI → Historian
+    - { source: s4-webapp,    target: s4-historian,  protocol: ethernet }  # Webapp → DB
 
 # ── Vulnérabilités plantées ──────────────────────────────────────────────────
 vulnerabilities:

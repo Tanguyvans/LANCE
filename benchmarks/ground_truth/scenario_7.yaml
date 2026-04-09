@@ -25,6 +25,12 @@ topology:
     - { name: s7-edge-compute, vmid: 173, ip: "192.168.100.13", role: ssh_server   }
     - { name: s7-cloud-api,    vmid: 174, ip: "192.168.100.14", role: web_upload   }
     - { name: s7-cloud-db,     vmid: 175, ip: "192.168.100.15", role: db_server    }
+  # Liens Edge ↔ Cloud
+  links:
+    - { source: s7-edge-gw,      target: s7-edge-mqtt,    protocol: mqtt     }  # Edge GW → Edge MQTT
+    - { source: s7-edge-mqtt,    target: s7-edge-compute, protocol: mqtt     }  # Edge MQTT → Compute
+    - { source: s7-edge-compute, target: s7-cloud-api,    protocol: ethernet }  # Edge → Cloud API
+    - { source: s7-cloud-api,    target: s7-cloud-db,     protocol: ethernet }  # Cloud API → Cloud DB
 
 vulnerabilities:
 

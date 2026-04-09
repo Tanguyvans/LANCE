@@ -25,6 +25,13 @@ topology:
     - { name: s5-hvac,        vmid: 155, ip: "192.168.100.15", role: web_server    }
     - { name: s5-mqtt,        vmid: 156, ip: "192.168.100.16", role: mqtt_broker   }
     - { name: s5-web,         vmid: 157, ip: "192.168.100.17", role: web_server    }
+  # Liens bâtiment : caméras→NVR, services→MQTT
+  links:
+    - { source: s5-cam1,        target: s5-nvr,  protocol: ethernet }  # Caméra 1 → NVR
+    - { source: s5-cam2,        target: s5-nvr,  protocol: ethernet }  # Caméra 2 → NVR
+    - { source: s5-access-ctrl, target: s5-mqtt, protocol: mqtt     }  # Contrôle accès → MQTT
+    - { source: s5-hvac,        target: s5-mqtt, protocol: mqtt     }  # HVAC → MQTT
+    - { source: s5-web,         target: s5-mqtt, protocol: ethernet }  # Portail → MQTT
 
 # ── Vulnérabilités plantées ──────────────────────────────────────────────────
 vulnerabilities:
