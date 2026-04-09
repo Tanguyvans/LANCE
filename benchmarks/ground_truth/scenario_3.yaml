@@ -287,6 +287,99 @@ vulnerabilities:
     verification: "curl -sI http://192.168.100.15/ | grep Server"
     confidence_required: low
 
+  - id: V14
+    device: s3-wisgate
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Firmware OTA sans signature ni authentification"
+    description: >
+      L'endpoint /update accepte des mises à jour firmware sans vérification.
+      Le répertoire /firmware/ expose le binaire sans .sha256 ni .sig.
+    severity: medium
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators:
+      - "GET /firmware/ liste firmware.bin sans signature"
+      - "POST /update accepté sans vérification"
+    verification: "curl http://192.168.100.11/firmware/"
+    confidence_required: medium
+
+  - id: V15
+    device: s3-rpi5
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles anonymement.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
+    confidence_required: medium
+
+  - id: V16
+    device: s3-iot-hub
+    ip: "192.168.100.13"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles anonymement.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
+    confidence_required: medium
+
+  - id: V17
+    device: s3-ap
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Directory listing activé (nginx autoindex on)"
+    description: >
+      nginx configuré avec autoindex on. Le répertoire /backup/ et /config/
+      exposent des fichiers sensibles.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /backup/ retourne un listing"
+    verification: "curl http://192.168.100.15/backup/"
+    confidence_required: medium
+
+  - id: V18
+    device: s3-cam
+    ip: "192.168.100.16"
+    role: web_server
+    title: "Directory listing activé (nginx autoindex on)"
+    description: >
+      nginx configuré avec autoindex on. Le répertoire /backup/ et /config/
+      exposent des fichiers sensibles.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /backup/ retourne un listing"
+    verification: "curl http://192.168.100.16/backup/"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -344,14 +437,14 @@ attack_paths:
     impact: "Compromission complète du réseau NATO Lab simulé en 5 étapes"
 
 scoring:
-  total_vulnerabilities: 13
+  total_vulnerabilities: 18
   total_attack_paths: 5
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 31   # V1:2 + V2:2 + V3:3 + V4:3 + V5:3 + V6:3 + V7:3 + V8:2 + V9:2 + V10:3 + V11:3 + V12:1 + V13:1
+  max_weighted_score: 41   # V1:2 + V2:2 + V3:3 + V4:3 + V5:3 + V6:3 + V7:3 + V8:2 + V9:2 + V10:3 + V11:3 + V12:1 + V13:1 + V14:2 + V15:2 + V16:2 + V17:2 + V18:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

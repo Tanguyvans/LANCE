@@ -259,6 +259,25 @@ vulnerabilities:
     verification: "curl -sI http://192.168.100.11/ | grep Server"
     confidence_required: low
 
+  - id: V13
+    device: s2-web
+    ip: "192.168.100.11"
+    role: web_server
+    title: "Directory listing activé (nginx autoindex on)"
+    description: >
+      nginx configuré avec autoindex on. Le répertoire /backup/ expose
+      un dump SQL et /config/app.config expose des credentials.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /backup/ retourne un listing de fichiers"
+    verification: "curl http://192.168.100.11/backup/"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -304,14 +323,14 @@ attack_paths:
     impact: "Interception des sessions SSH, accès au broker MQTT, espionnage du réseau IoT"
 
 scoring:
-  total_vulnerabilities: 12
+  total_vulnerabilities: 13
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 31   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2 + V10:2 + V11:1 + V12:1
+  max_weighted_score: 33   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2 + V10:2 + V11:1 + V12:1 + V13:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

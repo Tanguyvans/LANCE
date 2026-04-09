@@ -302,6 +302,25 @@ vulnerabilities:
     verification: "/usr/local/bin/iot-diag /etc/shadow"
     confidence_required: medium
 
+  - id: V14
+    device: s7-edge-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT sans authentification (allow_anonymous)"
+    description: >
+      Mosquitto configuré avec allow_anonymous true. N'importe qui peut
+      publier ou s'abonner à tous les topics du broker edge.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion possible sans username/password"
+    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v -C 3"
+    confidence_required: high
+
 attack_paths:
 
   - id: P1
@@ -349,14 +368,14 @@ attack_paths:
     impact: "Compromission complète edge-to-cloud, exfiltration de toutes les données PII"
 
 scoring:
-  total_vulnerabilities: 13
+  total_vulnerabilities: 14
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 37   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:1 + V10:2 + V11:4 + V12:3 + V13:3
+  max_weighted_score: 40   # V1:2 + V2:3 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:1 + V10:2 + V11:4 + V12:3 + V13:3 + V14:3
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

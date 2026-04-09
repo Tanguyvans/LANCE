@@ -303,6 +303,42 @@ vulnerabilities:
     verification: "curl http://192.168.100.15/robots.txt"
     confidence_required: low
 
+  - id: V15
+    device: s6-hub
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "Dropbear SSH 2020.81 vulnérable (Terrapin CVE-2023-48795)"
+    description: >
+      Dropbear 2020.81 vulnérable à l'attaque Terrapin (prefix truncation).
+    severity: medium
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    indicators:
+      - "Port 22/tcp — Dropbear 2020.81"
+      - "ssh-audit détecte Terrapin"
+    verification: "ssh-audit 192.168.100.11"
+    confidence_required: high
+
+  - id: V16
+    device: s6-web
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Directory listing activé (nginx autoindex on)"
+    description: >
+      nginx configuré avec autoindex on sur le portail web domotique.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /backup/ retourne un listing"
+    verification: "curl http://192.168.100.15/backup/"
+    confidence_required: medium
+
 attack_paths:
 
   - id: P1
@@ -348,14 +384,14 @@ attack_paths:
     impact: "Compromission de tous les services avec credentials légitimes"
 
 scoring:
-  total_vulnerabilities: 14
+  total_vulnerabilities: 16
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 36   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:2 + V7:4 + V8:2 + V9:3 + V10:2 + V11:3 + V12:3 + V13:1 + V14:1
+  max_weighted_score: 40   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:2 + V7:4 + V8:2 + V9:3 + V10:2 + V11:3 + V12:3 + V13:1 + V14:1 + V15:2 + V16:2
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
