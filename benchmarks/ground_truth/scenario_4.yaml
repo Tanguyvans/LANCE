@@ -327,6 +327,24 @@ vulnerabilities:
     verification: "nc -w2 192.168.100.11 22"
     confidence_required: low
 
+  - id: V15
+    device: s4-lora-gw
+    ip: "192.168.100.14"
+    role: iot_gateway
+    title: "robots.txt exposant des paths sensibles internes (IoT gateway)"
+    description: >
+      Le fichier robots.txt sur la gateway IoT révèle l'existence de répertoires
+      sensibles (/admin/, /api/internal/, /backup/, /config/, /.env).
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "GET /robots.txt retourne Disallow pour /admin/, /backup/, /config/, /.env"
+    verification: "curl http://192.168.100.14/robots.txt"
+    confidence_required: low
+
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
 
@@ -376,14 +394,14 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 14
+  total_vulnerabilities: 15
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 37   # V1:3 + V2:4 + V3:3 + V4:2 + V5:4 + V6:3 + V7:4 + V8:2 + V9:4 + V10:1 + V11:2 + V12:3 + V13:1 + V14:1
+  max_weighted_score: 38   # V1:3 + V2:4 + V3:3 + V4:2 + V5:4 + V6:3 + V7:4 + V8:2 + V9:4 + V10:1 + V11:2 + V12:3 + V13:1 + V14:1 + V15:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
