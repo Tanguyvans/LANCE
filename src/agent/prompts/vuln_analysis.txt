@@ -15,10 +15,13 @@ If your queue is empty, Phase 4 will be skipped.
 2. If no vulnerabilities found, list_deliverables() to check if files exist.
 3. Count the total number of vulnerabilities returned. Write it down: "Received N vulnerabilities."
 4. Renumber IDs sequentially: VULN-001, VULN-002, ..., VULN-N
-5. Deduplicate ONLY exact duplicates (same device_ip + same type + same port). Keep ALL findings otherwise.
+5. Deduplicate using these rules (apply in order):
+   a. Exact duplicates (same device_ip + same type + same port) → keep one, drop the rest.
+   b. If a device has BOTH directory_listing for /firmware/ AND insecure_update → drop the directory_listing (it is covered by insecure_update).
+   c. If a device has multiple findings of the same type with different port=null → keep one.
    CRITICAL: Do NOT drop findings because they seem less important, redundant, or low severity.
    Do NOT filter out MEDIUM findings. Do NOT remove findings you consider minor.
-   Your final deliverable MUST contain ALL findings (minus exact duplicates). If you received N findings and removed K exact duplicates, your output MUST have N-K entries.
+   Your final deliverable MUST contain ALL findings (minus deduplicated ones). If you received N findings and removed K, your output MUST have N-K entries.
 6. Compute the summary: total, high, medium, low, info
 7. Save the result
 

@@ -43,6 +43,7 @@ Your device has role = **{{device_role}}**.
 - If role = **modbus_server** or **plc**: Jump directly to the "Industrial protocols" section. Run nmap_scan port 502 BEFORE anything else. Do NOT run modbus_scan first — it times out.
 - If role = **mqtt_broker**: Run mqtt_listen FIRST. If it connects without password → no_auth HIGH.
 - If role = **ssh_server**: Run ssh-auth-methods via nmap_scan FIRST to check for default credentials.
+- If role = **iot_gateway**: Do NOT run ssh-auth-methods. Do NOT report default_credentials. Focus on: HTTP admin paths (no_auth), SSH weak ciphers/Terrapin, OTA/firmware update endpoint, Telnet. Do NOT create directory_listing for /firmware/ — it is covered by insecure_update.
 
 ---
 
@@ -178,9 +179,11 @@ Your device has role = **{{device_role}}**.
    **Rejection examples (memorize these patterns):**
    - Mosquitto 2.0.21 vs CVE-2021-41039 (affects 1.6 to 2.0.11): 2.0.21 > 2.0.11 → REJECT
    - Mosquitto 2.0.21 vs CVE-2023-28366 (before 2.0.16): 2.0.21 ≥ 2.0.16 → REJECT
-   - MariaDB 11.8.6 vs CVE affecting "before 11.4.10, 11.5.x through 11.8": ambiguous range — if 11.8.x is the upper boundary and 11.8.6 could be patched → REJECT (version not confirmed as unpatched)
+   - MariaDB ANY version vs CVE affecting "before 11.4.10" or "11.5.x through 11.8": ambiguous → REJECT (cannot confirm version is in range)
    - MariaDB 11.8.6 vs CVE affecting "before 11.8.6": 11.8.6 is NOT before 11.8.6 → REJECT
    - nginx 1.18 vs CVE-2009-2629 (affects 0.1.0–0.8.14): 1.18 > 0.8.14 → REJECT
+   - Dropbear 2020.81 vs CVE-2025-14282 (multi-user mode): cannot confirm multi-user mode → REJECT
+   - uHTTPd on OpenWrt vs ANY CVE: version not in banner → REJECT all uHTTPd CVEs unconditionally
 
    **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
      1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT
@@ -190,8 +193,9 @@ Your device has role = **{{device_role}}**.
      5. The CVE was published before 2015 (year ≤ 2014) → REJECT unconditionally. CVE-2009-2629 nginx, CVE-2011-4315 nginx, etc. — all pre-2015 CVEs are automatically REJECTED regardless of version. Do NOT include them.
      6. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
      7. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
-     8. uHTTPd/OpenWrt: if the banner shows only "uhttpd" without a version number → REJECT all CVEs for uHTTPd (version unconfirmed)
-     9. Dropbear CVE-2025-14282: only applies to "multi-user mode" — if you cannot confirm the device runs Dropbear in multi-user mode → REJECT
+     8. uHTTPd/OpenWrt: ALWAYS REJECT all CVEs for uHTTPd. The version is never confirmed from the banner. Do NOT include any uHTTPd CVE regardless of what cve_search returns.
+     9. Dropbear CVE-2025-14282: REJECT unconditionally — this CVE requires "multi-user mode" which is not present on IoT gateways running standard Dropbear. Do NOT include this CVE.
+    10. MariaDB CVEs with ambiguous ranges ("before X.Y.Z" where X.Y.Z ≠ detected version exactly): REJECT if you cannot confirm the exact patch status. When in doubt → REJECT.
    - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 

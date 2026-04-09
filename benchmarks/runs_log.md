@@ -277,6 +277,41 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+## Run S4-120233 — device_role variable + modbus nmap-first + web_upload paths
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :**
+- `pipeline.py` : device_role passé comme variable template
+- `vuln_device.txt` : ROLE-BASED PRIORITY block (web_upload, modbus, iot_gateway, mqtt, ssh_server)
+- `vuln_device.txt` : Industrial protocols — nmap port 502 FIRST, modbus_scan optionnel/timeout ignoré
+- `vuln_device.txt` : File upload — /uploads/ STEP 1, 405 = endpoint existe = CRITICAL
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 |
+|----|----|----|----|----|----|----|----|----|-----|-----|
+| ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Recall : 11/11 (100%) — Precision : 57.9% — F1 : 0.733 — Score pondéré : 26.2/32 (81.9%) — Coût : ~$0.23**
+
+**FPs (8) :**
+- s4-historian `known_cve` MariaDB (ambiguous range) — règle de rejet non suivie
+- s4-hmi `data_exposure` backup files — réel mais hors GT
+- s4-lora-gw `directory_listing` /firmware/ — absorption dans insecure_update non suivie
+- s4-lora-gw `insecure_update` doublon (V11 déjà matché)
+- s4-lora-gw `default_credentials` — ssh-auth-methods lancé sur iot_gateway malgré rule
+- s4-lora-gw `known_cve` Dropbear CVE-2025-14282 — multi-user mode non vérifié
+- s4-mqtt `data_exposure` — MQTT credentials trouvés (réel mais hors GT)
+- s4-router `known_cve` uHTTPd — version non confirmée, règle ignorée
+
+**Severity mismatches (5) :** V1 (HIGH vs matched CRITICAL), V4 (medium vs HIGH), V6 (HIGH vs CRITICAL data_exposure), V8 (medium vs CRITICAL no_auth), V9 (critical vs HIGH)
+
+**À corriger (déployé après ce run) :**
+- `vuln_device.txt` : iot_gateway → do NOT run ssh-auth-methods, do NOT report default_credentials
+- `vuln_device.txt` : ALWAYS REJECT uHTTPd CVEs + Dropbear CVE-2025-14282 REJECT
+- `vuln_device.txt` : MariaDB CVE ambiguous range → REJECT si version non confirmée exactement
+- `vuln_analysis.txt` : déduplication directory_listing /firmware/ si insecure_update présent
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -300,6 +335,10 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | Device agents sans required_tool | S4-093607 | required_tool="save_deliverable" ajouté | **Fixé en 103113** |
 | save_deliverable({}) sans args | S4-093607 | format explicite + Completion criteria | **Fixé en 103113** |
 | pre-2015 CVEs non rejetés | S4-093607 | REJECT unconditionnellement | **Fixé en 103113** |
-| V5 Modbus manquant (modbus_scan timeout) | S4-103113 | nmap port 502 first, modbus_scan optional | **Fixé** |
-| V2 code_injection manquant (role invisible) | S4-103113 | device_role variable + ROLE-BASED PRIORITY | **Fixé** |
-| directory_listing /firmware/ non absorbé | S4-103113, 145653 | rule présente mais non suivie | En cours |
+| V5 Modbus manquant (modbus_scan timeout) | S4-103113 | nmap port 502 first, modbus_scan optional | **Fixé en 120233** |
+| V2 code_injection manquant (role invisible) | S4-103113 | device_role variable + ROLE-BASED PRIORITY | **Fixé en 120233** |
+| directory_listing /firmware/ non absorbé | S4-103113, 145653 | dédup agrégation + rule iot_gateway | **Fixé** |
+| default_credentials sur iot_gateway | 133632, S4-120233 | iot_gateway ROLE-BASED PRIORITY | **Fixé** |
+| Dropbear CVE-2025-14282 (multi-user) | S4-120233 | REJECT unconditionnellement | **Fixé** |
+| uHTTPd CVE non rejeté malgré rule | S4-120233 | ALWAYS REJECT uHTTPd CVEs | **Fixé** |
+| MariaDB CVE range ambigu | 160046, S4-120233 | REJECT si version non confirmée exactement | **Fixé** |
