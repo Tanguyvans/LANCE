@@ -44,8 +44,10 @@ For EACH IP found, call nmap_scan separately:
 - For routers/OpenWrt: nmap_scan(target="<IP>", ports="22,23,80,443,8080,8291", skip_discovery=true)  ← port 23 (Telnet) is critical
 - For Raspberry Pi / gateways / IoT: nmap_scan(target="<IP>", ports="22,23,80,443,1883,3000,8080,8083,8086,9090", skip_discovery=true)
 - For database servers: nmap_scan(target="<IP>", ports="22,80,3306,5432,27017", skip_discovery=true)  ← port 3306 (MySQL) is critical
+- For PLC / Modbus / OT devices: nmap_scan(target="<IP>", ports="22,80,502,102,44818,47808", skip_discovery=true)  ← port 502 (Modbus) is critical
+- For cameras / NVR: nmap_scan(target="<IP>", ports="22,80,443,554,8080,8554,8000", skip_discovery=true)  ← port 554 (RTSP) and 80 (HTTP stream)
 - For ESP32 / sensors: nmap_scan(target="<IP>", ports="22,80,443,1883,5683,8080", skip_discovery=true)
-- For YAML-known devices: nmap_scan(target="<IP>", ports="22,23,80,443,1883,3306,8080") — always include port 23 and 3306
+- For YAML-known devices: nmap_scan(target="<IP>", ports="22,23,80,443,502,554,1883,3306,8080") — always include port 23, 502, and 3306
 - Always use skip_discovery=true for undocumented devices (they often block ICMP)
 Scan each IP one at a time.
 

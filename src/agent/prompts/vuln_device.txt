@@ -99,6 +99,44 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
    - "publickey, password" counts — password being one of several methods is still a finding.
    - Do NOT skip this step for ssh_server role even if ssh_audit showed no issues.
 
+   **File upload** (for web_upload role — MANDATORY):
+   - curl_headers("http://{{device_ip}}/upload") and curl_headers("http://{{device_ip}}/api/upload")
+   - Test file upload without validation: curl with POST and a PHP file disguised as image
+     curl_headers("http://{{device_ip}}/upload") to confirm the endpoint exists (200 or 405)
+   - If /upload or /api/upload accepts POST (return_code=0, status 200/201/302) → type=code_injection, severity=CRITICAL
+     details: "File upload endpoint accepts files without validation — potential RCE via webshell upload"
+   - Also test: curl_headers("http://{{device_ip}}/api/files"), curl_headers("http://{{device_ip}}/uploads/")
+   - If /uploads/ lists files → type=directory_listing, severity=HIGH (uploaded files publicly accessible)
+
+   **Industrial protocols** (for modbus_server, plc role — MANDATORY):
+   - ALWAYS run nmap_scan("{{device_ip}}", ports="502,102,44818,47808", skip_discovery=true)
+   - Port 502 open (Modbus TCP) → type=no_auth, severity=CRITICAL ("PLC/Modbus TCP accessible without authentication — critical OT exposure")
+   - Port 102 open (S7comm/Siemens) → type=no_auth, severity=CRITICAL
+   - Port 44818 open (EtherNet/IP) → type=no_auth, severity=CRITICAL
+   - These OT protocols have NO authentication by design → always CRITICAL when exposed on network
+
+   **Camera / NVR** (for camera_server, nvr_server role — MANDATORY):
+   - ALWAYS run nmap_scan("{{device_ip}}", ports="80,443,554,8080,8554,8000", skip_discovery=true)
+   - Test HTTP endpoints: curl_headers("http://{{device_ip}}/"), curl_headers("http://{{device_ip}}/live"),
+     curl_headers("http://{{device_ip}}/snapshot"), curl_headers("http://{{device_ip}}/video"),
+     curl_headers("http://{{device_ip}}/api/"), curl_headers("http://{{device_ip}}/cgi-bin/")
+   - If any returns 200 without auth challenge → type=no_auth, severity=HIGH ("Camera/NVR accessible without authentication")
+   - For nvr_server role: SSH default credentials are common (ubnt:ubnt, admin:admin, root:root)
+     → run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true)
+     → if password auth enabled → type=default_credentials, severity=HIGH
+   - Port 554 open (RTSP stream) without auth → type=no_auth, severity=HIGH
+
+   **HMI / SCADA / Building automation** (for web_server role when context suggests HMI/SCADA/BMS/HVAC/access_control):
+   - Test root path and SCADA-specific paths:
+     curl_headers("http://{{device_ip}}/"), curl_headers("http://{{device_ip}}/dashboard"),
+     curl_headers("http://{{device_ip}}/scada"), curl_headers("http://{{device_ip}}/plc"),
+     curl_headers("http://{{device_ip}}/api/status"), curl_headers("http://{{device_ip}}/api/devices"),
+     curl_headers("http://{{device_ip}}/admin")
+   - If root / or any management path returns 200 without auth → type=no_auth, severity=HIGH
+     ("HMI/SCADA interface accessible without authentication")
+   - For building automation (access_ctrl, hvac roles): same paths + test /unlock, /door, /setpoint
+   - severity=HIGH for any unauthenticated HMI/SCADA access
+
    **Custom ports**:
    - nmap_scan("{{device_ip}}", ports="port1,port2")
 
@@ -158,6 +196,9 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 | default_credentials (SSH/service)       | HIGH     |
 | default_credentials (database root)    | CRITICAL |
 | network_exposure (DB port)              | HIGH     |
+| code_injection (file upload, RCE)       | CRITICAL |
+| no_auth (OT/PLC/Modbus port open)       | CRITICAL |
+| no_auth (camera/NVR/HMI unauthenticated)| HIGH     |
 </severity_reference>
 
 <pre_save_checklist>
@@ -197,12 +238,28 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 **CVE lookup**:
 - [ ] cve_search called for each detected service with a known version
 
+**Industrial / OT protocols** (if role is modbus_server, plc, or similar):
+- [ ] nmap_scan on ports 502,102,44818 — MANDATORY
+- [ ] If port 502/102/44818 open → no_auth finding created (severity=CRITICAL)
+
+**File upload** (if role is web_upload):
+- [ ] curl_headers called on /upload, /api/upload, /uploads/
+- [ ] If upload endpoint responds 200/201/405 → code_injection finding created (severity=CRITICAL)
+
+**Camera / NVR** (if role is camera_server or nvr_server):
+- [ ] curl_headers on /, /live, /snapshot, /video, /api/, /cgi-bin/
+- [ ] If 200 without auth → no_auth finding created (severity=HIGH)
+- [ ] For nvr_server: nmap ssh-auth-methods called
+
 **Minimum tool calls expected per device type**:
 - ssh_server / nvr_server: at least 3 (ssh_audit + nmap port 22 + cve_search)
 - web_server: at least 9 (curl on 8+ paths + cve_search)
+- web_upload: at least 5 (curl on upload paths + file test + cve_search)
 - mqtt_broker: at least 2 (mqtt_listen + cve_search)
 - iot_gateway: at least 12 (ssh_audit + 8 curl paths + mqtt_listen + nmap 23 + cve_search)
 - db_server: at least 3 (nmap 3306 + mysql-empty-password script + cve_search)
+- modbus_server / plc: at least 2 (nmap port 502 + cve_search)
+- camera_server / nvr_server: at least 5 (curl paths + nmap ports + cve_search)
 
 If you have called fewer tools than the minimum for this device type, you MUST continue testing.
 </pre_save_checklist>
@@ -239,7 +296,7 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update
+Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
