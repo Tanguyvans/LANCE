@@ -182,6 +182,36 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+---
+
+## Run S4-080323 — premier run S4 avec fixes OT (avant recon allégé)
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :** vuln_device.txt (modbus port 502, web_upload, camera, HMI), vuln_analysis.txt (keep ALL findings)
+**Recon :** rouge (max_turns 30 épuisé sur 8 devices — non encore corrigé)
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 |
+|----|----|----|----|----|----|----|----|----|-----|-----|
+| ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**Recall : 10/11 (91%) — F1 : 0.769 — Score pondéré : 22.2/32 (69.4%) — Coût : $0.27**
+
+**FPs (5) :**
+- s4-hmi data_exposure (hors GT)
+- s4-lora-gw directory_listing + insecure_update (doublons de V11)
+- s4-mqtt data_exposure (MQTT topics sans credentials dans GT)
+- s4-historian insecure_update (hors GT)
+
+**Manquant :**
+- V2 code_injection (web_upload) — endpoint /upload non testé dans ce run
+
+**À corriger :**
+- Recon allégé (nmap only, max_turns 20) — déployé après ce run
+- web_upload POST /upload test — dans vuln_device.txt depuis ce run
+- FPs insecure_update sur mauvais devices — lié à la règle iot_gateway trop large
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -195,5 +225,9 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | ssh-auth-methods étendu aux mauvais devices | 133632, 145653 | scope → ssh_server seulement | **Fixé en 160046** |
 | CVE hallucinations OpenWrt/uHTTPd | 145653 | version check renforcé uHTTPd | **Fixé en 160046** |
 | data_exposure web splitté en 2 findings | 145653 | règle déduplication par device+path | **Fixé en 160046** |
-| V2 Telnet manquant | 160046 | MANDATORY renforcé dans section + checklist | En cours |
-| CVE MariaDB range ambigu | 160046 | exemple de rejet ajouté | En cours |
+| V2 Telnet manquant S2 | 160046 | MANDATORY renforcé dans section + checklist | **Fixé en 202717** |
+| CVE MariaDB range ambigu | 160046, 202717 | exemple de rejet ajouté | En cours |
+| Recon rouge (max_turns trop bas) | 160046, 080323 | recon allégé (nmap only, 20 turns) | **Fixé (à déployer)** |
+| V2 code_injection web_upload | S4-080323, S7 | section web_upload POST /upload ajoutée | En cours |
+| FPs insecure_update sur mauvais devices | S4-080323 | scope iot_gateway rule trop large | En cours |
+| Aggregation dropping findings | 160046, S4-215728 | keep ALL findings rule | **Fixé (à déployer)** |

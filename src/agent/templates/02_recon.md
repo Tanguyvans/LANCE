@@ -1,7 +1,7 @@
 # Phase 2: Reconnaissance — NATO Smart City IoT Lab
 
 **Date:** {{run_date}}
-**Source:** Active network scans (arp_scan, nmap_discovery, nmap_scan, ssh_audit, curl_headers, mqtt_listen)
+**Source:** Active network scans (arp_scan, nmap_discovery, nmap_scan)
 
 ---
 
@@ -31,47 +31,25 @@
 
 ### 3.1 Known Devices (in YAML model)
 
-| Device | IP | Port | Service | Version (nmap) | Version (YAML) | Match? |
-|--------|----|------|---------|----------------|----------------|--------|
+| Device | IP | Open Ports | Services | Versions |
+|--------|----|------------|----------|----------|
 
-### 3.2 Undocumented Devices — Open Ports
+### 3.2 Undocumented Devices
 
-| IP | MAC | Vendor | Port | Service | Version | Device Type (guess) |
-|----|-----|--------|------|---------|---------|---------------------|
+| IP | MAC | Vendor | Open Ports | Services | Device Type (guess) |
+|----|-----|--------|------------|----------|---------------------|
 
-### 3.3 Undocumented Devices — No Open Ports (down/filtered)
+### 3.3 Unreachable YAML Devices
 
-| IP | MAC | Vendor | Nmap Result | Hypothesis |
-|----|-----|--------|-------------|------------|
+| Device (YAML) | Expected IP | Scan Result |
+|---------------|-------------|-------------|
 
 ## 4. YAML Model vs Reality Discrepancies
 
-| Device | IP | Discrepancy Type | YAML Value | Nmap Value | Security Impact |
-|--------|----|------------------|------------|------------|-----------------|
+| Device | IP | Discrepancy Type | YAML Value | Nmap Value |
+|--------|----|------------------|------------|------------|
 
-## 5. Unreachable YAML Devices
+## 5. Recommendations for Phase 3
 
-| Device (YAML) | Expected IP | Scan Result | Hypothesis |
-|---------------|-------------|-------------|------------|
-
-## 6. Service Detail Scans
-
-### 6.1 SSH Audit
-
-| Device | IP | Version | Terrapin? | Weak Ciphers? | Notes |
-|--------|----|---------|-----------|---------------|-------|
-
-### 6.2 HTTP Headers
-
-| Device | IP | Port | Server | Missing Headers | Notes |
-|--------|----|------|--------|-----------------|-------|
-
-### 6.3 MQTT Access
-
-| Device | IP | Port | Anonymous? | Messages | Topics |
-|--------|----|------|------------|----------|--------|
-
-## 7. Recommendations for Phase 3
-
-| Priority | Device | IP | Test Type | Rationale |
-|----------|--------|----|-----------|-----------|
+| Priority | Device | IP | Key Ports | Suggested Tests |
+|----------|--------|----|-----------|-----------------|
