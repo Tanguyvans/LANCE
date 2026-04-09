@@ -69,6 +69,28 @@ def _load_physical_lab() -> dict:
     return {"nodes": nodes, "edges": edges, "subnet": "192.168.88.0/24"}
 
 
+# Map service roles to visual device types for Cytoscape rendering
+ROLE_TO_TYPE = {
+    "mqtt_broker":    "gateway",
+    "mqtt_broker_v2": "gateway",
+    "iot_gateway":    "gateway",
+    "web_server":     "compute",
+    "web_server_v2":  "compute",
+    "web_upload":     "compute",
+    "ssh_server":     "compute",
+    "ssh_server_v2":  "compute",
+    "db_server":      "compute",
+    "db_server_v2":   "compute",
+    "camera_server":  "camera",
+    "nvr_server":     "camera",
+    "modbus_server":  "sensor",
+    "coap_server":    "sensor",
+    "snmp_server":    "sensor",
+    "ftp_server":     "compute",
+    "nodered_server": "gateway",
+}
+
+
 def _load_scenario(scenario_id: int) -> dict:
     gt_file = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
     if not gt_file.exists():
@@ -90,16 +112,18 @@ def _load_scenario(scenario_id: int) -> dict:
         })
 
     for svc in topo.get("services", []):
+        role = svc.get("role", "")
+        dev_type = ROLE_TO_TYPE.get(role, "compute")
         nodes.append({
             "id": svc["name"],
             "label": svc["name"],
             "ip": svc.get("ip", ""),
-            "type": "compute",
-            "services": [svc.get("role", "")],
-            "color": DEVICE_TYPE_COLORS.get("compute"),
+            "type": dev_type,
+            "services": [role],
+            "color": DEVICE_TYPE_COLORS.get(dev_type, "#3498db"),
         })
 
-    # Build edges: router ↔ each service
+    # Build edges: router ↔ each service (default star topology)
     edges = []
     router_id = router.get("name", f"s{scenario_id}-router") if router else None
     for svc in topo.get("services", []):
@@ -110,6 +134,19 @@ def _load_scenario(scenario_id: int) -> dict:
                 "target": svc["name"],
                 "protocol": "ethernet",
                 "color": PROTOCOL_COLORS["ethernet"],
+            })
+
+    # Additional links defined in the topology (mesh, multi-zone, etc.)
+    for link in topo.get("links", []):
+        edge_id = f"{link['source']}-{link['target']}"
+        # Avoid duplicating router→service edges
+        if not any(e["id"] == edge_id for e in edges):
+            edges.append({
+                "id": edge_id,
+                "source": link["source"],
+                "target": link["target"],
+                "protocol": link.get("protocol", "mqtt"),
+                "color": PROTOCOL_COLORS.get(link.get("protocol", "mqtt"), "#8e44ad"),
             })
 
     return {"nodes": nodes, "edges": edges, "subnet": "192.168.100.0/24"}

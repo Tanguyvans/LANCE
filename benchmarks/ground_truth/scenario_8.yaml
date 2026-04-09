@@ -27,6 +27,14 @@ topology:
     - { name: s8-hmi,       vmid: 185, ip: "192.168.100.15", role: web_server_v2  }
     - { name: s8-redis,     vmid: 186, ip: "192.168.100.16", role: db_server_v2   }
     - { name: s8-historian, vmid: 187, ip: "192.168.100.17", role: db_server      }
+  # Inter-zone links (IT ↔ IoT ↔ OT)
+  links:
+    - { source: s8-admin,     target: s8-mqtt,      protocol: ethernet }  # IT → IoT
+    - { source: s8-mqtt,      target: s8-iot-gw,    protocol: mqtt     }  # IoT broker → gateway
+    - { source: s8-iot-gw,    target: s8-plc,       protocol: ethernet }  # IoT → OT
+    - { source: s8-hmi,       target: s8-plc,       protocol: ethernet }  # HMI → PLC
+    - { source: s8-hmi,       target: s8-historian,  protocol: ethernet }  # HMI → Historian
+    - { source: s8-iot-gw,    target: s8-redis,     protocol: ethernet }  # Gateway → Redis
 
 # ── Vulnérabilités plantées ──────────────────────────────────────────────────
 vulnerabilities:

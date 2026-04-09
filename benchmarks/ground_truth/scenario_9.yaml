@@ -23,6 +23,13 @@ topology:
     - { name: s9-mqtt-3, vmid: 193, ip: "192.168.100.13", role: mqtt_broker    }
     - { name: s9-coap,   vmid: 194, ip: "192.168.100.14", role: coap_server    }
     - { name: s9-snmp,   vmid: 195, ip: "192.168.100.15", role: snmp_server    }
+  # Mesh links between MQTT brokers (peer-to-peer topology)
+  links:
+    - { source: s9-mqtt-1, target: s9-mqtt-2, protocol: mqtt }
+    - { source: s9-mqtt-2, target: s9-mqtt-3, protocol: mqtt }
+    - { source: s9-mqtt-3, target: s9-mqtt-1, protocol: mqtt }
+    - { source: s9-mqtt-1, target: s9-coap,   protocol: ethernet }
+    - { source: s9-mqtt-3, target: s9-snmp,   protocol: ethernet }
 
 # ── Vulnérabilités plantées ──────────────────────────────────────────────────
 vulnerabilities:
