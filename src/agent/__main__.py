@@ -42,7 +42,7 @@ def main():
         "--scenario",
         type=int,
         default=None,
-        help="Benchmark scenario ID (1-5). Loads VM IPs from ground_truth/scenario_N.yaml.",
+        help="Benchmark scenario ID (1-10). Loads VM IPs from ground_truth/scenario_N.yaml.",
     )
     args = parser.parse_args()
 

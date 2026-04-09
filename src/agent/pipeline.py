@@ -286,16 +286,20 @@ class Pipeline:
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
         """Teardown any currently running scenario before deploying a new one."""
         repo_root = Path(__file__).resolve().parents[2]
-        # All possible scenario IDs from group_vars
-        scenario_ids = [1, 2, 3, 4, 5, 6, 7]
+        # Load all scenario IDs dynamically from group_vars
+        import yaml as _yaml
+        all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
+        try:
+            _all_data = _yaml.safe_load(all_yml.read_text())
+            scenario_ids = [int(k) for k in _all_data.get("scenario_vmid_ranges", {}).keys()]
+        except Exception:
+            scenario_ids = list(range(1, 11))
         for sid in scenario_ids:
             if sid == self.scenario_id:
                 continue  # Will be redeployed fresh
             # Check if any VM in this scenario's range exists
-            import yaml as _yaml
-            all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
             try:
-                data = _yaml.safe_load(all_yml.read_text())
+                data = _all_data
                 base = data["scenario_vmid_ranges"].get(str(sid))
                 if not base:
                     continue
