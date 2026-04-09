@@ -312,6 +312,53 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 
 ---
 
+## Run S4-161034 — premier run S4 complet post-fix VMID S10
+
+**Modèle :** deepseek/deepseek-chat-v3-0324
+**Changements déployés :**
+- `group_vars/all/main.yml` : S10 VMID range 200-209 → 210-219 (collision avec LXC 200 nato-master)
+- `nato-fastapi.service` : `KillMode=control-group` (worker uvicorn orphelin bloquait port 8501)
+
+**Grille S4 (18 vulns, max score 45 pts)**
+
+| V1 | V2 | V3 | V4 | V5 | V6 | V7 | V8 | V9 | V10 | V11 | V12 | V13 | V14 | V15 | V16 | V17 | V18 |
+|----|----|----|----|----|----|----|----|----|----|-----|-----|-----|-----|-----|-----|-----|-----|
+| ❌ | ✅ | ✅ | ✅ | ✅ | ~  | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+
+*(~ = V6 hmi no_auth : LLM trouve directory_listing, pas no_auth — category mismatch)*
+
+**Recall estimé : ~10/18 — Coût : $0.244 — Durée : 32 min**
+
+**FPs notables :**
+- s4-historian `known_cve` CVE-2026-35549 MariaDB (year 2026 — règle REJECT non suivie)
+- s4-historian `known_cve` second CVE MariaDB (range ambigu)
+- s4-lora-gw `directory_listing` /firmware/ (devrait être absorbé dans insecure_update)
+- s4-lora-gw `weak_cipher` SSH (hors GT)
+- s4-router `weak_cipher` SSH (hors GT)
+
+**Problème critique identifié :**
+- `s4-admin` (role=ssh_server) : 0 tool calls, 1 turn, 80 tokens output → JSON vide immédiatement
+  DeepSeek voit `ssh:22` uniquement, ignore ROLE-BASED PRIORITY, shortcircuite vers JSON vide
+  → V1 (default_credentials HIGH), V10 (weak_crypto LOW), V14 (info_disclosure LOW) manqués
+
+**Manquants :**
+- V1 s4-admin default_credentials SSH (HIGH) — agent abandonné sans scan
+- V6 s4-hmi no_auth HMI (HIGH) — directory_listing trouvé au lieu de no_auth
+- V9 s4-router flat network no segmentation (CRITICAL) — finding logique non détectable par outils
+- V10 s4-admin SSH weak crypto (LOW) — agent abandonné
+- V12 s4-webapp SSRF /check.php (HIGH) — endpoint non testé
+- V13 s4-webapp robots.txt (LOW) — non testé
+- V14 s4-admin SSH banner (LOW) — agent abandonné
+- V15 s4-lora-gw robots.txt (LOW) — non testé
+
+**À corriger :**
+- `vuln_device.txt` : HARD STOP ssh_server — forcer tool calls avant save_deliverable (déployé dans ce commit)
+- `vuln_device.txt` : ajouter /robots.txt dans la liste mandatory curl_headers
+- `vuln_device.txt` : ajouter test /check.php?url= pour web_upload role (SSRF)
+- CVE-2026 toujours présent malgré la règle → renforcer l'exemple MariaDB CVE-2026
+
+---
+
 ## Synthèse des patterns
 
 | Pattern | Runs affectés | Fix tenté | Statut |
@@ -342,3 +389,7 @@ Score max pondéré : 29 pts (CRITICAL=4, HIGH=3, MEDIUM=2)
 | Dropbear CVE-2025-14282 (multi-user) | S4-120233 | REJECT unconditionnellement | **Fixé** |
 | uHTTPd CVE non rejeté malgré rule | S4-120233 | ALWAYS REJECT uHTTPd CVEs | **Fixé** |
 | MariaDB CVE range ambigu | 160046, S4-120233 | REJECT si version non confirmée exactement | **Fixé** |
+| ssh_server agent 0 tool calls (shortcircuit) | S4-161034 | HARD STOP + MANDATORY tool order dans ROLE-BASED PRIORITY | En cours |
+| CVE year 2026 persistant malgré règle | S4-161034 | exemple MariaDB CVE-2026 à ajouter | En cours |
+| SSRF /check.php non testé | S4-161034 | section web_upload à étendre | En cours |
+| robots.txt non testé | S4-161034 | ajouter /robots.txt dans curl mandatory | En cours |

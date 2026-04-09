@@ -235,11 +235,9 @@ button:disabled { opacity: .4; cursor: default; }
 #btn-stop     { width: 100%; background: var(--red);   color: #fff; margin-top: 6px; display: none; }
 #btn-teardown { width: 100%; background: transparent;  color: var(--red); border: 1px solid var(--red); margin-top: 4px; }
 
-/* ── Launch form — hauteur limitée pour laisser place à l'historique ─────── */
+/* ── Launch form — pas de max-height, le sidebar gère son propre scroll ───── */
 #launch-section {
   flex-shrink: 0;
-  overflow-y: auto;
-  max-height: calc(100% - 140px);
 }
 
 /* ── Resize handles ──────────────────────────────────────────────────────── */
@@ -466,6 +464,8 @@ button:disabled { opacity: .4; cursor: default; }
   font-size: 12px;
   text-align: center;
   padding: 20px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 #detail-content { display: none; flex-direction: column; flex: 1; overflow: hidden; }
