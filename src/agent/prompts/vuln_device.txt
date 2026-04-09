@@ -39,7 +39,7 @@ IMPORTANT: Call save_deliverable EXACTLY ONCE, at the very end, with your final 
 1. Read context from previous phases (ONCE, at the start — do NOT re-read these later):
    - read_deliverable("01_graph_analysis.md") for the topology
    - read_deliverable("02_recon.md") for discovered services
-   - search_history("{{device_ip}}", device_id="{{device_id}}") — check previous run findings for this device. If a finding is already confirmed with evidence, you may include it directly without re-running the test.
+   - search_history("{{device_ip}}", device_id="{{device_id}}") — optional context only. You MUST still run all required tools regardless of what search_history returns. Never skip scanning because search_history returned results.
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
 
 2. For each service on {{device_id}}, apply the appropriate tests:

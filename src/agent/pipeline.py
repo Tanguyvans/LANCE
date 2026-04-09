@@ -668,6 +668,18 @@ class Pipeline:
                 if stream_callback:
                     stream_callback({"type": "reflector_done", "device_id": device_id, "phase": 3})
 
+            # Safety net: if still no file after reflector, write empty JSON directly
+            if not deliverable_path.exists():
+                log.warning("Device %s: reflector also failed — saving empty JSON safety net", device_id)
+                import json as _json
+                empty = {
+                    "device_id": device_id, "device_ip": device_ip,
+                    "vulnerabilities": [],
+                    "summary": {"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+                }
+                deliverable_path.write_text(_json.dumps(empty, indent=2), encoding="utf-8")
+                print(f"  [Safety net] Empty JSON saved for {device_id}")
+
         import time as _time
 
         def _run_with_stagger(args):
