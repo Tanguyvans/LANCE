@@ -225,6 +225,40 @@ vulnerabilities:
     verification: "curl http://192.168.100.13/firmware/ && curl -X POST http://192.168.100.13/update"
     confidence_required: medium
 
+  - id: V11
+    device: s2-web
+    ip: "192.168.100.11"
+    role: web_server
+    title: "Absence de security headers HTTP (X-Frame-Options, HSTS, CSP)"
+    description: >
+      Le serveur nginx ne retourne aucun header de sécurité HTTP.
+    severity: low
+    category: missing_header
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
+    verification: "curl -sI http://192.168.100.11/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
+    confidence_required: low
+
+  - id: V12
+    device: s2-web
+    ip: "192.168.100.11"
+    role: web_server
+    title: "Server version disclosure (nginx)"
+    description: >
+      Le header HTTP Server révèle la version exacte de nginx.
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "Header Server contient nginx/ suivi d'un numéro de version"
+    verification: "curl -sI http://192.168.100.11/ | grep Server"
+    confidence_required: low
+
 attack_paths:
 
   - id: P1
@@ -270,17 +304,16 @@ attack_paths:
     impact: "Interception des sessions SSH, accès au broker MQTT, espionnage du réseau IoT"
 
 scoring:
-  total_vulnerabilities: 10
+  total_vulnerabilities: 12
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 29   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2 + V10:2
+  max_weighted_score: 31   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:4 + V7:3 + V8:3 + V9:2 + V10:2 + V11:1 + V12:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
   - weak_cipher     # SSH weak ciphers injectés sur s2-jump (ssh_server)
-  - missing_header  # nginx sans security headers
   - terrapin        # Dropbear injecté sur s2-iot-gw — déjà en GT (V4), bonus pour findings dupliqués

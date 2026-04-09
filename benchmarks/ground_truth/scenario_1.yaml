@@ -166,6 +166,102 @@ vulnerabilities:
     verification: "ssh-audit 192.168.100.13"
     confidence_required: medium
 
+  - id: V8
+    device: s1-mqtt
+    ip: "192.168.100.11"
+    role: mqtt_broker
+    title: "MQTT WebSocket exposé sans authentification (port 9001)"
+    description: >
+      Mosquitto expose un listener WebSocket sur le port 9001 en plus du TCP 1883.
+      Un attaquant peut interagir avec le broker depuis un navigateur web, contournant
+      les firewalls qui filtrent uniquement le port 1883.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 9001/tcp ouvert"
+      - "Upgrade WebSocket accepté sans authentification"
+    verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://192.168.100.11:9001/"
+    confidence_required: medium
+
+  - id: V9
+    device: s1-web
+    ip: "192.168.100.12"
+    role: web_server
+    title: "Absence de security headers HTTP (X-Frame-Options, HSTS, CSP)"
+    description: >
+      Le serveur nginx ne retourne aucun header de sécurité HTTP :
+      pas de X-Frame-Options, pas de Strict-Transport-Security, pas de Content-Security-Policy.
+      Facilite les attaques clickjacking et XSS.
+    severity: low
+    category: missing_header
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Réponse HTTP sans X-Frame-Options"
+      - "Réponse HTTP sans Strict-Transport-Security"
+      - "Réponse HTTP sans Content-Security-Policy"
+    verification: "curl -sI http://192.168.100.12/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
+    confidence_required: low
+
+  - id: V10
+    device: s1-web
+    ip: "192.168.100.12"
+    role: web_server
+    title: "Server version disclosure (nginx)"
+    description: >
+      Le header HTTP Server révèle la version exacte de nginx (ex: nginx/1.22.1).
+      Facilite le ciblage de CVE spécifiques par un attaquant.
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "Header Server contient nginx/ suivi d'un numéro de version"
+    verification: "curl -sI http://192.168.100.12/ | grep Server"
+    confidence_required: low
+
+  - id: V11
+    device: s1-mqtt
+    ip: "192.168.100.11"
+    role: mqtt_broker
+    title: "MQTT $SYS topics accessibles (info disclosure)"
+    description: >
+      Le broker Mosquitto publie des métriques internes sur $SYS/# : version,
+      nombre de clients connectés, messages/s, uptime. Permet le profilage du broker.
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t '$SYS/#' retourne des métriques broker"
+      - "$SYS/broker/version expose la version Mosquitto"
+    verification: "mosquitto_sub -h 192.168.100.11 -t '$SYS/#' -v -C 5"
+    confidence_required: low
+
+  - id: V12
+    device: s1-ssh
+    ip: "192.168.100.13"
+    role: ssh_server
+    title: "SSH banner disclosure (OS et version)"
+    description: >
+      Le banner SSH (SSH-2.0-OpenSSH_9.2p1 Debian-2+deb12u3) révèle l'OS exact
+      et la version OpenSSH. Différent de la faiblesse des ciphers (V7).
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "Connexion TCP port 22 retourne SSH-2.0-OpenSSH_X.Xp1 Debian-..."
+    verification: "nc -w2 192.168.100.13 22"
+    confidence_required: low
+
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
 
@@ -211,16 +307,15 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 7
+  total_vulnerabilities: 12
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 16   # V1:3 + V2:2 + V3:3 + V4:3 + V5:2 + V6:2 + V7:1
+  max_weighted_score: 23   # V1:3 + V2:2 + V3:3 + V4:3 + V5:2 + V6:2 + V7:1 + V8:3 + V9:1 + V10:1 + V11:1 + V12:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
   - weak_cipher     # SSH weak ciphers injected (ssh_server) — déjà en GT comme V7, bonus pour findings additionnels
-  - missing_header  # nginx sans security headers (X-Frame-Options, etc.)

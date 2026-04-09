@@ -179,6 +179,62 @@ vulnerabilities:
     verification: "nmap -p 23,80 192.168.100.1"
     confidence_required: medium
 
+  - id: V8
+    device: s5-hvac
+    ip: "192.168.100.15"
+    role: web_server
+    title: "BACnet/IP sans authentification (port 47808/UDP)"
+    description: >
+      Le contrôleur HVAC expose un service BACnet/IP sur le port 47808/UDP sans
+      authentification. Un attaquant peut lire/écrire les points de contrôle BACnet
+      (température consigne, état ventilation, mode chauffage). Protocole ICS standard
+      pour les bâtiments intelligents, sans mécanisme d'auth natif.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "T0831 - Manipulation of Control, T0836 - Modify Parameter"
+    cve: null
+    indicators:
+      - "Port 47808/UDP ouvert"
+      - "Réponse BACnet I-Am à une requête Who-Is"
+      - "Lecture/écriture des objets BACnet sans authentification"
+    verification: "nmap -sU -p 47808 192.168.100.15"
+    confidence_required: medium
+
+  - id: V9
+    device: s5-cam1
+    ip: "192.168.100.11"
+    role: camera_server
+    title: "Server version disclosure (nginx)"
+    description: >
+      Le header HTTP Server révèle la version exacte de nginx sur la caméra.
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "Header Server contient nginx/ suivi d'un numéro de version"
+    verification: "curl -sI http://192.168.100.11/ | grep Server"
+    confidence_required: low
+
+  - id: V10
+    device: s5-web
+    ip: "192.168.100.17"
+    role: web_server
+    title: "Absence de security headers HTTP (X-Frame-Options, HSTS, CSP)"
+    description: >
+      Le portail web du bâtiment ne retourne aucun header de sécurité HTTP.
+    severity: low
+    category: missing_header
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
+    verification: "curl -sI http://192.168.100.17/ | grep -iE 'X-Frame|Strict-Transport'"
+    confidence_required: low
+
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
 
@@ -228,15 +284,15 @@ attack_paths:
 
 # ── Métriques de scoring ──────────────────────────────────────────────────────
 scoring:
-  total_vulnerabilities: 7
+  total_vulnerabilities: 10
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 19   # V1:3 + V2:3 + V3:3 + V4:3 + V5:2 + V6:3 + V7:2
+  max_weighted_score: 24   # V1:3 + V2:3 + V3:3 + V4:3 + V5:2 + V6:3 + V7:2 + V8:3 + V9:1 + V10:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - missing_header  # nginx sans security headers sur les serveurs web et caméras
+  - weak_cipher     # SSH weak ciphers si détectés sur NVR

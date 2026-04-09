@@ -577,6 +577,599 @@
       changed_when: true
 
 
+    # ════════════════════════════════════════════════════
+    # NOUVELLES VULNÉRABILITÉS — diversification benchmark
+    # ════════════════════════════════════════════════════
+
+    # ── MQTT WebSocket (port 9001) sans auth — S1, S6 ──
+    - name: "[mqtt_broker] Activer MQTT WebSocket (port 9001)"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          if [ -f /etc/mosquitto/conf.d/benchmark.conf ]; then
+            grep -q "listener 9001" /etc/mosquitto/conf.d/benchmark.conf && exit 0
+            printf "\nlistener 9001\nprotocol websockets\n" >> /etc/mosquitto/conf.d/benchmark.conf
+            systemctl restart mosquitto
+            echo "[OK] MQTT WebSocket activé sur port 9001"
+          fi'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.role == 'mqtt_broker'
+        - scenario_id in ['1', '6']
+      changed_when: true
+
+    # ── .env exposé via HTTP — S6, S7 ──
+    - name: "[web_server/web_upload] Injecter fichier .env avec credentials"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          cat > /var/www/html/.env << ENVEOF
+        DB_HOST=192.168.100.{{ "13" if "{{ scenario_id }}" == "6" else "15" }}
+        DB_USER=root
+        DB_PASSWORD=P@ssw0rd123
+        MQTT_BROKER=192.168.100.12
+        MQTT_USER=bridge
+        MQTT_PASSWORD=br1dg3_s3cret
+        API_KEY=sk-nato-lab-9f3a2b
+        SECRET_KEY=django-insecure-key-for-iot-dashboard
+        ENVEOF
+          echo "[OK] .env exposé dans /var/www/html/"'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.role in ['web_server', 'web_upload']
+        - scenario_id in ['6', '7']
+      changed_when: true
+
+    # ── robots.txt exposant des paths internes — S4, S6 ──
+    - name: "[web_server/web_upload] Injecter robots.txt avec paths sensibles"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          cat > /var/www/html/robots.txt << ROBOTEOF
+        User-agent: *
+        Disallow: /admin/
+        Disallow: /api/internal/
+        Disallow: /backup/
+        Disallow: /config/
+        Disallow: /.env
+        ROBOTEOF
+          echo "[OK] robots.txt injecté"'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.role in ['web_server', 'web_upload', 'iot_gateway']
+        - scenario_id in ['4', '6']
+      changed_when: true
+
+    # ── SSRF via interface web — S4 (webapp) ──
+    - name: "[web_upload] Injecter endpoint SSRF (check.php)"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          apt-get install -y -qq php-curl 2>/dev/null || true
+          cat > /var/www/html/check.php << PHPEOF
+        <?php
+        // Network diagnostic tool
+        \$url = \$_GET["url"] ?? "http://example.com";
+        \$ch = curl_init(\$url);
+        curl_setopt(\$ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt(\$ch, CURLOPT_TIMEOUT, 5);
+        \$response = curl_exec(\$ch);
+        echo "<pre>Response from " . htmlspecialchars(\$url) . ":\n" . htmlspecialchars(\$response) . "</pre>";
+        ?>
+        PHPEOF
+          echo "[OK] SSRF endpoint check.php injecté"'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.role == 'web_upload'
+        - scenario_id == '4'
+      changed_when: true
+
+    # ── Privilege escalation : SUID binary + cron writable — S3 (jetson), S7 (edge-compute) ──
+    - name: "[ssh_server] Injecter SUID binary + cron writable"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          # SUID binary vulnérable
+          cat > /usr/local/bin/iot-diag << DIAGEOF
+        #!/bin/bash
+        # IoT diagnostic tool — runs as root
+        cat \$1
+        DIAGEOF
+          chmod 4755 /usr/local/bin/iot-diag
+
+          # Cron job world-writable
+          mkdir -p /opt/iot
+          echo "#!/bin/bash" > /opt/iot/maintenance.sh
+          echo "logrotate /etc/logrotate.conf" >> /opt/iot/maintenance.sh
+          chmod 777 /opt/iot/maintenance.sh
+          echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
+          echo "[OK] SUID + cron writable injectés"'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.role == 'ssh_server'
+        - scenario_id in ['3', '7']
+      changed_when: true
+
+    # ── BACnet/IP sans auth (port 47808/UDP) — S5 (HVAC) ──
+    - name: "[web_server] Injecter simulateur BACnet (S5 HVAC)"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
+          apt-get install -y -qq python3 python3-pip 2>/dev/null || true
+          pip3 install BAC0 2>/dev/null || pip3 install bacpypes3 2>/dev/null || true
+
+          cat > /opt/bacnet_device.py << BACEOF
+        #!/usr/bin/env python3
+        """BACnet/IP device simulation — HVAC controller, no auth"""
+        import socket, struct, threading, time
+
+        BACNET_PORT = 47808
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("0.0.0.0", BACNET_PORT))
+
+        # Respond to WhoIs with IAm
+        while True:
+            data, addr = sock.recvfrom(1024)
+            # Simple IAm response for any BACnet request
+            iam = bytes([0x81, 0x0b, 0x00, 0x0c, 0x01, 0x20, 0xff, 0xff, 0x00, 0xff, 0x10, 0x00])
+            sock.sendto(iam, addr)
+        BACEOF
+          cat > /etc/systemd/system/bacnet.service << SVCEOF
+        [Unit]
+        Description=BACnet/IP Device (benchmark)
+        After=network.target
+        [Service]
+        ExecStart=/usr/bin/python3 /opt/bacnet_device.py
+        Restart=always
+        [Install]
+        WantedBy=multi-user.target
+        SVCEOF
+          systemctl daemon-reload
+          systemctl enable bacnet
+          systemctl start bacnet
+          echo "[OK] BACnet/IP sur port 47808 (sans auth)"'
+      loop: "{{ scenarios[scenario_id].services }}"
+      when:
+        - item.name is defined and item.name is search('hvac')
+        - scenario_id == '5'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # VARIANTES DE RÔLES — diversification des failles
+    # ════════════════════════════════════════════════════
+
+    # ── mqtt_broker_v2 : Mosquitto avec auth faible (test:test) au lieu d'anonymous ──
+    - name: "[mqtt_broker_v2] Écrire le script d'injection MQTT v2"
+      ansible.builtin.copy:
+        dest: /tmp/inject_mqtt_v2.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq mosquitto mosquitto-clients
+
+          # V2 variant: auth enabled but weak credentials (test/test, admin/admin)
+          printf 'listener 1883 0.0.0.0\nallow_anonymous false\npassword_file /etc/mosquitto/passwd\n' > /etc/mosquitto/conf.d/benchmark.conf
+
+          # Create weak password file
+          touch /etc/mosquitto/passwd
+          mosquitto_passwd -b /etc/mosquitto/passwd test test
+          mosquitto_passwd -b /etc/mosquitto/passwd admin admin123
+          mosquitto_passwd -b /etc/mosquitto/passwd bridge br1dg3_pass
+
+          systemctl enable mosquitto
+          systemctl restart mosquitto
+          sleep 2
+
+          # Publish sensitive topics (requires auth now — using weak creds)
+          mosquitto_pub -h localhost -u test -P test -t "smartcity/admin/credentials" \
+            -m '{"db_user":"root","db_pass":"P@ssw0rd123","api_key":"sk-bench-api-1234"}' -r
+          mosquitto_pub -h localhost -u test -P test -t "smartcity/sensors/temp" -m '{"value":22.5,"unit":"C"}' -r
+          mosquitto_pub -h localhost -u test -P test -t "smartcity/config/network" \
+            -m '{"gateway":"192.168.100.1","dns":"8.8.8.8","vlan_id":100}' -r
+          echo "[OK] MQTT auth faible configuré (test:test, admin:admin123)"
+
+    - name: "[mqtt_broker_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_mqtt_v2.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'mqtt_broker_v2'
+      changed_when: true
+
+
+    # ── ssh_server_v2 : SSH key-only mais authorized_keys world-readable (644) ──
+    - name: "[ssh_server_v2] Écrire le script d'injection SSH v2"
+      ansible.builtin.copy:
+        dest: /tmp/inject_ssh_v2.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq openssh-server
+
+          # Create iot-admin user
+          useradd -m -s /bin/bash iot-admin 2>/dev/null || true
+
+          # Generate SSH key pair (simulating a deployed key)
+          mkdir -p /home/iot-admin/.ssh
+          ssh-keygen -t ed25519 -f /home/iot-admin/.ssh/id_ed25519 -N "" -q
+          cp /home/iot-admin/.ssh/id_ed25519.pub /home/iot-admin/.ssh/authorized_keys
+
+          # FLAW: authorized_keys world-readable (should be 600)
+          chmod 644 /home/iot-admin/.ssh/authorized_keys
+          chmod 755 /home/iot-admin/.ssh
+          chown -R iot-admin:iot-admin /home/iot-admin/.ssh
+
+          # Disable password auth — key-only
+          sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+          sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+          sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+          # FLAW: private key left on the server (readable by any local user)
+          chmod 644 /home/iot-admin/.ssh/id_ed25519
+
+          # Config file with network credentials (readable)
+          mkdir -p /etc/iot
+          cat > /etc/iot/config.json << 'CFGEOF'
+          {"mqtt_broker":"192.168.100.12","mqtt_user":"bridge","mqtt_pass":"br1dg3_pass",
+           "db_host":"192.168.100.14","db_user":"root","db_pass":"","api_key":"sk-bench-9f3a"}
+          CFGEOF
+          chmod 644 /etc/iot/config.json
+
+          systemctl enable ssh
+          systemctl restart ssh
+          echo "[OK] SSH key-only + authorized_keys world-readable configuré"
+
+    - name: "[ssh_server_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ssh_v2.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ssh_server_v2'
+      changed_when: true
+
+
+    # ── web_server_v2 : API REST Flask sans auth (pas de directory listing) ──
+    - name: "[web_server_v2] Écrire le script d'injection web v2"
+      ansible.builtin.copy:
+        dest: /tmp/inject_web_v2.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq python3 python3-pip python3-flask 2>/dev/null || true
+          pip3 install flask 2>/dev/null || true
+
+          cat > /opt/iot_api.py << 'PYEOF'
+          #!/usr/bin/env python3
+          """IoT Dashboard API — no authentication required"""
+          from flask import Flask, jsonify, request
+          app = Flask(__name__)
+
+          DEVICES = [
+              {"id": 1, "name": "temp-sensor-01", "ip": "192.168.100.21", "status": "online", "key": "dev-key-abc123"},
+              {"id": 2, "name": "humidity-02", "ip": "192.168.100.22", "status": "online", "key": "dev-key-def456"},
+              {"id": 3, "name": "motion-03", "ip": "192.168.100.23", "status": "offline", "key": "dev-key-ghi789"},
+          ]
+          USERS = [
+              {"id": 1, "username": "admin", "password": "P@ssw0rd123", "role": "admin"},
+              {"id": 2, "username": "operator", "password": "oper@t0r", "role": "user"},
+          ]
+          CONFIG = {"db_host": "192.168.100.14", "db_pass": "P@ssw0rd123", "mqtt": "192.168.100.12:1883"}
+
+          @app.route("/api/devices")
+          def get_devices(): return jsonify(DEVICES)
+
+          @app.route("/api/users")
+          def get_users(): return jsonify(USERS)
+
+          @app.route("/api/config")
+          def get_config(): return jsonify(CONFIG)
+
+          @app.route("/api/exec", methods=["POST"])
+          def exec_cmd():
+              import subprocess
+              cmd = request.json.get("cmd", "id")
+              result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
+              return jsonify({"stdout": result.stdout, "stderr": result.stderr})
+
+          @app.route("/health")
+          def health(): return jsonify({"status": "ok", "version": "1.3.2"})
+
+          if __name__ == "__main__":
+              app.run(host="0.0.0.0", port=80)
+          PYEOF
+
+          cat > /etc/systemd/system/iot-api.service << 'SVCEOF'
+          [Unit]
+          Description=IoT Dashboard API (benchmark)
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/iot_api.py
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+          SVCEOF
+          systemctl daemon-reload
+          systemctl enable iot-api
+          systemctl start iot-api
+          echo "[OK] Flask API sans auth configuré (port 80)"
+
+    - name: "[web_server_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_web_v2.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'web_server_v2'
+      changed_when: true
+
+
+    # ── db_server_v2 : Redis sans auth (au lieu de MariaDB) ──
+    - name: "[db_server_v2] Écrire le script d'injection Redis"
+      ansible.builtin.copy:
+        dest: /tmp/inject_redis.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq redis-server
+
+          # FLAW: Redis sans auth, bind sur toutes les interfaces
+          sed -i 's/^bind .*/bind 0.0.0.0/' /etc/redis/redis.conf
+          sed -i 's/^protected-mode yes/protected-mode no/' /etc/redis/redis.conf
+          # Disable requirepass (no authentication)
+          sed -i 's/^requirepass/#requirepass/' /etc/redis/redis.conf
+
+          systemctl enable redis-server
+          systemctl restart redis-server
+
+          # Populate with sensitive data
+          redis-cli SET "config:db_password" "P@ssw0rd123"
+          redis-cli SET "config:api_key" "sk-bench-api-1234567890abcdef"
+          redis-cli SET "config:mqtt_broker" "192.168.100.12:1883"
+          redis-cli SET "session:admin" '{"user":"admin","role":"superadmin","token":"eyJhbG..."}'
+          redis-cli SET "iot:device:secrets" '{"gateway_key":"gw-secret-456","sensor_psk":"psk-789"}'
+          echo "[OK] Redis sans auth configuré (port 6379)"
+
+    - name: "[db_server_v2] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_redis.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'db_server_v2'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # NOUVEAUX RÔLES — extension protocoles IoT
+    # ════════════════════════════════════════════════════
+
+    # ── ftp_server : vsftpd anonymous + fichiers sensibles ──
+    - name: "[ftp_server] Écrire le script d'injection FTP"
+      ansible.builtin.copy:
+        dest: /tmp/inject_ftp.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq vsftpd
+
+          # Enable anonymous access
+          sed -i 's/^anonymous_enable=.*/anonymous_enable=YES/' /etc/vsftpd.conf 2>/dev/null || \
+            echo "anonymous_enable=YES" >> /etc/vsftpd.conf
+          sed -i 's/^local_enable=.*/local_enable=YES/' /etc/vsftpd.conf
+          echo "anon_root=/srv/ftp" >> /etc/vsftpd.conf
+          echo "no_anon_password=YES" >> /etc/vsftpd.conf
+          echo "write_enable=NO" >> /etc/vsftpd.conf
+
+          # Populate with sensitive files
+          mkdir -p /srv/ftp/firmware /srv/ftp/config /srv/ftp/backup
+          echo "IOT-FIRMWARE-v3.2.1-unsigned" > /srv/ftp/firmware/latest.bin
+          cat > /srv/ftp/config/network.conf << 'CFGEOF'
+          [mqtt]
+          broker=192.168.100.12
+          user=bridge
+          password=br1dg3_s3cret
+          [database]
+          host=192.168.100.14
+          user=root
+          password=P@ssw0rd123
+          CFGEOF
+          echo "-- Database backup with credentials" > /srv/ftp/backup/db_dump.sql
+          echo "INSERT INTO users VALUES (1,'admin','P@ssw0rd123','admin@iot.local');" >> /srv/ftp/backup/db_dump.sql
+
+          systemctl enable vsftpd
+          systemctl restart vsftpd
+          echo "[OK] vsftpd anonymous configuré (port 21)"
+
+    - name: "[ftp_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ftp.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ftp_server'
+      changed_when: true
+
+
+    # ── snmp_server : SNMP community string public/private ──
+    - name: "[snmp_server] Écrire le script d'injection SNMP"
+      ansible.builtin.copy:
+        dest: /tmp/inject_snmp.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq snmpd snmp
+
+          # FLAW: default community strings (public/private)
+          cat > /etc/snmp/snmpd.conf << 'SNMPEOF'
+          # Benchmark SNMP — insecure community strings
+          agentAddress udp:161
+          rocommunity public
+          rwcommunity private
+          sysLocation "IoT Sensor Network — Building A"
+          sysContact "admin@smartcity.local"
+          sysName "iot-sensor-node"
+          # Expose all OIDs
+          view all included .1
+          SNMPEOF
+
+          systemctl enable snmpd
+          systemctl restart snmpd
+          echo "[OK] SNMP avec community public/private configuré (port 161)"
+
+    - name: "[snmp_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_snmp.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'snmp_server'
+      changed_when: true
+
+
+    # ── coap_server : CoAP sans DTLS (port 5683) ──
+    - name: "[coap_server] Écrire le script d'injection CoAP"
+      ansible.builtin.copy:
+        dest: /tmp/inject_coap.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq python3 python3-pip
+          pip3 install aiocoap 2>/dev/null || pip3 install --break-system-packages aiocoap 2>/dev/null || true
+
+          cat > /opt/coap_server.py << 'PYEOF'
+          #!/usr/bin/env python3
+          """CoAP server without DTLS — benchmark vulnerability"""
+          import asyncio, aiocoap, aiocoap.resource
+
+          class SensorResource(aiocoap.resource.Resource):
+              async def render_get(self, request):
+                  return aiocoap.Message(payload=b'{"temperature":22.5,"humidity":65,"battery":87}')
+
+          class ConfigResource(aiocoap.resource.Resource):
+              async def render_get(self, request):
+                  return aiocoap.Message(payload=b'{"mqtt_broker":"192.168.100.12","api_key":"sk-coap-secret-789","interval":30}')
+              async def render_put(self, request):
+                  return aiocoap.Message(code=aiocoap.CHANGED, payload=b'{"status":"config updated"}')
+
+          class ActuatorResource(aiocoap.resource.Resource):
+              async def render_post(self, request):
+                  return aiocoap.Message(code=aiocoap.CHANGED, payload=b'{"actuator":"valve","state":"open"}')
+
+          async def main():
+              root = aiocoap.resource.Site()
+              root.add_resource(['.well-known', 'core'], aiocoap.resource.WKCResource(root.get_resources_as_linkheader))
+              root.add_resource(['sensor', 'data'], SensorResource())
+              root.add_resource(['config'], ConfigResource())
+              root.add_resource(['actuator', 'valve'], ActuatorResource())
+              await aiocoap.Context.create_server_context(root, bind=("0.0.0.0", 5683))
+              await asyncio.get_event_loop().create_future()
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          PYEOF
+
+          cat > /etc/systemd/system/coap.service << 'SVCEOF'
+          [Unit]
+          Description=CoAP Server (benchmark — no DTLS)
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/coap_server.py
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+          SVCEOF
+          systemctl daemon-reload
+          systemctl enable coap
+          systemctl start coap
+          echo "[OK] CoAP sans DTLS sur port 5683"
+
+    - name: "[coap_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_coap.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'coap_server'
+      changed_when: true
+
+
+    # ── nodered_server : Node-RED sans auth + flow exec ──
+    - name: "[nodered_server] Écrire le script d'injection Node-RED"
+      ansible.builtin.copy:
+        dest: /tmp/inject_nodered.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq nodejs npm 2>/dev/null || true
+
+          # Install Node-RED
+          npm install -g --unsafe-perm node-red 2>/dev/null || true
+
+          # Create Node-RED settings — NO authentication
+          mkdir -p /root/.node-red
+          cat > /root/.node-red/settings.js << 'NREOF'
+          module.exports = {
+              uiPort: 1880,
+              uiHost: "0.0.0.0",
+              // NO adminAuth — intentionally insecure for benchmark
+              functionGlobalContext: {
+                  env: process.env
+              },
+              debugMaxLength: 10000,
+              // Expose runtime API without auth
+              httpAdminRoot: '/admin',
+              httpNodeRoot: '/api',
+          };
+          NREOF
+
+          # Create a flow with exec node (RCE capability)
+          cat > /root/.node-red/flows.json << 'FLOWEOF'
+          [{"id":"flow1","type":"tab","label":"IoT Control"},
+           {"id":"n1","type":"inject","z":"flow1","name":"Heartbeat","repeat":"60","topic":"status","x":150,"y":100,"wires":[["n2"]]},
+           {"id":"n2","type":"exec","z":"flow1","command":"hostname && uptime && cat /etc/os-release","x":400,"y":100,"wires":[["n3"],[],[]]},
+           {"id":"n3","type":"debug","z":"flow1","name":"System Info","x":650,"y":100,"wires":[]}]
+          FLOWEOF
+
+          cat > /etc/systemd/system/nodered.service << 'SVCEOF'
+          [Unit]
+          Description=Node-RED IoT (benchmark — no auth)
+          After=network.target
+          [Service]
+          ExecStart=/usr/bin/node-red --settings /root/.node-red/settings.js
+          Restart=always
+          Environment=NODE_RED_HOME=/root/.node-red
+          [Install]
+          WantedBy=multi-user.target
+          SVCEOF
+          systemctl daemon-reload
+          systemctl enable nodered
+          systemctl start nodered
+          echo "[OK] Node-RED sans auth sur port 1880"
+
+    - name: "[nodered_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_nodered.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'nodered_server'
+      changed_when: true
+
+
     # ── Nettoyage IP temporaire ──
     - name: Retirer l'IP temporaire de vmbr1
       ansible.builtin.command: ip addr del {{ proxmox_tmp_ip }}/24 dev vmbr1

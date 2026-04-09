@@ -229,6 +229,62 @@ vulnerabilities:
     verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
     confidence_required: medium
 
+  - id: V11
+    device: s6-web
+    ip: "192.168.100.15"
+    role: web_server
+    title: "Fichier .env exposé via HTTP (credentials en clair)"
+    description: >
+      Le fichier .env est accessible sans authentification via le serveur web.
+      Contient les credentials de la base de données, du broker MQTT, l'API key
+      et la clé secrète Django en clair.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection, Credential Access"
+    cve: null
+    indicators:
+      - "GET /.env retourne DB_PASSWORD, MQTT_PASSWORD, API_KEY, SECRET_KEY"
+      - "Fichier accessible sans authentification"
+    verification: "curl http://192.168.100.15/.env"
+    confidence_required: high
+
+  - id: V12
+    device: s6-mqtt
+    ip: "192.168.100.12"
+    role: mqtt_broker
+    title: "MQTT WebSocket exposé sans authentification (port 9001)"
+    description: >
+      Mosquitto expose un listener WebSocket sur le port 9001 en plus du TCP 1883.
+      Permet l'interaction depuis un navigateur web, contournant les firewalls.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 9001/tcp ouvert"
+      - "Upgrade WebSocket accepté sans authentification"
+    verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://192.168.100.12:9001/"
+    confidence_required: medium
+
+  - id: V13
+    device: s6-hub
+    ip: "192.168.100.11"
+    role: iot_gateway
+    title: "robots.txt exposant des paths sensibles internes"
+    description: >
+      Le fichier robots.txt révèle l'existence de répertoires sensibles sur le hub IoT.
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "GET /robots.txt retourne Disallow pour /admin/, /api/internal/, /backup/, /.env"
+    verification: "curl http://192.168.100.11/robots.txt"
+    confidence_required: low
+
 attack_paths:
 
   - id: P1
@@ -274,14 +330,14 @@ attack_paths:
     impact: "Compromission de tous les services avec credentials légitimes"
 
 scoring:
-  total_vulnerabilities: 10
+  total_vulnerabilities: 13
   total_attack_paths: 4
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 28   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:2 + V7:4 + V8:2 + V9:3 + V10:2
+  max_weighted_score: 35   # V1:4 + V2:2 + V3:3 + V4:3 + V5:3 + V6:2 + V7:4 + V8:2 + V9:3 + V10:2 + V11:3 + V12:3 + V13:1
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:

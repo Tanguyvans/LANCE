@@ -29,7 +29,8 @@ CATEGORY_TO_TYPE = {
         "no_auth", "missing_header", "version_leak", "misconfiguration",
         "insecure_protocol", "weak_config", "insecure_config", "open_service",
         "cleartext", "insecure_default", "telnet", "ftp_anonymous",
-        "open_port", "service_exposure",
+        "open_port", "service_exposure", "coap_no_dtls", "snmp_default",
+        "redis_no_auth", "nodered_no_auth", "world_readable",
     },
     "cve":                 {
         "known_cve", "terrapin", "weak_cipher", "outdated_software",
@@ -39,7 +40,7 @@ CATEGORY_TO_TYPE = {
     "default_credentials": {
         "no_auth", "default_credentials", "weak_password", "hardcoded_credentials",
         "default_password", "brute_force", "weak_auth", "credential_reuse",
-        "default_creds",
+        "default_creds", "snmp_community", "weak_credentials",
     },
     "data_exposure":       {
         "missing_header", "version_leak", "no_auth", "data_exposure",
@@ -50,12 +51,14 @@ CATEGORY_TO_TYPE = {
     "no_authentication":   {
         "no_auth", "missing_header", "no_auth_required", "unauthenticated_access",
         "missing_authentication", "insecure_access", "open_access",
-        "unauthenticated", "auth_bypass",
+        "unauthenticated", "auth_bypass", "redis_no_auth", "coap_no_auth",
+        "modbus_no_auth", "nodered_no_auth", "api_no_auth",
     },
     "code_injection":      {
         "rce", "code_injection", "upload_bypass", "no_auth",
         "file_upload", "rce_webshell", "php_injection", "command_injection",
         "unrestricted_upload", "webshell", "arbitrary_file_upload",
+        "api_rce", "nodered_exec", "remote_code_execution",
     },
     "weak_crypto":         {
         "weak_cipher", "weak_mac", "weak_kex", "insecure_tls",
@@ -66,6 +69,27 @@ CATEGORY_TO_TYPE = {
         "ota_no_signature", "update_no_auth", "no_auth", "insecure_update",
         "firmware_no_validation", "unsigned_firmware", "ota_vulnerability",
         "insecure_firmware_update",
+    },
+    "info_disclosure":     {
+        "info_disclosure", "version_leak", "banner_disclosure",
+        "server_version", "service_enumeration", "information_disclosure",
+        "sys_topics", "mqtt_sys", "robots_txt", "path_disclosure",
+        "snmp_disclosure", "ssdp_disclosure", "snmp_info_leak",
+        "coap_discovery",
+    },
+    "privilege_escalation": {
+        "privilege_escalation", "privesc", "suid", "cron_writable",
+        "local_privilege_escalation", "setuid", "writable_script",
+        "docker_escape", "container_escape",
+    },
+    "missing_header":      {
+        "missing_header", "security_header", "missing_security_header",
+        "no_hsts", "no_csp", "no_x_frame_options", "header_missing",
+    },
+    "auth_bypass":         {
+        "auth_bypass", "jwt_none", "jwt_bypass", "authentication_bypass",
+        "token_forgery", "broken_authentication", "ssrf",
+        "server_side_request_forgery",
     },
 }
 

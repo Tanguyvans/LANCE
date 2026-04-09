@@ -29,6 +29,9 @@ scenario_vmid_ranges:
   "5": 150   # S5 Building          → 150-159
   "6": 160   # S6 Domotique         → 160-169
   "7": 170   # S7 Edge-Cloud pivot  → 170-179
+  "8": 180   # S8 Multi-zone IT/IoT/OT → 180-189
+  "9": 190   # S9 Mesh IoT          → 190-199
+  "10": 200  # S10 Flat variantes   → 200-209
 
 # ── Credentials par défaut injectés dans les VMs (failles F1) ──
 # Ces valeurs sont volontairement faibles : c'est le but du benchmark
@@ -113,3 +116,35 @@ scenarios:
       - { name: edge-compute, vmid_offset: 3, ip: "192.168.100.13", role: "ssh_server"  }
       - { name: cloud-api,    vmid_offset: 4, ip: "192.168.100.14", role: "web_upload"  }
       - { name: cloud-db,     vmid_offset: 5, ip: "192.168.100.15", role: "db_server"   }
+
+  "8":
+    name: "Multi-zone IT/IoT/OT"
+    router_vulns: [telnet, admin_wan]
+    services:
+      - { name: admin,    vmid_offset: 1, ip: "192.168.100.11", role: "ssh_server_v2"   }
+      - { name: mqtt,     vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker_v2"  }
+      - { name: iot-gw,   vmid_offset: 3, ip: "192.168.100.13", role: "iot_gateway"     }
+      - { name: plc,      vmid_offset: 4, ip: "192.168.100.14", role: "modbus_server"   }
+      - { name: hmi,      vmid_offset: 5, ip: "192.168.100.15", role: "web_server_v2"   }
+      - { name: redis,    vmid_offset: 6, ip: "192.168.100.16", role: "db_server_v2"    }
+      - { name: historian, vmid_offset: 7, ip: "192.168.100.17", role: "db_server"      }
+
+  "9":
+    name: "Mesh IoT"
+    router_vulns: [telnet]
+    services:
+      - { name: mqtt-1,   vmid_offset: 1, ip: "192.168.100.11", role: "mqtt_broker"     }
+      - { name: mqtt-2,   vmid_offset: 2, ip: "192.168.100.12", role: "mqtt_broker_v2"  }
+      - { name: mqtt-3,   vmid_offset: 3, ip: "192.168.100.13", role: "mqtt_broker"     }
+      - { name: coap,     vmid_offset: 4, ip: "192.168.100.14", role: "coap_server"     }
+      - { name: snmp,     vmid_offset: 5, ip: "192.168.100.15", role: "snmp_server"     }
+
+  "10":
+    name: "Flat avec variantes"
+    router_vulns: [telnet, ftp]
+    services:
+      - { name: mqtt,     vmid_offset: 1, ip: "192.168.100.11", role: "mqtt_broker_v2"  }
+      - { name: web,      vmid_offset: 2, ip: "192.168.100.12", role: "web_server_v2"   }
+      - { name: ftp,      vmid_offset: 3, ip: "192.168.100.13", role: "ftp_server"      }
+      - { name: nodered,  vmid_offset: 4, ip: "192.168.100.14", role: "nodered_server"  }
+      - { name: ssh,      vmid_offset: 5, ip: "192.168.100.15", role: "ssh_server_v2"   }

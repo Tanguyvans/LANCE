@@ -1,0 +1,285 @@
+# Ground Truth — Scénario 9 : Mesh IoT
+# Architecture A6 Mesh + Packs F4 (protocoles IoT) + F6 (crypto faible)
+# Difficulté : Medium
+
+scenario_id: "9"
+scenario_name: "Mesh IoT"
+difficulty: "medium"
+description: >
+  Réseau mesh IoT peer-to-peer simulant un déploiement smart city outdoor.
+  3 brokers MQTT interconnectés (dont un avec auth faible), 1 nœud CoAP sans DTLS,
+  1 nœud SNMP avec community strings par défaut. Pas de point central — teste
+  si l'agent détecte les vulnérabilités dans un réseau sans hiérarchie claire.
+
+topology:
+  router:
+    name: s9-router
+    vmid: 190
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    - { name: s9-mqtt-1, vmid: 191, ip: "192.168.100.11", role: mqtt_broker    }
+    - { name: s9-mqtt-2, vmid: 192, ip: "192.168.100.12", role: mqtt_broker_v2 }
+    - { name: s9-mqtt-3, vmid: 193, ip: "192.168.100.13", role: mqtt_broker    }
+    - { name: s9-coap,   vmid: 194, ip: "192.168.100.14", role: coap_server    }
+    - { name: s9-snmp,   vmid: 195, ip: "192.168.100.15", role: snmp_server    }
+
+# ── Vulnérabilités plantées ──────────────────────────────────────────────────
+vulnerabilities:
+
+  - id: V1
+    device: s9-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur (port 23)"
+    description: >
+      telnetd actif sur OpenWrt. Protocole en clair, accès shell sans authentification.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
+    confidence_required: medium
+
+  - id: V2
+    device: s9-mqtt-1
+    ip: "192.168.100.11"
+    role: mqtt_broker
+    title: "MQTT sans authentification (nœud mesh 1)"
+    description: >
+      Mosquitto configuré avec allow_anonymous true. Nœud mesh exposant
+      tous les topics IoT du secteur Nord sans contrôle d'accès.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion possible sans username/password"
+      - "Topics smartcity/admin/credentials accessibles"
+    verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v -C 3"
+    confidence_required: high
+
+  - id: V3
+    device: s9-mqtt-1
+    ip: "192.168.100.11"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT (nœud 1)"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles à toute personne connectée anonymement.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
+    confidence_required: medium
+
+  - id: V4
+    device: s9-mqtt-2
+    ip: "192.168.100.12"
+    role: mqtt_broker_v2
+    title: "MQTT avec credentials faibles (test:test) — nœud mesh 2"
+    description: >
+      Mosquitto avec authentification activée mais credentials triviaux (test/test).
+      Nœud mesh central — les messages des 2 autres brokers transitent par celui-ci.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "allow_anonymous false mais credentials triviaux"
+      - "Connexion réussie avec test:test"
+    verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t '#' -v -C 3"
+    confidence_required: high
+
+  - id: V5
+    device: s9-mqtt-2
+    ip: "192.168.100.12"
+    role: mqtt_broker_v2
+    title: "Credentials en clair dans les topics MQTT (nœud 2)"
+    description: >
+      Le topic smartcity/admin/credentials contient des secrets accessibles
+      avec les credentials faibles test:test.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Topic smartcity/admin/credentials contient db_pass, api_key"
+      - "Topic smartcity/config/network expose la config réseau"
+    verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t 'smartcity/admin/#' -C 1"
+    confidence_required: medium
+
+  - id: V6
+    device: s9-mqtt-3
+    ip: "192.168.100.13"
+    role: mqtt_broker
+    title: "MQTT sans authentification (nœud mesh 3)"
+    description: >
+      Troisième nœud mesh avec allow_anonymous true. Accès complet aux topics
+      sans contrôle. Créé un réseau entièrement ouvert par effet de chaîne.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "Connexion possible sans username/password"
+    verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v -C 3"
+    confidence_required: high
+
+  - id: V7
+    device: s9-mqtt-3
+    ip: "192.168.100.13"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT (nœud 3)"
+    description: >
+      Topics sensibles accessibles sans authentification sur le troisième nœud mesh.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Topics smartcity/admin/credentials accessibles anonymement"
+    verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
+    confidence_required: medium
+
+  - id: V8
+    device: s9-coap
+    ip: "192.168.100.14"
+    role: coap_server
+    title: "CoAP sans DTLS (port 5683/UDP)"
+    description: >
+      Serveur CoAP exposé sur le port 5683 sans chiffrement DTLS. Les communications
+      sont en clair. L'endpoint /config retourne la configuration avec des secrets
+      (api_key, mqtt_broker). L'endpoint /actuator/valve permet le contrôle d'actionneurs.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection, Impair Process Control"
+    cve: null
+    indicators:
+      - "Port 5683/udp ouvert"
+      - "GET coap://192.168.100.14/config retourne des secrets"
+      - "PUT coap://192.168.100.14/config modifie la configuration"
+      - "POST coap://192.168.100.14/actuator/valve contrôle un actionneur"
+    verification: "coap-client -m get coap://192.168.100.14/config"
+    confidence_required: high
+
+  - id: V9
+    device: s9-coap
+    ip: "192.168.100.14"
+    role: coap_server
+    title: "CoAP — contrôle d'actionneur sans authentification"
+    description: >
+      L'endpoint POST /actuator/valve permet d'ouvrir/fermer des vannes
+      physiques sans aucune authentification ni autorisation.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators:
+      - "POST coap://192.168.100.14/actuator/valve accepté sans auth"
+    verification: "coap-client -m post coap://192.168.100.14/actuator/valve"
+    confidence_required: high
+
+  - id: V10
+    device: s9-snmp
+    ip: "192.168.100.15"
+    role: snmp_server
+    title: "SNMP community string par défaut (public/private)"
+    description: >
+      Agent SNMP v2c avec community strings par défaut : 'public' (lecture)
+      et 'private' (lecture/écriture). Permet l'énumération complète du système
+      et potentiellement la modification de la configuration via SNMP SET.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators:
+      - "Port 161/udp ouvert"
+      - "snmpwalk avec community 'public' retourne des données"
+      - "Community 'private' permet l'écriture (rwcommunity)"
+    verification: "snmpwalk -v2c -c public 192.168.100.15"
+    confidence_required: high
+
+  - id: V11
+    device: s9-snmp
+    ip: "192.168.100.15"
+    role: snmp_server
+    title: "SNMP information disclosure (sysLocation, sysContact)"
+    description: >
+      SNMP expose des informations sur l'infrastructure : emplacement physique
+      (sysLocation), contact admin (sysContact), nom du système (sysName).
+    severity: low
+    category: info_disclosure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "sysLocation = IoT Sensor Network — Building A"
+      - "sysContact = admin@smartcity.local"
+    verification: "snmpget -v2c -c public 192.168.100.15 sysLocation.0"
+    confidence_required: low
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "Mesh traversal : broker anonyme → broker à auth faible → données"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",              action: "Connexion MQTT sans auth"          }
+      - { hop: 2, device: "s9-mqtt-1 (100.11)",    action: "Subscribe '#' — récupérer creds"   }
+      - { hop: 3, device: "s9-mqtt-2 (100.12)",    action: "Login avec creds récupérés"        }
+    vulnerabilities_used: [V2, V3, V4]
+    impact: "Accès à tous les topics de tous les nœuds mesh"
+
+  - id: P2
+    title: "CoAP → contrôle d'actionneurs physiques"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",              action: "Découverte CoAP via .well-known/core" }
+      - { hop: 2, device: "s9-coap (100.14)",      action: "GET /config → secrets"             }
+      - { hop: 3, device: "s9-coap (100.14)",      action: "POST /actuator/valve → ouverture"  }
+    vulnerabilities_used: [V8, V9]
+    impact: "Contrôle physique d'actionneurs IoT sans authentification"
+
+  - id: P3
+    title: "SNMP enumeration → discovery réseau complet"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",              action: "snmpwalk community public"         }
+      - { hop: 2, device: "s9-snmp (100.15)",      action: "Énumération OIDs système"          }
+    vulnerabilities_used: [V10, V11]
+    impact: "Cartographie complète du réseau IoT mesh"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 11
+  total_attack_paths: 3
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 27   # V1:2 + V2:3 + V3:2 + V4:3 + V5:2 + V6:3 + V7:2 + V8:3 + V9:3 + V10:3 + V11:1
+
+bonus_types:
+  - weak_cipher
+  - missing_header
