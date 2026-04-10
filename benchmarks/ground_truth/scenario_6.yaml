@@ -15,20 +15,20 @@ topology:
   router:
     name: s6-router
     vmid: 160
-    ip: "192.168.100.1"
+    ip: "10.60.0.1"
     type: openwrt
   services:
-    - { name: s6-hub,  vmid: 161, ip: "192.168.100.11", role: iot_gateway   }
-    - { name: s6-mqtt, vmid: 162, ip: "192.168.100.12", role: mqtt_broker   }
-    - { name: s6-db,   vmid: 163, ip: "192.168.100.13", role: db_server     }
-    - { name: s6-cam,  vmid: 164, ip: "192.168.100.14", role: camera_server }
-    - { name: s6-web,  vmid: 165, ip: "192.168.100.15", role: web_server    }
+    - { name: s6-hub,  vmid: 161, ip: "10.60.0.11", role: iot_gateway   }
+    - { name: s6-mqtt, vmid: 162, ip: "10.60.0.12", role: mqtt_broker   }
+    - { name: s6-db,   vmid: 163, ip: "10.60.0.13", role: db_server     }
+    - { name: s6-cam,  vmid: 164, ip: "10.60.0.14", role: camera_server }
+    - { name: s6-web,  vmid: 165, ip: "10.60.0.15", role: web_server    }
 
 vulnerabilities:
 
   - id: V1
     device: s6-router
-    ip: "192.168.100.1"
+    ip: "10.60.0.1"
     role: router
     title: "Interface web admin OpenWrt accessible depuis le WAN"
     description: >
@@ -42,12 +42,12 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert sur l'IP WAN du routeur"
       - "Interface LuCI accessible sans restriction réseau"
-    verification: "curl http://192.168.100.1:80 → LuCI login page"
+    verification: "curl http://10.60.0.1:80 → LuCI login page"
     confidence_required: high
 
   - id: V2
     device: s6-router
-    ip: "192.168.100.1"
+    ip: "10.60.0.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -59,13 +59,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 192.168.100.1"
-    verification: "nmap -p 23 192.168.100.1"
+      - "Port 23/tcp ouvert sur 10.60.0.1"
+    verification: "nmap -p 23 10.60.0.1"
     confidence_required: medium
 
   - id: V3
     device: s6-hub
-    ip: "192.168.100.11"
+    ip: "10.60.0.11"
     role: iot_gateway
     title: "Interface HTTP admin sans authentification (port 80)"
     description: >
@@ -82,12 +82,12 @@ vulnerabilities:
       - "GET /admin retourne 200 avec message 'no auth required'"
       - "GET /api/devices expose la liste des équipements du réseau"
       - "GET /api/status expose les connexions MQTT et DB internes"
-    verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/devices"
+    verification: "curl http://10.60.0.11/admin && curl http://10.60.0.11/api/devices"
     confidence_required: medium
 
   - id: V4
     device: s6-hub
-    ip: "192.168.100.11"
+    ip: "10.60.0.11"
     role: iot_gateway
     title: "API REST sans authentification — exposition de la topologie"
     description: >
@@ -103,12 +103,12 @@ vulnerabilities:
       - "Port 80/tcp ouvert"
       - "GET /api/devices retourne la liste des équipements connectés"
       - "GET /api/status retourne les connexions internes actives"
-    verification: "curl http://192.168.100.11/api/devices"
+    verification: "curl http://10.60.0.11/api/devices"
     confidence_required: medium
 
   - id: V5
     device: s6-mqtt
-    ip: "192.168.100.12"
+    ip: "10.60.0.12"
     role: mqtt_broker
     title: "MQTT sans authentification (allow_anonymous true)"
     description: >
@@ -123,12 +123,12 @@ vulnerabilities:
       - "Port 1883/tcp ouvert"
       - "Connexion anonyme acceptée sans credentials"
       - "Subscribe # retourne tous les messages"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    verification: "mosquitto_sub -h 10.60.0.12 -t '#' -v"
     confidence_required: high
 
   - id: V6
     device: s6-mqtt
-    ip: "192.168.100.12"
+    ip: "10.60.0.12"
     role: mqtt_broker
     title: "Topics MQTT sensibles exposés (credentials, codes d'accès)"
     description: >
@@ -144,12 +144,12 @@ vulnerabilities:
       - "smartcity/admin/credentials → db_user, db_pass, api_key en clair"
       - "home/alarm/code → code PIN de l'alarme"
       - "home/camera/stream → URL RTSP avec credentials caméra"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    verification: "mosquitto_sub -h 10.60.0.12 -t '#' -v"
     confidence_required: medium
 
   - id: V7
     device: s6-db
-    ip: "192.168.100.13"
+    ip: "10.60.0.13"
     role: db_server
     title: "MariaDB root sans mot de passe, accessible réseau"
     description: >
@@ -162,14 +162,14 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 3306/tcp ouvert et accessible réseau"
-      - "mysql -h 192.168.100.13 -u root sans mot de passe fonctionne"
+      - "mysql -h 10.60.0.13 -u root sans mot de passe fonctionne"
       - "Base smartcity avec table users (passwords en clair, tokens API)"
-    verification: "mysql -h 192.168.100.13 -u root -e 'SELECT * FROM smartcity.users;'"
+    verification: "mysql -h 10.60.0.13 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: high
 
   - id: V8
     device: s6-cam
-    ip: "192.168.100.14"
+    ip: "10.60.0.14"
     role: camera_server
     title: "Flux caméra HTTP accessible sans authentification"
     description: >
@@ -183,14 +183,14 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 80/tcp ouvert"
-      - "GET http://192.168.100.14/ retourne l'interface IP Camera sans auth"
-      - "GET http://192.168.100.14/admin retourne 200 sans authentification"
-    verification: "curl -o /dev/null -s -w '%{http_code}' http://192.168.100.14/admin"
+      - "GET http://10.60.0.14/ retourne l'interface IP Camera sans auth"
+      - "GET http://10.60.0.14/admin retourne 200 sans authentification"
+    verification: "curl -o /dev/null -s -w '%{http_code}' http://10.60.0.14/admin"
     confidence_required: medium
 
   - id: V9
     device: s6-web
-    ip: "192.168.100.15"
+    ip: "10.60.0.15"
     role: web_server
     title: "Directory listing + fichiers sensibles exposés (backup SQL, config)"
     description: >
@@ -206,12 +206,12 @@ vulnerabilities:
       - "GET /backup/ retourne listing avec db_backup_*.sql"
       - "GET /config/app.config expose DB password, API key, MQTT credentials"
       - "Le dump SQL contient INSERT INTO users avec passwords en clair"
-    verification: "curl http://192.168.100.15/backup/ && curl http://192.168.100.15/config/app.config"
+    verification: "curl http://10.60.0.15/backup/ && curl http://10.60.0.15/config/app.config"
     confidence_required: medium
 
   - id: V10
     device: s6-hub
-    ip: "192.168.100.11"
+    ip: "10.60.0.11"
     role: iot_gateway
     title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
     description: >
@@ -226,12 +226,12 @@ vulnerabilities:
     indicators:
       - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
       - "POST /update retourne 200 sans authentification"
-    verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
+    verification: "curl http://10.60.0.11/firmware/ && curl -X POST http://10.60.0.11/update"
     confidence_required: medium
 
   - id: V11
     device: s6-web
-    ip: "192.168.100.15"
+    ip: "10.60.0.15"
     role: web_server
     title: "Fichier .env exposé via HTTP (credentials en clair)"
     description: >
@@ -246,12 +246,12 @@ vulnerabilities:
     indicators:
       - "GET /.env retourne DB_PASSWORD, MQTT_PASSWORD, API_KEY, SECRET_KEY"
       - "Fichier accessible sans authentification"
-    verification: "curl http://192.168.100.15/.env"
+    verification: "curl http://10.60.0.15/.env"
     confidence_required: high
 
   - id: V12
     device: s6-mqtt
-    ip: "192.168.100.12"
+    ip: "10.60.0.12"
     role: mqtt_broker
     title: "MQTT WebSocket exposé sans authentification (port 9001)"
     description: >
@@ -265,12 +265,12 @@ vulnerabilities:
     indicators:
       - "Port 9001/tcp ouvert"
       - "Upgrade WebSocket accepté sans authentification"
-    verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://192.168.100.12:9001/"
+    verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://10.60.0.12:9001/"
     confidence_required: medium
 
   - id: V13
     device: s6-hub
-    ip: "192.168.100.11"
+    ip: "10.60.0.11"
     role: iot_gateway
     title: "robots.txt exposant des paths sensibles internes"
     description: >
@@ -282,12 +282,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "GET /robots.txt retourne Disallow pour /admin/, /api/internal/, /backup/, /.env"
-    verification: "curl http://192.168.100.11/robots.txt"
+    verification: "curl http://10.60.0.11/robots.txt"
     confidence_required: low
 
   - id: V14
     device: s6-web
-    ip: "192.168.100.15"
+    ip: "10.60.0.15"
     role: web_server
     title: "robots.txt exposant des paths sensibles internes (portail web)"
     description: >
@@ -300,12 +300,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "GET /robots.txt retourne Disallow pour /admin/, /backup/, /config/, /.env"
-    verification: "curl http://192.168.100.15/robots.txt"
+    verification: "curl http://10.60.0.15/robots.txt"
     confidence_required: low
 
   - id: V15
     device: s6-hub
-    ip: "192.168.100.11"
+    ip: "10.60.0.11"
     role: iot_gateway
     title: "Dropbear SSH 2020.81 vulnérable (Terrapin CVE-2023-48795)"
     description: >
@@ -318,12 +318,12 @@ vulnerabilities:
     indicators:
       - "Port 22/tcp — Dropbear 2020.81"
       - "ssh-audit détecte Terrapin"
-    verification: "ssh-audit 192.168.100.11"
+    verification: "ssh-audit 10.60.0.11"
     confidence_required: high
 
   - id: V16
     device: s6-web
-    ip: "192.168.100.15"
+    ip: "10.60.0.15"
     role: web_server
     title: "Directory listing activé (nginx autoindex on)"
     description: >
@@ -336,7 +336,7 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert"
       - "GET /backup/ retourne un listing"
-    verification: "curl http://192.168.100.15/backup/"
+    verification: "curl http://10.60.0.15/backup/"
     confidence_required: medium
 
 attack_paths:
@@ -345,7 +345,7 @@ attack_paths:
     title: "Accès admin routeur depuis WAN → contrôle total réseau"
     difficulty: easy
     chain:
-      - { hop: 1, device: "Internet",         action: "HTTP vers 192.168.100.1:80" }
+      - { hop: 1, device: "Internet",         action: "HTTP vers 10.60.0.1:80" }
       - { hop: 2, device: "s6-router (100.1)", action: "LuCI panel → reconfiguration firewall" }
     vulnerabilities_used: [V1]
     impact: "Contrôle total du routeur, exposition de tous les services au WAN"

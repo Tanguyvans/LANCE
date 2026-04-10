@@ -2,17 +2,15 @@
 # Usage : ansible-playbook -i inventory.yml playbooks/02_config_openwrt.yml --ask-vault-pass
 #
 # Ce que fait ce playbook :
-#   1. Retire l'IP 192.168.100.1 de vmbr1 sur Proxmox (conflit avec OpenWrt LAN)
-#   2. Ajoute une IP temporaire 192.168.1.100/24 sur vmbr1 pour joindre OpenWrt
-#   3. Clone et démarre le template OpenWrt (9001 → 9010)
-#   4. Configure OpenWrt via SSH (LAN=192.168.100.1, SSH WAN autorisé, NAT)
-#   5. Retire l'IP temporaire de vmbr1
-#   6. Arrête la VM, remplace le template 9001 par la version configurée
+#   1. Ajoute une IP temporaire 192.168.1.100/24 sur vmbr1 pour joindre OpenWrt
+#   2. Clone et démarre le template OpenWrt (9001 → 9010)
+#   3. Configure OpenWrt via SSH (SSH WAN autorisé, NAT)
+#   4. Retire l'IP temporaire de vmbr1
+#   5. Arrête la VM, remplace le template 9001 par la version configurée
 #
-# Après ce playbook :
-#   - tpl-openwrt (9001) est configuré avec LAN=192.168.100.1 et SSH WAN activé
-#   - vmbr1 est un bridge pur sans IP sur Proxmox
-#   - OpenWrt est joignable via son IP WAN (DHCP sur 192.168.10.x)
+# Note : L'IP LAN du routeur est configurée au déploiement (03_deploy_scenario.yml)
+#   selon le VLAN du scénario (ex: 10.10.0.1 pour S1, 10.20.0.1 pour S2).
+#   Le template garde le LAN par défaut (192.168.1.1).
 
 - name: "Étape 1 — Préparer Proxmox"
   hosts: proxmox
@@ -27,7 +25,7 @@
 
   tasks:
 
-    - name: Retirer l'IP 192.168.100.1 de vmbr1 (passer à inet manual)
+    - name: Passer vmbr1 à inet manual (sans IP)
       ansible.builtin.blockinfile:
         path: /etc/network/interfaces
         marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
@@ -37,15 +35,11 @@
               bridge-ports none
               bridge-stp off
               bridge-fd 0
-              # Bridge interne pour les VMs benchmark (pas de NIC physique)
+              bridge-vlan-aware yes
+              # Bridge VLAN-aware pour isolation des scénarios benchmark
 
     - name: Appliquer la nouvelle config vmbr1 (sans IP)
       ansible.builtin.command: ifreload -a
-      changed_when: true
-
-    - name: Supprimer manuellement l'IP résiduelle sur vmbr1 si encore présente
-      ansible.builtin.command: ip addr del 192.168.100.1/24 dev vmbr1
-      failed_when: false
       changed_when: true
 
     - name: Ajouter IP temporaire 192.168.1.100 sur vmbr1 pour joindre OpenWrt LAN
@@ -83,19 +77,8 @@
 
   vars:
     openwrt_default_lan: "192.168.1.1"
-    openwrt_lan_ip: "192.168.100.1"
-    openwrt_lan_mask: "255.255.255.0"
 
   tasks:
-
-    - name: Configurer le LAN OpenWrt (192.168.100.1)
-      ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 root@{{ openwrt_default_lan }} '
-        uci set network.lan.ipaddr="{{ openwrt_lan_ip }}"
-        uci set network.lan.netmask="{{ openwrt_lan_mask }}"
-        uci commit network
-        '
-      changed_when: true
 
     - name: Autoriser SSH sur l'interface WAN
       ansible.builtin.shell: |
@@ -145,7 +128,6 @@
   vars:
     openwrt_tmp_vmid: 9010
     openwrt_tmp_proxy_ip: "192.168.1.100"
-    openwrt_lan_ip: "192.168.100.1"
 
   tasks:
 
@@ -174,7 +156,7 @@
       ansible.builtin.replace:
         path: "{{ playbook_dir }}/../group_vars/all.yml"
         regexp: "^tpl_openwrt_vmid:.*"
-        replace: "tpl_openwrt_vmid: {{ openwrt_tmp_vmid }}   # KVM — OpenWrt x86-64 configuré (LAN=192.168.100.1)"
+        replace: "tpl_openwrt_vmid: {{ openwrt_tmp_vmid }}   # KVM — OpenWrt x86-64 configuré (IP LAN configurée au déploiement)"
       delegate_to: localhost
 
     - name: Résumé
@@ -182,9 +164,9 @@
         msg: |
           ══════════════════════════════════════════════════════
           Template OpenWrt configuré (VMID {{ openwrt_tmp_vmid }}) :
-            LAN  : 192.168.100.1/24 (vmbr1)
+            LAN  : 192.168.1.1/24 (défaut — reconfiguré au déploiement par VLAN)
             WAN  : DHCP (vmbr0, réseau 192.168.10.x)
             SSH  : autorisé sur WAN
             NAT  : actif
-          vmbr1 sur Proxmox : bridge pur, sans IP
+          vmbr1 sur Proxmox : bridge VLAN-aware, sans IP
           ══════════════════════════════════════════════════════

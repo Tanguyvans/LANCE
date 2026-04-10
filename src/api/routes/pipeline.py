@@ -1,4 +1,4 @@
-"""Pipeline route — start pipeline and stream events via SSE."""
+"""Pipeline route — start pipeline and stream events via SSE (multi-run support)."""
 from __future__ import annotations
 
 import asyncio
@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,29 +20,33 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Global pipeline state (single concurrent run)
-_state: dict[str, Any] = {
-    "running": False,
-    "phase": 0,
-    "phase_name": "",
-    "cost": 0.0,
-    "run_dir": None,
-    "queue": None,
-    "loop": None,
-    "stop_event": None,   # threading.Event | None
-    # Run metadata
-    "scenario_id": None,
-    "model": None,
-    "started_at": None,
-    # Progress tracking
-    "phases_done": [],        # [{"phase": 1, "name": "graph_analysis", "cost": 0.01, "duration_s": 42}]
-    "current_devices": [],    # ["s1-mqtt", "s1-web"] — devices being scanned in current phase
-    "devices_done": [],       # ["s1-mqtt"] — devices completed in current phase
-    "deploy_status": None,    # "deploying" | "deployed" | "failed" | None
-    "recent_events": [],      # last 200 events, replayed on page reload
-}
+# Multi-run state: { run_id: RunState }
+_runs: dict[str, dict[str, Any]] = {}
+_runs_lock = threading.Lock()
 
 _MAX_RECENT_EVENTS = 200
+
+
+def _new_run_state(run_id: str, scenario_id: str | None, model: str) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "running": True,
+        "phase": 0,
+        "phase_name": "",
+        "cost": 0.0,
+        "run_dir": None,
+        "queue": None,
+        "loop": None,
+        "stop_event": threading.Event(),
+        "scenario_id": scenario_id,
+        "model": model,
+        "started_at": datetime.now().isoformat(),
+        "phases_done": [],
+        "current_devices": [],
+        "devices_done": [],
+        "deploy_status": None,
+        "recent_events": [],
+    }
 
 
 class StartRequest(BaseModel):
@@ -59,8 +64,11 @@ class StartRequest(BaseModel):
     excluded_vulns: list[str] | None = None  # vuln IDs to exclude from GT
 
 
-def _pipeline_thread(req: StartRequest):
+def _pipeline_thread(req: StartRequest, run_id: str):
     """Run the pipeline in a background thread, pushing events to the async queue."""
+    state = _runs.get(run_id)
+    if not state:
+        return
     try:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
@@ -68,15 +76,12 @@ def _pipeline_thread(req: StartRequest):
         from src.agent.provider import LLMProvider
         from src.agent.pipeline import Pipeline
 
-        # If phase_models is provided, we'll instantiate providers dynamically in Pipeline
-        # but we need a default one for the init and cost tracking setup
         default_model = req.model
         if req.phase_models and req.phases and req.phases[0] in req.phase_models:
             default_model = req.phase_models[req.phases[0]]
 
         provider = LLMProvider(provider=req.provider, model=default_model)
 
-        # Build custom config if in custom mode
         custom_config = None
         if req.architecture:
             custom_config = {
@@ -97,27 +102,29 @@ def _pipeline_thread(req: StartRequest):
         )
 
         def callback(event: dict):
-            loop = _state["loop"]
-            q = _state["queue"]
+            # Tag event with run_id for frontend routing
+            event["run_id"] = run_id
+            loop = state["loop"]
+            q = state["queue"]
             if loop and q:
                 loop.call_soon_threadsafe(q.put_nowait, event)
-            # Buffer event for page-reload replay (skip internal/noise events)
+            # Buffer event for page-reload replay
             _skip = {"__done__", "ping", "text_chunk"}
             if event.get("type") not in _skip:
-                _state["recent_events"].append(event)
-                if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
-                    _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
+                state["recent_events"].append(event)
+                if len(state["recent_events"]) > _MAX_RECENT_EVENTS:
+                    state["recent_events"] = state["recent_events"][-_MAX_RECENT_EVENTS:]
             # Update shared state from events
             t = event.get("type")
             if t == "phase_start":
-                _state["phase"] = event.get("phase", _state["phase"])
-                _state["phase_name"] = event.get("agent", "")
-                _state["current_devices"] = []
-                _state["devices_done"] = []
+                state["phase"] = event.get("phase", state["phase"])
+                state["phase_name"] = event.get("agent", "")
+                state["current_devices"] = []
+                state["devices_done"] = []
             elif t == "phase_done":
                 cost = event.get("cost_usd", 0.0)
-                _state["cost"] += cost
-                _state["phases_done"].append({
+                state["cost"] += cost
+                state["phases_done"].append({
                     "phase": event.get("phase"),
                     "name": event.get("agent", ""),
                     "cost": cost,
@@ -125,94 +132,123 @@ def _pipeline_thread(req: StartRequest):
                 })
             elif t == "device_start":
                 dev = event.get("device_id", "")
-                if dev and dev not in _state["current_devices"]:
-                    _state["current_devices"].append(dev)
+                if dev and dev not in state["current_devices"]:
+                    state["current_devices"].append(dev)
             elif t == "device_done":
                 dev = event.get("device_id", "")
-                if dev and dev not in _state["devices_done"]:
-                    _state["devices_done"].append(dev)
+                if dev and dev not in state["devices_done"]:
+                    state["devices_done"].append(dev)
             elif t == "deploy_start":
-                _state["deploy_status"] = "deploying"
+                state["deploy_status"] = "deploying"
             elif t == "deploy_done":
-                _state["deploy_status"] = "deployed" if event.get("success") else "failed"
+                state["deploy_status"] = "deployed" if event.get("success") else "failed"
             elif t == "pipeline_done":
-                _state["run_dir"] = event.get("run_dir")
-                _state["cost"] = event.get("total_cost_usd", _state["cost"])
+                state["run_dir"] = event.get("run_dir")
+                state["cost"] = event.get("total_cost_usd", state["cost"])
 
-        pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
+        pipeline.run(stream_callback=callback, stop_event=state["stop_event"])
 
     except Exception as exc:
-        q = _state["queue"]
-        loop = _state["loop"]
+        q = state["queue"]
+        loop = state["loop"]
         if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "run_id": run_id, "message": str(exc)})
     finally:
-        _state["running"] = False
-        # Signal stream end
-        q = _state["queue"]
-        loop = _state["loop"]
+        state["running"] = False
+        q = state["queue"]
+        loop = state["loop"]
         if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "__done__"})
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "__done__", "run_id": run_id})
 
 
 @router.post("/start")
 async def start_pipeline(req: StartRequest):
-    """Start the pipeline. Returns 409 if already running."""
-    if _state["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline already running")
+    """Start the pipeline. Returns a unique run_id for tracking."""
+    run_id = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    # Ensure unique run_id
+    with _runs_lock:
+        if run_id in _runs:
+            suffix = 1
+            while f"{run_id}_{suffix}" in _runs:
+                suffix += 1
+            run_id = f"{run_id}_{suffix}"
 
-    from datetime import datetime
-    _state["running"] = True
-    _state["phase"] = 0
-    _state["phase_name"] = ""
-    _state["cost"] = 0.0
-    _state["run_dir"] = None
-    _state["queue"] = asyncio.Queue()
-    _state["loop"] = asyncio.get_event_loop()
-    _state["stop_event"] = threading.Event()
-    _state["scenario_id"] = req.scenario_id
-    _state["model"] = req.model
-    _state["started_at"] = datetime.now().isoformat()
-    _state["phases_done"] = []
-    _state["current_devices"] = []
-    _state["devices_done"] = []
-    _state["deploy_status"] = None
-    _state["recent_events"] = []
+        state = _new_run_state(run_id, req.scenario_id, req.model)
+        state["queue"] = asyncio.Queue()
+        state["loop"] = asyncio.get_event_loop()
+        _runs[run_id] = state
 
-    thread = threading.Thread(target=_pipeline_thread, args=(req,), daemon=True)
+    thread = threading.Thread(target=_pipeline_thread, args=(req, run_id), daemon=True)
     thread.start()
-    return {"status": "started"}
+    return {"status": "started", "run_id": run_id}
 
 
 @router.post("/stop")
-async def stop_pipeline():
-    """Request graceful stop of the running pipeline (stops between phases)."""
-    if not _state["running"]:
+async def stop_pipeline(run_id: str | None = None):
+    """Request graceful stop. If run_id is None, stops all running pipelines."""
+    if run_id:
+        state = _runs.get(run_id)
+        if not state or not state["running"]:
+            raise HTTPException(status_code=400, detail=f"No running pipeline with run_id={run_id}")
+        state["stop_event"].set()
+        state["running"] = False
+        return {"status": "stopping", "run_id": run_id}
+
+    # Stop all running
+    stopped = []
+    for rid, state in _runs.items():
+        if state["running"]:
+            state["stop_event"].set()
+            state["running"] = False
+            stopped.append(rid)
+    if not stopped:
         raise HTTPException(status_code=400, detail="No pipeline running")
-    ev = _state.get("stop_event")
-    if ev:
-        ev.set()
-    _state["running"] = False
-    return {"status": "stopping"}
+    return {"status": "stopping", "run_ids": stopped}
 
 
 @router.get("/status")
-def get_status():
-    """Return full pipeline state — used by frontend on load to sync UI."""
+def get_status(run_id: str | None = None):
+    """Return pipeline state. If run_id given, returns that run; else returns all active runs."""
+    if run_id:
+        state = _runs.get(run_id)
+        if not state:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        return _state_to_dict(state)
+
+    # Return summary of all runs (active + recent finished)
     return {
-        "running": _state["running"],
-        "phase": _state["phase"],
-        "phase_name": _state.get("phase_name", ""),
-        "cost": round(_state["cost"], 4),
-        "scenario_id": _state.get("scenario_id"),
-        "model": _state.get("model"),
-        "started_at": _state.get("started_at"),
-        "deploy_status": _state.get("deploy_status"),
-        "phases_done": _state.get("phases_done", []),
-        "current_devices": _state.get("current_devices", []),
-        "devices_done": _state.get("devices_done", []),
-        "run_dir": _state["run_dir"],
-        "recent_events": _state.get("recent_events", []),
+        "active_runs": [
+            {
+                "run_id": s["run_id"],
+                "scenario_id": s.get("scenario_id"),
+                "model": s.get("model"),
+                "phase": s["phase"],
+                "phase_name": s.get("phase_name", ""),
+                "cost": round(s["cost"], 4),
+                "running": s["running"],
+                "deploy_status": s.get("deploy_status"),
+            }
+            for s in _runs.values()
+        ]
+    }
+
+
+def _state_to_dict(state: dict) -> dict:
+    return {
+        "run_id": state["run_id"],
+        "running": state["running"],
+        "phase": state["phase"],
+        "phase_name": state.get("phase_name", ""),
+        "cost": round(state["cost"], 4),
+        "scenario_id": state.get("scenario_id"),
+        "model": state.get("model"),
+        "started_at": state.get("started_at"),
+        "deploy_status": state.get("deploy_status"),
+        "phases_done": state.get("phases_done", []),
+        "current_devices": state.get("current_devices", []),
+        "devices_done": state.get("devices_done", []),
+        "run_dir": state["run_dir"],
+        "recent_events": state.get("recent_events", []),
     }
 
 
@@ -223,8 +259,10 @@ class TeardownRequest(BaseModel):
 @router.post("/teardown")
 async def teardown_scenario(req: TeardownRequest):
     """Run 99_teardown.yml for the given scenario in a background thread."""
-    if _state["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline is running — wait for it to finish before teardown")
+    # Check no pipeline is running for this scenario
+    for state in _runs.values():
+        if state["running"] and state.get("scenario_id") == req.scenario_id:
+            raise HTTPException(status_code=409, detail=f"Pipeline running for scenario {req.scenario_id} — wait for it to finish")
 
     def _run():
         cmd = [
@@ -245,15 +283,21 @@ async def teardown_scenario(req: TeardownRequest):
             success = False
             output = "ansible-playbook not found"
 
-        loop = _state.get("loop")
-        q = _state.get("queue")
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {
-                "type": "teardown_done",
-                "scenario_id": req.scenario_id,
-                "success": success,
-                "output": output,
-            })
+        # Broadcast teardown event to all active queues
+        event = {
+            "type": "teardown_done",
+            "scenario_id": req.scenario_id,
+            "success": success,
+            "output": output,
+        }
+        for state in _runs.values():
+            loop = state.get("loop")
+            q = state.get("queue")
+            if loop and q:
+                try:
+                    loop.call_soon_threadsafe(q.put_nowait, event)
+                except Exception:
+                    pass
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -261,25 +305,73 @@ async def teardown_scenario(req: TeardownRequest):
 
 
 @router.get("/stream")
-async def stream_events():
-    """SSE endpoint — streams pipeline events until done."""
-    q = _state.get("queue")
-    if q is None:
-        raise HTTPException(status_code=400, detail="No active pipeline run")
+async def stream_events(run_id: str | None = None):
+    """SSE endpoint — streams events for a specific run or all runs."""
+    if run_id:
+        state = _runs.get(run_id)
+        if not state:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        q = state.get("queue")
+        if q is None:
+            raise HTTPException(status_code=400, detail="No active pipeline run")
+
+        async def generator():
+            while True:
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    yield {"event": "ping", "data": "{}"}
+                    continue
+                if event.get("type") == "__done__":
+                    break
+                yield {"data": json.dumps(event)}
+                if event.get("type") in ("pipeline_done", "error"):
+                    break
+
+        return EventSourceResponse(generator())
+
+    # Stream from all active runs (multiplexed)
+    # Create a shared queue that aggregates all run events
+    shared_q: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+
+    # Subscribe to all existing run queues
+    active_runs = {rid: s for rid, s in _runs.items() if s["running"]}
+    if not active_runs:
+        raise HTTPException(status_code=400, detail="No active pipeline runs")
+
+    # Relay events from each run's queue to shared queue
+    done_count = 0
+    expected = len(active_runs)
+
+    async def relay(source_q: asyncio.Queue):
+        nonlocal done_count
+        while True:
+            try:
+                event = await asyncio.wait_for(source_q.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                continue
+            await shared_q.put(event)
+            if event.get("type") in ("__done__", "pipeline_done", "error"):
+                done_count += 1
+                if done_count >= expected:
+                    await shared_q.put({"type": "__done__"})
+                break
+
+    for rid, s in active_runs.items():
+        q = s.get("queue")
+        if q:
+            asyncio.ensure_future(relay(q))
 
     async def generator():
         while True:
             try:
-                event = await asyncio.wait_for(q.get(), timeout=30.0)
+                event = await asyncio.wait_for(shared_q.get(), timeout=30.0)
             except asyncio.TimeoutError:
-                # Keep-alive ping
                 yield {"event": "ping", "data": "{}"}
                 continue
-
             if event.get("type") == "__done__":
                 break
             yield {"data": json.dumps(event)}
-            if event.get("type") in ("pipeline_done", "error"):
-                break
 
     return EventSourceResponse(generator())

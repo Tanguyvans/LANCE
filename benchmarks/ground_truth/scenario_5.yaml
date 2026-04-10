@@ -7,7 +7,7 @@ scenario_name: "Smart Building"
 difficulty: "medium"
 description: >
   Infrastructure de surveillance d'un bâtiment intelligent : 2 caméras IP, 1 NVR,
-  contrôle d'accès, HVAC, MQTT et portail web. 8 VMs sur 192.168.100.0/24.
+  contrôle d'accès, HVAC, MQTT et portail web. 8 VMs sur 10.50.0.0/24.
   Simule un bâtiment connecté avec des équipements Ubiquiti/Hikvision vulnérables
   et une absence totale d'authentification sur les systèmes de surveillance.
 
@@ -15,16 +15,16 @@ topology:
   router:
     name: s5-router
     vmid: 150
-    ip: "192.168.100.1"
+    ip: "10.50.0.1"
     type: openwrt
   services:
-    - { name: s5-cam1,        vmid: 151, ip: "192.168.100.11", role: camera_server }
-    - { name: s5-cam2,        vmid: 152, ip: "192.168.100.12", role: camera_server }
-    - { name: s5-nvr,         vmid: 153, ip: "192.168.100.13", role: nvr_server    }
-    - { name: s5-access-ctrl, vmid: 154, ip: "192.168.100.14", role: web_server    }
-    - { name: s5-hvac,        vmid: 155, ip: "192.168.100.15", role: web_server    }
-    - { name: s5-mqtt,        vmid: 156, ip: "192.168.100.16", role: mqtt_broker   }
-    - { name: s5-web,         vmid: 157, ip: "192.168.100.17", role: web_server    }
+    - { name: s5-cam1,        vmid: 151, ip: "10.50.0.11", role: camera_server }
+    - { name: s5-cam2,        vmid: 152, ip: "10.50.0.12", role: camera_server }
+    - { name: s5-nvr,         vmid: 153, ip: "10.50.0.13", role: nvr_server    }
+    - { name: s5-access-ctrl, vmid: 154, ip: "10.50.0.14", role: web_server    }
+    - { name: s5-hvac,        vmid: 155, ip: "10.50.0.15", role: web_server    }
+    - { name: s5-mqtt,        vmid: 156, ip: "10.50.0.16", role: mqtt_broker   }
+    - { name: s5-web,         vmid: 157, ip: "10.50.0.17", role: web_server    }
   # Liens bâtiment : caméras→NVR, services→MQTT
   links:
     - { source: s5-cam1,        target: s5-nvr,  protocol: ethernet }  # Caméra 1 → NVR
@@ -38,7 +38,7 @@ vulnerabilities:
 
   - id: V1
     device: s5-cam1
-    ip: "192.168.100.11"
+    ip: "10.50.0.11"
     role: camera_server
     title: "Caméra IP sans authentification (Hikvision simulé)"
     description: >
@@ -57,12 +57,12 @@ vulnerabilities:
       - "GET /admin répond sans authentification"
       - "GET /api/info expose rtsp://admin:admin@... et auth_required=false"
       - "GET /config/camera.conf expose credentials NVR (ubnt/ubnt)"
-    verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/info"
+    verification: "curl http://10.50.0.11/admin && curl http://10.50.0.11/api/info"
     confidence_required: high
 
   - id: V2
     device: s5-cam2
-    ip: "192.168.100.12"
+    ip: "10.50.0.12"
     role: camera_server
     title: "Caméra IP sans authentification (identique cam1)"
     description: >
@@ -77,12 +77,12 @@ vulnerabilities:
       - "Port 80/tcp ouvert"
       - "GET /admin répond sans authentification"
       - "GET /api/info expose credentials"
-    verification: "curl http://192.168.100.12/api/info"
+    verification: "curl http://10.50.0.12/api/info"
     confidence_required: high
 
   - id: V3
     device: s5-nvr
-    ip: "192.168.100.13"
+    ip: "10.50.0.13"
     role: nvr_server
     title: "NVR Ubiquiti UniFi avec credentials par défaut (ubnt/ubnt)"
     description: >
@@ -100,12 +100,12 @@ vulnerabilities:
       - "Connexion SSH réussie avec ubnt:ubnt"
       - "/opt/nvr/config/system.json accessible — credentials caméras + SMTP exposés"
       - "/opt/nvr/logs/nvr.log — historique des accès"
-    verification: "ssh ubnt@192.168.100.13 (password: ubnt)"
+    verification: "ssh ubnt@10.50.0.13 (password: ubnt)"
     confidence_required: high
 
   - id: V4
     device: s5-access-ctrl
-    ip: "192.168.100.14"
+    ip: "10.50.0.14"
     role: web_server
     title: "Contrôle d'accès bâtiment — HTTP sans authentification"
     description: >
@@ -121,12 +121,12 @@ vulnerabilities:
       - "Port 80/tcp ouvert"
       - "Interface contrôle d'accès accessible sans login"
       - "Directory listing activé sur /backup/ et /config/"
-    verification: "curl http://192.168.100.14/"
+    verification: "curl http://10.50.0.14/"
     confidence_required: medium
 
   - id: V5
     device: s5-hvac
-    ip: "192.168.100.15"
+    ip: "10.50.0.15"
     role: web_server
     title: "Système HVAC — HTTP sans authentification"
     description: >
@@ -142,12 +142,12 @@ vulnerabilities:
       - "Port 80/tcp ouvert"
       - "Interface HVAC accessible sans authentification"
       - "Directory listing activé"
-    verification: "curl http://192.168.100.15/"
+    verification: "curl http://10.50.0.15/"
     confidence_required: medium
 
   - id: V6
     device: s5-mqtt
-    ip: "192.168.100.16"
+    ip: "10.50.0.16"
     role: mqtt_broker
     title: "MQTT sans authentification — données bâtiment exposées"
     description: >
@@ -164,12 +164,12 @@ vulnerabilities:
       - "Connexion possible sans username/password"
       - "Topics building/* exposent statut caméras, accès, HVAC"
       - "Topic smartcity/admin/credentials expose db_pass et api_key"
-    verification: "mosquitto_sub -h 192.168.100.16 -t '#' -v"
+    verification: "mosquitto_sub -h 10.50.0.16 -t '#' -v"
     confidence_required: high
 
   - id: V7
     device: s5-router
-    ip: "192.168.100.1"
+    ip: "10.50.0.1"
     role: router
     title: "Telnet activé + interface web admin exposée WAN"
     description: >
@@ -183,12 +183,12 @@ vulnerabilities:
     indicators:
       - "Port 23/tcp ouvert (Telnet)"
       - "Port 80/tcp ouvert sur WAN (interface LuCI)"
-    verification: "nmap -p 23,80 192.168.100.1"
+    verification: "nmap -p 23,80 10.50.0.1"
     confidence_required: medium
 
   - id: V8
     device: s5-hvac
-    ip: "192.168.100.15"
+    ip: "10.50.0.15"
     role: web_server
     title: "BACnet/IP sans authentification (port 47808/UDP)"
     description: >
@@ -205,12 +205,12 @@ vulnerabilities:
       - "Port 47808/UDP ouvert"
       - "Réponse BACnet I-Am à une requête Who-Is"
       - "Lecture/écriture des objets BACnet sans authentification"
-    verification: "nmap -sU -p 47808 192.168.100.15"
+    verification: "nmap -sU -p 47808 10.50.0.15"
     confidence_required: medium
 
   - id: V9
     device: s5-cam1
-    ip: "192.168.100.11"
+    ip: "10.50.0.11"
     role: camera_server
     title: "Server version disclosure (nginx)"
     description: >
@@ -222,12 +222,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Header Server contient nginx/ suivi d'un numéro de version"
-    verification: "curl -sI http://192.168.100.11/ | grep Server"
+    verification: "curl -sI http://10.50.0.11/ | grep Server"
     confidence_required: low
 
   - id: V10
     device: s5-web
-    ip: "192.168.100.17"
+    ip: "10.50.0.17"
     role: web_server
     title: "Absence de security headers HTTP (X-Frame-Options, HSTS, CSP)"
     description: >
@@ -239,12 +239,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
-    verification: "curl -sI http://192.168.100.17/ | grep -iE 'X-Frame|Strict-Transport'"
+    verification: "curl -sI http://10.50.0.17/ | grep -iE 'X-Frame|Strict-Transport'"
     confidence_required: low
 
   - id: V11
     device: s5-access-ctrl
-    ip: "192.168.100.14"
+    ip: "10.50.0.14"
     role: web_server
     title: "Fichiers sensibles exposés via HTTP (backup SQL, credentials)"
     description: >
@@ -258,12 +258,12 @@ vulnerabilities:
     indicators:
       - "GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users"
       - "GET /config/app.config retourne db_password, api_key"
-    verification: "curl http://192.168.100.14/config/app.config"
+    verification: "curl http://10.50.0.14/config/app.config"
     confidence_required: medium
 
   - id: V12
     device: s5-hvac
-    ip: "192.168.100.15"
+    ip: "10.50.0.15"
     role: web_server
     title: "Fichiers sensibles exposés via HTTP (backup SQL, credentials)"
     description: >
@@ -277,12 +277,12 @@ vulnerabilities:
     indicators:
       - "GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users"
       - "GET /config/app.config retourne db_password, api_key"
-    verification: "curl http://192.168.100.15/config/app.config"
+    verification: "curl http://10.50.0.15/config/app.config"
     confidence_required: medium
 
   - id: V13
     device: s5-web
-    ip: "192.168.100.17"
+    ip: "10.50.0.17"
     role: web_server
     title: "Fichiers sensibles exposés via HTTP (backup SQL, credentials)"
     description: >
@@ -296,12 +296,12 @@ vulnerabilities:
     indicators:
       - "GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users"
       - "GET /config/app.config retourne db_password, api_key"
-    verification: "curl http://192.168.100.17/config/app.config"
+    verification: "curl http://10.50.0.17/config/app.config"
     confidence_required: medium
 
   - id: V14
     device: s5-mqtt
-    ip: "192.168.100.16"
+    ip: "10.50.0.16"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT"
     description: >
@@ -313,12 +313,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne credentials JSON"
-    verification: "mosquitto_sub -h 192.168.100.16 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 10.50.0.16 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V15
     device: s5-web
-    ip: "192.168.100.17"
+    ip: "10.50.0.17"
     role: web_server
     title: "Directory listing activé (nginx autoindex on)"
     description: >
@@ -331,7 +331,7 @@ vulnerabilities:
     cve: null
     indicators:
       - "GET /backup/ retourne un listing de fichiers"
-    verification: "curl http://192.168.100.17/backup/"
+    verification: "curl http://10.50.0.17/backup/"
     confidence_required: medium
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────

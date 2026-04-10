@@ -75,8 +75,11 @@ case $SCENARIO_ID in
 esac
 
 case $SCENARIO_ID in
-  1) BASE=100 ;; 2) BASE=110 ;; 3) BASE=120 ;; 4) BASE=130 ;; 5) BASE=150 ;;
-  6) BASE=160 ;; 7) BASE=170 ;;
+  1) BASE=100; SUBNET="10.10.0" ;; 2) BASE=110; SUBNET="10.20.0" ;;
+  3) BASE=120; SUBNET="10.30.0" ;; 4) BASE=130; SUBNET="10.40.0" ;;
+  5) BASE=150; SUBNET="10.50.0" ;; 6) BASE=160; SUBNET="10.60.0" ;;
+  7) BASE=170; SUBNET="10.70.0" ;; 8) BASE=180; SUBNET="10.80.0" ;;
+  9) BASE=190; SUBNET="10.90.0" ;; 10) BASE=210; SUBNET="10.100.0" ;;
 esac
 
 echo -e "\n${BOLD}╔══════════════════════════════════════════════════════════╗"
@@ -91,43 +94,9 @@ run_playbook() { ansible-playbook -i "$INVENTORY" $VAULT_ARGS "$@"; }
 EXTRA="--extra-vars scenario_id=$SCENARIO_ID"
 START_TIME=$(date +%s)
 
-# ── Étape 0 : Teardown si un autre scénario tourne ──
-log_step "Vérification des scénarios actifs..."
-
-# Extraction fiable de l'IP : ancrer sur ansible_host: (sans suffix) pour éviter proxmox_api_host
-PROXMOX_IP=$(grep -E '^\s+ansible_host:' "$INVENTORY" | awk '{print $2}' | head -1)
-RUNNING=""
-if [[ -n "$PROXMOX_IP" ]]; then
-  RUNNING=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
-    root@"$PROXMOX_IP" \
-    "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$1}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$1}'" 2>/dev/null) \
-    || { log_warn "SSH vers Proxmox ($PROXMOX_IP) inaccessible — détection de conflit ignorée"; RUNNING=""; }
-else
-  log_warn "IP Proxmox introuvable dans $INVENTORY — détection de conflit ignorée"
-fi
-
-CONFLICT_SCENARIO=""
-for vmid in $RUNNING; do
-  [[ "$vmid" -lt 100 || "$vmid" -gt 199 ]] 2>/dev/null && continue
-  [[ "$vmid" -ge "$BASE" && "$vmid" -lt "$((BASE+10))" ]] && continue
-  for s in 1 2 3 4 5 6 7; do
-    case $s in 1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;; 6) b=160 ;; 7) b=170 ;; esac
-    if [[ "$vmid" -ge "$b" && "$vmid" -lt "$((b+10))" ]]; then
-      CONFLICT_SCENARIO="$s"
-      break
-    fi
-  done
-  [[ -n "$CONFLICT_SCENARIO" ]] && break
-done
-
-if [[ -n "$CONFLICT_SCENARIO" ]]; then
-  log_warn "Scénario S${CONFLICT_SCENARIO} actif détecté — teardown en cours..."
-  run_playbook "$PLAYBOOKS/99_teardown.yml" --extra-vars "scenario_id=$CONFLICT_SCENARIO" \
-    || log_error "Teardown S${CONFLICT_SCENARIO} échoué"
-  log_ok "Scénario S${CONFLICT_SCENARIO} supprimé"
-else
-  log_ok "Aucun conflit détecté (ou vérification SSH ignorée)"
-fi
+# ── Étape 0 : Info VLAN ──
+log_step "Scénario S${SCENARIO_ID} — VLAN isolé sur ${SUBNET}.0/24"
+log_ok "Chaque scénario utilise son propre VLAN — pas de conflit possible"
 
 # ── Étape 1 : Déploiement ──
 log_step "Déploiement S${SCENARIO_ID} — ${SCENARIO_NAME}"
@@ -161,59 +130,59 @@ echo -e "╠══════════════════════�
 
 case $SCENARIO_ID in
   1)
-    echo -e "  Router : ssh root@192.168.100.1"
-    echo -e "  MQTT   : mosquitto_sub -h 192.168.100.11 -t '#' -v"
-    echo -e "  Web    : curl http://192.168.100.12/backup/"
-    echo -e "  SSH    : ssh admin@192.168.100.13  (password: admin)"
+    echo -e "  Router : ssh root@${SUBNET}.1"
+    echo -e "  MQTT   : mosquitto_sub -h ${SUBNET}.11 -t '#' -v"
+    echo -e "  Web    : curl http://${SUBNET}.12/backup/"
+    echo -e "  SSH    : ssh admin@${SUBNET}.13  (password: admin)"
     ;;
   2)
-    echo -e "  Router : ssh root@192.168.100.1  (+ admin WAN exposé)"
-    echo -e "  MQTT   : mosquitto_sub -h 192.168.100.12 -t '#' -v"
-    echo -e "  IoT GW : curl http://192.168.100.13/api/devices"
-    echo -e "  DB     : mysql -h 192.168.100.14 -u root smartcity"
-    echo -e "  Jump   : ssh admin@192.168.100.15  (password: admin)"
+    echo -e "  Router : ssh root@${SUBNET}.1  (+ admin WAN exposé)"
+    echo -e "  MQTT   : mosquitto_sub -h ${SUBNET}.12 -t '#' -v"
+    echo -e "  IoT GW : curl http://${SUBNET}.13/api/devices"
+    echo -e "  DB     : mysql -h ${SUBNET}.14 -u root smartcity"
+    echo -e "  Jump   : ssh admin@${SUBNET}.15  (password: admin)"
     ;;
   3)
-    echo -e "  Router  : telnet 192.168.100.1  |  ftp 192.168.100.1"
-    echo -e "  WisGate : curl http://192.168.100.11/api/devices"
-    echo -e "  RPi5    : mosquitto_sub -h 192.168.100.12 -t '#' -v"
-    echo -e "  IoT Hub : mosquitto_sub -h 192.168.100.13 -t '#' -v"
-    echo -e "  Jetson  : ssh admin@192.168.100.14  (password: admin)"
+    echo -e "  Router  : telnet ${SUBNET}.1  |  ftp ${SUBNET}.1"
+    echo -e "  WisGate : curl http://${SUBNET}.11/api/devices"
+    echo -e "  RPi5    : mosquitto_sub -h ${SUBNET}.12 -t '#' -v"
+    echo -e "  IoT Hub : mosquitto_sub -h ${SUBNET}.13 -t '#' -v"
+    echo -e "  Jetson  : ssh admin@${SUBNET}.14  (password: admin)"
     ;;
   4)
-    echo -e "  Router  : ssh root@192.168.100.1  (+ admin WAN exposé)"
-    echo -e "  Admin   : ssh admin@192.168.100.11  (password: admin)"
-    echo -e "  Webapp  : curl http://192.168.100.12/  (upload PHP sans validation)"
-    echo -e "  MQTT    : mosquitto_sub -h 192.168.100.13 -t '#' -v"
-    echo -e "  PLC     : python3 -c \"from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('192.168.100.15'); c.connect(); print(c.read_holding_registers(0,10))\""
-    echo -e "  HMI     : curl http://192.168.100.16/"
-    echo -e "  DB      : mysql -h 192.168.100.17 -u root smartcity"
+    echo -e "  Router  : ssh root@${SUBNET}.1  (+ admin WAN exposé)"
+    echo -e "  Admin   : ssh admin@${SUBNET}.11  (password: admin)"
+    echo -e "  Webapp  : curl http://${SUBNET}.12/  (upload PHP sans validation)"
+    echo -e "  MQTT    : mosquitto_sub -h ${SUBNET}.13 -t '#' -v"
+    echo -e "  PLC     : python3 -c \"from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('${SUBNET}.15'); c.connect(); print(c.read_holding_registers(0,10))\""
+    echo -e "  HMI     : curl http://${SUBNET}.16/"
+    echo -e "  DB      : mysql -h ${SUBNET}.17 -u root smartcity"
     ;;
   5)
-    echo -e "  Router  : ssh root@192.168.100.1  (+ admin WAN exposé)"
-    echo -e "  Cam1    : curl http://192.168.100.11/admin  (no auth)"
-    echo -e "  Cam2    : curl http://192.168.100.12/api/info"
-    echo -e "  NVR     : ssh ubnt@192.168.100.13  (password: ubnt)"
-    echo -e "  MQTT    : mosquitto_sub -h 192.168.100.16 -t '#' -v"
-    echo -e "  Web     : curl http://192.168.100.17/"
+    echo -e "  Router  : ssh root@${SUBNET}.1  (+ admin WAN exposé)"
+    echo -e "  Cam1    : curl http://${SUBNET}.11/admin  (no auth)"
+    echo -e "  Cam2    : curl http://${SUBNET}.12/api/info"
+    echo -e "  NVR     : ssh ubnt@${SUBNET}.13  (password: ubnt)"
+    echo -e "  MQTT    : mosquitto_sub -h ${SUBNET}.16 -t '#' -v"
+    echo -e "  Web     : curl http://${SUBNET}.17/"
     ;;
   6)
-    echo -e "  Router  : ssh root@192.168.100.1  (+ admin WAN exposé)"
-    echo -e "  Hub     : curl http://192.168.100.11/admin  (no auth)"
-    echo -e "  Hub API : curl http://192.168.100.11/api/devices"
-    echo -e "  MQTT    : mosquitto_sub -h 192.168.100.12 -t '#' -v"
-    echo -e "  DB      : mysql -h 192.168.100.13 -u root smartcity"
-    echo -e "  Camera  : curl http://192.168.100.14/admin  (no auth)"
-    echo -e "  Web     : curl http://192.168.100.15/backup/"
+    echo -e "  Router  : ssh root@${SUBNET}.1  (+ admin WAN exposé)"
+    echo -e "  Hub     : curl http://${SUBNET}.11/admin  (no auth)"
+    echo -e "  Hub API : curl http://${SUBNET}.11/api/devices"
+    echo -e "  MQTT    : mosquitto_sub -h ${SUBNET}.12 -t '#' -v"
+    echo -e "  DB      : mysql -h ${SUBNET}.13 -u root smartcity"
+    echo -e "  Camera  : curl http://${SUBNET}.14/admin  (no auth)"
+    echo -e "  Web     : curl http://${SUBNET}.15/backup/"
     ;;
   7)
-    echo -e "  Router     : ssh root@192.168.100.1  (+ admin WAN exposé)"
-    echo -e "  Edge GW    : ssh-audit 192.168.100.11  (Dropbear CVE-2023-48795)"
-    echo -e "  Edge GW    : curl http://192.168.100.11/api/devices"
-    echo -e "  Edge MQTT  : mosquitto_sub -h 192.168.100.12 -t '#' -v"
-    echo -e "  Edge SSH   : ssh admin@192.168.100.13  (password: admin)"
-    echo -e "  Cloud API  : curl http://192.168.100.14/backup/cloud_db_backup.sql"
-    echo -e "  Cloud DB   : mysql -h 192.168.100.15 -u root smartcity"
+    echo -e "  Router     : ssh root@${SUBNET}.1  (+ admin WAN exposé)"
+    echo -e "  Edge GW    : ssh-audit ${SUBNET}.11  (Dropbear CVE-2023-48795)"
+    echo -e "  Edge GW    : curl http://${SUBNET}.11/api/devices"
+    echo -e "  Edge MQTT  : mosquitto_sub -h ${SUBNET}.12 -t '#' -v"
+    echo -e "  Edge SSH   : ssh admin@${SUBNET}.13  (password: admin)"
+    echo -e "  Cloud API  : curl http://${SUBNET}.14/backup/cloud_db_backup.sql"
+    echo -e "  Cloud DB   : mysql -h ${SUBNET}.15 -u root smartcity"
     ;;
 esac
 

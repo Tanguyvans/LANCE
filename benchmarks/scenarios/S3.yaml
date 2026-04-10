@@ -35,7 +35,7 @@ attack_paths:
   chain:
   - hop: 1
     device: Internet
-    action: HTTP vers 192.168.100.11
+    action: HTTP vers 10.30.0.11
   - hop: 2
     device: s3-wisgate (100.11)
     action: GET /api/status → 100.14:3306

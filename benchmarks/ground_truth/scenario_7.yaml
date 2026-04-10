@@ -17,14 +17,14 @@ topology:
   router:
     name: s7-router
     vmid: 170
-    ip: "192.168.100.1"
+    ip: "10.70.0.1"
     type: openwrt
   services:
-    - { name: s7-edge-gw,      vmid: 171, ip: "192.168.100.11", role: iot_gateway }
-    - { name: s7-edge-mqtt,    vmid: 172, ip: "192.168.100.12", role: mqtt_broker  }
-    - { name: s7-edge-compute, vmid: 173, ip: "192.168.100.13", role: ssh_server   }
-    - { name: s7-cloud-api,    vmid: 174, ip: "192.168.100.14", role: web_upload   }
-    - { name: s7-cloud-db,     vmid: 175, ip: "192.168.100.15", role: db_server    }
+    - { name: s7-edge-gw,      vmid: 171, ip: "10.70.0.11", role: iot_gateway }
+    - { name: s7-edge-mqtt,    vmid: 172, ip: "10.70.0.12", role: mqtt_broker  }
+    - { name: s7-edge-compute, vmid: 173, ip: "10.70.0.13", role: ssh_server   }
+    - { name: s7-cloud-api,    vmid: 174, ip: "10.70.0.14", role: web_upload   }
+    - { name: s7-cloud-db,     vmid: 175, ip: "10.70.0.15", role: db_server    }
   # Liens Edge ↔ Cloud
   links:
     - { source: s7-edge-gw,      target: s7-edge-mqtt,    protocol: mqtt     }  # Edge GW → Edge MQTT
@@ -36,7 +36,7 @@ vulnerabilities:
 
   - id: V1
     device: s7-router
-    ip: "192.168.100.1"
+    ip: "10.70.0.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -48,13 +48,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 192.168.100.1"
-    verification: "nmap -p 23 192.168.100.1"
+      - "Port 23/tcp ouvert sur 10.70.0.1"
+    verification: "nmap -p 23 10.70.0.1"
     confidence_required: medium
 
   - id: V2
     device: s7-edge-gw
-    ip: "192.168.100.11"
+    ip: "10.70.0.11"
     role: iot_gateway
     title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
     description: >
@@ -71,12 +71,12 @@ vulnerabilities:
       - "Port 22/tcp ouvert"
       - "Banner SSH contient dropbear_2020.81"
       - "Algorithmes chacha20-poly1305 et CBC avec ETM disponibles"
-    verification: "ssh-audit 192.168.100.11 | grep -i terrapin"
+    verification: "ssh-audit 10.70.0.11 | grep -i terrapin"
     confidence_required: high
 
   - id: V3
     device: s7-edge-gw
-    ip: "192.168.100.11"
+    ip: "10.70.0.11"
     role: iot_gateway
     title: "Interface HTTP admin sans authentification — exposition topologie réseau"
     description: >
@@ -93,12 +93,12 @@ vulnerabilities:
       - "GET /admin retourne 200 sans login"
       - "GET /api/devices expose les IPs edge et cloud"
       - "GET /api/status expose les connexions internes actives"
-    verification: "curl http://192.168.100.11/api/devices"
+    verification: "curl http://10.70.0.11/api/devices"
     confidence_required: medium
 
   - id: V4
     device: s7-edge-mqtt
-    ip: "192.168.100.12"
+    ip: "10.70.0.12"
     role: mqtt_broker
     title: "MQTT anonymous + credentials de bridge cloud exposés dans mosquitto.conf"
     description: >
@@ -115,12 +115,12 @@ vulnerabilities:
       - "Port 1883/tcp ouvert, connexion anonyme acceptée"
       - "/etc/mosquitto/conf.d/bridge.conf lisible (permissions 644)"
       - "bridge_login: cloud-bridge-user et bridge_password en clair"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    verification: "mosquitto_sub -h 10.70.0.12 -t '#' -v"
     confidence_required: medium
 
   - id: V5
     device: s7-edge-compute
-    ip: "192.168.100.13"
+    ip: "10.70.0.13"
     role: ssh_server
     title: "Credentials SSH par défaut (admin/admin)"
     description: >
@@ -136,12 +136,12 @@ vulnerabilities:
       - "Port 22/tcp ouvert"
       - "Connexion SSH réussie avec admin:admin"
       - "PasswordAuthentication yes, MaxAuthTries 10"
-    verification: "ssh admin@192.168.100.13 (password: admin)"
+    verification: "ssh admin@10.70.0.13 (password: admin)"
     confidence_required: high
 
   - id: V6
     device: s7-cloud-api
-    ip: "192.168.100.14"
+    ip: "10.70.0.14"
     role: web_upload
     title: "Upload de fichiers sans validation — RCE via webshell PHP"
     description: >
@@ -158,12 +158,12 @@ vulnerabilities:
       - "POST /upload accepte des fichiers .php sans filtrage"
       - "Les fichiers uploadés sont accessibles via /uploads/"
       - "Exécution PHP active sur le serveur"
-    verification: "curl -F 'file=@shell.php' http://192.168.100.14/upload && curl 'http://192.168.100.14/uploads/shell.php?cmd=id'"
+    verification: "curl -F 'file=@shell.php' http://10.70.0.14/upload && curl 'http://10.70.0.14/uploads/shell.php?cmd=id'"
     confidence_required: high
 
   - id: V7
     device: s7-cloud-api
-    ip: "192.168.100.14"
+    ip: "10.70.0.14"
     role: web_upload
     title: "Backup base de données exposé via directory listing"
     description: >
@@ -178,12 +178,12 @@ vulnerabilities:
     indicators:
       - "GET /backup/ retourne listing avec cloud_db_backup.sql"
       - "Le dump SQL contient INSERT INTO users avec passwords et tokens"
-    verification: "curl http://192.168.100.14/backup/cloud_db_backup.sql | head -30"
+    verification: "curl http://10.70.0.14/backup/cloud_db_backup.sql | head -30"
     confidence_required: medium
 
   - id: V8
     device: s7-cloud-db
-    ip: "192.168.100.15"
+    ip: "10.70.0.15"
     role: db_server
     title: "MariaDB root sans mot de passe avec données PII accessibles réseau"
     description: >
@@ -197,14 +197,14 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 3306/tcp ouvert et accessible réseau"
-      - "mysql -h 192.168.100.15 -u root sans mot de passe fonctionne"
+      - "mysql -h 10.70.0.15 -u root sans mot de passe fonctionne"
       - "Table users contient emails, passwords en clair, tokens API"
-    verification: "mysql -h 192.168.100.15 -u root -e 'SELECT * FROM smartcity.users;'"
+    verification: "mysql -h 10.70.0.15 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: medium
 
   - id: V9
     device: s7-edge-compute
-    ip: "192.168.100.13"
+    ip: "10.70.0.13"
     role: ssh_server
     title: "SSH — ciphers et algorithmes d'échange faibles (F6)"
     description: >
@@ -220,12 +220,12 @@ vulnerabilities:
       - "Port 22/tcp ouvert"
       - "ssh-audit détecte 3des-cbc, arcfour256, hmac-md5"
       - "KexAlgorithms inclut diffie-hellman-group1-sha1"
-    verification: "ssh-audit 192.168.100.13"
+    verification: "ssh-audit 10.70.0.13"
     confidence_required: medium
 
   - id: V10
     device: s7-edge-gw
-    ip: "192.168.100.11"
+    ip: "10.70.0.11"
     role: iot_gateway
     title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
     description: >
@@ -241,12 +241,12 @@ vulnerabilities:
     indicators:
       - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
       - "POST /update retourne 200 sans authentification"
-    verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
+    verification: "curl http://10.70.0.11/firmware/ && curl -X POST http://10.70.0.11/update"
     confidence_required: medium
 
   - id: V11
     device: s7-router
-    ip: "192.168.100.1"
+    ip: "10.70.0.1"
     role: router
     title: "Interface web admin OpenWrt accessible depuis le WAN (port 80)"
     description: >
@@ -261,12 +261,12 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert sur l'IP WAN du routeur"
       - "Interface LuCI accessible sans restriction réseau"
-    verification: "curl http://192.168.100.1:80"
+    verification: "curl http://10.70.0.1:80"
     confidence_required: high
 
   - id: V12
     device: s7-cloud-api
-    ip: "192.168.100.14"
+    ip: "10.70.0.14"
     role: web_upload
     title: "Fichier .env exposé via HTTP (credentials cloud en clair)"
     description: >
@@ -279,12 +279,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "GET /.env retourne DB_PASSWORD, MQTT_PASSWORD, API_KEY, SECRET_KEY"
-    verification: "curl http://192.168.100.14/.env"
+    verification: "curl http://10.70.0.14/.env"
     confidence_required: high
 
   - id: V13
     device: s7-edge-compute
-    ip: "192.168.100.13"
+    ip: "10.70.0.13"
     role: ssh_server
     title: "Privilege escalation — SUID binary + cron writable"
     description: >
@@ -304,7 +304,7 @@ vulnerabilities:
 
   - id: V14
     device: s7-edge-mqtt
-    ip: "192.168.100.12"
+    ip: "10.70.0.12"
     role: mqtt_broker
     title: "MQTT sans authentification (allow_anonymous)"
     description: >
@@ -318,7 +318,7 @@ vulnerabilities:
     indicators:
       - "Port 1883/tcp ouvert"
       - "Connexion possible sans username/password"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 10.70.0.12 -t '#' -v -C 3"
     confidence_required: high
 
 attack_paths:

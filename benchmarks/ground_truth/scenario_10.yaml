@@ -16,21 +16,21 @@ topology:
   router:
     name: s10-router
     vmid: 200
-    ip: "192.168.100.1"
+    ip: "10.100.0.1"
     type: openwrt
   services:
-    - { name: s10-mqtt,    vmid: 201, ip: "192.168.100.11", role: mqtt_broker_v2 }
-    - { name: s10-web,     vmid: 202, ip: "192.168.100.12", role: web_server_v2  }
-    - { name: s10-ftp,     vmid: 203, ip: "192.168.100.13", role: ftp_server     }
-    - { name: s10-nodered, vmid: 204, ip: "192.168.100.14", role: nodered_server }
-    - { name: s10-ssh,     vmid: 205, ip: "192.168.100.15", role: ssh_server_v2  }
+    - { name: s10-mqtt,    vmid: 201, ip: "10.100.0.11", role: mqtt_broker_v2 }
+    - { name: s10-web,     vmid: 202, ip: "10.100.0.12", role: web_server_v2  }
+    - { name: s10-ftp,     vmid: 203, ip: "10.100.0.13", role: ftp_server     }
+    - { name: s10-nodered, vmid: 204, ip: "10.100.0.14", role: nodered_server }
+    - { name: s10-ssh,     vmid: 205, ip: "10.100.0.15", role: ssh_server_v2  }
 
 # ── Vulnérabilités plantées ──────────────────────────────────────────────────
 vulnerabilities:
 
   - id: V1
     device: s10-router
-    ip: "192.168.100.1"
+    ip: "10.100.0.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -41,13 +41,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 192.168.100.1"
-    verification: "nmap -p 23 192.168.100.1"
+      - "Port 23/tcp ouvert sur 10.100.0.1"
+    verification: "nmap -p 23 10.100.0.1"
     confidence_required: medium
 
   - id: V2
     device: s10-router
-    ip: "192.168.100.1"
+    ip: "10.100.0.1"
     role: router
     title: "FTP anonymous activé sur le routeur (port 21)"
     description: >
@@ -59,14 +59,14 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 21/tcp ouvert sur 192.168.100.1"
+      - "Port 21/tcp ouvert sur 10.100.0.1"
       - "Connexion FTP anonyme acceptée"
-    verification: "ftp 192.168.100.1 (user: anonymous)"
+    verification: "ftp 10.100.0.1 (user: anonymous)"
     confidence_required: medium
 
   - id: V3
     device: s10-mqtt
-    ip: "192.168.100.11"
+    ip: "10.100.0.11"
     role: mqtt_broker_v2
     title: "MQTT avec credentials faibles (test:test)"
     description: >
@@ -83,12 +83,12 @@ vulnerabilities:
       - "allow_anonymous false"
       - "Connexion réussie avec test:test"
       - "Topics sensibles accessibles après authentification"
-    verification: "mosquitto_sub -h 192.168.100.11 -u test -P test -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 10.100.0.11 -u test -P test -t '#' -v -C 3"
     confidence_required: high
 
   - id: V4
     device: s10-mqtt
-    ip: "192.168.100.11"
+    ip: "10.100.0.11"
     role: mqtt_broker_v2
     title: "Credentials en clair dans les topics MQTT"
     description: >
@@ -102,12 +102,12 @@ vulnerabilities:
     indicators:
       - "Topic smartcity/admin/credentials retourne des credentials JSON"
       - "Topic smartcity/config/network expose la config réseau"
-    verification: "mosquitto_sub -h 192.168.100.11 -u test -P test -t 'smartcity/admin/#' -C 1"
+    verification: "mosquitto_sub -h 10.100.0.11 -u test -P test -t 'smartcity/admin/#' -C 1"
     confidence_required: medium
 
   - id: V5
     device: s10-web
-    ip: "192.168.100.12"
+    ip: "10.100.0.12"
     role: web_server_v2
     title: "API REST sans authentification avec endpoints sensibles"
     description: >
@@ -124,12 +124,12 @@ vulnerabilities:
       - "GET /api/users retourne credentials en clair"
       - "GET /api/config retourne la config réseau"
       - "POST /api/exec permet l'exécution de commandes"
-    verification: "curl http://192.168.100.12/api/users"
+    verification: "curl http://10.100.0.12/api/users"
     confidence_required: high
 
   - id: V6
     device: s10-web
-    ip: "192.168.100.12"
+    ip: "10.100.0.12"
     role: web_server_v2
     title: "Exécution de commandes via API REST (RCE)"
     description: >
@@ -142,12 +142,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "POST /api/exec avec {\"cmd\":\"id\"} retourne uid=0(root)"
-    verification: "curl -X POST http://192.168.100.12/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
+    verification: "curl -X POST http://10.100.0.12/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
     confidence_required: high
 
   - id: V7
     device: s10-web
-    ip: "192.168.100.12"
+    ip: "10.100.0.12"
     role: web_server_v2
     title: "Credentials utilisateurs exposés via API"
     description: >
@@ -160,12 +160,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "GET /api/users retourne [{username:admin,password:P@ssw0rd123,role:admin},...]"
-    verification: "curl http://192.168.100.12/api/users"
+    verification: "curl http://10.100.0.12/api/users"
     confidence_required: medium
 
   - id: V8
     device: s10-ftp
-    ip: "192.168.100.13"
+    ip: "10.100.0.13"
     role: ftp_server
     title: "FTP anonymous avec fichiers sensibles"
     description: >
@@ -183,12 +183,12 @@ vulnerabilities:
       - "/config/network.conf contient des credentials MQTT et DB"
       - "/backup/db_dump.sql contient des INSERT avec passwords"
       - "/firmware/latest.bin sans signature"
-    verification: "ftp 192.168.100.13 (user: anonymous, no password)"
+    verification: "ftp 10.100.0.13 (user: anonymous, no password)"
     confidence_required: high
 
   - id: V9
     device: s10-ftp
-    ip: "192.168.100.13"
+    ip: "10.100.0.13"
     role: ftp_server
     title: "Credentials réseau exposés via FTP (config/network.conf)"
     description: >
@@ -207,7 +207,7 @@ vulnerabilities:
 
   - id: V10
     device: s10-nodered
-    ip: "192.168.100.14"
+    ip: "10.100.0.14"
     role: nodered_server
     title: "Node-RED sans authentification (port 1880)"
     description: >
@@ -223,12 +223,12 @@ vulnerabilities:
       - "Port 1880/tcp ouvert"
       - "GET /admin retourne l'éditeur Node-RED sans auth"
       - "Flows contiennent des nœuds exec (exécution de commandes)"
-    verification: "curl http://192.168.100.14:1880/admin"
+    verification: "curl http://10.100.0.14:1880/admin"
     confidence_required: high
 
   - id: V11
     device: s10-nodered
-    ip: "192.168.100.14"
+    ip: "10.100.0.14"
     role: nodered_server
     title: "Node-RED exec node — exécution de commandes système (RCE)"
     description: >
@@ -244,12 +244,12 @@ vulnerabilities:
       - "Flow IoT Control contient un nœud exec"
       - "Commandes exécutées : hostname, uptime, cat /etc/os-release"
       - "Possibilité d'ajouter de nouveaux nœuds exec"
-    verification: "curl http://192.168.100.14:1880/flows"
+    verification: "curl http://10.100.0.14:1880/flows"
     confidence_required: high
 
   - id: V12
     device: s10-ssh
-    ip: "192.168.100.15"
+    ip: "10.100.0.15"
     role: ssh_server_v2
     title: "Clé privée SSH accessible en lecture par tous les utilisateurs"
     description: >
@@ -269,7 +269,7 @@ vulnerabilities:
 
   - id: V13
     device: s10-ssh
-    ip: "192.168.100.15"
+    ip: "10.100.0.15"
     role: ssh_server_v2
     title: "Fichier de configuration IoT avec credentials réseau"
     description: >

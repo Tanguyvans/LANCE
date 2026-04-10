@@ -3,10 +3,14 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 let cy = null;           // Cytoscape instance
-let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
+
+// ── Multi-run state ──
+// { runId: { eventSource, phase, cost, scenario, logs: [], running: true } }
+const activeRuns = {};
+let focusedRunId = null;  // currently focused tab
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Report'};
 
@@ -401,6 +405,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-teardown').disabled = !this.value;
   });
   document.getElementById('btn-start').addEventListener('click', startRun);
+  document.getElementById('btn-start-all').addEventListener('click', startAllRuns);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
   document.getElementById('btn-teardown').addEventListener('click', teardownScenario);
   document.getElementById('log-clear').addEventListener('click', clearLog);
@@ -816,27 +821,128 @@ function hideDetail() {
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
-async function startRun() {
+// ── Run tab management ────────────────────────────────────────────────────
+function addRunTab(runId, scenarioId) {
+  const bar = document.getElementById('run-tabs-bar');
+  const tabs = document.getElementById('run-tabs');
+  bar.hidden = false;
+
+  const label = scenarioId ? `S${scenarioId}` : 'Lab';
+  const tab = document.createElement('button');
+  tab.className = 'run-tab active';
+  tab.dataset.runId = runId;
+  tab.innerHTML = `
+    <span class="tab-status"></span>
+    <span class="tab-label">${label}</span>
+    <span class="tab-cost">$0.00</span>
+    <span class="tab-close" title="Fermer">&times;</span>
+  `;
+
+  // Deactivate other tabs
+  tabs.querySelectorAll('.run-tab').forEach(t => t.classList.remove('active'));
+  tabs.appendChild(tab);
+
+  tab.addEventListener('click', (e) => {
+    if (e.target.classList.contains('tab-close')) {
+      removeRunTab(runId);
+      return;
+    }
+    focusRunTab(runId);
+  });
+}
+
+function focusRunTab(runId) {
+  const tabs = document.getElementById('run-tabs');
+  tabs.querySelectorAll('.run-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.runId === runId);
+  });
+  focusedRunId = runId;
+  const run = activeRuns[runId];
+  if (!run) return;
+
+  // Update UI for this run
+  setCost(run.cost || 0);
+  clearPhasePills();
+  for (const p of (run.phasesDone || [])) {
+    setPhasePill(p.phase, 'done');
+  }
+  if (run.phase > 0) setPhasePill(run.phase, 'running');
+
+  // Reload topology for this run's scenario
+  loadTopology(run.scenario || null);
+
+  // Replay logs
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = '';
+  for (const ev of (run.logs || [])) {
+    addLog(ev, false);  // false = don't auto-scroll for bulk replay
+  }
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function removeRunTab(runId) {
+  const run = activeRuns[runId];
+  if (run && run.eventSource) {
+    run.eventSource.close();
+  }
+  delete activeRuns[runId];
+
+  const tab = document.querySelector(`.run-tab[data-run-id="${runId}"]`);
+  if (tab) tab.remove();
+
+  // Focus another tab if this was the focused one
+  if (focusedRunId === runId) {
+    const remaining = document.querySelectorAll('.run-tab');
+    if (remaining.length > 0) {
+      focusRunTab(remaining[remaining.length - 1].dataset.runId);
+    } else {
+      focusedRunId = null;
+      document.getElementById('run-tabs-bar').hidden = true;
+    }
+  }
+
+  updateStopButton();
+}
+
+function updateRunTab(runId) {
+  const run = activeRuns[runId];
+  if (!run) return;
+  const tab = document.querySelector(`.run-tab[data-run-id="${runId}"]`);
+  if (!tab) return;
+
+  const status = tab.querySelector('.tab-status');
+  const costEl = tab.querySelector('.tab-cost');
+  costEl.textContent = `$${(run.cost || 0).toFixed(2)}`;
+
+  if (!run.running) {
+    status.classList.add(run.failed ? 'failed' : 'done');
+  }
+}
+
+function updateStopButton() {
+  const anyRunning = Object.values(activeRuns).some(r => r.running);
+  document.getElementById('btn-stop').style.display = anyRunning ? 'block' : 'none';
+  document.getElementById('btn-start').disabled = false;
+}
+
+
+function _buildStartBody() {
   const model    = document.getElementById('sel-model').value;
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
   const mode     = document.querySelector('input[name="run-mode"]:checked').value;
 
-  // Determine scenario_id based on mode
   let scenario = null;
   if (mode === 'preset') {
     scenario = document.getElementById('sel-scenario').value || null;
   } else {
-    // Custom mode — build scenario_id from architecture + posture
     const config = getCustomConfig();
-    // For now, find a matching pre-configured scenario or use architecture as scenario
     const match = _scenariosData.scenarios.find(s =>
       s.topology === config.architecture && s.posture === config.posture
     );
     scenario = match ? match.id : null;
   }
 
-  // Multi-model config
   let phaseModels = null;
   if (document.getElementById('cb-multi-model').checked) {
     phaseModels = {};
@@ -848,16 +954,6 @@ async function startRun() {
       }
     });
   }
-
-  // Reset graph colors and state
-  resetNodeColors();
-  nodeVulns = {};
-  nodeHosts = {};
-  setCost(0);
-  clearPhasePills();
-
-  // Load correct topology
-  await loadTopology(scenario || null);
 
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -872,17 +968,19 @@ async function startRun() {
     phase_models: phaseModels,
   };
 
-  // Add custom mode fields
   if (mode === 'custom') {
     const config = getCustomConfig();
     body.architecture = config.architecture;
     body.posture = config.posture;
-    // Collect selected packs
     body.selected_packs = [...document.querySelectorAll('.pack-cb:checked')].map(cb => cb.value);
-    // Collect excluded (unchecked) vulns within selected packs
     body.excluded_vulns = [...document.querySelectorAll('.vuln-cb:not(:checked)')].map(cb => cb.value);
   }
 
+  return body;
+}
+
+
+async function _launchSingleRun(body) {
   const res = await fetch('/api/pipeline/start', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -891,23 +989,108 @@ async function startRun() {
 
   if (!res.ok) {
     const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur démarrage pipeline'});
-    return;
+    addLog({type:'error', message: err.detail || 'Erreur demarrage pipeline'});
+    return null;
   }
 
-  document.getElementById('btn-start').disabled = true;
-  document.getElementById('btn-stop').style.display = 'block';
-  resetDeviceProgress();
+  const data = await res.json();
+  const runId = data.run_id;
 
-  startSSE();
+  // Register run
+  activeRuns[runId] = {
+    runId,
+    scenario: body.scenario_id,
+    model: body.model,
+    phase: 0,
+    cost: 0,
+    running: true,
+    failed: false,
+    logs: [],
+    phasesDone: [],
+    eventSource: null,
+  };
+
+  addRunTab(runId, body.scenario_id);
+  connectSSE(runId);
+  document.getElementById('btn-stop').style.display = 'block';
+
+  return runId;
 }
 
+
+async function startRun() {
+  const body = _buildStartBody();
+
+  // Reset graph for this run
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  setCost(0);
+  clearPhasePills();
+  resetDeviceProgress();
+
+  await loadTopology(body.scenario_id || null);
+
+  const runId = await _launchSingleRun(body);
+  if (runId) focusRunTab(runId);
+}
+
+
+async function startAllRuns() {
+  const baseBody = _buildStartBody();
+  const btn = document.getElementById('btn-start-all');
+  btn.disabled = true;
+
+  // Get all vulnerable scenario IDs
+  const scenarioIds = _scenariosData.scenarios
+    .filter(s => s.posture !== 'hardened')
+    .map(s => s.id);
+
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  setCost(0);
+  clearPhasePills();
+  resetDeviceProgress();
+
+  let firstRunId = null;
+  for (const sid of scenarioIds) {
+    const body = { ...baseBody, scenario_id: sid };
+    const runId = await _launchSingleRun(body);
+    if (runId && !firstRunId) firstRunId = runId;
+  }
+
+  if (firstRunId) {
+    focusRunTab(firstRunId);
+    await loadTopology(scenarioIds[0]);
+  }
+
+  btn.disabled = false;
+  addLog({type:'info', message: `${scenarioIds.length} runs lances en parallele`});
+}
+
+
 async function stopRun() {
-  await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
-  if (eventSource) { eventSource.close(); eventSource = null; }
-  document.getElementById('btn-start').disabled = false;
-  document.getElementById('btn-stop').style.display = 'none';
-  addLog({type:'error', message:"Run interrompu par l'utilisateur"});
+  // Stop the focused run, or all if none focused
+  const runId = focusedRunId;
+  if (runId && activeRuns[runId]?.running) {
+    await fetch(`/api/pipeline/stop?run_id=${runId}`, { method: 'POST' }).catch(() => {});
+    const run = activeRuns[runId];
+    if (run?.eventSource) { run.eventSource.close(); run.eventSource = null; }
+    run.running = false;
+    updateRunTab(runId);
+    addLog({type:'error', message: `Run interrompu`});
+  } else {
+    await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
+    for (const [rid, run] of Object.entries(activeRuns)) {
+      if (run.eventSource) { run.eventSource.close(); run.eventSource = null; }
+      run.running = false;
+      updateRunTab(rid);
+    }
+    addLog({type:'error', message: "Tous les runs interrompus"});
+  }
+  updateStopButton();
+  loadRuns();
 }
 
 async function teardownScenario() {
@@ -937,73 +1120,105 @@ async function teardownScenario() {
   }
 }
 
-function startSSE() {
-  if (eventSource) eventSource.close();
+function connectSSE(runId) {
+  const run = activeRuns[runId];
+  if (!run) return;
+  if (run.eventSource) run.eventSource.close();
 
-  eventSource = new EventSource('/api/pipeline/stream');
+  const es = new EventSource(`/api/pipeline/stream?run_id=${runId}`);
+  run.eventSource = es;
 
-  eventSource.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data)); }
-    catch(e) { console.warn('SSE parse error', e); }
+  es.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data), runId); }
+    catch(err) { console.warn('SSE parse error', err); }
   };
 
-  eventSource.onerror = () => {
-    addLog({type:'error', message:'Connexion SSE perdue'});
-    eventSource.close();
-    eventSource = null;
-    document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
+  es.onerror = () => {
+    es.close();
+    run.eventSource = null;
+    run.running = false;
+    updateRunTab(runId);
+    updateStopButton();
+    if (focusedRunId === runId) {
+      addLog({type:'error', message:'Connexion SSE perdue'});
+    }
     loadRuns();
   };
 }
 
-function handleEvent(ev) {
+// Legacy compat — used by pollStatus
+function startSSE() {
+  if (focusedRunId && activeRuns[focusedRunId]) {
+    connectSSE(focusedRunId);
+  }
+}
+
+function handleEvent(ev, runId) {
   const t = ev.type;
-  addLog(ev);
+  const run = runId ? activeRuns[runId] : null;
+  const isFocused = (runId === focusedRunId);
+
+  // Store event in run's log buffer
+  if (run) {
+    const skipLog = new Set(['text_chunk', 'ping']);
+    if (!skipLog.has(t)) run.logs.push(ev);
+  }
+
+  // Only update main UI if this is the focused run
+  if (isFocused) addLog(ev);
 
   if (t === 'phase_start') {
-    setPhasePill(ev.phase, 'running');
-    if (ev.phase === 3) resetDeviceProgress();
+    if (run) run.phase = ev.phase;
+    if (isFocused) {
+      setPhasePill(ev.phase, 'running');
+      if (ev.phase === 3) resetDeviceProgress();
+    }
   }
 
   else if (t === 'phase_done') {
-    setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
-    setCost(ev.cumulative_cost_usd || 0);
-    if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
+    if (run) {
+      const cost = ev.cost_usd || ev.cumulative_cost_usd || 0;
+      run.cost = ev.cumulative_cost_usd || (run.cost + cost);
+      run.phasesDone.push({ phase: ev.phase, name: ev.agent || '' });
+      updateRunTab(runId);
+    }
+    if (isFocused) {
+      setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
+      setCost(run ? run.cost : (ev.cumulative_cost_usd || 0));
+      if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
+    }
   }
 
   else if (t === 'device_start') {
-    _deviceProgress[ev.device_id] = 'running';
-    updateDeviceProgress();
+    if (isFocused) { _deviceProgress[ev.device_id] = 'running'; updateDeviceProgress(); }
   }
 
   else if (t === 'device_done') {
-    _deviceProgress[ev.device_id] = 'done';
-    updateDeviceProgress();
+    if (isFocused) { _deviceProgress[ev.device_id] = 'done'; updateDeviceProgress(); }
   }
 
   else if (t === 'reflector_start') {
-    _deviceProgress[ev.device_id] = 'reflector';
-    updateDeviceProgress();
+    if (isFocused) { _deviceProgress[ev.device_id] = 'reflector'; updateDeviceProgress(); }
   }
 
   else if (t === 'reflector_done') {
-    _deviceProgress[ev.device_id] = 'retried';
-    updateDeviceProgress();
+    if (isFocused) { _deviceProgress[ev.device_id] = 'retried'; updateDeviceProgress(); }
   }
 
   else if (t === 'pipeline_done') {
-    setCost(ev.total_cost_usd || 0);
-    document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
-    if (eventSource) { eventSource.close(); eventSource = null; }
+    if (run) {
+      run.cost = ev.total_cost_usd || run.cost;
+      run.running = false;
+      updateRunTab(runId);
+    }
+    if (isFocused) setCost(ev.total_cost_usd || 0);
+    updateStopButton();
     loadRuns();
   }
 
   else if (t === 'error') {
-    document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
-    if (eventSource) { eventSource.close(); eventSource = null; }
+    if (run) { run.running = false; run.failed = true; updateRunTab(runId); }
+    updateStopButton();
     loadRuns();
   }
 
@@ -1683,7 +1898,7 @@ function setCost(val) {
 // ── Event log ──────────────────────────────────────────────────────────────
 const MAX_LOG = 300;
 
-function addLog(ev) {
+function addLog(ev, autoScroll = true) {
   const log = document.getElementById('log');
   const t = ev.type || 'info';
 
@@ -1736,7 +1951,7 @@ function addLog(ev) {
 
   // Trim old lines
   while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
-  log.scrollTop = log.scrollHeight;
+  if (autoScroll) log.scrollTop = log.scrollHeight;
 }
 
 // ── Sidebar Collapsible ────────────────────────────────────────────────────
@@ -1786,47 +2001,54 @@ async function pollStatus() {
   const status = await fetchJSON('/api/pipeline/status');
   if (!status) return;
 
-  setCost(status.cost);
+  const runs = status.active_runs || [];
+  const runningRuns = runs.filter(r => r.running);
 
-  if (!status.running) return;
+  if (runningRuns.length === 0) return;
 
-  // — UI state —
-  document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
 
-  // — Phase pills —
-  for (const p of (status.phases_done || [])) {
-    setPhasePill(p.phase, 'done');
-  }
-  if (status.phase > 0) setPhasePill(status.phase, 'running');
+  // Restore state for each running run
+  for (const r of runningRuns) {
+    if (activeRuns[r.run_id]) continue; // Already tracking
 
-  // — Device progress chips (phase 3) —
-  if (status.current_devices && status.current_devices.length > 0) {
-    for (const dev of status.current_devices) {
-      _deviceProgress[dev] = status.devices_done.includes(dev) ? 'done' : 'running';
+    // Fetch detailed state for this run
+    const detail = await fetchJSON(`/api/pipeline/status?run_id=${r.run_id}`);
+    if (!detail) continue;
+
+    activeRuns[r.run_id] = {
+      runId: r.run_id,
+      scenario: r.scenario_id,
+      model: r.model,
+      phase: r.phase,
+      cost: r.cost,
+      running: true,
+      failed: false,
+      logs: [],
+      phasesDone: (detail.phases_done || []).map(p => ({ phase: p.phase, name: p.name })),
+      eventSource: null,
+    };
+
+    addRunTab(r.run_id, r.scenario_id);
+
+    // Replay events into log buffer
+    const replayTypes = new Set([
+      'pipeline_start', 'phase_start', 'phase_done',
+      'device_start', 'device_done', 'reflector_start', 'reflector_done',
+      'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
+      'inject_start', 'inject_done', 'error',
+    ]);
+    for (const ev of (detail.recent_events || [])) {
+      if (replayTypes.has(ev.type)) activeRuns[r.run_id].logs.push(ev);
     }
-    updateDeviceProgress();
+
+    connectSSE(r.run_id);
   }
 
-  // — Replay real log events (most informative: skip text_chunk noise) —
-  const replayTypes = new Set([
-    'pipeline_start', 'phase_start', 'phase_done',
-    'device_start', 'device_done', 'reflector_start', 'reflector_done',
-    'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-    'inject_start', 'inject_done', 'error',
-  ]);
-  for (const ev of (status.recent_events || [])) {
-    if (replayTypes.has(ev.type)) addLog(ev);
+  // Focus the first run if none focused
+  if (!focusedRunId && runningRuns.length > 0) {
+    focusRunTab(runningRuns[0].run_id);
   }
-
-  // — Sync scenario dropdown & topology —
-  if (status.scenario_id) {
-    document.getElementById('sel-scenario').value = String(status.scenario_id);
-    await loadTopology(status.scenario_id);
-  }
-
-  // — Reconnect to SSE stream —
-  startSSE();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

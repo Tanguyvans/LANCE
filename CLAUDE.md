@@ -76,11 +76,11 @@ python3 -m src.agent --verbose           # detailed output
 
 - `src/benchmark/evaluator.py` — Compares `03_vuln_analysis.json` against a ground truth YAML. Computes TP/FP/FN, Recall, Precision, F1, and weighted Score (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1). Matching strategy: CVE ID → IP+type → IP+category (fallback).
 - `benchmarks/ground_truth/scenario_N.yaml` — Ground truth for each of the 7 scenarios. Each file lists expected vulnerabilities with device IP, severity, category, and optional CVE ID.
-- `benchmarks/ansible/` — Ansible playbooks to deploy and inject vulnerabilities into benchmark VMs (`192.168.100.0/24`).
+- `benchmarks/ansible/` — Ansible playbooks to deploy and inject vulnerabilities into benchmark VMs (VLAN-isolated, `10.{VLAN_ID}.0.0/24`).
 
 ### Agent Tools
 
-- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. When a benchmark scenario is active, graph tools return the scenario VMs (`192.168.100.x`) instead of the physical lab topology.
+- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. When a benchmark scenario is active, graph tools return the scenario VMs (per-VLAN subnet) instead of the physical lab topology. Uses `threading.local()` for thread-safe parallel runs.
 - `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
 - `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
 - `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
@@ -175,10 +175,11 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 
 ### Phase 5 — Benchmark LLM sur scénarios Proxmox ✅
 - VM maître (LXC 200) sur Proxmox (`10.0.0.110`) — orchestre le pipeline
-- 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
-- Dashboard FastAPI + SPA (HTML/JS/CSS) accessible via Tailscale `nato-master.tail6b8e31.ts.net:8501`
+- 10 scénarios Ansible avec isolation VLAN (VLAN 10-100, subnets `10.{VLAN}.0.0/24`)
+- Exécution parallèle de tous les scénarios sans conflit IP (un VLAN par scénario)
+- Dashboard FastAPI + SPA multi-run : onglets par run, SSE multiplexé, bouton "Lancer tous"
 - CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart `nato-fastapi.service`)
-- Graph tools contextualisés : topologie scénario (`192.168.100.x`) vs lab physique (`192.168.88.x`)
+- Graph tools thread-safe : topologie scénario isolée par thread (`threading.local`)
 - Benchmark evaluator : Recall / Precision / F1 / Score pondéré par sévérité vs ground truth YAML
 - ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
 - Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)

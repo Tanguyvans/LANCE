@@ -6,7 +6,8 @@
 #   1-7  — Scénarios de base (Flat, Gateway, NATO Lab, Segmenté, Building, Domotique, Edge-Cloud)
 #   8-10 — Scénarios étendus (Multi-zone IT/IoT/OT, Mesh IoT, Flat variantes)
 #
-# Chaque scénario tourne de façon isolée sur vmbr1 (un seul scénario à la fois).
+# Chaque scénario est isolé sur son propre VLAN (un VLAN par scénario, incrément de 10).
+# Plusieurs scénarios peuvent tourner en parallèle sans conflit IP.
 # Pour supprimer un scénario : 99_teardown.yml --extra-vars "scenario_id=1"
 
 - name: Déploiement du scénario {{ scenario_id | default('?') }}
@@ -16,7 +17,10 @@
   vars:
     scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
+    vlan: "{{ scenario_vlans[scenario_id] }}"
+    subnet: "{{ vlan.subnet_prefix }}"
+    router_ip: "{{ subnet }}.1"
+    # scenarios et scenario_vlans sont définis dans group_vars/all/main.yml
 
   tasks:
 
@@ -24,6 +28,11 @@
       ansible.builtin.fail:
         msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in scenarios
+
+    - name: Vérifier que le VLAN est défini
+      ansible.builtin.fail:
+        msg: "scenario_id={{ scenario_id }} n'a pas de VLAN défini dans scenario_vlans"
+      when: scenario_id not in scenario_vlans
 
     - name: Vérifier que le template Debian ({{ tpl_debian_vmid }}) existe
       ansible.builtin.command: pct status {{ tpl_debian_vmid }}
@@ -47,46 +56,11 @@
         msg: "Template OpenWrt ({{ tpl_openwrt_vmid }}) introuvable. Lancer d'abord : ansible-playbook -i inventory.yml playbooks/02_config_openwrt.yml --ask-vault-pass"
       when: tpl_openwrt_check.rc != 0
 
-    - name: Détecter si un autre scénario est déjà en cours
-      ansible.builtin.shell: |
-        running=$(
-          { qm list 2>/dev/null | awk 'NR>1 && $3=="running" {print $1}';
-            pct list 2>/dev/null | awk 'NR>1 && $2=="running" {print $1}'; }
-        )
-        conflict_scenario=""
-        for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 219 ] 2>/dev/null && continue
-          base={{ base_vmid }}
-          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
-          {% for sid, sbase in scenario_vmid_ranges.items() %}
-          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + 10))" ]; then
-            conflict_scenario="{{ sid }}"
-          fi
-          {% endfor %}
-          [ -n "$conflict_scenario" ] && break
-        done
-        if [ -n "$conflict_scenario" ]; then
-          echo "CONFLICT:$conflict_scenario"
-          exit 1
-        fi
-        echo "OK"
-      register: conflict_check
-      changed_when: false
-      failed_when: false
-
-    - name: Bloquer si un autre scénario tourne déjà
-      ansible.builtin.fail:
-        msg: |
-          Le scénario S{{ conflict_check.stdout | regex_replace('CONFLICT:(\d+).*', '\1') }} est déjà en cours sur vmbr1.
-          Les scénarios partagent le même réseau 192.168.100.0/24 — un seul à la fois.
-          Teardown d'abord :
-            ansible-playbook playbooks/99_teardown.yml --extra-vars "scenario_id={{ conflict_check.stdout | regex_replace('CONFLICT:(\d+).*', '\1') }}"
-      when: conflict_check.rc != 0
-
     - name: Afficher le scénario à déployer
       ansible.builtin.debug:
         msg: |
           Déploiement : S{{ scenario_id }} — {{ scenarios[scenario_id].name }}
+          VLAN         : {{ vlan.vlan_id }} ({{ subnet }}.0/24)
           VMID router  : {{ base_vmid }}
           VMID services: {{ base_vmid | int + 1 }} → {{ base_vmid | int + scenarios[scenario_id].services | length }}
 
@@ -105,6 +79,12 @@
         --full
       when: router_check.rc != 0
 
+    - name: Configurer le VLAN tag sur l'interface LAN du router
+      ansible.builtin.command: >-
+        qm set {{ base_vmid }}
+        --net1 virtio,bridge={{ benchmark_bridge }},tag={{ vlan.vlan_id }}
+      when: router_check.rc != 0
+
     - name: Démarrer le router OpenWrt
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
@@ -118,6 +98,21 @@
       delay: 5
       changed_when: false
       failed_when: false
+
+    - name: Configurer l'IP LAN du router pour ce VLAN
+      ansible.builtin.command: >-
+        qm guest exec {{ base_vmid }} -- sh -c '
+        uci set network.lan.ipaddr="{{ router_ip }}"
+        uci set network.lan.netmask="255.255.255.0"
+        uci commit network
+        /etc/init.d/network restart
+        '
+      when: router_check.rc != 0
+
+    - name: Attendre le redémarrage réseau du router
+      ansible.builtin.pause:
+        seconds: 10
+      when: router_check.rc != 0
 
 
     # ── Services LXC ──
@@ -140,11 +135,11 @@
         index_var: idx
       when: ct_checks.results[idx].rc != 0
 
-    - name: Configurer le réseau et le DNS de chaque CT
+    - name: Configurer le réseau (VLAN tag) et le DNS de chaque CT
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
-        --net0 name=eth0,bridge={{ benchmark_bridge }},ip={{ item.ip }}/24,gw={{ benchmark_gateway }}
-        --nameserver {{ benchmark_dns }}
+        --net0 name=eth0,bridge={{ benchmark_bridge }},tag={{ vlan.vlan_id }},ip={{ item.ip }}/24,gw={{ router_ip }}
+        --nameserver {{ router_ip }}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
@@ -170,7 +165,7 @@
 
     - name: Vérifier la connectivité réseau de chaque CT
       ansible.builtin.command: >-
-        pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2 {{ benchmark_gateway }}
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2 {{ router_ip }}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
@@ -183,8 +178,9 @@
         msg: |
           ══════════════════════════════════════════════════════════
           Scénario S{{ scenario_id }} — {{ scenarios[scenario_id].name }} déployé
+          VLAN {{ vlan.vlan_id }} — {{ subnet }}.0/24
           ──────────────────────────────────────────────────────────
-          {{ base_vmid }}  s{{ scenario_id }}-router  192.168.100.1  (OpenWrt WAN=DHCP)
+          {{ base_vmid }}  s{{ scenario_id }}-router  {{ router_ip }}  (OpenWrt WAN=DHCP)
           {% for svc in scenarios[scenario_id].services %}
           {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  {{ svc.ip }}  [{{ 'OK' if ct_ping.results[loop.index0].rc == 0 else 'NO PING' }}]
           {% endfor %}

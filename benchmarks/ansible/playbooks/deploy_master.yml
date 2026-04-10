@@ -1,7 +1,7 @@
 ---
 # Deploy Master VM - NATO Smart City IoT
 # Provisionne la VM maître sur Proxmox : LXC Debian 13, deux interfaces réseau
-# (management DHCP sur vmbr0 + réseau de test 192.168.100.200/24 sur vmbr1),
+# (management DHCP sur vmbr0 + trunk VLAN sur vmbr1 pour accès à tous les scénarios),
 # repo cloné, dépendances installées, secrets injectés, Tailscale configuré,
 # FastAPI (uvicorn) lancé en service systemd.
 # Le master peut ensuite déployer les scénarios benchmark de façon autonome.
@@ -49,7 +49,7 @@
         --cores {{ master_cores }}
         --password {{ vault_master_root_password }}
         --net0 name=eth0,bridge=vmbr0,ip=dhcp
-        --net1 name=eth1,bridge=vmbr1,ip=192.168.100.200/24
+        --net1 name=eth1,bridge=vmbr1
         --nameserver 1.1.1.1
         --onboot 1
         --unprivileged 1
@@ -149,7 +149,7 @@
     # eth0 (vmbr0 / 192.168.88.0/24) : uniquement trafic légitime autorisé
     #   → SSH vers Proxmox, API Proxmox (8006), DNS, HTTP/S (apt, git), Tailscale
     #   → tout le reste bloqué en sortie (pas de scans offensifs sur le lab physique)
-    # eth1 (vmbr1 / 192.168.100.0/24) : tout autorisé (réseau de test isolé)
+    # eth1 (vmbr1 / trunk VLAN) : tout autorisé (réseau de test isolé)
     - name: Flush existing OUTPUT rules
       ansible.builtin.iptables:
         chain: OUTPUT
@@ -232,22 +232,32 @@
       ansible.builtin.command: netfilter-persistent save
       changed_when: true
 
-    # ── Réseau : route vers le réseau de test ────────────────
-    - name: Ensure eth1 is configured at boot (interfaces.d)
+    # ── Réseau : trunk VLAN pour accès à tous les scénarios ──
+    - name: Configure eth1 trunk with VLAN sub-interfaces (interfaces.d)
       ansible.builtin.copy:
         dest: /etc/network/interfaces.d/eth1
         mode: "0644"
         content: |
           auto eth1
-          iface eth1 inet static
-            address 192.168.100.200
-            netmask 255.255.255.0
-            # Pas de gateway sur eth1 : le trafic benchmark reste local
+          iface eth1 inet manual
+            # Trunk VLAN — pas d'IP directe, sous-interfaces VLAN ci-dessous
+          {% for sid, vlan in scenario_vlans.items() %}
 
-    - name: Bring up eth1
-      ansible.builtin.command: ifup eth1
-      register: ifup_result
-      changed_when: ifup_result.rc == 0
+          auto eth1.{{ vlan.vlan_id }}
+          iface eth1.{{ vlan.vlan_id }} inet static
+            address {{ vlan.subnet_prefix }}.200
+            netmask 255.255.255.0
+            vlan-raw-device eth1
+            # S{{ sid }} — {{ vlan.subnet_prefix }}.0/24
+          {% endfor %}
+
+    - name: Bring up eth1 and all VLAN sub-interfaces
+      ansible.builtin.shell: |
+        ifup eth1 2>/dev/null || true
+        {% for sid, vlan in scenario_vlans.items() %}
+        ifup eth1.{{ vlan.vlan_id }} 2>/dev/null || true
+        {% endfor %}
+      changed_when: true
       failed_when: false
 
     # ── Repo ─────────────────────────────────────────────────
@@ -442,7 +452,7 @@
         msg:
           - "Repo     : {{ repo_dest }}"
           - "eth0     : {{ hostvars['proxmox']['master_ip'] }}  (management / lab physique)"
-          - "eth1     : 192.168.100.200 (réseau de test benchmark)"
+          - "eth1     : trunk VLAN (10 sous-interfaces: eth1.10 → eth1.100)"
           - "Tailscale: {{ ts_ip.stdout }}"
           - "SSH LAN  : ssh root@{{ hostvars['proxmox']['master_ip'] }}"
           - "SSH WAN  : ssh root@{{ ts_ip.stdout }}  (Tailscale)"

@@ -39,9 +39,11 @@ TOPO_DESCRIPTIONS = {
 data = yaml.safe_load(MAIN_YML.read_text())
 scenarios = data["scenarios"]
 vmid_ranges = data["scenario_vmid_ranges"]
+scenario_vlans = data.get("scenario_vlans", {})
 
 for sid, scen in scenarios.items():
     topo_id = TOPO_NAMES.get(sid, f"scenario_{sid}")
+    subnet_prefix = scenario_vlans.get(sid, {}).get("subnet_prefix", "10.10.0")
     topo = {
         "id": topo_id,
         "name": scen["name"],
@@ -50,7 +52,7 @@ for sid, scen in scenarios.items():
         "router": {
             "name_template": f"s{{sid}}-router",
             "type": "openwrt",
-            "ip": "192.168.100.1",
+            "ip": f"{subnet_prefix}.1",
         },
         "services": [],
     }

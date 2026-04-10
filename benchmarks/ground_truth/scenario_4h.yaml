@@ -7,36 +7,36 @@ topology:
   router:
     name: s4h-router
     vmid: 130
-    ip: 192.168.100.1
+    ip: 10.40.0.1
     type: openwrt
   services:
   - name: s4h-admin
     vmid: 131
-    ip: 192.168.100.11
+    ip: 10.40.0.11
     role: ssh_server
   - name: s4h-webapp
     vmid: 132
-    ip: 192.168.100.12
+    ip: 10.40.0.12
     role: web_upload
   - name: s4h-mqtt
     vmid: 133
-    ip: 192.168.100.13
+    ip: 10.40.0.13
     role: mqtt_broker
   - name: s4h-lora-gw
     vmid: 134
-    ip: 192.168.100.14
+    ip: 10.40.0.14
     role: iot_gateway
   - name: s4h-plc
     vmid: 135
-    ip: 192.168.100.15
+    ip: 10.40.0.15
     role: modbus_server
   - name: s4h-hmi
     vmid: 136
-    ip: 192.168.100.16
+    ip: 10.40.0.16
     role: web_server
   - name: s4h-historian
     vmid: 137
-    ip: 192.168.100.17
+    ip: 10.40.0.17
     role: db_server
 vulnerabilities: []
 attack_paths: []

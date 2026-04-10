@@ -62,12 +62,12 @@ vulnerabilities:
     mitre_ics: T1190 - Exploit Public-Facing Application
     description: L'interface web du portail firmware expose un endpoint /check.php?url=
       qui effectue des requêtes HTTP depuis le serveur. Un attaquant peut fournir
-      des URLs internes (http://192.168.100.17:3306/) pour scanner le réseau OT depuis
+      des URLs internes (http://{subnet_prefix}.17:3306/) pour scanner le réseau OT depuis
       le serveur web IT.
     indicators:
-    - GET /check.php?url=http://192.168.100.15:502/ retourne des données Modbus
-    - GET /check.php?url=http://192.168.100.17:3306/ retourne le banner MariaDB
-    verification: curl 'http://{ip}/check.php?url=http://192.168.100.17:3306/'
+    - GET /check.php?url=http://{subnet_prefix}.15:502/ retourne des données Modbus
+    - GET /check.php?url=http://{subnet_prefix}.17:3306/ retourne le banner MariaDB
+    verification: curl 'http://{ip}/check.php?url=http://{subnet_prefix}.17:3306/'
     confidence_required: high
     scenarios:
     - '4'

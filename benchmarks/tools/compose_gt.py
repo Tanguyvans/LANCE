@@ -85,7 +85,7 @@ def compose_scenario(scenario_path: Path) -> dict:
         if "router" in pack_vulns:
             router = topology.get("router", {})
             router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
-            router_ip = router.get("ip", "192.168.100.1")
+            router_ip = router.get("ip", "10.10.0.1")
 
             for vuln_template in pack_vulns["router"]:
                 allowed = vuln_template.get("scenarios")

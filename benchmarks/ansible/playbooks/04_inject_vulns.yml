@@ -20,7 +20,10 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    proxmox_tmp_ip: "192.168.100.254"   # IP temp sur vmbr1 pour joindre OpenWrt
+    vlan: "{{ scenario_vlans[scenario_id] }}"
+    subnet: "{{ vlan.subnet_prefix }}"
+    vlan_iface: "vmbr1.{{ vlan.vlan_id }}"
+    proxmox_tmp_ip: "{{ subnet }}.254"   # IP temp sur sous-interface VLAN pour joindre OpenWrt
     # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
@@ -29,17 +32,18 @@
     - name: Configurer le DNS dans tous les CTs du scénario
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
-        --nameserver {{ benchmark_dns }}
+        --nameserver {{ subnet }}.1
       loop: "{{ scenarios[scenario_id].services }}"
       register: dns_set
       changed_when: dns_set.rc == 0
 
-    # ── IP temporaire sur vmbr1 pour joindre OpenWrt LAN ──
-    - name: Ajouter IP temporaire {{ proxmox_tmp_ip }} sur vmbr1 (accès OpenWrt)
-      ansible.builtin.command: ip addr add {{ proxmox_tmp_ip }}/24 dev vmbr1
-      register: add_tmp_ip
-      failed_when: false
-      changed_when: add_tmp_ip.rc == 0
+    # ── Sous-interface VLAN pour accès au réseau du scénario ──
+    - name: Créer la sous-interface VLAN {{ vlan_iface }}
+      ansible.builtin.shell: |
+        ip link add link vmbr1 name {{ vlan_iface }} type vlan id {{ vlan.vlan_id }} 2>/dev/null || true
+        ip addr add {{ proxmox_tmp_ip }}/24 dev {{ vlan_iface }} 2>/dev/null || true
+        ip link set {{ vlan_iface }} up
+      changed_when: true
 
 
     # ════════════════════════════════════════════════════
@@ -110,7 +114,7 @@
           # /config/app.config — credentials en clair
           cat > /var/www/html/config/app.config << 'CFGEOF'
           [database]
-          host=192.168.100.14
+          host={{ scenario_vlans[scenario_id].subnet_prefix }}.14
           db_password=P@ssw0rd123
           user=root
 
@@ -202,8 +206,8 @@
           {
           printf 'server {\n    listen 80 default_server;\n    server_name _;\n    root /var/www/html;\n'
           printf '    location /admin { return 200 "Admin panel - no auth required"; add_header Content-Type text/plain; }\n'
-          printf "    location /api/devices { return 200 '{\"devices\":[\"192.168.100.11\",\"192.168.100.12\",\"192.168.100.13\",\"192.168.100.14\",\"192.168.100.15\"]}'; add_header Content-Type application/json; }\n"
-          printf "    location /api/status { return 200 '{\"connections\":{\"mqtt\":\"192.168.100.12:1883\",\"db\":\"192.168.100.14:3306\"},\"uptime\":3600}'; add_header Content-Type application/json; }\n"
+          printf "    location /api/devices { return 200 '{\"devices\":[\"{{ scenario_vlans[scenario_id].subnet_prefix }}.11\",\"{{ scenario_vlans[scenario_id].subnet_prefix }}.12\",\"{{ scenario_vlans[scenario_id].subnet_prefix }}.13\",\"{{ scenario_vlans[scenario_id].subnet_prefix }}.14\",\"{{ scenario_vlans[scenario_id].subnet_prefix }}.15\"]}'; add_header Content-Type application/json; }\n"
+          printf "    location /api/status { return 200 '{\"connections\":{\"mqtt\":\"{{ scenario_vlans[scenario_id].subnet_prefix }}.12:1883\",\"db\":\"{{ scenario_vlans[scenario_id].subnet_prefix }}.14:3306\"},\"uptime\":3600}'; add_header Content-Type application/json; }\n"
           printf '    location /firmware/ { autoindex on; }\n'
           printf "    location /update { return 200 '{\"status\":\"update accepted\",\"version\":\"2.1.4\"}'; add_header Content-Type application/json; }\n"
           printf '}\n'
@@ -448,7 +452,7 @@
           <!DOCTYPE html><html><head><title>IP Camera — Live View</title></head><body>
           <h2>IP Camera — Live View (No Auth Required)</h2>
           <img src="/snapshot/latest.jpg" alt="Camera feed" style="border:1px solid #ccc">
-          <p>RTSP stream: rtsp://192.168.100.x:554/stream1</p>
+          <p>RTSP stream: rtsp://{{ scenario_vlans[scenario_id].subnet_prefix }}.x:554/stream1</p>
           <p>Admin panel: <a href="/admin">/admin</a></p>
           </body></html>
           EOF
@@ -504,7 +508,7 @@
 
           # Faux répertoire NVR avec données sensibles
           mkdir -p /opt/nvr/recordings /opt/nvr/config
-          echo '{"admin_password":"ubnt","cameras":["192.168.100.11","192.168.100.12"],"recording_path":"/opt/nvr/recordings"}' \
+          echo '{"admin_password":"ubnt","cameras":["{{ scenario_vlans[scenario_id].subnet_prefix }}.11","{{ scenario_vlans[scenario_id].subnet_prefix }}.12"],"recording_path":"/opt/nvr/recordings"}' \
             > /opt/nvr/config/system.json
           chmod -R 644 /opt/nvr/config/
 
@@ -528,7 +532,7 @@
     - name: "[OpenWrt] Installer socat pour Telnet (port 23)"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
-        root@{{ benchmark_gateway }}
+        root@{{ scenario_vlans[scenario_id].subnet_prefix }}.1
         'opkg update && opkg install socat'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
@@ -536,7 +540,7 @@
     - name: "[OpenWrt] Activer Telnet (port 23) via socat (service persistant)"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
-        root@{{ benchmark_gateway }}
+        root@{{ scenario_vlans[scenario_id].subnet_prefix }}.1
         'printf "#!/bin/sh /etc/rc.common\nSTART=99\nSTOP=10\nstart() { socat TCP-LISTEN:23,fork,reuseaddr EXEC:/bin/ash >/dev/null 2>&1 & }\nstop() { killall socat 2>/dev/null; }\n"
         > /etc/init.d/telnet_bench &&
         chmod +x /etc/init.d/telnet_bench &&
@@ -548,7 +552,7 @@
     - name: "[OpenWrt] Vérifier que Telnet écoute sur le port 23"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
-        root@{{ benchmark_gateway }}
+        root@{{ scenario_vlans[scenario_id].subnet_prefix }}.1
         'netstat -tlnp | grep :23'
       register: telnet_check
       failed_when: telnet_check.rc != 0
@@ -558,7 +562,7 @@
     - name: "[OpenWrt] Exposer l'interface web admin sur WAN (port 80)"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
-          root@{{ benchmark_gateway }} \
+          root@{{ scenario_vlans[scenario_id].subnet_prefix }}.1 \
           'uci set uhttpd.main.listen_http="0.0.0.0:80"
            uci commit uhttpd
            /etc/init.d/uhttpd restart'
@@ -568,7 +572,7 @@
     - name: "[OpenWrt] Activer FTP (port 21) via vsftpd"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
-          root@{{ benchmark_gateway }} \
+          root@{{ scenario_vlans[scenario_id].subnet_prefix }}.1 \
           'opkg update && opkg install vsftpd &&
            echo "anonymous_enable=YES" >> /etc/vsftpd.conf &&
            /etc/init.d/vsftpd enable && /etc/init.d/vsftpd start'
@@ -602,10 +606,10 @@
       ansible.builtin.shell: |
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash -c '
           cat > /var/www/html/.env << ENVEOF
-        DB_HOST=192.168.100.{{ "13" if "{{ scenario_id }}" == "6" else "15" }}
+        DB_HOST={{ scenario_vlans[scenario_id].subnet_prefix }}.{{ "13" if "{{ scenario_id }}" == "6" else "15" }}
         DB_USER=root
         DB_PASSWORD=P@ssw0rd123
-        MQTT_BROKER=192.168.100.12
+        MQTT_BROKER={{ scenario_vlans[scenario_id].subnet_prefix }}.12
         MQTT_USER=bridge
         MQTT_PASSWORD=br1dg3_s3cret
         API_KEY=sk-nato-lab-9f3a2b
@@ -764,7 +768,7 @@
             -m '{"db_user":"root","db_pass":"P@ssw0rd123","api_key":"sk-bench-api-1234"}' -r
           mosquitto_pub -h localhost -u test -P test -t "smartcity/sensors/temp" -m '{"value":22.5,"unit":"C"}' -r
           mosquitto_pub -h localhost -u test -P test -t "smartcity/config/network" \
-            -m '{"gateway":"192.168.100.1","dns":"8.8.8.8","vlan_id":100}' -r
+            -m '{"gateway":"{{ scenario_vlans[scenario_id].subnet_prefix }}.1","dns":"8.8.8.8","vlan_id":100}' -r
           echo "[OK] MQTT auth faible configuré (test:test, admin:admin123)"
 
     - name: "[mqtt_broker_v2] Push + exécuter dans chaque CT concerné"
@@ -812,8 +816,8 @@
           # Config file with network credentials (readable)
           mkdir -p /etc/iot
           cat > /etc/iot/config.json << 'CFGEOF'
-          {"mqtt_broker":"192.168.100.12","mqtt_user":"bridge","mqtt_pass":"br1dg3_pass",
-           "db_host":"192.168.100.14","db_user":"root","db_pass":"","api_key":"sk-bench-9f3a"}
+          {"mqtt_broker":"{{ scenario_vlans[scenario_id].subnet_prefix }}.12","mqtt_user":"bridge","mqtt_pass":"br1dg3_pass",
+           "db_host":"{{ scenario_vlans[scenario_id].subnet_prefix }}.14","db_user":"root","db_pass":"","api_key":"sk-bench-9f3a"}
           CFGEOF
           chmod 644 /etc/iot/config.json
 
@@ -850,15 +854,15 @@
           app = Flask(__name__)
 
           DEVICES = [
-              {"id": 1, "name": "temp-sensor-01", "ip": "192.168.100.21", "status": "online", "key": "dev-key-abc123"},
-              {"id": 2, "name": "humidity-02", "ip": "192.168.100.22", "status": "online", "key": "dev-key-def456"},
-              {"id": 3, "name": "motion-03", "ip": "192.168.100.23", "status": "offline", "key": "dev-key-ghi789"},
+              {"id": 1, "name": "temp-sensor-01", "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.21", "status": "online", "key": "dev-key-abc123"},
+              {"id": 2, "name": "humidity-02", "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.22", "status": "online", "key": "dev-key-def456"},
+              {"id": 3, "name": "motion-03", "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.23", "status": "offline", "key": "dev-key-ghi789"},
           ]
           USERS = [
               {"id": 1, "username": "admin", "password": "P@ssw0rd123", "role": "admin"},
               {"id": 2, "username": "operator", "password": "oper@t0r", "role": "user"},
           ]
-          CONFIG = {"db_host": "192.168.100.14", "db_pass": "P@ssw0rd123", "mqtt": "192.168.100.12:1883"}
+          CONFIG = {"db_host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.14", "db_pass": "P@ssw0rd123", "mqtt": "{{ scenario_vlans[scenario_id].subnet_prefix }}.12:1883"}
 
           @app.route("/api/devices")
           def get_devices(): return jsonify(DEVICES)
@@ -931,7 +935,7 @@
           # Populate with sensitive data
           redis-cli SET "config:db_password" "P@ssw0rd123"
           redis-cli SET "config:api_key" "sk-bench-api-1234567890abcdef"
-          redis-cli SET "config:mqtt_broker" "192.168.100.12:1883"
+          redis-cli SET "config:mqtt_broker" "{{ scenario_vlans[scenario_id].subnet_prefix }}.12:1883"
           redis-cli SET "session:admin" '{"user":"admin","role":"superadmin","token":"eyJhbG..."}'
           redis-cli SET "iot:device:secrets" '{"gateway_key":"gw-secret-456","sensor_psk":"psk-789"}'
           echo "[OK] Redis sans auth configuré (port 6379)"
@@ -974,11 +978,11 @@
           echo "IOT-FIRMWARE-v3.2.1-unsigned" > /srv/ftp/firmware/latest.bin
           cat > /srv/ftp/config/network.conf << 'CFGEOF'
           [mqtt]
-          broker=192.168.100.12
+          broker={{ scenario_vlans[scenario_id].subnet_prefix }}.12
           user=bridge
           password=br1dg3_s3cret
           [database]
-          host=192.168.100.14
+          host={{ scenario_vlans[scenario_id].subnet_prefix }}.14
           user=root
           password=P@ssw0rd123
           CFGEOF
@@ -1060,7 +1064,7 @@
 
           class ConfigResource(aiocoap.resource.Resource):
               async def render_get(self, request):
-                  return aiocoap.Message(payload=b'{"mqtt_broker":"192.168.100.12","api_key":"sk-coap-secret-789","interval":30}')
+                  return aiocoap.Message(payload=b'{"mqtt_broker":"{{ scenario_vlans[scenario_id].subnet_prefix }}.12","api_key":"sk-coap-secret-789","interval":30}')
               async def render_put(self, request):
                   return aiocoap.Message(code=aiocoap.CHANGED, payload=b'{"status":"config updated"}')
 
@@ -1170,9 +1174,10 @@
       changed_when: true
 
 
-    # ── Nettoyage IP temporaire ──
-    - name: Retirer l'IP temporaire de vmbr1
-      ansible.builtin.command: ip addr del {{ proxmox_tmp_ip }}/24 dev vmbr1
+    # ── Nettoyage sous-interface VLAN ──
+    - name: Retirer la sous-interface VLAN {{ vlan_iface }}
+      ansible.builtin.shell: |
+        ip link del {{ vlan_iface }} 2>/dev/null || true
       failed_when: false
       changed_when: true
 

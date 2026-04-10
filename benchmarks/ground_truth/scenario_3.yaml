@@ -5,7 +5,7 @@ scenario_id: "3"
 scenario_name: "Réplique NATO Lab"
 difficulty: "hard"
 description: >
-  Réplique du lab IoT NATO (192.168.88.0/24 → 192.168.100.0/24).
+  Réplique du lab IoT NATO (192.168.88.0/24 → 10.30.0.0/24).
   8 devices reproduisant la topologie réelle : WisGate (iot_gateway),
   RPi5 et IoT-Hub (MQTT brokers), Jetson et NVR (SSH), AP et CAM (web).
   Le routeur expose Telnet et FTP. Deux brokers MQTT anonymes coexistent.
@@ -15,22 +15,22 @@ topology:
   router:
     name: s3-router
     vmid: 120
-    ip: "192.168.100.1"
+    ip: "10.30.0.1"
     type: openwrt
   services:
-    - { name: s3-wisgate, vmid: 121, ip: "192.168.100.11", role: iot_gateway }
-    - { name: s3-rpi5,    vmid: 122, ip: "192.168.100.12", role: mqtt_broker }
-    - { name: s3-iot-hub, vmid: 123, ip: "192.168.100.13", role: mqtt_broker }
-    - { name: s3-jetson,  vmid: 124, ip: "192.168.100.14", role: ssh_server  }
-    - { name: s3-ap,      vmid: 125, ip: "192.168.100.15", role: web_server  }
-    - { name: s3-cam,     vmid: 126, ip: "192.168.100.16", role: web_server  }
-    - { name: s3-nvr,     vmid: 127, ip: "192.168.100.17", role: nvr_server  }
+    - { name: s3-wisgate, vmid: 121, ip: "10.30.0.11", role: iot_gateway }
+    - { name: s3-rpi5,    vmid: 122, ip: "10.30.0.12", role: mqtt_broker }
+    - { name: s3-iot-hub, vmid: 123, ip: "10.30.0.13", role: mqtt_broker }
+    - { name: s3-jetson,  vmid: 124, ip: "10.30.0.14", role: ssh_server  }
+    - { name: s3-ap,      vmid: 125, ip: "10.30.0.15", role: web_server  }
+    - { name: s3-cam,     vmid: 126, ip: "10.30.0.16", role: web_server  }
+    - { name: s3-nvr,     vmid: 127, ip: "10.30.0.17", role: nvr_server  }
 
 vulnerabilities:
 
   - id: V1
     device: s3-router
-    ip: "192.168.100.1"
+    ip: "10.30.0.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -42,13 +42,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 192.168.100.1"
-    verification: "nmap -p 23 192.168.100.1"
+      - "Port 23/tcp ouvert sur 10.30.0.1"
+    verification: "nmap -p 23 10.30.0.1"
     confidence_required: medium
 
   - id: V2
     device: s3-router
-    ip: "192.168.100.1"
+    ip: "10.30.0.1"
     role: router
     title: "FTP anonyme activé sur le routeur (port 21)"
     description: >
@@ -60,14 +60,14 @@ vulnerabilities:
     mitre_ics: "Initial Access, Collection"
     cve: null
     indicators:
-      - "Port 21/tcp ouvert sur 192.168.100.1"
+      - "Port 21/tcp ouvert sur 10.30.0.1"
       - "Connexion FTP anonyme acceptée"
-    verification: "ftp 192.168.100.1 (user: anonymous)"
+    verification: "ftp 10.30.0.1 (user: anonymous)"
     confidence_required: medium
 
   - id: V3
     device: s3-wisgate
-    ip: "192.168.100.11"
+    ip: "10.30.0.11"
     role: iot_gateway
     title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
     description: >
@@ -81,15 +81,15 @@ vulnerabilities:
     cve: "CVE-2023-48795"
     cve_cvss: 5.9
     indicators:
-      - "Port 22/tcp ouvert sur 192.168.100.11"
+      - "Port 22/tcp ouvert sur 10.30.0.11"
       - "Banner SSH Dropbear version <= 2022.82"
       - "Support chacha20-poly1305 et CBC-ETM (vulnérable Terrapin)"
-    verification: "ssh-audit 192.168.100.11"
+    verification: "ssh-audit 10.30.0.11"
     confidence_required: high
 
   - id: V4
     device: s3-wisgate
-    ip: "192.168.100.11"
+    ip: "10.30.0.11"
     role: iot_gateway
     title: "Interface HTTP admin sans authentification (WisGate simulé)"
     description: >
@@ -106,12 +106,12 @@ vulnerabilities:
       - "GET /admin → 200 'Admin panel — no auth required'"
       - "GET /api/devices → liste JSON des devices du réseau"
       - "GET /api/status → forwarding vers DB (100.14:3306) exposé"
-    verification: "curl http://192.168.100.11/api/devices"
+    verification: "curl http://10.30.0.11/api/devices"
     confidence_required: medium
 
   - id: V5
     device: s3-rpi5
-    ip: "192.168.100.12"
+    ip: "10.30.0.12"
     role: mqtt_broker
     title: "MQTT sans authentification (RPi5)"
     description: >
@@ -124,16 +124,16 @@ vulnerabilities:
     mitre_ics: "Initial Access, Collection"
     cve: null
     indicators:
-      - "Port 1883/tcp ouvert sur 192.168.100.12"
+      - "Port 1883/tcp ouvert sur 10.30.0.12"
       - "Connexion anonyme acceptée"
       - "Topics smartcity/# publiés en continu (données capteurs)"
       - "Topic smartcity/admin/credentials expose des secrets"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    verification: "mosquitto_sub -h 10.30.0.12 -t '#' -v"
     confidence_required: high
 
   - id: V6
     device: s3-iot-hub
-    ip: "192.168.100.13"
+    ip: "10.30.0.13"
     role: mqtt_broker
     title: "MQTT sans authentification (IoT Hub)"
     description: >
@@ -145,14 +145,14 @@ vulnerabilities:
     mitre_ics: "Initial Access, Collection"
     cve: null
     indicators:
-      - "Port 1883/tcp ouvert sur 192.168.100.13"
+      - "Port 1883/tcp ouvert sur 10.30.0.13"
       - "Connexion anonyme acceptée"
-    verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v"
+    verification: "mosquitto_sub -h 10.30.0.13 -t '#' -v"
     confidence_required: high
 
   - id: V7
     device: s3-jetson
-    ip: "192.168.100.14"
+    ip: "10.30.0.14"
     role: ssh_server
     title: "Credentials SSH par défaut sur Jetson (admin/admin)"
     description: >
@@ -165,15 +165,15 @@ vulnerabilities:
     mitre_ics: "Initial Access, Collection"
     cve: null
     indicators:
-      - "Port 22/tcp ouvert sur 192.168.100.14"
+      - "Port 22/tcp ouvert sur 10.30.0.14"
       - "Login SSH admin:admin réussi"
       - "/etc/iot/config.json expose mqtt.broker, database.host/user/password, api_key"
-    verification: "ssh admin@192.168.100.14 && cat /etc/iot/config.json"
+    verification: "ssh admin@10.30.0.14 && cat /etc/iot/config.json"
     confidence_required: high
 
   - id: V8
     device: s3-ap
-    ip: "192.168.100.15"
+    ip: "10.30.0.15"
     role: web_server
     title: "Directory listing nginx (Access Point simulé)"
     description: >
@@ -185,15 +185,15 @@ vulnerabilities:
     mitre_ics: "Collection"
     cve: null
     indicators:
-      - "Port 80/tcp ouvert sur 192.168.100.15"
+      - "Port 80/tcp ouvert sur 10.30.0.15"
       - "GET /backup/ retourne listing"
       - "GET /config/app.config expose credentials"
-    verification: "curl http://192.168.100.15/backup/"
+    verification: "curl http://10.30.0.15/backup/"
     confidence_required: medium
 
   - id: V9
     device: s3-cam
-    ip: "192.168.100.16"
+    ip: "10.30.0.16"
     role: web_server
     title: "Directory listing nginx (Caméra IP simulée)"
     description: >
@@ -205,14 +205,14 @@ vulnerabilities:
     mitre_ics: "Collection"
     cve: null
     indicators:
-      - "Port 80/tcp ouvert sur 192.168.100.16"
+      - "Port 80/tcp ouvert sur 10.30.0.16"
       - "GET /backup/db_backup_2024-01-15.sql accessible"
-    verification: "curl http://192.168.100.16/backup/"
+    verification: "curl http://10.30.0.16/backup/"
     confidence_required: medium
 
   - id: V10
     device: s3-nvr
-    ip: "192.168.100.17"
+    ip: "10.30.0.17"
     role: nvr_server
     title: "Credentials SSH par défaut sur NVR (ubnt/ubnt, Ubiquiti défaut)"
     description: >
@@ -225,15 +225,15 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 22/tcp ouvert sur 192.168.100.17"
+      - "Port 22/tcp ouvert sur 10.30.0.17"
       - "Login SSH ubnt:ubnt réussi"
       - "/opt/nvr/config/system.json expose admin_password et la liste des caméras"
-    verification: "ssh ubnt@192.168.100.17 (password: ubnt)"
+    verification: "ssh ubnt@10.30.0.17 (password: ubnt)"
     confidence_required: high
 
   - id: V11
     device: s3-jetson
-    ip: "192.168.100.14"
+    ip: "10.30.0.14"
     role: ssh_server
     title: "Privilege escalation — SUID binary + cron writable"
     description: >
@@ -255,7 +255,7 @@ vulnerabilities:
 
   - id: V12
     device: s3-rpi5
-    ip: "192.168.100.12"
+    ip: "10.30.0.12"
     role: mqtt_broker
     title: "MQTT $SYS topics accessibles (info disclosure)"
     description: >
@@ -267,12 +267,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t '$SYS/#' retourne des métriques broker"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '$SYS/#' -v -C 5"
+    verification: "mosquitto_sub -h 10.30.0.12 -t '$SYS/#' -v -C 5"
     confidence_required: low
 
   - id: V13
     device: s3-ap
-    ip: "192.168.100.15"
+    ip: "10.30.0.15"
     role: web_server
     title: "Server version disclosure (nginx)"
     description: >
@@ -284,12 +284,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Header Server contient nginx/ suivi d'un numéro de version"
-    verification: "curl -sI http://192.168.100.15/ | grep Server"
+    verification: "curl -sI http://10.30.0.15/ | grep Server"
     confidence_required: low
 
   - id: V14
     device: s3-wisgate
-    ip: "192.168.100.11"
+    ip: "10.30.0.11"
     role: iot_gateway
     title: "Firmware OTA sans signature ni authentification"
     description: >
@@ -303,12 +303,12 @@ vulnerabilities:
     indicators:
       - "GET /firmware/ liste firmware.bin sans signature"
       - "POST /update accepté sans vérification"
-    verification: "curl http://192.168.100.11/firmware/"
+    verification: "curl http://10.30.0.11/firmware/"
     confidence_required: medium
 
   - id: V15
     device: s3-rpi5
-    ip: "192.168.100.12"
+    ip: "10.30.0.12"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT"
     description: >
@@ -321,12 +321,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
-    verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 10.30.0.12 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V16
     device: s3-iot-hub
-    ip: "192.168.100.13"
+    ip: "10.30.0.13"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT"
     description: >
@@ -339,12 +339,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
-    verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 10.30.0.13 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V17
     device: s3-ap
-    ip: "192.168.100.15"
+    ip: "10.30.0.15"
     role: web_server
     title: "Directory listing activé (nginx autoindex on)"
     description: >
@@ -358,12 +358,12 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert"
       - "GET /backup/ retourne un listing"
-    verification: "curl http://192.168.100.15/backup/"
+    verification: "curl http://10.30.0.15/backup/"
     confidence_required: medium
 
   - id: V18
     device: s3-cam
-    ip: "192.168.100.16"
+    ip: "10.30.0.16"
     role: web_server
     title: "Directory listing activé (nginx autoindex on)"
     description: >
@@ -377,7 +377,7 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert"
       - "GET /backup/ retourne un listing"
-    verification: "curl http://192.168.100.16/backup/"
+    verification: "curl http://10.30.0.16/backup/"
     confidence_required: medium
 
 attack_paths:
@@ -396,7 +396,7 @@ attack_paths:
     title: "Découverte réseau via API WisGate → pivot DB"
     difficulty: medium
     chain:
-      - { hop: 1, device: "Internet",            action: "HTTP vers 192.168.100.11"         }
+      - { hop: 1, device: "Internet",            action: "HTTP vers 10.30.0.11"         }
       - { hop: 2, device: "s3-wisgate (100.11)", action: "GET /api/status → 100.14:3306"   }
       - { hop: 3, device: "s3-wisgate (100.11)", action: "GET /api/devices → topologie"    }
     vulnerabilities_used: [V4]

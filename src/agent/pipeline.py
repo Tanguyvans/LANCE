@@ -91,8 +91,13 @@ class Pipeline:
             lab = load_scenario_topology(self.scenario_id)
         else:
             lab = load_lab_context()
-        # target_subnet: benchmark network when a scenario is active, real lab otherwise
-        target_subnet = "192.168.100.0/24" if self.scenario_id is not None else "192.168.88.0/24"
+        # target_subnet: per-VLAN subnet when a scenario is active, real lab otherwise
+        if self.scenario_id is not None:
+            from src.agent.tools.graph_tools import _get_scenario_subnet
+            prefix = _get_scenario_subnet(int(self.scenario_id))
+            target_subnet = f"{prefix}.0/24"
+        else:
+            target_subnet = "192.168.88.0/24"
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
@@ -271,10 +276,10 @@ class Pipeline:
         return success
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
-        """Deploy and configure benchmark scenario VMs before pipeline starts."""
-        # Pre-teardown any running scenario to avoid conflicts on shared network
-        self._teardown_all_running_scenarios(stream_callback)
+        """Deploy and configure benchmark scenario VMs before pipeline starts.
 
+        Each scenario runs on its own VLAN — no need for pre-teardown.
+        """
         # 03 — deploy VMs
         ok = self._run_playbook("03_deploy_scenario.yml", stream_callback, "deploy_start", "deploy_done")
         if not ok:
@@ -291,9 +296,15 @@ class Pipeline:
         return True
 
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
-        """Teardown any currently running scenario before deploying a new one."""
+        """Deprecated: no longer needed with VLAN isolation.
+
+        Each scenario runs on its own VLAN, so no conflicts are possible.
+        Kept as no-op for backwards compatibility.
+        """
+        return
+
+        # Legacy code below — kept for reference but never executed
         repo_root = Path(__file__).resolve().parents[2]
-        # Load all scenario IDs dynamically from group_vars
         import yaml as _yaml
         all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
         try:
@@ -469,7 +480,7 @@ class Pipeline:
                 vuln = {
                     "id": f"V{vuln_counter}",
                     "device": router.get("name_template", "router").format(sid=sid),
-                    "ip": router.get("ip", "192.168.100.1"),
+                    "ip": router.get("ip", "10.10.0.1"),
                     "role": "router",
                 }
                 for key, val in vt.items():
@@ -506,15 +517,19 @@ class Pipeline:
             log.warning("Scenario ground truth not found: %s", gt_path)
             return ""
         data = yaml.safe_load(gt_path.read_text())
+        from src.agent.tools.graph_tools import _get_scenario_subnet
+        subnet_prefix = _get_scenario_subnet(int(scenario_id))
+        target_subnet = f"{subnet_prefix}.0/24"
+        router_ip = f"{subnet_prefix}.1"
         lines = [
             f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
-            f"Scan network: 192.168.100.0/24 (NOT 192.168.88.0/24 — that is the physical lab)",
-            f"Gateway: 192.168.100.1 (OpenWrt router)",
+            f"Scan network: {target_subnet} (NOT 192.168.88.0/24 — that is the physical lab)",
+            f"Gateway: {router_ip} (OpenWrt router)",
             "Known target hosts (scan ALL of them):",
         ]
         router = data.get("topology", {}).get("router", {})
         if router:
-            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', '192.168.100.1')}) — role: router")
+            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', router_ip)}) — role: router")
         for svc in data.get("topology", {}).get("services", []):
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)

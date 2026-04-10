@@ -13,20 +13,20 @@ topology:
   router:
     name: s2-router
     vmid: 110
-    ip: "192.168.100.1"
+    ip: "10.20.0.1"
     type: openwrt
   services:
-    - { name: s2-web,    vmid: 111, ip: "192.168.100.11", role: web_server   }
-    - { name: s2-mqtt,   vmid: 112, ip: "192.168.100.12", role: mqtt_broker  }
-    - { name: s2-iot-gw, vmid: 113, ip: "192.168.100.13", role: iot_gateway  }
-    - { name: s2-db,     vmid: 114, ip: "192.168.100.14", role: db_server    }
-    - { name: s2-jump,   vmid: 115, ip: "192.168.100.15", role: ssh_server   }
+    - { name: s2-web,    vmid: 111, ip: "10.20.0.11", role: web_server   }
+    - { name: s2-mqtt,   vmid: 112, ip: "10.20.0.12", role: mqtt_broker  }
+    - { name: s2-iot-gw, vmid: 113, ip: "10.20.0.13", role: iot_gateway  }
+    - { name: s2-db,     vmid: 114, ip: "10.20.0.14", role: db_server    }
+    - { name: s2-jump,   vmid: 115, ip: "10.20.0.15", role: ssh_server   }
 
 vulnerabilities:
 
   - id: V1
     device: s2-router
-    ip: "192.168.100.1"
+    ip: "10.20.0.1"
     role: router
     title: "Interface web admin OpenWrt accessible depuis le WAN"
     description: >
@@ -45,7 +45,7 @@ vulnerabilities:
 
   - id: V2
     device: s2-router
-    ip: "192.168.100.1"
+    ip: "10.20.0.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -57,13 +57,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 192.168.100.1"
-    verification: "nmap -p 23 192.168.100.1"
+      - "Port 23/tcp ouvert sur 10.20.0.1"
+    verification: "nmap -p 23 10.20.0.1"
     confidence_required: medium
 
   - id: V3
     device: s2-mqtt
-    ip: "192.168.100.12"
+    ip: "10.20.0.12"
     role: mqtt_broker
     title: "MQTT sans authentification"
     description: >
@@ -78,12 +78,12 @@ vulnerabilities:
       - "Port 1883/tcp ouvert"
       - "Connexion anonyme acceptée"
       - "Topic smartcity/admin/credentials expose des secrets"
-    verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
+    verification: "mosquitto_sub -h 10.20.0.12 -t '#' -v"
     confidence_required: high
 
   - id: V4
     device: s2-iot-gw
-    ip: "192.168.100.13"
+    ip: "10.20.0.13"
     role: iot_gateway
     title: "Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)"
     description: >
@@ -100,12 +100,12 @@ vulnerabilities:
       - "Port 22/tcp ouvert"
       - "Banner SSH : dropbear_2020.81 ou version <= 2022.82"
       - "Algorithmes chacha20-poly1305 et CBC avec ETM disponibles"
-    verification: "ssh-audit 192.168.100.13 | grep -i terrapin"
+    verification: "ssh-audit 10.20.0.13 | grep -i terrapin"
     confidence_required: high
 
   - id: V5
     device: s2-iot-gw
-    ip: "192.168.100.13"
+    ip: "10.20.0.13"
     role: iot_gateway
     title: "Interface HTTP admin sans authentification (port 80)"
     description: >
@@ -121,12 +121,12 @@ vulnerabilities:
       - "GET /admin retourne 200 avec message 'no auth required'"
       - "GET /api/devices expose la liste des devices du réseau"
       - "GET /api/status expose les connexions internes"
-    verification: "curl http://192.168.100.13/admin"
+    verification: "curl http://10.20.0.13/admin"
     confidence_required: medium
 
   - id: V6
     device: s2-db
-    ip: "192.168.100.14"
+    ip: "10.20.0.14"
     role: db_server
     title: "MariaDB root sans mot de passe, accessible réseau"
     description: >
@@ -140,14 +140,14 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 3306/tcp ouvert et accessible réseau"
-      - "mysql -h 192.168.100.14 -u root sans mot de passe fonctionne"
+      - "mysql -h 10.20.0.14 -u root sans mot de passe fonctionne"
       - "Table users contient passwords en clair (P@ssw0rd123, operator123)"
-    verification: "mysql -h 192.168.100.14 -u root -e 'SELECT * FROM smartcity.users;'"
+    verification: "mysql -h 10.20.0.14 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: high
 
   - id: V7
     device: s2-jump
-    ip: "192.168.100.15"
+    ip: "10.20.0.15"
     role: ssh_server
     title: "Credentials SSH par défaut (admin/admin)"
     description: >
@@ -162,12 +162,12 @@ vulnerabilities:
       - "Port 22/tcp ouvert"
       - "Connexion SSH réussie avec admin:admin"
       - "PasswordAuthentication yes"
-    verification: "ssh admin@192.168.100.15 (password: admin)"
+    verification: "ssh admin@10.20.0.15 (password: admin)"
     confidence_required: high
 
   - id: V8
     device: s2-web
-    ip: "192.168.100.11"
+    ip: "10.20.0.11"
     role: web_server
     title: "Directory listing + fichiers sensibles exposés"
     description: >
@@ -182,12 +182,12 @@ vulnerabilities:
       - "GET /backup/ retourne listing avec db_backup.sql"
       - "GET /config/app.config expose DB password, API key, SMTP credentials"
       - "GET /logs/access.log expose l'historique des accès"
-    verification: "curl http://192.168.100.11/backup/"
+    verification: "curl http://10.20.0.11/backup/"
     confidence_required: medium
 
   - id: V9
     device: s2-mqtt
-    ip: "192.168.100.12"
+    ip: "10.20.0.12"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT (data_exposure)"
     description: >
@@ -200,12 +200,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
-    verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 10.20.0.12 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V10
     device: s2-iot-gw
-    ip: "192.168.100.13"
+    ip: "10.20.0.13"
     role: iot_gateway
     title: "Endpoint OTA sans authentification ni vérification de signature (F10)"
     description: >
@@ -222,12 +222,12 @@ vulnerabilities:
       - "GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig"
       - "POST /update retourne 200 sans authentification"
       - "Aucune vérification d'intégrité du firmware uploadé"
-    verification: "curl http://192.168.100.13/firmware/ && curl -X POST http://192.168.100.13/update"
+    verification: "curl http://10.20.0.13/firmware/ && curl -X POST http://10.20.0.13/update"
     confidence_required: medium
 
   - id: V11
     device: s2-web
-    ip: "192.168.100.11"
+    ip: "10.20.0.11"
     role: web_server
     title: "Absence de security headers HTTP (X-Frame-Options, HSTS, CSP)"
     description: >
@@ -239,12 +239,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
-    verification: "curl -sI http://192.168.100.11/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
+    verification: "curl -sI http://10.20.0.11/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
     confidence_required: low
 
   - id: V12
     device: s2-web
-    ip: "192.168.100.11"
+    ip: "10.20.0.11"
     role: web_server
     title: "Server version disclosure (nginx)"
     description: >
@@ -256,12 +256,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Header Server contient nginx/ suivi d'un numéro de version"
-    verification: "curl -sI http://192.168.100.11/ | grep Server"
+    verification: "curl -sI http://10.20.0.11/ | grep Server"
     confidence_required: low
 
   - id: V13
     device: s2-web
-    ip: "192.168.100.11"
+    ip: "10.20.0.11"
     role: web_server
     title: "Directory listing activé (nginx autoindex on)"
     description: >
@@ -275,7 +275,7 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert"
       - "GET /backup/ retourne un listing de fichiers"
-    verification: "curl http://192.168.100.11/backup/"
+    verification: "curl http://10.20.0.11/backup/"
     confidence_required: medium
 
 attack_paths:
@@ -293,7 +293,7 @@ attack_paths:
     title: "Exfiltration DB via interface admin IoT Gateway"
     difficulty: medium
     chain:
-      - { hop: 1, device: "Internet",           action: "HTTP vers 192.168.100.13/api/status" }
+      - { hop: 1, device: "Internet",           action: "HTTP vers 10.20.0.13/api/status" }
       - { hop: 2, device: "s2-iot-gw (100.13)", action: "Récupération topologie réseau interne" }
       - { hop: 3, device: "s2-db (100.14)",     action: "Connexion MySQL root sans password"   }
       - { hop: 4, device: "s2-db (100.14)",     action: "SELECT * FROM users → credentials"   }

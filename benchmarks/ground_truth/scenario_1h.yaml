@@ -7,20 +7,20 @@ topology:
   router:
     name: s1h-router
     vmid: 100
-    ip: 192.168.100.1
+    ip: 10.10.0.1
     type: openwrt
   services:
   - name: s1h-mqtt
     vmid: 101
-    ip: 192.168.100.11
+    ip: 10.10.0.11
     role: mqtt_broker
   - name: s1h-web
     vmid: 102
-    ip: 192.168.100.12
+    ip: 10.10.0.12
     role: web_server
   - name: s1h-ssh
     vmid: 103
-    ip: 192.168.100.13
+    ip: 10.10.0.13
     role: ssh_server
 vulnerabilities: []
 attack_paths: []

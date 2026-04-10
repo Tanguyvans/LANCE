@@ -1273,3 +1273,64 @@ button:disabled { opacity: .4; cursor: default; }
   .run-item { min-height: 44px; display: flex; flex-direction: column; justify-content: center; }
   .run-download { min-height: 44px !important; }
 }
+
+/* ── Run tabs bar ─────────────────────────────────────────────────────────── */
+#run-tabs-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  overflow-x: auto;
+}
+#run-tabs {
+  display: flex;
+  gap: 2px;
+  align-items: stretch;
+}
+.run-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+.run-tab:hover { color: var(--text); background: var(--white-hover); }
+.run-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.run-tab .tab-status {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+.run-tab .tab-status.done { background: var(--muted); }
+.run-tab .tab-status.failed { background: var(--red); }
+.run-tab .tab-close {
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.run-tab .tab-close:hover { color: var(--red); }
+
+#btn-start-all {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+#btn-start-all:hover { background: var(--accent-bg-20); }
+#btn-start-all:disabled { opacity: 0.5; cursor: not-allowed; }

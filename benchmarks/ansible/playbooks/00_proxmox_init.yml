@@ -58,7 +58,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Créer le bridge vmbr1 (réseau interne benchmark, sans IP — OpenWrt sera 192.168.100.1)
+    - name: Créer le bridge vmbr1 (VLAN-aware, isolation par scénario)
       ansible.builtin.blockinfile:
         path: /etc/network/interfaces
         marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
@@ -68,7 +68,8 @@
               bridge-ports none
               bridge-stp off
               bridge-fd 0
-              # Bridge interne pour les VMs benchmark (pas de NIC physique)
+              bridge-vlan-aware yes
+              # Bridge VLAN-aware pour isolation des scénarios benchmark
       when: bridge_check.rc != 0
 
     - name: Activer le bridge vmbr1 immédiatement (sans reboot)
