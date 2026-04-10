@@ -85,9 +85,25 @@
         --net1 virtio,bridge={{ benchmark_bridge }},tag={{ vlan.vlan_id }}
       when: router_check.rc != 0
 
-    - name: Démarrer le router OpenWrt
+    - name: Démarrer le router OpenWrt (nouveau clone)
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
+
+    - name: Vérifier si le router existant est bien en cours d'exécution
+      ansible.builtin.command: qm status {{ base_vmid }}
+      register: router_status
+      changed_when: false
+      when: router_check.rc == 0
+
+    - name: Démarrer le router OpenWrt existant s'il est arrêté
+      ansible.builtin.command: qm start {{ base_vmid }}
+      register: router_restarted
+      when: router_check.rc == 0 and 'running' not in router_status.stdout
+
+    - name: Attendre le boot du router redémarré
+      ansible.builtin.pause:
+        seconds: 20
+      when: router_restarted is changed
 
     # Ajouter une IP temporaire dans le subnet du scénario pour pouvoir pinger le router
     - name: Ajouter IP temporaire VLAN ({{ subnet }}.254) pour diagnostic router
@@ -183,12 +199,33 @@
         index_var: idx
       when: ct_checks.results[idx].rc != 0
 
-    - name: Démarrer chaque CT service
+    - name: Démarrer chaque CT service (nouveau clone)
       ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
+
+    - name: Vérifier le statut de chaque CT existant
+      ansible.builtin.command: pct status {{ base_vmid | int + item.vmid_offset }}
+      register: ct_status
+      changed_when: false
+      failed_when: false
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when: ct_checks.results[idx].rc == 0
+
+    - name: Démarrer chaque CT existant s'il est arrêté
+      ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when: >-
+        ct_checks.results[idx].rc == 0
+        and ct_status.results[idx].stdout is defined
+        and 'running' not in ct_status.results[idx].stdout
+      failed_when: false
 
     - name: Attendre que chaque CT soit prêt (SSH actif)
       ansible.builtin.command: >-
