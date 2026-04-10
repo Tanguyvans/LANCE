@@ -1,0 +1,81 @@
+scenario_id: '1'
+name: Réseau plat
+difficulty: easy
+posture: vulnerable
+topology: flat
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f6_crypto
+- f8_info_disclosure
+attack_paths:
+- id: P1
+  title: Accès MQTT via routeur compromis
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Telnet vers routeur
+  - hop: 2
+    device: s1-router (100.1)
+    action: Accès admin via Telnet
+  - hop: 3
+    device: s1-mqtt (100.11)
+    action: Subscribe MQTT sans auth
+  vulnerabilities_used:
+  - V5
+  - V1
+  impact: Lecture/écriture de tous les topics IoT, exfiltration des credentials admin
+- id: P2
+  title: Exfiltration de données via serveur web
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion HTTP port 80
+  - hop: 2
+    device: s1-web (100.12)
+    action: Directory listing /backup/
+  - hop: 3
+    device: s1-web (100.12)
+    action: Download db_backup.sql + app.config
+  vulnerabilities_used:
+  - V2
+  - V3
+  impact: Récupération de tous les credentials (DB, API, SMTP)
+- id: P3
+  title: Compromission SSH + pivot réseau
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion SSH port 22
+  - hop: 2
+    device: s1-ssh (100.13)
+    action: Login admin:admin
+  - hop: 3
+    device: s1-ssh (100.13)
+    action: Lecture /etc/iot/config.json → credentials DB, MQTT, API
+  vulnerabilities_used:
+  - V4
+  impact: Accès root au device IoT, pivot vers MQTT et DB via credentials exfiltrés
+- id: P4
+  title: 'Chaîne complète : MQTT → credentials → SSH → pivot'
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT sans auth
+  - hop: 2
+    device: s1-mqtt (100.11)
+    action: Écoute topic admin/credentials
+  - hop: 3
+    device: s1-ssh (100.13)
+    action: Login SSH avec credentials récupérés
+  vulnerabilities_used:
+  - V1
+  - V4
+  impact: Compromission complète du réseau depuis un seul vecteur MQTT
+bonus_types:
+- weak_cipher

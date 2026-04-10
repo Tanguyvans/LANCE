@@ -1,0 +1,37 @@
+id: ics_scada
+name: Réseau segmenté
+description: Convergence IT/OT avec PLC Modbus et SCADA, 7-8 devices
+base_vmid: 130
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.100.1
+services:
+- name_template: s{sid}-admin
+  vmid_offset: 1
+  ip: 192.168.100.11
+  role: ssh_server
+- name_template: s{sid}-webapp
+  vmid_offset: 2
+  ip: 192.168.100.12
+  role: web_upload
+- name_template: s{sid}-mqtt
+  vmid_offset: 3
+  ip: 192.168.100.13
+  role: mqtt_broker
+- name_template: s{sid}-lora-gw
+  vmid_offset: 4
+  ip: 192.168.100.14
+  role: iot_gateway
+- name_template: s{sid}-plc
+  vmid_offset: 5
+  ip: 192.168.100.15
+  role: modbus_server
+- name_template: s{sid}-hmi
+  vmid_offset: 6
+  ip: 192.168.100.16
+  role: web_server
+- name_template: s{sid}-historian
+  vmid_offset: 7
+  ip: 192.168.100.17
+  role: db_server

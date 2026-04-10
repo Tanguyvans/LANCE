@@ -1,0 +1,413 @@
+id: f1_weak_auth
+name: Weak Authentication
+vulnerabilities:
+  camera_server:
+  - title: Caméra IP sans authentification (Hikvision simulé)
+    severity: high
+    category: no_authentication
+    owasp_iot: I1 - Weak Passwords / I9 - Insecure Default Settings
+    mitre_ics: T0801 - Monitor Process State
+    description: Caméra IP avec interface HTTP accessible sans authentification. L'endpoint
+      /admin répond sans credentials. L'API /api/info expose le modèle, le firmware,
+      l'URL RTSP avec credentials admin:admin, et confirme que auth_required est false.
+      /config/camera.conf expose les credentials de connexion au NVR (ubnt/ubnt).
+    indicators:
+    - Port 80/tcp ouvert
+    - GET /admin répond sans authentification
+    - GET /api/info expose rtsp://admin:admin@... et auth_required=false
+    - GET /config/camera.conf expose credentials NVR (ubnt/ubnt)
+    verification: curl http://{ip}/admin && curl http://{ip}/api/info
+    confidence_required: high
+    scenarios:
+    - '5'
+  - title: Caméra IP sans authentification (identique cam1)
+    severity: high
+    category: no_authentication
+    owasp_iot: I1 - Weak Passwords / I9 - Insecure Default Settings
+    mitre_ics: T0801 - Monitor Process State
+    description: Deuxième caméra IP avec les mêmes vulnérabilités que cam1. Interface
+      HTTP sans auth, API expose credentials RTSP et NVR.
+    indicators:
+    - Port 80/tcp ouvert
+    - GET /admin répond sans authentification
+    - GET /api/info expose credentials
+    verification: curl http://{ip}/api/info
+    confidence_required: high
+    scenarios:
+    - '5'
+  coap_server:
+  - title: CoAP — contrôle d'actionneur sans authentification
+    severity: high
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Impair Process Control
+    description: L'endpoint POST /actuator/valve permet d'ouvrir/fermer des vannes
+      physiques sans aucune authentification ni autorisation.
+    indicators:
+    - POST coap://{ip}/actuator/valve accepté sans auth
+    verification: coap-client -m post coap://{ip}/actuator/valve
+    confidence_required: high
+    scenarios:
+    - '9'
+  db_server:
+  - title: MariaDB root sans mot de passe, accessible réseau
+    severity: critical
+    category: default_credentials
+    owasp_iot: I1 - Weak Passwords
+    mitre_ics: Collection, Impact
+    description: MariaDB configuré avec un compte root sans mot de passe. bind-address
+      = 0.0.0.0 permet les connexions depuis tout le réseau. La base smartcity contient
+      des credentials en clair dans la table users.
+    indicators:
+    - Port 3306/tcp ouvert et accessible réseau
+    - mysql -h {ip} -u root sans mot de passe fonctionne
+    - Table users contient passwords en clair (P@ssw0rd123, operator123)
+    verification: mysql -h {ip} -u root -e 'SELECT * FROM smartcity.users;'
+    confidence_required: high
+    scenarios:
+    - '2'
+    - '6'
+  - title: Historian DB — MariaDB root sans mot de passe (bind 0.0.0.0)
+    severity: critical
+    category: default_credentials
+    owasp_iot: I1 - Weak Passwords
+    mitre_ics: T0801 - Monitor Process State, Collection
+    description: 'Base de données historique industrielle MariaDB avec accès root
+      sans mot de passe. Bind sur 0.0.0.0 : accessible depuis tout le réseau. Contient
+      les données historiques process, les credentials utilisateurs en clair et les
+      configurations réseau.'
+    indicators:
+    - Port 3306/tcp ouvert
+    - 'Connexion réussie : mysql -h {ip} -u root (sans password)'
+    - Table smartcity.users contient passwords en clair
+    - bind-address = 0.0.0.0 dans la config MariaDB
+    verification: mysql -h {ip} -u root -e 'SELECT * FROM smartcity.users'
+    confidence_required: high
+    scenarios:
+    - '4'
+  - title: MariaDB root sans mot de passe avec données PII accessibles réseau
+    severity: high
+    category: default_credentials
+    owasp_iot: I6 - Insufficient Privacy Protection / I1 - Weak Passwords
+    mitre_ics: Collection
+    description: MariaDB accessible depuis tout le réseau (bind-address = 0.0.0.0).
+      La base smartcity contient des données PII non chiffrées (noms, emails, tokens
+      d'accès, historique des événements) dans les tables users et access_events.
+    indicators:
+    - Port 3306/tcp ouvert et accessible réseau
+    - mysql -h {ip} -u root sans mot de passe fonctionne
+    - Table users contient emails, passwords en clair, tokens API
+    verification: mysql -h {ip} -u root -e 'SELECT * FROM smartcity.users;'
+    confidence_required: medium
+    scenarios:
+    - '7'
+  - title: MariaDB root sans mot de passe (port 3306)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Collection
+    description: MariaDB accepte les connexions root sans mot de passe depuis n'importe
+      quelle IP. L'historien OT stocke les données de process industriels.
+    indicators:
+    - Port 3306/tcp ouvert
+    - Connexion MySQL réussie avec root sans mot de passe
+    - bind-address = 0.0.0.0
+    verification: mysql -h {ip} -u root -e 'SELECT 1'
+    confidence_required: high
+    scenarios:
+    - '8'
+  db_server_v2:
+  - title: Redis sans authentification (port 6379)
+    severity: high
+    category: no_authentication
+    owasp_iot: I1 - Weak Passwords / I9 - Insecure Default Settings
+    mitre_ics: Collection
+    description: 'Redis exposé sur toutes les interfaces sans mot de passe (protected-mode
+      no). Contient des données sensibles : credentials DB, API keys, sessions admin,
+      secrets IoT. Permet la lecture et l''écriture de données arbitraires.'
+    indicators:
+    - Port 6379/tcp ouvert
+    - redis-cli sans auth retourne PONG
+    - KEYS * expose des clés sensibles (config:db_password, session:admin)
+    verification: redis-cli -h {ip} KEYS '*'
+    confidence_required: high
+    scenarios:
+    - '8'
+  iot_gateway:
+  - title: Interface HTTP admin sans authentification
+    severity: high
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Discovery
+    description: nginx expose /admin, /api/devices, /api/status sans authentification.
+      L'endpoint /api/devices révèle les IPs de tous les devices du réseau.
+    indicators:
+    - Port 80/tcp ouvert
+    - GET /admin retourne un panel sans auth
+    - GET /api/devices retourne la liste des IPs
+    verification: curl http://{ip}/api/devices
+    confidence_required: high
+    scenarios:
+    - '8'
+  modbus_server:
+  - title: PLC Modbus TCP sans authentification (port 502)
+    severity: critical
+    category: no_authentication
+    owasp_iot: I2 - Insecure Network Services
+    mitre_ics: T0836 - Modify Parameter, T0831 - Manipulation of Control
+    description: Serveur Modbus TCP accessible sans aucune authentification. Un attaquant
+      peut lire et écrire tous les registres du PLC (holding registers, coils), y
+      compris les setpoints de process et le coil d'arrêt d'urgence (coil[0]). Lecture
+      des programmes PLC dans /opt/plc/programs/main.st.
+    indicators:
+    - Port 502/tcp ouvert
+    - Lecture Modbus sans authentification (FC1/FC3/FC4)
+    - Écriture Modbus sans authentification (FC5/FC6/FC16)
+    - Coil[0] = emergency stop — modifiable à distance
+    - /opt/plc/config/plc_config.json accessible — credentials SCADA exposés
+    verification: python3 -c "from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('{ip}');
+      c.connect(); print(c.read_holding_registers(0,10))"
+    confidence_required: high
+    scenarios:
+    - '4'
+  - title: Modbus TCP sans authentification (port 502)
+    severity: critical
+    category: no_authentication
+    owasp_iot: I1 - Weak Passwords / I9 - Insecure Default Settings
+    mitre_ics: Impair Process Control, Inhibit Response Function
+    description: Serveur Modbus TCP exposé sur le port 502 sans aucune authentification.
+      Permet la lecture et l'écriture de registres industriels (coils, holding registers).
+    indicators:
+    - Port 502/tcp ouvert
+    - Lecture de registres Modbus sans authentification
+    - Écriture de coils possible (commande d'actionneurs)
+    verification: nmap -p 502 --script modbus-discover {ip}
+    confidence_required: high
+    scenarios:
+    - '8'
+  mqtt_broker_v2:
+  - title: MQTT avec credentials faibles (test:test)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Initial Access, Collection
+    description: Mosquitto avec authentification activée mais credentials triviaux
+      (test/test, admin/admin123). Un brute-force basique ou des credentials par défaut
+      donnent accès complet au broker.
+    indicators:
+    - Port 1883/tcp ouvert
+    - allow_anonymous false
+    - Connexion réussie avec test:test
+    - Topics sensibles accessibles après authentification
+    verification: mosquitto_sub -h {ip} -u test -P test -t '#' -v -C 3
+    confidence_required: high
+    scenarios:
+    - '10'
+    - '8'
+  - title: MQTT avec credentials faibles (test:test) — nœud mesh 2
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Initial Access, Collection
+    description: Mosquitto avec authentification activée mais credentials triviaux
+      (test/test). Nœud mesh central — les messages des 2 autres brokers transitent
+      par celui-ci.
+    indicators:
+    - Port 1883/tcp ouvert
+    - allow_anonymous false mais credentials triviaux
+    - Connexion réussie avec test:test
+    verification: mosquitto_sub -h {ip} -u test -P test -t '#' -v -C 3
+    confidence_required: high
+    scenarios:
+    - '9'
+  nodered_server:
+  - title: Node-RED sans authentification (port 1880)
+    severity: critical
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces / I9 - Insecure Default Settings
+    mitre_ics: Execution, Initial Access
+    description: Node-RED exposé sur le port 1880 sans aucune authentification (pas
+      d'adminAuth). L'éditeur de flows est accessible publiquement, permettant la
+      création de flows avec des nœuds exec (RCE) et l'accès aux variables d'environnement.
+    indicators:
+    - Port 1880/tcp ouvert
+    - GET /admin retourne l'éditeur Node-RED sans auth
+    - Flows contiennent des nœuds exec (exécution de commandes)
+    verification: curl http://{ip}:1880/admin
+    confidence_required: high
+    scenarios:
+    - '10'
+  nvr_server:
+  - title: Credentials SSH par défaut sur NVR (ubnt/ubnt, Ubiquiti défaut)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Initial Access
+    description: Compte ubnt avec mot de passe ubnt (credentials par défaut Ubiquiti
+      UniFi NVR). PermitRootLogin yes, PasswordAuthentication yes. /opt/nvr/config/system.json
+      expose admin_password et la liste des caméras.
+    indicators:
+    - Port 22/tcp ouvert sur {ip}
+    - Login SSH ubnt:ubnt réussi
+    - /opt/nvr/config/system.json expose admin_password et la liste des caméras
+    verification: 'ssh ubnt@{ip} (password: ubnt)'
+    confidence_required: high
+    scenarios:
+    - '3'
+  - title: NVR Ubiquiti UniFi avec credentials par défaut (ubnt/ubnt)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: T0822 - External Remote Services
+    description: Network Video Recorder avec credentials par défaut Ubiquiti (ubnt/ubnt).
+      PasswordAuthentication activé. Le fichier /opt/nvr/config/system.json expose
+      les credentials de toutes les caméras, le chemin des enregistrements, et les
+      credentials SMTP pour les alertes.
+    indicators:
+    - Port 22/tcp ouvert
+    - Connexion SSH réussie avec ubnt:ubnt
+    - /opt/nvr/config/system.json accessible — credentials caméras + SMTP exposés
+    - /opt/nvr/logs/nvr.log — historique des accès
+    verification: 'ssh ubnt@{ip} (password: ubnt)'
+    confidence_required: high
+    scenarios:
+    - '5'
+  snmp_server:
+  - title: SNMP community string par défaut (public/private)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords / I9 - Insecure Default Settings
+    mitre_ics: Discovery, Collection
+    description: 'Agent SNMP v2c avec community strings par défaut : ''public'' (lecture)
+      et ''private'' (lecture/écriture). Permet l''énumération complète du système
+      et potentiellement la modification de la configuration via SNMP SET.'
+    indicators:
+    - Port 161/udp ouvert
+    - snmpwalk avec community 'public' retourne des données
+    - Community 'private' permet l'écriture (rwcommunity)
+    verification: snmpwalk -v2c -c public {ip}
+    confidence_required: high
+    scenarios:
+    - '9'
+  ssh_server:
+  - title: Credentials SSH par défaut (admin/admin)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Initial Access
+    description: Un compte admin avec le mot de passe 'admin' est configuré. PasswordAuthentication
+      est activé. Le compte root utilise 'root' comme mot de passe. Le fichier /etc/iot/config.json
+      expose tous les credentials du réseau.
+    indicators:
+    - Port 22/tcp ouvert
+    - Connexion SSH réussie avec admin:admin
+    - Connexion SSH réussie avec root:root
+    - PasswordAuthentication yes dans /etc/ssh/sshd_config
+    verification: 'ssh admin@{ip} (password: admin)'
+    confidence_required: high
+    scenarios:
+    - '1'
+    - '2'
+    - '4'
+    - '7'
+  - title: Credentials SSH par défaut sur Jetson (admin/admin)
+    severity: high
+    category: default_credentials
+    owasp_iot: I1 - Weak/Hardcoded Passwords
+    mitre_ics: Initial Access, Collection
+    description: Compte admin:admin, root:root. PasswordAuthentication yes. Simule
+      le Jetson Orin du lab avec accès SSH direct. Le fichier /etc/iot/config.json
+      expose les credentials de tous les services.
+    indicators:
+    - Port 22/tcp ouvert sur {ip}
+    - Login SSH admin:admin réussi
+    - /etc/iot/config.json expose mqtt.broker, database.host/user/password, api_key
+    verification: ssh admin@{ip} && cat /etc/iot/config.json
+    confidence_required: high
+    scenarios:
+    - '3'
+  web_server:
+  - title: HMI SCADA accessible via HTTP sans authentification
+    severity: high
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: T0832 - Manipulation of View
+    description: 'Interface HMI (Human Machine Interface) SCADA accessible sans authentification.
+      Directory listing activé : expose les fichiers de configuration SCADA et les
+      données process.'
+    indicators:
+    - Port 80/tcp ouvert
+    - Interface SCADA HMI accessible sans login
+    - Directory listing exposant /config/ et /backup/
+    verification: curl http://{ip}/
+    confidence_required: medium
+    scenarios:
+    - '4'
+  - title: Contrôle d'accès bâtiment — HTTP sans authentification
+    severity: high
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: T0832 - Manipulation of View, T0831 - Manipulation of Control
+    description: Interface de contrôle d'accès (portes, badges) accessible via HTTP
+      sans authentification. Directory listing activé. Les fichiers de configuration
+      exposent les données des badges et les credentials des systèmes connectés.
+    indicators:
+    - Port 80/tcp ouvert
+    - Interface contrôle d'accès accessible sans login
+    - Directory listing activé sur /backup/ et /config/
+    verification: curl http://{ip}/
+    confidence_required: medium
+    scenarios:
+    - '5'
+  - title: Système HVAC — HTTP sans authentification
+    severity: medium
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: T0831 - Manipulation of Control
+    description: Système de climatisation/chauffage (HVAC) accessible via HTTP sans
+      authentification. Un attaquant peut accéder aux paramètres de régulation thermique
+      et aux données de consommation énergétique du bâtiment.
+    indicators:
+    - Port 80/tcp ouvert
+    - Interface HVAC accessible sans authentification
+    - Directory listing activé
+    verification: curl http://{ip}/
+    confidence_required: medium
+    scenarios:
+    - '5'
+  - title: BACnet/IP sans authentification (port 47808/UDP)
+    severity: high
+    category: no_authentication
+    owasp_iot: I2 - Insecure Network Services
+    mitre_ics: T0831 - Manipulation of Control, T0836 - Modify Parameter
+    description: Le contrôleur HVAC expose un service BACnet/IP sur le port 47808/UDP
+      sans authentification. Un attaquant peut lire/écrire les points de contrôle
+      BACnet (température consigne, état ventilation, mode chauffage). Protocole ICS
+      standard pour les bâtiments intelligents, sans mécanisme d'auth natif.
+    indicators:
+    - Port 47808/UDP ouvert
+    - Réponse BACnet I-Am à une requête Who-Is
+    - Lecture/écriture des objets BACnet sans authentification
+    verification: nmap -sU -p 47808 {ip}
+    confidence_required: medium
+    scenarios:
+    - '5'
+  web_server_v2:
+  - title: API REST sans authentification avec endpoints sensibles
+    severity: critical
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Execution, Collection
+    description: Flask API exposée sur port 80 sans aucune authentification. /api/users
+      retourne les credentials. /api/config expose la configuration. /api/exec permet
+      l'exécution de commandes arbitraires (RCE).
+    indicators:
+    - Port 80/tcp ouvert
+    - GET /api/users retourne credentials en clair
+    - GET /api/config retourne la config réseau
+    - POST /api/exec permet l'exécution de commandes
+    verification: curl http://{ip}/api/users
+    confidence_required: high
+    scenarios:
+    - '10'
+    - '8'

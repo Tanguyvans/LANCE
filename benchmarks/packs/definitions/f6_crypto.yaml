@@ -1,0 +1,58 @@
+id: f6_crypto
+name: Weak Cryptography & CVEs
+vulnerabilities:
+  iot_gateway:
+  - title: Dropbear SSH vulnérable (CVE-2023-48795 — Terrapin)
+    severity: high
+    category: cve
+    owasp_iot: I5 - Insecure/Outdated Components
+    mitre_ics: Initial Access
+    description: Dropbear version 2020.81 installé. Vulnérable à l'attaque Terrapin
+      (CVE-2023-48795) qui permet une attaque MITM sur la négociation SSH pour downgrader
+      les algorithmes de chiffrement.
+    cve: CVE-2023-48795
+    indicators:
+    - Port 22/tcp ouvert
+    - 'Banner SSH : dropbear_2020.81 ou version <= 2022.82'
+    - Algorithmes chacha20-poly1305 et CBC avec ETM disponibles
+    verification: ssh-audit {ip} | grep -i terrapin
+    confidence_required: high
+    scenarios:
+    - '2'
+    - '3'
+    - '7'
+  - title: Dropbear SSH 2020.81 vulnérable (Terrapin CVE-2023-48795)
+    severity: medium
+    category: cve
+    owasp_iot: I5 - Insecure/Outdated Components
+    mitre_ics: Initial Access
+    description: Dropbear 2020.81 vulnérable à l'attaque Terrapin (prefix truncation).
+    cve: CVE-2023-48795
+    indicators:
+    - Port 22/tcp — Dropbear 2020.81
+    - ssh-audit détecte Terrapin
+    verification: ssh-audit {ip}
+    confidence_required: high
+    scenarios:
+    - '4'
+    - '6'
+    - '8'
+  ssh_server:
+  - title: SSH — ciphers et algorithmes d'échange faibles (F6)
+    severity: low
+    category: weak_crypto
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: Serveur SSH configuré avec des ciphers dépréciés (3des-cbc, arcfour)
+      et des MACs faibles (hmac-md5, hmac-sha1). Détectable par ssh-audit. Facilite
+      les attaques de downgrade de chiffrement et l'interception de sessions.
+    indicators:
+    - Port 22/tcp ouvert
+    - ssh-audit détecte 3des-cbc, arcfour256, hmac-md5
+    - KexAlgorithms inclut diffie-hellman-group1-sha1
+    verification: ssh-audit {ip}
+    confidence_required: medium
+    scenarios:
+    - '1'
+    - '4'
+    - '7'

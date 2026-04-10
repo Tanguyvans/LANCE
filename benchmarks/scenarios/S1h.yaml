@@ -1,0 +1,9 @@
+scenario_id: "1h"
+name: "Reseau plat (hardened)"
+difficulty: control
+posture: hardened
+topology: flat
+packs:
+  - f0_hardened
+attack_paths: []
+bonus_types: []

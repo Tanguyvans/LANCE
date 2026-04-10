@@ -1,0 +1,90 @@
+id: f5_injection
+name: Code Injection
+vulnerabilities:
+  nodered_server:
+  - title: Node-RED exec node — exécution de commandes système (RCE)
+    severity: critical
+    category: code_injection
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Execution
+    description: Les flows Node-RED contiennent des nœuds exec qui exécutent des commandes
+      shell. Un attaquant peut créer ou modifier des flows pour exécuter du code arbitraire
+      via l'éditeur sans authentification.
+    indicators:
+    - Flow IoT Control contient un nœud exec
+    - 'Commandes exécutées : hostname, uptime, cat /etc/os-release'
+    - Possibilité d'ajouter de nouveaux nœuds exec
+    verification: curl http://{ip}:1880/flows
+    confidence_required: high
+    scenarios:
+    - '10'
+  web_server_v2:
+  - title: Exécution de commandes via API REST (RCE)
+    severity: critical
+    category: code_injection
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Execution
+    description: L'endpoint POST /api/exec exécute des commandes shell arbitraires
+      sans authentification. Compromission complète du serveur.
+    indicators:
+    - POST /api/exec avec {"cmd":"id"} retourne uid=0(root)
+    verification: 'curl -X POST http://{ip}/api/exec -H ''Content-Type: application/json''
+      -d ''{"cmd":"id"}'''
+    confidence_required: high
+    scenarios:
+    - '10'
+    - '8'
+  web_upload:
+  - title: Upload de fichier sans validation (RCE potentiel)
+    severity: critical
+    category: code_injection
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: T0866 - Exploitation of Remote Services
+    description: Portail de mise à jour firmware nginx + PHP sans validation du type
+      de fichier. Un attaquant peut uploader un webshell PHP et obtenir une exécution
+      de code. Le dossier /uploads/ est accessible avec directory listing. Un webshell
+      simulé (shell.php) y est déjà présent, ainsi que config_backup.json avec les
+      credentials réseau.
+    indicators:
+    - Port 80/tcp ouvert
+    - POST /  accepte n'importe quel type de fichier
+    - /uploads/ accessible avec directory listing
+    - /uploads/shell.php exécutable via HTTP
+    - /uploads/config_backup.json expose credentials PLC et DB
+    verification: curl http://{ip}/uploads/shell.php
+    confidence_required: high
+    scenarios:
+    - '4'
+  - title: SSRF via outil de diagnostic réseau (check.php)
+    severity: high
+    category: code_injection
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: T1190 - Exploit Public-Facing Application
+    description: L'interface web du portail firmware expose un endpoint /check.php?url=
+      qui effectue des requêtes HTTP depuis le serveur. Un attaquant peut fournir
+      des URLs internes (http://192.168.100.17:3306/) pour scanner le réseau OT depuis
+      le serveur web IT.
+    indicators:
+    - GET /check.php?url=http://192.168.100.15:502/ retourne des données Modbus
+    - GET /check.php?url=http://192.168.100.17:3306/ retourne le banner MariaDB
+    verification: curl 'http://{ip}/check.php?url=http://192.168.100.17:3306/'
+    confidence_required: high
+    scenarios:
+    - '4'
+  - title: Upload de fichiers sans validation — RCE via webshell PHP
+    severity: critical
+    category: code_injection
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    mitre_ics: Execution, Lateral Movement
+    description: L'endpoint POST /upload accepte des fichiers sans validation du type
+      MIME ni de l'extension. Il est possible d'uploader un fichier .php et de l'exécuter
+      via le serveur web, obtenant ainsi une exécution de code arbitraire sur le serveur
+      cloud.
+    indicators:
+    - POST /upload accepte des fichiers .php sans filtrage
+    - Les fichiers uploadés sont accessibles via /uploads/
+    - Exécution PHP active sur le serveur
+    verification: curl -F 'file=@shell.php' http://{ip}/upload && curl 'http://{ip}/uploads/shell.php?cmd=id'
+    confidence_required: high
+    scenarios:
+    - '7'

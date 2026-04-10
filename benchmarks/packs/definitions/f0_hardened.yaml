@@ -1,0 +1,8 @@
+id: f0
+name: "Hardened Configuration"
+description: >
+  Security hardening pack — applies secure configuration to all roles.
+  No vulnerabilities. Used as control group to measure false positive rate.
+
+# No vulnerabilities — this pack hardens instead of injecting
+vulnerabilities: {}

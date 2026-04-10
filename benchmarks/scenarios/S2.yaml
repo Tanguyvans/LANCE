@@ -1,0 +1,92 @@
+scenario_id: '2'
+name: Gateway exposée
+difficulty: medium
+posture: vulnerable
+topology: gateway
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f6_crypto
+- f8_info_disclosure
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Accès direct à l'interface admin routeur depuis WAN
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: HTTP vers WAN IP:80
+  - hop: 2
+    device: s2-router (100.1)
+    action: LuCI admin panel accessible
+  vulnerabilities_used:
+  - V1
+  impact: Contrôle total du routeur, modification des règles firewall, accès LAN
+- id: P2
+  title: Exfiltration DB via interface admin IoT Gateway
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: HTTP vers 192.168.100.13/api/status
+  - hop: 2
+    device: s2-iot-gw (100.13)
+    action: Récupération topologie réseau interne
+  - hop: 3
+    device: s2-db (100.14)
+    action: Connexion MySQL root sans password
+  - hop: 4
+    device: s2-db (100.14)
+    action: SELECT * FROM users → credentials
+  vulnerabilities_used:
+  - V5
+  - V6
+  impact: Dump complet de la base, credentials de tous les utilisateurs
+- id: P3
+  title: Compromission SSH + pivot via credentials MQTT
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin
+  - hop: 2
+    device: s2-jump (100.15)
+    action: Accès shell
+  - hop: 3
+    device: s2-mqtt (100.12)
+    action: Subscribe MQTT, récupère credentials
+  - hop: 4
+    device: s2-db (100.14)
+    action: Connexion DB avec credentials MQTT
+  vulnerabilities_used:
+  - V7
+  - V3
+  - V6
+  impact: Pivot complet du réseau, accès à tous les services internes
+- id: P4
+  title: MITM SSH via Terrapin → escalade
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Position MITM sur connexion SSH
+  - hop: 2
+    device: s2-iot-gw (100.13)
+    action: Exploitation CVE-2023-48795 Terrapin
+  - hop: 3
+    device: s2-iot-gw (100.13)
+    action: Accès /admin → topologie réseau
+  - hop: 4
+    device: s2-mqtt (100.12)
+    action: Subscribe MQTT sans auth
+  vulnerabilities_used:
+  - V4
+  - V5
+  - V3
+  impact: Interception des sessions SSH, accès au broker MQTT, espionnage du réseau
+    IoT
+bonus_types:
+- weak_cipher
+- terrapin

@@ -1,0 +1,101 @@
+scenario_id: '4'
+name: Réseau segmenté
+difficulty: hard
+posture: vulnerable
+topology: ics_scada
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f6_crypto
+- f8_info_disclosure
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Compromission IT → pivot OT via credentials
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin vers admin
+  - hop: 2
+    device: s4-admin (100.11)
+    action: Lecture /etc/iot/config.json
+  - hop: 3
+    device: s4-plc (100.15)
+    action: Connexion Modbus sans auth
+  - hop: 4
+    device: s4-plc (100.15)
+    action: Écriture coil[0] = EMERGENCY STOP
+  vulnerabilities_used:
+  - V1
+  - V5
+  impact: Arrêt d'urgence du PLC industriel depuis Internet
+- id: P2
+  title: Upload webshell → RCE → pivot réseau
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /uploads/ avec shell.php
+  - hop: 2
+    device: s4-webapp (100.12)
+    action: Exécution shell.php (RCE)
+  - hop: 3
+    device: s4-webapp (100.12)
+    action: Lecture config_backup.json → credentials
+  - hop: 4
+    device: s4-historian (100.17)
+    action: Connexion MySQL root sans password
+  vulnerabilities_used:
+  - V2
+  - V7
+  impact: RCE sur webapp + exfiltration complète de la base de données historique
+- id: P3
+  title: MQTT → écoute process → manipulation PLC
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT sans auth
+  - hop: 2
+    device: s4-mqtt (100.13)
+    action: Écoute topics process (setpoints, alarmes)
+  - hop: 3
+    device: s4-plc (100.15)
+    action: Write Modbus setpoints falsifiés
+  vulnerabilities_used:
+  - V3
+  - V5
+  impact: Modification des paramètres process industriels via MQTT + Modbus
+- id: P4
+  title: 'Chaîne complète IT/OT : web upload → réseau complet'
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Upload webshell via portail firmware
+  - hop: 2
+    device: s4-webapp (100.12)
+    action: RCE — découverte réseau interne
+  - hop: 3
+    device: s4-mqtt (100.13)
+    action: Subscribe MQTT — écoute process
+  - hop: 4
+    device: s4-plc (100.15)
+    action: Modbus write — manipulation PLC
+  - hop: 5
+    device: s4-historian (100.17)
+    action: MySQL root — exfiltration données
+  vulnerabilities_used:
+  - V2
+  - V3
+  - V5
+  - V7
+  impact: 'Compromission totale IT/OT : RCE + manipulation process + exfiltration
+    données'
+bonus_types:
+- weak_cipher
+- missing_header
+- terrapin

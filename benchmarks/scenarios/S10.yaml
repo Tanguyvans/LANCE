@@ -1,0 +1,68 @@
+scenario_id: '10'
+name: Flat avec variantes
+difficulty: medium
+posture: vulnerable
+topology: flat_variants
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+attack_paths:
+- id: P1
+  title: FTP anonymous → credentials → MQTT pivot
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion FTP anonyme
+  - hop: 2
+    device: s10-ftp (100.13)
+    action: Download config/network.conf
+  - hop: 3
+    device: s10-mqtt (100.11)
+    action: Login MQTT avec creds récupérés
+  vulnerabilities_used:
+  - V8
+  - V9
+  - V3
+  impact: Accès complet au broker MQTT via credentials FTP
+- id: P2
+  title: Node-RED RCE → pivot réseau
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Accès Node-RED sans auth
+  - hop: 2
+    device: s10-nodered (100.14)
+    action: Créer flow exec → shell root
+  - hop: 3
+    device: s10-web (100.12)
+    action: Accès API → /api/config
+  vulnerabilities_used:
+  - V10
+  - V11
+  - V5
+  impact: RCE via Node-RED + accès à toute la config réseau
+- id: P3
+  title: API REST RCE → SSH key theft → lateral movement
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /api/exec → shell
+  - hop: 2
+    device: s10-web (100.12)
+    action: Récupérer credentials /api/users
+  - hop: 3
+    device: s10-ssh (100.15)
+    action: Lire clé privée SSH (644)
+  vulnerabilities_used:
+  - V6
+  - V7
+  - V12
+  impact: 'Compromission en chaîne : RCE → credential theft → lateral movement'
+bonus_types:
+- weak_cipher
+- missing_header

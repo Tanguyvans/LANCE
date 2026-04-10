@@ -1,0 +1,97 @@
+scenario_id: '5'
+name: Smart Building
+difficulty: medium
+posture: vulnerable
+topology: building
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f8_info_disclosure
+attack_paths:
+- id: P1
+  title: Accès caméra → credentials NVR → pivot complet
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: GET /api/info sans auth
+  - hop: 2
+    device: s5-cam1 (100.11)
+    action: Récupération credentials NVR (ubnt/ubnt)
+  - hop: 3
+    device: s5-nvr (100.13)
+    action: SSH ubnt:ubnt → config/system.json
+  - hop: 4
+    device: s5-cam1+cam2
+    action: Accès complet flux vidéo + config caméras
+  vulnerabilities_used:
+  - V1
+  - V3
+  impact: 'Accès total au système de surveillance : vidéo en direct, enregistrements,
+    config'
+- id: P2
+  title: MQTT → écoute surveillance bâtiment → sabotage
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT sans auth
+  - hop: 2
+    device: s5-mqtt (100.16)
+    action: Écoute topics building/* (accès, HVAC)
+  - hop: 3
+    device: s5-hvac (100.15)
+    action: Accès HTTP HVAC — modification paramètres
+  vulnerabilities_used:
+  - V6
+  - V5
+  impact: Surveillance complète du bâtiment + manipulation système HVAC
+- id: P3
+  title: NVR compromis → pivot vers caméras + contrôle accès
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH ubnt:ubnt vers NVR
+  - hop: 2
+    device: s5-nvr (100.13)
+    action: Lecture system.json — credentials caméras
+  - hop: 3
+    device: s5-cam1 (100.11)
+    action: Accès caméra — désactivation flux
+  - hop: 4
+    device: s5-access-ctrl (100.14)
+    action: HTTP accès contrôle portes sans auth
+  vulnerabilities_used:
+  - V3
+  - V2
+  - V4
+  impact: Désactivation surveillance + accès contrôle portes du bâtiment
+- id: P4
+  title: 'Chaîne complète : MQTT → credentials → NVR → surveillance totale'
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT — topic admin/credentials
+  - hop: 2
+    device: s5-mqtt (100.16)
+    action: Récupération credentials db et api_key
+  - hop: 3
+    device: s5-nvr (100.13)
+    action: SSH ubnt:ubnt — exfiltration config
+  - hop: 4
+    device: s5-cam1+cam2
+    action: Accès flux vidéo + snapshots en direct
+  - hop: 5
+    device: s5-access-ctrl (100.14)
+    action: Accès contrôle d'accès bâtiment
+  vulnerabilities_used:
+  - V6
+  - V3
+  - V1
+  - V4
+  impact: 'Compromission totale du bâtiment : surveillance, accès physique, HVAC'
+bonus_types:
+- weak_cipher

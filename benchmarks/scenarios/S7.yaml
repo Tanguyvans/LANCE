@@ -1,0 +1,101 @@
+scenario_id: '7'
+name: Edge-Cloud pivot
+difficulty: hard
+posture: vulnerable
+topology: edge_cloud
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f6_crypto
+- f7_postexploit
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Exploitation Terrapin sur SSH edge-gateway
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Position MITM sur connexion SSH
+  - hop: 2
+    device: s7-edge-gw (100.11)
+    action: CVE-2023-48795 — downgrade algorithmes
+  - hop: 3
+    device: s7-edge-gw (100.11)
+    action: Interception des credentials SSH
+  vulnerabilities_used:
+  - V2
+  impact: Interception des sessions SSH, récupération des credentials en clair
+- id: P2
+  title: SSH edge-compute → config MQTT → credentials cloud
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin vers edge-compute
+  - hop: 2
+    device: s7-edge-compute (100.13)
+    action: Accès shell, reconnaissance réseau interne
+  - hop: 3
+    device: s7-edge-mqtt (100.12)
+    action: Lecture config bridge → cloud credentials
+  - hop: 4
+    device: s7-cloud-api (100.14)
+    action: Accès cloud avec credentials récupérés
+  vulnerabilities_used:
+  - V5
+  - V4
+  impact: Accès au cluster cloud via credentials de bridge MQTT
+- id: P3
+  title: Upload webshell → RCE → dump base de données cloud
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /upload avec fichier .php malveillant
+  - hop: 2
+    device: s7-cloud-api (100.14)
+    action: Exécution du webshell uploadé
+  - hop: 3
+    device: s7-cloud-api (100.14)
+    action: Accès filesystem → lecture config DB
+  - hop: 4
+    device: s7-cloud-db (100.15)
+    action: Connexion MariaDB root → dump users PII
+  vulnerabilities_used:
+  - V6
+  - V8
+  impact: Exécution de code sur le serveur cloud, exfiltration complète des données
+    PII
+- id: P4
+  title: 'Pivot multi-hop complet : edge → MQTT → RCE cloud → DB'
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin → edge-compute
+  - hop: 2
+    device: s7-edge-compute (100.13)
+    action: cat bridge.conf → cloud credentials
+  - hop: 3
+    device: s7-edge-mqtt (100.12)
+    action: Subscribe MQTT avec creds → topics internes
+  - hop: 4
+    device: s7-cloud-api (100.14)
+    action: Upload webshell → RCE
+  - hop: 5
+    device: s7-cloud-db (100.15)
+    action: Dump MariaDB → exfiltration PII complète
+  vulnerabilities_used:
+  - V5
+  - V4
+  - V6
+  - V8
+  impact: Compromission complète edge-to-cloud, exfiltration de toutes les données
+    PII
+bonus_types:
+- weak_cipher
+- missing_header
+- terrapin

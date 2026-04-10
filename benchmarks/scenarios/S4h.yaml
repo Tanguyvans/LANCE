@@ -1,0 +1,9 @@
+scenario_id: "4h"
+name: "ICS/SCADA (hardened)"
+difficulty: control
+posture: hardened
+topology: ics_scada
+packs:
+  - f0_hardened
+attack_paths: []
+bonus_types: []

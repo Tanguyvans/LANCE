@@ -1,0 +1,118 @@
+scenario_id: '3'
+name: Réplique NATO Lab
+difficulty: hard
+posture: vulnerable
+topology: nato_lab
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f6_crypto
+- f7_postexploit
+- f8_info_disclosure
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Accès MQTT RPi5 via routeur Telnet
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Telnet vers routeur
+  - hop: 2
+    device: s3-router (100.1)
+    action: Accès admin shell
+  - hop: 3
+    device: s3-rpi5 (100.12)
+    action: Subscribe MQTT sans auth
+  vulnerabilities_used:
+  - V1
+  - V5
+  impact: Lecture de tous les topics capteurs + credentials admin via MQTT
+- id: P2
+  title: Découverte réseau via API WisGate → pivot DB
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: HTTP vers 192.168.100.11
+  - hop: 2
+    device: s3-wisgate (100.11)
+    action: GET /api/status → 100.14:3306
+  - hop: 3
+    device: s3-wisgate (100.11)
+    action: GET /api/devices → topologie
+  vulnerabilities_used:
+  - V4
+  impact: Cartographie complète du réseau depuis un seul endpoint HTTP non authentifié
+- id: P3
+  title: Compromission SSH Jetson → exfiltration credentials → pivot MQTT
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin
+  - hop: 2
+    device: s3-jetson (100.14)
+    action: cat /etc/iot/config.json
+  - hop: 3
+    device: s3-rpi5 (100.12)
+    action: Subscribe MQTT avec credentials MQTT
+  - hop: 4
+    device: s3-iot-hub (100.13)
+    action: Subscribe second broker MQTT
+  vulnerabilities_used:
+  - V7
+  - V5
+  - V6
+  impact: Accès aux deux brokers MQTT, lecture de tous les capteurs et credentials
+- id: P4
+  title: MITM Terrapin WisGate → accès admin IoT
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Position MITM réseau
+  - hop: 2
+    device: s3-wisgate (100.11)
+    action: Exploit CVE-2023-48795 (Terrapin)
+  - hop: 3
+    device: s3-wisgate (100.11)
+    action: Accès /admin + /api/devices
+  - hop: 4
+    device: s3-rpi5 (100.12)
+    action: Subscribe MQTT anonyme
+  vulnerabilities_used:
+  - V3
+  - V4
+  - V5
+  impact: Contrôle de la gateway IoT principale, accès au réseau de capteurs
+- id: P5
+  title: Chaîne complète FTP → credentials → pivot multi-hop
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: FTP anonyme sur routeur
+  - hop: 2
+    device: s3-router (100.1)
+    action: Exfiltration fichiers config
+  - hop: 3
+    device: s3-jetson (100.14)
+    action: SSH avec credentials trouvés
+  - hop: 4
+    device: s3-iot-hub (100.13)
+    action: MQTT subscribe → données capteurs
+  - hop: 5
+    device: s3-nvr (100.17)
+    action: SSH ubnt:ubnt → accès NVR
+  vulnerabilities_used:
+  - V2
+  - V7
+  - V6
+  - V10
+  impact: Compromission complète du réseau NATO Lab simulé en 5 étapes
+bonus_types:
+- weak_cipher
+- missing_header
+- terrapin

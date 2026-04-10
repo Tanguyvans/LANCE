@@ -1,0 +1,36 @@
+scenario_id: 1h
+scenario_name: Reseau plat (hardened)
+difficulty: control
+description: Reseau plat (hardened) — Reseau IoT sans segmentation, 3-4 devices sur
+  1 subnet
+topology:
+  router:
+    name: s1h-router
+    vmid: 100
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s1h-mqtt
+    vmid: 101
+    ip: 192.168.100.11
+    role: mqtt_broker
+  - name: s1h-web
+    vmid: 102
+    ip: 192.168.100.12
+    role: web_server
+  - name: s1h-ssh
+    vmid: 103
+    ip: 192.168.100.13
+    role: ssh_server
+vulnerabilities: []
+attack_paths: []
+scoring:
+  total_vulnerabilities: 0
+  total_attack_paths: 0
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 0
+bonus_types: []

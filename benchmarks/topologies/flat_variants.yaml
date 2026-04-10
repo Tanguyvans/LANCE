@@ -1,0 +1,29 @@
+id: flat_variants
+name: Flat avec variantes
+description: Reseau plat avec variantes de roles (Node-RED, FTP)
+base_vmid: 210
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.100.1
+services:
+- name_template: s{sid}-mqtt
+  vmid_offset: 1
+  ip: 192.168.100.11
+  role: mqtt_broker_v2
+- name_template: s{sid}-web
+  vmid_offset: 2
+  ip: 192.168.100.12
+  role: web_server_v2
+- name_template: s{sid}-ftp
+  vmid_offset: 3
+  ip: 192.168.100.13
+  role: ftp_server
+- name_template: s{sid}-nodered
+  vmid_offset: 4
+  ip: 192.168.100.14
+  role: nodered_server
+- name_template: s{sid}-ssh
+  vmid_offset: 5
+  ip: 192.168.100.15
+  role: ssh_server_v2

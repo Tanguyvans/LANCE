@@ -1,0 +1,318 @@
+id: f3_data_exposure
+name: Data Exposure
+vulnerabilities:
+  db_server_v2:
+  - title: Données sensibles stockées en clair dans Redis
+    severity: medium
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: Redis contient des credentials (db_password, api_key), des sessions
+      admin et des secrets IoT en clair, accessibles sans authentification.
+    indicators:
+    - GET config:db_password retourne P@ssw0rd123
+    - GET session:admin retourne un token JWT
+    - GET iot:device:secrets retourne des PSK
+    verification: redis-cli -h {ip} GET config:db_password
+    confidence_required: medium
+    scenarios:
+    - '8'
+  ftp_server:
+  - title: Credentials réseau exposés via FTP (config/network.conf)
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: Le fichier config/network.conf accessible anonymement contient les
+      credentials MQTT (bridge/br1dg3_s3cret) et DB (root/P@ssw0rd123).
+    indicators:
+    - FTP anonymous → /config/network.conf
+    - Contient mqtt password et db password en clair
+    verification: ftp> get config/network.conf
+    confidence_required: medium
+    scenarios:
+    - '10'
+  mqtt_broker:
+  - title: Credentials en clair dans les topics MQTT (data_exposure)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer
+    mitre_ics: Collection
+    description: Le topic smartcity/admin/credentials publie des credentials (db_pass,
+      api_key) en clair, accessibles à toute personne connectée anonymement au broker.
+    indicators:
+    - mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON
+    verification: mosquitto_sub -h {ip} -t 'smartcity/admin/credentials' -C 1
+    confidence_required: medium
+    scenarios:
+    - '1'
+    - '2'
+  - title: Credentials en clair dans les topics MQTT
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection
+    mitre_ics: Collection
+    description: Le topic smartcity/admin/credentials publie des credentials (db_pass,
+      api_key) en clair, accessibles anonymement.
+    indicators:
+    - mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON
+    verification: mosquitto_sub -h {ip} -t 'smartcity/admin/credentials' -C 1
+    confidence_required: medium
+    scenarios:
+    - '3'
+    - '4'
+    - '5'
+  - title: Topics MQTT sensibles exposés (credentials, codes d'accès)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer
+    mitre_ics: Collection
+    description: 'Des données sensibles sont publiées sur des topics MQTT accessibles
+      anonymement : smartcity/admin/credentials (db_user, db_pass, api_key en JSON),
+      home/alarm/code (code PIN en clair), home/camera/stream (URL RTSP avec creds).'
+    indicators:
+    - smartcity/admin/credentials → db_user, db_pass, api_key en clair
+    - home/alarm/code → code PIN de l'alarme
+    - home/camera/stream → URL RTSP avec credentials caméra
+    verification: mosquitto_sub -h {ip} -t '#' -v
+    confidence_required: medium
+    scenarios:
+    - '6'
+  - title: MQTT anonymous + credentials de bridge cloud exposés dans mosquitto.conf
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer / I1 - Weak Passwords
+    mitre_ics: Collection, Lateral Movement
+    description: Mosquitto configuré avec allow_anonymous true. Le fichier /etc/mosquitto/conf.d/bridge.conf
+      contient les credentials du bridge vers le broker cloud en clair (bridge_login,
+      bridge_password). Ces informations permettent l'accès au cloud depuis l'extérieur.
+    indicators:
+    - Port 1883/tcp ouvert, connexion anonyme acceptée
+    - /etc/mosquitto/conf.d/bridge.conf lisible (permissions 644)
+    - 'bridge_login: cloud-bridge-user et bridge_password en clair'
+    verification: mosquitto_sub -h {ip} -t '#' -v
+    confidence_required: medium
+    scenarios:
+    - '7'
+  - title: Credentials en clair dans les topics MQTT (nœud 1)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection
+    mitre_ics: Collection
+    description: Le topic smartcity/admin/credentials publie des credentials (db_pass,
+      api_key) en clair, accessibles à toute personne connectée anonymement.
+    indicators:
+    - mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON
+    verification: mosquitto_sub -h {ip} -t 'smartcity/admin/credentials' -C 1
+    confidence_required: medium
+    scenarios:
+    - '9'
+  - title: Credentials en clair dans les topics MQTT (nœud 3)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection
+    mitre_ics: Collection
+    description: Topics sensibles accessibles sans authentification sur le troisième
+      nœud mesh.
+    indicators:
+    - Topics smartcity/admin/credentials accessibles anonymement
+    verification: mosquitto_sub -h {ip} -t 'smartcity/admin/credentials' -C 1
+    confidence_required: medium
+    scenarios:
+    - '9'
+  mqtt_broker_v2:
+  - title: Credentials en clair dans les topics MQTT
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection
+    mitre_ics: Collection
+    description: Le topic smartcity/admin/credentials contient des secrets (db_pass,
+      api_key) accessibles avec les credentials faibles test:test.
+    indicators:
+    - Topic smartcity/admin/credentials retourne des credentials JSON
+    - Topic smartcity/config/network expose la config réseau
+    verification: mosquitto_sub -h {ip} -u test -P test -t 'smartcity/admin/#' -C
+      1
+    confidence_required: medium
+    scenarios:
+    - '10'
+  - title: Credentials en clair dans les topics MQTT (nœud 2)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I6 - Insufficient Privacy Protection
+    mitre_ics: Collection
+    description: Le topic smartcity/admin/credentials contient des secrets accessibles
+      avec les credentials faibles test:test.
+    indicators:
+    - Topic smartcity/admin/credentials contient db_pass, api_key
+    - Topic smartcity/config/network expose la config réseau
+    verification: mosquitto_sub -h {ip} -u test -P test -t 'smartcity/admin/#' -C
+      1
+    confidence_required: medium
+    scenarios:
+    - '9'
+  ssh_server_v2:
+  - title: Fichier de configuration IoT avec credentials réseau
+    severity: medium
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: /etc/iot/config.json contient les credentials MQTT, DB et API en
+      clair (mode 644).
+    indicators:
+    - /etc/iot/config.json en mode 644
+    - Contient mqtt_pass, db_pass, api_key
+    verification: cat /etc/iot/config.json
+    confidence_required: medium
+    scenarios:
+    - '10'
+    - '8'
+  web_server:
+  - title: Fichiers sensibles exposés via HTTP
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: Des fichiers contenant des credentials (db_password, api_key, smtp_password)
+      sont accessibles sans authentification via le serveur web.
+    indicators:
+    - GET /config/app.config retourne credentials DB et API key
+    - GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users avec passwords
+    verification: curl http://{ip}/config/app.config
+    confidence_required: medium
+    scenarios:
+    - '1'
+  - title: Directory listing + fichiers sensibles exposés
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: nginx avec autoindex on. /backup/ et /config/ exposent des dumps
+      SQL et fichiers de configuration avec credentials.
+    indicators:
+    - GET /backup/ retourne listing avec db_backup.sql
+    - GET /config/app.config expose DB password, API key, SMTP credentials
+    - GET /logs/access.log expose l'historique des accès
+    verification: curl http://{ip}/backup/
+    confidence_required: medium
+    scenarios:
+    - '2'
+  - title: Directory listing nginx (Access Point simulé)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: nginx avec autoindex on. /backup/ et /config/ exposent des credentials.
+      Simule l'AP WiFi du lab avec interface web non sécurisée.
+    indicators:
+    - Port 80/tcp ouvert sur {ip}
+    - GET /backup/ retourne listing
+    - GET /config/app.config expose credentials
+    verification: curl http://{ip}/backup/
+    confidence_required: medium
+    scenarios:
+    - '3'
+  - title: Directory listing nginx (Caméra IP simulée)
+    severity: medium
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: nginx avec autoindex on. Simule la caméra IP du lab. /backup/ expose
+      un dump SQL avec credentials utilisateurs en clair.
+    indicators:
+    - Port 80/tcp ouvert sur {ip}
+    - GET /backup/db_backup_2024-01-15.sql accessible
+    verification: curl http://{ip}/backup/
+    confidence_required: medium
+    scenarios:
+    - '3'
+  - title: Fichiers sensibles exposés via HTTP (backup SQL, credentials)
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: Le serveur web HMI expose /backup/db_backup_2024-01-15.sql et /config/app.config
+      contenant des credentials en clair (DB, API, SMTP).
+    indicators:
+    - GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users
+    - GET /config/app.config retourne db_password, api_key
+    verification: curl http://{ip}/config/app.config
+    confidence_required: medium
+    scenarios:
+    - '4'
+    - '5'
+  - title: Directory listing + fichiers sensibles exposés (backup SQL, config)
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: nginx avec autoindex on expose /backup/ et /config/ sans restriction.
+      /backup/ contient un dump SQL avec credentials en clair. /config/app.config
+      expose les credentials DB, API key et SMTP.
+    indicators:
+    - GET /backup/ retourne listing avec db_backup_*.sql
+    - GET /config/app.config expose DB password, API key, MQTT credentials
+    - Le dump SQL contient INSERT INTO users avec passwords en clair
+    verification: curl http://{ip}/backup/ && curl http://{ip}/config/app.config
+    confidence_required: medium
+    scenarios:
+    - '6'
+  - title: Fichier .env exposé via HTTP (credentials en clair)
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection, Credential Access
+    description: Le fichier .env est accessible sans authentification via le serveur
+      web. Contient les credentials de la base de données, du broker MQTT, l'API key
+      et la clé secrète Django en clair.
+    indicators:
+    - GET /.env retourne DB_PASSWORD, MQTT_PASSWORD, API_KEY, SECRET_KEY
+    - Fichier accessible sans authentification
+    verification: curl http://{ip}/.env
+    confidence_required: high
+    scenarios:
+    - '6'
+  web_server_v2:
+  - title: Credentials utilisateurs exposés via API
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: L'endpoint /api/users retourne la liste complète des utilisateurs
+      avec leurs mots de passe en clair et leurs rôles.
+    indicators:
+    - GET /api/users retourne [{username:admin,password:P@ssw0rd123,role:admin},...]
+    verification: curl http://{ip}/api/users
+    confidence_required: medium
+    scenarios:
+    - '10'
+  web_upload:
+  - title: Backup base de données exposé via directory listing
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection
+    description: nginx avec autoindex on expose /backup/ contenant cloud_db_backup.sql.
+      Ce backup contient le dump complet de la base MariaDB avec données PII (noms,
+      emails, tokens d'authentification) et les credentials DB en clair.
+    indicators:
+    - GET /backup/ retourne listing avec cloud_db_backup.sql
+    - Le dump SQL contient INSERT INTO users avec passwords et tokens
+    verification: curl http://{ip}/backup/cloud_db_backup.sql | head -30
+    confidence_required: medium
+    scenarios:
+    - '7'
+  - title: Fichier .env exposé via HTTP (credentials cloud en clair)
+    severity: high
+    category: data_exposure
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    mitre_ics: Collection, Credential Access
+    description: Le fichier .env est accessible sans authentification sur le serveur
+      cloud API. Contient les credentials de la base de données cloud, du broker MQTT,
+      l'API key.
+    indicators:
+    - GET /.env retourne DB_PASSWORD, MQTT_PASSWORD, API_KEY, SECRET_KEY
+    verification: curl http://{ip}/.env
+    confidence_required: high
+    scenarios:
+    - '7'

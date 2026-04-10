@@ -1,0 +1,92 @@
+scenario_id: '6'
+name: Domotique centralisée
+difficulty: medium
+posture: vulnerable
+topology: star
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f6_crypto
+- f8_info_disclosure
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Accès admin routeur depuis WAN → contrôle total réseau
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: HTTP vers 192.168.100.1:80
+  - hop: 2
+    device: s6-router (100.1)
+    action: LuCI panel → reconfiguration firewall
+  vulnerabilities_used:
+  - V1
+  impact: Contrôle total du routeur, exposition de tous les services au WAN
+- id: P2
+  title: MQTT anonymous → credentials → dump base de données
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion MQTT anonyme
+  - hop: 2
+    device: s6-mqtt (100.12)
+    action: Subscribe system/credentials → user:pass
+  - hop: 3
+    device: s6-db (100.13)
+    action: Connexion MySQL root sans password
+  - hop: 4
+    device: s6-db (100.13)
+    action: SELECT * FROM users → tokens, PII
+  vulnerabilities_used:
+  - V5
+  - V6
+  - V7
+  impact: Exfiltration complète de la base domotique, tokens API et PII utilisateurs
+- id: P3
+  title: Node-RED RCE → pivot vers actionneurs et DB
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Accès Node-RED sans auth
+  - hop: 2
+    device: s6-hub (100.11)
+    action: Modification flow → exec commande système
+  - hop: 3
+    device: s6-mqtt (100.12)
+    action: Publish MQTT → commande actionneur
+  - hop: 4
+    device: s6-db (100.13)
+    action: Accès DB via credentials récupérés
+  vulnerabilities_used:
+  - V3
+  - V5
+  - V7
+  impact: Exécution de commandes, contrôle des actionneurs, accès base de données
+- id: P4
+  title: Exposition web → reconnaissance → compromission totale
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: GET /.env → credentials DB, MQTT, API
+  - hop: 2
+    device: s6-web (100.15)
+    action: Récupération de tous les secrets
+  - hop: 3
+    device: s6-mqtt (100.12)
+    action: Connexion MQTT avec credentials réels
+  - hop: 4
+    device: s6-db (100.13)
+    action: Connexion DB avec password récupéré
+  vulnerabilities_used:
+  - V9
+  - V5
+  - V7
+  impact: Compromission de tous les services avec credentials légitimes
+bonus_types:
+- missing_header
+- terrapin

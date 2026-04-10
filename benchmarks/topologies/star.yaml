@@ -1,0 +1,29 @@
+id: star
+name: Domotique centralisée
+description: Hub central (Node-RED) connectant tous les peripheriques
+base_vmid: 160
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.100.1
+services:
+- name_template: s{sid}-hub
+  vmid_offset: 1
+  ip: 192.168.100.11
+  role: iot_gateway
+- name_template: s{sid}-mqtt
+  vmid_offset: 2
+  ip: 192.168.100.12
+  role: mqtt_broker
+- name_template: s{sid}-db
+  vmid_offset: 3
+  ip: 192.168.100.13
+  role: db_server
+- name_template: s{sid}-cam
+  vmid_offset: 4
+  ip: 192.168.100.14
+  role: camera_server
+- name_template: s{sid}-web
+  vmid_offset: 5
+  ip: 192.168.100.15
+  role: web_server

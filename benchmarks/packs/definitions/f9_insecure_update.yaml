@@ -1,0 +1,39 @@
+id: f9_insecure_update
+name: Insecure Updates
+vulnerabilities:
+  iot_gateway:
+  - title: Endpoint OTA sans authentification ni vérification de signature (F10)
+    severity: medium
+    category: insecure_update
+    owasp_iot: I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management
+    mitre_ics: T0839 - Module Firmware
+    description: L'interface HTTP de l'IoT Gateway expose un endpoint POST /update
+      qui accepte des mises à jour firmware sans authentification et sans vérification
+      d'intégrité. Le répertoire /firmware/ est accessible avec directory listing
+      et contient un firmware binaire sans fichier de signature (.sha256 ou .sig).
+    indicators:
+    - GET /firmware/ retourne un listing avec firmware.bin sans .sha256 ni .sig
+    - POST /update retourne 200 sans authentification
+    - Aucune vérification d'intégrité du firmware uploadé
+    verification: curl http://{ip}/firmware/ && curl -X POST http://{ip}/update
+    confidence_required: medium
+    scenarios:
+    - '2'
+    - '4'
+    - '6'
+    - '7'
+  - title: Firmware OTA sans signature ni authentification
+    severity: medium
+    category: insecure_update
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    mitre_ics: Impair Process Control
+    description: L'endpoint /update accepte des mises à jour firmware sans vérification.
+      Le répertoire /firmware/ expose le binaire sans .sha256 ni .sig.
+    indicators:
+    - GET /firmware/ liste firmware.bin sans signature
+    - POST /update accepté sans vérification
+    verification: curl http://{ip}/firmware/
+    confidence_required: medium
+    scenarios:
+    - '3'
+    - '8'

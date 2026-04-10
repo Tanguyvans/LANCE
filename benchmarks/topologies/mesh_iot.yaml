@@ -1,0 +1,29 @@
+id: mesh_iot
+name: Mesh IoT
+description: Reseau mesh de capteurs avec CoAP et SNMP
+base_vmid: 190
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.100.1
+services:
+- name_template: s{sid}-mqtt-1
+  vmid_offset: 1
+  ip: 192.168.100.11
+  role: mqtt_broker
+- name_template: s{sid}-mqtt-2
+  vmid_offset: 2
+  ip: 192.168.100.12
+  role: mqtt_broker_v2
+- name_template: s{sid}-mqtt-3
+  vmid_offset: 3
+  ip: 192.168.100.13
+  role: mqtt_broker
+- name_template: s{sid}-coap
+  vmid_offset: 4
+  ip: 192.168.100.14
+  role: coap_server
+- name_template: s{sid}-snmp
+  vmid_offset: 5
+  ip: 192.168.100.15
+  role: snmp_server

@@ -1,0 +1,76 @@
+scenario_id: '8'
+name: Multi-zone IT/IoT/OT
+difficulty: hard
+posture: vulnerable
+topology: multizone
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f6_crypto
+- f9_insecure_update
+attack_paths:
+- id: P1
+  title: Pivot IT → IoT → OT via clé SSH + MQTT + Modbus
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Telnet vers routeur
+  - hop: 2
+    device: s8-router (100.1)
+    action: Accès shell via Telnet
+  - hop: 3
+    device: s8-admin (100.11)
+    action: Récupérer clé privée SSH (644)
+  - hop: 4
+    device: s8-mqtt (100.12)
+    action: Login MQTT avec creds récupérés
+  - hop: 5
+    device: s8-plc (100.14)
+    action: Écriture registres Modbus sans auth
+  vulnerabilities_used:
+  - V2
+  - V3
+  - V5
+  - V9
+  impact: Compromission complète de la chaîne IT→IoT→OT, contrôle du PLC
+- id: P2
+  title: RCE via HMI API → pivot vers historien OT
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Accès HTTP port 80 HMI
+  - hop: 2
+    device: s8-hmi (100.15)
+    action: POST /api/exec → shell root
+  - hop: 3
+    device: s8-historian (100.17)
+    action: MySQL root sans mdp
+  vulnerabilities_used:
+  - V11
+  - V14
+  impact: Accès root au HMI + données historiques OT
+- id: P3
+  title: IoT Gateway → firmware tamper + Redis data exfiltration
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Accès HTTP port 80 gateway
+  - hop: 2
+    device: s8-iot-gw (100.13)
+    action: Upload firmware non signé
+  - hop: 3
+    device: s8-redis (100.16)
+    action: Redis KEYS * sans auth
+  vulnerabilities_used:
+  - V6
+  - V8
+  - V12
+  impact: Firmware compromis + exfiltration de tous les secrets
+bonus_types:
+- weak_cipher
+- missing_header

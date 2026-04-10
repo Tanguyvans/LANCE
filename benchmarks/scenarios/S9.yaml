@@ -1,0 +1,63 @@
+scenario_id: '9'
+name: Mesh IoT
+difficulty: medium
+posture: vulnerable
+topology: mesh_iot
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f8_info_disclosure
+attack_paths:
+- id: P1
+  title: 'Mesh traversal : broker anonyme → broker à auth faible → données'
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion MQTT sans auth
+  - hop: 2
+    device: s9-mqtt-1 (100.11)
+    action: Subscribe '#' — récupérer creds
+  - hop: 3
+    device: s9-mqtt-2 (100.12)
+    action: Login avec creds récupérés
+  vulnerabilities_used:
+  - V2
+  - V3
+  - V4
+  impact: Accès à tous les topics de tous les nœuds mesh
+- id: P2
+  title: CoAP → contrôle d'actionneurs physiques
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Découverte CoAP via .well-known/core
+  - hop: 2
+    device: s9-coap (100.14)
+    action: GET /config → secrets
+  - hop: 3
+    device: s9-coap (100.14)
+    action: POST /actuator/valve → ouverture
+  vulnerabilities_used:
+  - V8
+  - V9
+  impact: Contrôle physique d'actionneurs IoT sans authentification
+- id: P3
+  title: SNMP enumeration → discovery réseau complet
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: snmpwalk community public
+  - hop: 2
+    device: s9-snmp (100.15)
+    action: Énumération OIDs système
+  vulnerabilities_used:
+  - V10
+  - V11
+  impact: Cartographie complète du réseau IoT mesh
+bonus_types:
+- weak_cipher
+- missing_header
