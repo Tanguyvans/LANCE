@@ -39,6 +39,11 @@ class StartRequest(BaseModel):
     auto_teardown: bool = True
     max_cost_usd: float | None = None
     phase_models: dict[int, str] | None = None
+    # Custom mode fields
+    architecture: str | None = None
+    posture: str | None = None       # "vulnerable" | "hardened"
+    selected_packs: list[str] | None = None
+    excluded_vulns: list[str] | None = None  # vuln IDs to exclude from GT
 
 
 def _pipeline_thread(req: StartRequest):
@@ -57,13 +62,25 @@ def _pipeline_thread(req: StartRequest):
             default_model = req.phase_models[req.phases[0]]
 
         provider = LLMProvider(provider=req.provider, model=default_model)
+
+        # Build custom config if in custom mode
+        custom_config = None
+        if req.architecture:
+            custom_config = {
+                "architecture": req.architecture,
+                "posture": req.posture or "vulnerable",
+                "selected_packs": req.selected_packs or [],
+                "excluded_vulns": req.excluded_vulns or [],
+            }
+
         pipeline = Pipeline(
             provider=provider,
             phases=req.phases or None,
             scenario_id=req.scenario_id,
             auto_teardown=req.auto_teardown,
             max_cost_usd=req.max_cost_usd,
-            phase_models=req.phase_models, # Pass the map to the pipeline
+            phase_models=req.phase_models,
+            custom_config=custom_config,
         )
 
         def callback(event: dict):

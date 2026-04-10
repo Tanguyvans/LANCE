@@ -166,7 +166,10 @@ def score_run(run_id: str):
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="Corrupt scenario_meta.json")
 
-    gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+    # Prefer ground truth from run dir (custom or copied), fall back to global
+    gt_path = run_dir / "ground_truth.yaml"
+    if not gt_path.exists():
+        gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
     if not gt_path.exists():
         raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
 

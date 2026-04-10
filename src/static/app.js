@@ -851,8 +851,19 @@ async function startRun() {
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
-    phase_models: phaseModels, // Send the per-phase model map
+    phase_models: phaseModels,
   };
+
+  // Add custom mode fields
+  if (mode === 'custom') {
+    const config = getCustomConfig();
+    body.architecture = config.architecture;
+    body.posture = config.posture;
+    // Collect selected packs
+    body.selected_packs = [...document.querySelectorAll('.pack-cb:checked')].map(cb => cb.value);
+    // Collect excluded (unchecked) vulns within selected packs
+    body.excluded_vulns = [...document.querySelectorAll('.vuln-cb:not(:checked)')].map(cb => cb.value);
+  }
 
   const res = await fetch('/api/pipeline/start', {
     method: 'POST',

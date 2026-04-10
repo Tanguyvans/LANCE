@@ -50,6 +50,7 @@ class Pipeline:
         auto_teardown: bool = True,
         max_cost_usd: float | None = None,
         phase_models: dict[int | str, str] | None = None,
+        custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -58,6 +59,7 @@ class Pipeline:
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
+        self.custom_config = custom_config
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -128,7 +130,12 @@ class Pipeline:
                 "run_dir": str(self.run_dir),
                 "model": getattr(self.provider, "model", None),
             }
+            if self.custom_config:
+                meta["custom_config"] = self.custom_config
             (self.run_dir / "scenario_meta.json").write_text(json.dumps(meta, indent=2))
+
+            # Copy ground truth into run directory for traceability
+            self._save_ground_truth()
 
             # Deploy benchmark VMs before starting the pipeline
             if not self.dry_run:
@@ -367,6 +374,130 @@ class Pipeline:
                 "success": success,
                 "output": output,
             })
+
+    def _save_ground_truth(self):
+        """Copy or generate ground truth into the run directory for traceability and evaluation."""
+        import shutil
+
+        gt_dest = self.run_dir / "ground_truth.yaml"
+
+        if self.custom_config:
+            # Custom mode: generate GT dynamically from selected packs/vulns
+            gt = self._generate_custom_gt()
+            if gt:
+                gt_dest.write_text(yaml.dump(gt, default_flow_style=False, allow_unicode=True, sort_keys=False))
+                log.info("Custom ground truth generated: %d vulns", len(gt.get("vulnerabilities", [])))
+                return
+
+        # Preset mode: copy existing GT file
+        gt_path = Path("benchmarks/ground_truth") / f"scenario_{self.scenario_id}.yaml"
+        if gt_path.exists():
+            shutil.copy2(gt_path, gt_dest)
+            log.info("Ground truth copied to run dir: %s", gt_dest)
+
+    def _generate_custom_gt(self) -> dict | None:
+        """Generate a ground truth from custom config (architecture + selected packs + excluded vulns)."""
+        if not self.custom_config:
+            return None
+
+        architecture = self.custom_config.get("architecture")
+        selected_packs = self.custom_config.get("selected_packs", [])
+        excluded_vulns = set(self.custom_config.get("excluded_vulns", []))
+
+        # Load topology
+        topo_path = Path("benchmarks/topologies") / f"{architecture}.yaml"
+        if not topo_path.exists():
+            log.warning("Topology not found: %s", topo_path)
+            return None
+        topology = yaml.safe_load(topo_path.read_text())
+
+        sid = str(self.scenario_id or "custom")
+        weights = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        vulns = []
+        vuln_counter = 1
+
+        for pack_id in selected_packs:
+            pack_path = Path("benchmarks/packs/definitions") / f"{pack_id}.yaml"
+            if not pack_path.exists():
+                continue
+            pack = yaml.safe_load(pack_path.read_text())
+
+            for svc in topology.get("services", []):
+                role = svc["role"]
+                pack_vulns = pack.get("vulnerabilities", {}).get(role, [])
+                device_name = svc["name_template"].format(sid=sid)
+                ip = svc["ip"]
+
+                for vt in pack_vulns:
+                    # Check scenario restriction
+                    allowed = vt.get("scenarios")
+                    if allowed and sid not in allowed:
+                        continue
+
+                    # Build vuln ID for exclusion check
+                    vuln_id = f"{pack_id}__{role}__{(vt.get('title', '')).replace(' ', '_')[:40]}"
+                    if vuln_id in excluded_vulns:
+                        continue
+
+                    vuln = {
+                        "id": f"V{vuln_counter}",
+                        "device": device_name,
+                        "ip": ip,
+                        "role": role,
+                    }
+                    for key, val in vt.items():
+                        if key == "scenarios":
+                            continue
+                        elif key == "indicators":
+                            vuln[key] = [ind.replace("{ip}", ip) for ind in val]
+                        elif key == "verification":
+                            vuln[key] = val.replace("{ip}", ip)
+                        else:
+                            vuln[key] = val
+                    vulns.append(vuln)
+                    vuln_counter += 1
+
+            # Router vulns
+            for vt in pack.get("vulnerabilities", {}).get("router", []):
+                allowed = vt.get("scenarios")
+                if allowed and sid not in allowed:
+                    continue
+                vuln_id = f"{pack_id}__router__{(vt.get('title', '')).replace(' ', '_')[:40]}"
+                if vuln_id in excluded_vulns:
+                    continue
+                router = topology.get("router", {})
+                vuln = {
+                    "id": f"V{vuln_counter}",
+                    "device": router.get("name_template", "router").format(sid=sid),
+                    "ip": router.get("ip", "192.168.100.1"),
+                    "role": "router",
+                }
+                for key, val in vt.items():
+                    if key == "scenarios":
+                        continue
+                    elif key == "indicators":
+                        vuln[key] = [ind.replace("{ip}", vuln["ip"]) for ind in val]
+                    elif key == "verification":
+                        vuln[key] = val.replace("{ip}", vuln["ip"])
+                    else:
+                        vuln[key] = val
+                vulns.append(vuln)
+                vuln_counter += 1
+
+        max_score = sum(weights.get(v.get("severity", "low").lower(), 1) for v in vulns)
+
+        return {
+            "scenario_id": sid,
+            "scenario_name": f"Custom — {architecture}",
+            "difficulty": "custom",
+            "vulnerabilities": vulns,
+            "scoring": {
+                "total_vulnerabilities": len(vulns),
+                "weights": weights,
+                "max_weighted_score": max_score,
+            },
+            "bonus_types": [],
+        }
 
     def _load_scenario_context(self, scenario_id: int | str) -> str:
         """Load benchmark scenario IPs from ground_truth YAML and return a context string."""
