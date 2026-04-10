@@ -477,32 +477,56 @@ const CY_LAYOUTS = {
   cose: {
     name:            'cose',
     animate:         true,
-    animationDuration: 500,
-    nodeRepulsion:   25000,  // Très forte répulsion
-    idealEdgeLength: 250,    // Liens plus longs
-    edgeElasticity:  100,
-    nodeOverlap:     20,
-    gravity:         1,      // Gravité réduite pour laisser le graphe s'étaler
-    padding:         80,
+    animationDuration: 400,
+    nodeRepulsion:   12000,
+    idealEdgeLength: 160,
+    edgeElasticity:  80,
+    nodeOverlap:     12,
+    gravity:         0.8,
+    padding:         60,
+    randomize:       false,
   },
   breadthfirst: {
     name:            'breadthfirst',
     directed:        true,
-    padding:         80,
+    padding:         60,
     animate:         true,
-    animationDuration: 500,
-    spacingFactor:   2.0,    // Beaucoup plus d'espace entre les niveaux
+    animationDuration: 400,
+    spacingFactor:   1.6,
   },
   concentric: {
     name:            'concentric',
     animate:         true,
-    animationDuration: 500,
-    padding:         80,
-    minNodeSpacing:  120,    // Large espace entre nœuds concentriques
+    animationDuration: 400,
+    padding:         60,
+    minNodeSpacing:  80,
     concentric:      function(node){ return node.degree(); },
-    levelWidth:      function(nodes){ return 2; },
+    levelWidth:      function(){ return 2; },
   }
 };
+
+// Track the running layout to avoid concurrent runs
+let _currentLayout = null;
+
+function _runLayout(config, fitAfter = true) {
+  if (_currentLayout) { _currentLayout.stop(); _currentLayout = null; }
+  const layout = cy.layout(config);
+  _currentLayout = layout;
+  if (fitAfter) {
+    layout.one('layoutstop', () => {
+      cy.animate({ fit: { padding: 50 }, duration: 300, easing: 'ease-out' });
+      _currentLayout = null;
+    });
+  }
+  layout.run();
+}
+
+function _clearHoverState() {
+  if (!cy) return;
+  cy.elements().removeClass('dimmed');
+  cy.nodes().removeClass('highlighted');
+  document.body.style.cursor = '';
+}
 
 function initGraphToolbar() {
   const layouts = ['cose', 'breadthfirst', 'concentric'];
@@ -512,36 +536,32 @@ function initGraphToolbar() {
       btn.onclick = () => {
         document.querySelectorAll('.graph-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        cy.layout(CY_LAYOUTS[l]).run();
+        _clearHoverState();
+        _runLayout(CY_LAYOUTS[l]);
       };
     }
   });
 
   document.getElementById('graph-fit').onclick = () => {
-    cy.animate({ fit: { padding: 40 }, duration: 500 });
+    cy.animate({ fit: { padding: 50 }, duration: 400, easing: 'ease-out' });
   };
 }
 
 function initGraphInteractions() {
   if (!cy) return;
 
-  // Mode Focus (Highlight on hover)
   cy.on('mouseover', 'node', e => {
     const node = e.target;
-    const neighborhood = node.neighborhood().add(node);
-
     cy.elements().addClass('dimmed');
-    neighborhood.removeClass('dimmed');
+    node.neighborhood().add(node).removeClass('dimmed');
     node.addClass('highlighted');
-
     document.body.style.cursor = 'pointer';
   });
 
-  cy.on('mouseout', 'node', e => {
-    cy.elements().removeClass('dimmed');
-    e.target.removeClass('highlighted');
-    document.body.style.cursor = '';
-  });
+  cy.on('mouseout', 'node', () => _clearHoverState());
+
+  // Safety net: clear hover if mouse leaves the canvas entirely
+  document.getElementById('cy').addEventListener('mouseleave', _clearHoverState);
 
   cy.on('tap', 'node', evt => showNodeDetail(evt.target.data()));
   cy.on('tap', evt => { if (evt.target === cy) hideDetail(); });
@@ -597,11 +617,11 @@ async function loadTopology(scenarioId = null) {
   ];
 
   if (cy) {
+    _clearHoverState();
     cy.elements().remove();
     cy.add(elements);
-    cy.layout(CY_LAYOUTS.cose).run();
     cy.resize();
-    cy.fit();
+    _runLayout(CY_LAYOUTS.cose);
   } else {
     cy = cytoscape({
       container: cyDiv,
@@ -610,35 +630,37 @@ async function loadTopology(scenarioId = null) {
         {
           selector: 'node',
           style: {
-            'background-color': '#3498db', // Fallback color
+            'background-color': _cssVar('--node-compute'),
             'background-image': 'none',
             'label': 'data(label)',
-            'color': '#e6edf3',
+            'color': _cssVar('--text'),
             'font-size': '10px',
             'text-valign': 'bottom',
             'text-halign': 'center',
-            'text-margin-y': '4px',
-            'width': '30px',
-            'height': '30px',
+            'text-margin-y': '5px',
+            'text-background-color': _cssVar('--bg'),
+            'text-background-opacity': 0.7,
+            'text-background-padding': '2px',
+            'text-background-shape': 'roundrectangle',
+            'width': '32px',
+            'height': '32px',
             'border-width': '2px',
-            'border-color': 'rgba(255,255,255,.2)',
+            'border-color': 'rgba(255,255,255,.15)',
           },
         },
         {
           selector: 'node[color]',
-          style: {
-            'background-color': 'data(color)',
-          }
+          style: { 'background-color': 'data(color)' },
         },
         {
           selector: 'edge',
           style: {
-            'line-color': '#444',
-            'target-arrow-color': '#444',
+            'line-color': _cssVar('--border'),
+            'target-arrow-color': _cssVar('--border'),
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
-            'width': 1,
-            'opacity': 0.5,
+            'width': 1.5,
+            'opacity': 0.6,
           },
         },
         {
@@ -646,43 +668,40 @@ async function loadTopology(scenarioId = null) {
           style: {
             'line-color': 'data(color)',
             'target-arrow-color': 'data(color)',
-          }
+          },
         },
         {
           selector: 'node:selected',
           style: {
-            'border-color': '#1f6feb',
-            'border-width': '4px',
+            'border-color': _cssVar('--accent'),
+            'border-width': '3px',
+            'border-opacity': 1,
           },
         },
         {
           selector: '.dimmed',
-          style: {
-            'opacity': 0.2,
-            'z-index': 1,
-          },
+          style: { 'opacity': 0.15 },
         },
         {
           selector: '.highlighted',
           style: {
+            'width': '42px',
+            'height': '42px',
             'z-index': 100,
-            'width': '40px',
-            'height': '40px',
           },
-        }
+        },
       ],
-      layout: { name: 'grid', padding: 50 }, // Use simple grid first
+      layout: { name: 'null' }, // positions set by layout engine below
     });
 
     initGraphInteractions();
     initGraphToolbar();
-    
-    // Switch to organic layout and fit after DOM settled
-    setTimeout(() => {
+
+    // Double rAF ensures container has its final dimensions before layout
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       cy.resize();
-      cy.layout(CY_LAYOUTS.cose).run();
-      cy.fit();
-    }, 200);
+      _runLayout(CY_LAYOUTS.cose);
+    }));
   }
 
   buildLegend(data.nodes);
