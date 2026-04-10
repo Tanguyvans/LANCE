@@ -1162,11 +1162,12 @@ function connectSSE(runId) {
 
   es.onerror = () => {
     es.close();
+    const wasRunning = run.running;
     run.eventSource = null;
     run.running = false;
     updateRunTab(runId);
     updateStopButton();
-    if (focusedRunId === runId) {
+    if (wasRunning && focusedRunId === runId) {
       addLog({type:'error', message:'Connexion SSE perdue'});
     }
     loadRuns();
@@ -1954,9 +1955,19 @@ function addLog(ev, autoScroll = true) {
   else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
-  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ECHEC'}`;
+  else if (t === 'deploy_done') {
+    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ECHEC'}`;
+    if (!ev.success && ev.output) {
+      fullText = `Scénario S${ev.scenario_id} ECHEC\n${ev.output}`;
+    }
+  }
   else if (t === 'inject_start')   text = `Injection vulns S${ev.scenario_id}…`;
-  else if (t === 'inject_done')    text = `Vulns injectées S${ev.scenario_id} ${ev.success ? 'OK' : 'ECHEC'}`;
+  else if (t === 'inject_done') {
+    text = `Vulns injectées S${ev.scenario_id} ${ev.success ? 'OK' : 'ECHEC'}`;
+    if (!ev.success && ev.output) {
+      fullText = `Vulns S${ev.scenario_id} ECHEC\n${ev.output}`;
+    }
+  }
   else if (t === 'verify_start')   text = `Vérification S${ev.scenario_id}…`;
   else if (t === 'verify_done')    text = `Vérification S${ev.scenario_id} terminée`;
   else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;

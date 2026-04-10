@@ -241,7 +241,7 @@ class Pipeline:
         return results
 
     def _run_playbook(self, playbook: str, stream_callback, event_type_start: str, event_type_done: str, extra_msg: str = "") -> bool:
-        """Run an Ansible playbook and return True on success."""
+        """Run an Ansible playbook, streaming output line by line. Returns True on success."""
         repo_root = Path(__file__).resolve().parents[2]
         cmd = [
             "ansible-playbook",
@@ -257,22 +257,35 @@ class Pipeline:
         if stream_callback:
             stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
 
-        try:
-            import os
-            env = os.environ.copy()
-            env["LANG"] = "en_US.UTF-8"
-            env["LC_ALL"] = "en_US.UTF-8"
-            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600, env=env)
-            success = result.returncode == 0
-            output = (result.stdout + result.stderr)[-3000:]
-            print(output)
-        except subprocess.TimeoutExpired:
-            success = False
-            output = f"{playbook} timeout (600s)"
-        except FileNotFoundError:
-            success = False
-            output = "ansible-playbook not found — deploy skipped"
+        import os
+        env = os.environ.copy()
+        env["LANG"] = "en_US.UTF-8"
+        env["LC_ALL"] = "en_US.UTF-8"
 
+        output_lines: list[str] = []
+        success = False
+        try:
+            proc = subprocess.Popen(
+                cmd, cwd=str(repo_root), env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+            for line in proc.stdout:
+                line = line.rstrip()
+                if line:
+                    output_lines.append(line)
+                    print(line)
+                    if stream_callback:
+                        stream_callback({"type": "ansible_output", "scenario_id": self.scenario_id, "playbook": playbook, "line": line})
+            proc.wait(timeout=600)
+            success = proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            output_lines.append(f"{playbook} timeout (600s)")
+        except FileNotFoundError:
+            output_lines.append("ansible-playbook not found — deploy skipped")
+
+        output = "\n".join(output_lines[-100:])
         if stream_callback:
             stream_callback({"type": event_type_done, "scenario_id": self.scenario_id, "playbook": playbook, "success": success, "output": output})
         return success
