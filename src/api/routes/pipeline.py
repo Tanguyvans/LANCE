@@ -322,7 +322,7 @@ def _get_all_scenario_ids() -> list[str]:
 
 
 def _run_playbook_for(scenario_id: str, playbook: str, ev_start: str, ev_done: str, callback) -> bool:
-    """Run a single Ansible playbook for a scenario. Returns True on success."""
+    """Run a single Ansible playbook, streaming output line by line via callback."""
     import os
     env = os.environ.copy()
     env["LANG"] = "en_US.UTF-8"
@@ -335,14 +335,27 @@ def _run_playbook_for(scenario_id: str, playbook: str, ev_start: str, ev_done: s
         "--extra-vars", f"scenario_id={scenario_id}",
     ]
     callback({"type": ev_start, "scenario_id": scenario_id, "playbook": playbook})
+    output_lines: list[str] = []
+    success = False
     try:
-        result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=600, env=env)
-        success = result.returncode == 0
-        output = (result.stdout + result.stderr)[-3000:]
+        proc = subprocess.Popen(
+            cmd, cwd=str(ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                output_lines.append(line)
+                callback({"type": "ansible_output", "scenario_id": scenario_id, "playbook": playbook, "line": line})
+        proc.wait(timeout=600)
+        success = proc.returncode == 0
     except subprocess.TimeoutExpired:
-        success, output = False, f"{playbook} timeout (600s)"
+        proc.kill()
+        output_lines.append(f"{playbook} timeout (600s)")
     except FileNotFoundError:
-        success, output = False, "ansible-playbook not found"
+        output_lines.append("ansible-playbook not found")
+    output = "\n".join(output_lines[-100:])
     callback({"type": ev_done, "scenario_id": scenario_id, "playbook": playbook, "success": success, "output": output})
     return success
 

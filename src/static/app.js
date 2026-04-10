@@ -1187,7 +1187,7 @@ function handleEvent(ev, runId) {
 
   // Store event in run's log buffer
   if (run) {
-    const skipLog = new Set(['text_chunk', 'ping']);
+    const skipLog = new Set(['text_chunk', 'ping', 'ansible_output']);
     if (!skipLog.has(t)) run.logs.push(ev);
   }
 
@@ -1954,11 +1954,19 @@ function addLog(ev, autoScroll = true) {
   else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
-  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
-  else if (t === 'inject_start')   text = `Injection vulns…`;
-  else if (t === 'inject_done')    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
+  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ECHEC'}`;
+  else if (t === 'inject_start')   text = `Injection vulns S${ev.scenario_id}…`;
+  else if (t === 'inject_done')    text = `Vulns injectées S${ev.scenario_id} ${ev.success ? 'OK' : 'ECHEC'}`;
+  else if (t === 'verify_start')   text = `Vérification S${ev.scenario_id}…`;
+  else if (t === 'verify_done')    text = `Vérification S${ev.scenario_id} terminée`;
   else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;
   else if (t === 'teardown_done')  text = `Teardown terminé`;
+  else if (t === 'ansible_output') {
+    const line = ev.line || '';
+    const keep = line.match(/^(TASK \[|PLAY \[|PLAY RECAP|ok:|changed:|failed:|fatal:|skipping:|ERROR)/);
+    if (!keep) return;
+    text = line;
+  }
 
   if (!text) return;
 
