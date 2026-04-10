@@ -321,7 +321,7 @@ STRICT JSON with this structure:
       "service": "ssh",
       "port": 22,
       "details": "Vulnerability description",
-      "evidence": "Tool output or proof",
+      "evidence": "MUST be raw tool output proving the vuln — see evidence rules below",
       "cve_ids": ["CVE-2023-48795"]
     }
   ],
@@ -337,6 +337,32 @@ STRICT JSON with this structure:
 
 Types: weak_cipher | no_auth | missing_header | info_disclosure | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
+
+## EVIDENCE RULES — every finding MUST include raw proof
+
+The "evidence" field MUST contain actual tool output that proves the vulnerability exists.
+Do NOT paraphrase. Copy the relevant raw output from the tool.
+
+| Vuln type | Required evidence (paste raw output) |
+|-----------|--------------------------------------|
+| no_auth (MQTT) | Actual messages received: `{"db_user":"root",...}` |
+| no_auth (HTTP) | HTTP response showing content without auth challenge: `200 OK` + body excerpt |
+| data_exposure | The actual sensitive data found: credentials, keys, passwords (paste them) |
+| directory_listing | File names listed: `db_backup_2024-01-15.sql`, `app.config` |
+| default_credentials | Nmap ssh-auth-methods output: `password publickey` (or actual login result) |
+| weak_cipher | ssh_audit [fail] lines: `(kex) diffie-hellman-group14-sha1 -- [fail]` |
+| terrapin | ssh_audit Terrapin line with CVE-2023-48795 |
+| insecure_protocol | Nmap output: `23/tcp open telnet` |
+| missing_header | HTTP headers showing absence: paste headers, note which are missing |
+| info_disclosure | The actual disclosed info: server version, banner text, $SYS data |
+| code_injection | Upload response or webshell execution result |
+| insecure_update | /firmware/ listing showing no .sha256/.sig, or POST /update 200 response |
+
+BAD evidence (will fail review): "Nmap scan confirmed port is open"
+GOOD evidence: "23/tcp open telnet?\nMAC Address: BC:24:11:34:6E:79"
+
+BAD evidence: "SSH password authentication is enabled"
+GOOD evidence: "ssh-auth-methods: publickey password (auth-methods output from nmap)"
 
 ## Completion criteria
 You are done when you have called save_deliverable("{{expected_deliverable}}", json_content) ONCE.
