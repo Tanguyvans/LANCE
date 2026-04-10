@@ -2,12 +2,16 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 
+/* ── Focus visible (accessibility) ──────────────────────────────────────── */
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
 :root {
   --bg:       #0d1117;
   --surface:  #161b22;
   --border:   #30363d;
   --text:     #e6edf3;
-  --muted:    #8b949e;
+  --muted:    #9ba4ae;
   --accent:   #1f6feb;
   --green:    #3fb950;
   --red:      #f85149;
@@ -37,6 +41,16 @@
   --sev-info-fg:     #58a6ff;
   --sev-medium-fg: var(--orange);
   --sev-low-fg:    var(--green);
+
+  /* Node type colors (used by Cytoscape via _cssVar) */
+  --node-router:   #e74c3c;
+  --node-switch:   #8e99a4;
+  --node-gateway:  #e67e22;
+  --node-sensor:   #2ecc71;
+  --node-compute:  #3498db;
+  --node-camera:   #9b59b6;
+  --node-ap:       #1abc9c;
+  --node-external: #7f8c8d;
 
   /* Tactical Glows */
   --glow-critical: 0 0 15px rgba(248, 81, 73, 0.6);
@@ -118,6 +132,8 @@ body {
   color: var(--muted);
   background: var(--bg);
   white-space: nowrap;
+  min-height: auto;
+  line-height: 1.4;
 }
 .phase-pill.running  { border-color: var(--accent); color: var(--accent); }
 .phase-pill.done     { border-color: var(--green);  color: var(--green);  }
@@ -405,6 +421,72 @@ button:disabled { opacity: .4; cursor: default; }
   background: var(--bg);
 }
 
+/* ── Graph toolbar separator ─────────────────────────────────────────────── */
+.toolbar-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  border: none;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* ── Multi-model config section ──────────────────────────────────────────── */
+.multi-model-config {
+  padding: 8px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--border);
+}
+
+.multi-model-hint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.phase-model-row {
+  margin-bottom: 6px;
+}
+
+.phase-model-row label {
+  font-size: 10px;
+  margin-bottom: 2px;
+}
+
+.phase-model-row select {
+  font-size: 11px;
+  padding: 4px;
+  min-height: 28px;
+}
+
+.multi-model-toggle {
+  margin: 10px 0 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.multi-model-toggle span {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ── History compare button ──────────────────────────────────────────────── */
+#btn-compare {
+  margin: 0;
+  padding: 2px 6px;
+  font-size: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  min-height: auto;
+  border-radius: 4px;
+}
+#btn-compare:hover { border-color: var(--accent); color: var(--accent); }
+
 /* ── Graph Toolbar ───────────────────────────────────────────────────────── */
 #graph-toolbar {
   position: absolute;
@@ -421,8 +503,8 @@ button:disabled { opacity: .4; cursor: default; }
 }
 
 .graph-btn {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   display: flex;
   align-items: center;
@@ -502,7 +584,7 @@ button:disabled { opacity: .4; cursor: default; }
   min-width: 0;
 }
 
-#detail-content { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+#detail-content { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
 #detail-node-view { padding: 12px; overflow-y: auto; flex: 1; }
 #detail-run-view { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
 
@@ -1084,6 +1166,14 @@ button:disabled { opacity: .4; cursor: default; }
   animation: pulse-border 1.4s ease-in-out infinite;
 }
 
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .log-line { animation: none; }
+  .phase-pill.running { animation: none; }
+  .sa-chip.reflector { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 /* ≤ 1100px : panel détail réduit */
@@ -1099,6 +1189,19 @@ button:disabled { opacity: .4; cursor: default; }
 
   #phase-bar { overflow-x: auto; flex-wrap: nowrap; }
   .phase-pill { white-space: nowrap; flex-shrink: 0; }
+}
+
+/* ≤ 640px : sidebar collapse, log masqué */
+@media (max-width: 640px) {
+  :root { --sidebar-w: 0px; }
+
+  #sidebar { display: none; }
+  #resize-sidebar { display: none; }
+  #resize-log { display: none; }
+  #log-wrap { display: none; }
+
+  #phase-bar { display: none; }
+  #cost-badge { display: none; }
 }
 
 /* ≤ 700px : cost badge condensé */

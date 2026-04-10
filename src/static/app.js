@@ -23,14 +23,14 @@ const SEV_COLOR = {
 };
 
 const TYPE_COLOR = {
-  router:   '#e74c3c',
-  switch:   '#95a5a6',
-  gateway:  '#e67e22',
-  sensor:   '#2ecc71',
-  compute:  '#3498db',
-  camera:   '#9b59b6',
-  ap:       '#1abc9c',
-  external: '#7f8c8d',
+  router:   _cssVar('--node-router'),
+  switch:   _cssVar('--node-switch'),
+  gateway:  _cssVar('--node-gateway'),
+  sensor:   _cssVar('--node-sensor'),
+  compute:  _cssVar('--node-compute'),
+  camera:   _cssVar('--node-camera'),
+  ap:       _cssVar('--node-ap'),
+  external: _cssVar('--node-external'),
 };
 
 function escapeHtml(str) {
@@ -250,7 +250,7 @@ async function loadScenariosConfig() {
   for (const s of _scenariosData.scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    const diff = s.difficulty === 'control' ? '🛡️' : s.difficulty === 'easy' ? '🟢' : s.difficulty === 'medium' ? '🟡' : '🔴';
+    const diff = s.difficulty === 'control' ? '(ctrl)' : s.difficulty === 'easy' ? '(easy)' : s.difficulty === 'medium' ? '(med)' : '(hard)';
     opt.textContent = `S${s.id} · ${s.name} ${diff}`;
     if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Multi-model toggle
   document.getElementById('cb-multi-model').addEventListener('change', function() {
-    document.getElementById('multi-model-config').style.display = this.checked ? 'block' : 'none';
+    document.getElementById('multi-model-config').hidden = !this.checked;
   });
 
   // View nav (Dashboard / Benchmark)
@@ -736,9 +736,9 @@ function resetNodeColors() {
 
 // ── Detail panel ───────────────────────────────────────────────────────────
 function showNodeDetail(data) {
-  document.getElementById('detail-placeholder').style.display = 'none';
+  document.getElementById('detail-placeholder').hidden = true;
   const el = document.getElementById('detail-content');
-  el.style.display = 'block';
+  el.hidden = false;
   document.getElementById('detail-node-view').hidden = false;
   document.getElementById('detail-run-view').hidden = true;
 
@@ -793,8 +793,8 @@ function showNodeDetail(data) {
 }
 
 function hideDetail() {
-  document.getElementById('detail-placeholder').style.display = '';
-  document.getElementById('detail-content').style.display = 'none';
+  document.getElementById('detail-placeholder').hidden = false;
+  document.getElementById('detail-content').hidden = true;
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
@@ -1072,7 +1072,7 @@ function toggleCompare(runId) {
 
 function _updateCompareButton() {
   const btn = document.getElementById('btn-compare');
-  if (btn) btn.style.display = _compareSet.size === 2 ? 'block' : 'none';
+  if (btn) btn.hidden = _compareSet.size !== 2;
 }
 
 async function openCompare() {
@@ -1082,7 +1082,10 @@ async function openCompare() {
 
   document.getElementById('compare-body').innerHTML =
     '<div style="padding:20px;color:var(--muted)">Chargement…</div>';
-  document.getElementById('compare-overlay').classList.add('open');
+  const cOverlay = document.getElementById('compare-overlay');
+  cOverlay._prevFocus = document.activeElement;
+  cOverlay.classList.add('open');
+  document.getElementById('compare-close').focus();
 
   const [runA, runB, scoreA, scoreB] = await Promise.all([
     fetchJSON(`/api/runs/${encodeURIComponent(idA)}`),
@@ -1130,7 +1133,9 @@ async function openCompare() {
 
 function closeCompare(e) {
   if (e && e.target !== document.getElementById('compare-overlay')) return;
-  document.getElementById('compare-overlay').classList.remove('open');
+  const cOverlay = document.getElementById('compare-overlay');
+  cOverlay.classList.remove('open');
+  if (cOverlay._prevFocus) { cOverlay._prevFocus.focus(); cOverlay._prevFocus = null; }
 }
 
 function _renderRunItem(r) {
@@ -1151,8 +1156,8 @@ function _renderRunItem(r) {
       </div>
       <div class="run-meta">
         ${scn} ${cost}
-        <button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">⊕</button>
-        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">⬇ zip</button>
+        <button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>
+        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">zip</button>
       </div>
     </div>
   `;
@@ -1231,8 +1236,8 @@ async function viewRun(runId) {
   document.getElementById('sel-scenario').value = scenarioId || '';
 
   // Show run view in detail panel
-  document.getElementById('detail-placeholder').style.display = 'none';
-  document.getElementById('detail-content').style.display = 'block';
+  document.getElementById('detail-placeholder').hidden = true;
+  document.getElementById('detail-content').hidden = false;
   document.getElementById('detail-node-view').hidden = true;
   document.getElementById('detail-run-view').hidden = false;
 
@@ -1611,15 +1616,22 @@ function closeModal(e) {
 }
 
 document.addEventListener('keydown', e => {
+  const cOverlay = document.getElementById('compare-overlay');
+  if (cOverlay.classList.contains('open')) {
+    if (e.key === 'Escape') { closeCompare(); return; }
+    if (e.key === 'Tab') {
+      const focusable = cOverlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+      else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
+    }
+    return;
+  }
+
   const overlay = document.getElementById('modal-overlay');
   if (!overlay.classList.contains('open')) return;
 
-  if (e.key === 'Escape') {
-    const cOverlay = document.getElementById('compare-overlay');
-    if (cOverlay.classList.contains('open')) { closeCompare(); return; }
-    closeModal();
-    return;
-  }
+  if (e.key === 'Escape') { closeModal(); return; }
 
   if (e.key === 'Tab') {
     const focusable = overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
@@ -1755,53 +1767,48 @@ function parseNmapResult(raw) {
 async function pollStatus() {
   const status = await fetchJSON('/api/pipeline/status');
   if (!status) return;
+
   setCost(status.cost);
 
-  if (status.running) {
-    document.getElementById('btn-start').disabled = true;
-    document.getElementById('btn-stop').style.display = 'block';
+  if (!status.running) return;
 
-    // Restore phase pills
-    for (const p of (status.phases_done || [])) {
-      setPhasePill(p.phase, 'completed');
-    }
-    if (status.phase > 0) {
-      setPhasePill(status.phase, 'running');
-    }
+  // — UI state —
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').style.display = 'block';
 
-    // Restore log messages
-    if (status.scenario_id) {
-      addLog({type: 'info', message: `Run en cours — S${status.scenario_id} · ${status.model || ''}`});
-    }
-    if (status.deploy_status === 'deployed') {
-      addLog({type: 'info', message: 'Vulns injectées ✓'});
-    } else if (status.deploy_status === 'deploying') {
-      addLog({type: 'info', message: 'Déploiement en cours…'});
-    }
-    if (status.phase_name) {
-      addLog({type: 'info', message: `▶ Phase ${status.phase} — ${status.phase_name}`});
-    }
-    if (status.devices_done && status.devices_done.length > 0) {
-      for (const dev of status.devices_done) {
-        addLog({type: 'info', message: `  ✓ ${dev} terminé`});
-      }
-    }
-    if (status.current_devices && status.current_devices.length > status.devices_done.length) {
-      const pending = status.current_devices.filter(d => !status.devices_done.includes(d));
-      for (const dev of pending) {
-        addLog({type: 'info', message: `  ⏳ ${dev} en cours…`});
-      }
-    }
-
-    // Load topology for this scenario
-    if (status.scenario_id) {
-      await loadTopology(status.scenario_id);
-      document.getElementById('sel-scenario').value = String(status.scenario_id);
-    }
-
-    // Connect to SSE stream
-    startSSE();
+  // — Phase pills —
+  for (const p of (status.phases_done || [])) {
+    setPhasePill(p.phase, 'done');
   }
+  if (status.phase > 0) setPhasePill(status.phase, 'running');
+
+  // — Device progress chips (phase 3) —
+  if (status.current_devices && status.current_devices.length > 0) {
+    for (const dev of status.current_devices) {
+      _deviceProgress[dev] = status.devices_done.includes(dev) ? 'done' : 'running';
+    }
+    updateDeviceProgress();
+  }
+
+  // — Replay real log events (most informative: skip text_chunk noise) —
+  const replayTypes = new Set([
+    'pipeline_start', 'phase_start', 'phase_done',
+    'device_start', 'device_done', 'reflector_start', 'reflector_done',
+    'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
+    'inject_start', 'inject_done', 'error',
+  ]);
+  for (const ev of (status.recent_events || [])) {
+    if (replayTypes.has(ev.type)) addLog(ev);
+  }
+
+  // — Sync scenario dropdown & topology —
+  if (status.scenario_id) {
+    document.getElementById('sel-scenario').value = String(status.scenario_id);
+    await loadTopology(status.scenario_id);
+  }
+
+  // — Reconnect to SSE stream —
+  startSSE();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

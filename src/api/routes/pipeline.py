@@ -38,7 +38,10 @@ _state: dict[str, Any] = {
     "current_devices": [],    # ["s1-mqtt", "s1-web"] — devices being scanned in current phase
     "devices_done": [],       # ["s1-mqtt"] — devices completed in current phase
     "deploy_status": None,    # "deploying" | "deployed" | "failed" | None
+    "recent_events": [],      # last 200 events, replayed on page reload
 }
+
+_MAX_RECENT_EVENTS = 200
 
 
 class StartRequest(BaseModel):
@@ -98,6 +101,12 @@ def _pipeline_thread(req: StartRequest):
             q = _state["queue"]
             if loop and q:
                 loop.call_soon_threadsafe(q.put_nowait, event)
+            # Buffer event for page-reload replay (skip internal/noise events)
+            _skip = {"__done__", "ping", "text_chunk"}
+            if event.get("type") not in _skip:
+                _state["recent_events"].append(event)
+                if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
+                    _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
             # Update shared state from events
             t = event.get("type")
             if t == "phase_start":
@@ -168,6 +177,7 @@ async def start_pipeline(req: StartRequest):
     _state["current_devices"] = []
     _state["devices_done"] = []
     _state["deploy_status"] = None
+    _state["recent_events"] = []
 
     thread = threading.Thread(target=_pipeline_thread, args=(req,), daemon=True)
     thread.start()
@@ -202,6 +212,7 @@ def get_status():
         "current_devices": _state.get("current_devices", []),
         "devices_done": _state.get("devices_done", []),
         "run_dir": _state["run_dir"],
+        "recent_events": _state.get("recent_events", []),
     }
 
 
