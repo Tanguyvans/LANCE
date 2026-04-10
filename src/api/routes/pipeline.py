@@ -321,39 +321,30 @@ def _get_all_scenario_ids() -> list[str]:
         return [str(i) for i in range(1, 11)]
 
 
-def _deploy_scenario(scenario_id: str, callback) -> bool:
-    """Run Ansible deploy playbooks for one scenario sequentially."""
+def _run_playbook_for(scenario_id: str, playbook: str, ev_start: str, ev_done: str, callback) -> bool:
+    """Run a single Ansible playbook for a scenario. Returns True on success."""
     import os
     env = os.environ.copy()
     env["LANG"] = "en_US.UTF-8"
     env["LC_ALL"] = "en_US.UTF-8"
-
-    def run_playbook(playbook: str, ev_start: str, ev_done: str) -> bool:
-        cmd = [
-            "ansible-playbook",
-            f"benchmarks/ansible/playbooks/{playbook}",
-            "-i", "benchmarks/ansible/inventory.yml",
-            "--vault-password-file", "/root/.vault_pass",
-            "--extra-vars", f"scenario_id={scenario_id}",
-        ]
-        callback({"type": ev_start, "scenario_id": scenario_id, "playbook": playbook})
-        try:
-            result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=600, env=env)
-            success = result.returncode == 0
-            output = (result.stdout + result.stderr)[-3000:]
-        except subprocess.TimeoutExpired:
-            success, output = False, f"{playbook} timeout (600s)"
-        except FileNotFoundError:
-            success, output = False, "ansible-playbook not found"
-        callback({"type": ev_done, "scenario_id": scenario_id, "playbook": playbook, "success": success, "output": output})
-        return success
-
-    ok = run_playbook("03_deploy_scenario.yml", "deploy_start", "deploy_done")
-    if not ok:
-        return False
-    run_playbook("04_inject_vulns.yml", "inject_start", "inject_done")
-    run_playbook("06_verify.yml", "verify_start", "verify_done")
-    return True
+    cmd = [
+        "ansible-playbook",
+        f"benchmarks/ansible/playbooks/{playbook}",
+        "-i", "benchmarks/ansible/inventory.yml",
+        "--vault-password-file", "/root/.vault_pass",
+        "--extra-vars", f"scenario_id={scenario_id}",
+    ]
+    callback({"type": ev_start, "scenario_id": scenario_id, "playbook": playbook})
+    try:
+        result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=600, env=env)
+        success = result.returncode == 0
+        output = (result.stdout + result.stderr)[-3000:]
+    except subprocess.TimeoutExpired:
+        success, output = False, f"{playbook} timeout (600s)"
+    except FileNotFoundError:
+        success, output = False, "ansible-playbook not found"
+    callback({"type": ev_done, "scenario_id": scenario_id, "playbook": playbook, "success": success, "output": output})
+    return success
 
 
 @router.post("/start-all")
@@ -395,21 +386,39 @@ async def start_all_pipelines(req: StartRequest):
                 state["deploy_status"] = "deployed" if event.get("success") else "failed"
         return callback
 
+    def _inject_and_verify(sid: str, run_id: str, state: dict):
+        """Run 04 + 06 for one scenario (called in parallel threads)."""
+        cb = make_callback(run_id, state)
+        _run_playbook_for(sid, "04_inject_vulns.yml", "inject_start", "inject_done", cb)
+        _run_playbook_for(sid, "06_verify.yml", "verify_start", "verify_done", cb)
+
     def coordinator():
-        # Phase 1 — sequential deploy
+        # Phase 1 — 03 séquentiel (évite le lock du template LXC)
         for sid, run_id in pairs:
             state = _runs[run_id]
             if state["stop_event"].is_set():
                 state["running"] = False
                 state["loop"].call_soon_threadsafe(state["queue"].put_nowait, {"type": "__done__", "run_id": run_id})
                 continue
-            deploy_ok = _deploy_scenario(str(sid), make_callback(run_id, state))
-            if not deploy_ok:
+            ok = _run_playbook_for(str(sid), "03_deploy_scenario.yml", "deploy_start", "deploy_done", make_callback(run_id, state))
+            if not ok:
                 state["deploy_status"] = "failed"
                 state["running"] = False
                 state["loop"].call_soon_threadsafe(state["queue"].put_nowait, {"type": "__done__", "run_id": run_id})
 
-        # Phase 2 — parallel LLM pipelines (deploy already done)
+        # Phase 2 — 04 + 06 en parallèle sur tous les scénarios déployés
+        inject_threads = []
+        for sid, run_id in pairs:
+            state = _runs[run_id]
+            if not state["running"]:
+                continue
+            t = threading.Thread(target=_inject_and_verify, args=(str(sid), run_id, state), daemon=True)
+            inject_threads.append(t)
+            t.start()
+        for t in inject_threads:
+            t.join()
+
+        # Phase 3 — parallel LLM pipelines (deploy already done)
         threads = []
         for sid, run_id in pairs:
             state = _runs[run_id]
