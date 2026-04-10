@@ -89,23 +89,9 @@
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
 
-    - name: Ajouter une interface VLAN temporaire pour joindre OpenWrt (192.168.1.1)
+    - name: Ajouter IP temporaire sur le bridge VLAN Proxmox pour joindre OpenWrt (192.168.1.1)
       ansible.builtin.command: >-
-        ip link add link {{ benchmark_bridge }} name {{ benchmark_bridge }}.{{ vlan.vlan_id }} type vlan id {{ vlan.vlan_id }}
-      failed_when: false
-      changed_when: true
-      when: router_check.rc != 0
-
-    - name: Assigner IP temporaire sur l'interface VLAN
-      ansible.builtin.command: >-
-        ip addr add 192.168.1.100/24 dev {{ benchmark_bridge }}.{{ vlan.vlan_id }}
-      failed_when: false
-      changed_when: true
-      when: router_check.rc != 0
-
-    - name: Activer l'interface VLAN temporaire
-      ansible.builtin.command: >-
-        ip link set {{ benchmark_bridge }}.{{ vlan.vlan_id }} up
+        ip addr add 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
       failed_when: false
       changed_when: true
       when: router_check.rc != 0
@@ -129,10 +115,10 @@
       changed_when: true
       when: router_check.rc != 0
 
-    - name: Retirer l'interface VLAN temporaire
-      ansible.builtin.shell: |
-        ip addr del 192.168.1.100/24 dev {{ benchmark_bridge }}.{{ vlan.vlan_id }} || true
-        ip link del {{ benchmark_bridge }}.{{ vlan.vlan_id }} || true
+    - name: Retirer l'IP temporaire du bridge VLAN
+      ansible.builtin.command: >-
+        ip addr del 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
+      failed_when: false
       changed_when: true
       when: router_check.rc != 0
 
