@@ -90,26 +90,37 @@
         </div>
       </div>
 
-      <label for="sel-scenario">Scénario</label>
-      <select id="sel-scenario">
-        <option value="">— Lab physique —</option>
-        <optgroup label="Vulnerable">
-          <option value="1">S1 · Réseau plat</option>
-          <option value="2">S2 · Gateway exposée</option>
-          <option value="3">S3 · Réplique NATO Lab</option>
-          <option value="4">S4 · Réseau segmenté</option>
-          <option value="5">S5 · Smart Building</option>
-          <option value="6">S6 · Domotique centralisée</option>
-          <option value="7">S7 · Edge-Cloud pivot</option>
-          <option value="8">S8 · Multi-zone IT/IoT/OT</option>
-          <option value="9">S9 · Mesh IoT</option>
-          <option value="10">S10 · Flat variantes</option>
-        </optgroup>
-        <optgroup label="Hardened (contrôle)">
-          <option value="1h">S1h · Réseau plat (hardened)</option>
-          <option value="4h">S4h · ICS/SCADA (hardened)</option>
-        </optgroup>
-      </select>
+      <label>Mode</label>
+      <div class="mode-toggle">
+        <label><input type="radio" name="run-mode" value="preset" checked> Scénario pré-configuré</label>
+        <label><input type="radio" name="run-mode" value="custom"> Personnalisé</label>
+      </div>
+
+      <!-- Preset mode -->
+      <div id="preset-mode">
+        <label for="sel-scenario">Scénario</label>
+        <select id="sel-scenario">
+          <option value="">— Lab physique —</option>
+        </select>
+      </div>
+
+      <!-- Custom mode -->
+      <div id="custom-mode" hidden>
+        <label for="sel-architecture">Architecture</label>
+        <select id="sel-architecture"></select>
+
+        <label>Posture</label>
+        <div class="mode-toggle">
+          <label><input type="radio" name="posture" value="vulnerable" checked> Vulnerable</label>
+          <label><input type="radio" name="posture" value="hardened"> Hardened</label>
+        </div>
+
+        <div id="packs-section">
+          <label>Packs de vulnérabilités</label>
+          <div id="packs-checkboxes" class="phase-checkboxes"></div>
+        </div>
+      </div>
+
       <button id="btn-teardown" disabled>Teardown</button>
 
       <label>Phases</label>

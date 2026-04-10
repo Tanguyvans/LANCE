@@ -125,9 +125,103 @@ function resetDeviceProgress() {
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
+// ── Scenario config state ─────────────────────────────────────────────────
+let _scenariosData = { architectures: [], packs: [], scenarios: [] };
+
+async function loadScenariosConfig() {
+  try {
+    _scenariosData = await fetchJSON('/api/scenarios') || { architectures: [], packs: [], scenarios: [] };
+  } catch (e) {
+    console.warn('Failed to load scenarios config:', e);
+    return;
+  }
+
+  // Populate preset dropdown
+  const sel = document.getElementById('sel-scenario');
+  sel.innerHTML = '<option value="">— Lab physique —</option>';
+
+  const vulnGroup = document.createElement('optgroup');
+  vulnGroup.label = 'Vulnerable';
+  const hardGroup = document.createElement('optgroup');
+  hardGroup.label = 'Hardened (contrôle)';
+
+  for (const s of _scenariosData.scenarios) {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `S${s.id} · ${s.name}`;
+    if (s.posture === 'hardened') hardGroup.appendChild(opt);
+    else vulnGroup.appendChild(opt);
+  }
+  if (vulnGroup.children.length) sel.appendChild(vulnGroup);
+  if (hardGroup.children.length) sel.appendChild(hardGroup);
+
+  // Populate architecture dropdown
+  const archSel = document.getElementById('sel-architecture');
+  archSel.innerHTML = '';
+  for (const a of _scenariosData.architectures) {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.name} (${a.services_count} devices)`;
+    archSel.appendChild(opt);
+  }
+
+  // Populate packs checkboxes
+  const packsDiv = document.getElementById('packs-checkboxes');
+  packsDiv.innerHTML = '';
+  for (const p of _scenariosData.packs) {
+    if (p.id === 'f0') continue; // hardened pack handled by posture toggle
+    const label = document.createElement('label');
+    label.innerHTML = `<input type="checkbox" class="pack-cb" value="${p.id}" checked> ${p.name} <span class="pack-count">(${p.vuln_count})</span>`;
+    packsDiv.appendChild(label);
+  }
+}
+
+function getSelectedScenarioId() {
+  const mode = document.querySelector('input[name="run-mode"]:checked').value;
+  if (mode === 'preset') {
+    return document.getElementById('sel-scenario').value || null;
+  }
+  // Custom mode: return architecture + packs info (handled separately in startRun)
+  return null;
+}
+
+function getCustomConfig() {
+  const posture = document.querySelector('input[name="posture"]:checked').value;
+  const architecture = document.getElementById('sel-architecture').value;
+  if (posture === 'hardened') {
+    return { architecture, packs: ['f0_hardened'], posture };
+  }
+  const packs = [...document.querySelectorAll('.pack-cb:checked')].map(cb => cb.value);
+  return { architecture, packs, posture };
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  // Mode toggle
+  document.querySelectorAll('input[name="run-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const isCustom = radio.value === 'custom' && radio.checked;
+      document.getElementById('preset-mode').hidden = isCustom;
+      document.getElementById('custom-mode').hidden = !isCustom;
+    });
+  });
+
+  // Posture toggle — hide/show packs
+  document.querySelectorAll('input[name="posture"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.getElementById('packs-section').hidden = radio.value === 'hardened' && radio.checked;
+    });
+  });
+
+  // Architecture change — load topology preview
+  document.getElementById('sel-architecture').addEventListener('change', function () {
+    // Find a scenario using this architecture to preview topology
+    const arch = this.value;
+    const scen = _scenariosData.scenarios.find(s => s.topology === arch);
+    if (scen) loadTopology(scen.id);
+  });
+
   document.getElementById('sel-scenario').addEventListener('change', function () {
-    loadTopology(this.value ? parseInt(this.value) : null);
+    loadTopology(this.value || null);
     document.getElementById('btn-teardown').disabled = !this.value;
   });
   document.getElementById('btn-start').addEventListener('click', startRun);
@@ -181,6 +275,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCollapsibleSidebar();
 
   // Load components independently to avoid one crash blocking everything
+  try {
+    await loadScenariosConfig();
+  } catch (e) {
+    console.warn("Scenarios config load failed", e);
+  }
+
   try {
     await loadTopology();
   } catch (e) {
@@ -523,9 +623,23 @@ function hideDetail() {
 // ── Pipeline ───────────────────────────────────────────────────────────────
 async function startRun() {
   const model    = document.getElementById('sel-model').value;
-  const scenario = document.getElementById('sel-scenario').value || null;
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
+  const mode     = document.querySelector('input[name="run-mode"]:checked').value;
+
+  // Determine scenario_id based on mode
+  let scenario = null;
+  if (mode === 'preset') {
+    scenario = document.getElementById('sel-scenario').value || null;
+  } else {
+    // Custom mode — build scenario_id from architecture + posture
+    const config = getCustomConfig();
+    // For now, find a matching pre-configured scenario or use architecture as scenario
+    const match = _scenariosData.scenarios.find(s =>
+      s.topology === config.architecture && s.posture === config.posture
+    );
+    scenario = match ? match.id : null;
+  }
 
   // Multi-model config
   let phaseModels = null;
@@ -556,7 +670,7 @@ async function startRun() {
   const body = {
     model,
     provider: 'openrouter',
-    scenario_id: scenario || null,
+    scenario_id: scenario,
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
