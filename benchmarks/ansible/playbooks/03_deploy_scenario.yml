@@ -89,29 +89,56 @@
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
 
-    - name: Attendre que le router OpenWrt soit prêt (port 22 ou 80)
+    - name: Ajouter une interface VLAN temporaire pour joindre OpenWrt (192.168.1.1)
       ansible.builtin.command: >-
-        qm guest exec {{ base_vmid }} -- sh -c "ss -tlnp | grep -qE ':22|:80'"
-      register: router_ready
-      until: router_ready is succeeded
-      retries: 15
-      delay: 5
-      changed_when: false
+        ip link add link {{ benchmark_bridge }} name {{ benchmark_bridge }}.{{ vlan.vlan_id }} type vlan id {{ vlan.vlan_id }}
       failed_when: false
+      changed_when: true
+      when: router_check.rc != 0
 
-    - name: Configurer l'IP LAN du router pour ce VLAN
+    - name: Assigner IP temporaire sur l'interface VLAN
       ansible.builtin.command: >-
-        qm guest exec {{ base_vmid }} -- sh -c '
+        ip addr add 192.168.1.100/24 dev {{ benchmark_bridge }}.{{ vlan.vlan_id }}
+      failed_when: false
+      changed_when: true
+      when: router_check.rc != 0
+
+    - name: Activer l'interface VLAN temporaire
+      ansible.builtin.command: >-
+        ip link set {{ benchmark_bridge }}.{{ vlan.vlan_id }} up
+      failed_when: false
+      changed_when: true
+      when: router_check.rc != 0
+
+    - name: Attendre que le router OpenWrt soit prêt (SSH sur 192.168.1.1)
+      ansible.builtin.wait_for:
+        host: "192.168.1.1"
+        port: 22
+        timeout: 90
+        delay: 15
+      when: router_check.rc != 0
+
+    - name: Configurer l'IP LAN du router pour ce VLAN via SSH
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 root@192.168.1.1 '
         uci set network.lan.ipaddr="{{ router_ip }}"
         uci set network.lan.netmask="255.255.255.0"
         uci commit network
-        /etc/init.d/network restart
+        nohup sh -c "/etc/init.d/network restart" >/dev/null 2>&1 &
         '
+      changed_when: true
+      when: router_check.rc != 0
+
+    - name: Retirer l'interface VLAN temporaire
+      ansible.builtin.shell: |
+        ip addr del 192.168.1.100/24 dev {{ benchmark_bridge }}.{{ vlan.vlan_id }} || true
+        ip link del {{ benchmark_bridge }}.{{ vlan.vlan_id }} || true
+      changed_when: true
       when: router_check.rc != 0
 
     - name: Attendre le redémarrage réseau du router
       ansible.builtin.pause:
-        seconds: 10
+        seconds: 15
       when: router_check.rc != 0
 
 
