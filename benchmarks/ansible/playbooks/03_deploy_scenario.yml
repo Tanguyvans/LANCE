@@ -89,13 +89,28 @@
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
 
+    # Ajouter une IP temporaire dans le subnet du scénario pour pouvoir pinger le router
+    - name: Ajouter IP temporaire VLAN ({{ subnet }}.254) pour diagnostic router
+      ansible.builtin.command: >-
+        ip addr add {{ subnet }}.254/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
+      failed_when: false
+      changed_when: true
+
     - name: Vérifier si le LAN du router est déjà joignable à son IP finale
-      ansible.builtin.command: ping -c1 -W3 {{ router_ip }}
+      ansible.builtin.command: ping -c2 -W3 {{ router_ip }}
       register: router_lan_check
       changed_when: false
       failed_when: false
 
-    - name: Ajouter IP temporaire sur le bridge VLAN Proxmox pour joindre OpenWrt (192.168.1.1)
+    - name: Retirer l'IP temporaire VLAN diagnostic
+      ansible.builtin.command: >-
+        ip addr del {{ subnet }}.254/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
+      failed_when: false
+      changed_when: true
+
+    # Router déjà configuré → rien à faire
+    # Router neuf (clone frais) → reconfigurer via 192.168.1.1
+    - name: Ajouter IP temporaire 192.168.1.100 pour joindre OpenWrt neuf (192.168.1.1)
       ansible.builtin.command: >-
         ip addr add 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
       failed_when: false
@@ -121,7 +136,7 @@
       changed_when: true
       when: router_lan_check.rc != 0
 
-    - name: Retirer l'IP temporaire du bridge VLAN
+    - name: Retirer l'IP temporaire 192.168.1.100
       ansible.builtin.command: >-
         ip addr del 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
       failed_when: false
