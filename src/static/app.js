@@ -250,8 +250,7 @@ async function loadScenariosConfig() {
   for (const s of _scenariosData.scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    const diff = s.difficulty === 'control' ? '(ctrl)' : s.difficulty === 'easy' ? '(easy)' : s.difficulty === 'medium' ? '(med)' : '(hard)';
-    opt.textContent = `S${s.id} · ${s.name} ${diff}`;
+    opt.textContent = `S${s.id} · ${s.name}`;
     if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
   }

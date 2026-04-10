@@ -160,11 +160,40 @@
   <!-- Graph -->
   <div id="graph-wrap">
     <div id="graph-toolbar">
-      <button class="graph-btn active" id="layout-cose" title="Vue Organique (Default)" aria-label="Layout organique">Org</button>
-      <button class="graph-btn" id="layout-breadth" title="Vue Hiérarchique (Tree)" aria-label="Layout hiérarchique">Tree</button>
-      <button class="graph-btn" id="layout-concentric" title="Vue Concentrique (Target)" aria-label="Layout concentrique">Ring</button>
+      <!-- Organic layout -->
+      <button class="graph-btn active" id="layout-cose" title="Vue Organique" aria-label="Layout organique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="3" r="1.5"/><circle cx="3" cy="13" r="1.5"/><circle cx="13" cy="13" r="1.5"/><circle cx="13" cy="6" r="1.5"/>
+          <line x1="8" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="3" x2="13" y2="6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="13" y1="6" x2="13" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="3" y1="13" x2="13" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <!-- Hierarchy layout -->
+      <button class="graph-btn" id="layout-breadth" title="Vue Hiérarchique" aria-label="Layout hiérarchique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="3" r="1.5"/><circle cx="4" cy="11" r="1.5"/><circle cx="12" cy="11" r="1.5"/>
+          <line x1="8" y1="4.5" x2="8" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="7.5" x2="4" y2="9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="7.5" x2="12" y2="9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <!-- Concentric layout -->
+      <button class="graph-btn" id="layout-concentric" title="Vue Concentrique" aria-label="Layout concentrique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+          <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+          <circle cx="8" cy="8" r="4" stroke-width="1.2"/>
+          <circle cx="8" cy="8" r="6.5" stroke-width="1.2"/>
+        </svg>
+      </button>
       <hr class="toolbar-sep" aria-hidden="true">
-      <button class="graph-btn" id="graph-fit" title="Ajuster la vue (Fit)" aria-label="Ajuster la vue">Fit</button>
+      <!-- Fit view -->
+      <button class="graph-btn" id="graph-fit" title="Ajuster la vue" aria-label="Ajuster la vue">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 6V2h4"/><path d="M10 2h4v4"/><path d="M14 10v4h-4"/><path d="M6 14H2v-4"/>
+        </svg>
+      </button>
     </div>
     <div id="cy"></div>
     <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>
