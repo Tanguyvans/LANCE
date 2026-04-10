@@ -1,0 +1,23 @@
+name: "ftp_list"
+command: "curl"
+args: ["--connect-timeout", "5", "-s"]
+enabled: true
+timeout: 10
+short_description: "FTP anonymous listing"
+description: >
+  Attempt anonymous FTP connection and list directory contents.
+  Use to prove FTP anonymous access vulnerability and show accessible files.
+max_output: 2000
+parameters:
+  - name: "url"
+    type: "string"
+    description: "FTP URL (e.g. 'ftp://192.168.100.1/' or 'ftp://anonymous:@192.168.100.1/')"
+    required: true
+    format: "positional"
+  - name: "user"
+    type: "string"
+    description: "FTP credentials (e.g. 'anonymous:')"
+    required: false
+    default: "anonymous:"
+    flag: "--user"
+    format: "flag"

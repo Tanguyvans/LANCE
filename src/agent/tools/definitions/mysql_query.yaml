@@ -1,0 +1,30 @@
+name: "mysql_query"
+command: "mysql"
+args: ["--connect-timeout=5", "-N"]
+enabled: true
+timeout: 15
+short_description: "MySQL/MariaDB query execution"
+description: >
+  Attempt to connect to a MySQL/MariaDB database and execute a query.
+  Use to PROVE database vulnerabilities: root with no password, exposed data,
+  plaintext credentials in tables. Try with empty password first (root no pass).
+max_output: 3000
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Database host IP"
+    required: true
+    flag: "-h"
+    format: "flag"
+  - name: "user"
+    type: "string"
+    description: "Database user (e.g. 'root')"
+    required: true
+    flag: "-u"
+    format: "flag"
+  - name: "query"
+    type: "string"
+    description: "SQL query to execute (e.g. 'SHOW DATABASES; SELECT * FROM smartcity.users LIMIT 5;')"
+    required: true
+    flag: "-e"
+    format: "flag"

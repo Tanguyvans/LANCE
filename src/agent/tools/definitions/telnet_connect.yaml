@@ -1,0 +1,18 @@
+name: "telnet_connect"
+command: "bash"
+args: ["-c"]
+enabled: true
+timeout: 10
+short_description: "Telnet/netcat connection attempt"
+description: >
+  Attempt a TCP connection (via netcat) to prove a service is accessible.
+  Use for Telnet (port 23) or any raw TCP service.
+  Returns the banner/response as proof.
+  Example: echo quit | timeout 3 nc 192.168.100.1 23
+max_output: 1000
+parameters:
+  - name: "command_string"
+    type: "string"
+    description: "Netcat command (e.g. \"echo quit | timeout 3 nc 192.168.100.1 23\")"
+    required: true
+    format: "positional"
