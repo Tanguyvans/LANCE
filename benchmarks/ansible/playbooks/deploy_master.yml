@@ -141,6 +141,8 @@
           - ssh-audit             # audit des serveurs SSH (ciphers, KEX, Terrapin)
           - arp-scan              # découverte réseau ARP (recon Phase 2)
           - net-tools             # fournit la commande arp
+          - sshpass               # exploitation Phase 4 : SSH login avec credentials
+          - mariadb-client        # exploitation Phase 4 : MySQL query sans password
         state: present
 
     # ── Firewall : protéger le réseau de management ───────────
