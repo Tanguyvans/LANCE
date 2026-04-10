@@ -366,6 +366,18 @@
         state: absent
 
     # ── Systemd : FastAPI (uvicorn) ───────────────────────────
+    - name: Deploy port cleanup script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/nato-port-cleanup.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          PORT={{ app_port }}
+          for pid in $(ss -tlnp "sport = :$PORT" | awk -F"pid=" "{print \$2}" | awk -F"," "{print \$1}" | grep -E "^[0-9]+$"); do
+              kill -9 "$pid" 2>/dev/null || true
+          done
+          exit 0
+
     - name: Deploy FastAPI systemd service
       ansible.builtin.copy:
         dest: /etc/systemd/system/nato-fastapi.service
@@ -380,10 +392,14 @@
           User=root
           WorkingDirectory={{ repo_dest }}
           EnvironmentFile={{ env_file }}
+          ExecStartPre=-/usr/local/bin/nato-port-cleanup.sh
           ExecStart={{ repo_dest }}/venv/bin/uvicorn src.api.main:app \
             --host 0.0.0.0 \
             --port {{ app_port }} \
             --workers 1
+          KillMode=control-group
+          KillSignal=SIGTERM
+          TimeoutStopSec=30
           Restart=on-failure
           RestartSec=5
 
