@@ -41,6 +41,7 @@ def list_scenarios():
             packs.append({
                 "id": data.get("id", f.stem),
                 "name": data.get("name", f.stem),
+                "description": data.get("description", ""),
                 "vuln_count": total,
                 "roles": list(vulns.keys()),
             })

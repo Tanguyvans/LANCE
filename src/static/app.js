@@ -128,12 +128,57 @@ function resetDeviceProgress() {
 // ── Scenario config state ─────────────────────────────────────────────────
 let _scenariosData = { architectures: [], packs: [], scenarios: [] };
 
+// Fallback data if API is unavailable
+const FALLBACK_SCENARIOS = {
+  architectures: [
+    { id: 'flat', name: 'Réseau plat', services_count: 3, description: 'Réseau IoT sans segmentation' },
+    { id: 'gateway', name: 'Gateway exposée', services_count: 5, description: 'Gateway IoT comme point d\'entrée' },
+    { id: 'nato_lab', name: 'Réplique NATO Lab', services_count: 7, description: 'Réplique du lab physique' },
+    { id: 'ics_scada', name: 'ICS/SCADA', services_count: 7, description: 'Convergence IT/OT industrielle' },
+    { id: 'building', name: 'Smart Building', services_count: 7, description: 'Surveillance et HVAC bâtiment' },
+    { id: 'star', name: 'Domotique centralisée', services_count: 5, description: 'Hub central Node-RED' },
+    { id: 'edge_cloud', name: 'Edge-Cloud', services_count: 5, description: 'Architecture distribuée edge→cloud' },
+    { id: 'multizone', name: 'Multi-zone IT/IoT/OT', services_count: 7, description: 'Multi-zone avec variantes' },
+    { id: 'mesh_iot', name: 'Mesh IoT', services_count: 5, description: 'Réseau mesh de capteurs' },
+    { id: 'flat_variants', name: 'Flat variantes', services_count: 5, description: 'Réseau plat avec Node-RED, FTP' },
+  ],
+  packs: [
+    { id: 'f1_weak_auth', name: 'Auth. faible', vuln_count: 24, description: 'Credentials par défaut, pas d\'auth' },
+    { id: 'f2_misconfig', name: 'Misconfigurations', vuln_count: 26, description: 'Telnet, MQTT anon, autoindex' },
+    { id: 'f3_data_exposure', name: 'Données exposées', vuln_count: 21, description: '.env, backup SQL, configs' },
+    { id: 'f5_injection', name: 'Injection', vuln_count: 5, description: 'RCE upload, SSRF' },
+    { id: 'f6_crypto', name: 'Crypto faible', vuln_count: 3, description: 'Ciphers faibles, Terrapin CVE' },
+    { id: 'f7_postexploit', name: 'Post-exploitation', vuln_count: 1, description: 'SUID, cron writable' },
+    { id: 'f8_info_disclosure', name: 'Info disclosure', vuln_count: 10, description: 'Versions, banners, $SYS' },
+    { id: 'f9_insecure_update', name: 'MAJ non sécurisées', vuln_count: 2, description: 'OTA sans signature' },
+  ],
+  scenarios: [
+    { id: '1', name: 'Réseau plat', difficulty: 'easy', posture: 'vulnerable', topology: 'flat', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
+    { id: '2', name: 'Gateway exposée', difficulty: 'medium', posture: 'vulnerable', topology: 'gateway', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f6_crypto','f8_info_disclosure','f9_insecure_update'] },
+    { id: '3', name: 'Réplique NATO Lab', difficulty: 'hard', posture: 'vulnerable', topology: 'nato_lab', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f6_crypto','f7_postexploit','f8_info_disclosure'] },
+    { id: '4', name: 'Réseau segmenté', difficulty: 'hard', posture: 'vulnerable', topology: 'ics_scada', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f7_postexploit','f8_info_disclosure','f9_insecure_update'] },
+    { id: '5', name: 'Smart Building', difficulty: 'medium', posture: 'vulnerable', topology: 'building', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
+    { id: '6', name: 'Domotique centralisée', difficulty: 'medium', posture: 'vulnerable', topology: 'star', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure','f9_insecure_update'] },
+    { id: '7', name: 'Edge-Cloud pivot', difficulty: 'hard', posture: 'vulnerable', topology: 'edge_cloud', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure','f9_insecure_update'] },
+    { id: '8', name: 'Multi-zone IT/IoT/OT', difficulty: 'hard', posture: 'vulnerable', topology: 'multizone', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
+    { id: '9', name: 'Mesh IoT', difficulty: 'medium', posture: 'vulnerable', topology: 'mesh_iot', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
+    { id: '10', name: 'Flat variantes', difficulty: 'medium', posture: 'vulnerable', topology: 'flat_variants', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f8_info_disclosure'] },
+    { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
+    { id: '4h', name: 'ICS/SCADA (hardened)', difficulty: 'control', posture: 'hardened', topology: 'ics_scada', packs: ['f0_hardened'] },
+  ],
+};
+
 async function loadScenariosConfig() {
   try {
-    _scenariosData = await fetchJSON('/api/scenarios') || { architectures: [], packs: [], scenarios: [] };
+    const data = await fetchJSON('/api/scenarios');
+    if (data && data.architectures && data.architectures.length > 0) {
+      _scenariosData = data;
+    } else {
+      _scenariosData = FALLBACK_SCENARIOS;
+    }
   } catch (e) {
-    console.warn('Failed to load scenarios config:', e);
-    return;
+    console.warn('API /api/scenarios unavailable, using fallback');
+    _scenariosData = FALLBACK_SCENARIOS;
   }
 
   // Populate preset dropdown
@@ -148,7 +193,8 @@ async function loadScenariosConfig() {
   for (const s of _scenariosData.scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    opt.textContent = `S${s.id} · ${s.name}`;
+    const diff = s.difficulty === 'control' ? '🛡️' : s.difficulty === 'easy' ? '🟢' : s.difficulty === 'medium' ? '🟡' : '🔴';
+    opt.textContent = `S${s.id} · ${s.name} ${diff}`;
     if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
   }
@@ -169,11 +215,26 @@ async function loadScenariosConfig() {
   const packsDiv = document.getElementById('packs-checkboxes');
   packsDiv.innerHTML = '';
   for (const p of _scenariosData.packs) {
-    if (p.id === 'f0') continue; // hardened pack handled by posture toggle
+    if (p.id === 'f0' || p.id === 'f0_hardened') continue;
     const label = document.createElement('label');
-    label.innerHTML = `<input type="checkbox" class="pack-cb" value="${p.id}" checked> ${p.name} <span class="pack-count">(${p.vuln_count})</span>`;
+    const desc = p.description || '';
+    label.title = desc;
+    label.innerHTML = `<input type="checkbox" class="pack-cb" value="${p.id}" checked> ${p.name} <span class="pack-count">(${p.vuln_count} vulns)</span>`;
     packsDiv.appendChild(label);
   }
+
+  // When architecture changes, auto-select the packs used by the matching scenario
+  archSel.addEventListener('change', () => {
+    const arch = archSel.value;
+    const match = _scenariosData.scenarios.find(s => s.topology === arch && s.posture === 'vulnerable');
+    if (match) {
+      document.querySelectorAll('.pack-cb').forEach(cb => {
+        cb.checked = match.packs.includes(cb.value);
+      });
+    }
+  });
+  // Trigger initial pack selection
+  archSel.dispatchEvent(new Event('change'));
 }
 
 function getSelectedScenarioId() {
