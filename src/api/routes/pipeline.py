@@ -23,11 +23,21 @@ if str(ROOT) not in sys.path:
 _state: dict[str, Any] = {
     "running": False,
     "phase": 0,
+    "phase_name": "",
     "cost": 0.0,
     "run_dir": None,
     "queue": None,
     "loop": None,
     "stop_event": None,   # threading.Event | None
+    # Run metadata
+    "scenario_id": None,
+    "model": None,
+    "started_at": None,
+    # Progress tracking
+    "phases_done": [],        # [{"phase": 1, "name": "graph_analysis", "cost": 0.01, "duration_s": 42}]
+    "current_devices": [],    # ["s1-mqtt", "s1-web"] — devices being scanned in current phase
+    "devices_done": [],       # ["s1-mqtt"] — devices completed in current phase
+    "deploy_status": None,    # "deploying" | "deployed" | "failed" | None
 }
 
 
@@ -88,12 +98,34 @@ def _pipeline_thread(req: StartRequest):
             q = _state["queue"]
             if loop and q:
                 loop.call_soon_threadsafe(q.put_nowait, event)
-            # Update shared state
+            # Update shared state from events
             t = event.get("type")
             if t == "phase_start":
                 _state["phase"] = event.get("phase", _state["phase"])
+                _state["phase_name"] = event.get("agent", "")
+                _state["current_devices"] = []
+                _state["devices_done"] = []
             elif t == "phase_done":
-                _state["cost"] += event.get("cost_usd", 0.0)
+                cost = event.get("cost_usd", 0.0)
+                _state["cost"] += cost
+                _state["phases_done"].append({
+                    "phase": event.get("phase"),
+                    "name": event.get("agent", ""),
+                    "cost": cost,
+                    "duration_s": event.get("duration_s", 0),
+                })
+            elif t == "device_start":
+                dev = event.get("device_id", "")
+                if dev and dev not in _state["current_devices"]:
+                    _state["current_devices"].append(dev)
+            elif t == "device_done":
+                dev = event.get("device_id", "")
+                if dev and dev not in _state["devices_done"]:
+                    _state["devices_done"].append(dev)
+            elif t == "deploy_start":
+                _state["deploy_status"] = "deploying"
+            elif t == "deploy_done":
+                _state["deploy_status"] = "deployed" if event.get("success") else "failed"
             elif t == "pipeline_done":
                 _state["run_dir"] = event.get("run_dir")
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
@@ -120,13 +152,22 @@ async def start_pipeline(req: StartRequest):
     if _state["running"]:
         raise HTTPException(status_code=409, detail="Pipeline already running")
 
+    from datetime import datetime
     _state["running"] = True
     _state["phase"] = 0
+    _state["phase_name"] = ""
     _state["cost"] = 0.0
     _state["run_dir"] = None
     _state["queue"] = asyncio.Queue()
     _state["loop"] = asyncio.get_event_loop()
     _state["stop_event"] = threading.Event()
+    _state["scenario_id"] = req.scenario_id
+    _state["model"] = req.model
+    _state["started_at"] = datetime.now().isoformat()
+    _state["phases_done"] = []
+    _state["current_devices"] = []
+    _state["devices_done"] = []
+    _state["deploy_status"] = None
 
     thread = threading.Thread(target=_pipeline_thread, args=(req,), daemon=True)
     thread.start()
@@ -147,11 +188,19 @@ async def stop_pipeline():
 
 @router.get("/status")
 def get_status():
-    """Return current pipeline state."""
+    """Return full pipeline state — used by frontend on load to sync UI."""
     return {
         "running": _state["running"],
         "phase": _state["phase"],
+        "phase_name": _state.get("phase_name", ""),
         "cost": round(_state["cost"], 4),
+        "scenario_id": _state.get("scenario_id"),
+        "model": _state.get("model"),
+        "started_at": _state.get("started_at"),
+        "deploy_status": _state.get("deploy_status"),
+        "phases_done": _state.get("phases_done", []),
+        "current_devices": _state.get("current_devices", []),
+        "devices_done": _state.get("devices_done", []),
         "run_dir": _state["run_dir"],
     }
 

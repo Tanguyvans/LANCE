@@ -1756,9 +1756,50 @@ async function pollStatus() {
   const status = await fetchJSON('/api/pipeline/status');
   if (!status) return;
   setCost(status.cost);
+
   if (status.running) {
     document.getElementById('btn-start').disabled = true;
     document.getElementById('btn-stop').style.display = 'block';
+
+    // Restore phase pills
+    for (const p of (status.phases_done || [])) {
+      setPhasePill(p.phase, 'completed');
+    }
+    if (status.phase > 0) {
+      setPhasePill(status.phase, 'running');
+    }
+
+    // Restore log messages
+    if (status.scenario_id) {
+      addLog({type: 'info', message: `Run en cours — S${status.scenario_id} · ${status.model || ''}`});
+    }
+    if (status.deploy_status === 'deployed') {
+      addLog({type: 'info', message: 'Vulns injectées ✓'});
+    } else if (status.deploy_status === 'deploying') {
+      addLog({type: 'info', message: 'Déploiement en cours…'});
+    }
+    if (status.phase_name) {
+      addLog({type: 'info', message: `▶ Phase ${status.phase} — ${status.phase_name}`});
+    }
+    if (status.devices_done && status.devices_done.length > 0) {
+      for (const dev of status.devices_done) {
+        addLog({type: 'info', message: `  ✓ ${dev} terminé`});
+      }
+    }
+    if (status.current_devices && status.current_devices.length > status.devices_done.length) {
+      const pending = status.current_devices.filter(d => !status.devices_done.includes(d));
+      for (const dev of pending) {
+        addLog({type: 'info', message: `  ⏳ ${dev} en cours…`});
+      }
+    }
+
+    // Load topology for this scenario
+    if (status.scenario_id) {
+      await loadTopology(status.scenario_id);
+      document.getElementById('sel-scenario').value = String(status.scenario_id);
+    }
+
+    // Connect to SSE stream
     startSSE();
   }
 }
