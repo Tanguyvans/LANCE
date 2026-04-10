@@ -149,17 +149,7 @@ def _load_scenario(scenario_id: str) -> dict:
                 "color": PROTOCOL_COLORS.get(link.get("protocol", "mqtt"), "#8e44ad"),
             })
 
-    # Determine subnet from scenario_vlans config
-    vlans_path = ROOT / "benchmarks" / "ansible" / "group_vars" / "all" / "main.yml"
-    subnet = "10.10.0.0/24"  # fallback
-    if vlans_path.exists():
-        vlans_data = yaml.safe_load(vlans_path.read_text())
-        vlans = vlans_data.get("scenario_vlans", {})
-        entry = vlans.get(str(scenario_id))
-        if entry:
-            subnet = f"{entry['subnet_prefix']}.0/24"
-
-    return {"nodes": nodes, "edges": edges, "subnet": subnet}
+    return {"nodes": nodes, "edges": edges, "subnet": "192.168.100.0/24"}
 
 
 @router.get("")

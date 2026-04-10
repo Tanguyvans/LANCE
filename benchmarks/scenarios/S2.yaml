@@ -30,7 +30,7 @@ attack_paths:
   chain:
   - hop: 1
     device: Internet
-    action: HTTP vers 10.20.0.13/api/status
+    action: HTTP vers 192.168.100.13/api/status
   - hop: 2
     device: s2-iot-gw (100.13)
     action: Récupération topologie réseau interne

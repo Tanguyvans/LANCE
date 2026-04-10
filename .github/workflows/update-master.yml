@@ -15,11 +15,5 @@ jobs:
       - name: Install Python dependencies
         run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
 
-      - name: Stop FastAPI (graceful)
-        run: systemctl stop nato-fastapi || true
-
-      - name: Kill any process still holding port 8501
-        run: ss -tlnp 'sport = :8501' | grep -oP 'pid=\K[0-9]+' | xargs -r kill -9 || true
-
-      - name: Start FastAPI
-        run: systemctl start nato-fastapi
+      - name: Restart FastAPI
+        run: systemctl restart nato-fastapi

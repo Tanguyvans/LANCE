@@ -16,9 +16,6 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    vlan: "{{ scenario_vlans[scenario_id] }}"
-    subnet: "{{ vlan.subnet_prefix }}"
-    vlan_iface: "vmbr1.{{ vlan.vlan_id }}"
     # scenarios est défini dans group_vars/all.yml (source unique de vérité)
 
   tasks:
@@ -28,12 +25,10 @@
         msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in scenarios
 
-    # ── Sous-interface VLAN pour accès au réseau du scénario ──
-    - name: Créer la sous-interface VLAN {{ vlan_iface }}
-      ansible.builtin.shell: |
-        ip link add link vmbr1 name {{ vlan_iface }} type vlan id {{ vlan.vlan_id }} 2>/dev/null || true
-        ip addr add {{ subnet }}.254/24 dev {{ vlan_iface }} 2>/dev/null || true
-        ip link set {{ vlan_iface }} up
+    # ── Ajouter IP temporaire pour accès aux CTs via vmbr1 ──
+    - name: Ajouter IP temporaire 192.168.100.254 sur vmbr1
+      ansible.builtin.command: ip addr add 192.168.100.254/24 dev vmbr1
+      failed_when: false
       changed_when: true
 
 
@@ -315,7 +310,7 @@
     # ── Router : Telnet + FTP ──
     - name: "[router] Vérifier port Telnet (23)"
       ansible.builtin.shell: >
-        nmap -p 23 --open {{ scenario_vlans[scenario_id].subnet_prefix }}.1 2>/dev/null | grep -q '23/tcp open' &&
+        nmap -p 23 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '23/tcp open' &&
         echo OK || echo FAIL
       register: router_telnet_check
       changed_when: false
@@ -323,7 +318,7 @@
 
     - name: "[router] Vérifier port FTP (21) — scénario 3 uniquement"
       ansible.builtin.shell: >
-        nmap -p 21 --open {{ scenario_vlans[scenario_id].subnet_prefix }}.1 2>/dev/null | grep -q '21/tcp open' &&
+        nmap -p 21 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '21/tcp open' &&
         echo OK || echo FAIL
       register: router_ftp_check
       changed_when: false
@@ -332,7 +327,7 @@
 
     - name: "[router] Vérifier interface web admin sur WAN (80)"
       ansible.builtin.shell: >
-        nmap -p 80 --open {{ scenario_vlans[scenario_id].subnet_prefix }}.1 2>/dev/null | grep -q '80/tcp open' &&
+        nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
         echo OK || echo FAIL
       register: router_wan_check
       changed_when: false
@@ -509,10 +504,9 @@
       failed_when: false
 
 
-    # ── Nettoyage sous-interface VLAN ──
-    - name: Retirer la sous-interface VLAN {{ vlan_iface }}
-      ansible.builtin.shell: |
-        ip link del {{ vlan_iface }} 2>/dev/null || true
+    # ── Retirer IP temporaire ──
+    - name: Retirer l'IP temporaire de vmbr1
+      ansible.builtin.command: ip addr del 192.168.100.254/24 dev vmbr1
       failed_when: false
       changed_when: true
 

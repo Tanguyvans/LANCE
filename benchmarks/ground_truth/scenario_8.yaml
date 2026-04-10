@@ -17,16 +17,16 @@ topology:
   router:
     name: s8-router
     vmid: 180
-    ip: "10.80.0.1"
+    ip: "192.168.100.1"
     type: openwrt
   services:
-    - { name: s8-admin,     vmid: 181, ip: "10.80.0.11", role: ssh_server_v2  }
-    - { name: s8-mqtt,      vmid: 182, ip: "10.80.0.12", role: mqtt_broker_v2 }
-    - { name: s8-iot-gw,    vmid: 183, ip: "10.80.0.13", role: iot_gateway    }
-    - { name: s8-plc,       vmid: 184, ip: "10.80.0.14", role: modbus_server  }
-    - { name: s8-hmi,       vmid: 185, ip: "10.80.0.15", role: web_server_v2  }
-    - { name: s8-redis,     vmid: 186, ip: "10.80.0.16", role: db_server_v2   }
-    - { name: s8-historian, vmid: 187, ip: "10.80.0.17", role: db_server      }
+    - { name: s8-admin,     vmid: 181, ip: "192.168.100.11", role: ssh_server_v2  }
+    - { name: s8-mqtt,      vmid: 182, ip: "192.168.100.12", role: mqtt_broker_v2 }
+    - { name: s8-iot-gw,    vmid: 183, ip: "192.168.100.13", role: iot_gateway    }
+    - { name: s8-plc,       vmid: 184, ip: "192.168.100.14", role: modbus_server  }
+    - { name: s8-hmi,       vmid: 185, ip: "192.168.100.15", role: web_server_v2  }
+    - { name: s8-redis,     vmid: 186, ip: "192.168.100.16", role: db_server_v2   }
+    - { name: s8-historian, vmid: 187, ip: "192.168.100.17", role: db_server      }
   # Inter-zone links (IT ↔ IoT ↔ OT)
   links:
     - { source: s8-admin,     target: s8-mqtt,      protocol: ethernet }  # IT → IoT
@@ -41,7 +41,7 @@ vulnerabilities:
 
   - id: V1
     device: s8-router
-    ip: "10.80.0.1"
+    ip: "192.168.100.1"
     role: router
     title: "Interface web admin OpenWrt accessible depuis le WAN"
     description: >
@@ -55,12 +55,12 @@ vulnerabilities:
     indicators:
       - "Port 80/tcp ouvert sur l'IP WAN du routeur"
       - "Interface LuCI accessible sans restriction réseau"
-    verification: "curl http://10.80.0.1:80"
+    verification: "curl http://192.168.100.1:80"
     confidence_required: high
 
   - id: V2
     device: s8-router
-    ip: "10.80.0.1"
+    ip: "192.168.100.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -71,13 +71,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 10.80.0.1"
-    verification: "nmap -p 23 10.80.0.1"
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
 
   - id: V3
     device: s8-admin
-    ip: "10.80.0.11"
+    ip: "192.168.100.11"
     role: ssh_server_v2
     title: "Clé privée SSH accessible en lecture par tous les utilisateurs"
     description: >
@@ -100,7 +100,7 @@ vulnerabilities:
 
   - id: V4
     device: s8-admin
-    ip: "10.80.0.11"
+    ip: "192.168.100.11"
     role: ssh_server_v2
     title: "Fichier de configuration IoT avec credentials réseau"
     description: >
@@ -119,7 +119,7 @@ vulnerabilities:
 
   - id: V5
     device: s8-mqtt
-    ip: "10.80.0.12"
+    ip: "192.168.100.12"
     role: mqtt_broker_v2
     title: "MQTT avec credentials faibles (test:test)"
     description: >
@@ -136,12 +136,12 @@ vulnerabilities:
       - "allow_anonymous false mais credentials triviaux"
       - "Connexion réussie avec test:test"
       - "Topic smartcity/admin/credentials contient des secrets"
-    verification: "mosquitto_sub -h 10.80.0.12 -u test -P test -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t '#' -v -C 3"
     confidence_required: high
 
   - id: V6
     device: s8-iot-gw
-    ip: "10.80.0.13"
+    ip: "192.168.100.13"
     role: iot_gateway
     title: "Interface HTTP admin sans authentification"
     description: >
@@ -156,12 +156,12 @@ vulnerabilities:
       - "Port 80/tcp ouvert"
       - "GET /admin retourne un panel sans auth"
       - "GET /api/devices retourne la liste des IPs"
-    verification: "curl http://10.80.0.13/api/devices"
+    verification: "curl http://192.168.100.13/api/devices"
     confidence_required: high
 
   - id: V7
     device: s8-iot-gw
-    ip: "10.80.0.13"
+    ip: "192.168.100.13"
     role: iot_gateway
     title: "Dropbear SSH 2020.81 vulnérable (Terrapin CVE-2023-48795)"
     description: >
@@ -175,12 +175,12 @@ vulnerabilities:
     indicators:
       - "Port 22/tcp — Dropbear 2020.81"
       - "ssh-audit détecte la vulnérabilité Terrapin"
-    verification: "ssh-audit 10.80.0.13"
+    verification: "ssh-audit 192.168.100.13"
     confidence_required: high
 
   - id: V8
     device: s8-iot-gw
-    ip: "10.80.0.13"
+    ip: "192.168.100.13"
     role: iot_gateway
     title: "Firmware OTA sans signature ni authentification"
     description: >
@@ -195,12 +195,12 @@ vulnerabilities:
       - "GET /firmware/ liste le fichier firmware.bin"
       - "Pas de .sha256 ni .sig à côté du firmware"
       - "POST /update accepté sans vérification"
-    verification: "curl http://10.80.0.13/firmware/"
+    verification: "curl http://192.168.100.13/firmware/"
     confidence_required: medium
 
   - id: V9
     device: s8-plc
-    ip: "10.80.0.14"
+    ip: "192.168.100.14"
     role: modbus_server
     title: "Modbus TCP sans authentification (port 502)"
     description: >
@@ -215,12 +215,12 @@ vulnerabilities:
       - "Port 502/tcp ouvert"
       - "Lecture de registres Modbus sans authentification"
       - "Écriture de coils possible (commande d'actionneurs)"
-    verification: "nmap -p 502 --script modbus-discover 10.80.0.14"
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.14"
     confidence_required: high
 
   - id: V10
     device: s8-hmi
-    ip: "10.80.0.15"
+    ip: "192.168.100.15"
     role: web_server_v2
     title: "API REST sans authentification avec endpoints sensibles"
     description: >
@@ -238,12 +238,12 @@ vulnerabilities:
       - "GET /api/users retourne credentials en clair"
       - "GET /api/config retourne la config réseau"
       - "POST /api/exec permet l'exécution de commandes"
-    verification: "curl http://10.80.0.15/api/users"
+    verification: "curl http://192.168.100.15/api/users"
     confidence_required: high
 
   - id: V11
     device: s8-hmi
-    ip: "10.80.0.15"
+    ip: "192.168.100.15"
     role: web_server_v2
     title: "Exécution de commandes via API REST (RCE)"
     description: >
@@ -256,12 +256,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "POST /api/exec avec {\"cmd\":\"id\"} retourne uid=0(root)"
-    verification: "curl -X POST http://10.80.0.15/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
+    verification: "curl -X POST http://192.168.100.15/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
     confidence_required: high
 
   - id: V12
     device: s8-redis
-    ip: "10.80.0.16"
+    ip: "192.168.100.16"
     role: db_server_v2
     title: "Redis sans authentification (port 6379)"
     description: >
@@ -277,12 +277,12 @@ vulnerabilities:
       - "Port 6379/tcp ouvert"
       - "redis-cli sans auth retourne PONG"
       - "KEYS * expose des clés sensibles (config:db_password, session:admin)"
-    verification: "redis-cli -h 10.80.0.16 KEYS '*'"
+    verification: "redis-cli -h 192.168.100.16 KEYS '*'"
     confidence_required: high
 
   - id: V13
     device: s8-redis
-    ip: "10.80.0.16"
+    ip: "192.168.100.16"
     role: db_server_v2
     title: "Données sensibles stockées en clair dans Redis"
     description: >
@@ -297,12 +297,12 @@ vulnerabilities:
       - "GET config:db_password retourne P@ssw0rd123"
       - "GET session:admin retourne un token JWT"
       - "GET iot:device:secrets retourne des PSK"
-    verification: "redis-cli -h 10.80.0.16 GET config:db_password"
+    verification: "redis-cli -h 192.168.100.16 GET config:db_password"
     confidence_required: medium
 
   - id: V14
     device: s8-historian
-    ip: "10.80.0.17"
+    ip: "192.168.100.17"
     role: db_server
     title: "MariaDB root sans mot de passe (port 3306)"
     description: >
@@ -317,7 +317,7 @@ vulnerabilities:
       - "Port 3306/tcp ouvert"
       - "Connexion MySQL réussie avec root sans mot de passe"
       - "bind-address = 0.0.0.0"
-    verification: "mysql -h 10.80.0.17 -u root -e 'SELECT 1'"
+    verification: "mysql -h 192.168.100.17 -u root -e 'SELECT 1'"
     confidence_required: high
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────

@@ -9,11 +9,11 @@ description: >
   and returns the output as proof. Use to PROVE default credential vulnerabilities.
   The command_string should be: sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 USER@HOST 'COMMAND'
   Common IoT default creds: admin:admin, root:root, ubnt:ubnt, pi:raspberry.
-  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@10.10.0.13 'id && cat /etc/iot/config.json'
+  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@192.168.100.13 'id && cat /etc/iot/config.json'
 max_output: 3000
 parameters:
   - name: "command_string"
     type: "string"
-    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@10.10.0.13 'id && cat /etc/iot/config.json'\")"
+    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
     required: true
     format: "positional"

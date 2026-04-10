@@ -11,7 +11,7 @@ max_output: 2000
 parameters:
   - name: "url"
     type: "string"
-    description: "FTP URL (e.g. 'ftp://10.10.0.1/' or 'ftp://anonymous:@10.10.0.1/')"
+    description: "FTP URL (e.g. 'ftp://192.168.100.1/' or 'ftp://anonymous:@192.168.100.1/')"
     required: true
     format: "positional"
   - name: "user"

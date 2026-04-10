@@ -3,14 +3,10 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 let cy = null;           // Cytoscape instance
+let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
-
-// ── Multi-run state ──
-// { runId: { eventSource, phase, cost, scenario, logs: [], running: true } }
-const activeRuns = {};
-let focusedRunId = null;  // currently focused tab
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Report'};
 
@@ -405,7 +401,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-teardown').disabled = !this.value;
   });
   document.getElementById('btn-start').addEventListener('click', startRun);
-  document.getElementById('btn-start-all').addEventListener('click', startAllRuns);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
   document.getElementById('btn-teardown').addEventListener('click', teardownScenario);
   document.getElementById('log-clear').addEventListener('click', clearLog);
@@ -821,128 +816,27 @@ function hideDetail() {
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
-// ── Run tab management ────────────────────────────────────────────────────
-function addRunTab(runId, scenarioId) {
-  const bar = document.getElementById('run-tabs-bar');
-  const tabs = document.getElementById('run-tabs');
-  bar.hidden = false;
-
-  const label = scenarioId ? `S${scenarioId}` : 'Lab';
-  const tab = document.createElement('button');
-  tab.className = 'run-tab active';
-  tab.dataset.runId = runId;
-  tab.innerHTML = `
-    <span class="tab-status"></span>
-    <span class="tab-label">${label}</span>
-    <span class="tab-cost">$0.00</span>
-    <span class="tab-close" title="Fermer">&times;</span>
-  `;
-
-  // Deactivate other tabs
-  tabs.querySelectorAll('.run-tab').forEach(t => t.classList.remove('active'));
-  tabs.appendChild(tab);
-
-  tab.addEventListener('click', (e) => {
-    if (e.target.classList.contains('tab-close')) {
-      removeRunTab(runId);
-      return;
-    }
-    focusRunTab(runId);
-  });
-}
-
-function focusRunTab(runId) {
-  const tabs = document.getElementById('run-tabs');
-  tabs.querySelectorAll('.run-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.runId === runId);
-  });
-  focusedRunId = runId;
-  const run = activeRuns[runId];
-  if (!run) return;
-
-  // Update UI for this run
-  setCost(run.cost || 0);
-  clearPhasePills();
-  for (const p of (run.phasesDone || [])) {
-    setPhasePill(p.phase, 'done');
-  }
-  if (run.phase > 0) setPhasePill(run.phase, 'running');
-
-  // Reload topology for this run's scenario
-  loadTopology(run.scenario || null);
-
-  // Replay logs
-  const logEl = document.getElementById('log');
-  logEl.innerHTML = '';
-  for (const ev of (run.logs || [])) {
-    addLog(ev, false);  // false = don't auto-scroll for bulk replay
-  }
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-function removeRunTab(runId) {
-  const run = activeRuns[runId];
-  if (run && run.eventSource) {
-    run.eventSource.close();
-  }
-  delete activeRuns[runId];
-
-  const tab = document.querySelector(`.run-tab[data-run-id="${runId}"]`);
-  if (tab) tab.remove();
-
-  // Focus another tab if this was the focused one
-  if (focusedRunId === runId) {
-    const remaining = document.querySelectorAll('.run-tab');
-    if (remaining.length > 0) {
-      focusRunTab(remaining[remaining.length - 1].dataset.runId);
-    } else {
-      focusedRunId = null;
-      document.getElementById('run-tabs-bar').hidden = true;
-    }
-  }
-
-  updateStopButton();
-}
-
-function updateRunTab(runId) {
-  const run = activeRuns[runId];
-  if (!run) return;
-  const tab = document.querySelector(`.run-tab[data-run-id="${runId}"]`);
-  if (!tab) return;
-
-  const status = tab.querySelector('.tab-status');
-  const costEl = tab.querySelector('.tab-cost');
-  costEl.textContent = `$${(run.cost || 0).toFixed(2)}`;
-
-  if (!run.running) {
-    status.classList.add(run.failed ? 'failed' : 'done');
-  }
-}
-
-function updateStopButton() {
-  const anyRunning = Object.values(activeRuns).some(r => r.running);
-  document.getElementById('btn-stop').style.display = anyRunning ? 'block' : 'none';
-  document.getElementById('btn-start').disabled = false;
-}
-
-
-function _buildStartBody() {
+async function startRun() {
   const model    = document.getElementById('sel-model').value;
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
   const mode     = document.querySelector('input[name="run-mode"]:checked').value;
 
+  // Determine scenario_id based on mode
   let scenario = null;
   if (mode === 'preset') {
     scenario = document.getElementById('sel-scenario').value || null;
   } else {
+    // Custom mode — build scenario_id from architecture + posture
     const config = getCustomConfig();
+    // For now, find a matching pre-configured scenario or use architecture as scenario
     const match = _scenariosData.scenarios.find(s =>
       s.topology === config.architecture && s.posture === config.posture
     );
     scenario = match ? match.id : null;
   }
 
+  // Multi-model config
   let phaseModels = null;
   if (document.getElementById('cb-multi-model').checked) {
     phaseModels = {};
@@ -954,6 +848,16 @@ function _buildStartBody() {
       }
     });
   }
+
+  // Reset graph colors and state
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  setCost(0);
+  clearPhasePills();
+
+  // Load correct topology
+  await loadTopology(scenario || null);
 
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -968,19 +872,17 @@ function _buildStartBody() {
     phase_models: phaseModels,
   };
 
+  // Add custom mode fields
   if (mode === 'custom') {
     const config = getCustomConfig();
     body.architecture = config.architecture;
     body.posture = config.posture;
+    // Collect selected packs
     body.selected_packs = [...document.querySelectorAll('.pack-cb:checked')].map(cb => cb.value);
+    // Collect excluded (unchecked) vulns within selected packs
     body.excluded_vulns = [...document.querySelectorAll('.vuln-cb:not(:checked)')].map(cb => cb.value);
   }
 
-  return body;
-}
-
-
-async function _launchSingleRun(body) {
   const res = await fetch('/api/pipeline/start', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -989,135 +891,23 @@ async function _launchSingleRun(body) {
 
   if (!res.ok) {
     const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur demarrage pipeline'});
-    return null;
-  }
-
-  const data = await res.json();
-  const runId = data.run_id;
-
-  // Register run
-  activeRuns[runId] = {
-    runId,
-    scenario: body.scenario_id,
-    model: body.model,
-    phase: 0,
-    cost: 0,
-    running: true,
-    failed: false,
-    logs: [],
-    phasesDone: [],
-    eventSource: null,
-  };
-
-  addRunTab(runId, body.scenario_id);
-  connectSSE(runId);
-  document.getElementById('btn-stop').style.display = 'block';
-
-  return runId;
-}
-
-
-async function startRun() {
-  const body = _buildStartBody();
-
-  // Reset graph for this run
-  resetNodeColors();
-  nodeVulns = {};
-  nodeHosts = {};
-  setCost(0);
-  clearPhasePills();
-  resetDeviceProgress();
-
-  await loadTopology(body.scenario_id || null);
-
-  const runId = await _launchSingleRun(body);
-  if (runId) focusRunTab(runId);
-}
-
-
-async function startAllRuns() {
-  const body = _buildStartBody();
-  const btn = document.getElementById('btn-start-all');
-  btn.disabled = true;
-
-  resetNodeColors();
-  nodeVulns = {};
-  nodeHosts = {};
-  setCost(0);
-  clearPhasePills();
-  resetDeviceProgress();
-
-  const res = await fetch('/api/pipeline/start-all', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur demarrage runs'});
-    btn.disabled = false;
+    addLog({type:'error', message: err.detail || 'Erreur démarrage pipeline'});
     return;
   }
 
-  const data = await res.json();
-  const runIds = data.run_ids;
-  const scenarioIds = data.scenario_ids;
-
-  let firstRunId = null;
-  for (let i = 0; i < runIds.length; i++) {
-    const runId = runIds[i];
-    const sid = scenarioIds[i];
-    activeRuns[runId] = {
-      runId,
-      scenario: sid,
-      model: body.model,
-      phase: 0,
-      cost: 0,
-      running: true,
-      failed: false,
-      logs: [],
-      phasesDone: [],
-      eventSource: null,
-    };
-    addRunTab(runId, sid);
-    connectSSE(runId);
-    if (!firstRunId) firstRunId = runId;
-  }
-
-  if (firstRunId) {
-    focusRunTab(firstRunId);
-    await loadTopology(scenarioIds[0]);
-  }
-
+  document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
-  btn.disabled = false;
-  addLog({type:'info', message: `${runIds.length} runs : deploy sequentiel, pipeline parallele`});
+  resetDeviceProgress();
+
+  startSSE();
 }
 
-
 async function stopRun() {
-  // Stop the focused run, or all if none focused
-  const runId = focusedRunId;
-  if (runId && activeRuns[runId]?.running) {
-    await fetch(`/api/pipeline/stop?run_id=${runId}`, { method: 'POST' }).catch(() => {});
-    const run = activeRuns[runId];
-    if (run?.eventSource) { run.eventSource.close(); run.eventSource = null; }
-    run.running = false;
-    updateRunTab(runId);
-    addLog({type:'error', message: `Run interrompu`});
-  } else {
-    await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
-    for (const [rid, run] of Object.entries(activeRuns)) {
-      if (run.eventSource) { run.eventSource.close(); run.eventSource = null; }
-      run.running = false;
-      updateRunTab(rid);
-    }
-    addLog({type:'error', message: "Tous les runs interrompus"});
-  }
-  updateStopButton();
-  loadRuns();
+  await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
+  if (eventSource) { eventSource.close(); eventSource = null; }
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').style.display = 'none';
+  addLog({type:'error', message:"Run interrompu par l'utilisateur"});
 }
 
 async function teardownScenario() {
@@ -1147,106 +937,73 @@ async function teardownScenario() {
   }
 }
 
-function connectSSE(runId) {
-  const run = activeRuns[runId];
-  if (!run) return;
-  if (run.eventSource) run.eventSource.close();
+function startSSE() {
+  if (eventSource) eventSource.close();
 
-  const es = new EventSource(`/api/pipeline/stream?run_id=${runId}`);
-  run.eventSource = es;
+  eventSource = new EventSource('/api/pipeline/stream');
 
-  es.onmessage = (e) => {
-    try { handleEvent(JSON.parse(e.data), runId); }
-    catch(err) { console.warn('SSE parse error', err); }
+  eventSource.onmessage = (e) => {
+    try { handleEvent(JSON.parse(e.data)); }
+    catch(e) { console.warn('SSE parse error', e); }
   };
 
-  es.onerror = () => {
-    es.close();
-    const wasRunning = run.running;
-    run.eventSource = null;
-    run.running = false;
-    updateRunTab(runId);
-    updateStopButton();
-    if (wasRunning && focusedRunId === runId) {
-      addLog({type:'error', message:'Connexion SSE perdue'});
-    }
+  eventSource.onerror = () => {
+    addLog({type:'error', message:'Connexion SSE perdue'});
+    eventSource.close();
+    eventSource = null;
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
     loadRuns();
   };
 }
 
-// Legacy compat — used by pollStatus
-function startSSE() {
-  if (focusedRunId && activeRuns[focusedRunId]) {
-    connectSSE(focusedRunId);
-  }
-}
-
-function handleEvent(ev, runId) {
+function handleEvent(ev) {
   const t = ev.type;
-  const run = runId ? activeRuns[runId] : null;
-  const isFocused = (runId === focusedRunId);
-
-  // Store event in run's log buffer
-  if (run) {
-    const skipLog = new Set(['text_chunk', 'ping', 'ansible_output']);
-    if (!skipLog.has(t)) run.logs.push(ev);
-  }
-
-  // Only update main UI if this is the focused run
-  if (isFocused) addLog(ev);
+  addLog(ev);
 
   if (t === 'phase_start') {
-    if (run) run.phase = ev.phase;
-    if (isFocused) {
-      setPhasePill(ev.phase, 'running');
-      if (ev.phase === 3) resetDeviceProgress();
-    }
+    setPhasePill(ev.phase, 'running');
+    if (ev.phase === 3) resetDeviceProgress();
   }
 
   else if (t === 'phase_done') {
-    if (run) {
-      const cost = ev.cost_usd || ev.cumulative_cost_usd || 0;
-      run.cost = ev.cumulative_cost_usd || (run.cost + cost);
-      run.phasesDone.push({ phase: ev.phase, name: ev.agent || '' });
-      updateRunTab(runId);
-    }
-    if (isFocused) {
-      setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
-      setCost(run ? run.cost : (ev.cumulative_cost_usd || 0));
-      if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
-    }
+    setPhasePill(ev.phase, ev.status === 'completed' ? 'done' : 'failed');
+    setCost(ev.cumulative_cost_usd || 0);
+    if (ev.phase === 3) document.getElementById('sub-agent-bar').hidden = true;
   }
 
   else if (t === 'device_start') {
-    if (isFocused) { _deviceProgress[ev.device_id] = 'running'; updateDeviceProgress(); }
+    _deviceProgress[ev.device_id] = 'running';
+    updateDeviceProgress();
   }
 
   else if (t === 'device_done') {
-    if (isFocused) { _deviceProgress[ev.device_id] = 'done'; updateDeviceProgress(); }
+    _deviceProgress[ev.device_id] = 'done';
+    updateDeviceProgress();
   }
 
   else if (t === 'reflector_start') {
-    if (isFocused) { _deviceProgress[ev.device_id] = 'reflector'; updateDeviceProgress(); }
+    _deviceProgress[ev.device_id] = 'reflector';
+    updateDeviceProgress();
   }
 
   else if (t === 'reflector_done') {
-    if (isFocused) { _deviceProgress[ev.device_id] = 'retried'; updateDeviceProgress(); }
+    _deviceProgress[ev.device_id] = 'retried';
+    updateDeviceProgress();
   }
 
   else if (t === 'pipeline_done') {
-    if (run) {
-      run.cost = ev.total_cost_usd || run.cost;
-      run.running = false;
-      updateRunTab(runId);
-    }
-    if (isFocused) setCost(ev.total_cost_usd || 0);
-    updateStopButton();
+    setCost(ev.total_cost_usd || 0);
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
     loadRuns();
   }
 
   else if (t === 'error') {
-    if (run) { run.running = false; run.failed = true; updateRunTab(runId); }
-    updateStopButton();
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
     loadRuns();
   }
 
@@ -1926,7 +1683,7 @@ function setCost(val) {
 // ── Event log ──────────────────────────────────────────────────────────────
 const MAX_LOG = 300;
 
-function addLog(ev, autoScroll = true) {
+function addLog(ev) {
   const log = document.getElementById('log');
   const t = ev.type || 'info';
 
@@ -1955,29 +1712,11 @@ function addLog(ev, autoScroll = true) {
   else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
-  else if (t === 'deploy_done') {
-    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ECHEC'}`;
-    if (!ev.success && ev.output) {
-      fullText = `Scénario S${ev.scenario_id} ECHEC\n${ev.output}`;
-    }
-  }
-  else if (t === 'inject_start')   text = `Injection vulns S${ev.scenario_id}…`;
-  else if (t === 'inject_done') {
-    text = `Vulns injectées S${ev.scenario_id} ${ev.success ? 'OK' : 'ECHEC'}`;
-    if (!ev.success && ev.output) {
-      fullText = `Vulns S${ev.scenario_id} ECHEC\n${ev.output}`;
-    }
-  }
-  else if (t === 'verify_start')   text = `Vérification S${ev.scenario_id}…`;
-  else if (t === 'verify_done')    text = `Vérification S${ev.scenario_id} terminée`;
+  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
+  else if (t === 'inject_start')   text = `Injection vulns…`;
+  else if (t === 'inject_done')    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
   else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;
   else if (t === 'teardown_done')  text = `Teardown terminé`;
-  else if (t === 'ansible_output') {
-    const line = ev.line || '';
-    const keep = line.match(/^(TASK \[|PLAY \[|PLAY RECAP|ok:|changed:|failed:|fatal:|skipping:|ERROR)/);
-    if (!keep) return;
-    text = line;
-  }
 
   if (!text) return;
 
@@ -1997,7 +1736,7 @@ function addLog(ev, autoScroll = true) {
 
   // Trim old lines
   while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
-  if (autoScroll) log.scrollTop = log.scrollHeight;
+  log.scrollTop = log.scrollHeight;
 }
 
 // ── Sidebar Collapsible ────────────────────────────────────────────────────
@@ -2047,54 +1786,47 @@ async function pollStatus() {
   const status = await fetchJSON('/api/pipeline/status');
   if (!status) return;
 
-  const runs = status.active_runs || [];
-  const runningRuns = runs.filter(r => r.running);
+  setCost(status.cost);
 
-  if (runningRuns.length === 0) return;
+  if (!status.running) return;
 
+  // — UI state —
+  document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
 
-  // Restore state for each running run
-  for (const r of runningRuns) {
-    if (activeRuns[r.run_id]) continue; // Already tracking
+  // — Phase pills —
+  for (const p of (status.phases_done || [])) {
+    setPhasePill(p.phase, 'done');
+  }
+  if (status.phase > 0) setPhasePill(status.phase, 'running');
 
-    // Fetch detailed state for this run
-    const detail = await fetchJSON(`/api/pipeline/status?run_id=${r.run_id}`);
-    if (!detail) continue;
-
-    activeRuns[r.run_id] = {
-      runId: r.run_id,
-      scenario: r.scenario_id,
-      model: r.model,
-      phase: r.phase,
-      cost: r.cost,
-      running: true,
-      failed: false,
-      logs: [],
-      phasesDone: (detail.phases_done || []).map(p => ({ phase: p.phase, name: p.name })),
-      eventSource: null,
-    };
-
-    addRunTab(r.run_id, r.scenario_id);
-
-    // Replay events into log buffer
-    const replayTypes = new Set([
-      'pipeline_start', 'phase_start', 'phase_done',
-      'device_start', 'device_done', 'reflector_start', 'reflector_done',
-      'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-      'inject_start', 'inject_done', 'error',
-    ]);
-    for (const ev of (detail.recent_events || [])) {
-      if (replayTypes.has(ev.type)) activeRuns[r.run_id].logs.push(ev);
+  // — Device progress chips (phase 3) —
+  if (status.current_devices && status.current_devices.length > 0) {
+    for (const dev of status.current_devices) {
+      _deviceProgress[dev] = status.devices_done.includes(dev) ? 'done' : 'running';
     }
-
-    connectSSE(r.run_id);
+    updateDeviceProgress();
   }
 
-  // Focus the first run if none focused
-  if (!focusedRunId && runningRuns.length > 0) {
-    focusRunTab(runningRuns[0].run_id);
+  // — Replay real log events (most informative: skip text_chunk noise) —
+  const replayTypes = new Set([
+    'pipeline_start', 'phase_start', 'phase_done',
+    'device_start', 'device_done', 'reflector_start', 'reflector_done',
+    'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
+    'inject_start', 'inject_done', 'error',
+  ]);
+  for (const ev of (status.recent_events || [])) {
+    if (replayTypes.has(ev.type)) addLog(ev);
   }
+
+  // — Sync scenario dropdown & topology —
+  if (status.scenario_id) {
+    document.getElementById('sel-scenario').value = String(status.scenario_id);
+    await loadTopology(status.scenario_id);
+  }
+
+  // — Reconnect to SSE stream —
+  startSSE();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

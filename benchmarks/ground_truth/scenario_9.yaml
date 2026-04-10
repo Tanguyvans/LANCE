@@ -15,14 +15,14 @@ topology:
   router:
     name: s9-router
     vmid: 190
-    ip: "10.90.0.1"
+    ip: "192.168.100.1"
     type: openwrt
   services:
-    - { name: s9-mqtt-1, vmid: 191, ip: "10.90.0.11", role: mqtt_broker    }
-    - { name: s9-mqtt-2, vmid: 192, ip: "10.90.0.12", role: mqtt_broker_v2 }
-    - { name: s9-mqtt-3, vmid: 193, ip: "10.90.0.13", role: mqtt_broker    }
-    - { name: s9-coap,   vmid: 194, ip: "10.90.0.14", role: coap_server    }
-    - { name: s9-snmp,   vmid: 195, ip: "10.90.0.15", role: snmp_server    }
+    - { name: s9-mqtt-1, vmid: 191, ip: "192.168.100.11", role: mqtt_broker    }
+    - { name: s9-mqtt-2, vmid: 192, ip: "192.168.100.12", role: mqtt_broker_v2 }
+    - { name: s9-mqtt-3, vmid: 193, ip: "192.168.100.13", role: mqtt_broker    }
+    - { name: s9-coap,   vmid: 194, ip: "192.168.100.14", role: coap_server    }
+    - { name: s9-snmp,   vmid: 195, ip: "192.168.100.15", role: snmp_server    }
   # Mesh links between MQTT brokers (peer-to-peer topology)
   links:
     - { source: s9-mqtt-1, target: s9-mqtt-2, protocol: mqtt }
@@ -36,7 +36,7 @@ vulnerabilities:
 
   - id: V1
     device: s9-router
-    ip: "10.90.0.1"
+    ip: "192.168.100.1"
     role: router
     title: "Telnet activé sur le routeur (port 23)"
     description: >
@@ -47,13 +47,13 @@ vulnerabilities:
     mitre_ics: "Initial Access"
     cve: null
     indicators:
-      - "Port 23/tcp ouvert sur 10.90.0.1"
-    verification: "nmap -p 23 10.90.0.1"
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+    verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
 
   - id: V2
     device: s9-mqtt-1
-    ip: "10.90.0.11"
+    ip: "192.168.100.11"
     role: mqtt_broker
     title: "MQTT sans authentification (nœud mesh 1)"
     description: >
@@ -68,12 +68,12 @@ vulnerabilities:
       - "Port 1883/tcp ouvert"
       - "Connexion possible sans username/password"
       - "Topics smartcity/admin/credentials accessibles"
-    verification: "mosquitto_sub -h 10.90.0.11 -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v -C 3"
     confidence_required: high
 
   - id: V3
     device: s9-mqtt-1
-    ip: "10.90.0.11"
+    ip: "192.168.100.11"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT (nœud 1)"
     description: >
@@ -86,12 +86,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
-    verification: "mosquitto_sub -h 10.90.0.11 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V4
     device: s9-mqtt-2
-    ip: "10.90.0.12"
+    ip: "192.168.100.12"
     role: mqtt_broker_v2
     title: "MQTT avec credentials faibles (test:test) — nœud mesh 2"
     description: >
@@ -106,12 +106,12 @@ vulnerabilities:
       - "Port 1883/tcp ouvert"
       - "allow_anonymous false mais credentials triviaux"
       - "Connexion réussie avec test:test"
-    verification: "mosquitto_sub -h 10.90.0.12 -u test -P test -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t '#' -v -C 3"
     confidence_required: high
 
   - id: V5
     device: s9-mqtt-2
-    ip: "10.90.0.12"
+    ip: "192.168.100.12"
     role: mqtt_broker_v2
     title: "Credentials en clair dans les topics MQTT (nœud 2)"
     description: >
@@ -125,12 +125,12 @@ vulnerabilities:
     indicators:
       - "Topic smartcity/admin/credentials contient db_pass, api_key"
       - "Topic smartcity/config/network expose la config réseau"
-    verification: "mosquitto_sub -h 10.90.0.12 -u test -P test -t 'smartcity/admin/#' -C 1"
+    verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t 'smartcity/admin/#' -C 1"
     confidence_required: medium
 
   - id: V6
     device: s9-mqtt-3
-    ip: "10.90.0.13"
+    ip: "192.168.100.13"
     role: mqtt_broker
     title: "MQTT sans authentification (nœud mesh 3)"
     description: >
@@ -144,12 +144,12 @@ vulnerabilities:
     indicators:
       - "Port 1883/tcp ouvert"
       - "Connexion possible sans username/password"
-    verification: "mosquitto_sub -h 10.90.0.13 -t '#' -v -C 3"
+    verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v -C 3"
     confidence_required: high
 
   - id: V7
     device: s9-mqtt-3
-    ip: "10.90.0.13"
+    ip: "192.168.100.13"
     role: mqtt_broker
     title: "Credentials en clair dans les topics MQTT (nœud 3)"
     description: >
@@ -161,12 +161,12 @@ vulnerabilities:
     cve: null
     indicators:
       - "Topics smartcity/admin/credentials accessibles anonymement"
-    verification: "mosquitto_sub -h 10.90.0.13 -t 'smartcity/admin/credentials' -C 1"
+    verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
 
   - id: V8
     device: s9-coap
-    ip: "10.90.0.14"
+    ip: "192.168.100.14"
     role: coap_server
     title: "CoAP sans DTLS (port 5683/UDP)"
     description: >
@@ -180,15 +180,15 @@ vulnerabilities:
     cve: null
     indicators:
       - "Port 5683/udp ouvert"
-      - "GET coap://10.90.0.14/config retourne des secrets"
-      - "PUT coap://10.90.0.14/config modifie la configuration"
-      - "POST coap://10.90.0.14/actuator/valve contrôle un actionneur"
-    verification: "coap-client -m get coap://10.90.0.14/config"
+      - "GET coap://192.168.100.14/config retourne des secrets"
+      - "PUT coap://192.168.100.14/config modifie la configuration"
+      - "POST coap://192.168.100.14/actuator/valve contrôle un actionneur"
+    verification: "coap-client -m get coap://192.168.100.14/config"
     confidence_required: high
 
   - id: V9
     device: s9-coap
-    ip: "10.90.0.14"
+    ip: "192.168.100.14"
     role: coap_server
     title: "CoAP — contrôle d'actionneur sans authentification"
     description: >
@@ -200,13 +200,13 @@ vulnerabilities:
     mitre_ics: "Impair Process Control"
     cve: null
     indicators:
-      - "POST coap://10.90.0.14/actuator/valve accepté sans auth"
-    verification: "coap-client -m post coap://10.90.0.14/actuator/valve"
+      - "POST coap://192.168.100.14/actuator/valve accepté sans auth"
+    verification: "coap-client -m post coap://192.168.100.14/actuator/valve"
     confidence_required: high
 
   - id: V10
     device: s9-snmp
-    ip: "10.90.0.15"
+    ip: "192.168.100.15"
     role: snmp_server
     title: "SNMP community string par défaut (public/private)"
     description: >
@@ -222,12 +222,12 @@ vulnerabilities:
       - "Port 161/udp ouvert"
       - "snmpwalk avec community 'public' retourne des données"
       - "Community 'private' permet l'écriture (rwcommunity)"
-    verification: "snmpwalk -v2c -c public 10.90.0.15"
+    verification: "snmpwalk -v2c -c public 192.168.100.15"
     confidence_required: high
 
   - id: V11
     device: s9-snmp
-    ip: "10.90.0.15"
+    ip: "192.168.100.15"
     role: snmp_server
     title: "SNMP information disclosure (sysLocation, sysContact)"
     description: >
@@ -241,7 +241,7 @@ vulnerabilities:
     indicators:
       - "sysLocation = IoT Sensor Network — Building A"
       - "sysContact = admin@smartcity.local"
-    verification: "snmpget -v2c -c public 10.90.0.15 sysLocation.0"
+    verification: "snmpget -v2c -c public 192.168.100.15 sysLocation.0"
     confidence_required: low
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────

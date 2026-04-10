@@ -51,7 +51,6 @@ class Pipeline:
         max_cost_usd: float | None = None,
         phase_models: dict[int | str, str] | None = None,
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
-        skip_deploy: bool = False,
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -60,7 +59,6 @@ class Pipeline:
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
-        self.skip_deploy = skip_deploy
         self.custom_config = custom_config
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
@@ -93,13 +91,8 @@ class Pipeline:
             lab = load_scenario_topology(self.scenario_id)
         else:
             lab = load_lab_context()
-        # target_subnet: per-VLAN subnet when a scenario is active, real lab otherwise
-        if self.scenario_id is not None:
-            from src.agent.tools.graph_tools import _get_scenario_subnet
-            prefix = _get_scenario_subnet(int(self.scenario_id))
-            target_subnet = f"{prefix}.0/24"
-        else:
-            target_subnet = "192.168.88.0/24"
+        # target_subnet: benchmark network when a scenario is active, real lab otherwise
+        target_subnet = "192.168.100.0/24" if self.scenario_id is not None else "192.168.88.0/24"
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
@@ -145,7 +138,7 @@ class Pipeline:
             self._save_ground_truth()
 
             # Deploy benchmark VMs before starting the pipeline
-            if not self.dry_run and not self.skip_deploy:
+            if not self.dry_run:
                 deploy_ok = self._run_scenario_deploy(stream_callback)
                 if not deploy_ok:
                     if stream_callback:
@@ -241,7 +234,7 @@ class Pipeline:
         return results
 
     def _run_playbook(self, playbook: str, stream_callback, event_type_start: str, event_type_done: str, extra_msg: str = "") -> bool:
-        """Run an Ansible playbook, streaming output line by line. Returns True on success."""
+        """Run an Ansible playbook and return True on success."""
         repo_root = Path(__file__).resolve().parents[2]
         cmd = [
             "ansible-playbook",
@@ -257,44 +250,31 @@ class Pipeline:
         if stream_callback:
             stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
 
-        import os
-        env = os.environ.copy()
-        env["LANG"] = "en_US.UTF-8"
-        env["LC_ALL"] = "en_US.UTF-8"
-
-        output_lines: list[str] = []
-        success = False
         try:
-            proc = subprocess.Popen(
-                cmd, cwd=str(repo_root), env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1,
-            )
-            for line in proc.stdout:
-                line = line.rstrip()
-                if line:
-                    output_lines.append(line)
-                    print(line)
-                    if stream_callback:
-                        stream_callback({"type": "ansible_output", "scenario_id": self.scenario_id, "playbook": playbook, "line": line})
-            proc.wait(timeout=600)
-            success = proc.returncode == 0
+            import os
+            env = os.environ.copy()
+            env["LANG"] = "en_US.UTF-8"
+            env["LC_ALL"] = "en_US.UTF-8"
+            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600, env=env)
+            success = result.returncode == 0
+            output = (result.stdout + result.stderr)[-3000:]
+            print(output)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            output_lines.append(f"{playbook} timeout (600s)")
+            success = False
+            output = f"{playbook} timeout (600s)"
         except FileNotFoundError:
-            output_lines.append("ansible-playbook not found — deploy skipped")
+            success = False
+            output = "ansible-playbook not found — deploy skipped"
 
-        output = "\n".join(output_lines[-100:])
         if stream_callback:
             stream_callback({"type": event_type_done, "scenario_id": self.scenario_id, "playbook": playbook, "success": success, "output": output})
         return success
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
-        """Deploy and configure benchmark scenario VMs before pipeline starts.
+        """Deploy and configure benchmark scenario VMs before pipeline starts."""
+        # Pre-teardown any running scenario to avoid conflicts on shared network
+        self._teardown_all_running_scenarios(stream_callback)
 
-        Each scenario runs on its own VLAN — no need for pre-teardown.
-        """
         # 03 — deploy VMs
         ok = self._run_playbook("03_deploy_scenario.yml", stream_callback, "deploy_start", "deploy_done")
         if not ok:
@@ -311,15 +291,9 @@ class Pipeline:
         return True
 
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
-        """Deprecated: no longer needed with VLAN isolation.
-
-        Each scenario runs on its own VLAN, so no conflicts are possible.
-        Kept as no-op for backwards compatibility.
-        """
-        return
-
-        # Legacy code below — kept for reference but never executed
+        """Teardown any currently running scenario before deploying a new one."""
         repo_root = Path(__file__).resolve().parents[2]
+        # Load all scenario IDs dynamically from group_vars
         import yaml as _yaml
         all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
         try:
@@ -495,7 +469,7 @@ class Pipeline:
                 vuln = {
                     "id": f"V{vuln_counter}",
                     "device": router.get("name_template", "router").format(sid=sid),
-                    "ip": router.get("ip", "10.10.0.1"),
+                    "ip": router.get("ip", "192.168.100.1"),
                     "role": "router",
                 }
                 for key, val in vt.items():
@@ -532,19 +506,15 @@ class Pipeline:
             log.warning("Scenario ground truth not found: %s", gt_path)
             return ""
         data = yaml.safe_load(gt_path.read_text())
-        from src.agent.tools.graph_tools import _get_scenario_subnet
-        subnet_prefix = _get_scenario_subnet(int(scenario_id))
-        target_subnet = f"{subnet_prefix}.0/24"
-        router_ip = f"{subnet_prefix}.1"
         lines = [
             f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
-            f"Scan network: {target_subnet} (NOT 192.168.88.0/24 — that is the physical lab)",
-            f"Gateway: {router_ip} (OpenWrt router)",
+            f"Scan network: 192.168.100.0/24 (NOT 192.168.88.0/24 — that is the physical lab)",
+            f"Gateway: 192.168.100.1 (OpenWrt router)",
             "Known target hosts (scan ALL of them):",
         ]
         router = data.get("topology", {}).get("router", {})
         if router:
-            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', router_ip)}) — role: router")
+            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', '192.168.100.1')}) — role: router")
         for svc in data.get("topology", {}).get("services", []):
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)

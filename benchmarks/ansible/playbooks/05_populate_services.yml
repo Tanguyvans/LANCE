@@ -77,7 +77,7 @@
             mosquitto_pub -h $BROKER -t "home/alarm/code" \
               -m "{\"zone\":\"building-a\",\"pin\":\"1234\",\"armed\":false,\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
             mosquitto_pub -h $BROKER -t "home/camera/stream" \
-              -m "{\"cam\":\"cam-01\",\"url\":\"rtsp://admin:admin@{{ scenario_vlans[scenario_id].subnet_prefix }}.x:554/stream1\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
+              -m "{\"cam\":\"cam-01\",\"url\":\"rtsp://admin:admin@192.168.100.x:554/stream1\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
             mosquitto_pub -h $BROKER -t "system/credentials" \
               -m "{\"service\":\"web\",\"user\":\"admin\",\"password\":\"P@ssw0rd123\",\"timestamp\":\"$(date -Iseconds)\"}" 2>/dev/null || true
           }
@@ -159,7 +159,7 @@
           </head>
           <body>
             <h1>SmartCity Building A — IoT Monitoring Dashboard</h1>
-            <p>Réseau: {{ scenario_vlans[scenario_id].subnet_prefix }}.0/24 | Broker MQTT: {{ scenario_vlans[scenario_id].subnet_prefix }}.11:1883 | <span class="status-ok">● ONLINE</span></p>
+            <p>Réseau: 192.168.100.0/24 | Broker MQTT: 192.168.100.11:1883 | <span class="status-ok">● ONLINE</span></p>
 
             <div class="grid">
               <div class="card">
@@ -200,9 +200,9 @@
             <table>
               <tr><th>Device</th><th>IP</th><th>Type</th><th>Status</th><th>Last seen</th></tr>
               <tr><td>sensor-01..08</td><td>MQTT</td><td>Capteur T°/H</td><td class="status-ok">OK</td><td>10s</td></tr>
-              <tr><td>cam-01..03</td><td>{{ scenario_vlans[scenario_id].subnet_prefix }}.x</td><td>Caméra IP</td><td class="status-ok">Streaming</td><td>5s</td></tr>
-              <tr><td>door-controller</td><td>{{ scenario_vlans[scenario_id].subnet_prefix }}.13</td><td>Contrôleur SSH</td><td class="status-ok">OK</td><td>2m</td></tr>
-              <tr><td>iot-gateway</td><td>{{ scenario_vlans[scenario_id].subnet_prefix }}.1</td><td>Router/GW</td><td class="status-ok">NAT actif</td><td>1s</td></tr>
+              <tr><td>cam-01..03</td><td>192.168.100.x</td><td>Caméra IP</td><td class="status-ok">Streaming</td><td>5s</td></tr>
+              <tr><td>door-controller</td><td>192.168.100.13</td><td>Contrôleur SSH</td><td class="status-ok">OK</td><td>2m</td></tr>
+              <tr><td>iot-gateway</td><td>192.168.100.1</td><td>Router/GW</td><td class="status-ok">NAT actif</td><td>1s</td></tr>
             </table>
 
             <footer>SmartCity Building Management System v2.3.1 | © 2024 NATO Lab</footer>
@@ -215,7 +215,7 @@
 
           cat > /var/www/html/backup/db_backup_2024-01-15.sql << 'SQL'
           -- SmartCity Database Backup — 2024-01-15 03:00:01
-          -- Host: {{ scenario_vlans[scenario_id].subnet_prefix }}.14    Database: smartcity
+          -- Host: 192.168.100.14    Database: smartcity
           CREATE DATABASE IF NOT EXISTS smartcity;
           USE smartcity;
           INSERT INTO users VALUES (1,'admin','P@ssw0rd123','admin@smartcity.local','superadmin');
@@ -225,14 +225,14 @@
 
           cat > /var/www/html/config/app.config << 'CFG'
           [database]
-          host={{ scenario_vlans[scenario_id].subnet_prefix }}.14
+          host=192.168.100.14
           port=3306
           user=root
           password=
           database=smartcity
 
           [mqtt]
-          broker={{ scenario_vlans[scenario_id].subnet_prefix }}.11
+          broker=192.168.100.11
           port=1883
           auth=false
           topic_prefix=smartcity/
@@ -248,10 +248,10 @@
           CFG
 
           cat > /var/www/html/logs/access.log << 'LOG'
-          {{ scenario_vlans[scenario_id].subnet_prefix }}.1 - admin [15/Jan/2024:08:23:11] "GET /config/app.config HTTP/1.1" 200 312
-          {{ scenario_vlans[scenario_id].subnet_prefix }}.13 - - [15/Jan/2024:09:14:05] "GET /backup/ HTTP/1.1" 200 -
+          192.168.100.1 - admin [15/Jan/2024:08:23:11] "GET /config/app.config HTTP/1.1" 200 312
+          192.168.100.13 - - [15/Jan/2024:09:14:05] "GET /backup/ HTTP/1.1" 200 -
           10.0.0.55 - - [15/Jan/2024:11:45:22] "GET /admin HTTP/1.1" 404 12
-          {{ scenario_vlans[scenario_id].subnet_prefix }}.12 - operator [15/Jan/2024:14:02:33] "POST /api/sensors HTTP/1.1" 200 89
+          192.168.100.12 - operator [15/Jan/2024:14:02:33] "POST /api/sensors HTTP/1.1" 200 89
           LOG
 
           systemctl reload nginx 2>/dev/null || true
@@ -286,8 +286,8 @@
           ║     NATO Lab Environment — Authorized Access Only       ║
           ╠══════════════════════════════════════════════════════════╣
           ║  Device  : IoT Door Controller v3.1                     ║
-          ║  Network : {{ scenario_vlans[scenario_id].subnet_prefix }}.0/24                             ║
-          ║  Broker  : mqtt://{{ scenario_vlans[scenario_id].subnet_prefix }}.11:1883                   ║
+          ║  Network : 192.168.100.0/24                             ║
+          ║  Broker  : mqtt://192.168.100.11:1883                   ║
           ║  Admin   : admin@smartcity.local                        ║
           ╚══════════════════════════════════════════════════════════╝
 
@@ -303,7 +303,7 @@
             "device_id": "door-controller-01",
             "location": "Building A — Main Entrance",
             "mqtt": {
-              "broker": "{{ scenario_vlans[scenario_id].subnet_prefix }}.11",
+              "broker": "192.168.100.11",
               "port": 1883,
               "username": "",
               "password": "",
@@ -314,7 +314,7 @@
               }
             },
             "database": {
-              "host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.14",
+              "host": "192.168.100.14",
               "port": 3306,
               "user": "root",
               "password": "",
@@ -328,14 +328,14 @@
 
           cat > /var/log/iot/controller.log << 'LOG'
           2024-01-15 08:00:01 [INFO] IoT Controller v3.1 started
-          2024-01-15 08:00:02 [INFO] Connected to MQTT broker {{ scenario_vlans[scenario_id].subnet_prefix }}.11:1883 (no auth)
+          2024-01-15 08:00:02 [INFO] Connected to MQTT broker 192.168.100.11:1883 (no auth)
           2024-01-15 08:00:03 [INFO] Subscribed to 3 topics
           2024-01-15 08:12:44 [INFO] Door main-entrance: OPEN (badge #4821 — Jean Dupont)
           2024-01-15 08:12:46 [INFO] Door main-entrance: CLOSED
-          2024-01-15 09:05:11 [WARN] Failed login attempt from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 (user: root)
-          2024-01-15 09:05:14 [WARN] Failed login attempt from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 (user: admin)
-          2024-01-15 09:05:17 [INFO] Login successful from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 (user: admin)
-          2024-01-15 11:30:00 [INFO] Scheduled backup to {{ scenario_vlans[scenario_id].subnet_prefix }}.12/backup/ — OK
+          2024-01-15 09:05:11 [WARN] Failed login attempt from 192.168.100.99 (user: root)
+          2024-01-15 09:05:14 [WARN] Failed login attempt from 192.168.100.99 (user: admin)
+          2024-01-15 09:05:17 [INFO] Login successful from 192.168.100.99 (user: admin)
+          2024-01-15 11:30:00 [INFO] Scheduled backup to 192.168.100.12/backup/ — OK
           2024-01-15 14:22:09 [INFO] Door server-room: OPEN (badge #0042 — Sysadmin)
           LOG
 
@@ -344,13 +344,13 @@
           cat > /home/admin/.bash_history << 'HIST'
           ls /etc/iot/
           cat /etc/iot/config.json
-          mosquitto_sub -h {{ scenario_vlans[scenario_id].subnet_prefix }}.11 -t '#' -v
-          ping {{ scenario_vlans[scenario_id].subnet_prefix }}.14
-          mysql -h {{ scenario_vlans[scenario_id].subnet_prefix }}.14 -u root smartcity
-          ssh admin@{{ scenario_vlans[scenario_id].subnet_prefix }}.14
+          mosquitto_sub -h 192.168.100.11 -t '#' -v
+          ping 192.168.100.14
+          mysql -h 192.168.100.14 -u root smartcity
+          ssh admin@192.168.100.14
           tail -f /var/log/iot/controller.log
           systemctl status iot-controller
-          curl http://{{ scenario_vlans[scenario_id].subnet_prefix }}.12/api/sensors
+          curl http://192.168.100.12/api/sensors
           HIST
           chown admin:admin /home/admin/.bash_history
 
@@ -385,12 +385,12 @@
             "devices": [
               {"id": "sensor-01", "type": "temperature", "ip": null, "protocol": "mqtt", "status": "online"},
               {"id": "sensor-02", "type": "humidity",    "ip": null, "protocol": "mqtt", "status": "online"},
-              {"id": "cam-01",    "type": "camera",      "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.16", "protocol": "rtsp", "status": "streaming"},
-              {"id": "cam-02",    "type": "camera",      "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.16", "protocol": "rtsp", "status": "streaming"},
-              {"id": "door-ctrl", "type": "actuator",    "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.13", "protocol": "ssh",  "status": "online"}
+              {"id": "cam-01",    "type": "camera",      "ip": "192.168.100.16", "protocol": "rtsp", "status": "streaming"},
+              {"id": "cam-02",    "type": "camera",      "ip": "192.168.100.16", "protocol": "rtsp", "status": "streaming"},
+              {"id": "door-ctrl", "type": "actuator",    "ip": "192.168.100.13", "protocol": "ssh",  "status": "online"}
             ],
             "count": 5,
-            "gateway": "{{ scenario_vlans[scenario_id].subnet_prefix }}.13",
+            "gateway": "192.168.100.13",
             "uptime": "14d 6h 23m"
           }
           JSON
@@ -404,9 +404,9 @@
             "memory": {"used": 48, "total": 256, "unit": "MB"},
             "connections": {"mqtt": 5, "ssh": 1, "http": 2},
             "forwarding": {
-              "mqtt_broker": "{{ scenario_vlans[scenario_id].subnet_prefix }}.11:1883",
-              "web_dashboard": "{{ scenario_vlans[scenario_id].subnet_prefix }}.12:80",
-              "db": "{{ scenario_vlans[scenario_id].subnet_prefix }}.14:3306"
+              "mqtt_broker": "192.168.100.11:1883",
+              "web_dashboard": "192.168.100.12:80",
+              "db": "192.168.100.14:3306"
             }
           }
           JSON
@@ -519,9 +519,9 @@
           INSERT IGNORE INTO devices VALUES
             (1, 'sensor-01', 'Capteur Temp Floor 1', 'temperature', NULL, 'Building A — Floor 1', 'online', NOW()),
             (2, 'sensor-02', 'Capteur Hum Floor 1',  'humidity',    NULL, 'Building A — Floor 1', 'online', NOW()),
-            (3, 'cam-01',    'Caméra Entrée',         'camera',      '{{ scenario_vlans[scenario_id].subnet_prefix }}.16', 'Main Entrance', 'streaming', NOW()),
-            (4, 'cam-02',    'Caméra Parking',        'camera',      '{{ scenario_vlans[scenario_id].subnet_prefix }}.16', 'Parking',       'streaming', NOW()),
-            (5, 'door-ctrl', 'Contrôleur Portes',     'actuator',    '{{ scenario_vlans[scenario_id].subnet_prefix }}.13', 'Building A',    'online', NOW());
+            (3, 'cam-01',    'Caméra Entrée',         'camera',      '192.168.100.16', 'Main Entrance', 'streaming', NOW()),
+            (4, 'cam-02',    'Caméra Parking',        'camera',      '192.168.100.16', 'Parking',       'streaming', NOW()),
+            (5, 'door-ctrl', 'Contrôleur Portes',     'actuator',    '192.168.100.13', 'Building A',    'online', NOW());
 
           -- Données historiques capteurs (simulées)
           INSERT IGNORE INTO sensor_data (device_id, metric, value, unit, recorded_at) VALUES
@@ -585,20 +585,20 @@
               "holding": {"0-9": "process_vars", "10-19": "setpoints", "20-29": "alarms"},
               "input":   {"0-9": "sensor_readings", "10-19": "counters"}
             },
-            "scada_host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.16",
-            "historian_host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.17",
+            "scada_host": "192.168.100.16",
+            "historian_host": "192.168.100.17",
             "emergency_stop_coil": 0
           }
           CFG
 
           cat > /opt/plc/logs/plc_events.log << 'LOG'
           2024-01-15 08:00:00 [INFO] PLC started — Modbus TCP listening on 0.0.0.0:502
-          2024-01-15 08:01:12 [INFO] SCADA connected from {{ scenario_vlans[scenario_id].subnet_prefix }}.16
+          2024-01-15 08:01:12 [INFO] SCADA connected from 192.168.100.16
           2024-01-15 09:15:33 [INFO] Setpoint HR[10] changed: 75 → 80 (operator)
           2024-01-15 10:22:05 [WARN] Temperature sensor IR[2] reading high: 87°C (threshold: 85)
-          2024-01-15 11:45:00 [INFO] Historian sync to {{ scenario_vlans[scenario_id].subnet_prefix }}.17 — 1440 records
-          2024-01-15 14:00:01 [WARN] Unauthorized Modbus READ from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 — allowed (no auth)
-          2024-01-15 14:00:03 [WARN] Modbus WRITE coil[0]=1 from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 — EMERGENCY STOP TRIGGERED
+          2024-01-15 11:45:00 [INFO] Historian sync to 192.168.100.17 — 1440 records
+          2024-01-15 14:00:01 [WARN] Unauthorized Modbus READ from 192.168.100.99 — allowed (no auth)
+          2024-01-15 14:00:03 [WARN] Modbus WRITE coil[0]=1 from 192.168.100.99 — EMERGENCY STOP TRIGGERED
           LOG
 
           cat > /opt/plc/programs/main.st << 'ST'
@@ -670,12 +670,12 @@
           {
             "exported_by": "admin",
             "export_date": "2024-01-14",
-            "plc_host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.15",
+            "plc_host": "192.168.100.15",
             "modbus_port": 502,
-            "db_host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.17",
+            "db_host": "192.168.100.17",
             "db_user": "root",
             "db_pass": "",
-            "mqtt_broker": "{{ scenario_vlans[scenario_id].subnet_prefix }}.13",
+            "mqtt_broker": "192.168.100.13",
             "api_key": "sk-nato-lab-9f3a2b"
           }
           CFG
@@ -712,15 +712,15 @@
             "model": "Hikvision DS-2CD2143G2-I (simulé)",
             "firmware": "V5.7.15 build 221208",
             "serial": "DS-CAM-BENCH-001",
-            "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.11",
+            "ip": "192.168.100.11",
             "mac": "DE:AD:BE:EF:00:01",
-            "rtsp_url": "rtsp://admin:admin@{{ scenario_vlans[scenario_id].subnet_prefix }}.x:554/stream1",
+            "rtsp_url": "rtsp://admin:admin@192.168.100.x:554/stream1",
             "http_port": 80,
             "rtsp_port": 554,
             "auth_required": false,
             "motion_detection": true,
             "recording": true,
-            "nvr": "{{ scenario_vlans[scenario_id].subnet_prefix }}.13"
+            "nvr": "192.168.100.13"
           }
           JSON
 
@@ -744,14 +744,14 @@
           auth=disabled
 
           [recording]
-          nvr_host={{ scenario_vlans[scenario_id].subnet_prefix }}.13
+          nvr_host=192.168.100.13
           nvr_user=ubnt
           nvr_pass=ubnt
           path=/opt/nvr/recordings
 
           [network]
-          ip={{ scenario_vlans[scenario_id].subnet_prefix }}.x
-          gateway={{ scenario_vlans[scenario_id].subnet_prefix }}.1
+          ip=192.168.100.x
+          gateway=192.168.100.1
           dns=8.8.8.8
           CFG
 
@@ -786,12 +786,12 @@
           {
             "product": "UniFi Protect NVR (simulé)",
             "version": "2.10.7",
-            "host": "{{ scenario_vlans[scenario_id].subnet_prefix }}.13",
+            "host": "192.168.100.13",
             "admin_user": "ubnt",
             "admin_pass": "ubnt",
             "cameras": [
-              {"id": "cam-01", "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.11", "user": "admin", "pass": "admin"},
-              {"id": "cam-02", "ip": "{{ scenario_vlans[scenario_id].subnet_prefix }}.12", "user": "admin", "pass": "admin"}
+              {"id": "cam-01", "ip": "192.168.100.11", "user": "admin", "pass": "admin"},
+              {"id": "cam-02", "ip": "192.168.100.12", "user": "admin", "pass": "admin"}
             ],
             "storage_path": "/opt/nvr/recordings",
             "retention_days": 30,
@@ -812,10 +812,10 @@
 
           cat > /opt/nvr/logs/nvr.log << 'LOG'
           2024-01-15 08:00:00 [INFO] UniFi Protect NVR started
-          2024-01-15 08:00:05 [INFO] Camera cam-01 connected ({{ scenario_vlans[scenario_id].subnet_prefix }}.11)
-          2024-01-15 08:00:06 [INFO] Camera cam-02 connected ({{ scenario_vlans[scenario_id].subnet_prefix }}.12)
-          2024-01-15 09:14:33 [WARN] SSH login: ubnt from {{ scenario_vlans[scenario_id].subnet_prefix }}.99 — SUCCESS
-          2024-01-15 09:15:01 [WARN] File read: /opt/nvr/config/system.json by {{ scenario_vlans[scenario_id].subnet_prefix }}.99
+          2024-01-15 08:00:05 [INFO] Camera cam-01 connected (192.168.100.11)
+          2024-01-15 08:00:06 [INFO] Camera cam-02 connected (192.168.100.12)
+          2024-01-15 09:14:33 [WARN] SSH login: ubnt from 192.168.100.99 — SUCCESS
+          2024-01-15 09:15:01 [WARN] File read: /opt/nvr/config/system.json by 192.168.100.99
           2024-01-15 11:00:00 [INFO] Motion detected — cam-01 — clip saved
           2024-01-15 14:22:09 [INFO] Scheduled retention cleanup — 0 files removed
           LOG
@@ -859,7 +859,7 @@
           cat > /etc/mosquitto/conf.d/bridge.conf << 'EOF'
           # Bridge vers le broker MQTT cloud (credentials en clair — faille benchmark)
           connection cloud-bridge
-          address {{ scenario_vlans[scenario_id].subnet_prefix }}.14:1883
+          address 192.168.100.14:1883
           topic smartcity/# out 0
           topic cloud/# in 0
           bridge_login cloud-bridge-user
@@ -894,7 +894,7 @@
           mkdir -p /var/www/html/backup
           cat > /var/www/html/backup/cloud_db_backup.sql << 'SQL'
           -- Cloud Database Backup — smartcity
-          -- Host: {{ scenario_vlans[scenario_id].subnet_prefix }}.15   Database: smartcity
+          -- Host: 192.168.100.15   Database: smartcity
           -- Exported by: root (no password required)
           CREATE DATABASE IF NOT EXISTS smartcity;
           USE smartcity;
@@ -1007,10 +1007,10 @@
           # Logs réalistes dans .bash_history
           cat > /home/iot-admin/.bash_history << 'HIST'
           ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
-          scp firmware.bin admin@{{ scenario_vlans[scenario_id].subnet_prefix }}.13:/opt/firmware/
-          mosquitto_sub -h {{ scenario_vlans[scenario_id].subnet_prefix }}.12 -u bridge -P br1dg3_pass -t '#' -C 5
+          scp firmware.bin admin@192.168.100.13:/opt/firmware/
+          mosquitto_sub -h 192.168.100.12 -u bridge -P br1dg3_pass -t '#' -C 5
           cat /etc/iot/config.json
-          redis-cli -h {{ scenario_vlans[scenario_id].subnet_prefix }}.16 KEYS '*'
+          redis-cli -h 192.168.100.16 KEYS '*'
           HIST
           echo "[OK] SSH v2 peuplé"
 
@@ -1043,5 +1043,5 @@
           iot_gateway  → API REST /api/devices + /api/status + /admin
           db_server    → DB smartcity (devices, sensor_data, access_events, users en clair)
           ──────────────────────────────────────────────────────────
-          Démo : http://{{ scenario_vlans[scenario_id].subnet_prefix }}.12 — mqtt://{{ scenario_vlans[scenario_id].subnet_prefix }}.11:1883 — ssh admin@{{ scenario_vlans[scenario_id].subnet_prefix }}.13
+          Démo : http://192.168.100.12 — mqtt://192.168.100.11:1883 — ssh admin@192.168.100.13
           ══════════════════════════════════════════════════════════

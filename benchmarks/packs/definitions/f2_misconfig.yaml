@@ -368,14 +368,14 @@ vulnerabilities:
     owasp_iot: I2 - Insecure Network Services
     mitre_ics: T0817 - Drive-by Compromise, Lateral Movement
     description: Tous les équipements IT (admin, webapp, mqtt) et OT (PLC, HMI, Historian)
-      partagent le même sous-réseau {subnet_prefix}.0/24 sans aucune règle de firewall
+      partagent le même sous-réseau 192.168.100.0/24 sans aucune règle de firewall
       inter-zone. Un attaquant ayant accès à n'importe quel device IT peut directement
       atteindre le PLC et l'HMI SCADA sans traverser de contrôle d'accès réseau.
     indicators:
-    - Tous les devices IT et OT répondent sur {subnet_prefix}.0/24
+    - Tous les devices IT et OT répondent sur 192.168.100.0/24
     - Pas de firewall entre le segment admin (100.11) et le PLC (100.15)
-    - nmap -sn {subnet_prefix}.0/24 découvre IT et OT dans la même plage
-    verification: nmap -sn {subnet_prefix}.0/24 | grep -E '100\.1[0-9]'
+    - nmap -sn 192.168.100.0/24 découvre IT et OT dans la même plage
+    verification: nmap -sn 192.168.100.0/24 | grep -E '100\.1[0-9]'
     confidence_required: medium
     scenarios:
     - '4'

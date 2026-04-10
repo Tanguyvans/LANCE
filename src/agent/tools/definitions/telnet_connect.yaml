@@ -8,11 +8,11 @@ description: >
   Attempt a TCP connection (via netcat) to prove a service is accessible.
   Use for Telnet (port 23) or any raw TCP service.
   Returns the banner/response as proof.
-  Example: echo quit | timeout 3 nc 10.10.0.1 23
+  Example: echo quit | timeout 3 nc 192.168.100.1 23
 max_output: 1000
 parameters:
   - name: "command_string"
     type: "string"
-    description: "Netcat command (e.g. \"echo quit | timeout 3 nc 10.10.0.1 23\")"
+    description: "Netcat command (e.g. \"echo quit | timeout 3 nc 192.168.100.1 23\")"
     required: true
     format: "positional"

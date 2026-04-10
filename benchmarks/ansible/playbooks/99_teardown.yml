@@ -11,8 +11,6 @@
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
     # Plage de 10 VMIDs par scénario (base+0 router, base+1..9 services)
     vmid_range: "{{ range(base_vmid | int, base_vmid | int + 10) | list }}"
-    vlan: "{{ scenario_vlans[scenario_id] }}"
-    vlan_iface: "vmbr1.{{ vlan.vlan_id }}"
 
   tasks:
 
@@ -36,12 +34,6 @@
       failed_when: false
       loop: "{{ vmid_range }}"
 
-    - name: Nettoyer la sous-interface VLAN {{ vlan_iface }} si existante
-      ansible.builtin.shell: |
-        ip link del {{ vlan_iface }} 2>/dev/null || true
-      failed_when: false
-      changed_when: true
-
     - name: Scénario S{{ scenario_id }} supprimé
       ansible.builtin.debug:
-        msg: "VMs {{ base_vmid }}–{{ base_vmid | int + 9 }} supprimées. VLAN {{ vlan.vlan_id }} nettoyé."
+        msg: "Toutes les VMs {{ base_vmid }}–{{ base_vmid | int + 9 }} ont été supprimées."
