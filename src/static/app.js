@@ -131,16 +131,16 @@ let _scenariosData = { architectures: [], packs: [], scenarios: [] };
 // Fallback data if API is unavailable
 const FALLBACK_SCENARIOS = {
   architectures: [
-    { id: 'flat', name: 'Réseau plat', services_count: 3, description: 'Réseau IoT sans segmentation' },
-    { id: 'gateway', name: 'Gateway exposée', services_count: 5, description: 'Gateway IoT comme point d\'entrée' },
-    { id: 'nato_lab', name: 'Réplique NATO Lab', services_count: 7, description: 'Réplique du lab physique' },
-    { id: 'ics_scada', name: 'ICS/SCADA', services_count: 7, description: 'Convergence IT/OT industrielle' },
-    { id: 'building', name: 'Smart Building', services_count: 7, description: 'Surveillance et HVAC bâtiment' },
-    { id: 'star', name: 'Domotique centralisée', services_count: 5, description: 'Hub central Node-RED' },
-    { id: 'edge_cloud', name: 'Edge-Cloud', services_count: 5, description: 'Architecture distribuée edge→cloud' },
-    { id: 'multizone', name: 'Multi-zone IT/IoT/OT', services_count: 7, description: 'Multi-zone avec variantes' },
-    { id: 'mesh_iot', name: 'Mesh IoT', services_count: 5, description: 'Réseau mesh de capteurs' },
-    { id: 'flat_variants', name: 'Flat variantes', services_count: 5, description: 'Réseau plat avec Node-RED, FTP' },
+    { id: 'flat', name: 'Réseau plat', services_count: 3, description: 'Réseau IoT sans segmentation', roles: ['mqtt_broker', 'web_server', 'ssh_server'] },
+    { id: 'gateway', name: 'Gateway exposée', services_count: 5, description: 'Gateway IoT comme point d\'entrée', roles: ['web_server', 'mqtt_broker', 'iot_gateway', 'db_server', 'ssh_server'] },
+    { id: 'nato_lab', name: 'Réplique NATO Lab', services_count: 7, description: 'Réplique du lab physique', roles: ['iot_gateway', 'mqtt_broker', 'mqtt_broker', 'ssh_server', 'web_server', 'web_server', 'nvr_server'] },
+    { id: 'ics_scada', name: 'ICS/SCADA', services_count: 7, description: 'Convergence IT/OT industrielle', roles: ['ssh_server', 'web_upload', 'mqtt_broker', 'iot_gateway', 'modbus_server', 'web_server', 'db_server'] },
+    { id: 'building', name: 'Smart Building', services_count: 7, description: 'Surveillance et HVAC bâtiment', roles: ['camera_server', 'camera_server', 'nvr_server', 'web_server', 'web_server', 'mqtt_broker', 'web_server'] },
+    { id: 'star', name: 'Domotique centralisée', services_count: 5, description: 'Hub central Node-RED', roles: ['iot_gateway', 'mqtt_broker', 'db_server', 'camera_server', 'web_server'] },
+    { id: 'edge_cloud', name: 'Edge-Cloud', services_count: 5, description: 'Architecture distribuée edge→cloud', roles: ['iot_gateway', 'mqtt_broker', 'ssh_server', 'web_upload', 'db_server'] },
+    { id: 'multizone', name: 'Multi-zone IT/IoT/OT', services_count: 7, description: 'Multi-zone avec variantes', roles: ['ssh_server_v2', 'mqtt_broker_v2', 'iot_gateway', 'modbus_server', 'web_server_v2', 'db_server_v2', 'db_server'] },
+    { id: 'mesh_iot', name: 'Mesh IoT', services_count: 5, description: 'Réseau mesh de capteurs', roles: ['mqtt_broker', 'mqtt_broker_v2', 'mqtt_broker', 'coap_server', 'snmp_server'] },
+    { id: 'flat_variants', name: 'Flat variantes', services_count: 5, description: 'Réseau plat avec Node-RED, FTP', roles: ['mqtt_broker_v2', 'web_server_v2', 'ftp_server', 'nodered_server', 'ssh_server_v2'] },
   ],
   packs: [
     { id: 'f1_weak_auth', name: 'Auth. faible', vuln_count: 24, description: 'Credentials par défaut, pas d\'auth', vulns: [
@@ -278,7 +278,10 @@ async function loadScenariosConfig() {
 function getArchRoles() {
   const archId = document.getElementById('sel-architecture').value;
   const arch = _scenariosData.architectures.find(a => a.id === archId);
-  return arch ? arch.roles || [] : [];
+  const roles = arch ? arch.roles || [] : [];
+  // Always include 'router' since all topologies have one
+  if (!roles.includes('router')) roles.push('router');
+  return roles;
 }
 
 function buildPacksUI() {
