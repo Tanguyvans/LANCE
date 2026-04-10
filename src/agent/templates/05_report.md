@@ -2,7 +2,7 @@
 
 **Date:** {{run_date}}
 **Model:** {{model}}
-**Subnet:** 192.168.88.0/24
+**Subnet:** (from topology)
 
 ---
 
@@ -12,14 +12,15 @@
 |--------|-------|
 | Devices scanned | |
 | Vulnerabilities found | |
-| Confirmed exploitable | |
+| Confirmed exploitable (Phase 4) | |
+| Data exfiltrated (Level 3 evidence) | |
 | Overall risk level | |
 
 <!-- 5-10 lines: scope, key findings, overall risk, immediate actions required -->
 
 ## 2. Scope and Methodology
 
-- **Target subnet:** 192.168.88.0/24
+- **Target subnet:** (from Phase 1 topology)
 - **Phases executed:** 1 (Graph) → 2 (Recon) → 3 (Vuln) → 4 (Exploit) → 5 (Report)
 - **Tools used:**
 - **Limitations:**
@@ -32,15 +33,9 @@
 
 ### 3.2 Declared vs Discovered Devices
 
-| IP | YAML Device | Discovered | Status |
-|----|-------------|------------|--------|
-| 192.168.88.1 | mikrotik | | |
-| 192.168.88.231 | iot_hub | | |
-| 192.168.88.238 | wisgate | | |
-| 192.168.88.247 | rpi5 | | |
-| 192.168.88.248 | jetson | | |
-| 192.168.88.251 | eap613 | | |
-| 192.168.88.253 | nvr | | |
+| IP | Device ID | Discovered by nmap? | Open Ports | Status |
+|----|-----------|---------------------|------------|--------|
+<!-- Fill from Phase 1 topology + Phase 2 nmap results -->
 
 ### 3.3 Undocumented Devices
 
@@ -70,12 +65,30 @@
 - **Potential (untested)** — Phase 3 finding, no Phase 4 test
 - **Potential (CVE-based)** — NVD match only, no active test
 
-## 6. Exploitation Tests (Phase 4)
+## 6. Exploitation Results (Phase 4)
 
-| Test ID | Device | Test Type | Tool Used | Status | Evidence Level | Evidence Excerpt |
-|---------|--------|-----------|-----------|--------|----------------|------------------|
+### 6.1 Exploitation Summary
 
-**Evidence levels:** 1=Detected, 2=Validated (interaction), 3=Exploited (data extracted)
+| Metric | Value |
+|--------|-------|
+| Vulnerabilities tested | |
+| Confirmed (exploited) | |
+| Data exfiltrated | |
+| Not exploitable | |
+| Errors | |
+
+### 6.2 Exploitation Details
+
+| Test ID | Device | Vuln Type | Tool Used | Status | Evidence Level | Data Retrieved |
+|---------|--------|-----------|-----------|--------|----------------|----------------|
+
+**Evidence levels:** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
+
+### 6.3 Credentials Recovered
+
+| Source | Username | Password | Access Level | Retrieved From |
+|--------|----------|----------|--------------|----------------|
+<!-- List ALL credentials found during exploitation: SSH logins, DB passwords, API keys, MQTT topics -->
 
 ## 7. Attack Paths
 
