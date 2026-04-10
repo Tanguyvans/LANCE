@@ -54,7 +54,7 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
+Types: weak_cipher | no_auth | missing_header | info_disclosure | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria

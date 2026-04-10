@@ -216,6 +216,9 @@ Your device has role = **{{device_role}}**.
 | data_exposure (credentials in MQTT)     | MEDIUM   |
 | directory_listing                       | HIGH     |
 | missing_header                          | LOW      |
+| info_disclosure (server version/banner) | LOW      |
+| info_disclosure (MQTT $SYS topics)      | LOW      |
+| info_disclosure (robots.txt paths)      | LOW      |
 | insecure_protocol (Telnet)              | MEDIUM   |
 | insecure_update (OTA no auth/signature) | MEDIUM   |
 | default_credentials (SSH/service)       | HIGH     |
@@ -238,6 +241,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] For ssh_server role ONLY: nmap_scan with scripts="ssh-auth-methods" called
 - [ ] For ssh_server role ONLY: if password auth confirmed → default_credentials finding created (severity=HIGH)
 - [ ] For iot_gateway/router role: do NOT create default_credentials from SSH auth detection
+- [ ] **SSH banner check**: if the banner reveals OS/distribution (e.g. "SSH-2.0-OpenSSH_9.2p1 Debian-2") → type=info_disclosure, severity=LOW ("SSH banner discloses OS and version")
 
 **HTTP** (if port 80/443/8080 detected or role is web_server/iot_gateway/camera_server):
 - [ ] curl_headers called on root path /
@@ -247,12 +251,18 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] If /update returns 200 → insecure_update finding created (severity=MEDIUM)
 - [ ] For iot_gateway role: if /firmware/ listing has no .sha256/.sig → insecure_update finding created
 - [ ] For OpenWrt/router: /cgi-bin/luci tested
+- [ ] **INFO DISCLOSURE checks (MANDATORY):**
+  - [ ] If Server header contains a version (e.g. nginx/1.22.1) → type=info_disclosure, severity=LOW ("Server version disclosure")
+  - [ ] If response lacks X-Frame-Options, Strict-Transport-Security, Content-Security-Policy → type=missing_header, severity=LOW ("Missing HTTP security headers")
+  - [ ] curl_headers("http://{{device_ip}}/robots.txt") — if 200 with Disallow paths → type=info_disclosure, severity=LOW ("robots.txt exposes internal paths")
 
 **MQTT** (if port 1883 detected or role is mqtt_broker):
 - [ ] mqtt_listen called on {{device_ip}}
 - [ ] If return_code=0 or 27 → no_auth finding created (severity=HIGH)
 - [ ] Message content examined for credentials → SEPARATE data_exposure finding created (severity=MEDIUM)
 - [ ] For mqtt_broker role: at least 2 findings expected (no_auth + data_exposure)
+- [ ] mqtt_listen("{{device_ip}}", topic="$SYS/#", count=3, timeout=5) — if it returns broker stats → type=info_disclosure, severity=LOW ("MQTT $SYS topics expose broker metadata")
+- [ ] nmap_scan("{{device_ip}}", ports="9001") — check for MQTT WebSocket listener. If open → type=no_auth, severity=HIGH ("MQTT WebSocket on port 9001 bypasses firewall rules")
 
 **Database** (if role is db_server):
 - [ ] nmap_scan with scripts="mysql-empty-password" called
@@ -325,7 +335,7 @@ STRICT JSON with this structure:
 }
 ```
 
-Types: weak_cipher | no_auth | missing_header | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
+Types: weak_cipher | no_auth | missing_header | info_disclosure | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
 
 ## Completion criteria
