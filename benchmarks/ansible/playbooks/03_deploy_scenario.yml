@@ -89,12 +89,18 @@
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
 
+    - name: Vérifier si le LAN du router est déjà joignable à son IP finale
+      ansible.builtin.command: ping -c1 -W3 {{ router_ip }}
+      register: router_lan_check
+      changed_when: false
+      failed_when: false
+
     - name: Ajouter IP temporaire sur le bridge VLAN Proxmox pour joindre OpenWrt (192.168.1.1)
       ansible.builtin.command: >-
         ip addr add 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
       failed_when: false
       changed_when: true
-      when: router_check.rc != 0
+      when: router_lan_check.rc != 0
 
     - name: Attendre que le router OpenWrt soit prêt (SSH sur 192.168.1.1)
       ansible.builtin.wait_for:
@@ -102,7 +108,7 @@
         port: 22
         timeout: 90
         delay: 15
-      when: router_check.rc != 0
+      when: router_lan_check.rc != 0
 
     - name: Configurer l'IP LAN du router pour ce VLAN via SSH
       ansible.builtin.shell: |
@@ -113,19 +119,19 @@
         nohup sh -c "/etc/init.d/network restart" >/dev/null 2>&1 &
         '
       changed_when: true
-      when: router_check.rc != 0
+      when: router_lan_check.rc != 0
 
     - name: Retirer l'IP temporaire du bridge VLAN
       ansible.builtin.command: >-
         ip addr del 192.168.1.100/24 dev {{ benchmark_bridge }}v{{ vlan.vlan_id }}
       failed_when: false
       changed_when: true
-      when: router_check.rc != 0
+      when: router_lan_check.rc != 0
 
     - name: Attendre le redémarrage réseau du router
       ansible.builtin.pause:
         seconds: 15
-      when: router_check.rc != 0
+      when: router_lan_check.rc != 0
 
 
     # ── Services LXC ──
