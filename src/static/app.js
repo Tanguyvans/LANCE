@@ -143,14 +143,71 @@ const FALLBACK_SCENARIOS = {
     { id: 'flat_variants', name: 'Flat variantes', services_count: 5, description: 'Réseau plat avec Node-RED, FTP' },
   ],
   packs: [
-    { id: 'f1_weak_auth', name: 'Auth. faible', vuln_count: 24, description: 'Credentials par défaut, pas d\'auth' },
-    { id: 'f2_misconfig', name: 'Misconfigurations', vuln_count: 26, description: 'Telnet, MQTT anon, autoindex' },
-    { id: 'f3_data_exposure', name: 'Données exposées', vuln_count: 21, description: '.env, backup SQL, configs' },
-    { id: 'f5_injection', name: 'Injection', vuln_count: 5, description: 'RCE upload, SSRF' },
-    { id: 'f6_crypto', name: 'Crypto faible', vuln_count: 3, description: 'Ciphers faibles, Terrapin CVE' },
-    { id: 'f7_postexploit', name: 'Post-exploitation', vuln_count: 1, description: 'SUID, cron writable' },
-    { id: 'f8_info_disclosure', name: 'Info disclosure', vuln_count: 10, description: 'Versions, banners, $SYS' },
-    { id: 'f9_insecure_update', name: 'MAJ non sécurisées', vuln_count: 2, description: 'OTA sans signature' },
+    { id: 'f1_weak_auth', name: 'Auth. faible', vuln_count: 24, description: 'Credentials par défaut, pas d\'auth', vulns: [
+      { role: 'ssh_server', title: 'Credentials SSH par défaut (admin/admin)', severity: 'high', category: 'default_credentials' },
+      { role: 'nvr_server', title: 'NVR credentials par défaut (ubnt/ubnt)', severity: 'high', category: 'default_credentials' },
+      { role: 'db_server', title: 'MariaDB root sans mot de passe', severity: 'critical', category: 'default_credentials' },
+      { role: 'mqtt_broker', title: 'MQTT sans authentification', severity: 'high', category: 'no_authentication' },
+      { role: 'camera_server', title: 'Caméra IP sans authentification', severity: 'high', category: 'no_authentication' },
+      { role: 'web_server', title: 'HTTP admin sans authentification', severity: 'high', category: 'no_authentication' },
+      { role: 'iot_gateway', title: 'Interface HTTP admin sans auth', severity: 'high', category: 'no_authentication' },
+      { role: 'modbus_server', title: 'PLC Modbus TCP sans auth (port 502)', severity: 'critical', category: 'no_authentication' },
+      { role: 'mqtt_broker_v2', title: 'MQTT v2 sans authentification', severity: 'high', category: 'no_authentication' },
+      { role: 'coap_server', title: 'CoAP sans DTLS', severity: 'medium', category: 'no_authentication' },
+      { role: 'snmp_server', title: 'SNMP community public/private', severity: 'high', category: 'default_credentials' },
+      { role: 'web_server_v2', title: 'HMI SCADA HTTP sans auth', severity: 'high', category: 'no_authentication' },
+      { role: 'ssh_server_v2', title: 'SSH v2 credentials par défaut', severity: 'high', category: 'default_credentials' },
+      { role: 'db_server_v2', title: 'Redis sans authentification', severity: 'critical', category: 'no_authentication' },
+      { role: 'nodered_server', title: 'Node-RED admin sans auth', severity: 'critical', category: 'no_authentication' },
+    ]},
+    { id: 'f2_misconfig', name: 'Misconfigurations', vuln_count: 26, description: 'Telnet, MQTT anon, autoindex', vulns: [
+      { role: 'router', title: 'Telnet activé (port 23)', severity: 'medium', category: 'misconfiguration' },
+      { role: 'router', title: 'Interface admin WAN (port 80)', severity: 'critical', category: 'misconfiguration' },
+      { role: 'mqtt_broker', title: 'MQTT allow_anonymous true', severity: 'high', category: 'misconfiguration' },
+      { role: 'web_server', title: 'Directory listing nginx', severity: 'medium', category: 'misconfiguration' },
+      { role: 'camera_server', title: 'Caméra autoindex activé', severity: 'medium', category: 'misconfiguration' },
+      { role: 'iot_gateway', title: 'API /devices et /status sans auth', severity: 'high', category: 'misconfiguration' },
+      { role: 'ftp_server', title: 'FTP anonymous activé', severity: 'medium', category: 'misconfiguration' },
+      { role: 'ssh_server_v2', title: 'SSH MaxAuthTries élevé', severity: 'low', category: 'misconfiguration' },
+      { role: 'coap_server', title: 'CoAP discovery sans restriction', severity: 'medium', category: 'misconfiguration' },
+    ]},
+    { id: 'f3_data_exposure', name: 'Données exposées', vuln_count: 21, description: '.env, backup SQL, configs', vulns: [
+      { role: 'web_server', title: 'Backup SQL exposé (/backup/)', severity: 'high', category: 'data_exposure' },
+      { role: 'web_server', title: 'Config avec credentials (/config/)', severity: 'high', category: 'data_exposure' },
+      { role: 'mqtt_broker', title: 'Credentials dans topics MQTT', severity: 'medium', category: 'data_exposure' },
+      { role: 'web_upload', title: 'Fichier .env exposé', severity: 'high', category: 'data_exposure' },
+      { role: 'web_upload', title: 'Backup SQL cloud exposé', severity: 'high', category: 'data_exposure' },
+      { role: 'mqtt_broker_v2', title: 'Bridge credentials en clair', severity: 'high', category: 'data_exposure' },
+      { role: 'ssh_server_v2', title: 'Config JSON avec credentials réseau', severity: 'high', category: 'data_exposure' },
+      { role: 'web_server_v2', title: 'Directory listing HMI', severity: 'medium', category: 'data_exposure' },
+      { role: 'ftp_server', title: 'Fichiers config via FTP', severity: 'medium', category: 'data_exposure' },
+      { role: 'db_server_v2', title: 'Redis dump accessible', severity: 'high', category: 'data_exposure' },
+    ]},
+    { id: 'f5_injection', name: 'Injection', vuln_count: 5, description: 'RCE upload, SSRF', vulns: [
+      { role: 'web_upload', title: 'Upload fichier sans validation (RCE)', severity: 'critical', category: 'code_injection' },
+      { role: 'web_server_v2', title: 'SSRF via diagnostic tool', severity: 'high', category: 'code_injection' },
+      { role: 'nodered_server', title: 'Node-RED flow injection (RCE)', severity: 'critical', category: 'code_injection' },
+    ]},
+    { id: 'f6_crypto', name: 'Crypto faible', vuln_count: 3, description: 'Ciphers faibles, Terrapin CVE', vulns: [
+      { role: 'ssh_server', title: 'SSH ciphers/MACs faibles', severity: 'low', category: 'weak_crypto' },
+      { role: 'iot_gateway', title: 'Dropbear CVE-2023-48795 (Terrapin)', severity: 'high', category: 'cve' },
+    ]},
+    { id: 'f7_postexploit', name: 'Post-exploitation', vuln_count: 1, description: 'SUID, cron writable', vulns: [
+      { role: 'ssh_server', title: 'Privesc SUID binary + cron writable', severity: 'high', category: 'privilege_escalation' },
+    ]},
+    { id: 'f8_info_disclosure', name: 'Info disclosure', vuln_count: 10, description: 'Versions, banners, $SYS', vulns: [
+      { role: 'web_server', title: 'Server version disclosure (nginx)', severity: 'low', category: 'info_disclosure' },
+      { role: 'web_server', title: 'Missing HTTP security headers', severity: 'low', category: 'missing_header' },
+      { role: 'ssh_server', title: 'SSH banner disclosure (OS/version)', severity: 'low', category: 'info_disclosure' },
+      { role: 'mqtt_broker', title: 'MQTT $SYS topics accessibles', severity: 'low', category: 'info_disclosure' },
+      { role: 'web_upload', title: 'robots.txt paths internes', severity: 'low', category: 'info_disclosure' },
+      { role: 'camera_server', title: 'Caméra version disclosure', severity: 'low', category: 'info_disclosure' },
+      { role: 'iot_gateway', title: 'Gateway version disclosure', severity: 'low', category: 'info_disclosure' },
+      { role: 'snmp_server', title: 'SNMP system info disclosure', severity: 'low', category: 'info_disclosure' },
+    ]},
+    { id: 'f9_insecure_update', name: 'MAJ non sécurisées', vuln_count: 2, description: 'OTA sans signature', vulns: [
+      { role: 'iot_gateway', title: 'OTA sans auth ni signature', severity: 'medium', category: 'insecure_update' },
+    ]},
   ],
   scenarios: [
     { id: '1', name: 'Réseau plat', difficulty: 'easy', posture: 'vulnerable', topology: 'flat', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
@@ -211,30 +268,86 @@ async function loadScenariosConfig() {
     archSel.appendChild(opt);
   }
 
-  // Populate packs checkboxes
+  // Build packs UI
+  buildPacksUI();
+
+  // When architecture changes, rebuild packs to show only applicable vulns
+  archSel.addEventListener('change', () => buildPacksUI());
+}
+
+function getArchRoles() {
+  const archId = document.getElementById('sel-architecture').value;
+  const arch = _scenariosData.architectures.find(a => a.id === archId);
+  return arch ? arch.roles || [] : [];
+}
+
+function buildPacksUI() {
   const packsDiv = document.getElementById('packs-checkboxes');
   packsDiv.innerHTML = '';
+  const archRoles = getArchRoles();
+
   for (const p of _scenariosData.packs) {
     if (p.id === 'f0' || p.id === 'f0_hardened') continue;
-    const label = document.createElement('label');
-    const desc = p.description || '';
-    label.title = desc;
-    label.innerHTML = `<input type="checkbox" class="pack-cb" value="${p.id}" checked> ${p.name} <span class="pack-count">(${p.vuln_count} vulns)</span>`;
-    packsDiv.appendChild(label);
-  }
 
-  // When architecture changes, auto-select the packs used by the matching scenario
-  archSel.addEventListener('change', () => {
-    const arch = archSel.value;
-    const match = _scenariosData.scenarios.find(s => s.topology === arch && s.posture === 'vulnerable');
-    if (match) {
-      document.querySelectorAll('.pack-cb').forEach(cb => {
-        cb.checked = match.packs.includes(cb.value);
-      });
+    // Filter vulns to those applicable to this architecture's roles
+    const applicableVulns = (p.vulns || []).filter(v => archRoles.includes(v.role));
+    if (applicableVulns.length === 0) continue;
+
+    const group = document.createElement('div');
+    group.className = 'pack-group';
+    group.dataset.packId = p.id;
+
+    // Header with pack checkbox
+    const header = document.createElement('div');
+    header.className = 'pack-header';
+    header.innerHTML = `
+      <span class="pack-arrow">▶</span>
+      <input type="checkbox" class="pack-cb" value="${p.id}" checked>
+      <span class="pack-name">${escapeHtml(p.name)}</span>
+      <span class="pack-count">${applicableVulns.length} vulns</span>
+    `;
+    group.appendChild(header);
+
+    // Expandable vuln list
+    const vulnDiv = document.createElement('div');
+    vulnDiv.className = 'pack-vulns';
+    for (const v of applicableVulns) {
+      const label = document.createElement('label');
+      const sevClass = (v.severity || 'medium').toLowerCase();
+      const vulnId = `${p.id}__${v.role}__${(v.title || '').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 40)}`;
+      label.innerHTML = `
+        <input type="checkbox" class="vuln-cb" data-pack="${p.id}" value="${vulnId}" checked>
+        <span class="vuln-sev ${sevClass}">${v.severity}</span>
+        ${escapeHtml(v.title || '')}
+      `;
+      vulnDiv.appendChild(label);
     }
-  });
-  // Trigger initial pack selection
-  archSel.dispatchEvent(new Event('change'));
+    group.appendChild(vulnDiv);
+
+    // Toggle expand
+    header.addEventListener('click', (e) => {
+      if (e.target.type === 'checkbox') return; // don't toggle on checkbox click
+      group.classList.toggle('open');
+    });
+
+    // Pack checkbox toggles all vulns
+    const packCb = header.querySelector('.pack-cb');
+    packCb.addEventListener('change', () => {
+      vulnDiv.querySelectorAll('.vuln-cb').forEach(cb => { cb.checked = packCb.checked; });
+    });
+
+    // Individual vuln checkbox updates pack checkbox state
+    vulnDiv.addEventListener('change', () => {
+      const all = vulnDiv.querySelectorAll('.vuln-cb');
+      const checked = vulnDiv.querySelectorAll('.vuln-cb:checked');
+      packCb.checked = checked.length > 0;
+      packCb.indeterminate = checked.length > 0 && checked.length < all.length;
+      // Update count
+      header.querySelector('.pack-count').textContent = `${checked.length}/${all.length} vulns`;
+    });
+
+    packsDiv.appendChild(group);
+  }
 }
 
 function getSelectedScenarioId() {

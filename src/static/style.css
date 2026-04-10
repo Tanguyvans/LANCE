@@ -209,8 +209,33 @@ input[type=number] { -moz-appearance: textfield; }
   color: var(--text); font-size: 12px; cursor: pointer;
 }
 #packs-section { margin-top: 4px; }
-#packs-checkboxes label { font-size: 11px; }
-.pack-count { color: var(--muted); font-size: 10px; }
+
+/* Pack groups */
+.pack-group { margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.pack-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; cursor: pointer; font-size: 12px;
+  background: var(--surface); transition: background 0.15s;
+}
+.pack-header:hover { background: var(--white-hover); }
+.pack-header .pack-arrow { font-size: 10px; color: var(--muted); transition: transform 0.2s; width: 12px; }
+.pack-group.open .pack-arrow { transform: rotate(90deg); }
+.pack-header .pack-name { flex: 1; font-weight: 500; }
+.pack-header .pack-count { color: var(--muted); font-size: 10px; }
+.pack-vulns { display: none; padding: 2px 8px 6px 28px; }
+.pack-group.open .pack-vulns { display: block; }
+.pack-vulns label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text); padding: 3px 0; cursor: pointer;
+}
+.vuln-sev {
+  font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.vuln-sev.critical { background: var(--sev-critical-bg); color: var(--sev-critical-fg); }
+.vuln-sev.high     { background: var(--sev-high-bg);     color: var(--sev-high-fg); }
+.vuln-sev.medium   { background: var(--sev-medium-bg);   color: var(--sev-medium-fg); }
+.vuln-sev.low      { background: var(--sev-low-bg);      color: var(--sev-low-fg); }
 
 .phase-checkboxes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .phase-checkboxes label {
