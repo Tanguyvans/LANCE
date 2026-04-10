@@ -143,6 +143,10 @@
         pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + item.vmid_offset }}
         --hostname s{{ scenario_id }}-{{ item.name }}
         --full
+      register: clone_result
+      until: clone_result.rc == 0
+      retries: 10
+      delay: 10
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx

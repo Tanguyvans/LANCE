@@ -51,6 +51,7 @@ class Pipeline:
         max_cost_usd: float | None = None,
         phase_models: dict[int | str, str] | None = None,
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
+        skip_deploy: bool = False,
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -59,6 +60,7 @@ class Pipeline:
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
+        self.skip_deploy = skip_deploy
         self.custom_config = custom_config
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
@@ -143,7 +145,7 @@ class Pipeline:
             self._save_ground_truth()
 
             # Deploy benchmark VMs before starting the pipeline
-            if not self.dry_run:
+            if not self.dry_run and not self.skip_deploy:
                 deploy_ok = self._run_scenario_deploy(stream_callback)
                 if not deploy_ok:
                     if stream_callback:

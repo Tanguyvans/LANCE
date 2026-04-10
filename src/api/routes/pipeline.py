@@ -57,6 +57,7 @@ class StartRequest(BaseModel):
     auto_teardown: bool = True
     max_cost_usd: float | None = None
     phase_models: dict[int, str] | None = None
+    skip_deploy: bool = False
     # Custom mode fields
     architecture: str | None = None
     posture: str | None = None       # "vulnerable" | "hardened"
@@ -99,6 +100,7 @@ def _pipeline_thread(req: StartRequest, run_id: str):
             max_cost_usd=req.max_cost_usd,
             phase_models=req.phase_models,
             custom_config=custom_config,
+            skip_deploy=req.skip_deploy,
         )
 
         def callback(event: dict):
@@ -302,6 +304,135 @@ async def teardown_scenario(req: TeardownRequest):
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     return {"status": "teardown_started", "scenario_id": req.scenario_id}
+
+
+def _get_all_scenario_ids() -> list[str]:
+    """Return all non-hardened scenario IDs from benchmarks/scenarios/S*.yaml."""
+    scen_dir = ROOT / "benchmarks" / "scenarios"
+    try:
+        import yaml as _yaml
+        ids = []
+        for f in sorted(scen_dir.glob("S*.yaml")):
+            data = _yaml.safe_load(f.read_text())
+            if data.get("posture", "vulnerable") != "hardened":
+                ids.append(str(data.get("scenario_id", f.stem)))
+        return ids
+    except Exception:
+        return [str(i) for i in range(1, 11)]
+
+
+def _deploy_scenario(scenario_id: str, callback) -> bool:
+    """Run Ansible deploy playbooks for one scenario sequentially."""
+    import os
+    env = os.environ.copy()
+    env["LANG"] = "en_US.UTF-8"
+    env["LC_ALL"] = "en_US.UTF-8"
+
+    def run_playbook(playbook: str, ev_start: str, ev_done: str) -> bool:
+        cmd = [
+            "ansible-playbook",
+            f"benchmarks/ansible/playbooks/{playbook}",
+            "-i", "benchmarks/ansible/inventory.yml",
+            "--vault-password-file", "/root/.vault_pass",
+            "--extra-vars", f"scenario_id={scenario_id}",
+        ]
+        callback({"type": ev_start, "scenario_id": scenario_id, "playbook": playbook})
+        try:
+            result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=600, env=env)
+            success = result.returncode == 0
+            output = (result.stdout + result.stderr)[-3000:]
+        except subprocess.TimeoutExpired:
+            success, output = False, f"{playbook} timeout (600s)"
+        except FileNotFoundError:
+            success, output = False, "ansible-playbook not found"
+        callback({"type": ev_done, "scenario_id": scenario_id, "playbook": playbook, "success": success, "output": output})
+        return success
+
+    ok = run_playbook("03_deploy_scenario.yml", "deploy_start", "deploy_done")
+    if not ok:
+        return False
+    run_playbook("04_inject_vulns.yml", "inject_start", "inject_done")
+    run_playbook("06_verify.yml", "verify_start", "verify_done")
+    return True
+
+
+@router.post("/start-all")
+async def start_all_pipelines(req: StartRequest):
+    """Start all scenarios: sequential deploy, then parallel LLM pipelines."""
+    scenario_ids = _get_all_scenario_ids()
+    loop = asyncio.get_event_loop()
+    run_ids: list[str] = []
+
+    with _runs_lock:
+        for sid in scenario_ids:
+            run_id = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            suffix = 1
+            while run_id in _runs or run_id in run_ids:
+                run_id = f"{datetime.now().strftime('%Y-%m-%d_%H%M%S')}_{suffix}"
+                suffix += 1
+            state = _new_run_state(run_id, str(sid), req.model)
+            state["queue"] = asyncio.Queue()
+            state["loop"] = loop
+            _runs[run_id] = state
+            run_ids.append(run_id)
+
+    pairs = list(zip(scenario_ids, run_ids))
+
+    def make_callback(run_id: str, state: dict):
+        def callback(event: dict):
+            event["run_id"] = run_id
+            if state["loop"] and state["queue"]:
+                state["loop"].call_soon_threadsafe(state["queue"].put_nowait, event)
+            skip = {"__done__", "ping", "text_chunk"}
+            if event.get("type") not in skip:
+                state["recent_events"].append(event)
+                if len(state["recent_events"]) > _MAX_RECENT_EVENTS:
+                    state["recent_events"] = state["recent_events"][-_MAX_RECENT_EVENTS:]
+            t = event.get("type")
+            if t == "deploy_start":
+                state["deploy_status"] = "deploying"
+            elif t == "deploy_done":
+                state["deploy_status"] = "deployed" if event.get("success") else "failed"
+        return callback
+
+    def coordinator():
+        # Phase 1 — sequential deploy
+        for sid, run_id in pairs:
+            state = _runs[run_id]
+            if state["stop_event"].is_set():
+                state["running"] = False
+                state["loop"].call_soon_threadsafe(state["queue"].put_nowait, {"type": "__done__", "run_id": run_id})
+                continue
+            deploy_ok = _deploy_scenario(str(sid), make_callback(run_id, state))
+            if not deploy_ok:
+                state["deploy_status"] = "failed"
+                state["running"] = False
+                state["loop"].call_soon_threadsafe(state["queue"].put_nowait, {"type": "__done__", "run_id": run_id})
+
+        # Phase 2 — parallel LLM pipelines (deploy already done)
+        threads = []
+        for sid, run_id in pairs:
+            state = _runs[run_id]
+            if not state["running"]:
+                continue
+            pipeline_req = StartRequest(
+                model=req.model,
+                provider=req.provider,
+                scenario_id=str(sid),
+                phases=req.phases,
+                auto_teardown=req.auto_teardown,
+                max_cost_usd=req.max_cost_usd,
+                phase_models=req.phase_models,
+                skip_deploy=True,
+            )
+            t = threading.Thread(target=_pipeline_thread, args=(pipeline_req, run_id), daemon=True)
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
+
+    threading.Thread(target=coordinator, daemon=True).start()
+    return {"status": "started", "run_ids": run_ids, "scenario_ids": scenario_ids}
 
 
 @router.get("/stream")

@@ -1037,14 +1037,9 @@ async function startRun() {
 
 
 async function startAllRuns() {
-  const baseBody = _buildStartBody();
+  const body = _buildStartBody();
   const btn = document.getElementById('btn-start-all');
   btn.disabled = true;
-
-  // Get all vulnerable scenario IDs
-  const scenarioIds = _scenariosData.scenarios
-    .filter(s => s.posture !== 'hardened')
-    .map(s => s.id);
 
   resetNodeColors();
   nodeVulns = {};
@@ -1053,11 +1048,42 @@ async function startAllRuns() {
   clearPhasePills();
   resetDeviceProgress();
 
+  const res = await fetch('/api/pipeline/start-all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    addLog({type:'error', message: err.detail || 'Erreur demarrage runs'});
+    btn.disabled = false;
+    return;
+  }
+
+  const data = await res.json();
+  const runIds = data.run_ids;
+  const scenarioIds = data.scenario_ids;
+
   let firstRunId = null;
-  for (const sid of scenarioIds) {
-    const body = { ...baseBody, scenario_id: sid };
-    const runId = await _launchSingleRun(body);
-    if (runId && !firstRunId) firstRunId = runId;
+  for (let i = 0; i < runIds.length; i++) {
+    const runId = runIds[i];
+    const sid = scenarioIds[i];
+    activeRuns[runId] = {
+      runId,
+      scenario: sid,
+      model: body.model,
+      phase: 0,
+      cost: 0,
+      running: true,
+      failed: false,
+      logs: [],
+      phasesDone: [],
+      eventSource: null,
+    };
+    addRunTab(runId, sid);
+    connectSSE(runId);
+    if (!firstRunId) firstRunId = runId;
   }
 
   if (firstRunId) {
@@ -1065,8 +1091,9 @@ async function startAllRuns() {
     await loadTopology(scenarioIds[0]);
   }
 
+  document.getElementById('btn-stop').style.display = 'block';
   btn.disabled = false;
-  addLog({type:'info', message: `${scenarioIds.length} runs lances en parallele`});
+  addLog({type:'info', message: `${runIds.length} runs : deploy sequentiel, pipeline parallele`});
 }
 
 
