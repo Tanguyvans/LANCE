@@ -46,7 +46,7 @@ class Pipeline:
         provider: LLMProvider,
         dry_run: bool = False,
         phases: list[int] | None = None,
-        scenario_id: int | None = None,
+        scenario_id: int | str | None = None,
         auto_teardown: bool = True,
         max_cost_usd: float | None = None,
         phase_models: dict[int | str, str] | None = None,
@@ -368,7 +368,7 @@ class Pipeline:
                 "output": output,
             })
 
-    def _load_scenario_context(self, scenario_id: int) -> str:
+    def _load_scenario_context(self, scenario_id: int | str) -> str:
         """Load benchmark scenario IPs from ground_truth YAML and return a context string."""
         gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
         if not gt_path.exists():

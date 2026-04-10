@@ -93,16 +93,22 @@
       <label for="sel-scenario">Scénario</label>
       <select id="sel-scenario">
         <option value="">— Lab physique —</option>
-        <option value="1">S1 · Réseau plat</option>
-        <option value="2">S2 · Gateway exposée</option>
-        <option value="3">S3 · Réplique NATO Lab</option>
-        <option value="4">S4 · Réseau segmenté</option>
-        <option value="5">S5 · Smart Building</option>
-        <option value="6">S6 · Domotique centralisée</option>
-        <option value="7">S7 · Edge-Cloud pivot</option>
-        <option value="8">S8 · Multi-zone IT/IoT/OT</option>
-        <option value="9">S9 · Mesh IoT</option>
-        <option value="10">S10 · Flat variantes</option>
+        <optgroup label="Vulnerable">
+          <option value="1">S1 · Réseau plat</option>
+          <option value="2">S2 · Gateway exposée</option>
+          <option value="3">S3 · Réplique NATO Lab</option>
+          <option value="4">S4 · Réseau segmenté</option>
+          <option value="5">S5 · Smart Building</option>
+          <option value="6">S6 · Domotique centralisée</option>
+          <option value="7">S7 · Edge-Cloud pivot</option>
+          <option value="8">S8 · Multi-zone IT/IoT/OT</option>
+          <option value="9">S9 · Mesh IoT</option>
+          <option value="10">S10 · Flat variantes</option>
+        </optgroup>
+        <optgroup label="Hardened (contrôle)">
+          <option value="1h">S1h · Réseau plat (hardened)</option>
+          <option value="4h">S4h · ICS/SCADA (hardened)</option>
+        </optgroup>
       </select>
       <button id="btn-teardown" disabled>Teardown</button>
 

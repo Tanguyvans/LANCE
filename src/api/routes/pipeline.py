@@ -34,7 +34,7 @@ _state: dict[str, Any] = {
 class StartRequest(BaseModel):
     model: str = "google/gemini-2.0-flash-001"
     provider: str = "openrouter"
-    scenario_id: int | None = None
+    scenario_id: str | None = None
     phases: list[int] | None = None
     auto_teardown: bool = True
     max_cost_usd: float | None = None
@@ -140,7 +140,7 @@ def get_status():
 
 
 class TeardownRequest(BaseModel):
-    scenario_id: int
+    scenario_id: str
 
 
 @router.post("/teardown")

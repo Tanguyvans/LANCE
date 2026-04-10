@@ -548,7 +548,7 @@ async function startRun() {
   clearPhasePills();
 
   // Load correct topology
-  await loadTopology(scenario ? parseInt(scenario) : null);
+  await loadTopology(scenario || null);
 
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -556,7 +556,7 @@ async function startRun() {
   const body = {
     model,
     provider: 'openrouter',
-    scenario_id: scenario ? parseInt(scenario) : null,
+    scenario_id: scenario || null,
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
@@ -591,7 +591,7 @@ async function stopRun() {
 }
 
 async function teardownScenario() {
-  const scenarioId = parseInt(document.getElementById('sel-scenario').value);
+  const scenarioId = document.getElementById('sel-scenario').value;
   if (!scenarioId) return;
   const btn = document.getElementById('btn-teardown');
   btn.disabled = true;
@@ -919,14 +919,14 @@ async function viewRun(runId) {
   if (!run) return;
 
   // Switch graph to this run's topology
-  const scenarioId = run.scenario ? parseInt(run.scenario.replace('S', '')) : null;
+  const scenarioId = run.scenario ? run.scenario.replace('S', '') : null;
   resetNodeColors();
   nodeVulns = {};
   nodeHosts = {};
   await loadTopology(scenarioId);
 
   // Sync dropdown
-  document.getElementById('sel-scenario').value = scenarioId !== null ? String(scenarioId) : '';
+  document.getElementById('sel-scenario').value = scenarioId || '';
 
   // Show run view in detail panel
   document.getElementById('detail-placeholder').style.display = 'none';

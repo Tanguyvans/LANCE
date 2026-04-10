@@ -91,7 +91,7 @@ ROLE_TO_TYPE = {
 }
 
 
-def _load_scenario(scenario_id: int) -> dict:
+def _load_scenario(scenario_id: str) -> dict:
     gt_file = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
     if not gt_file.exists():
         raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
@@ -153,7 +153,7 @@ def _load_scenario(scenario_id: int) -> dict:
 
 
 @router.get("")
-def get_topology(scenario: int | None = None):
+def get_topology(scenario: str | None = None):
     """Return Cytoscape-ready nodes and edges for the lab or a benchmark scenario."""
     if scenario is not None:
         return _load_scenario(scenario)
