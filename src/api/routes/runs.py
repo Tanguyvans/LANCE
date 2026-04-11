@@ -195,9 +195,9 @@ def download_run(run_id: str):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in sorted(run_dir.iterdir()):
+        for f in sorted(run_dir.rglob("*")):
             if f.is_file():
-                zf.write(f, f.name)
+                zf.write(f, str(f.relative_to(run_dir)))
     buf.seek(0)
     return StreamingResponse(
         buf,
