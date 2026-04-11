@@ -92,11 +92,16 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             fmt = param.get("format", "positional")
 
             if fmt == "positional":
-                # Split on commas/spaces so multi-target strings
-                # (e.g. "192.168.88.1,192.168.88.2") become separate args
                 raw = str(value)
-                parts = raw.replace(",", " ").split()
-                positional_values.extend(parts)
+                # For "bash -c" style tools, pass command_string as a single
+                # argument — splitting would break shell commands.
+                if command == "bash" and "-c" in fixed_args:
+                    positional_values.append(raw)
+                else:
+                    # Split on commas/spaces so multi-target strings
+                    # (e.g. "192.168.88.1,192.168.88.2") become separate args
+                    parts = raw.replace(",", " ").split()
+                    positional_values.extend(parts)
             elif fmt == "flag":
                 flag = param["flag"]
                 cmd.extend([flag, str(value)])
