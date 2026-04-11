@@ -25,6 +25,7 @@ from src.agent.tools.graph_tools import (
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, _extract_json
 from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
+from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
 
 log = logging.getLogger(__name__)
@@ -643,9 +644,9 @@ class Pipeline:
                 "deliverable": config.deliverable_file,
             })
 
-        # If this phase has device sub-agents, run them first (after phase_start so dashboard shows phase as active)
+        # If this phase has device sub-agents, run scanner + LLM analysis (Phase 3a+3b)
         if config.has_device_agents:
-            self._run_device_agents(config, stream_callback)
+            self._run_phase3(config, stream_callback)
 
         # If this phase uses deterministic aggregation, skip the LLM and merge directly
         if config.deterministic_aggregation:
@@ -972,7 +973,137 @@ class Pipeline:
         print(f"{'=' * 60}\n")
 
     # ------------------------------------------------------------------
-    # Phase 3: deterministic aggregation of per-device vuln results
+    # Phase 3: scanner (3a) + LLM analysis (3b)
+    # ------------------------------------------------------------------
+
+    def _run_phase3(
+        self,
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> None:
+        """Phase 3 split: 3a (deterministic scanner) → 3b (LLM analysis) → 3c (merge)."""
+        import time as _time
+        from concurrent.futures import ThreadPoolExecutor
+
+        # --- Phase 3a: Deterministic scanning ---
+        surface = json.loads(get_attack_surface())
+        if isinstance(surface, dict):
+            surface = surface.get("nodes", list(surface.values()) if surface else [])
+
+        if self.dry_run:
+            log.info("Dry run: skipping Phase 3a scanner")
+            print("  [dry-run] Skipping scanner")
+            return
+
+        scanner_results = run_scanner(self.run_dir, surface, stream_callback)
+
+        # --- Phase 3b: LLM analysis micro-agents (per device) ---
+        print(f"\n{'=' * 60}")
+        print(f"PHASE 3b: LLM ANALYSIS ({len(surface)} devices)")
+        print(f"{'=' * 60}\n")
+
+        # Limited tool access: cve_search + http_get + deliverable tools
+        skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
+        recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
+        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+
+        def _analyze_device(device: dict):
+            device_id = device["id"]
+            device_ip = device.get("ip", "unknown")
+            device_type = device.get("type", "unknown")
+            device_role = device.get("role", device_type)
+            services = device.get("services", [])
+            services_str = ", ".join(
+                f"{s.get('name', 'unknown')}:{s.get('port', '?')}"
+                for s in services
+            )
+            device_detail = json.loads(get_device_info(device_id))
+            device_os = device_detail.get("os_version", device_detail.get("firmware", "unknown"))
+
+            scan_data = scanner_results.get(device_id, {})
+            deliverable_file = f"03_device_{device_id}.json"
+
+            # Prepare scan results for prompt (truncate large outputs)
+            scan_for_prompt = {}
+            for svc_key, entries in scan_data.get("scan_results", {}).items():
+                scan_for_prompt[svc_key] = []
+                for entry in entries:
+                    result = entry.get("result", "")
+                    if isinstance(result, str) and len(result) > 2000:
+                        result = result[:2000] + "\n[truncated]"
+                    scan_for_prompt[svc_key].append({
+                        "tool": entry["tool"],
+                        "kwargs": entry.get("kwargs", {}),
+                        "result": result,
+                    })
+
+            variables = {**self.context}
+            variables["device_id"] = device_id
+            variables["device_ip"] = device_ip
+            variables["device_type"] = device_type
+            variables["device_role"] = device_role
+            variables["device_services"] = services_str
+            variables["device_os"] = device_os
+            variables["expected_deliverable"] = deliverable_file
+            variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
+            variables["trivial_findings"] = json.dumps(
+                scan_data.get("findings", []), indent=2, ensure_ascii=False
+            )
+
+            system_prompt = load_prompt("analyze_device", variables)
+
+            print(f"  [+] Analyzing: {device_id} ({device_ip})")
+            if stream_callback:
+                stream_callback({
+                    "type": "device_start", "device_id": device_id,
+                    "device_ip": device_ip, "phase": 3,
+                })
+
+            self.tracker.start_phase(f"analyze_{device_id}")
+            result_text = self.provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=(
+                    f"Review scan results for {device_id} ({device_ip}). "
+                    f"Add CVE findings and data exposure analysis. "
+                    f"Then call save_deliverable('{deliverable_file}', json_content)."
+                ),
+                tools=analysis_tools,
+                max_turns=10,
+                max_tokens=4096,
+                cost_tracker=self.tracker,
+                stream_callback=stream_callback,
+                required_tool="save_deliverable",
+            )
+            usage = self.tracker.end_phase()
+            if usage:
+                print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
+            if stream_callback:
+                stream_callback({
+                    "type": "device_done", "device_id": device_id,
+                    "device_ip": device_ip, "phase": 3,
+                    "turns": usage.turns if usage else 0,
+                })
+
+            # Fallback: if LLM didn't save, the scanner already wrote the trivial findings
+            deliverable_path = self.run_dir / deliverable_file
+            if not deliverable_path.exists():
+                log.warning("LLM analysis for %s produced no output — trivial findings used as fallback", device_id)
+
+        def _analyze_with_stagger(args):
+            idx, device = args
+            if idx > 0:
+                _time.sleep(min(idx * 2, 6))
+            _analyze_device(device)
+
+        with ThreadPoolExecutor(max_workers=min(len(surface), 6)) as pool:
+            pool.map(_analyze_with_stagger, enumerate(surface))
+
+        print(f"\n{'=' * 60}")
+        print(f"  All {len(surface)} analysis agents finished.")
+        print(f"{'=' * 60}\n")
+
+    # ------------------------------------------------------------------
+    # Phase 3c: deterministic aggregation of per-device vuln results
     # ------------------------------------------------------------------
 
     def _aggregate_device_vulns(
