@@ -105,11 +105,16 @@ Your device has role = **{{device_role}}**.
    **Default credentials** (for SSH — ssh_server role ONLY):
    - ONLY for devices with role=ssh_server: run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true).
    - For iot_gateway, router, or any other role: do NOT run ssh-auth-methods and do NOT create a default_credentials finding from SSH password auth detection. SSH password auth is expected on embedded devices.
-   - Read the nmap output carefully. If the output contains "password" anywhere in the supported auth methods (e.g. "publickey, password" or "password" alone) → password authentication IS enabled → MANDATORY finding:
-     type=default_credentials, severity=HIGH
-     details: "SSH password authentication enabled — default IoT credentials (admin:admin, root:root) must be tested manually"
-     evidence: paste the exact nmap ssh-auth-methods output line
-   - "publickey, password" counts — password being one of several methods is still a finding.
+   - MANDATORY: For ssh_server role, you MUST ALWAYS create a default_credentials finding with exploitation_status="suspected", REGARDLESS of what nmap ssh-auth-methods returns:
+     - If nmap confirms password auth → evidence = nmap output
+     - If nmap returns ERROR or fails → evidence = "ssh-auth-methods script failed — credential testing deferred to Phase 4 exploit agent"
+     - If nmap shows publickey only → STILL create the finding (key-based auth does not rule out default passwords on other accounts)
+     The finding is:
+       type=default_credentials, severity=HIGH
+       exploitation_status: "suspected"
+       suggested_technique: "Test SSH login with default IoT credentials: admin:admin, root:root, ubnt:ubnt, pi:raspberry"
+       suggested_tools: ["ssh_login"]
+     Phase 4 exploit agents will actively test the credentials — Phase 3 only flags the potential.
    - Do NOT skip this step for ssh_server role even if ssh_audit showed no issues.
 
    **File upload** (for web_upload role — MANDATORY, run BEFORE generic HTTP paths):
@@ -239,7 +244,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 **SSH** (if port 22 detected or device role is ssh_server/nvr_server/iot_gateway):
 - [ ] ssh_audit called independently on {{device_ip}}
 - [ ] For ssh_server role ONLY: nmap_scan with scripts="ssh-auth-methods" called
-- [ ] For ssh_server role ONLY: if password auth confirmed → default_credentials finding created (severity=HIGH)
+- [ ] For ssh_server role ONLY: default_credentials finding created (severity=HIGH, exploitation_status="suspected") — ALWAYS, regardless of nmap result
 - [ ] For iot_gateway/router role: do NOT create default_credentials from SSH auth detection
 - [ ] **SSH banner check**: if the banner reveals OS/distribution (e.g. "SSH-2.0-OpenSSH_9.2p1 Debian-2") → type=info_disclosure, severity=LOW ("SSH banner discloses OS and version")
 
