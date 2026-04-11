@@ -222,13 +222,37 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             f"computed ({max_score}). Using computed value."
         )
 
-    # Load LLM findings
+    # Load LLM findings — prefer 04_exploitation.json if it exists (post-exploit),
+    # otherwise fall back to 03_vuln_analysis.json (detection only).
+    exploit_file = run_dir / "04_exploitation.json"
     vuln_file = run_dir / "03_vuln_analysis.json"
-    if not vuln_file.exists():
-        raise FileNotFoundError(f"03_vuln_analysis.json not found in {run_dir}")
 
-    llm_data = json.loads(vuln_file.read_text())
-    llm_findings = llm_data.get("vulnerabilities", [])
+    if exploit_file.exists():
+        raw = json.loads(exploit_file.read_text())
+        # 04_exploitation.json uses "tests" key with different field names
+        raw_tests = raw.get("tests", [])
+        llm_findings = []
+        for t in raw_tests:
+            # Skip findings that failed exploitation or errored (false positives eliminated)
+            if t.get("status") in ("FAILED", "ERROR"):
+                continue
+            llm_findings.append({
+                "id": t.get("vuln_id", ""),
+                "device_id": t.get("device_id", ""),
+                "device_ip": t.get("device_ip", ""),
+                "type": t.get("vuln_type", ""),
+                "severity": t.get("severity", ""),
+                "details": t.get("description", ""),
+                "evidence": t.get("evidence", ""),
+                "cve_ids": t.get("cve_ids", []),
+            })
+    elif vuln_file.exists():
+        llm_data = json.loads(vuln_file.read_text())
+        llm_findings = llm_data.get("vulnerabilities", [])
+    else:
+        raise FileNotFoundError(
+            f"Neither 04_exploitation.json nor 03_vuln_analysis.json found in {run_dir}"
+        )
 
     result = EvaluationResult(
         scenario_id=scenario_id,

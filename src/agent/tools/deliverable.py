@@ -89,6 +89,7 @@ def save_deliverable(filename: str, content: str) -> str:
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUTPUT_DIR / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
     # For JSON deliverables, strip surrounding markdown if needed
     if filename.endswith(".json"):
         content = _extract_json(content)

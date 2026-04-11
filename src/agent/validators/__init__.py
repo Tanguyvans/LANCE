@@ -58,9 +58,30 @@ def validate_json_exploitation(filename: str) -> tuple[bool, str]:
     return _validate_json_with_key(filename, "tests", expect_list=True)
 
 
+def validate_json_exploit_result(filename: str) -> tuple[bool, str]:
+    """Validate a single exploit result JSON file (04_exploits/**/*.json)."""
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+    content = (OUTPUT_DIR / filename).read_text(encoding="utf-8")
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        return False, f"Invalid JSON: {e}"
+    required_keys = {"vuln_id", "device_id", "status"}
+    missing = required_keys - set(data.keys())
+    if missing:
+        return False, f"Missing keys: {missing}"
+    valid_statuses = {"EXPLOITED", "FAILED", "ERROR"}
+    if data["status"] not in valid_statuses:
+        return False, f"Invalid status '{data['status']}', expected one of {valid_statuses}"
+    return True, "OK"
+
+
 VALIDATORS = {
     "default": validate_default,
     "markdown_with_sections": validate_markdown_with_sections,
     "json_vuln_queue": validate_json_vuln_queue,
     "json_exploitation": validate_json_exploitation,
+    "json_exploit_result": validate_json_exploit_result,
 }

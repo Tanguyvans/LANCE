@@ -22,6 +22,7 @@ If your queue is empty, Phase 4 will be skipped.
    CRITICAL: Do NOT drop findings because they seem less important, redundant, or low severity.
    Do NOT filter out MEDIUM findings. Do NOT remove findings you consider minor.
    Your final deliverable MUST contain ALL findings (minus deduplicated ones). If you received N findings and removed K, your output MUST have N-K entries.
+   IMPORTANT: Preserve these fields from device sub-agents as-is: exploitation_status, suggested_technique, suggested_tools. Do NOT modify or remove them — Phase 4 exploit agents depend on them.
 6. Compute the summary: total, high, medium, low, info
 7. Save the result
 
@@ -41,7 +42,10 @@ STRICT JSON with this structure:
       "port": 22,
       "details": "Description",
       "evidence": "Evidence",
-      "cve_ids": ["CVE-2023-48795"]
+      "cve_ids": ["CVE-2023-48795"],
+      "exploitation_status": "confirmed",
+      "suggested_technique": "",
+      "suggested_tools": []
     }
   ],
   "summary": {

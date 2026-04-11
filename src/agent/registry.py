@@ -19,6 +19,7 @@ class AgentConfig:
     conditional: str | None = None
     description: str = ""
     has_device_agents: bool = False
+    has_exploit_agents: bool = False
     skill_filter: dict[str, list[str]] | None = None
 
 
@@ -70,10 +71,12 @@ AGENTS: dict[str, AgentConfig] = {
         tools=["graph", "recon", "deliverable", "skill"],
         prerequisites=["vuln_analysis"],
         validator="json_exploitation",
-        max_turns=30,
-        user_message="Exploit each vulnerability to prove impact. Use ssh_login, mysql_query, http_get, telnet_connect to show actual data exfiltrated.",
+        max_turns=10,
+        max_tokens=2048,
+        user_message="Exploit each vulnerability to prove impact.",
         conditional="03_vuln_analysis.json",
-        description="Real exploitation: SSH login, DB query, HTTP file retrieval, Telnet/FTP proof",
+        description="Per-vuln exploit agents + deterministic aggregation",
+        has_exploit_agents=True,
         skill_filter={"tags": ["mqtt", "ssh", "http", "firmware"]},
     ),
     "report": AgentConfig(

@@ -322,7 +322,10 @@ STRICT JSON with this structure:
       "port": 22,
       "details": "Vulnerability description",
       "evidence": "MUST be raw tool output proving the vuln — see evidence rules below",
-      "cve_ids": ["CVE-2023-48795"]
+      "cve_ids": ["CVE-2023-48795"],
+      "exploitation_status": "confirmed",
+      "suggested_technique": "",
+      "suggested_tools": []
     }
   ],
   "summary": {
@@ -337,6 +340,32 @@ STRICT JSON with this structure:
 
 Types: weak_cipher | no_auth | missing_header | info_disclosure | terrapin | version_leak | known_cve | directory_listing | data_exposure | insecure_protocol | default_credentials | network_exposure | insecure_update | code_injection
 Severities: INFO | LOW | MEDIUM | HIGH | CRITICAL
+
+## Exploitation status classification — MANDATORY for every finding
+
+Each vulnerability MUST include `exploitation_status`, `suggested_technique`, and `suggested_tools`.
+Phase 4 exploit agents will use these fields to decide what to test.
+
+| vuln_type | exploitation_status = "confirmed" | exploitation_status = "suspected" |
+|---|---|---|
+| default_credentials | never — Phase 3 does NOT test logins | ALWAYS — password auth detected |
+| code_injection | never | ALWAYS — upload endpoint found |
+| insecure_update | never | ALWAYS — update endpoint found |
+| no_auth (MQTT) | mqtt_listen received messages (rc=0 or 27) | never |
+| no_auth (HTTP admin) | curl returned 200/302/403 with content | never |
+| no_auth (Modbus/OT) | nmap port 502 open | never |
+| data_exposure | http_get downloaded actual sensitive content | paths listed but NOT yet downloaded |
+| directory_listing | "Index of" visible in curl output | never |
+| weak_cipher | ssh_audit [fail] lines captured | never |
+| missing_header | HTTP headers captured | never |
+| info_disclosure | banner/version visible in output | never |
+| insecure_protocol | nmap port open confirmed | never |
+| terrapin | ssh_audit CVE line captured | never |
+| network_exposure | nmap port open confirmed | never |
+
+For "suspected" vulns, also set:
+- `suggested_technique`: short description of what Phase 4 should do (e.g., "Test SSH login with admin:admin, root:root")
+- `suggested_tools`: list of tool names to use (e.g., ["ssh_login"] or ["http_get"])
 
 ## EVIDENCE RULES — every finding MUST include raw proof
 

