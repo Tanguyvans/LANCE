@@ -20,6 +20,7 @@ class AgentConfig:
     description: str = ""
     has_device_agents: bool = False
     has_exploit_agents: bool = False
+    deterministic_aggregation: bool = False
     skill_filter: dict[str, list[str]] | None = None
 
 
@@ -59,8 +60,9 @@ AGENTS: dict[str, AgentConfig] = {
         validator="json_vuln_queue",
         max_turns=25,
         user_message="Aggregate vulnerability results from device sub-agents into a unified deliverable.",
-        description="Aggregate per-device vuln results into unified queue",
+        description="Deterministic aggregation of per-device vuln results",
         has_device_agents=True,
+        deterministic_aggregation=True,
         skill_filter={"tags": ["mqtt", "ssh", "http", "firmware", "lorawan", "zigbee", "router"]},
     ),
     "exploitation": AgentConfig(

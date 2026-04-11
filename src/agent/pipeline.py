@@ -647,6 +647,30 @@ class Pipeline:
         if config.has_device_agents:
             self._run_device_agents(config, stream_callback)
 
+        # If this phase uses deterministic aggregation, skip the LLM and merge directly
+        if config.deterministic_aggregation:
+            self._aggregate_device_vulns(config, stream_callback)
+            validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+            valid, msg = validator_fn(config.deliverable_file)
+            status = "completed" if valid else f"failed:{msg}"
+            if valid:
+                log.info("Phase %d deterministic aggregation validated: %s", config.phase, msg)
+                print(f"  Deliverable validated: {config.deliverable_file}")
+            else:
+                log.error("Phase %d deterministic aggregation FAILED: %s", config.phase, msg)
+                print(f"  Deliverable FAILED validation: {msg}")
+            if stream_callback:
+                stream_callback({
+                    "type": "phase_done",
+                    "phase": config.phase,
+                    "name": config.name,
+                    "status": status,
+                    "deliverable": config.deliverable_file,
+                    "cost_usd": 0,
+                    "turns": 0,
+                })
+            return status
+
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
             self._run_exploit_agents(config, stream_callback)
@@ -946,6 +970,83 @@ class Pipeline:
         print(f"\n{'=' * 60}")
         print(f"  All {len(surface)} sub-agents finished.")
         print(f"{'=' * 60}\n")
+
+    # ------------------------------------------------------------------
+    # Phase 3: deterministic aggregation of per-device vuln results
+    # ------------------------------------------------------------------
+
+    def _aggregate_device_vulns(
+        self,
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> None:
+        """Merge all 03_device_*.json files into 03_vuln_analysis.json deterministically."""
+        all_vulns: list[dict] = []
+
+        for f in sorted(self.run_dir.glob("03_device_*.json")):
+            try:
+                content = _extract_json(f.read_text(encoding="utf-8"))
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    vulns = data.get("vulnerabilities", [])
+                elif isinstance(data, list):
+                    vulns = data
+                else:
+                    vulns = []
+                all_vulns.extend(vulns)
+            except Exception as e:
+                log.warning("Failed to parse %s: %s", f.name, e)
+
+        # Deduplicate: same (device_ip, type, port) → keep first
+        seen: set[tuple] = set()
+        deduped: list[dict] = []
+        for v in all_vulns:
+            key = (v.get("device_ip", ""), v.get("type", ""), v.get("port"))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(v)
+
+        # Special dedup: if device has both directory_listing for /firmware/ and insecure_update → drop directory_listing
+        devices_with_insecure_update = {
+            v.get("device_ip") for v in deduped if v.get("type") == "insecure_update"
+        }
+        final: list[dict] = []
+        for v in deduped:
+            if (v.get("type") == "directory_listing"
+                    and v.get("device_ip") in devices_with_insecure_update
+                    and "/firmware" in v.get("details", "").lower()):
+                continue
+            final.append(v)
+
+        # Renumber IDs sequentially
+        for i, v in enumerate(final, 1):
+            v["id"] = f"VULN-{i:03d}"
+
+        # Compute summary
+        severity_counts = {"high": 0, "medium": 0, "low": 0, "info": 0, "critical": 0}
+        for v in final:
+            sev = (v.get("severity") or "").lower()
+            if sev in severity_counts:
+                severity_counts[sev] += 1
+
+        result = {
+            "vulnerabilities": final,
+            "summary": {
+                "total": len(final),
+                "critical": severity_counts["critical"],
+                "high": severity_counts["high"],
+                "medium": severity_counts["medium"],
+                "low": severity_counts["low"],
+                "info": severity_counts["info"],
+            },
+        }
+
+        out_path = self.run_dir / config.deliverable_file
+        out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"  Aggregated {len(all_vulns)} device vulns → {len(final)} after dedup → {config.deliverable_file}")
+        log.info("Deterministic aggregation: %d vulns → %d deduped → %s",
+                 len(all_vulns), len(final), out_path)
 
     # ------------------------------------------------------------------
     # Phase 4: per-vuln exploit micro-agents
