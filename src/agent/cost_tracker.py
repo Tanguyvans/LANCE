@@ -25,6 +25,11 @@ PRICING = {
     # Qwen (Alibaba)
     "qwen-plus": {"input": 0.40, "output": 1.20},
     "qwen-turbo": {"input": 0.05, "output": 0.20},
+    "qwen/qwen-plus": {"input": 0.40, "output": 1.20},
+    "qwen/qwen-max": {"input": 1.60, "output": 6.40},
+    "qwen/qwen3-max": {"input": 1.60, "output": 6.40},
+    "qwen/qwen-2.5-72b-instruct": {"input": 0.35, "output": 0.40},
+    "qwen/qwen3-coder": {"input": 0.20, "output": 0.80},
     # Google Gemini
     "google/gemini-2.0-flash-001": {"input": 0.10, "output": 0.40},
     "google/gemini-2.5-flash": {"input": 0.15, "output": 0.60},
