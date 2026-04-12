@@ -1126,7 +1126,40 @@ class Pipeline:
                     vulns = []
                 all_vulns.extend(vulns)
             except Exception as e:
-                log.warning("Failed to parse %s: %s", f.name, e)
+                log.warning("Failed to parse %s: %s — falling back to scanner findings", f.name, e)
+                # Fallback: regenerate trivial findings from 03_scans/{device_id}.json
+                device_id = f.stem.replace("03_device_", "")
+                scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
+                if scan_path.exists():
+                    try:
+                        from src.agent.scanner import extract_findings
+                        scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
+                        # Rebuild device info from the first entry
+                        device_ip = ""
+                        for entries in scan_data.values():
+                            for entry in entries:
+                                kw = entry.get("kwargs", {})
+                                if "host" in kw:
+                                    device_ip = kw["host"]
+                                    break
+                                if "target" in kw:
+                                    device_ip = kw["target"]
+                                    break
+                                if "broker" in kw:
+                                    device_ip = kw["broker"]
+                                    break
+                            if device_ip:
+                                break
+                        fallback_device = {
+                            "id": device_id,
+                            "ip": device_ip,
+                            "role": "",
+                        }
+                        recovered = extract_findings(scan_data, fallback_device)
+                        log.warning("Recovered %d findings for %s from scanner", len(recovered), device_id)
+                        all_vulns.extend(recovered)
+                    except Exception as e2:
+                        log.error("Scanner fallback also failed for %s: %s", device_id, e2)
 
         # Deduplicate: same (device_ip, type, port) → keep first
         seen: set[tuple] = set()

@@ -66,3 +66,10 @@ Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE wit
 Each vulnerability must have: id, device_id, device_ip, type, severity, service, port, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools.
 
 IMPORTANT: Pass RAW JSON to save_deliverable — do NOT wrap in markdown code blocks.
+
+## JSON safety rules
+- In the "evidence" field, NEVER paste raw JSON from tool output (it will break escaping).
+- Truncate evidence to 200 characters max.
+- Use plain text for evidence: "HTTP 200 on /cgi-bin/luci — admin page exposed" instead of copying the full response body.
+- If you need to reference a file's content, describe it in prose, don't paste it.
+- Double-check your JSON is valid before calling save_deliverable — invalid JSON will be rejected.
