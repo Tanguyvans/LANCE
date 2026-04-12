@@ -94,15 +94,21 @@ EXPLOIT_INSTRUCTIONS: dict[str, str] = {
         "Report ALL data retrieved in data_extracted field."
     ),
     "data_access": (
-        "Access the service and retrieve actual data to prove impact.\n"
+        "Access the service and retrieve actual data to prove impact.\n\n"
+        "IMPORTANT: The Phase 3 evidence already contains the exact URLs/paths to use. "
+        "Read the evidence field and use those EXACT URLs — do NOT invent paths.\n\n"
         'For MQTT no_auth: mqtt_listen("{ip}", topic="#", count=10, timeout=8) '
         "— capture messages, extract credentials/keys\n"
-        'For HTTP data_exposure: http_get("{url}") — download the file, '
-        "show ALL sensitive content (passwords, API keys)\n"
-        'For HTTP directory_listing: http_get("{url}") for each listed file — show contents\n'
+        'For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. '
+        "If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\") — "
+        "include the FULL path exactly as it appears.\n"
+        'For HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) '
+        "for each file in the listing\n"
         'For Telnet: telnet_connect("echo quit | timeout 3 nc {ip} {port}") — show session\n'
         "For DB: mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n"
-        'For FTP: ftp_list("ftp://{ip}/") — show files'
+        'For FTP: ftp_list("ftp://{ip}/") — show files\n\n'
+        "If the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already "
+        "captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure."
     ),
     "injection": (
         "Attempt code execution or unauthorized upload.\n"
@@ -1429,6 +1435,23 @@ class Pipeline:
                 try:
                     result = json.loads(exploit_file.read_text(encoding="utf-8"))
                     status = result.get("status", "ERROR")
+
+                    # If Phase 3 already confirmed the vuln, a Phase 4 FAILED/ERROR
+                    # should NOT downgrade it — trust Phase 3 evidence.
+                    phase3_status = vuln.get("exploitation_status", "")
+                    if phase3_status == "confirmed" and status in ("FAILED", "ERROR"):
+                        log.info(
+                            "Keeping Phase 3 confirmed status for %s (Phase 4 %s ignored)",
+                            vuln_id, status,
+                        )
+                        status = "EXPLOITED"
+                        # Prefer Phase 3 evidence since Phase 4 couldn't reproduce
+                        p3_evidence = vuln.get("evidence", "")
+                        p4_evidence = result.get("evidence", "")
+                        merged_evidence = f"{p3_evidence}\n[Phase 4 could not re-verify: {p4_evidence[:100]}]"
+                    else:
+                        merged_evidence = result.get("evidence", "")
+
                     test_entry = {
                         "vuln_id": vuln_id,
                         "device_id": result.get("device_id", device_id),
@@ -1436,7 +1459,7 @@ class Pipeline:
                         "vuln_type": result.get("vuln_type", vuln_type),
                         "severity": result.get("severity", vuln.get("severity", "MEDIUM")),
                         "status": "CONFIRMED" if status == "EXPLOITED" else status,
-                        "evidence": result.get("evidence", ""),
+                        "evidence": merged_evidence,
                         "evidence_level": result.get("evidence_level", 1),
                         "tool_used": result.get("tool_used", ""),
                         "data_extracted": result.get("data_extracted", []),
