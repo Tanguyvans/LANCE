@@ -160,24 +160,72 @@ def _match_by_cve(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
     return None
 
 
+def _infer_type_from_title(title: str) -> str | None:
+    """Extract an expected LLM type from the GT title keywords."""
+    title_lower = title.lower()
+    # Order matters: check specific keywords first
+    keyword_map = [
+        ("telnet", "insecure_protocol"),
+        ("ftp anonymous", "insecure_protocol"),
+        ("directory listing", "directory_listing"),
+        ("autoindex", "directory_listing"),
+        ("server version", "info_disclosure"),
+        ("banner disclosure", "info_disclosure"),
+        ("$sys topic", "info_disclosure"),
+        ("sys topic", "info_disclosure"),
+        ("websocket", "no_auth"),
+        ("default credential", "default_credentials"),
+        ("default password", "default_credentials"),
+        ("hardcoded password", "default_credentials"),
+        ("weak cipher", "weak_cipher"),
+        ("weak crypto", "weak_cipher"),
+        ("weak kex", "weak_cipher"),
+        ("terrapin", "terrapin"),
+        ("privilege escalation", "privilege_escalation"),
+        ("suid binary", "privilege_escalation"),
+        ("missing header", "missing_header"),
+        ("security header", "missing_header"),
+        ("hsts", "missing_header"),
+        ("directory traversal", "path_traversal"),
+        ("anonymous mqtt", "no_auth"),
+        ("mqtt sans auth", "no_auth"),
+    ]
+    for keyword, llm_type in keyword_map:
+        if keyword in title_lower:
+            return llm_type
+    return None
+
+
 def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
     """Match by IP + compatible type or category.
 
-    Prefers exact type match (e.g., GT category=data_exposure matches LLM type=data_exposure)
-    over category-based compatibility (e.g., LLM type=no_auth also in data_exposure set).
+    Priority order:
+    1. Exact type match from GT title keywords (e.g., title "Telnet" → prefer insecure_protocol)
+    2. Exact type match from GT category (e.g., category=data_exposure → prefer type=data_exposure)
+    3. Any type in the compatible set from category
     """
     gt_ip = gt_vuln.get("ip", "")
     gt_category = gt_vuln.get("category", "")
+    gt_title = gt_vuln.get("title", "")
     compatible_types = CATEGORY_TO_TYPE.get(gt_category, set())
 
-    # Pass 1: exact type match (LLM type == GT category)
+    # Pass 1: infer type from title keywords (most specific)
+    inferred_type = _infer_type_from_title(gt_title)
+    if inferred_type:
+        for f in llm_findings:
+            if f.get("device_ip") != gt_ip:
+                continue
+            if f.get("type") == inferred_type:
+                return f
+
+    # Pass 2: exact type match (LLM type == GT category)
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
         if f.get("type") == gt_category:
             return f
 
-    # Pass 2: any type in the compatible set
+    # Pass 3: any type in the compatible set
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
