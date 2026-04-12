@@ -257,14 +257,28 @@ def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str)
 
 
 def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Sensitive content (passwords, keys) in HTTP responses → data_exposure CRITICAL."""
-    sensitive_patterns = re.compile(
-        r"(password|passwd|secret|api[_-]?key|token|credential|INSERT INTO|db_pass|smtp_pass)",
-        re.IGNORECASE,
-    )
+    """Sensitive content (actual credentials, API keys) in HTTP responses → data_exposure CRITICAL.
+
+    Only flags when credentials appear to be REAL values (not form field labels or HTML placeholders).
+    Skips admin login pages and HTML responses.
+    """
+    # Pattern for actual credential VALUES (not just field names)
+    # e.g. "password=secretpass", "api_key:sk-123", "P@ssw0rd", database dump inserts
+    credential_value_patterns = [
+        re.compile(r"(?i)(?:password|passwd|pwd)[\"']?\s*[:=]\s*[\"']?([^\s\"',\n<>{}]{3,})"),
+        re.compile(r"(?i)(?:api[_-]?key|token|secret)[\"']?\s*[:=]\s*[\"']?([a-zA-Z0-9_\-]{8,})"),
+        re.compile(r"INSERT INTO\s+\w+\s+VALUES\s*\("),  # SQL dump
+        re.compile(r"(?i)smtp_(?:password|pass)\s*[:=]\s*\S+"),
+        re.compile(r"(?i)db_(?:password|pass)\s*[:=]\s*\S+"),
+    ]
+
     findings = []
     exposed_urls = []
     evidence_parts = []
+
+    # Paths to SKIP (admin login pages are not data exposure — it's auth surface)
+    SKIP_PATHS = ("/cgi-bin/luci", "/admin", "/login")
+
     for entry in entries:
         if entry["tool"] != "curl_headers":
             continue
@@ -274,21 +288,38 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
         if rc != 0 or not stdout:
             continue
         url = entry.get("kwargs", {}).get("url", "")
-        # Skip root path and 404s
+
+        # Skip 404s and admin login pages
         if "404 Not Found" in stdout:
             continue
-        if sensitive_patterns.search(stdout):
+        if any(skip in url for skip in SKIP_PATHS):
+            continue
+        # Skip HTML login pages (they contain form fields with "password" but not actual values)
+        if "<form" in stdout.lower() and "type=\"password\"" in stdout.lower():
+            continue
+
+        # Check for actual credential values
+        matches = []
+        for pattern in credential_value_patterns:
+            for m in pattern.finditer(stdout):
+                matches.append(m)
+                if len(matches) >= 3:
+                    break
+            if len(matches) >= 3:
+                break
+
+        if matches:
             exposed_urls.append(url)
-            # Extract a snippet around the match
-            for m in sensitive_patterns.finditer(stdout):
-                start = max(0, m.start() - 30)
-                end = min(len(stdout), m.end() + 50)
-                evidence_parts.append(f"{url}: ...{stdout[start:end]}...")
+            for m in matches[:3]:
+                start = max(0, m.start() - 20)
+                end = min(len(stdout), m.end() + 30)
+                evidence_parts.append(f"{url}: ...{stdout[start:end].strip()}...")
+
     if exposed_urls:
         findings.append(_make_finding(
             device, "data_exposure", "CRITICAL", svc_name, 80,
             f"Sensitive data exposed via HTTP at: {', '.join(exposed_urls)}",
-            "\n".join(evidence_parts[:5]),
+            "\n".join(evidence_parts[:3])[:400],
             status="confirmed",
             technique="Download files via http_get to extract credentials",
             tools=["http_get"],
@@ -413,23 +444,35 @@ def _extract_ssh_weak_ciphers(entries: list[dict], device: dict, svc_name: str) 
 
 
 def _extract_ssh_banner(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """SSH banner with OS/version → info_disclosure LOW confirmed."""
+    """SSH banner with OS/version or custom message → info_disclosure LOW confirmed."""
     for entry in entries:
-        if entry["tool"] != "ssh_audit":
-            continue
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
-        # Look for banner line like "(gen) banner: SSH-2.0-OpenSSH_9.2p1 Debian-2"
-        match = re.search(r"banner:\s*(SSH-\S+\s+\S+)", stdout)
+
+        # ssh_audit banner line: "(gen) banner: SSH-2.0-OpenSSH_9.2p1 Debian-2"
+        match = re.search(r"(?:banner:|\(gen\)\s*banner:)\s*(SSH-\S+.*)", stdout)
         if not match:
-            # Also check nmap output for SSH version
-            match = re.search(r"SSH-2\.0-(\S+)", stdout)
+            # nmap SSH version in PORT output: "22/tcp open ssh OpenSSH 9.2p1 Debian-2"
+            match = re.search(r"22/tcp\s+open\s+ssh\s+(\S+\s+[\d.p]+\S*)", stdout)
+        if not match:
+            # Custom SSH banners (e.g., "Not allowed at this time") in nmap fingerprint
+            # The message appears either as "Not allowed at this time" or as escaped hex in SF
+            custom = re.search(r"(Not allowed at this time|Access denied|Unauthorized)", stdout)
+            if custom:
+                # Only flag as SSH banner if we're looking at SSH port data
+                if "22/tcp" in stdout or "ssh?" in stdout:
+                    banner = custom.group(1)
+                    return [_make_finding(
+                        device, "info_disclosure", "LOW", "ssh", 22,
+                        "SSH banner discloses custom service message",
+                        f"SSH service returns: '{banner}' — custom banner reveals non-standard service",
+                    )]
         if match:
             banner = match.group(0)
             return [_make_finding(
                 device, "info_disclosure", "LOW", "ssh", 22,
-                f"SSH banner discloses software version",
-                banner,
+                "SSH banner discloses software version",
+                banner[:150],
             )]
     return []
 

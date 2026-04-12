@@ -1134,27 +1134,14 @@ class Pipeline:
                     try:
                         from src.agent.scanner import extract_findings
                         scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
-                        # Rebuild device info from the first entry
-                        device_ip = ""
-                        for entries in scan_data.values():
-                            for entry in entries:
-                                kw = entry.get("kwargs", {})
-                                if "host" in kw:
-                                    device_ip = kw["host"]
-                                    break
-                                if "target" in kw:
-                                    device_ip = kw["target"]
-                                    break
-                                if "broker" in kw:
-                                    device_ip = kw["broker"]
-                                    break
-                            if device_ip:
-                                break
-                        fallback_device = {
-                            "id": device_id,
-                            "ip": device_ip,
-                            "role": "",
-                        }
+                        # Look up device info from attack surface to get the correct role
+                        surface = json.loads(get_attack_surface())
+                        if isinstance(surface, dict):
+                            surface = surface.get("nodes", list(surface.values()) if surface else [])
+                        fallback_device = next(
+                            (d for d in surface if d.get("id") == device_id),
+                            {"id": device_id, "ip": "", "role": ""},
+                        )
                         recovered = extract_findings(scan_data, fallback_device)
                         log.warning("Recovered %d findings for %s from scanner", len(recovered), device_id)
                         all_vulns.extend(recovered)
