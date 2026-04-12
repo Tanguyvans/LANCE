@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import pipeline, runs, scenarios, topology
+from src.api.routes import models, pipeline, runs, scenarios, topology
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR = ROOT / "src" / "static"
@@ -23,6 +23,7 @@ app.include_router(topology.router,  prefix="/api/topology",  tags=["topology"])
 app.include_router(runs.router,      prefix="/api/runs",      tags=["runs"])
 app.include_router(pipeline.router,  prefix="/api/pipeline",  tags=["pipeline"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
+app.include_router(models.router,    prefix="/api/models",    tags=["models"])
 
 # Serve static files (JS, CSS) — no-cache pour forcer le rechargement
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

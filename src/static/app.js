@@ -225,6 +225,47 @@ const FALLBACK_SCENARIOS = {
   ],
 };
 
+async function loadModels() {
+  let models = null;
+  try {
+    const data = await fetchJSON('/api/models');
+    if (data && Array.isArray(data.models) && data.models.length > 0) {
+      models = data.models;
+    }
+  } catch (e) {
+    console.warn('API /api/models unavailable, keeping hardcoded dropdown');
+    return;
+  }
+  if (!models) return;
+
+  const sel = document.getElementById('sel-model');
+  if (!sel) return;
+
+  // Preserve current selection if still valid
+  const currentValue = sel.value;
+  sel.innerHTML = '';
+
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    let label = m.label;
+    if (m.input_per_mtok !== null && m.output_per_mtok !== null) {
+      label += ` ($${m.input_per_mtok.toFixed(2)}/$${m.output_per_mtok.toFixed(2)})`;
+    } else if (!m.available) {
+      label += ' (indispo)';
+      opt.disabled = true;
+    }
+    opt.textContent = label;
+    if (m.recommended) opt.selected = true;
+    sel.appendChild(opt);
+  }
+
+  // Restore previous selection if still in list
+  if (currentValue && Array.from(sel.options).some(o => o.value === currentValue)) {
+    sel.value = currentValue;
+  }
+}
+
 async function loadScenariosConfig() {
   try {
     const data = await fetchJSON('/api/scenarios');
@@ -451,6 +492,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCollapsibleSidebar();
 
   // Load components independently to avoid one crash blocking everything
+  try {
+    await loadModels();
+  } catch (e) {
+    console.warn("Models load failed", e);
+  }
+
   try {
     await loadScenariosConfig();
   } catch (e) {
