@@ -16,8 +16,12 @@ PRICING = {
     # MiniMax (direct + OpenRouter)
     "MiniMax-M2": {"input": 0.20, "output": 1.10},
     "MiniMax-M2.5": {"input": 0.30, "output": 1.20},
+    "MiniMax-M2.7": {"input": 0.30, "output": 1.20},
     "minimax/MiniMax-M2": {"input": 0.20, "output": 1.10},
     "minimax/MiniMax-M2.5": {"input": 0.30, "output": 1.20},
+    "minimax/minimax-m2": {"input": 0.20, "output": 1.10},
+    "minimax/minimax-m2.5": {"input": 0.30, "output": 1.20},
+    "minimax/minimax-m2.7": {"input": 0.30, "output": 1.20},
     # GLM (Zhipu)
     "glm-4-flash": {"input": 0.0, "output": 0.0},
     "glm-4-plus": {"input": 0.50, "output": 0.50},
