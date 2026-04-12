@@ -112,6 +112,14 @@ class MatchResult:
     severity_match: bool = False  # True if LLM severity == GT severity
 
 
+# Types considered "bonus" when found on a device that already has matched vulns.
+# These are real config findings a pentester WOULD report but may be absent from GT.
+BONUS_TYPES_AUTO: set[str] = {
+    "info_disclosure", "missing_header", "weak_cipher",
+    "insecure_protocol", "terrapin", "version_leak",
+}
+
+
 @dataclass
 class EvaluationResult:
     scenario_id: str
@@ -123,26 +131,32 @@ class EvaluationResult:
     true_positives: int = 0
     false_negatives: int = 0
     false_positives: int = 0
-    bonus_findings: int = 0   # expected extras (weak_cipher, missing_header…) — not penalised
+    bonus_findings: int = 0   # auto-detected bonus (real config findings not in GT)
     total_llm_findings: int = 0
     severity_mismatches: int = 0  # found right vuln, wrong severity
 
-    # Metrics
+    # Legacy metrics (kept for backward compatibility)
     detection_rate: float = 0.0
     precision: float = 0.0
     recall: float = 0.0
     f1_score: float = 0.0
     hallucination_rate: float = 0.0
 
-    # Weighted score (critical=4, high=3, medium=2, low=1)
-    # ip+category (loose) matches count as 0.5 to penalise guesses
+    # Weighted score: critical=4, high=3, medium=2, low=1
+    # ip+category (loose) matches count as 0.5x to penalise guesses
     weighted_score: float = 0.0
     max_weighted_score: int = 0
     score_pct: float = 0.0  # weighted_score / max_weighted_score * 100
 
+    # Primary metrics for pentest quality assessment
+    exploitation_coverage: float = 0.0  # % of TP findings with evidence_level >= 2
+    tp_exploited: int = 0               # TP findings with evidence_level >= 2
+    tp_detected_only: int = 0           # TP findings with evidence_level < 2
+
     # Details
     matches: list[dict] = field(default_factory=list)
     unmatched_llm: list[dict] = field(default_factory=list)
+    bonus_findings_list: list[dict] = field(default_factory=list)
 
 
 # ── Matching logic ────────────────────────────────────────────────────────────
@@ -305,6 +319,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
                 "severity": t.get("severity", ""),
                 "details": t.get("description", ""),
                 "evidence": t.get("evidence", ""),
+                "evidence_level": t.get("evidence_level", 0),
                 "cve_ids": t.get("cve_ids", []),
             })
     elif vuln_file.exists():
@@ -389,6 +404,18 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             result.true_positives += 1
             if not mr.severity_match:
                 result.severity_mismatches += 1
+
+            # Exploitation coverage: count TPs with evidence_level >= 2 (exploited)
+            evidence_level = match.get("evidence_level", 0)
+            try:
+                evidence_level = int(evidence_level)
+            except (TypeError, ValueError):
+                evidence_level = 0
+            if evidence_level >= 2:
+                result.tp_exploited += 1
+            else:
+                result.tp_detected_only += 1
+
             # Scoring penalties:
             #   ip+category (loose match)  → 0.5x  (structural ambiguity)
             #   severity mismatch          → 0.75x  (right vuln, wrong impact)
@@ -404,21 +431,42 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
 
         result.matches.append(asdict(mr))
 
-    # False positives = LLM findings not matched to any GT vuln
-    # Bonus findings (e.g. weak_cipher, missing_header) are expected extras — not penalised
+    # Devices that have at least one matched GT finding — used to classify "bonus" findings.
+    matched_device_ips: set[str] = {
+        m["gt_ip"] for m in result.matches if m.get("matched") and m.get("gt_ip")
+    }
+
+    # Classify unmatched LLM findings: bonus (real but not in GT) vs false positive (hallucination)
+    # Bonus conditions:
+    #   - explicit in ground_truth.yaml bonus_types list, OR
+    #   - type is in BONUS_TYPES_AUTO AND the device has other matched findings (real device)
     for f in llm_findings:
-        if _llm_key(f) not in matched_llm_keys:
-            if bonus_types and f.get("type") in bonus_types:
-                result.bonus_findings += 1
-                continue
+        if _llm_key(f) in matched_llm_keys:
+            continue
+
+        f_type = f.get("type", "")
+        f_ip = f.get("device_ip", "")
+        is_bonus = False
+
+        if bonus_types and f_type in bonus_types:
+            is_bonus = True
+        elif f_type in BONUS_TYPES_AUTO and f_ip in matched_device_ips:
+            is_bonus = True
+
+        finding_summary = {
+            "id": f.get("id"),
+            "device_ip": f_ip,
+            "type": f_type,
+            "severity": f.get("severity"),
+            "details": (f.get("details", "") or "")[:120],
+        }
+
+        if is_bonus:
+            result.bonus_findings += 1
+            result.bonus_findings_list.append(finding_summary)
+        else:
             result.false_positives += 1
-            result.unmatched_llm.append({
-                "id": f.get("id"),
-                "device_ip": f.get("device_ip"),
-                "type": f.get("type"),
-                "severity": f.get("severity"),
-                "details": f.get("details", "")[:120],
-            })
+            result.unmatched_llm.append(finding_summary)
 
     # Compute metrics
     tp = result.true_positives
@@ -436,6 +484,9 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     result.score_pct = round(
         result.weighted_score / max_score * 100, 1
     ) if max_score > 0 else 0.0
+    result.exploitation_coverage = round(
+        result.tp_exploited / tp, 3
+    ) if tp > 0 else 0.0
 
     return result
 
@@ -444,26 +495,44 @@ def print_report(result: EvaluationResult) -> None:
     print(f"\n{'═'*60}")
     print(f"  Benchmark — Scénario S{result.scenario_id}")
     print(f"{'═'*60}")
-    print(f"  GT vulns      : {result.total_gt_vulns}")
-    print(f"  LLM findings  : {result.total_llm_findings}")
-    print(f"  True positives: {result.true_positives}")
-    print(f"  False positives (hallucinations): {result.false_positives}")
-    print(f"  Bonus findings (expected extras): {result.bonus_findings}")
-    print(f"  False negatives (missed): {result.false_negatives}")
+
+    # Primary metrics (pentest quality)
+    print("  PRIMARY METRICS")
+    print(f"    Recall (vulns found)     : {result.recall:.1%}  ({result.true_positives}/{result.total_gt_vulns})")
+    print(f"    Weighted Score           : {result.weighted_score}/{result.max_weighted_score} ({result.score_pct:.1f}%)")
+    print(f"    Exploitation Coverage    : {result.exploitation_coverage:.1%}  ({result.tp_exploited}/{result.true_positives} TP prouvés niveau ≥ 2)")
     print(f"{'─'*60}")
-    print(f"  Detection Rate   : {result.detection_rate:.1%}")
-    print(f"  Precision        : {result.precision:.1%}")
-    print(f"  Recall           : {result.recall:.1%}")
-    print(f"  F1 Score         : {result.f1_score:.3f}")
-    print(f"  Hallucination    : {result.hallucination_rate:.1%}")
-    print(f"  Severity mismatches: {result.severity_mismatches}")
-    print(f"  Weighted Score   : {result.weighted_score} / {result.max_weighted_score} ({result.score_pct:.1f}%)")
+
+    # Counts breakdown
+    print("  FINDINGS BREAKDOWN")
+    print(f"    LLM findings total       : {result.total_llm_findings}")
+    print(f"    True positives           : {result.true_positives}")
+    print(f"      ├─ Exploited (lvl ≥ 2) : {result.tp_exploited}")
+    print(f"      └─ Detected only       : {result.tp_detected_only}")
+    print(f"    Bonus (real extras)      : {result.bonus_findings}")
+    print(f"    False positives          : {result.false_positives}")
+    print(f"    False negatives (missed) : {result.false_negatives}")
     print(f"{'─'*60}")
+
+    # Legacy metrics (for comparison)
+    print("  LEGACY METRICS")
+    print(f"    Precision                : {result.precision:.1%}")
+    print(f"    F1 Score                 : {result.f1_score:.3f}")
+    print(f"    Hallucination rate       : {result.hallucination_rate:.1%}")
+    print(f"    Severity mismatches      : {result.severity_mismatches}")
+    print(f"{'─'*60}")
+
     print("  Matched vulnerabilities:")
     for m in result.matches:
         status = "✓" if m["matched"] else "✗"
         print(f"    {status} [{m['gt_id']}] {m['gt_title'][:50]}"
               + (f" → {m['llm_id']} ({m['match_method']})" if m["matched"] else " — MISSED"))
+
+    if result.bonus_findings_list:
+        print("  Bonus findings (real but not in GT):")
+        for f in result.bonus_findings_list:
+            print(f"    + {f['id']} {f['device_ip']} [{f['type']}] {f['details'][:50]}")
+
     if result.unmatched_llm:
         print("  Hallucinated findings:")
         for f in result.unmatched_llm:
