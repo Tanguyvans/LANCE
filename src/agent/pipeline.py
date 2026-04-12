@@ -59,6 +59,49 @@ CONFIG_ONLY_TYPES: set[str] = {
     "version_leak", "known_cve",
 }
 
+# Maps non-standard vuln type names (invented by some LLMs) to the canonical set.
+# Applied during Phase 3 aggregation before deduplication. Without this,
+# synonymous types like "credentials_exposed" and "data_exposure" are counted
+# as separate findings, inflating the count and breaking evaluator matching.
+VULN_TYPE_ALIASES: dict[str, str] = {
+    # data_exposure synonyms
+    "credentials_exposed":       "data_exposure",
+    "credential_exposure":       "data_exposure",
+    "api_key_exposure":          "data_exposure",
+    "cross_service_credentials": "data_exposure",
+    "plaintext_credentials":     "data_exposure",
+    "config_exposure":           "data_exposure",
+    "sensitive_data_exposure":   "data_exposure",
+    "file_disclosure":           "data_exposure",
+    # weak_cipher synonyms
+    "ssh_weak_config":           "weak_cipher",
+    "weak_key_exchange":         "weak_cipher",
+    "weak_kex":                  "weak_cipher",
+    "weak_mac":                  "weak_cipher",
+    "insecure_cipher":           "weak_cipher",
+    "deprecated_cipher":         "weak_cipher",
+    "weak_encryption":           "weak_cipher",
+    # info_disclosure synonyms
+    "information_disclosure":    "info_disclosure",
+    "banner_disclosure":         "info_disclosure",
+    "server_version":            "info_disclosure",
+    "version_leak":              "info_disclosure",
+    # no_auth synonyms
+    "no_auth_required":          "no_auth",
+    "unauthenticated_access":    "no_auth",
+    "missing_authentication":    "no_auth",
+    # default_credentials synonyms
+    "default_creds":             "default_credentials",
+    "hardcoded_credentials":     "default_credentials",
+    "default_password":          "default_credentials",
+    # CVE synonyms
+    "known_cve":                 "cve",
+    "vulnerable_version":        "cve",
+    "vulnerable_component":      "cve",
+    "outdated_software":         "cve",
+    "ssh_vulnerability":         "cve",
+}
+
 EXPLOIT_INSTRUCTIONS: dict[str, str] = {
     "credentials": (
         "Test default credentials on this service.\n\n"
@@ -1153,6 +1196,12 @@ class Pipeline:
                         all_vulns.extend(recovered)
                     except Exception as e2:
                         log.error("Scanner fallback also failed for %s: %s", device_id, e2)
+
+        # Normalize non-standard vuln types to canonical names before dedup
+        for v in all_vulns:
+            t = v.get("type", "")
+            if t in VULN_TYPE_ALIASES:
+                v["type"] = VULN_TYPE_ALIASES[t]
 
         # Deduplicate: same (device_ip, type, port) → keep first
         seen: set[tuple] = set()
