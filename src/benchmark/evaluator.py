@@ -31,6 +31,7 @@ CATEGORY_TO_TYPE = {
         "cleartext", "insecure_default", "telnet", "ftp_anonymous",
         "open_port", "service_exposure", "coap_no_dtls", "snmp_default",
         "redis_no_auth", "nodered_no_auth", "world_readable",
+        "directory_listing", "insecure_update",
     },
     "cve":                 {
         "known_cve", "terrapin", "weak_cipher", "outdated_software",
@@ -160,11 +161,23 @@ def _match_by_cve(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
 
 
 def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Match by IP + compatible type or category."""
+    """Match by IP + compatible type or category.
+
+    Prefers exact type match (e.g., GT category=data_exposure matches LLM type=data_exposure)
+    over category-based compatibility (e.g., LLM type=no_auth also in data_exposure set).
+    """
     gt_ip = gt_vuln.get("ip", "")
     gt_category = gt_vuln.get("category", "")
     compatible_types = CATEGORY_TO_TYPE.get(gt_category, set())
 
+    # Pass 1: exact type match (LLM type == GT category)
+    for f in llm_findings:
+        if f.get("device_ip") != gt_ip:
+            continue
+        if f.get("type") == gt_category:
+            return f
+
+    # Pass 2: any type in the compatible set
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
@@ -269,10 +282,42 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     def _llm_key(f: dict) -> str:
         return f"{f.get('id', '')}|{f.get('device_ip', '')}"
 
-    for gt in gt_vulns:
-        # Exclude already-matched findings to prevent one LLM finding counting as multiple TPs
+    # Sort GT vulns by category specificity (narrow categories match first to avoid
+    # broad categories like "misconfiguration" stealing narrow matches like "missing_header").
+    def _category_specificity(gt_vuln: dict) -> int:
+        category = gt_vuln.get("category", "")
+        compatible = CATEGORY_TO_TYPE.get(category, set())
+        return len(compatible) if compatible else 999
+
+    sorted_gt = sorted(enumerate(gt_vulns), key=lambda pair: _category_specificity(pair[1]))
+    matches_by_gt_index: dict[int, tuple] = {}
+
+    # Pass 1: Exact CVE + ip+type matches only (no loose ip+severity)
+    for gt_index, gt in sorted_gt:
         remaining = [f for f in llm_findings if _llm_key(f) not in matched_llm_keys]
-        match, method = match_vuln(gt, remaining)
+        # Try exact matches only
+        match = _match_by_cve(gt, remaining)
+        method = "cve" if match else ""
+        if not match:
+            match = _match_by_ip_and_type(gt, remaining)
+            method = "ip+type" if match else ""
+        if match:
+            matched_llm_keys.add(_llm_key(match))
+        matches_by_gt_index[gt_index] = (match, method)
+
+    # Pass 2: Loose ip+severity matches for GT vulns still unmatched
+    for gt_index, gt in sorted_gt:
+        if matches_by_gt_index[gt_index][0] is not None:
+            continue
+        remaining = [f for f in llm_findings if _llm_key(f) not in matched_llm_keys]
+        match = _match_by_ip_and_service(gt, remaining)
+        if match:
+            matched_llm_keys.add(_llm_key(match))
+            matches_by_gt_index[gt_index] = (match, "ip+category")
+
+    # Re-iterate in original order to preserve report output
+    for gt_index, gt in enumerate(gt_vulns):
+        match, method = matches_by_gt_index[gt_index]
         severity = gt.get("severity", "low")
         weight = weights.get(severity, 1)
 
@@ -293,7 +338,6 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             mr.severity_match = (
                 (match.get("severity") or "").lower() == severity.lower()
             )
-            matched_llm_keys.add(_llm_key(match))
             result.true_positives += 1
             if not mr.severity_match:
                 result.severity_mismatches += 1
