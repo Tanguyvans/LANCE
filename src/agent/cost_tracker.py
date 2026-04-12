@@ -6,7 +6,14 @@ import time
 import threading
 from dataclasses import dataclass, field
 
-# Pricing per million tokens (USD)
+try:
+    from src.agent.pricing import get_dynamic_pricing
+except ImportError:
+    def get_dynamic_pricing(model: str):  # type: ignore
+        return None
+
+# Hardcoded pricing fallback (per million tokens, USD)
+# Used when the OpenRouter dynamic catalog is unavailable or doesn't contain the model.
 PRICING = {
     # Anthropic
     "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
@@ -66,7 +73,9 @@ class PhaseUsage:
     model: str = ""
 
     def cost_usd(self, model: str = "") -> float:
-        pricing = PRICING.get(model or self.model, DEFAULT_PRICING)
+        m = model or self.model
+        # Try dynamic pricing from OpenRouter first (up to date), then hardcoded fallback
+        pricing = get_dynamic_pricing(m) or PRICING.get(m, DEFAULT_PRICING)
         return (
             self.input_tokens * pricing["input"]
             + self.output_tokens * pricing["output"]
