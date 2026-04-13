@@ -162,6 +162,20 @@ EXPLOIT_INSTRUCTIONS: dict[str, str] = {
 }
 
 
+def _get_git_commit() -> str | None:
+    """Return the short hash of the current git commit, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
 class Pipeline:
     """Multi-phase agent pipeline with deliverable passing and cost tracking."""
 
@@ -191,6 +205,7 @@ class Pipeline:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         self.run_dir = OUTPUT_DIR / timestamp
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.git_commit = _get_git_commit()
 
         # Point deliverable tools and validators at this run dir
         set_output_dir(self.run_dir)
@@ -232,6 +247,13 @@ class Pipeline:
             f"CVEs: {lab['cve_count']}, Top risk: {lab['top_risk']}"
         )
 
+        # Save run metadata (git commit, model) for traceability
+        run_meta = {
+            "model": getattr(self.provider, "model", None),
+            "git_commit": self.git_commit,
+        }
+        (self.run_dir / "run_meta.json").write_text(json.dumps(run_meta, indent=2))
+
         if stream_callback:
             stream_callback({
                 "type": "pipeline_start",
@@ -253,6 +275,7 @@ class Pipeline:
                 "scenario_id": self.scenario_id,
                 "run_dir": str(self.run_dir),
                 "model": getattr(self.provider, "model", None),
+                "git_commit": self.git_commit,
             }
             if self.custom_config:
                 meta["custom_config"] = self.custom_config

@@ -38,6 +38,21 @@ def _extract_cost(run_dir: Path) -> float | None:
     return None
 
 
+def _extract_commit(run_dir: Path) -> str | None:
+    """Extract git commit hash from run_meta.json or scenario_meta.json."""
+    for fname in ("run_meta.json", "scenario_meta.json"):
+        f = run_dir / fname
+        if f.exists():
+            try:
+                data = json.loads(f.read_text())
+                commit = data.get("git_commit")
+                if commit:
+                    return commit
+            except Exception:
+                pass
+    return None
+
+
 def _detect_scenario(run_dir: Path) -> str | None:
     """Detect scenario ID from scenario_meta.json if present."""
     meta = run_dir / "scenario_meta.json"
@@ -78,6 +93,7 @@ def list_runs():
             "cost": _extract_cost(d),
             "scenario": _detect_scenario(d),
             "status": _run_status(d),
+            "commit": _extract_commit(d),
         })
     return runs
 
@@ -103,6 +119,7 @@ def get_benchmark():
             "status": _run_status(d),
             "model": None,
             "score": None,
+            "commit": _extract_commit(d),
         }
 
         meta_file = d / "scenario_meta.json"
@@ -144,6 +161,7 @@ def get_run(run_id: str):
         "cost": _extract_cost(run_dir),
         "scenario": _detect_scenario(run_dir),
         "status": _run_status(run_dir),
+        "commit": _extract_commit(run_dir),
     }
 
 

@@ -1338,6 +1338,7 @@ async function viewRun(runId) {
     <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
     <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
     <div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>
+    ${run.commit ? `<div class="detail-row"><span class="detail-key">Commit</span><span class="detail-val"><code style="font-size:11px">${escapeHtml(run.commit)}</code></span></div>` : ''}
     ${scoreHtml}
   `;
 
@@ -1649,10 +1650,14 @@ function renderBenchmarkTable() {
       ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${s.false_positives} faux positifs">${pct(s.hallucination_rate)}</span>`
       : noScore;
 
+    const commitCell = r.commit
+      ? `<code style="font-size:10px;color:var(--muted)">${escapeHtml(r.commit)}</code>`
+      : '<span style="color:var(--muted)">—</span>';
     return `<tr>
       <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
       <td><span class="run-badge done">${escapeHtml(r.scenario)}</span></td>
       <td style="font-size:11px;color:var(--muted)">${modelShort}</td>
+      <td>${commitCell}</td>
       <td><span class="run-badge ${escapeHtml(r.status)}">${escapeHtml(r.status)}</span></td>
       <td>${r.cost != null ? '$'+r.cost.toFixed(4) : '—'}</td>
       <td>${s ? pct(s.recall) : noScore}</td>

@@ -188,6 +188,44 @@ class TestRunDir:
         assert pipeline.run_dir.is_dir()
 
 
+class TestGitCommit:
+    def test_get_git_commit_returns_string_or_none(self):
+        from src.agent.pipeline import _get_git_commit
+        result = _get_git_commit()
+        assert result is None or (isinstance(result, str) and len(result) > 0)
+
+    def test_get_git_commit_mock_success(self):
+        from src.agent.pipeline import _get_git_commit
+        with patch("src.agent.pipeline.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="abc1234\n")
+            assert _get_git_commit() == "abc1234"
+
+    def test_get_git_commit_mock_failure(self):
+        from src.agent.pipeline import _get_git_commit
+        with patch("src.agent.pipeline.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="")
+            assert _get_git_commit() is None
+
+    def test_get_git_commit_exception(self):
+        from src.agent.pipeline import _get_git_commit
+        with patch("src.agent.pipeline.subprocess.run", side_effect=FileNotFoundError):
+            assert _get_git_commit() is None
+
+    def test_run_meta_written_on_init(self, mock_provider, output_dir):
+        with patch("src.agent.pipeline._get_git_commit", return_value="deadbeef"):
+            pipeline = Pipeline(provider=mock_provider)
+        # run_meta.json is written during run(), not __init__ — verify after run
+        with patch("src.agent.pipeline.load_lab_context", return_value={
+            "device_count": 1, "link_count": 1, "cve_count": 0, "top_risk": "none",
+        }):
+            pipeline.run()
+        meta_file = pipeline.run_dir / "run_meta.json"
+        assert meta_file.exists()
+        meta = json.loads(meta_file.read_text())
+        assert meta["git_commit"] == "deadbeef"
+        assert meta["model"] == "test-model"
+
+
 class TestDeviceAgents:
     """Tests for the per-device sub-agent flow."""
 
