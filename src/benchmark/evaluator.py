@@ -114,9 +114,12 @@ class MatchResult:
 
 # Types considered "bonus" when found on a device that already has matched vulns.
 # These are real config findings a pentester WOULD report but may be absent from GT.
+# Note: no_auth is included because router admin interfaces (LuCI, etc.) are real
+# findings that scanners legitimately detect even when not explicitly in ground truth.
 BONUS_TYPES_AUTO: set[str] = {
     "info_disclosure", "missing_header", "weak_cipher",
     "insecure_protocol", "terrapin", "version_leak",
+    "no_auth",
 }
 
 
