@@ -1437,14 +1437,19 @@ class Pipeline:
                     "turns": usage.turns if usage else 0,
                 })
 
-            # Fallback: if save_deliverable was never called
+            # Fallback: if save_deliverable was never called, try to extract JSON from the text
             _exj = _extract_json
             deliverable_path = self.run_dir / deliverable_file
             if not deliverable_path.exists() and result_text and result_text.strip():
                 log.warning("Exploit %s: save_deliverable not called — saving fallback", phase_name)
                 deliverable_path.parent.mkdir(parents=True, exist_ok=True)
                 fallback = _exj(result_text)
-                deliverable_path.write_text(fallback, encoding="utf-8")
+                # Only write if fallback is valid JSON, otherwise let the safety net handle it
+                try:
+                    json.loads(fallback)
+                    deliverable_path.write_text(fallback, encoding="utf-8")
+                except (json.JSONDecodeError, ValueError):
+                    log.warning("Exploit %s: fallback content is not valid JSON — letting safety net write ERROR", phase_name)
 
             # Safety net: if still no file, write ERROR result
             if not deliverable_path.exists():
@@ -1553,20 +1558,33 @@ class Pipeline:
                         error_count += 1
                 except Exception as e:
                     log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
+                    # If Phase 3 already confirmed, don't downgrade on parse failure
+                    phase3_status = vuln.get("exploitation_status", "")
+                    if phase3_status == "confirmed":
+                        fallback_status = "CONFIRMED"
+                        fallback_evidence = (
+                            vuln.get("evidence", "")
+                            + f"\n[Phase 4 exploit agent output unparseable: {e}]"
+                        )
+                        confirmed_count += 1
+                    else:
+                        fallback_status = "ERROR"
+                        fallback_evidence = f"Failed to parse: {e}"
+                        error_count += 1
                     tests.append({
                         "vuln_id": vuln_id,
                         "device_id": device_id,
                         "device_ip": vuln.get("device_ip", ""),
                         "vuln_type": vuln_type,
                         "severity": vuln.get("severity", "MEDIUM"),
-                        "status": "ERROR",
-                        "evidence": f"Failed to parse: {e}",
-                        "evidence_level": 0,
+                        "status": fallback_status,
+                        "evidence": fallback_evidence,
+                        "evidence_level": 1 if fallback_status == "CONFIRMED" else 0,
                         "tool_used": "",
                         "data_extracted": [],
                         "description": "Exploit result parsing error",
+                        "cve_ids": vuln.get("cve_ids", []),
                     })
-                    error_count += 1
             else:
                 # Config finding or no exploit agent — pass through from Phase 3
                 tests.append({
