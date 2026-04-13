@@ -14,7 +14,7 @@ flowchart TD
         PB4["④ inject_vulns<br/>populate / verify"]
     end
 
-    subgraph PROX["Proxmox — 192.168.10.100"]
+    subgraph PROX["Proxmox — 192.168.88.100"]
         API["API :8006<br/>Token benchmark@pam"]
 
         subgraph TMPL["Templates Proxmox"]

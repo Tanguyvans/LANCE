@@ -9,13 +9,13 @@ Chaque scénario déploie un réseau isolé avec des services volontairement vul
 Votre machine locale
    │  ansible-playbook deploy_master.yml
    ▼
-Proxmox (10.0.0.110)
-   ├── VM Maître LXC 200  (10.0.0.10 + Tailscale 100.x.x.x)
+Proxmox (192.168.88.100)
+   ├── VM Maître LXC 200  (192.168.88.183 + Tailscale 100.x.x.x)
    │     ├── Streamlit UI  :8501
    │     ├── Pipeline LLM  (5 phases)
    │     └── Ansible controller → lance les playbooks 03–99
    │
-   ├── vmbr0  (192.168.10.0/24)   management
+   ├── vmbr0  (192.168.88.0/24)   management
    └── vmbr1  (192.168.100.0/24)  réseau benchmark isolé
          ├── S1: 100 router + 101–103 services
          ├── S2: 110 router + 111–115 services
@@ -25,7 +25,7 @@ Proxmox (10.0.0.110)
 ## Prérequis (une seule fois)
 
 1. Ansible installé localement
-2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@10.0.0.110`
+2. Clé SSH locale copiée sur Proxmox : `ssh-copy-id root@192.168.88.100`
 3. Fichier vault password : `echo "motdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass`
 4. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 5. Token de registration GitHub Actions généré (voir section CI/CD ci-dessous)

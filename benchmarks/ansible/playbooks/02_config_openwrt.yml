@@ -12,7 +12,7 @@
 # Après ce playbook :
 #   - tpl-openwrt (9001) est configuré avec LAN=192.168.100.1 et SSH WAN activé
 #   - vmbr1 est un bridge pur sans IP sur Proxmox
-#   - OpenWrt est joignable via son IP WAN (DHCP sur 192.168.10.x)
+#   - OpenWrt est joignable via son IP WAN (DHCP sur 192.168.88.x)
 
 - name: "Étape 1 — Préparer Proxmox"
   hosts: proxmox
@@ -183,7 +183,7 @@
           ══════════════════════════════════════════════════════
           Template OpenWrt configuré (VMID {{ openwrt_tmp_vmid }}) :
             LAN  : 192.168.100.1/24 (vmbr1)
-            WAN  : DHCP (vmbr0, réseau 192.168.10.x)
+            WAN  : DHCP (vmbr0, réseau 192.168.88.x)
             SSH  : autorisé sur WAN
             NAT  : actif
           vmbr1 sur Proxmox : bridge pur, sans IP

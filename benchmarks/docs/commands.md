@@ -12,7 +12,7 @@ ansible-galaxy collection install community.general
 ### 2. Copier la clé SSH sur Proxmox
 
 ```bash
-ssh-copy-id root@192.168.10.245
+ssh-copy-id root@192.168.88.100
 ```
 
 ### 3. Initialiser Proxmox (bridge, user ansible, token API)
@@ -81,12 +81,12 @@ ansible -i benchmarks/ansible/inventory.yml proxmox -m ping
 ansible-playbook -i benchmarks/ansible/inventory.yml benchmarks/ansible/playbooks/04_inject_vulns.yml --ask-vault-pass --extra-vars "scenario_id=2"
 
 # Voir la config d'une VM depuis Proxmox
-ssh root@192.168.10.245 "pct config 112"
-ssh root@192.168.10.245 "qm config 110"
+ssh root@192.168.88.100 "pct config 112"
+ssh root@192.168.88.100 "qm config 110"
 
 # Lister les VMs en cours sur Proxmox
-ssh root@192.168.10.245 "qm list; pct list"
+ssh root@192.168.88.100 "qm list; pct list"
 
 # Détruire manuellement un range de VMs (scénario 2 : 110-119)
-ssh root@192.168.10.245 "for id in \$(seq 110 119); do pct stop \$id 2>/dev/null; pct destroy \$id 2>/dev/null; qm stop \$id 2>/dev/null; qm destroy \$id --purge 2>/dev/null; done"
+ssh root@192.168.88.100 "for id in \$(seq 110 119); do pct stop \$id 2>/dev/null; pct destroy \$id 2>/dev/null; qm stop \$id 2>/dev/null; qm destroy \$id --purge 2>/dev/null; done"
 ```
