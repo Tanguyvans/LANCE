@@ -59,88 +59,6 @@ CONFIG_ONLY_TYPES: set[str] = {
     "version_leak", "known_cve",
 }
 
-# Deterministic evidence patterns for config-only findings.
-# A finding of these types is only kept if its `evidence` field matches the pattern.
-# This guards against LLM hallucinations like "Server: nginx" classified as
-# version_disclosure (no version) or a SSH deny message classified as banner leak.
-_CONFIG_EVIDENCE_PATTERNS: dict[str, "re.Pattern[str]"] = {
-    # weak_cipher: ssh-audit output must contain [fail] lines
-    "weak_cipher":    __import__("re").compile(r"\[fail\]", __import__("re").IGNORECASE),
-    # terrapin: must name the CVE
-    "terrapin":       __import__("re").compile(r"CVE-2023-48795"),
-    # missing_header: must name at least one security header
-    "missing_header": __import__("re").compile(
-        r"(x-frame-options|strict-transport-security|content-security-policy)",
-        __import__("re").IGNORECASE,
-    ),
-}
-
-
-def _filter_config_only_findings(vulns: list[dict]) -> list[dict]:
-    """Drop config-only findings whose evidence does not match the expected pattern.
-
-    Applied after Phase 3 aggregation, before writing 03_vuln_analysis.json.
-    Targets only the CONFIG_ONLY_TYPES set — exploit-requiring findings are handled
-    by Phase 4 verification (see _aggregate_exploit_results).
-    """
-    import re as _re
-
-    kept: list[dict] = []
-    dropped_count = 0
-    for v in vulns:
-        vuln_type = v.get("type", "")
-        evidence = v.get("evidence", "") or ""
-        service = (v.get("service") or "").lower()
-
-        # Generic pattern by type
-        pattern = _CONFIG_EVIDENCE_PATTERNS.get(vuln_type)
-        if pattern and not pattern.search(evidence):
-            log.info(
-                "Dropping %s on %s: evidence fails pattern %s (evidence=%r)",
-                vuln_type, v.get("device_ip", "?"), pattern.pattern, evidence[:120],
-            )
-            dropped_count += 1
-            continue
-
-        # info_disclosure: service-aware check (http banner, ssh banner, mqtt $SYS)
-        if vuln_type == "info_disclosure":
-            if service in ("http", "https"):
-                # Must contain a version string like "<software>/X.Y" (e.g. nginx/1.22.1)
-                if not _re.search(r"[A-Za-z][A-Za-z0-9_-]+/\d+\.\d+", evidence):
-                    log.info(
-                        "Dropping info_disclosure on %s (http): no software/version in evidence (evidence=%r)",
-                        v.get("device_ip", "?"), evidence[:120],
-                    )
-                    dropped_count += 1
-                    continue
-            elif service == "ssh":
-                # Must quote the raw SSH banner line
-                if not _re.search(r"SSH-[12]\.[0-9]+-\S+", evidence):
-                    log.info(
-                        "Dropping info_disclosure on %s (ssh): banner does not start with SSH-X.Y- (evidence=%r)",
-                        v.get("device_ip", "?"), evidence[:120],
-                    )
-                    dropped_count += 1
-                    continue
-            elif service in ("mqtt", "mqtt-ws", "mqtt-websocket"):
-                # Must reference $SYS content
-                if "$SYS" not in evidence and "sys/" not in evidence.lower():
-                    log.info(
-                        "Dropping info_disclosure on %s (mqtt): no $SYS content in evidence",
-                        v.get("device_ip", "?"),
-                    )
-                    dropped_count += 1
-                    continue
-            # Other services: keep (no strict pattern known)
-
-        kept.append(v)
-
-    if dropped_count:
-        log.info("Config-only filter dropped %d finding(s) with weak evidence", dropped_count)
-        print(f"  Post-processor dropped {dropped_count} config-only finding(s) with weak evidence")
-
-    return kept
-
 # Maps non-standard vuln type names (invented by some LLMs) to the canonical set.
 # Applied during Phase 3 aggregation before deduplication. Without this,
 # synonymous types like "credentials_exposed" and "data_exposure" are counted
@@ -1335,11 +1253,6 @@ class Pipeline:
                 continue
             final.append(v)
 
-        # Deterministic evidence validation for config-only findings.
-        # Phase 4 never runs on these types — if Phase 3 evidence does not contain
-        # the expected pattern, the finding is dropped (likely hallucination).
-        final = _filter_config_only_findings(final)
-
         # Renumber IDs sequentially
         for i, v in enumerate(final, 1):
             v["id"] = f"VULN-{i:03d}"
@@ -1577,15 +1490,7 @@ class Pipeline:
         self._aggregate_exploit_results()
 
     def _aggregate_exploit_results(self) -> None:
-        """Merge Phase 3 findings + Phase 4 exploit verdicts into 04_exploitation.json.
-
-        Phase 4 is the authority for exploit-requiring findings:
-          - EXPLOITED → CONFIRMED (finding retained, counts toward precision)
-          - FAILED    → REFUTED   (finding retained with status=REFUTED; evaluator drops it)
-          - ERROR     → SUSPECTED (tool/network failure; retained but not counted)
-        Config-only findings (no exploit file) pass through as CONFIRMED — they are
-        validated upstream by the deterministic post-processor on Phase 3 output.
-        """
+        """Merge Phase 3 confirmed vulns + Phase 4 exploit results into 04_exploitation.json."""
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         if not vuln_path.exists():
             return
@@ -1595,8 +1500,8 @@ class Pipeline:
 
         tests: list[dict] = []
         confirmed_count = 0
-        refuted_count = 0
-        suspected_count = 0
+        not_exploitable_count = 0
+        error_count = 0
 
         for vuln in all_vulns:
             vuln_id = vuln.get("id", "VULN-???")
@@ -1604,60 +1509,84 @@ class Pipeline:
             device_id = vuln.get("device_id", "unknown")
             safe_vuln_id = vuln_id.replace("/", "_")
 
+            # Check for exploit agent result file
             exploit_file = self.run_dir / "04_exploits" / device_id / f"{vuln_type}_{safe_vuln_id}.json"
 
             if exploit_file.exists():
+                # Use exploit agent result
                 try:
                     result = json.loads(exploit_file.read_text(encoding="utf-8"))
-                    p4_status = result.get("status", "ERROR")
+                    status = result.get("status", "ERROR")
 
-                    if p4_status == "EXPLOITED":
-                        final_status = "CONFIRMED"
-                        confirmed_count += 1
-                    elif p4_status == "FAILED":
-                        final_status = "REFUTED"
-                        refuted_count += 1
+                    # If Phase 3 already confirmed the vuln, a Phase 4 FAILED/ERROR
+                    # should NOT downgrade it — trust Phase 3 evidence.
+                    phase3_status = vuln.get("exploitation_status", "")
+                    if phase3_status == "confirmed" and status in ("FAILED", "ERROR"):
                         log.info(
-                            "Phase 4 refuted %s (%s on %s)",
-                            vuln_id, vuln_type, device_id,
+                            "Keeping Phase 3 confirmed status for %s (Phase 4 %s ignored)",
+                            vuln_id, status,
                         )
-                    else:  # ERROR or unknown
-                        final_status = "SUSPECTED"
-                        suspected_count += 1
+                        status = "EXPLOITED"
+                        # Prefer Phase 3 evidence since Phase 4 couldn't reproduce
+                        p3_evidence = vuln.get("evidence", "")
+                        p4_evidence = result.get("evidence", "")
+                        merged_evidence = f"{p3_evidence}\n[Phase 4 could not re-verify: {p4_evidence[:100]}]"
+                    else:
+                        merged_evidence = result.get("evidence", "")
 
-                    tests.append({
+                    test_entry = {
                         "vuln_id": vuln_id,
                         "device_id": result.get("device_id", device_id),
                         "device_ip": result.get("device_ip", vuln.get("device_ip", "")),
                         "vuln_type": result.get("vuln_type", vuln_type),
                         "severity": result.get("severity", vuln.get("severity", "MEDIUM")),
-                        "status": final_status,
-                        "evidence": result.get("evidence", ""),
+                        "status": "CONFIRMED" if status == "EXPLOITED" else status,
+                        "evidence": merged_evidence,
                         "evidence_level": result.get("evidence_level", 1),
                         "tool_used": result.get("tool_used", ""),
                         "data_extracted": result.get("data_extracted", []),
-                        "description": result.get("description", vuln.get("details", "")),
+                        "description": result.get("description", ""),
                         "cve_ids": vuln.get("cve_ids", []),
-                    })
+                    }
+                    tests.append(test_entry)
+
+                    if status == "EXPLOITED":
+                        confirmed_count += 1
+                    elif status == "FAILED":
+                        not_exploitable_count += 1
+                    else:
+                        error_count += 1
                 except Exception as e:
                     log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
-                    suspected_count += 1
+                    # If Phase 3 already confirmed, don't downgrade on parse failure
+                    phase3_status = vuln.get("exploitation_status", "")
+                    if phase3_status == "confirmed":
+                        fallback_status = "CONFIRMED"
+                        fallback_evidence = (
+                            vuln.get("evidence", "")
+                            + f"\n[Phase 4 exploit agent output unparseable: {e}]"
+                        )
+                        confirmed_count += 1
+                    else:
+                        fallback_status = "ERROR"
+                        fallback_evidence = f"Failed to parse: {e}"
+                        error_count += 1
                     tests.append({
                         "vuln_id": vuln_id,
                         "device_id": device_id,
                         "device_ip": vuln.get("device_ip", ""),
                         "vuln_type": vuln_type,
                         "severity": vuln.get("severity", "MEDIUM"),
-                        "status": "SUSPECTED",
-                        "evidence": vuln.get("evidence", "") + f"\n[Phase 4 output unparseable: {e}]",
-                        "evidence_level": 0,
+                        "status": fallback_status,
+                        "evidence": fallback_evidence,
+                        "evidence_level": 1 if fallback_status == "CONFIRMED" else 0,
                         "tool_used": "",
                         "data_extracted": [],
-                        "description": vuln.get("details", ""),
+                        "description": "Exploit result parsing error",
                         "cve_ids": vuln.get("cve_ids", []),
                     })
             else:
-                # Config-only finding: no exploit agent ran. Trust Phase 3 + post-processor.
+                # Config finding or no exploit agent — pass through from Phase 3
                 tests.append({
                     "vuln_id": vuln_id,
                     "device_id": device_id,
@@ -1674,12 +1603,13 @@ class Pipeline:
                 })
                 confirmed_count += 1
 
+        # Write aggregated result
         aggregated = {
             "summary": {
                 "total_tested": len(tests),
                 "confirmed": confirmed_count,
-                "refuted": refuted_count,
-                "suspected": suspected_count,
+                "not_exploitable": not_exploitable_count,
+                "errors": error_count,
             },
             "tests": tests,
         }
@@ -1687,7 +1617,7 @@ class Pipeline:
         out_path.write_text(json.dumps(aggregated, indent=2, ensure_ascii=False), encoding="utf-8")
         log.info("Aggregated %d exploit results → %s", len(tests), out_path)
         print(f"  Aggregated: {len(tests)} results → 04_exploitation.json "
-              f"({confirmed_count} confirmed, {refuted_count} refuted, {suspected_count} suspected)")
+              f"({confirmed_count} confirmed, {not_exploitable_count} failed, {error_count} errors)")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.
