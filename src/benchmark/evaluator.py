@@ -281,6 +281,46 @@ def match_vuln(gt_vuln: dict, llm_findings: list[dict]) -> tuple[dict | None, st
 
 # ── Evaluator ─────────────────────────────────────────────────────────────────
 
+# Phase 4 statuses that mean "test ran but vuln not exploitable" or "tool error"
+# — they are excluded from the LLM findings so they don't count as false positives.
+_SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "ERROR"})
+
+
+def _load_llm_findings(run_dir: Path) -> list[dict]:
+    """Return LLM findings from a run dir.
+
+    Prefers `04_exploitation.json` (post-exploitation, drops Phase 4 FAILED/ERROR)
+    then falls back to `03_vuln_analysis.json` (detection only).
+    Raises FileNotFoundError if neither exists.
+    """
+    exploit_file = run_dir / "04_exploitation.json"
+    if exploit_file.exists():
+        raw = json.loads(exploit_file.read_text())
+        return [
+            {
+                "id": t.get("vuln_id", ""),
+                "device_id": t.get("device_id", ""),
+                "device_ip": t.get("device_ip", ""),
+                "type": t.get("vuln_type", ""),
+                "severity": t.get("severity", ""),
+                "details": t.get("description", ""),
+                "evidence": t.get("evidence", ""),
+                "evidence_level": t.get("evidence_level", 0),
+                "cve_ids": t.get("cve_ids", []),
+            }
+            for t in raw.get("tests", [])
+            if t.get("status") not in _SKIPPED_PHASE4_STATUSES
+        ]
+
+    vuln_file = run_dir / "03_vuln_analysis.json"
+    if vuln_file.exists():
+        return json.loads(vuln_file.read_text()).get("vulnerabilities", [])
+
+    raise FileNotFoundError(
+        f"Neither 04_exploitation.json nor 03_vuln_analysis.json found in {run_dir}"
+    )
+
+
 def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     # Load ground truth
     gt_data = yaml.safe_load(ground_truth_file.read_text())
@@ -300,38 +340,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             f"computed ({max_score}). Using computed value."
         )
 
-    # Load LLM findings — prefer 04_exploitation.json if it exists (post-exploit),
-    # otherwise fall back to 03_vuln_analysis.json (detection only).
-    exploit_file = run_dir / "04_exploitation.json"
-    vuln_file = run_dir / "03_vuln_analysis.json"
-
-    if exploit_file.exists():
-        raw = json.loads(exploit_file.read_text())
-        # 04_exploitation.json uses "tests" key with different field names
-        raw_tests = raw.get("tests", [])
-        llm_findings = []
-        for t in raw_tests:
-            # Skip findings that failed exploitation or errored (false positives eliminated)
-            if t.get("status") in ("FAILED", "ERROR"):
-                continue
-            llm_findings.append({
-                "id": t.get("vuln_id", ""),
-                "device_id": t.get("device_id", ""),
-                "device_ip": t.get("device_ip", ""),
-                "type": t.get("vuln_type", ""),
-                "severity": t.get("severity", ""),
-                "details": t.get("description", ""),
-                "evidence": t.get("evidence", ""),
-                "evidence_level": t.get("evidence_level", 0),
-                "cve_ids": t.get("cve_ids", []),
-            })
-    elif vuln_file.exists():
-        llm_data = json.loads(vuln_file.read_text())
-        llm_findings = llm_data.get("vulnerabilities", [])
-    else:
-        raise FileNotFoundError(
-            f"Neither 04_exploitation.json nor 03_vuln_analysis.json found in {run_dir}"
-        )
+    llm_findings = _load_llm_findings(run_dir)
 
     result = EvaluationResult(
         scenario_id=scenario_id,

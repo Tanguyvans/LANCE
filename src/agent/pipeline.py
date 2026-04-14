@@ -39,73 +39,12 @@ TOOL_GROUPS: dict[str, list[dict]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Phase 4 exploit micro-agents: category mapping & per-category instructions
+# Phase 4 exploit micro-agents: per-category instructions.
+# Vuln-type taxonomy lives in src/agent/vuln_taxonomy.py so the evaluator
+# can share the same aliasing.
 # ---------------------------------------------------------------------------
 
-EXPLOIT_CATEGORY_MAP: dict[str, str] = {
-    "default_credentials": "credentials",
-    "code_injection":      "injection",
-    "insecure_update":     "injection",
-    "no_auth":             "data_access",
-    "data_exposure":       "data_access",
-    "directory_listing":   "data_access",
-    "insecure_protocol":   "data_access",
-    "network_exposure":    "data_access",
-}
-
-# Config-only findings that pass through without an exploit agent
-CONFIG_ONLY_TYPES: set[str] = {
-    "weak_cipher", "missing_header", "info_disclosure", "terrapin",
-    "version_leak", "known_cve",
-}
-
-# Maps non-standard vuln type names (invented by some LLMs) to the canonical set.
-# Applied during Phase 3 aggregation before deduplication. Without this,
-# synonymous types like "credentials_exposed" and "data_exposure" are counted
-# as separate findings, inflating the count and breaking evaluator matching.
-VULN_TYPE_ALIASES: dict[str, str] = {
-    # data_exposure synonyms
-    "credentials_exposed":        "data_exposure",
-    "credential_exposure":        "data_exposure",
-    "api_key_exposure":           "data_exposure",
-    "cross_service_credentials":  "data_exposure",
-    "cross_service_correlation":  "data_exposure",
-    "credential_reuse":           "data_exposure",
-    "plaintext_credentials":      "data_exposure",
-    "config_exposure":            "data_exposure",
-    "sensitive_data_exposure":    "data_exposure",
-    "file_disclosure":            "data_exposure",
-    # weak_cipher synonyms
-    "ssh_weak_config":            "weak_cipher",
-    "weak_config":                "weak_cipher",
-    "weak_key_exchange":          "weak_cipher",
-    "weak_kex":                   "weak_cipher",
-    "weak_mac":                   "weak_cipher",
-    "insecure_cipher":            "weak_cipher",
-    "deprecated_cipher":          "weak_cipher",
-    "weak_encryption":            "weak_cipher",
-    "ssh_terrapin_partial":       "weak_cipher",
-    # info_disclosure synonyms
-    "information_disclosure":     "info_disclosure",
-    "banner_disclosure":          "info_disclosure",
-    "server_version":             "info_disclosure",
-    "version_leak":               "info_disclosure",
-    # no_auth synonyms
-    "no_auth_required":           "no_auth",
-    "unauthenticated_access":     "no_auth",
-    "missing_authentication":     "no_auth",
-    # default_credentials synonyms
-    "default_creds":              "default_credentials",
-    "hardcoded_credentials":      "default_credentials",
-    "default_password":           "default_credentials",
-    # CVE synonyms
-    "known_cve":                  "cve",
-    "vulnerable_version":         "cve",
-    "vulnerable_component":       "cve",
-    "vulnerable_service":         "cve",
-    "outdated_software":          "cve",
-    "ssh_vulnerability":          "cve",
-}
+from src.agent.vuln_taxonomy import canonicalize, exploit_category, is_config_only
 
 EXPLOIT_INSTRUCTIONS: dict[str, str] = {
     "credentials": (
@@ -179,6 +118,50 @@ def _get_git_commit() -> str | None:
     except Exception:
         pass
     return None
+
+
+def _exploit_relpath(device_id: str, vuln_type: str, vuln_id: str) -> Path:
+    """Relative path of a per-vuln Phase 4 exploit deliverable under the run dir."""
+    safe_vuln_id = vuln_id.replace("/", "_")
+    return Path("04_exploits") / device_id / f"{vuln_type}_{safe_vuln_id}.json"
+
+
+def _make_test_entry(
+    vuln: dict,
+    *,
+    status: str,
+    result: dict | None = None,
+    evidence: str | None = None,
+    evidence_level: int | None = None,
+) -> dict:
+    """Build an aggregated test entry for 04_exploitation.json.
+
+    Fields are pulled from `result` (Phase 4 output) when present, otherwise
+    from `vuln` (Phase 3 finding). `status`, `evidence` and `evidence_level`
+    can be overridden by explicit kwargs for the parse-error and pass-through
+    branches.
+    """
+    result = result or {}
+    return {
+        "vuln_id": vuln.get("id", "VULN-???"),
+        "device_id": result.get("device_id") or vuln.get("device_id", "unknown"),
+        "device_ip": result.get("device_ip") or vuln.get("device_ip", ""),
+        "vuln_type": result.get("vuln_type") or vuln.get("type", ""),
+        "severity": result.get("severity") or vuln.get("severity", "MEDIUM"),
+        "status": status,
+        "evidence": (
+            evidence if evidence is not None
+            else (result.get("evidence") or vuln.get("evidence", ""))
+        ),
+        "evidence_level": (
+            evidence_level if evidence_level is not None
+            else result.get("evidence_level", 1)
+        ),
+        "tool_used": result.get("tool_used", ""),
+        "data_extracted": result.get("data_extracted", []),
+        "description": result.get("description") or vuln.get("details", ""),
+        "cve_ids": vuln.get("cve_ids", []),
+    }
 
 
 class Pipeline:
@@ -952,14 +935,13 @@ class Pipeline:
                 stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0})
 
             # Fallback: if the LLM never called save_deliverable, save its last text output
-            _exj = _extract_json
             deliverable_path = self.run_dir / deliverable_file
             if not deliverable_path.exists() and result_text and result_text.strip():
                 log.warning(
                     "Device %s: save_deliverable was never called — saving last LLM output as fallback",
                     device_id,
                 )
-                fallback_content = _exj(result_text) if deliverable_file.endswith(".json") else self._strip_code_fences(result_text)
+                fallback_content = _extract_json(result_text) if deliverable_file.endswith(".json") else self._strip_code_fences(result_text)
                 deliverable_path.write_text(fallback_content, encoding="utf-8")
                 print(f"  Fallback save: {deliverable_file}")
 
@@ -967,7 +949,7 @@ class Pipeline:
             _needs_reflector = False
             if deliverable_path.exists():
                 try:
-                    json.loads(_exj(deliverable_path.read_text(encoding="utf-8")))
+                    json.loads(_extract_json(deliverable_path.read_text(encoding="utf-8")))
                 except Exception:
                     _needs_reflector = True  # file exists but invalid JSON
             else:
@@ -1227,9 +1209,7 @@ class Pipeline:
 
         # Normalize non-standard vuln types to canonical names before dedup
         for v in all_vulns:
-            t = v.get("type", "")
-            if t in VULN_TYPE_ALIASES:
-                v["type"] = VULN_TYPE_ALIASES[t]
+            v["type"] = canonicalize(v.get("type", ""))
 
         # Deduplicate: same (device_ip, type, port) → keep first
         seen: set[tuple] = set()
@@ -1308,21 +1288,11 @@ class Pipeline:
         exploit_tasks: list[dict] = []
         for vuln in all_vulns:
             vuln_type = vuln.get("type", "")
-            expl_status = vuln.get("exploitation_status", "")
-
-            # Config-only findings pass through without exploit agent
-            if vuln_type in CONFIG_ONLY_TYPES:
+            if is_config_only(vuln_type):
                 continue
-
-            # Determine if exploit agent is needed
-            category = EXPLOIT_CATEGORY_MAP.get(vuln_type)
+            category = exploit_category(vuln_type)
             if not category:
-                continue  # unknown type, skip
-
-            # Launch exploit agent for:
-            # - "suspected" vulns: Phase 3 detected but could not prove (e.g. password auth enabled)
-            # - "confirmed" vulns with exploitable category: re-test for deeper impact/data exfiltration
-            # - vulns without exploitation_status (backward compat): use category membership as signal
+                continue
             exploit_tasks.append({
                 "vuln": vuln,
                 "category": category,
@@ -1362,9 +1332,7 @@ class Pipeline:
             details = vuln.get("details", "")
             evidence = vuln.get("evidence", "")
 
-            # Build deliverable path: 04_exploits/{device_id}/{vuln_type}_{vuln_id}.json
-            safe_vuln_id = vuln_id.replace("/", "_")
-            deliverable_file = f"04_exploits/{device_id}/{vuln_type}_{safe_vuln_id}.json"
+            deliverable_file = str(_exploit_relpath(device_id, vuln_type, vuln_id))
 
             # Build exploit instructions with variable substitution
             instructions = EXPLOIT_INSTRUCTIONS.get(category, "")
@@ -1438,12 +1406,11 @@ class Pipeline:
                 })
 
             # Fallback: if save_deliverable was never called, try to extract JSON from the text
-            _exj = _extract_json
             deliverable_path = self.run_dir / deliverable_file
             if not deliverable_path.exists() and result_text and result_text.strip():
                 log.warning("Exploit %s: save_deliverable not called — saving fallback", phase_name)
                 deliverable_path.parent.mkdir(parents=True, exist_ok=True)
-                fallback = _exj(result_text)
+                fallback = _extract_json(result_text)
                 # Only write if fallback is valid JSON, otherwise let the safety net handle it
                 try:
                     json.loads(fallback)
@@ -1490,134 +1457,90 @@ class Pipeline:
         self._aggregate_exploit_results()
 
     def _aggregate_exploit_results(self) -> None:
-        """Merge Phase 3 confirmed vulns + Phase 4 exploit results into 04_exploitation.json."""
+        """Merge Phase 3 findings + Phase 4 exploit results into 04_exploitation.json.
+
+        Phase 3 `confirmed` findings are trusted over Phase 4 FAILED/ERROR —
+        when the exploit agent can't reproduce a directly-observed vuln
+        (e.g. ssh_audit [fail] lines), we keep the Phase 3 evidence.
+        """
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         if not vuln_path.exists():
             return
 
-        vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
-        all_vulns = vuln_data.get("vulnerabilities", [])
-
+        all_vulns = json.loads(vuln_path.read_text(encoding="utf-8")).get("vulnerabilities", [])
         tests: list[dict] = []
-        confirmed_count = 0
-        not_exploitable_count = 0
-        error_count = 0
 
         for vuln in all_vulns:
-            vuln_id = vuln.get("id", "VULN-???")
-            vuln_type = vuln.get("type", "")
-            device_id = vuln.get("device_id", "unknown")
-            safe_vuln_id = vuln_id.replace("/", "_")
+            exploit_file = self.run_dir / _exploit_relpath(
+                vuln.get("device_id", "unknown"),
+                vuln.get("type", ""),
+                vuln.get("id", "VULN-???"),
+            )
+            tests.append(self._resolve_exploit_verdict(vuln, exploit_file))
 
-            # Check for exploit agent result file
-            exploit_file = self.run_dir / "04_exploits" / device_id / f"{vuln_type}_{safe_vuln_id}.json"
+        confirmed = sum(1 for t in tests if t["status"] == "CONFIRMED")
+        failed = sum(1 for t in tests if t["status"] == "FAILED")
+        errors = len(tests) - confirmed - failed
 
-            if exploit_file.exists():
-                # Use exploit agent result
-                try:
-                    result = json.loads(exploit_file.read_text(encoding="utf-8"))
-                    status = result.get("status", "ERROR")
-
-                    # If Phase 3 already confirmed the vuln, a Phase 4 FAILED/ERROR
-                    # should NOT downgrade it — trust Phase 3 evidence.
-                    phase3_status = vuln.get("exploitation_status", "")
-                    if phase3_status == "confirmed" and status in ("FAILED", "ERROR"):
-                        log.info(
-                            "Keeping Phase 3 confirmed status for %s (Phase 4 %s ignored)",
-                            vuln_id, status,
-                        )
-                        status = "EXPLOITED"
-                        # Prefer Phase 3 evidence since Phase 4 couldn't reproduce
-                        p3_evidence = vuln.get("evidence", "")
-                        p4_evidence = result.get("evidence", "")
-                        merged_evidence = f"{p3_evidence}\n[Phase 4 could not re-verify: {p4_evidence[:100]}]"
-                    else:
-                        merged_evidence = result.get("evidence", "")
-
-                    test_entry = {
-                        "vuln_id": vuln_id,
-                        "device_id": result.get("device_id", device_id),
-                        "device_ip": result.get("device_ip", vuln.get("device_ip", "")),
-                        "vuln_type": result.get("vuln_type", vuln_type),
-                        "severity": result.get("severity", vuln.get("severity", "MEDIUM")),
-                        "status": "CONFIRMED" if status == "EXPLOITED" else status,
-                        "evidence": merged_evidence,
-                        "evidence_level": result.get("evidence_level", 1),
-                        "tool_used": result.get("tool_used", ""),
-                        "data_extracted": result.get("data_extracted", []),
-                        "description": result.get("description", ""),
-                        "cve_ids": vuln.get("cve_ids", []),
-                    }
-                    tests.append(test_entry)
-
-                    if status == "EXPLOITED":
-                        confirmed_count += 1
-                    elif status == "FAILED":
-                        not_exploitable_count += 1
-                    else:
-                        error_count += 1
-                except Exception as e:
-                    log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
-                    # If Phase 3 already confirmed, don't downgrade on parse failure
-                    phase3_status = vuln.get("exploitation_status", "")
-                    if phase3_status == "confirmed":
-                        fallback_status = "CONFIRMED"
-                        fallback_evidence = (
-                            vuln.get("evidence", "")
-                            + f"\n[Phase 4 exploit agent output unparseable: {e}]"
-                        )
-                        confirmed_count += 1
-                    else:
-                        fallback_status = "ERROR"
-                        fallback_evidence = f"Failed to parse: {e}"
-                        error_count += 1
-                    tests.append({
-                        "vuln_id": vuln_id,
-                        "device_id": device_id,
-                        "device_ip": vuln.get("device_ip", ""),
-                        "vuln_type": vuln_type,
-                        "severity": vuln.get("severity", "MEDIUM"),
-                        "status": fallback_status,
-                        "evidence": fallback_evidence,
-                        "evidence_level": 1 if fallback_status == "CONFIRMED" else 0,
-                        "tool_used": "",
-                        "data_extracted": [],
-                        "description": "Exploit result parsing error",
-                        "cve_ids": vuln.get("cve_ids", []),
-                    })
-            else:
-                # Config finding or no exploit agent — pass through from Phase 3
-                tests.append({
-                    "vuln_id": vuln_id,
-                    "device_id": device_id,
-                    "device_ip": vuln.get("device_ip", ""),
-                    "vuln_type": vuln_type,
-                    "severity": vuln.get("severity", "MEDIUM"),
-                    "status": "CONFIRMED",
-                    "evidence": vuln.get("evidence", ""),
-                    "evidence_level": 1,
-                    "tool_used": "",
-                    "data_extracted": [],
-                    "description": vuln.get("details", ""),
-                    "cve_ids": vuln.get("cve_ids", []),
-                })
-                confirmed_count += 1
-
-        # Write aggregated result
-        aggregated = {
-            "summary": {
-                "total_tested": len(tests),
-                "confirmed": confirmed_count,
-                "not_exploitable": not_exploitable_count,
-                "errors": error_count,
-            },
-            "tests": tests,
-        }
         out_path = self.run_dir / "04_exploitation.json"
-        out_path.write_text(json.dumps(aggregated, indent=2, ensure_ascii=False), encoding="utf-8")
+        out_path.write_text(
+            json.dumps(
+                {
+                    "summary": {
+                        "total_tested": len(tests),
+                        "confirmed": confirmed,
+                        "not_exploitable": failed,
+                        "errors": errors,
+                    },
+                    "tests": tests,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
         log.info("Aggregated %d exploit results → %s", len(tests), out_path)
         print(f"  Aggregated: {len(tests)} results → 04_exploitation.json "
-              f"({confirmed_count} confirmed, {not_exploitable_count} failed, {error_count} errors)")
+              f"({confirmed} confirmed, {failed} failed, {errors} errors)")
+
+    def _resolve_exploit_verdict(self, vuln: dict, exploit_file: Path) -> dict:
+        """Return a single aggregated test entry for one Phase 3 finding."""
+        if not exploit_file.exists():
+            return _make_test_entry(vuln, status="CONFIRMED")
+
+        phase3_confirmed = vuln.get("exploitation_status", "") == "confirmed"
+        try:
+            result = json.loads(exploit_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
+            if phase3_confirmed:
+                return _make_test_entry(
+                    vuln,
+                    status="CONFIRMED",
+                    evidence=f"{vuln.get('evidence', '')}\n[Phase 4 exploit agent output unparseable: {e}]",
+                    evidence_level=1,
+                )
+            return _make_test_entry(
+                vuln,
+                status="ERROR",
+                evidence=f"Failed to parse: {e}",
+                evidence_level=0,
+            )
+
+        status = result.get("status", "ERROR")
+        if phase3_confirmed and status in ("FAILED", "ERROR"):
+            log.info("Keeping Phase 3 confirmed status for %s (Phase 4 %s ignored)",
+                     vuln.get("id"), status)
+            p4_evidence = result.get("evidence", "")[:100]
+            return _make_test_entry(
+                vuln,
+                status="CONFIRMED",
+                result=result,
+                evidence=f"{vuln.get('evidence', '')}\n[Phase 4 could not re-verify: {p4_evidence}]",
+            )
+
+        final_status = "CONFIRMED" if status == "EXPLOITED" else status
+        return _make_test_entry(vuln, status=final_status, result=result)
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.
