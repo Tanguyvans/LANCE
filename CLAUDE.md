@@ -59,7 +59,8 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/__main__.py` — CLI entry point. Accepts `--provider`, `--model`, `--dry-run`, `--phases`, `--verbose`.
 - `src/agent/provider.py` — LLM provider abstraction. Translates tool schemas between Anthropic (native `tool_use`) and OpenAI-compatible APIs (function calling). Supports multi-turn agentic loops. Providers: Anthropic, OpenRouter, MiniMax, GLM, Qwen.
 - `src/agent/registry.py` — Declarative agent config. 5 agents across 5 phases, each with name, prompt, tool groups, prerequisites, and validators.
-- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically. Saves `cost_summary.json` at end of run.
+- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically. Saves `cost_summary.json` at end of run. Phase 3 aggregation (`_aggregate_device_vulns`) applies deterministic filters in this order: (1) canonicalize types via `vuln_taxonomy.canonicalize`, (2) drop `NOISE_TYPES` and `severity=INFO` findings, (3) severity-aware dedup (keeps the LOWER severity on `(ip, type, port)` collisions to avoid inflating match penalties). Phase 4 aggregation (`_aggregate_exploit_results`) merges per-vuln exploit JSON with Phase 3 via `_make_test_entry` and `_exploit_relpath` helpers.
+- `src/agent/vuln_taxonomy.py` — Single source of truth for vuln-type taxonomy, shared by pipeline and evaluator. Exports `CANONICAL_TYPES`, `CONFIG_ONLY_TYPES`, `NOISE_TYPES`, `EXPLOIT_CATEGORY_MAP`, `VULN_TYPE_ALIASES`, and the helpers `canonicalize()`, `is_config_only()`, `is_noise()`, `exploit_category()`. Any new vuln type or synonym goes here, not scattered across modules.
 - `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_findings}`).
 - `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek. `summary()` computes all metrics under a single lock (avoid deadlock on nested lock acquisition).
 
@@ -74,8 +75,8 @@ python3 -m src.agent --verbose           # detailed output
 
 ### Benchmark Evaluation
 
-- `src/benchmark/evaluator.py` — Compares `03_vuln_analysis.json` against a ground truth YAML. Computes TP/FP/FN, Recall, Precision, F1, and weighted Score (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1). Matching strategy: CVE ID → IP+type → IP+category (fallback).
-- `benchmarks/ground_truth/scenario_N.yaml` — Ground truth for each of the 7 scenarios. Each file lists expected vulnerabilities with device IP, severity, category, and optional CVE ID.
+- `src/benchmark/evaluator.py` — Compares LLM findings against a ground truth YAML. Computes TP/FP/FN, Recall, Precision, F1, and weighted Score (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1). Matching strategy: CVE ID → IP+type → IP+category (fallback). Severity mismatches apply a 0.75× multiplier on the matched weight; loose category matches apply 0.5×. Findings are loaded via `_load_llm_findings()`, which prefers `04_exploitation.json` when present (falls back to `03_vuln_analysis.json`) and drops Phase 4 statuses in `_SKIPPED_PHASE4_STATUSES = {"FAILED", "ERROR"}` — this constant is the shared contract with `_aggregate_exploit_results` in pipeline.py.
+- `benchmarks/ground_truth/scenario_N.yaml` — Ground truth for each scenario. Each file lists expected vulnerabilities with device IP, severity, category, optional CVE ID, and a `bonus_types` list for finding types that should be tolerated (not counted as FP) when not in the injected set.
 - `benchmarks/ansible/` — Ansible playbooks to deploy and inject vulnerabilities into benchmark VMs (`192.168.100.0/24`).
 
 ### Agent Tools
@@ -116,9 +117,17 @@ python3 -m src.agent --verbose           # detailed output
 - Agent pipeline outputs go to `output/agent/<timestamp>/` with numbered deliverables (01_graph_analysis.md, 02_recon.md, etc.).
 - Environment variables (API keys) loaded from `.env` via python-dotenv.
 
+### Vulnerability taxonomy discipline
+
+- All vuln type constants and alias resolution live in `src/agent/vuln_taxonomy.py`. Do NOT re-declare `CONFIG_ONLY_TYPES`, `EXPLOIT_CATEGORY_MAP`, or similar sets in another module — import them from there. The evaluator and the pipeline must agree on the same taxonomy.
+- New LLM synonym → add one line to `VULN_TYPE_ALIASES` mapping it to a canonical type already in `CANONICAL_TYPES`. Never introduce a new canonical type without also updating `CONFIG_ONLY_TYPES` and `EXPLOIT_CATEGORY_MAP` if the semantics require it.
+- Categorically non-vuln outputs (the LLM reporting meta-observations or negative results as findings) → add the exact type string to `NOISE_TYPES`. These are dropped by `_aggregate_device_vulns` regardless of severity.
+- Phase 3 is hypothesis generation; Phase 4 is verification. A Phase 3 finding with `exploitation_status="confirmed"` is trusted over a Phase 4 FAILED/ERROR (to avoid losing directly-observed findings when the exploit agent crashes). Any Phase 4 refactor should preserve this asymmetry.
+- Phase 3 dedup keeps the LOWER severity on `(ip, type, port)` collisions. This is intentional — LLMs inflate severity, so the lower finding is statistically closer to the GT.
+
 ## Tests
 
-14 test files, ~191 test functions covering all modules:
+15 test files, 280 test functions covering all modules:
 
 | File | Coverage |
 |------|----------|
@@ -126,7 +135,7 @@ python3 -m src.agent --verbose           # detailed output
 | `test_cve_lookup.py` | CVE parsing, CVSS 3.1/2.0, NVD queries, rate limiting |
 | `test_risk_scorer.py` | CVSS scoring, betweenness centrality, hop distance, exposure |
 | `test_attack_path.py` | Edge weighting, path scoring, pivot detection, exploit probability |
-| `test_pipeline.py` | Tool resolution, dry-run, prerequisites, phase execution |
+| `test_pipeline.py` | Tool resolution, dry-run, prerequisites, phase execution, aggregation helpers |
 | `test_registry.py` | Agent config validation, unique phases, deliverables |
 | `test_prompt_manager.py` | Variable substitution, prompt loading |
 | `test_cost_tracker.py` | Token counting, pricing, per-phase costs |
@@ -135,6 +144,8 @@ python3 -m src.agent --verbose           # detailed output
 | `test_skill_tools.py` | Skill listing, loading, frontmatter parsing, tool definitions |
 | `test_deliverable_tools.py` | File save/read, directory listing |
 | `test_validators.py` | Markdown validation, required sections |
+| `test_evaluator.py` | Benchmark matching, weighted score, severity mismatch penalties, bonus findings |
+| `test_runs_route.py` | `GET /api/runs` endpoints, score route ordering, ZIP download |
 
 ## Dependencies
 
