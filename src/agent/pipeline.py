@@ -298,9 +298,12 @@ class Pipeline:
             # Handle keys from JSON as strings or ints
             target_model = self.phase_models.get(phase_num) or self.phase_models.get(str(phase_num))
             if target_model and target_model != self.provider.model:
-                log.info("Switching to phase %d specific model: %s", phase_num, target_model)
-                self.provider = LLMProvider(provider="openrouter", model=target_model)
-                # Note: CostTracker maintains the previous phases, but we update the current model
+                # MiniMax Coding Plan slugs are bare names ("MiniMax-M2.7"); OpenRouter
+                # slugs are namespaced ("openrouter_vendor/model-name"). Infer provider
+                # from the presence of a slash so multi-model mode supports both.
+                target_provider = "minimax" if "/" not in target_model else "openrouter"
+                log.info("Switching to phase %d specific model: %s (%s)", phase_num, target_model, target_provider)
+                self.provider = LLMProvider(provider=target_provider, model=target_model)
                 self.tracker.model = target_model
 
             # Honour stop request between phases

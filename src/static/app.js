@@ -245,11 +245,25 @@ async function loadModels() {
   const currentValue = sel.value;
   sel.innerHTML = '';
 
+  // Group models by provider: OpenRouter first, then MiniMax Plan.
+  const groups = {
+    openrouter: { label: 'OpenRouter (pay-per-token)', models: [] },
+    minimax:    { label: 'MiniMax Coding Plan ($10/mo)', models: [] },
+  };
   for (const m of models) {
+    const provider = m.provider || 'openrouter';
+    if (!groups[provider]) groups[provider] = { label: provider, models: [] };
+    groups[provider].models.push(m);
+  }
+
+  const buildOption = (m) => {
     const opt = document.createElement('option');
     opt.value = m.id;
+    opt.dataset.provider = m.provider || 'openrouter';
     let label = m.label;
-    if (m.input_per_mtok !== null && m.output_per_mtok !== null) {
+    if (m.subscription) {
+      label += ' — inclus dans le plan';
+    } else if (m.input_per_mtok !== null && m.output_per_mtok !== null) {
       label += ` ($${m.input_per_mtok.toFixed(2)}/$${m.output_per_mtok.toFixed(2)})`;
     } else if (!m.available) {
       label += ' (indispo)';
@@ -257,7 +271,15 @@ async function loadModels() {
     }
     opt.textContent = label;
     if (m.recommended) opt.selected = true;
-    sel.appendChild(opt);
+    return opt;
+  };
+
+  for (const [, group] of Object.entries(groups)) {
+    if (group.models.length === 0) continue;
+    const og = document.createElement('optgroup');
+    og.label = group.label;
+    for (const m of group.models) og.appendChild(buildOption(m));
+    sel.appendChild(og);
   }
 
   // Restore previous selection if still in list
@@ -864,7 +886,10 @@ function hideDetail() {
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
 async function startRun() {
-  const model    = document.getElementById('sel-model').value;
+  const modelSel = document.getElementById('sel-model');
+  const model    = modelSel.value;
+  const selectedOpt = modelSel.options[modelSel.selectedIndex];
+  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
   const mode     = document.querySelector('input[name="run-mode"]:checked').value;
@@ -911,7 +936,7 @@ async function startRun() {
 
   const body = {
     model,
-    provider: 'openrouter',
+    provider,
     scenario_id: scenario,
     phases: phases.length < 5 ? phases : null,
     auto_teardown: teardown,
