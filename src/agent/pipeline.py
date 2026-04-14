@@ -44,7 +44,12 @@ TOOL_GROUPS: dict[str, list[dict]] = {
 # can share the same aliasing.
 # ---------------------------------------------------------------------------
 
-from src.agent.vuln_taxonomy import canonicalize, exploit_category, is_config_only
+from src.agent.vuln_taxonomy import (
+    canonicalize,
+    exploit_category,
+    is_config_only,
+    is_noise,
+)
 
 EXPLOIT_INSTRUCTIONS: dict[str, str] = {
     "credentials": (
@@ -1211,15 +1216,44 @@ class Pipeline:
         for v in all_vulns:
             v["type"] = canonicalize(v.get("type", ""))
 
-        # Deduplicate: same (device_ip, type, port) → keep first
-        seen: set[tuple] = set()
-        deduped: list[dict] = []
+        # Drop noise findings: categorically-non-vuln types (e.g. "no_applicable_cve",
+        # "cross_service_auth" — LLM over-reporting) and INFO severity (reserved for
+        # metadata, never a real finding).
+        filtered: list[dict] = []
+        for v in all_vulns:
+            vuln_type = v.get("type", "")
+            if is_noise(vuln_type):
+                log.info(
+                    "Dropping noise type %s on %s (not a real vulnerability)",
+                    vuln_type, v.get("device_ip", "?"),
+                )
+                continue
+            if (v.get("severity") or "").upper() == "INFO":
+                log.info(
+                    "Dropping INFO severity finding %s on %s",
+                    vuln_type, v.get("device_ip", "?"),
+                )
+                continue
+            filtered.append(v)
+        all_vulns = filtered
+
+        # Deduplicate: same (device_ip, type, port) → keep the finding with the
+        # LOWEST severity. LLMs tend to inflate severity (e.g. HIGH for a finding
+        # the GT lists as MEDIUM), so the lower-severity finding is statistically
+        # closer to the ground truth. This avoids introducing severity mismatches
+        # when two LLM findings that describe the same vuln collide under an alias.
+        _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+
+        def _severity_rank(v: dict) -> int:
+            return _SEVERITY_RANK.get((v.get("severity") or "").lower(), 0)
+
+        best_by_key: dict[tuple, dict] = {}
         for v in all_vulns:
             key = (v.get("device_ip", ""), v.get("type", ""), v.get("port"))
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(v)
+            existing = best_by_key.get(key)
+            if existing is None or _severity_rank(v) < _severity_rank(existing):
+                best_by_key[key] = v
+        deduped = list(best_by_key.values())
 
         # Special dedup: if device has both directory_listing for /firmware/ and insecure_update → drop directory_listing
         devices_with_insecure_update = {

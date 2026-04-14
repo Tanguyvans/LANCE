@@ -23,6 +23,16 @@ CONFIG_ONLY_TYPES: frozenset[str] = frozenset({
 })
 
 
+# Types that are categorically NOT vulnerabilities — they're either negations
+# of findings ("no CVE applies") or meta-observations ("creds reused across
+# services"). The LLM produces them when over-eager to report. Dropped during
+# Phase 3 aggregation regardless of severity or evidence.
+NOISE_TYPES: frozenset[str] = frozenset({
+    "no_applicable_cve",
+    "cross_service_auth",
+})
+
+
 EXPLOIT_CATEGORY_MAP: dict[str, str] = {
     "default_credentials": "credentials",
     "code_injection":      "injection",
@@ -38,6 +48,7 @@ EXPLOIT_CATEGORY_MAP: dict[str, str] = {
 VULN_TYPE_ALIASES: dict[str, str] = {
     # data_exposure synonyms
     "credentials_exposed":        "data_exposure",
+    "credentials_exposure":       "data_exposure",
     "credential_exposure":        "data_exposure",
     "api_key_exposure":           "data_exposure",
     "cross_service_credentials":  "data_exposure",
@@ -49,6 +60,7 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "file_disclosure":            "data_exposure",
     # weak_cipher synonyms
     "ssh_weak_config":            "weak_cipher",
+    "weak_ssh_config":            "weak_cipher",
     "weak_config":                "weak_cipher",
     "weak_key_exchange":          "weak_cipher",
     "weak_kex":                   "weak_cipher",
@@ -88,6 +100,11 @@ def canonicalize(vuln_type: str) -> str:
 def is_config_only(vuln_type: str) -> bool:
     """True if the type is a configuration observation that never triggers a Phase 4 exploit agent."""
     return canonicalize(vuln_type) in CONFIG_ONLY_TYPES
+
+
+def is_noise(vuln_type: str) -> bool:
+    """True if the type is categorically not a vuln (LLM over-reporting noise)."""
+    return vuln_type in NOISE_TYPES
 
 
 def exploit_category(vuln_type: str) -> str | None:
