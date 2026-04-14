@@ -311,8 +311,11 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         raw_tests = raw.get("tests", [])
         llm_findings = []
         for t in raw_tests:
-            # Skip findings that failed exploitation or errored (false positives eliminated)
-            if t.get("status") in ("FAILED", "ERROR"):
+            # Skip findings that Phase 4 refuted or that could not be evaluated.
+            # - REFUTED: Phase 4 ran the test and the vuln is not exploitable (false positive eliminated)
+            # - SUSPECTED: Phase 4 tool/network failure, status unknown — excluded from precision
+            # - FAILED/ERROR: legacy status names kept for backward compat with old runs
+            if t.get("status") in ("FAILED", "ERROR", "REFUTED", "SUSPECTED"):
                 continue
             llm_findings.append({
                 "id": t.get("vuln_id", ""),
