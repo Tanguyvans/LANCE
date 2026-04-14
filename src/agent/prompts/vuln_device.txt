@@ -7,6 +7,22 @@ Your focus is exclusively on {{device_id}} ({{device_ip}}).
 @include(shared/_rules.txt)
 @include(shared/_tools.txt)
 
+<proof_before_confirmed>
+## PROOF-BEFORE-CONFIRMED — read before creating any finding
+
+`exploitation_status="confirmed"` is ONLY allowed when the `evidence` field contains raw tool output that directly demonstrates the vulnerability (sensitive content served, MQTT message captured, login succeeded, WebSocket `101 Switching Protocols`, ssh_audit `[fail]` line, "Index of" listing, actual credentials in body, etc.).
+
+The following are NOT proof and MUST NOT be used as `confirmed` evidence:
+- A port is merely open (nmap `open` alone)
+- A 3xx redirect to a login page
+- A 401/403 response (these prove auth IS required, not absent)
+- A service name without a version number in the banner
+- A TCP banner that is a deny/ACL message ("Not allowed at this time", "Access denied", etc.)
+- Inference from the absence of a field
+
+If you only have indirect signals → set `exploitation_status="suspected"`, fill `suggested_technique` and `suggested_tools`, and let Phase 4 confirm it. Do NOT inflate severity to compensate for weak evidence.
+</proof_before_confirmed>
+
 <system_architecture>
 ## Pipeline position
 Phase 3 sub-agent — Per-device vulnerability analysis.
@@ -73,7 +89,10 @@ Your device has role = **{{device_role}}**.
      curl_headers("http://{{device_ip}}/api/devices")
      curl_headers("http://{{device_ip}}/api/status")
      curl_headers("http://{{device_ip}}/update")
-   - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci"). For router role: if port 80 is open AND responds with ANY HTTP code (200, 301, 302, 403) → type=no_auth, severity=CRITICAL ("Router admin interface accessible from network — no WAN restriction"). The 403 response still confirms the service is exposed. Do NOT downgrade to HIGH for routers.
+   - For routers with uHTTPd/OpenWrt: additionally test curl_headers("http://{{device_ip}}/cgi-bin/luci"). For router role: classify the HTTP admin finding based on PROOF, not on port state alone:
+     * If curl returns a redirect (301/302) to a login page, OR 401/403 → type=network_exposure, severity=HIGH ("Router admin interface reachable from this network segment"). exploitation_status="confirmed" is allowed because the evidence proves reachability, but do NOT claim `no_auth`.
+     * If curl returns 200 AND the body contains admin content (forms, device config, status pages) WITHOUT any auth challenge in the HTTP chain → type=no_auth, severity=CRITICAL. The evidence MUST quote the served admin content, not just the status code.
+     * Never mark `no_auth` based on 403 or a redirect.
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
    - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL. IMPORTANT: if MULTIPLE paths on the same device expose credentials (e.g. /backup/ AND /config/ both have sensitive data), create ONE single data_exposure finding and list all affected paths in evidence. Do NOT create one finding per path.
@@ -246,7 +265,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] For ssh_server role ONLY: nmap_scan with scripts="ssh-auth-methods" called
 - [ ] For ssh_server role ONLY: default_credentials finding created (severity=HIGH, exploitation_status="suspected") — ALWAYS, regardless of nmap result
 - [ ] For iot_gateway/router role: do NOT create default_credentials from SSH auth detection
-- [ ] **SSH banner check**: if the banner reveals OS/distribution (e.g. "SSH-2.0-OpenSSH_9.2p1 Debian-2") → type=info_disclosure, severity=LOW ("SSH banner discloses OS and version")
+- [ ] **SSH banner check**: only create this finding if the raw TCP banner on port 22 starts with `SSH-2.0-` (or `SSH-1.99-`) AND contains a version identifier such as `OpenSSH_X.Yp?` or `dropbear_X.Y`. The evidence MUST quote the full banner line. Do NOT create this finding for access-control messages like "Not allowed at this time", "Access denied", or any banner that does not start with `SSH-`.
 
 **HTTP** (if port 80/443/8080 detected or role is web_server/iot_gateway/camera_server):
 - [ ] curl_headers called on root path /
@@ -257,7 +276,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] For iot_gateway role: if /firmware/ listing has no .sha256/.sig → insecure_update finding created
 - [ ] For OpenWrt/router: /cgi-bin/luci tested
 - [ ] **INFO DISCLOSURE checks (MANDATORY):**
-  - [ ] If Server header contains a version (e.g. nginx/1.22.1) → type=info_disclosure, severity=LOW ("Server version disclosure")
+  - [ ] If Server header contains a version number matching the regex `<software>/\d+\.\d+` (e.g. `nginx/1.22.1`, `Apache/2.4.54`) → type=info_disclosure, severity=LOW ("Server version disclosure"). The evidence MUST quote the exact `Server:` line including the version. Do NOT create this finding for a bare `Server: nginx` without a version number — that is normal hardening, not a leak.
   - [ ] If response lacks X-Frame-Options, Strict-Transport-Security, Content-Security-Policy → type=missing_header, severity=LOW ("Missing HTTP security headers")
   - [ ] curl_headers("http://{{device_ip}}/robots.txt") — if 200 with Disallow paths → type=info_disclosure, severity=LOW ("robots.txt exposes internal paths")
 
@@ -267,7 +286,10 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - [ ] Message content examined for credentials → SEPARATE data_exposure finding created (severity=MEDIUM)
 - [ ] For mqtt_broker role: at least 2 findings expected (no_auth + data_exposure)
 - [ ] mqtt_listen("{{device_ip}}", topic="$SYS/#", count=3, timeout=5) — if it returns broker stats → type=info_disclosure, severity=LOW ("MQTT $SYS topics expose broker metadata")
-- [ ] nmap_scan("{{device_ip}}", ports="9001") — check for MQTT WebSocket listener. If open → type=no_auth, severity=HIGH ("MQTT WebSocket on port 9001 bypasses firewall rules")
+- [ ] nmap_scan("{{device_ip}}", ports="9001") — check for MQTT WebSocket listener. If the port is open, you MUST then run curl_headers("http://{{device_ip}}:9001/", extra_headers="Connection: Upgrade\nUpgrade: websocket\nSec-WebSocket-Version: 13\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==") to verify the upgrade is accepted.
+  - If the response contains `101 Switching Protocols` → type=no_auth, severity=HIGH ("MQTT WebSocket on port 9001 accepts unauthenticated upgrade")
+  - If the response is 401/403/400 or connection refused → type=network_exposure, severity=LOW ("MQTT WebSocket listener reachable but rejects upgrade") with exploitation_status="suspected"
+  - Never create a `no_auth` finding for port 9001 based on port state alone.
 
 **Database** (if role is db_server):
 - [ ] nmap_scan with scripts="mysql-empty-password" called
