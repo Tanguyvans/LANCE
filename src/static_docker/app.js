@@ -712,6 +712,10 @@ function handleEvent(ev) {
   else if (t === 'device_done') {
     _deviceProgress[ev.device_id] = 'done';
     updateDeviceProgress();
+    // Color node immediately when phase 3 sub-agent finishes
+    if (ev.phase === 3 && ev.run_dir) {
+      fetchDeviceVulns(ev.run_dir, ev.device_id, ev.device_ip);
+    }
   }
 
   else if (t === 'reflector_start') {
@@ -776,6 +780,25 @@ function handleEvent(ev) {
     // Fetch vuln analysis deliverable to color nodes
     fetchVulnResults(ev.run_dir);
   }
+}
+
+async function fetchDeviceVulns(runDir, deviceId, deviceIp) {
+  const runId = runDir.includes('/') ? runDir.split('/').pop() : runDir;
+  try {
+    const data = await fetchJSON(`/api/runs/${runId}/03_device_${deviceId}.json`);
+    if (!data || !data.content) return;
+    const content = data.content;
+    const vulns = Array.isArray(content) ? content : (content.vulnerabilities || []);
+    if (!vulns.length) return;
+
+    if (!nodeVulns[deviceId]) nodeVulns[deviceId] = [];
+    vulns.forEach(v => nodeVulns[deviceId].push(v));
+
+    const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+    const worst = order.find(s => vulns.some(v => v.severity === s));
+    if (worst) colorNodeBySeverity(deviceIp || deviceId, worst);
+    if (cy) _updateTopologyTable(cy.nodes().map(n => n.data()));
+  } catch(e) { console.warn('fetchDeviceVulns failed', e); }
 }
 
 async function fetchVulnResults(runIdOrDir) {

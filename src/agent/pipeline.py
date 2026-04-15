@@ -947,7 +947,7 @@ class Pipeline:
             if usage:
                 print(f"  [+] Done: {phase_name} in {usage.turns} turns")
             if stream_callback:
-                stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0})
+                stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0, "run_dir": str(self.run_dir)})
 
             # Fallback: if the LLM never called save_deliverable, save its last text output
             deliverable_path = self.run_dir / deliverable_file
@@ -1156,6 +1156,7 @@ class Pipeline:
                     "type": "device_done", "device_id": device_id,
                     "device_ip": device_ip, "phase": 3,
                     "turns": usage.turns if usage else 0,
+                    "run_dir": str(self.run_dir),
                 })
 
             # Fallback: if LLM didn't save, the scanner already wrote the trivial findings
