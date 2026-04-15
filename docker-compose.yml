@@ -1,7 +1,6 @@
 services:
   nato-iot:
-    build: .
-    image: nato-smartcity-iot
+    image: ghcr.io/tanguyvans/nato-smartcity-iot:latest
     ports:
       - "8000:8000"
     volumes:
