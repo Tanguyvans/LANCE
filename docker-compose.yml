@@ -1,0 +1,15 @@
+services:
+  nato-iot:
+    build: .
+    image: nato-smartcity-iot
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    env_file: .env
+    restart: unless-stopped
+
+    # For Linux / Raspberry Pi: uncomment the line below and remove 'ports'
+    # to give the container full local network access (required for nmap SYN scans).
+    # network_mode: host

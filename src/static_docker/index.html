@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NATO IoT Pentest Orchestrator</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Cytoscape.js — graph rendering (local copy) -->
+  <script src="/static/cytoscape.min.js"></script>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<div id="header">
+  <h1>NATO Smart City IoT</h1>
+  <div id="view-nav" role="tablist" aria-label="Vue principale">
+    <button class="view-btn active" data-view="main" role="tab" aria-selected="true" aria-controls="main">Dashboard</button>
+  </div>
+  <div id="phase-bar" role="group" aria-label="Phases du pipeline">
+    <button class="phase-pill" data-phase="1" aria-label="Phase 1 Graph">1 · Graph</button>
+    <button class="phase-pill" data-phase="2" aria-label="Phase 2 Recon">2 · Recon</button>
+    <button class="phase-pill" data-phase="3" aria-label="Phase 3 Vuln">3 · Vuln</button>
+    <button class="phase-pill" data-phase="4" aria-label="Phase 4 Exploit">4 · Exploit</button>
+    <button class="phase-pill" data-phase="5" aria-label="Phase 5 Report">5 · Report</button>
+  </div>
+  <div id="cost-badge">Cost: <span id="cost-val">$0.0000</span></div>
+</div>
+
+<!-- ── Sub-agent progress bar (phase 3) ─────────────────────────────────── -->
+<div id="sub-agent-bar" hidden>
+  <span id="sub-agent-count" class="sa-count"></span>
+  <div id="sub-agent-chips"></div>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<div id="main">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+
+    <!-- Launch form -->
+    <div class="sidebar-section" id="launch-section">
+      <h3>New Run</h3>
+
+      <label for="sel-model">Model global</label>
+      <select id="sel-model">
+        <option value="deepseek/deepseek-chat-v3-0324">deepseek-v3 (recommandé)</option>
+        <option value="deepseek/deepseek-v3.2">deepseek-v3.2</option>
+        <option value="deepseek/deepseek-v3.2-exp">deepseek-v3.2-exp</option>
+        <option value="google/gemini-2.0-flash-001">gemini-2.0-flash</option>
+        <option value="google/gemini-2.5-flash">gemini-2.5-flash</option>
+        <option value="anthropic/claude-sonnet-4">claude-sonnet-4</option>
+        <option value="openai/gpt-4o">gpt-4o</option>
+        <option value="meta-llama/llama-3.3-70b-instruct">llama-3.3-70b</option>
+      </select>
+
+      <label class="multi-model-toggle">
+        <input type="checkbox" id="cb-multi-model">
+        <span>Mode Multi-modèle (Expert)</span>
+      </label>
+
+      <div id="multi-model-config" class="multi-model-config" hidden>
+        <div class="multi-model-hint">Choisissez un modèle par phase :</div>
+        <div class="phase-model-row">
+          <label for="sel-phase-model-12">Phase 1 &amp; 2 (Recon)</label>
+          <select class="sel-phase-model" id="sel-phase-model-12" data-phases="1,2" aria-label="Modèle pour phases 1 et 2">
+            <option value="">(Global)</option>
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+          </select>
+        </div>
+        <div class="phase-model-row">
+          <label for="sel-phase-model-3">Phase 3 (Vuln Analysis)</label>
+          <select class="sel-phase-model" id="sel-phase-model-3" data-phases="3" aria-label="Modèle pour phase 3">
+            <option value="">(Global)</option>
+            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
+          </select>
+        </div>
+        <div class="phase-model-row">
+          <label for="sel-phase-model-45">Phase 4 &amp; 5 (Exploit &amp; Report)</label>
+          <select class="sel-phase-model" id="sel-phase-model-45" data-phases="4,5" aria-label="Modèle pour phases 4 et 5">
+            <option value="">(Global)</option>
+            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Phases</label>
+      <div class="phase-checkboxes">
+        <label><input type="checkbox" class="phase-cb" value="1" checked> 1 · Graph Analysis</label>
+        <label><input type="checkbox" class="phase-cb" value="2" checked> 2 · Recon</label>
+        <label><input type="checkbox" class="phase-cb" value="3" checked> 3 · Vuln Analysis</label>
+        <label><input type="checkbox" class="phase-cb" value="4" checked> 4 · Exploitation</label>
+        <label><input type="checkbox" class="phase-cb" value="5" checked> 5 · Report</label>
+      </div>
+
+      <label for="inp-budget">Budget max (USD, optionnel)</label>
+      <input type="number" id="inp-budget" min="0" step="0.01" placeholder="ex : 0.50">
+
+      <button id="btn-start">Lancer le pentest</button>
+      <button id="btn-stop">Arrêter</button>
+    </div>
+
+    <!-- Run history -->
+    <div class="sidebar-section" id="history-section">
+      <h3>
+        Historique
+        <button id="btn-compare" hidden>+ Comparer (2)</button>
+      </h3>
+      <div id="run-list">
+        <div style="padding:12px;color:var(--muted);font-size:11px">Chargement…</div>
+      </div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <div class="resize-handle" id="resize-sidebar"></div>
+
+  <!-- Graph -->
+  <div id="graph-wrap">
+    <div id="graph-toolbar">
+      <!-- Organic layout -->
+      <button class="graph-btn active" id="layout-cose" title="Vue Organique" aria-label="Layout organique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="3" r="1.5"/><circle cx="3" cy="13" r="1.5"/><circle cx="13" cy="13" r="1.5"/><circle cx="13" cy="6" r="1.5"/>
+          <line x1="8" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="3" x2="13" y2="6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="13" y1="6" x2="13" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="3" y1="13" x2="13" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <!-- Hierarchy layout -->
+      <button class="graph-btn" id="layout-breadth" title="Vue Hiérarchique" aria-label="Layout hiérarchique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="3" r="1.5"/><circle cx="4" cy="11" r="1.5"/><circle cx="12" cy="11" r="1.5"/>
+          <line x1="8" y1="4.5" x2="8" y2="7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="7.5" x2="4" y2="9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <line x1="8" y1="7.5" x2="12" y2="9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <!-- Concentric layout -->
+      <button class="graph-btn" id="layout-concentric" title="Vue Concentrique" aria-label="Layout concentrique">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+          <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+          <circle cx="8" cy="8" r="4" stroke-width="1.2"/>
+          <circle cx="8" cy="8" r="6.5" stroke-width="1.2"/>
+        </svg>
+      </button>
+      <hr class="toolbar-sep" aria-hidden="true">
+      <!-- Fit view -->
+      <button class="graph-btn" id="graph-fit" title="Ajuster la vue" aria-label="Ajuster la vue">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 6V2h4"/><path d="M10 2h4v4"/><path d="M14 10v4h-4"/><path d="M6 14H2v-4"/>
+        </svg>
+      </button>
+    </div>
+    <div id="cy"></div>
+    <div id="cy-loading" aria-live="polite" style="display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;pointer-events:none">Chargement de la topologie…</div>
+    <table id="topology-table" class="sr-only" aria-label="Topologie réseau">
+      <caption>Liste des équipements du réseau</caption>
+      <thead><tr><th scope="col">ID</th><th scope="col">IP</th><th scope="col">Type</th><th scope="col">Statut sécurité</th></tr></thead>
+      <tbody id="topology-tbody"></tbody>
+    </table>
+    <div id="graph-legend"></div>
+  </div>
+
+  <div class="resize-handle" id="resize-detail"></div>
+
+  <!-- Detail panel -->
+  <div id="detail">
+    <div id="detail-placeholder">
+      Cliquez sur un nœud<br>pour voir ses détails
+    </div>
+    <div id="detail-content" hidden>
+      <!-- Node view (shown when clicking a graph node) -->
+      <div id="detail-node-view" class="detail-panel"></div>
+
+      <!-- Run view (shown when selecting a run from history) -->
+      <div id="detail-run-view" hidden>
+        <div id="detail-header">
+          <h2 id="detail-run-title"></h2>
+          <div id="detail-tabs" role="tablist" aria-label="Détail du run">
+            <button class="detail-tab active" data-tab="info" role="tab" aria-selected="true" id="tab-info" aria-controls="detail-panel-info">Info</button>
+            <button class="detail-tab" data-tab="files" role="tab" aria-selected="false" id="tab-files" aria-controls="detail-panel-files">Fichiers</button>
+            <button class="detail-tab" data-tab="report" role="tab" aria-selected="false" id="tab-report" aria-controls="detail-panel-report">Rapport</button>
+          </div>
+        </div>
+        <div id="detail-panel-info"   class="detail-panel" role="tabpanel" aria-labelledby="tab-info"></div>
+        <div id="detail-panel-files"  class="detail-panel" hidden role="tabpanel" aria-labelledby="tab-files"></div>
+        <div id="detail-panel-report" class="detail-panel" hidden role="tabpanel" aria-labelledby="tab-report"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── Log resize handle ────────────────────────────────────────────────── -->
+<div class="resize-handle-h" id="resize-log"></div>
+
+<!-- ── Log ─────────────────────────────────────────────────────────────── -->
+<div id="log-wrap">
+  <div id="log-header">
+    <span>Event Log</span>
+    <button id="log-clear">Effacer</button>
+  </div>
+  <div id="log" role="log" aria-live="polite" aria-atomic="false"></div>
+</div>
+
+<!-- ── File modal ───────────────────────────────────────────────────────── -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <div id="modal-header">
+      <h3 id="modal-title"></h3>
+      <button id="modal-close" aria-label="Fermer">×</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Compare modal ───────────────────────────────────────────────────── -->
+<div id="compare-overlay" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+  <div id="compare-modal">
+    <div id="compare-header">
+      <h3 id="compare-title">Comparaison de runs</h3>
+      <button id="compare-close" aria-label="Fermer">×</button>
+    </div>
+    <div id="compare-body"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
