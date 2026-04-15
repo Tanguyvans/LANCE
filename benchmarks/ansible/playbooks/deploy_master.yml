@@ -308,6 +308,9 @@
         group: root
         content: |
           OPENROUTER_API_KEY={{ vault_openrouter_api_key }}
+          {% if vault_minimax_api_key is defined %}
+          MINIMAX_API_KEY={{ vault_minimax_api_key }}
+          {% endif %}
           {% if vault_voyage_api_key is defined %}
           VOYAGE_API_KEY={{ vault_voyage_api_key }}
           {% endif %}

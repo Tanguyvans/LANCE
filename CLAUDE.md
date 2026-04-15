@@ -115,7 +115,7 @@ python3 -m src.agent --verbose           # detailed output
 - When modifying the YAML topology, update test assertions (device/link counts, neighbor sets) accordingly.
 - Language: code and comments in English, infrastructure descriptions in French.
 - Agent pipeline outputs go to `output/agent/<timestamp>/` with numbered deliverables (01_graph_analysis.md, 02_recon.md, etc.).
-- Environment variables (API keys) loaded from `.env` via python-dotenv.
+- Environment variables (API keys) loaded from `.env` via python-dotenv. Required keys: `OPENROUTER_API_KEY`. Optional: `MINIMAX_API_KEY` (MiniMax Coding Plan subscription — provider auto-selected when a MiniMax model is chosen in the dashboard), `VOYAGE_API_KEY` (knowledge store ChromaDB). On the master VM, secrets are injected via Ansible Vault (`vault_openrouter_api_key`, `vault_minimax_api_key`, `vault_voyage_api_key` in `group_vars/all/vault_master.yml`).
 
 ### Vulnerability taxonomy discipline
 
