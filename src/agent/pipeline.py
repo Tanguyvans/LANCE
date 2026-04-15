@@ -18,6 +18,7 @@ from src.agent.cost_tracker import CostTracker
 from src.agent.tools.graph_tools import (
     GRAPH_TOOLS,
     load_lab_context,
+    load_discovery_context,
     get_attack_surface,
     get_risk_scores,
     get_device_info,
@@ -182,6 +183,7 @@ class Pipeline:
         max_cost_usd: float | None = None,
         phase_models: dict[int | str, str] | None = None,
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
+        target_network: str | None = None,  # CIDR for Docker discovery mode e.g. "192.168.1.0/24"
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -191,6 +193,7 @@ class Pipeline:
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
         self.custom_config = custom_config
+        self.target_network = target_network
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -217,14 +220,18 @@ class Pipeline:
                 Event types: pipeline_start, phase_start, text_chunk, tool_call,
                 tool_result, turn_done, phase_done, pipeline_done.
         """
-        # Load lab context — scenario topology when benchmark active, physical lab otherwise
-        if self.scenario_id is not None:
+        # Load lab context — discovery mode, scenario topology, or physical lab
+        if self.target_network is not None:
+            from src.agent.tools.graph_tools import load_discovery_context
+            lab = load_discovery_context(self.target_network)
+            target_subnet = self.target_network
+        elif self.scenario_id is not None:
             from src.agent.tools.graph_tools import load_scenario_topology
             lab = load_scenario_topology(self.scenario_id)
+            target_subnet = "192.168.100.0/24"
         else:
             lab = load_lab_context()
-        # target_subnet: benchmark network when a scenario is active, real lab otherwise
-        target_subnet = "192.168.100.0/24" if self.scenario_id is not None else "192.168.88.0/24"
+            target_subnet = "192.168.88.0/24"
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),

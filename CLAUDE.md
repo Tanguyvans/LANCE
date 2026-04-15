@@ -67,11 +67,13 @@ python3 -m src.agent --verbose           # detailed output
 ### FastAPI Backend & Dashboard
 
 - `src/api/main.py` — FastAPI app entry point. Mounts routers, serves static files.
-- `src/api/routes/pipeline.py` — Pipeline lifecycle: `POST /api/pipeline/start`, `GET /api/pipeline/stream` (SSE), `POST /api/pipeline/stop`. Runs pipeline in a background thread, streams events to the frontend.
+- `src/api/routes/pipeline.py` — Pipeline lifecycle: `POST /api/pipeline/start`, `GET /api/pipeline/stream` (SSE), `POST /api/pipeline/stop`. Runs pipeline in a background thread, streams events to the frontend. `StartRequest` accepts `target_network: str | None` (CIDR) to enable discovery mode.
 - `src/api/routes/runs.py` — Run history: `GET /api/runs` (list), `GET /api/runs/{id}` (metadata), `GET /api/runs/{id}/{filename}` (file content), `GET /api/runs/{id}/score` (benchmark evaluation), `GET /api/runs/{id}/download/zip`. **Route order matters**: `score` and `download/zip` must be declared before `/{id}/{filename}`.
-- `src/api/routes/topology.py` — `GET /api/topology` — returns lab or scenario graph for Cytoscape.
-- `src/static/app.js` — Single-page dashboard (vanilla JS + Cytoscape.js). Tabs: Dashboard (run config + topology), Benchmark (Recall/Precision/F1/Score table).
+- `src/api/routes/topology.py` — `GET /api/topology` — returns lab or scenario graph for Cytoscape. Pass `?empty=true` to get an empty graph (used by Docker discovery mode where nodes are added dynamically as nmap discovers hosts).
+- `src/static/app.js` — Single-page dashboard (vanilla JS + Cytoscape.js). Tabs: Dashboard (run config + topology), Benchmark (Recall/Precision/F1/Score table). Dynamically adds Cytoscape nodes when `tool_result` events for `nmap_scan` arrive with previously unseen IPs.
 - `src/static/style.css` — Dashboard styles.
+- `src/static_docker/index.html` — Simplified end-user dashboard (no Benchmark tab, no scenario selector, no Teardown). Has a "Réseau cible (CIDR)" input field.
+- `src/static_docker/app.js` — Simplified JS for end-user Docker image. Starts with an empty graph (`?empty=true`), reads `target_network` from the CIDR input and passes it to the pipeline start request. Nodes are added live as nmap discovers hosts.
 
 ### Benchmark Evaluation
 
@@ -81,7 +83,7 @@ python3 -m src.agent --verbose           # detailed output
 
 ### Agent Tools
 
-- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. When a benchmark scenario is active, graph tools return the scenario VMs (`192.168.100.x`) instead of the physical lab topology.
+- `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `load_discovery_context()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. Three modes: (1) physical lab (`192.168.88.x`), (2) benchmark scenario (`192.168.100.x`), (3) discovery mode (empty — agent uses nmap to discover the target network, all graph tool functions return "run nmap first" guidance).
 - `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
 - `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
 - `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
@@ -193,3 +195,15 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Benchmark evaluator : Recall / Precision / F1 / Score pondéré par sévérité vs ground truth YAML
 - ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
 - Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)
+
+### Phase 6 — Image Docker end-user ✅
+- Image multi-arch (amd64 + arm64) : `ghcr.io/tanguyvans/nato-smartcity-iot:latest`
+- CI/CD GitHub Actions (`.github/workflows/docker.yml`) : build automatique sur push main + tags `v*`
+- `Dockerfile` — multi-stage build (Python 3.12-slim, nmap, mosquitto-clients, openssh-client)
+- `docker-compose.yml` — volumes `./data` (knowledge store) et `./output` (résultats pipeline)
+- `docker/entrypoint.sh` — auto-ingestion des skills ChromaDB au premier démarrage (flag `.initialized`)
+- `.env.example` — template de configuration (OPENROUTER_API_KEY, VOYAGE_API_KEY)
+- Deux frontends séparés : `src/static/` (benchmark complet) et `src/static_docker/` (end-user simplifié)
+- Mode découverte : graphe vide au démarrage, nœuds ajoutés dynamiquement dans Cytoscape au fur et à mesure que nmap découvre des hôtes sur le réseau cible
+- `target_network` CIDR saisi dans le dashboard → API → Pipeline → `load_discovery_context()` → tools nmap
+- `GET /api/topology?empty=true` retourne un graphe vide (utilisé par le frontend Docker)

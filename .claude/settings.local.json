@@ -36,7 +36,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(venv/bin/python3 -c ':*)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f'Cost: \\\\${d[\\\\\"total_cost_usd\\\\\"]} | Turns: {d[\\\\\"total_turns\\\\\"]} | Duration: {int\\(d[\\\\\"total_duration_s\\\\\"]\\)}s'\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f'Cost: \\\\${d[\\\\\"total_cost_usd\\\\\"]} | Turns: {d[\\\\\"total_turns\\\\\"]} | Duration: {int\\(d[\\\\\"total_duration_s\\\\\"]\\)}s'\\)\")",
+      "Bash(venv/bin/pytest tests/ -v -p no:pytest_ethereum -p no:web3)",
+      "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3)"
     ]
   }
 }

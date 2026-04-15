@@ -237,7 +237,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   try {
-    await loadTopology();
+    // Start with empty graph — hosts are added dynamically as nmap discovers them
+    await loadTopology(null, true);
   } catch (e) {
     console.error("Topology load failed", e);
   }
@@ -362,8 +363,10 @@ function _updateTopologyTable(nodes) {
   }).join('');
 }
 
-async function loadTopology(scenarioId = null) {
-  const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
+async function loadTopology(scenarioId = null, empty = false) {
+  let url = '/api/topology';
+  if (empty) url = '/api/topology?empty=true';
+  else if (scenarioId) url = `/api/topology?scenario=${scenarioId}`;
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
 
@@ -622,7 +625,10 @@ async function startRun() {
   setCost(0);
   clearPhasePills();
 
-  await loadTopology();
+  const targetNetwork = (document.getElementById('inp-target-network').value || '').trim() || null;
+
+  // Start with empty graph — nodes are added dynamically as nmap discovers hosts
+  await loadTopology(null, targetNetwork !== null);
 
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
@@ -633,6 +639,7 @@ async function startRun() {
     phases: phases.length < 5 ? phases : null,
     max_cost_usd: maxCost,
     phase_models: phaseModels,
+    target_network: targetNetwork,
   };
 
   const res = await fetch('/api/pipeline/start', {
@@ -734,18 +741,34 @@ function handleEvent(ev) {
 
   else if (t === 'tool_result' && ev.name === 'nmap_scan') {
     const parsed = parseNmapResult(ev.result || '');
+    let newNodesAdded = false;
     Object.entries(parsed).forEach(([ip, info]) => {
       nodeHosts[ip] = info;
-      // Find node by IP and mark as scanned
       if (cy) {
-        cy.nodes().forEach(n => {
-          if (n.data('ip') === ip) {
-            n.style('border-color', '#58a6ff');
-            n.style('border-width', '2px');
-          }
-        });
+        let nodes = cy.nodes().filter(n => n.data('ip') === ip);
+        if (nodes.length === 0) {
+          // Host discovered for the first time — add it to the graph
+          const nodeId = `host_${ip.replace(/\./g, '_')}`;
+          cy.add({
+            group: 'nodes',
+            data: {
+              id: nodeId,
+              label: info.hostname || ip,
+              ip,
+              type: 'compute',
+              color: _cssVar('--node-compute') || '#3498db',
+              _origColor: _cssVar('--node-compute') || '#3498db',
+              services: info.ports || [],
+            },
+          });
+          nodes = cy.getElementById(nodeId);
+          newNodesAdded = true;
+        }
+        nodes.style('border-color', '#58a6ff');
+        nodes.style('border-width', '2px');
       }
     });
+    if (newNodesAdded && cy) _runLayout(CY_LAYOUTS.cose, true);
   }
 
   // Vuln sub-agent done — extract vulns from deliverable name pattern
@@ -971,7 +994,7 @@ async function viewRun(runId) {
   resetNodeColors();
   nodeVulns = {};
   nodeHosts = {};
-  await loadTopology();
+  await loadTopology(null, true);
 
   // Show run view in detail panel
   document.getElementById('detail-placeholder').hidden = true;
@@ -1374,11 +1397,8 @@ async function pollStatus() {
     if (replayTypes.has(ev.type)) addLog(ev);
   }
 
-  // — Sync scenario dropdown & topology —
-  if (status.scenario_id) {
-    document.getElementById('sel-scenario').value = String(status.scenario_id);
-    await loadTopology(status.scenario_id);
-  }
+  // — Topology: always empty in discovery mode (nodes built from nmap results) —
+  await loadTopology(null, true);
 
   // — Reconnect to SSE stream —
   startSSE();

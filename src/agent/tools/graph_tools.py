@@ -27,6 +27,31 @@ _attack_report = None
 # Scenario override — set by load_scenario_topology() when a benchmark is active
 _scenario_topology: dict | None = None
 
+# Discovery mode — set by load_discovery_context() when no pre-defined topology
+_discovery_mode: dict | None = None  # {"target_network": "192.168.1.0/24"}
+
+
+def load_discovery_context(target_network: str) -> dict:
+    """Set up discovery mode: no pre-defined topology, LLM discovers the network via nmap.
+
+    The agent starts with an empty graph and builds it from active recon results.
+    Returns a minimal context dict so the pipeline can start without a YAML topology.
+    """
+    global _discovery_mode, _backend, _infra, _cve_reports, _risk_scores, _attack_report, _scenario_topology
+    _discovery_mode = {"target_network": target_network}
+    _scenario_topology = None
+    _backend = None
+    _infra = None
+    _cve_reports = None
+    _risk_scores = None
+    _attack_report = None
+    return {
+        "device_count": 0,
+        "link_count": 0,
+        "cve_count": 0,
+        "top_risk": None,
+    }
+
 
 def load_lab_context() -> dict:
     """Load the full lab context (graph + CVEs + risk + attack paths).
@@ -190,7 +215,7 @@ def load_scenario_topology(scenario_id: int) -> dict:
 
 
 def _ensure_loaded():
-    if _scenario_topology is None and _backend is None:
+    if _scenario_topology is None and _backend is None and _discovery_mode is None:
         load_lab_context()
 
 
@@ -199,6 +224,12 @@ def _ensure_loaded():
 def get_network_topology() -> str:
     """Return the full network topology as JSON (nodes + edges)."""
     _ensure_loaded()
+    if _discovery_mode is not None:
+        return json.dumps({
+            "mode": "discovery",
+            "target_network": _discovery_mode["target_network"],
+            "note": "No pre-defined topology. Use nmap_scan to discover hosts on the target network.",
+        }, ensure_ascii=False)
     if _scenario_topology is not None:
         return json.dumps({
             "scenario": _scenario_topology["scenario_name"],
@@ -229,6 +260,11 @@ def get_device_info(device_id: str) -> str:
 def get_attack_surface() -> str:
     """Return devices that expose services (have open ports)."""
     _ensure_loaded()
+    if _discovery_mode is not None:
+        return json.dumps({
+            "note": "Discovery mode — run nmap_scan first to identify the attack surface.",
+            "target_network": _discovery_mode["target_network"],
+        }, ensure_ascii=False)
     if _scenario_topology is not None:
         exposed = [n for n in _scenario_topology["nodes"] if n.get("services")]
         return json.dumps(exposed, ensure_ascii=False)
@@ -238,6 +274,11 @@ def get_attack_surface() -> str:
 def get_attack_paths() -> str:
     """Return the attack path analysis report."""
     _ensure_loaded()
+    if _discovery_mode is not None:
+        return json.dumps({
+            "note": "Discovery mode — attack paths will be inferred from nmap and vulnerability findings.",
+            "target_network": _discovery_mode["target_network"],
+        }, ensure_ascii=False)
     if _scenario_topology is not None:
         return json.dumps({
             "note": "Attack paths not pre-computed for benchmark scenarios — discover via active recon.",
@@ -255,6 +296,11 @@ def get_attack_paths() -> str:
 def get_risk_scores() -> str:
     """Return risk scores for all devices, sorted by risk (descending)."""
     _ensure_loaded()
+    if _discovery_mode is not None:
+        return json.dumps({
+            "note": "Discovery mode — risk scores will be computed after nmap and CVE analysis.",
+            "target_network": _discovery_mode["target_network"],
+        }, ensure_ascii=False)
     if _scenario_topology is not None:
         return json.dumps({
             "note": "Risk scores not pre-computed for benchmark scenarios — discover vulnerabilities via active recon.",

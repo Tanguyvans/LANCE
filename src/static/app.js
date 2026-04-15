@@ -1081,18 +1081,33 @@ function handleEvent(ev) {
 
   else if (t === 'tool_result' && ev.name === 'nmap_scan') {
     const parsed = parseNmapResult(ev.result || '');
+    let newNodesAdded = false;
     Object.entries(parsed).forEach(([ip, info]) => {
       nodeHosts[ip] = info;
-      // Find node by IP and mark as scanned
       if (cy) {
-        cy.nodes().forEach(n => {
-          if (n.data('ip') === ip) {
-            n.style('border-color', '#58a6ff');
-            n.style('border-width', '2px');
-          }
-        });
+        let nodes = cy.nodes().filter(n => n.data('ip') === ip);
+        if (nodes.length === 0) {
+          const nodeId = `host_${ip.replace(/\./g, '_')}`;
+          cy.add({
+            group: 'nodes',
+            data: {
+              id: nodeId,
+              label: info.hostname || ip,
+              ip,
+              type: 'compute',
+              color: _cssVar('--node-compute') || '#3498db',
+              _origColor: _cssVar('--node-compute') || '#3498db',
+              services: info.ports || [],
+            },
+          });
+          nodes = cy.getElementById(nodeId);
+          newNodesAdded = true;
+        }
+        nodes.style('border-color', '#58a6ff');
+        nodes.style('border-width', '2px');
       }
     });
+    if (newNodesAdded && cy) _runLayout(CY_LAYOUTS.cose, true);
   }
 
   // Vuln sub-agent done — extract vulns from deliverable name pattern

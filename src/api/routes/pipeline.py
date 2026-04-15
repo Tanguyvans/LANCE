@@ -52,6 +52,8 @@ class StartRequest(BaseModel):
     auto_teardown: bool = True
     max_cost_usd: float | None = None
     phase_models: dict[int, str] | None = None
+    # Discovery mode (Docker end-user): scan a live network instead of a pre-defined topology
+    target_network: str | None = None  # CIDR e.g. "192.168.1.0/24"
     # Custom mode fields
     architecture: str | None = None
     posture: str | None = None       # "vulnerable" | "hardened"
@@ -94,6 +96,7 @@ def _pipeline_thread(req: StartRequest):
             max_cost_usd=req.max_cost_usd,
             phase_models=req.phase_models,
             custom_config=custom_config,
+            target_network=req.target_network,
         )
 
         def callback(event: dict):

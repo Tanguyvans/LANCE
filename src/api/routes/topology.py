@@ -153,8 +153,13 @@ def _load_scenario(scenario_id: str) -> dict:
 
 
 @router.get("")
-def get_topology(scenario: str | None = None):
-    """Return Cytoscape-ready nodes and edges for the lab or a benchmark scenario."""
+def get_topology(scenario: str | None = None, empty: bool = False):
+    """Return Cytoscape-ready nodes and edges for the lab or a benchmark scenario.
+
+    Pass ?empty=true to get an empty graph (used by Docker discovery mode).
+    """
+    if empty:
+        return {"nodes": [], "edges": [], "subnet": ""}
     if scenario is not None:
         return _load_scenario(scenario)
     return _load_physical_lab()
