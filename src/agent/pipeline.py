@@ -1413,9 +1413,9 @@ class Pipeline:
             },
         }
 
-        out_path = self.run_dir / config.deliverable_file
+        out_path = self.run_dir / "03_vuln_analysis.json"
         out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"  Aggregated {len(all_vulns)} device vulns → {len(final)} after dedup → {config.deliverable_file}")
+        print(f"  Aggregated {len(all_vulns)} device vulns → {len(final)} after dedup → 03_vuln_analysis.json")
         log.info("Deterministic aggregation: %d vulns → %d deduped → %s",
                  len(all_vulns), len(final), out_path)
 
