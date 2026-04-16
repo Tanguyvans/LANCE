@@ -1,0 +1,125 @@
+scenario_id: '12'
+name: Smart City Large Scale
+difficulty: expert
+posture: vulnerable
+topology: smart_city_large
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f6_crypto
+- f7_pivot
+- f8_info_disclosure
+attack_paths:
+- id: P1
+  title: Pivot complet IT→IoT→OT — telnet + SSH + MQTT + PLC
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: Internet
+    action: Telnet vers routeur (port 23)
+  - hop: 2
+    device: s12-router (100.1)
+    action: Shell sans auth via telnet
+  - hop: 3
+    device: s12-admin1 (100.11)
+    action: SSH admin:admin
+  - hop: 4
+    device: s12-jump (100.13)
+    action: SSH via clé world-readable
+  - hop: 5
+    device: s12-mqtt1 (100.21)
+    action: Subscribe MQTT anon — credentials dans topics
+  - hop: 6
+    device: s12-gw1 (100.24)
+    action: Dropbear SSH / HTTP admin sans auth
+  - hop: 7
+    device: s12-plc1 (100.41)
+    action: Ecriture registres Modbus sans auth
+  vulnerabilities_used: [V1, V3, V7, V14, V18, V30]
+  impact: Compromission complete IT→IoT→OT — controle direct des 4 PLCs industriels
+
+- id: P2
+  title: RCE monitoring → Redis + 4 DB OT
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /api/exec monitoring sans auth
+  - hop: 2
+    device: s12-monitor (100.14)
+    action: RCE root via Flask API
+  - hop: 3
+    device: s12-redis (100.49)
+    action: Redis KEYS * sans auth — secrets exfil
+  - hop: 4
+    device: s12-db-ot1 (100.47)
+    action: MySQL root sans mdp — donnees OT
+  vulnerabilities_used: [V9, V38, V36]
+  impact: RCE monitoring + exfiltration tous secrets IoT/OT via Redis et MariaDB
+
+- id: P3
+  title: MQTT anon → Node-RED IoT → PLC chain
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT1 sans auth
+  - hop: 2
+    device: s12-mqtt1 (100.21)
+    action: Credentials dans topics MQTT
+  - hop: 3
+    device: s12-mqtt2 (100.22)
+    action: Login MQTT2 avec test:test
+  - hop: 4
+    device: s12-nodered2 (100.28)
+    action: Injection flow exec Node-RED
+  - hop: 5
+    device: s12-plc1 (100.41)
+    action: Commande Modbus via Node-RED
+  vulnerabilities_used: [V14, V15, V16, V23, V30]
+  impact: Chaine MQTT→Node-RED→OT — controle PLC depuis zone IoT
+
+- id: P4
+  title: FTP IT → credentials → SSH admin → pivot OT
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: FTP anonyme zone IT (100.16)
+  - hop: 2
+    device: s12-ftp-it (100.16)
+    action: /config/network.conf — credentials SSH
+  - hop: 3
+    device: s12-admin1 (100.11)
+    action: SSH avec credentials recuperes
+  - hop: 4
+    device: s12-plc3 (100.43)
+    action: Modbus TCP sans auth
+  vulnerabilities_used: [V11, V3, V32]
+  impact: FTP credentials → compromission SSH IT → acces PLC3 OT
+
+- id: P5
+  title: SCADA web upload → PLC1 RCE
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Upload fichier malveillant SCADA
+  - hop: 2
+    device: s12-scada (100.51)
+    action: RCE via fichier execute sans validation
+  - hop: 3
+    device: s12-plc1 (100.41)
+    action: Commande Modbus depuis SCADA compromis
+  vulnerabilities_used: [V41, V30]
+  impact: SCADA compromis → controle direct PLC1 industriel
+
+bonus_types:
+- weak_cipher
+- missing_header
+- info_disclosure
+- version_leak
+- terrapin
+- no_auth

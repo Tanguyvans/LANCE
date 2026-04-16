@@ -320,6 +320,23 @@ async function loadScenariosConfig() {
   if (vulnGroup.children.length) sel.appendChild(vulnGroup);
   if (hardGroup.children.length) sel.appendChild(hardGroup);
 
+  // Populate batch checkboxes (all non-hardened scenarios)
+  const batchBox = document.getElementById('batch-checkboxes');
+  batchBox.innerHTML = '';
+  for (const s of _scenariosData.scenarios) {
+    if (s.posture === 'hardened') continue;
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'batch-cb';
+    cb.value = s.id;
+    cb.checked = true;
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(`S${s.id} · ${s.name} (${s.difficulty || ''})`));
+    batchBox.appendChild(lbl);
+  }
+
   // Populate architecture dropdown
   const archSel = document.getElementById('sel-architecture');
   archSel.innerHTML = '';
@@ -438,9 +455,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Mode toggle
   document.querySelectorAll('input[name="run-mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
-      const isCustom = radio.value === 'custom' && radio.checked;
-      document.getElementById('preset-mode').hidden = isCustom;
-      document.getElementById('custom-mode').hidden = !isCustom;
+      const val = document.querySelector('input[name="run-mode"]:checked').value;
+      document.getElementById('preset-mode').hidden  = val !== 'preset';
+      document.getElementById('batch-mode').hidden   = val !== 'batch';
+      document.getElementById('custom-mode').hidden  = val !== 'custom';
+      document.getElementById('btn-start').hidden       = val === 'batch';
+      document.getElementById('btn-batch-start').hidden = val !== 'batch';
     });
   });
 
@@ -464,8 +484,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-teardown').disabled = !this.value;
   });
   document.getElementById('btn-start').addEventListener('click', startRun);
+  document.getElementById('btn-batch-start').addEventListener('click', startBatch);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
   document.getElementById('btn-teardown').addEventListener('click', teardownScenario);
+  document.getElementById('btn-batch-all').addEventListener('click', () => {
+    document.querySelectorAll('.batch-cb').forEach(cb => cb.checked = true);
+  });
+  document.getElementById('btn-batch-none').addEventListener('click', () => {
+    document.querySelectorAll('.batch-cb').forEach(cb => cb.checked = false);
+  });
   document.getElementById('log-clear').addEventListener('click', clearLog);
   document.getElementById('modal-close').addEventListener('click', () => closeModal());
   document.getElementById('modal-overlay').addEventListener('click', closeModal);
@@ -974,10 +1001,45 @@ async function startRun() {
   startSSE();
 }
 
+async function startBatch() {
+  const ids = [...document.querySelectorAll('.batch-cb:checked')].map(cb => cb.value);
+  if (!ids.length) {
+    addLog({type:'error', message:'Sélectionne au moins un scénario pour le batch'});
+    return;
+  }
+  const modelSel = document.getElementById('sel-model');
+  const model    = modelSel.value;
+  const selectedOpt = modelSel.options[modelSel.selectedIndex];
+  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
+  const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
+
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  setCost(0);
+  clearPhasePills();
+
+  const res = await fetch('/api/pipeline/batch', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    addLog({type:'error', message: err.detail || 'Erreur démarrage batch'});
+    return;
+  }
+  document.getElementById('btn-batch-start').disabled = true;
+  document.getElementById('btn-stop').style.display = 'block';
+  addLog({type:'info', message:`Batch lancé — ${ids.length} scénario(s) : ${ids.map(i => 'S'+i).join(', ')}`});
+  startSSE();
+}
+
 async function stopRun() {
   await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-batch-start').disabled = false;
   document.getElementById('btn-stop').style.display = 'none';
   addLog({type:'error', message:"Run interrompu par l'utilisateur"});
 }
@@ -1076,8 +1138,36 @@ function handleEvent(ev) {
     loadRuns();
   }
 
+  else if (t === 'batch_scenario_start') {
+    addLog({type:'info', message:`[Batch ${ev.index}/${ev.total}] Démarrage S${ev.scenario_id}…`});
+  }
+
+  else if (t === 'batch_scenario_done') {
+    const m = ev.metrics;
+    const metrics = m
+      ? `Recall=${m.recall.toFixed(3)} P=${m.precision.toFixed(3)} F1=${m.f1.toFixed(3)} Score=${m.score_pct.toFixed(1)}% TP=${m.tp} FP=${m.fp} FN=${m.fn}`
+      : 'pas de ground truth';
+    addLog({type:'info', message:`[Batch ${ev.index}/${ev.total}] S${ev.scenario_id} terminé — ${metrics} — $${(ev.cost_usd||0).toFixed(4)}`});
+    loadRuns();
+  }
+
+  else if (t === 'batch_done') {
+    const agg = ev.aggregate || {};
+    setCost(ev.total_cost_usd || 0);
+    document.getElementById('btn-batch-start').disabled = false;
+    document.getElementById('btn-stop').style.display = 'none';
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    if (agg.avg_f1 !== undefined) {
+      addLog({type:'info', message:`Batch terminé — Avg F1=${agg.avg_f1.toFixed(3)} Recall=${agg.avg_recall.toFixed(3)} Score=${agg.avg_score_pct.toFixed(1)}% — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
+    } else {
+      addLog({type:'info', message:`Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
+    }
+    loadRuns();
+  }
+
   else if (t === 'error') {
     document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-batch-start').disabled = false;
     document.getElementById('btn-stop').style.display = 'none';
     if (eventSource) { eventSource.close(); eventSource = null; }
     loadRuns();
@@ -1809,6 +1899,20 @@ function addLog(ev) {
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done')  text = `Pipeline terminé — Total: $${(ev.total_cost_usd||0).toFixed(4)}`;
+  else if (t === 'batch_start')         text = `Batch démarré — ${ev.total} scénario(s) : ${(ev.ids||[]).map(i=>'S'+i).join(', ')}`;
+  else if (t === 'batch_scenario_start') text = `[${ev.index}/${ev.total}] Démarrage S${ev.scenario_id}…`;
+  else if (t === 'batch_scenario_done') {
+    const m = ev.metrics;
+    text = m
+      ? `[${ev.index}/${ev.total}] S${ev.scenario_id} — F1=${m.f1.toFixed(3)} Score=${m.score_pct.toFixed(1)}% TP=${m.tp} FP=${m.fp} FN=${m.fn} $${(ev.cost_usd||0).toFixed(4)}`
+      : `[${ev.index}/${ev.total}] S${ev.scenario_id} terminé $${(ev.cost_usd||0).toFixed(4)}`;
+  }
+  else if (t === 'batch_done') {
+    const agg = ev.aggregate || {};
+    text = agg.avg_f1 !== undefined
+      ? `Batch terminé — Avg F1=${agg.avg_f1.toFixed(3)} Recall=${agg.avg_recall.toFixed(3)} Score=${agg.avg_score_pct.toFixed(1)}% Total $${(ev.total_cost_usd||0).toFixed(4)}`
+      : `Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`;
+  }
   else if (t === 'tool_call') {
     fullText = `${ev.name}(${JSON.stringify(ev.args||{}, null, 2)})`;
     text = `→ ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;

@@ -90,7 +90,8 @@
 
       <label>Mode</label>
       <div class="mode-toggle">
-        <label><input type="radio" name="run-mode" value="preset" checked> Scénario pré-configuré</label>
+        <label><input type="radio" name="run-mode" value="preset" checked> Scénario</label>
+        <label><input type="radio" name="run-mode" value="batch"> Batch</label>
         <label><input type="radio" name="run-mode" value="custom"> Personnalisé</label>
       </div>
 
@@ -100,6 +101,16 @@
         <select id="sel-scenario">
           <option value="">— Lab physique —</option>
         </select>
+      </div>
+
+      <!-- Batch mode -->
+      <div id="batch-mode" hidden>
+        <label>Scénarios à lancer</label>
+        <div id="batch-checkboxes" style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;padding:4px 0"></div>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <button id="btn-batch-all" style="flex:1;font-size:11px;padding:4px">Tout sélectionner</button>
+          <button id="btn-batch-none" style="flex:1;font-size:11px;padding:4px">Désélectionner</button>
+        </div>
       </div>
 
       <!-- Custom mode -->
@@ -139,6 +150,7 @@
       <input type="number" id="inp-budget" min="0" step="0.01" placeholder="ex : 0.50">
 
       <button id="btn-start">Lancer le pentest</button>
+      <button id="btn-batch-start" hidden>Lancer le batch</button>
       <button id="btn-stop">Arrêter</button>
     </div>
 

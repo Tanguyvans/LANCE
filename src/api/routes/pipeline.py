@@ -219,6 +219,165 @@ def get_status():
     }
 
 
+class BatchRequest(BaseModel):
+    batch_ids: list[str]       # e.g. ["1", "2", "3"] or ["all"]
+    model: str = "google/gemini-2.0-flash-001"
+    provider: str = "openrouter"
+    phases: list[int] | None = None
+
+
+def _batch_thread(req: BatchRequest):
+    """Run multiple scenarios sequentially, pushing events to the shared SSE queue."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ROOT / ".env")
+
+        from src.agent.provider import LLMProvider
+        from src.agent.pipeline import Pipeline
+        from src.benchmark.evaluator import evaluate
+
+        GT_DIR = ROOT / "benchmarks" / "ground_truth"
+
+        def _push(event: dict):
+            loop = _state["loop"]
+            q = _state["queue"]
+            if loop and q:
+                loop.call_soon_threadsafe(q.put_nowait, event)
+            t = event.get("type")
+            if t not in {"__done__", "ping", "text_chunk"}:
+                _state["recent_events"].append(event)
+                if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
+                    _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
+
+        # Resolve "all" to all available scenario IDs
+        if req.batch_ids == ["all"]:
+            batch_ids = sorted(
+                p.stem.replace("scenario_", "")
+                for p in sorted(GT_DIR.glob("scenario_*.yaml"))
+            )
+        else:
+            batch_ids = req.batch_ids
+
+        results = []
+        total = len(batch_ids)
+
+        _push({"type": "batch_start", "total": total, "ids": batch_ids})
+
+        for idx, sid in enumerate(batch_ids, 1):
+            if _state.get("stop_event") and _state["stop_event"].is_set():
+                break
+
+            gt_file = GT_DIR / f"scenario_{sid}.yaml"
+            _push({"type": "batch_scenario_start", "scenario_id": sid, "index": idx, "total": total})
+            _state["scenario_id"] = sid
+
+            provider = LLMProvider(provider=req.provider, model=req.model)
+            pipeline = Pipeline(
+                provider=provider,
+                phases=req.phases or None,
+                scenario_id=int(sid) if sid.isdigit() else sid,
+                auto_teardown=True,
+                stop_event=_state.get("stop_event"),
+            )
+
+            def make_callback(scenario_id):
+                def callback(event: dict):
+                    ev = dict(event)
+                    ev["batch_scenario_id"] = scenario_id
+                    _push(ev)
+                    t = ev.get("type")
+                    if t == "phase_start":
+                        _state["phase"] = ev.get("phase", _state["phase"])
+                        _state["phase_name"] = ev.get("agent", "")
+                    elif t == "phase_done":
+                        cost = ev.get("cost_usd", 0.0)
+                        _state["cost"] += cost
+                    elif t == "pipeline_done":
+                        _state["run_dir"] = ev.get("run_dir")
+                return callback
+
+            pipeline.run(stream_callback=make_callback(sid), stop_event=_state.get("stop_event"))
+            run_dir = pipeline.run_dir
+            cost = round(pipeline.tracker.total_cost(), 4)
+
+            metrics = None
+            if gt_file.exists():
+                try:
+                    ev_result = evaluate(run_dir, gt_file)
+                    metrics = {
+                        "recall": round(ev_result.recall, 3),
+                        "precision": round(ev_result.precision, 3),
+                        "f1": round(ev_result.f1_score, 3),
+                        "score_pct": round(ev_result.score_pct, 1),
+                        "tp": ev_result.true_positives,
+                        "fp": ev_result.false_positives,
+                        "fn": ev_result.false_negatives,
+                    }
+                except Exception:
+                    pass
+
+            entry = {"scenario_id": sid, "run_dir": str(run_dir), "cost_usd": cost, "metrics": metrics}
+            results.append(entry)
+            _push({"type": "batch_scenario_done", "scenario_id": sid, "index": idx, "total": total,
+                   "cost_usd": cost, "metrics": metrics, "run_dir": str(run_dir)})
+
+        # Aggregate
+        evaluated = [r for r in results if r.get("metrics")]
+        aggregate = {}
+        if evaluated:
+            aggregate = {
+                "avg_recall": round(sum(r["metrics"]["recall"] for r in evaluated) / len(evaluated), 3),
+                "avg_precision": round(sum(r["metrics"]["precision"] for r in evaluated) / len(evaluated), 3),
+                "avg_f1": round(sum(r["metrics"]["f1"] for r in evaluated) / len(evaluated), 3),
+                "avg_score_pct": round(sum(r["metrics"]["score_pct"] for r in evaluated) / len(evaluated), 1),
+                "total_cost_usd": round(sum(r["cost_usd"] for r in results), 4),
+            }
+
+        _push({"type": "batch_done", "results": results, "aggregate": aggregate,
+               "total_cost_usd": aggregate.get("total_cost_usd", 0)})
+
+    except Exception as exc:
+        q = _state["queue"]
+        loop = _state["loop"]
+        if loop and q:
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
+    finally:
+        _state["running"] = False
+        q = _state["queue"]
+        loop = _state["loop"]
+        if loop and q:
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "__done__"})
+
+
+@router.post("/batch")
+async def start_batch(req: BatchRequest):
+    """Start a batch run of multiple scenarios sequentially. Returns 409 if already running."""
+    if _state["running"]:
+        raise HTTPException(status_code=409, detail="Pipeline already running")
+
+    from datetime import datetime
+    _state["running"] = True
+    _state["phase"] = 0
+    _state["phase_name"] = ""
+    _state["cost"] = 0.0
+    _state["run_dir"] = None
+    _state["queue"] = asyncio.Queue()
+    _state["loop"] = asyncio.get_event_loop()
+    _state["stop_event"] = threading.Event()
+    _state["scenario_id"] = None
+    _state["model"] = req.model
+    _state["started_at"] = datetime.now().isoformat()
+    _state["phases_done"] = []
+    _state["current_devices"] = []
+    _state["devices_done"] = []
+    _state["deploy_status"] = None
+    _state["recent_events"] = []
+
+    thread = threading.Thread(target=_batch_thread, args=(req,), daemon=True)
+    thread.start()
+    return {"status": "batch_started", "total": len(req.batch_ids)}
+
+
 class TeardownRequest(BaseModel):
     scenario_id: str
 

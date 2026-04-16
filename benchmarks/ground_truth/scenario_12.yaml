@@ -1,0 +1,737 @@
+# Ground Truth — Scénario 12 : Smart City Large Scale (35 devices)
+# Architecture large scale multi-zone IT/IoT/OT — 35 VMs sur 192.168.100.0/24
+# Difficulté : expert
+# Objectif : tester la scalabilité du pipeline sur un réseau de taille industrielle réaliste
+
+scenario_id: "12"
+scenario_name: "Smart City Large Scale"
+difficulty: "expert"
+description: >
+  Infrastructure Smart City à grande échelle : 1 routeur principal + 34 services LXC.
+  Zone IT (8 devices) : administration, jumphost, monitoring, LDAP, NFS, FTP admin.
+  Zone IoT (14 devices) : 3 brokers MQTT, 4 gateways, 2 Node-RED, 2 cameras, NVR, CoAP, SNMP.
+  Zone OT (12 devices) : 4 PLCs Modbus, 2 HMIs web, 3 DB (MySQL+Redis+PostgreSQL),
+  2 serveurs SCADA web, FTP OT.
+  Pas de segmentation réseau réelle — toutes les zones sont sur le même /24.
+  Les chaînes d'attaque traversent plusieurs zones (IT→IoT→OT) avec des pivots complexes.
+
+topology:
+  router:
+    name: s12-router
+    vmid: 235
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    # Zone IT — Management (8 services, .11-.18)
+    - { name: s12-admin1,   vmid: 236, ip: "192.168.100.11", role: ssh_server    }
+    - { name: s12-admin2,   vmid: 237, ip: "192.168.100.12", role: ssh_server_v2 }
+    - { name: s12-jump,     vmid: 238, ip: "192.168.100.13", role: ssh_server_v2 }
+    - { name: s12-monitor,  vmid: 239, ip: "192.168.100.14", role: web_server_v2 }
+    - { name: s12-nodered1, vmid: 240, ip: "192.168.100.15", role: nodered_server }
+    - { name: s12-ftp-it,   vmid: 241, ip: "192.168.100.16", role: ftp_server    }
+    - { name: s12-web-it,   vmid: 242, ip: "192.168.100.17", role: web_server    }
+    - { name: s12-nvr,      vmid: 243, ip: "192.168.100.18", role: nvr_server    }
+    # Zone IoT (14 services, .21-.34)
+    - { name: s12-mqtt1,    vmid: 244, ip: "192.168.100.21", role: mqtt_broker    }
+    - { name: s12-mqtt2,    vmid: 245, ip: "192.168.100.22", role: mqtt_broker_v2 }
+    - { name: s12-mqtt3,    vmid: 246, ip: "192.168.100.23", role: mqtt_broker    }
+    - { name: s12-gw1,      vmid: 247, ip: "192.168.100.24", role: iot_gateway    }
+    - { name: s12-gw2,      vmid: 248, ip: "192.168.100.25", role: iot_gateway    }
+    - { name: s12-gw3,      vmid: 249, ip: "192.168.100.26", role: iot_gateway    }
+    - { name: s12-gw4,      vmid: 250, ip: "192.168.100.27", role: iot_gateway    }
+    - { name: s12-nodered2, vmid: 251, ip: "192.168.100.28", role: nodered_server }
+    - { name: s12-cam1,     vmid: 252, ip: "192.168.100.29", role: camera_server  }
+    - { name: s12-cam2,     vmid: 253, ip: "192.168.100.30", role: camera_server  }
+    - { name: s12-cam3,     vmid: 254, ip: "192.168.100.31", role: camera_server  }
+    - { name: s12-coap,     vmid: 255, ip: "192.168.100.32", role: coap_server    }
+    - { name: s12-snmp,     vmid: 256, ip: "192.168.100.33", role: snmp_server    }
+    - { name: s12-upload,   vmid: 257, ip: "192.168.100.34", role: web_upload     }
+    # Zone OT — Operational Technology (12 services, .41-.52)
+    - { name: s12-plc1,     vmid: 258, ip: "192.168.100.41", role: modbus_server  }
+    - { name: s12-plc2,     vmid: 259, ip: "192.168.100.42", role: modbus_server  }
+    - { name: s12-plc3,     vmid: 260, ip: "192.168.100.43", role: modbus_server  }
+    - { name: s12-plc4,     vmid: 261, ip: "192.168.100.44", role: modbus_server  }
+    - { name: s12-hmi1,     vmid: 262, ip: "192.168.100.45", role: web_server     }
+    - { name: s12-hmi2,     vmid: 263, ip: "192.168.100.46", role: web_server_v2  }
+    - { name: s12-db-ot1,   vmid: 264, ip: "192.168.100.47", role: db_server      }
+    - { name: s12-db-ot2,   vmid: 265, ip: "192.168.100.48", role: db_server      }
+    - { name: s12-redis,    vmid: 266, ip: "192.168.100.49", role: db_server_v2   }
+    - { name: s12-historian, vmid: 267, ip: "192.168.100.50", role: db_server     }
+    - { name: s12-scada,    vmid: 268, ip: "192.168.100.51", role: web_upload     }
+    - { name: s12-ftp-ot,   vmid: 269, ip: "192.168.100.52", role: ftp_server     }
+
+  links:
+    # IT interne
+    - { source: s12-admin1,   target: s12-admin2,   protocol: ethernet }
+    - { source: s12-admin1,   target: s12-jump,     protocol: ethernet }
+    - { source: s12-admin2,   target: s12-monitor,  protocol: ethernet }
+    - { source: s12-jump,     target: s12-nodered1, protocol: ethernet }
+    - { source: s12-monitor,  target: s12-web-it,   protocol: ethernet }
+    # IT → IoT
+    - { source: s12-admin1,   target: s12-mqtt1,    protocol: ethernet }
+    - { source: s12-nodered1, target: s12-mqtt2,    protocol: mqtt     }
+    - { source: s12-jump,     target: s12-gw1,      protocol: ethernet }
+    # IoT interne
+    - { source: s12-mqtt1,    target: s12-mqtt2,    protocol: mqtt     }
+    - { source: s12-mqtt2,    target: s12-mqtt3,    protocol: mqtt     }
+    - { source: s12-mqtt1,    target: s12-gw1,      protocol: mqtt     }
+    - { source: s12-mqtt1,    target: s12-gw2,      protocol: mqtt     }
+    - { source: s12-mqtt2,    target: s12-gw3,      protocol: mqtt     }
+    - { source: s12-mqtt3,    target: s12-gw4,      protocol: mqtt     }
+    - { source: s12-mqtt2,    target: s12-nodered2, protocol: mqtt     }
+    - { source: s12-gw1,      target: s12-gw2,      protocol: ethernet }
+    - { source: s12-gw3,      target: s12-gw4,      protocol: ethernet }
+    - { source: s12-nodered2, target: s12-coap,     protocol: ethernet }
+    # IoT → OT
+    - { source: s12-gw1,      target: s12-plc1,     protocol: ethernet }
+    - { source: s12-gw2,      target: s12-plc2,     protocol: ethernet }
+    - { source: s12-gw3,      target: s12-plc3,     protocol: ethernet }
+    - { source: s12-gw4,      target: s12-plc4,     protocol: ethernet }
+    - { source: s12-nodered2, target: s12-plc1,     protocol: ethernet }
+    # OT interne
+    - { source: s12-hmi1,     target: s12-plc1,     protocol: ethernet }
+    - { source: s12-hmi1,     target: s12-plc2,     protocol: ethernet }
+    - { source: s12-hmi2,     target: s12-plc3,     protocol: ethernet }
+    - { source: s12-hmi2,     target: s12-plc4,     protocol: ethernet }
+    - { source: s12-hmi1,     target: s12-db-ot1,   protocol: ethernet }
+    - { source: s12-hmi2,     target: s12-db-ot2,   protocol: ethernet }
+    - { source: s12-monitor,  target: s12-redis,    protocol: ethernet }
+    - { source: s12-historian, target: s12-db-ot1,  protocol: ethernet }
+    - { source: s12-scada,    target: s12-plc1,     protocol: ethernet }
+
+# ── Vulnérabilités plantées (sélection représentative — 1-2 par device) ──────
+vulnerabilities:
+
+  # Router
+  - id: V1
+    device: s12-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé (port 23)"
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 23/tcp ouvert"]
+    verification: "nmap -p 23 192.168.100.1"
+
+  - id: V2
+    device: s12-router
+    ip: "192.168.100.1"
+    role: router
+    title: "LuCI admin accessible depuis le WAN (port 80)"
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 80/tcp ouvert sur WAN"]
+    verification: "curl http://192.168.100.1/"
+
+  # Zone IT
+  - id: V3
+    device: s12-admin1
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "SSH credentials par défaut (admin/admin)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 22/tcp", "Login SSH admin:admin réussi"]
+    verification: "ssh admin@192.168.100.11"
+
+  - id: V4
+    device: s12-admin1
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "SSH ciphers faibles"
+    severity: low
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["ssh-audit détecte aes128-cbc, hmac-sha1"]
+    verification: "ssh-audit 192.168.100.11"
+
+  - id: V5
+    device: s12-admin2
+    ip: "192.168.100.12"
+    role: ssh_server_v2
+    title: "Clé privée SSH world-readable (644)"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators: ["/home/iot-admin/.ssh/id_ed25519 en mode 644"]
+    verification: "ls -la /home/iot-admin/.ssh/"
+
+  - id: V6
+    device: s12-admin2
+    ip: "192.168.100.12"
+    role: ssh_server_v2
+    title: "Config IoT avec credentials en clair (/etc/iot/config.json)"
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["/etc/iot/config.json mode 644 contient mqtt_pass, db_pass"]
+    verification: "cat /etc/iot/config.json"
+
+  - id: V7
+    device: s12-jump
+    ip: "192.168.100.13"
+    role: ssh_server_v2
+    title: "Clé privée SSH world-readable (644) — jumphost"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators: ["/home/iot-admin/.ssh/id_ed25519 mode 644"]
+    verification: "ls -la /home/iot-admin/.ssh/"
+
+  - id: V8
+    device: s12-monitor
+    ip: "192.168.100.14"
+    role: web_server_v2
+    title: "API REST sans auth avec endpoints sensibles"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators: ["GET /api/users retourne credentials", "GET /api/config retourne IPs réseau"]
+    verification: "curl http://192.168.100.14/api/users"
+
+  - id: V9
+    device: s12-monitor
+    ip: "192.168.100.14"
+    role: web_server_v2
+    title: "RCE via POST /api/exec"
+    severity: critical
+    category: code_injection
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators: ["POST /api/exec retourne uid=0(root)"]
+    verification: "curl -X POST http://192.168.100.14/api/exec -d '{\"cmd\":\"id\"}'"
+
+  - id: V10
+    device: s12-nodered1
+    ip: "192.168.100.15"
+    role: nodered_server
+    title: "Node-RED admin sans authentification (port 1880)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution, Lateral Movement"
+    cve: null
+    indicators: ["Port 1880/tcp", "GET /admin retourne interface Node-RED sans auth"]
+    verification: "curl http://192.168.100.15:1880/admin"
+
+  - id: V11
+    device: s12-ftp-it
+    ip: "192.168.100.16"
+    role: ftp_server
+    title: "FTP anonyme actif avec fichiers de configuration sensibles"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 21/tcp", "FTP anonyme accepté", "/config/network.conf expose credentials"]
+    verification: "ftp -n 192.168.100.16"
+
+  - id: V12
+    device: s12-web-it
+    ip: "192.168.100.17"
+    role: web_server
+    title: "Directory listing nginx + fichiers sensibles exposés"
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 80/tcp", "GET /backup/ retourne listing", "GET /config/app.config expose credentials"]
+    verification: "curl http://192.168.100.17/backup/"
+
+  - id: V13
+    device: s12-nvr
+    ip: "192.168.100.18"
+    role: nvr_server
+    title: "NVR credentials par défaut (ubnt/ubnt)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 22/tcp", "SSH réussi avec ubnt:ubnt"]
+    verification: "ssh ubnt@192.168.100.18"
+
+  # Zone IoT
+  - id: V14
+    device: s12-mqtt1
+    ip: "192.168.100.21"
+    role: mqtt_broker
+    title: "MQTT sans authentification (allow_anonymous true)"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators: ["Port 1883/tcp sans auth", "Topic smartcity/admin/credentials expose secrets"]
+    verification: "mosquitto_sub -h 192.168.100.21 -t '#' -v -C 3"
+
+  - id: V15
+    device: s12-mqtt1
+    ip: "192.168.100.21"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT"
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Topic smartcity/admin/credentials expose db_pass et api_key"]
+    verification: "mosquitto_sub -h 192.168.100.21 -t 'smartcity/admin/credentials' -C 1"
+
+  - id: V16
+    device: s12-mqtt2
+    ip: "192.168.100.22"
+    role: mqtt_broker_v2
+    title: "MQTT credentials faibles (test/test)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators: ["Port 1883/tcp", "Connexion réussie avec test:test"]
+    verification: "mosquitto_sub -h 192.168.100.22 -u test -P test -t '#' -v -C 3"
+
+  - id: V17
+    device: s12-mqtt3
+    ip: "192.168.100.23"
+    role: mqtt_broker
+    title: "MQTT sans authentification — broker secondaire"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 1883/tcp sans auth"]
+    verification: "mosquitto_sub -h 192.168.100.23 -t '#' -v -C 3"
+
+  - id: V18
+    device: s12-gw1
+    ip: "192.168.100.24"
+    role: iot_gateway
+    title: "Dropbear SSH 2020.81 (Terrapin CVE-2023-48795)"
+    severity: medium
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    indicators: ["Port 22/tcp Dropbear 2020.81", "ssh-audit détecte Terrapin"]
+    verification: "ssh-audit 192.168.100.24"
+
+  - id: V19
+    device: s12-gw1
+    ip: "192.168.100.24"
+    role: iot_gateway
+    title: "Firmware OTA sans signature (gateway 1)"
+    severity: high
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["GET /firmware/ liste firmware.bin sans .sha256", "POST /update accepté sans vérification"]
+    verification: "curl http://192.168.100.24/firmware/"
+
+  - id: V20
+    device: s12-gw2
+    ip: "192.168.100.25"
+    role: iot_gateway
+    title: "HTTP admin sans auth + discovery réseau (gateway 2)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators: ["GET /api/devices retourne IPs internes", "GET /admin sans auth"]
+    verification: "curl http://192.168.100.25/api/devices"
+
+  - id: V21
+    device: s12-gw3
+    ip: "192.168.100.26"
+    role: iot_gateway
+    title: "Dropbear SSH 2020.81 (Terrapin CVE-2023-48795) — gateway 3"
+    severity: medium
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    indicators: ["Port 22/tcp Dropbear 2020.81"]
+    verification: "ssh-audit 192.168.100.26"
+
+  - id: V22
+    device: s12-gw4
+    ip: "192.168.100.27"
+    role: iot_gateway
+    title: "Firmware OTA sans signature (gateway 4)"
+    severity: high
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["POST /update sans signature"]
+    verification: "curl http://192.168.100.27/firmware/"
+
+  - id: V23
+    device: s12-nodered2
+    ip: "192.168.100.28"
+    role: nodered_server
+    title: "Node-RED admin sans authentification — zone IoT (port 1880)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution, Lateral Movement"
+    cve: null
+    indicators: ["Port 1880/tcp sans auth", "Flows exec node accessibles"]
+    verification: "curl http://192.168.100.28:1880/admin"
+
+  - id: V24
+    device: s12-cam1
+    ip: "192.168.100.29"
+    role: camera_server
+    title: "Caméra IP sans authentification"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 80/tcp", "GET /admin sans auth", "GET /snapshot/latest.jpg accessible"]
+    verification: "curl http://192.168.100.29/admin"
+
+  - id: V25
+    device: s12-cam2
+    ip: "192.168.100.30"
+    role: camera_server
+    title: "Caméra IP sans authentification (2)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 80/tcp sans auth"]
+    verification: "curl http://192.168.100.30/admin"
+
+  - id: V26
+    device: s12-cam3
+    ip: "192.168.100.31"
+    role: camera_server
+    title: "Caméra IP sans authentification (3)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 80/tcp sans auth"]
+    verification: "curl http://192.168.100.31/admin"
+
+  - id: V27
+    device: s12-coap
+    ip: "192.168.100.32"
+    role: coap_server
+    title: "CoAP sans DTLS (port 5683)"
+    severity: medium
+    category: no_authentication
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 5683/udp ouvert", "Requête CoAP GET sans authentification"]
+    verification: "coap-client -m get coap://192.168.100.32/.well-known/core"
+
+  - id: V28
+    device: s12-snmp
+    ip: "192.168.100.33"
+    role: snmp_server
+    title: "SNMP community string 'public' (port 161)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators: ["Port 161/udp ouvert", "snmpwalk avec community 'public' retourne MIB complète"]
+    verification: "snmpwalk -v2c -c public 192.168.100.33 system"
+
+  - id: V29
+    device: s12-upload
+    ip: "192.168.100.34"
+    role: web_upload
+    title: "Upload de fichier sans validation (RCE potentiel)"
+    severity: critical
+    category: code_injection
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators: ["POST /upload accepte n'importe quel fichier", "Fichiers uploadés accessibles via /uploads/"]
+    verification: "curl -F 'file=@/etc/passwd' http://192.168.100.34/"
+
+  # Zone OT
+  - id: V30
+    device: s12-plc1
+    ip: "192.168.100.41"
+    role: modbus_server
+    title: "Modbus TCP sans auth — PLC1 (port 502)"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["Port 502/tcp", "Lecture/écriture registres Modbus sans auth"]
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.41"
+
+  - id: V31
+    device: s12-plc2
+    ip: "192.168.100.42"
+    role: modbus_server
+    title: "Modbus TCP sans auth — PLC2 (port 502)"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["Port 502/tcp sans auth"]
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.42"
+
+  - id: V32
+    device: s12-plc3
+    ip: "192.168.100.43"
+    role: modbus_server
+    title: "Modbus TCP sans auth — PLC3 (port 502)"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["Port 502/tcp sans auth"]
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.43"
+
+  - id: V33
+    device: s12-plc4
+    ip: "192.168.100.44"
+    role: modbus_server
+    title: "Modbus TCP sans auth — PLC4 (port 502)"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["Port 502/tcp sans auth"]
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.44"
+
+  - id: V34
+    device: s12-hmi1
+    ip: "192.168.100.45"
+    role: web_server
+    title: "HMI1 — directory listing + fichiers sensibles"
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["GET /backup/ retourne listing", "GET /config/app.config expose credentials"]
+    verification: "curl http://192.168.100.45/backup/"
+
+  - id: V35
+    device: s12-hmi2
+    ip: "192.168.100.46"
+    role: web_server_v2
+    title: "HMI2 — API REST sans auth + RCE"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators: ["GET /api/users sans auth", "POST /api/exec retourne uid=0"]
+    verification: "curl http://192.168.100.46/api/users"
+
+  - id: V36
+    device: s12-db-ot1
+    ip: "192.168.100.47"
+    role: db_server
+    title: "MariaDB root sans mot de passe — DB OT1 (port 3306)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 3306/tcp", "MySQL root sans mdp depuis n'importe quelle IP"]
+    verification: "mysql -h 192.168.100.47 -u root -e 'SHOW DATABASES'"
+
+  - id: V37
+    device: s12-db-ot2
+    ip: "192.168.100.48"
+    role: db_server
+    title: "MariaDB root sans mot de passe — DB OT2 (port 3306)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 3306/tcp sans mdp"]
+    verification: "mysql -h 192.168.100.48 -u root -e 'SHOW DATABASES'"
+
+  - id: V38
+    device: s12-redis
+    ip: "192.168.100.49"
+    role: db_server_v2
+    title: "Redis sans authentification (port 6379)"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 6379/tcp", "redis-cli sans auth retourne PONG", "KEYS * expose secrets"]
+    verification: "redis-cli -h 192.168.100.49 KEYS '*'"
+
+  - id: V39
+    device: s12-redis
+    ip: "192.168.100.49"
+    role: db_server_v2
+    title: "Données sensibles en clair dans Redis"
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["GET config:db_password retourne P@ssw0rd123", "GET session:admin retourne JWT"]
+    verification: "redis-cli -h 192.168.100.49 GET config:db_password"
+
+  - id: V40
+    device: s12-historian
+    ip: "192.168.100.50"
+    role: db_server
+    title: "Historien OT — MariaDB root sans mot de passe"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 3306/tcp sans mdp", "Données historiques industrielles accessibles"]
+    verification: "mysql -h 192.168.100.50 -u root -e 'SHOW DATABASES'"
+
+  - id: V41
+    device: s12-scada
+    ip: "192.168.100.51"
+    role: web_upload
+    title: "SCADA web — upload firmware sans validation"
+    severity: critical
+    category: code_injection
+    owasp_iot: "I4 - Lack of Secure Update Mechanism"
+    mitre_ics: "Execution, Impair Process Control"
+    cve: null
+    indicators: ["POST /upload sans validation", "Fichiers accessibles via /uploads/"]
+    verification: "curl -F 'file=@malware.bin' http://192.168.100.51/"
+
+  - id: V42
+    device: s12-ftp-ot
+    ip: "192.168.100.52"
+    role: ftp_server
+    title: "FTP anonyme OT — fichiers de configuration PLC exposés"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 21/tcp", "FTP anonyme", "/config/network.conf expose credentials PLC"]
+    verification: "ftp -n 192.168.100.52"
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "Pivot complet IT→IoT→OT : telnet + SSH + MQTT + PLC"
+    difficulty: expert
+    chain:
+      - { hop: 1, device: "Internet",               action: "Telnet routeur port 23"              }
+      - { hop: 2, device: "s12-router (100.1)",     action: "Shell sans auth"                     }
+      - { hop: 3, device: "s12-admin1 (100.11)",    action: "SSH admin:admin"                      }
+      - { hop: 4, device: "s12-jump (100.13)",      action: "SSH via clé world-readable"           }
+      - { hop: 5, device: "s12-mqtt1 (100.21)",     action: "Subscribe MQTT anon, credentials"    }
+      - { hop: 6, device: "s12-gw1 (100.24)",       action: "Accès Dropbear / HTTP admin"         }
+      - { hop: 7, device: "s12-plc1 (100.41)",      action: "Écriture Modbus sans auth"           }
+    vulnerabilities_used: [V1, V3, V7, V14, V18, V30]
+    impact: "Compromission complète de la chaîne IT→IoT→OT, contrôle direct des 4 PLCs"
+
+  - id: P2
+    title: "RCE monitoring → Redis + 4 DB OT"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",               action: "POST /api/exec monitoring"           }
+      - { hop: 2, device: "s12-monitor (100.14)",   action: "RCE root via Flask API"              }
+      - { hop: 3, device: "s12-redis (100.49)",     action: "Redis KEYS * sans auth"              }
+      - { hop: 4, device: "s12-db-ot1 (100.47)",   action: "MySQL root sans mdp"                 }
+    vulnerabilities_used: [V9, V38, V36]
+    impact: "RCE monitoring + exfiltration tous secrets OT via Redis et MariaDB"
+
+  - id: P3
+    title: "MQTT anon → Node-RED IoT → PLC chain"
+    difficulty: expert
+    chain:
+      - { hop: 1, device: "Internet",               action: "Subscribe MQTT1 sans auth"           }
+      - { hop: 2, device: "s12-mqtt1 (100.21)",     action: "Credentials dans topics"            }
+      - { hop: 3, device: "s12-mqtt2 (100.22)",     action: "Login MQTT2 test:test"               }
+      - { hop: 4, device: "s12-nodered2 (100.28)",  action: "Flow exec injection"                 }
+      - { hop: 5, device: "s12-plc1 (100.41)",      action: "Modbus via Node-RED"                }
+    vulnerabilities_used: [V14, V15, V16, V23, V30]
+    impact: "Chaîne MQTT→Node-RED→OT — contrôle PLC depuis zone IoT"
+
+  - id: P4
+    title: "FTP IT → credentials → SSH admin → pivot OT"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",               action: "FTP anonyme IT (100.16)"            }
+      - { hop: 2, device: "s12-ftp-it (100.16)",    action: "/config/network.conf — credentials" }
+      - { hop: 3, device: "s12-admin1 (100.11)",    action: "SSH avec credentials récupérés"     }
+      - { hop: 4, device: "s12-plc3 (100.43)",      action: "Modbus TCP sans auth"               }
+    vulnerabilities_used: [V11, V3, V32]
+    impact: "FTP credentials → compromission SSH IT → accès PLC3 OT"
+
+  - id: P5
+    title: "SCADA web upload → PLC1 RCE"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",               action: "Upload fichier malveillant SCADA"   }
+      - { hop: 2, device: "s12-scada (100.51)",     action: "RCE via PHP/exécutable uploadé"     }
+      - { hop: 3, device: "s12-plc1 (100.41)",      action: "Commande Modbus depuis SCADA"       }
+    vulnerabilities_used: [V41, V30]
+    impact: "SCADA compromis → contrôle direct PLC1 industriel"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 42
+  total_attack_paths: 5
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  # critical(×4): V2,V8,V9,V29,V30,V31,V32,V33,V35,V41 = 10×4 = 40
+  # high(×3): V3,V5,V7,V10,V11,V13,V14,V16,V17,V19,V20,V22,V23,V24,V25,V26,V28,V36,V37,V38,V40,V42 = 22×3 = 66
+  # medium(×2): V1,V6,V12,V15,V21,V27,V34,V39 = 8×2 = 16
+  # low(×1): V4 = 1×1 = 1
+  max_weighted_score: 123
+
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - info_disclosure
+  - version_leak
+  - terrapin
+  - no_auth

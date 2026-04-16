@@ -5,6 +5,8 @@
 # Scénarios disponibles (définis dans group_vars/all/main.yml) :
 #   1-7  — Scénarios de base (Flat, Gateway, NATO Lab, Segmenté, Building, Domotique, Edge-Cloud)
 #   8-10 — Scénarios étendus (Multi-zone IT/IoT/OT, Mesh IoT, Flat variantes)
+#   11   — Smart City 3 zones (15 VMs, VMIDs 220-234)
+#   12   — Smart City Large Scale (35 VMs, VMIDs 235-269)
 #
 # Chaque scénario tourne de façon isolée sur vmbr1 (un seul scénario à la fois).
 # Pour supprimer un scénario : 99_teardown.yml --extra-vars "scenario_id=1"
@@ -55,15 +57,17 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 234 ] 2>/dev/null && continue
+          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 269 ] 2>/dev/null && continue
           base={{ base_vmid }}
-          # S11 uses 15 VMIDs (220-234); other scenarios use 10 each
+          # S11 uses 15 VMIDs (220-234); S12 uses 35 VMIDs (235-269); others use 10 each
           slot_size=10
           [ "$base" -eq 220 ] && slot_size=15
+          [ "$base" -eq 235 ] && slot_size=35
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + slot_size))" ] && continue
           {% for sid, sbase in scenario_vmid_ranges.items() %}
           s_slot=10
           {% if sbase == 220 %}s_slot=15{% endif %}
+          {% if sbase == 235 %}s_slot=35{% endif %}
           if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + s_slot))" ]; then
             conflict_scenario="{{ sid }}"
           fi
