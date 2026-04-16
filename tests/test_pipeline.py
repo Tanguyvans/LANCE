@@ -266,85 +266,6 @@ class TestDeviceAgents:
     @patch("src.agent.pipeline.get_risk_scores")
     @patch("src.agent.pipeline.get_attack_surface")
     @patch("src.agent.pipeline.load_prompt")
-    def test_device_agents_called_for_each_device(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-
-        pipeline = Pipeline(provider=mock_provider)
-
-        # Side effect: write a valid JSON file so reflector is NOT triggered
-        def write_device_file(**kwargs):
-            user_msg = kwargs.get("user_message", "")
-            for dev_id in ("mikrotik", "rpi5"):
-                if dev_id in user_msg:
-                    path = pipeline.run_dir / f"03_device_{dev_id}.json"
-                    path.write_text(json.dumps({"device_id": dev_id, "vulnerabilities": []}))
-            return "Done."
-        mock_provider.chat_with_tools.side_effect = write_device_file
-
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "recon", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-
-        pipeline._run_device_agents(config)
-
-        # Provider should be called once per device (2 devices), reflector not triggered
-        assert mock_provider.chat_with_tools.call_count == 2
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_device_variables_injected_in_prompt(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "recon", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-
-        pipeline._run_device_agents(config)
-
-        # Check that load_prompt was called with device-specific variables
-        calls = mock_prompt.call_args_list
-        assert len(calls) == 2
-
-        # First call should be for mikrotik
-        _, kwargs_or_args = calls[0]
-        variables = calls[0][0][1]  # second positional arg
-        assert variables["device_id"] == "mikrotik"
-        assert variables["device_ip"] == "192.168.88.1"
-        assert variables["device_type"] == "router"
-        assert "ssh:22" in variables["device_services"]
-        assert variables["expected_deliverable"] == "03_device_mikrotik.json"
-
-        # Second call should be for rpi5
-        variables2 = calls[1][0][1]
-        assert variables2["device_id"] == "rpi5"
-        assert variables2["device_ip"] == "192.168.88.247"
-        assert variables2["expected_deliverable"] == "03_device_rpi5.json"
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
     def test_run_agent_triggers_device_agents(
         self, mock_prompt, mock_surface, mock_scores, mock_device_info,
         mock_provider, output_dir
@@ -390,7 +311,7 @@ class TestDeviceAgents:
         assert status == "completed"
 
     def test_no_device_agents_when_flag_false(self, mock_provider, output_dir):
-        """When has_device_agents=False, _run_device_agents should NOT be called."""
+        """When has_device_agents=False, _run_phase3 should NOT be called."""
         pipeline = Pipeline(provider=mock_provider)
         config = AgentConfig(
             name="test", phase=1, prompt_template="graph_analysis",
@@ -456,118 +377,6 @@ class TestSkillFiltering:
         assert "list_skills" in tool_names
         assert "load_skill" in tool_names
         assert "search_history" in tool_names
-
-
-class TestReflectorRetry:
-    """Tests for the reflector retry mechanic in _run_single_device."""
-
-    FAKE_SURFACE = json.dumps([{
-        "id": "s2-jump", "type": "ssh_server", "ip": "192.168.100.15",
-        "services": [{"name": "ssh", "port": 22}],
-    }])
-    FAKE_SCORES = json.dumps([{"device_id": "s2-jump", "risk_score": 2.0, "cve_count": 0}])
-    FAKE_DEVICE_INFO = json.dumps({"id": "s2-jump", "os_version": "Debian 12"})
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_reflector_triggered_when_file_missing(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        """If device agent never saves a file, reflector must be called."""
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-        # Provider never writes a file
-        mock_provider.chat_with_tools.return_value = ""
-
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-        pipeline._run_device_agents(config)
-
-        # First call = device agent, second call = reflector retry
-        assert mock_provider.chat_with_tools.call_count == 2
-        reflector_call = mock_provider.chat_with_tools.call_args_list[1]
-        assert reflector_call.kwargs.get("required_tool") == "save_deliverable"
-        assert reflector_call.kwargs.get("max_turns") == 5
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_reflector_not_triggered_when_file_valid(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        """If device agent saves a valid JSON file, reflector must NOT be called."""
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-
-        pipeline = Pipeline(provider=mock_provider)
-
-        def write_valid_file(**kwargs):
-            path = pipeline.run_dir / "03_device_s2-jump.json"
-            path.write_text(json.dumps({
-                "device_id": "s2-jump", "device_ip": "192.168.100.15",
-                "vulnerabilities": [], "summary": {"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
-            }))
-            return "Done."
-        mock_provider.chat_with_tools.side_effect = write_valid_file
-
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-        pipeline._run_device_agents(config)
-
-        # Only 1 call — no reflector
-        assert mock_provider.chat_with_tools.call_count == 1
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_reflector_triggered_when_file_invalid_json(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        """If device agent saves invalid JSON, reflector must be called."""
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-
-        pipeline = Pipeline(provider=mock_provider)
-
-        def write_invalid_file(**kwargs):
-            path = pipeline.run_dir / "03_device_s2-jump.json"
-            path.write_text("Based on my analysis the device has weak ciphers.")
-            return "Based on my analysis the device has weak ciphers."
-        mock_provider.chat_with_tools.side_effect = write_invalid_file
-
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_analysis",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-        pipeline._run_device_agents(config)
-
-        assert mock_provider.chat_with_tools.call_count == 2
-        reflector_call = mock_provider.chat_with_tools.call_args_list[1]
-        assert reflector_call.kwargs.get("required_tool") == "save_deliverable"
 
 
 class TestRepeatingToolDetector:
@@ -662,85 +471,112 @@ class TestStripCodeFences:
         assert Pipeline._strip_code_fences(raw) == raw
 
 
-class TestFallbackSave:
-    """Tests that fallback saves stripped content when save_deliverable is never called."""
+class TestPhase5Context:
+    """Tests for _generate_phase5_context compact summary."""
 
-    DEVICE_JSON = json.dumps({
-        "device_id": "s2-mqtt",
-        "device_ip": "192.168.100.12",
-        "vulnerabilities": [{"id": "VULN-001", "type": "no_auth", "severity": "HIGH"}],
-        "summary": {"total": 1, "high": 1, "medium": 0, "low": 0, "info": 0},
-    })
-
-    FAKE_SURFACE = json.dumps([{
-        "id": "s2-mqtt", "type": "server", "ip": "192.168.100.12",
-        "services": [{"name": "mqtt", "port": 1883}],
-    }])
-    FAKE_SCORES = json.dumps([{"device_id": "s2-mqtt", "risk_score": 3.0, "cve_count": 0}])
-    FAKE_DEVICE_INFO = json.dumps({"id": "s2-mqtt", "os_version": "Debian"})
-
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_fallback_saves_valid_json_from_code_fence(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        """When LLM returns ```json {...}``` instead of calling save_deliverable, fallback strips fences."""
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
-        mock_provider.chat_with_tools.return_value = f"```json\n{self.DEVICE_JSON}\n```"
-
+    def test_generates_compact_context(self, mock_provider, output_dir):
+        """Phase 5 context should aggregate vulns by device."""
         pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_device",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "deliverable"],
-            has_device_agents=True, max_turns=10,
-        )
-        pipeline._run_device_agents(config)
+        run_dir = pipeline.run_dir
 
-        saved = pipeline.run_dir / "03_device_s2-mqtt.json"
-        assert saved.exists(), "Fallback file should have been created"
-        parsed = json.loads(saved.read_text())
-        assert parsed["device_id"] == "s2-mqtt"
-        assert len(parsed["vulnerabilities"]) == 1
+        # Write Phase 3 vuln analysis
+        vuln_data = {
+            "vulnerabilities": [
+                {"id": "VULN-001", "device_id": "router", "device_ip": "10.0.0.1",
+                 "type": "weak_cipher", "severity": "MEDIUM", "service": "ssh",
+                 "port": 22, "details": "Weak cipher detected", "evidence": "long evidence text " * 20,
+                 "cve_ids": [], "exploitation_status": "confirmed"},
+                {"id": "VULN-002", "device_id": "router", "device_ip": "10.0.0.1",
+                 "type": "no_auth", "severity": "HIGH", "service": "http",
+                 "port": 80, "details": "Admin panel exposed", "evidence": "HTTP 200 on /admin",
+                 "cve_ids": ["CVE-2023-1234"], "exploitation_status": "suspected"},
+                {"id": "VULN-003", "device_id": "sensor", "device_ip": "10.0.0.2",
+                 "type": "default_credentials", "severity": "CRITICAL", "service": "ssh",
+                 "port": 22, "details": "Default root password", "evidence": "root:root works",
+                 "cve_ids": [], "exploitation_status": "confirmed"},
+            ],
+            "summary": {"total": 3, "critical": 1, "high": 1, "medium": 1, "low": 0, "info": 0},
+        }
+        (run_dir / "03_vuln_analysis.json").write_text(json.dumps(vuln_data))
 
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
-    def test_fallback_not_triggered_when_file_exists(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
-        mock_provider, output_dir
-    ):
-        """If save_deliverable was called, fallback must NOT overwrite the file."""
-        mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
-        mock_device_info.return_value = self.FAKE_DEVICE_INFO
-        mock_prompt.return_value = "Device prompt"
+        # Write Phase 4 exploitation results
+        exploit_data = {
+            "summary": {"total_tested": 3, "confirmed": 2, "not_exploitable": 1, "errors": 0},
+            "tests": [
+                {"vuln_id": "VULN-001", "status": "CONFIRMED", "device_id": "router", "device_ip": "10.0.0.1"},
+                {"vuln_id": "VULN-002", "status": "FAILED", "device_id": "router", "device_ip": "10.0.0.1"},
+                {"vuln_id": "VULN-003", "status": "CONFIRMED", "device_id": "sensor", "device_ip": "10.0.0.2"},
+            ],
+        }
+        (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_data))
 
+        pipeline._generate_phase5_context()
+
+        ctx_path = run_dir / "05_phase5_context.json"
+        assert ctx_path.exists()
+        ctx = json.loads(ctx_path.read_text())
+
+        assert ctx["device_count"] == 2
+        assert ctx["total_vulnerabilities"] == 3
+        assert ctx["phase4_summary"]["confirmed"] == 2
+
+        # Check device aggregation
+        devices_by_ip = {d["device_ip"]: d for d in ctx["devices"]}
+        assert "10.0.0.1" in devices_by_ip
+        assert "10.0.0.2" in devices_by_ip
+        assert len(devices_by_ip["10.0.0.1"]["vulns"]) == 2
+        assert devices_by_ip["10.0.0.1"]["severity_counts"]["MEDIUM"] == 1
+        assert devices_by_ip["10.0.0.1"]["severity_counts"]["HIGH"] == 1
+
+        # Evidence should NOT be in compact output
+        for dev in ctx["devices"]:
+            for v in dev["vulns"]:
+                assert "evidence" not in v
+
+        # Compact file should be much smaller than originals
+        orig_size = len(json.dumps(vuln_data)) + len(json.dumps(exploit_data))
+        compact_size = ctx_path.stat().st_size
+        assert compact_size < orig_size
+
+    def test_handles_missing_phase4(self, mock_provider, output_dir):
+        """Context should still generate if Phase 4 was skipped."""
         pipeline = Pipeline(provider=mock_provider)
-        expected_file = pipeline.run_dir / "03_device_s2-mqtt.json"
-        original_content = json.dumps({"device_id": "s2-mqtt", "vulnerabilities": [], "summary": {}})
+        run_dir = pipeline.run_dir
 
-        def side_effect(**kwargs):
-            expected_file.write_text(original_content)
-            return "Done."
-        mock_provider.chat_with_tools.side_effect = side_effect
+        vuln_data = {
+            "vulnerabilities": [
+                {"id": "VULN-001", "device_id": "router", "device_ip": "10.0.0.1",
+                 "type": "weak_cipher", "severity": "MEDIUM", "service": "ssh",
+                 "port": 22, "details": "Weak cipher", "evidence": "...",
+                 "cve_ids": [], "exploitation_status": "confirmed"},
+            ],
+            "summary": {"total": 1},
+        }
+        (run_dir / "03_vuln_analysis.json").write_text(json.dumps(vuln_data))
 
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="vuln_device",
-            deliverable_file="03_vuln_analysis.json",
-            tools=["graph", "deliverable"],
-            has_device_agents=True, max_turns=10,
+        pipeline._generate_phase5_context()
+
+        ctx = json.loads((run_dir / "05_phase5_context.json").read_text())
+        assert ctx["total_vulnerabilities"] == 1
+        assert ctx["phase4_summary"] == {}
+        # Status should be UNTESTED when no Phase 4
+        assert ctx["devices"][0]["vulns"][0]["status"] == "UNTESTED"
+
+    def test_handles_empty_vulns(self, mock_provider, output_dir):
+        """Context should handle scenarios with no vulnerabilities."""
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+
+        (run_dir / "03_vuln_analysis.json").write_text(
+            json.dumps({"vulnerabilities": [], "summary": {"total": 0}})
         )
-        pipeline._run_device_agents(config)
 
-        assert expected_file.read_text() == original_content
+        pipeline._generate_phase5_context()
+
+        ctx = json.loads((run_dir / "05_phase5_context.json").read_text())
+        assert ctx["device_count"] == 0
+        assert ctx["total_vulnerabilities"] == 0
+        assert ctx["devices"] == []
 
 
 class TestPipelineRun:

@@ -51,6 +51,9 @@ Add findings that automated extraction CANNOT detect:
 - You CAN call: cve_search(), http_get(), save_deliverable(), read_deliverable(), list_deliverables()
 - MERGE your findings WITH the automated findings into one JSON.
 - Max 5 tool calls.
+- LOW/INFO CVE findings (CVSS < 4.0): only include if the CVE is directly exploitable
+  on this device (confirmed version match). Skip informational CVEs that require local access.
+- Do NOT create findings for missing HTTP headers (missing_header) — the scanner handles those.
 
 ## Output
 Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE with:

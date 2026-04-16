@@ -354,6 +354,10 @@ class Pipeline:
                 results[agent_config.name] = "skipped:conditional"
                 continue
 
+            # Generate compact context for Phase 5 (reduce token usage)
+            if agent_config.phase == 5:
+                self._generate_phase5_context()
+
             # Run the agent
             status = self._run_agent(agent_config, stream_callback)
             results[agent_config.name] = status
@@ -883,191 +887,6 @@ class Pipeline:
             })
 
         return status
-
-    def _run_device_agents(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> None:
-        """Run per-device sub-agents in parallel before the aggregator phase."""
-        from concurrent.futures import ThreadPoolExecutor
-
-        # Get devices with services from the attack surface
-        surface = json.loads(get_attack_surface())
-        if isinstance(surface, dict):
-            surface = surface.get("nodes", list(surface.values()) if surface else [])
-        scores_raw = json.loads(get_risk_scores())
-        if isinstance(scores_raw, list):
-            scores_by_id = {s["device_id"]: s for s in scores_raw}
-        else:
-            scores_by_id = {}
-
-        tools = self._resolve_tools(config)
-
-        print(f"\n{'=' * 60}")
-        print(f"PHASE {config.phase}: DEVICE SUB-AGENTS (PARALLEL)")
-        print(f"  Launching {len(surface)} device-specific vulnerability agents")
-        print(f"{'=' * 60}\n")
-
-        available_skills = self._filter_skills(config)
-        previous_deliverables = self._list_previous_deliverables()
-
-        def _run_single_device(device):
-            device_id = device["id"]
-            device_ip = device.get("ip", "unknown")
-            device_type = device.get("type", "unknown")
-            services = device.get("services", [])
-            score_info = scores_by_id.get(device_id, {})
-
-            device_detail = json.loads(get_device_info(device_id))
-            device_os = device_detail.get("os_version", device_detail.get("firmware", "unknown"))
-
-            services_str = ", ".join(
-                f"{s.get('name', 'unknown')}:{s.get('port', '?')}"
-                + (f" v{s['version']}" if s.get("version") else "")
-                for s in services
-            )
-
-            known_cves = str(score_info.get("cve_count", 0)) + " CVEs"
-            risk_score = str(score_info.get("risk_score", 0.0))
-
-            deliverable_file = f"03_device_{device_id}.json"
-
-            variables = {**self.context}
-            variables["previous_deliverables"] = previous_deliverables
-            variables["expected_deliverable"] = deliverable_file
-            variables["available_skills"] = available_skills
-            device_role = device.get("role", device_type)
-            variables["device_id"] = device_id
-            variables["device_ip"] = device_ip
-            variables["device_type"] = device_type
-            variables["device_role"] = device_role
-            variables["device_services"] = services_str
-            variables["device_os"] = device_os
-            variables["device_risk_score"] = risk_score
-            variables["device_known_cves"] = known_cves
-
-            system_prompt = load_prompt("vuln_device", variables)
-            phase_name = f"vuln_{device_id}"
-
-            print(f"  [+] Starting: {phase_name} ({device_ip})")
-            if stream_callback:
-                stream_callback({"type": "device_start", "device_id": device_id, "device_ip": device_ip, "phase": 3})
-
-            self.tracker.start_phase(phase_name)
-            result_text = self.provider.chat_with_tools(
-                system_prompt=system_prompt,
-                user_message=(
-                    f"Analyze vulnerabilities for device {device_id} ({device_ip}). "
-                    f"Services: {services_str}. "
-                    f"MANDATORY: Your session ends ONLY when you call save_deliverable('{deliverable_file}', json_content). "
-                    f"Do NOT finish with a text response — your final action MUST be the save_deliverable tool call."
-                ),
-                tools=tools,
-                max_turns=config.max_turns,
-                max_tokens=config.max_tokens,
-                cost_tracker=self.tracker,
-                stream_callback=stream_callback,
-                required_tool="save_deliverable",
-            )
-            usage = self.tracker.end_phase()
-            if usage:
-                print(f"  [+] Done: {phase_name} in {usage.turns} turns")
-            if stream_callback:
-                stream_callback({"type": "device_done", "device_id": device_id, "device_ip": device_ip, "phase": 3, "turns": usage.turns if usage else 0, "run_dir": str(self.run_dir)})
-
-            # Fallback: if the LLM never called save_deliverable, save its last text output
-            deliverable_path = self.run_dir / deliverable_file
-            if not deliverable_path.exists() and result_text and result_text.strip():
-                log.warning(
-                    "Device %s: save_deliverable was never called — saving last LLM output as fallback",
-                    device_id,
-                )
-                fallback_content = _extract_json(result_text) if deliverable_file.endswith(".json") else self._strip_code_fences(result_text)
-                deliverable_path.write_text(fallback_content, encoding="utf-8")
-                print(f"  Fallback save: {deliverable_file}")
-
-            # Reflector retry: if file is still missing or invalid JSON, re-prompt once
-            _needs_reflector = False
-            if deliverable_path.exists():
-                try:
-                    json.loads(_extract_json(deliverable_path.read_text(encoding="utf-8")))
-                except Exception:
-                    _needs_reflector = True  # file exists but invalid JSON
-            else:
-                _needs_reflector = True  # file never saved
-
-            if _needs_reflector:
-                log.warning("Device %s: reflector retry (file missing or invalid JSON)", device_id)
-                print(f"  [Reflector] Retrying {device_id} — deliverable missing or invalid")
-                if stream_callback:
-                    stream_callback({"type": "reflector_start", "device_id": device_id, "phase": 3})
-                # Read recon data to give the reflector context about what was found
-                _recon_context = ""
-                _recon_path = self.run_dir / "02_recon.md"
-                if _recon_path.exists():
-                    _recon_text = _recon_path.read_text(encoding="utf-8")
-                    # Extract the relevant device section (~500 chars around device_ip)
-                    _idx = _recon_text.find(device_ip)
-                    if _idx >= 0:
-                        _start = max(0, _idx - 200)
-                        _end = min(len(_recon_text), _idx + 600)
-                        _recon_context = f"\nRecon data for {device_ip}:\n{_recon_text[_start:_end]}\n"
-
-                retry_msg = (
-                    f"Your analysis of {device_id} ({device_ip}) ended without saving the deliverable.\n"
-                    f"Required file: {deliverable_file}\n"
-                )
-                if _recon_context:
-                    retry_msg += _recon_context
-                if result_text and result_text.strip():
-                    retry_msg += f"\nYour last output:\n{result_text[:2000]}\n"
-                retry_msg += (
-                    f"\nBased on what you found for {device_id}, build the JSON deliverable and call:\n"
-                    f'save_deliverable("{deliverable_file}", json_content)\n'
-                    f"If you found no vulnerabilities, save: "
-                    f'{{"device_id": "{device_id}", "device_ip": "{device_ip}", '
-                    f'"vulnerabilities": [], "summary": {{"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0}}}}\n'
-                    f"Do NOT run any more tools. Call save_deliverable immediately."
-                )
-                self.tracker.start_phase(f"reflector_{device_id}")
-                self.provider.chat_with_tools(
-                    system_prompt=system_prompt,
-                    user_message=retry_msg,
-                    tools=tools,
-                    max_turns=5,
-                    max_tokens=config.max_tokens,
-                    cost_tracker=self.tracker,
-                    stream_callback=stream_callback,
-                    required_tool="save_deliverable",
-                )
-                self.tracker.end_phase()
-                print(f"  [Reflector] Done for {device_id}")
-                if stream_callback:
-                    stream_callback({"type": "reflector_done", "device_id": device_id, "phase": 3})
-
-            # Safety net: if still no file after reflector, write empty JSON directly
-            if not deliverable_path.exists():
-                log.warning("Device %s: reflector also failed — saving empty JSON safety net", device_id)
-                import json as _json
-                empty = {
-                    "device_id": device_id, "device_ip": device_ip,
-                    "vulnerabilities": [],
-                    "summary": {"total": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
-                }
-                deliverable_path.write_text(_json.dumps(empty, indent=2), encoding="utf-8")
-                print(f"  [Safety net] Empty JSON saved for {device_id}")
-
-        import time as _time
-
-        def _run_with_stagger(args):
-            idx, device = args
-            if idx > 0:
-                _time.sleep(idx * 2)  # 2s stagger between launches to avoid rate limits
-            _run_single_device(device)
-
-        with ThreadPoolExecutor(max_workers=min(len(surface), 6)) as pool:
-            pool.map(_run_with_stagger, enumerate(surface))
-
-        print(f"\n{'=' * 60}")
-        print(f"  All {len(surface)} sub-agents finished.")
-        print(f"{'=' * 60}\n")
 
     # ------------------------------------------------------------------
     # Phase 3: scanner (3a) + LLM analysis (3b)
@@ -1826,6 +1645,98 @@ class Pipeline:
 
         final_status = "CONFIRMED" if status == "EXPLOITED" else status
         return _make_test_entry(vuln, status=final_status, result=result)
+
+    # ------------------------------------------------------------------
+    # Phase 5 context compaction
+    # ------------------------------------------------------------------
+
+    def _generate_phase5_context(self) -> None:
+        """Generate a compact 05_phase5_context.json for the report agent.
+
+        Aggregates 03_vuln_analysis.json and 04_exploitation.json by device,
+        stripping verbose evidence/details fields. Reduces Phase 5 context
+        from ~150 KB to ~5-10 KB for large scenarios (30+ devices).
+        The full evidence remains in the original files for traceability.
+        """
+        # --- Load Phase 3 vulnerabilities ---
+        vuln_path = self.run_dir / "03_vuln_analysis.json"
+        phase3_vulns: list[dict] = []
+        if vuln_path.exists():
+            data = json.loads(vuln_path.read_text(encoding="utf-8"))
+            phase3_vulns = data.get("vulnerabilities", [])
+
+        # --- Load Phase 4 exploitation results ---
+        exploit_path = self.run_dir / "04_exploitation.json"
+        exploit_by_vuln: dict[str, dict] = {}
+        phase4_summary: dict = {}
+        if exploit_path.exists():
+            data = json.loads(exploit_path.read_text(encoding="utf-8"))
+            phase4_summary = data.get("summary", {})
+            # 04_exploitation.json uses "tests" key (from _aggregate_exploit_results)
+            for t in data.get("tests", []):
+                vuln_id = t.get("vuln_id", "")
+                if vuln_id:
+                    exploit_by_vuln[vuln_id] = t
+
+        # --- Aggregate by device ---
+        devices: dict[str, dict] = {}
+        for v in phase3_vulns:
+            dev_ip = v.get("device_ip", "unknown")
+            dev_id = v.get("device_id", "unknown")
+            if dev_ip not in devices:
+                devices[dev_ip] = {
+                    "device_id": dev_id,
+                    "device_ip": dev_ip,
+                    "vulns": [],
+                    "severity_counts": {},
+                }
+            vuln_id = v.get("id", "")
+            exploit = exploit_by_vuln.get(vuln_id, {})
+            status = exploit.get("status", "UNTESTED")
+            severity = (v.get("severity") or "MEDIUM").upper()
+
+            # Count severities
+            devices[dev_ip]["severity_counts"][severity] = (
+                devices[dev_ip]["severity_counts"].get(severity, 0) + 1
+            )
+
+            devices[dev_ip]["vulns"].append({
+                "id": vuln_id,
+                "type": v.get("type", ""),
+                "severity": severity,
+                "service": v.get("service", ""),
+                "port": v.get("port", ""),
+                "status": status,
+                "cve_ids": v.get("cve_ids", []),
+                "title": v.get("details", "")[:120],
+            })
+
+        # --- Build compact output ---
+        device_list = sorted(devices.values(), key=lambda d: d["device_ip"])
+        total_vulns = sum(len(d["vulns"]) for d in device_list)
+
+        context = {
+            "generated_for": "phase5_report",
+            "device_count": len(device_list),
+            "total_vulnerabilities": total_vulns,
+            "phase4_summary": phase4_summary,
+            "devices": device_list,
+        }
+
+        out_path = self.run_dir / "05_phase5_context.json"
+        out_path.write_text(
+            json.dumps(context, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        log.info(
+            "Generated Phase 5 context: %d devices, %d vulns → %s (%d bytes)",
+            len(device_list), total_vulns, out_path, out_path.stat().st_size,
+        )
+        print(
+            f"  [context] 05_phase5_context.json "
+            f"({len(device_list)} devices, {total_vulns} vulns, "
+            f"{out_path.stat().st_size:,} bytes)"
+        )
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.

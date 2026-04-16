@@ -11,11 +11,13 @@ Fill in the report template below with data from previous phases. Do NOT change 
 
 ## Methodology
 1. MANDATORY reads ONCE each (in this order — do NOT re-read any file):
-   a. read_deliverable("03_vuln_analysis.json")
-   b. read_deliverable("04_exploitation.json")
-   c. read_deliverable("02_recon.md")
-   d. read_deliverable("01_graph_analysis.md")
+   a. read_deliverable("05_phase5_context.json") — compact summary of ALL vulnerabilities
+      grouped by device, with Phase 4 exploitation status. This is your PRIMARY data source.
+   b. read_deliverable("01_graph_analysis.md") — topology and attack paths
+   c. read_deliverable("02_recon.md") — real scan results (nmap/services)
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
+   WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
+   The 05_phase5_context.json file contains all the data you need from those files.
 2. Fill every section and table in the template using data from the reads above
 3. Do NOT fabricate results: if a phase was skipped or failed, write "Phase skipped" in that section
 4. Do NOT add, remove, or rename sections — keep the template structure exactly as provided
@@ -23,8 +25,9 @@ Fill in the report template below with data from previous phases. Do NOT change 
 ## IMPORTANT — Data sources
 - Phase 1 = DECLARATIVE model (YAML). Useful for topology and CVEs, but listed services are THEORETICAL.
 - Phase 2 = REAL scans (nmap/arp). This is the SOURCE OF TRUTH for services and versions.
-- Phase 3 = Vulnerability analysis (JSON). Contains vulnerability queue with severity ratings.
-- Phase 4 = Exploitation tests (JSON). Contains test results with status and evidence.
+- 05_phase5_context.json = Compact summary of Phase 3 (vulnerability analysis) + Phase 4 (exploitation).
+  Each device entry has: severity_counts, and a vulns[] list with id, type, severity, service, port, status, cve_ids, title.
+  Status values: CONFIRMED (exploit succeeded), FAILED (not exploitable), ERROR (tool error), UNTESTED (no Phase 4 test).
 - In case of contradiction between Phase 1 and Phase 2, ALWAYS use Phase 2 data.
 
 ## CRITICAL — Status classification rules
