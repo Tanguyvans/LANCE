@@ -65,10 +65,7 @@
           [ "$base" -eq 235 ] && slot_size=35
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + slot_size))" ] && continue
           {% for sid, sbase in scenario_vmid_ranges.items() %}
-          s_slot=10
-          {% if sbase == 220 %}s_slot=15{% endif %}
-          {% if sbase == 235 %}s_slot=35{% endif %}
-          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + s_slot))" ]; then
+          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "{{ sbase + (15 if sbase == 220 else (35 if sbase == 235 else 10)) }}" ]; then
             conflict_scenario="{{ sid }}"
           fi
           {% endfor %}
