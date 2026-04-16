@@ -8,9 +8,38 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 
 log = logging.getLogger(__name__)
+
+# Status codes that warrant a retry (transient server-side errors)
+_RETRYABLE_CODES = {429, 500, 502, 503, 529}
+_MAX_RETRIES = 5
+_RETRY_BASE_DELAY = 5.0  # seconds
+
+
+def _call_with_retry(fn, *args, **kwargs):
+    """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529)."""
+    last_exc = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            code = getattr(exc, "status_code", None)
+            if code is None:
+                # openai library wraps code differently
+                resp = getattr(exc, "response", None)
+                if resp is not None:
+                    code = getattr(resp, "status_code", None)
+            if code in _RETRYABLE_CODES and attempt < _MAX_RETRIES:
+                delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code, attempt + 1, _MAX_RETRIES, delay, exc)
+                time.sleep(delay)
+                last_exc = exc
+                continue
+            raise
+    raise last_exc
 
 OPENAI_PROVIDERS = {
     "openrouter": {
@@ -84,7 +113,8 @@ class LLMProvider:
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
-            response = self.client.messages.create(
+            response = _call_with_retry(
+                self.client.messages.create,
                 model=self.model, max_tokens=max_tokens, system=system_prompt, tools=api_tools, messages=messages
             )
             text_parts = []
@@ -152,7 +182,10 @@ class LLMProvider:
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
-            response = self.client.chat.completions.create(model=self.model, messages=messages, tools=api_tools, max_tokens=max_tokens, parallel_tool_calls=False)
+            response = _call_with_retry(
+                self.client.chat.completions.create,
+                model=self.model, messages=messages, tools=api_tools, max_tokens=max_tokens, parallel_tool_calls=False
+            )
             if not response.choices: continue
             choice = response.choices[0]
             message = choice.message
@@ -160,7 +193,7 @@ class LLMProvider:
             if choice.finish_reason == "error":
                 if malformed_retries < 2:
                     malformed_retries += 1
-                    fallback = self.client.chat.completions.create(model=self.model, messages=messages, max_tokens=max_tokens)
+                    fallback = _call_with_retry(self.client.chat.completions.create, model=self.model, messages=messages, max_tokens=max_tokens)
                     if fallback.choices:
                         fb_content = fallback.choices[0].message.content or ""
                         if stream_callback: stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
