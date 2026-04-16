@@ -2,7 +2,7 @@
 Target subnet: {{target_subnet}}
 Devices: {{device_count}} | Links: {{link_count}} | Known CVEs: {{cve_count}}
 Highest risk device: {{top_risk}}
-
+{{network_topology_edges}}
 {{scenario_context}}
 
 ## Available previous deliverables

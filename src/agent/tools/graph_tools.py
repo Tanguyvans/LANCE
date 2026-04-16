@@ -214,6 +214,74 @@ def load_scenario_topology(scenario_id: int) -> dict:
     }
 
 
+def _compute_node_role(upstream: list, downstream: list) -> str:
+    """Classify a device's strategic role in the network graph."""
+    has_up = bool(upstream)
+    has_down = bool(downstream)
+    if not has_up:
+        return "ENTRY_POINT"
+    if has_up and has_down:
+        return "PIVOT"
+    return "TARGET"
+
+
+def get_network_neighbors(device_id: str) -> dict:
+    """Return upstream/downstream neighbors for a device.
+
+    Works in all three pipeline modes:
+    - Scenario mode: derived from _scenario_topology edges + node_index
+    - Lab mode: derived from NetworkX backend neighbors
+    - Discovery mode: derived from _discovery_mode["discovered_hosts"] if populated
+      by update_discovery_hosts() after Phase 3a scanner runs.
+
+    Returns {"upstream": [...], "downstream": [...], "role": str}
+    where role is one of ENTRY_POINT | PIVOT | TARGET.
+    """
+    upstream: list[dict] = []
+    downstream: list[dict] = []
+
+    if _scenario_topology is not None:
+        node_index = _scenario_topology["node_index"]
+        for e in _scenario_topology.get("edges", []):
+            if e["target"] == device_id and e["source"] in node_index:
+                upstream.append(node_index[e["source"]])
+            if e["source"] == device_id and e["target"] in node_index:
+                downstream.append(node_index[e["target"]])
+
+    elif _backend is not None:
+        try:
+            raw = _backend.get_neighbors(device_id)
+            # Backend returns list[str] (device IDs) — convert to minimal dicts
+            if isinstance(raw, list):
+                downstream = [
+                    {"id": n, "ip": "", "services": []} if isinstance(n, str) else n
+                    for n in raw
+                ]
+        except Exception:
+            pass
+
+    elif _discovery_mode is not None and "discovered_hosts" in _discovery_mode:
+        # Flat discovery topology: every other discovered host is a potential downstream
+        hosts = _discovery_mode["discovered_hosts"]
+        downstream = [h for h in hosts if h.get("id") != device_id]
+
+    role = _compute_node_role(upstream, downstream)
+    return {"upstream": upstream, "downstream": downstream, "role": role}
+
+
+def update_discovery_hosts(hosts: list[dict]) -> None:
+    """Store discovered hosts in discovery mode topology.
+
+    Called by the pipeline after Phase 3a scanner runs in discovery mode so that
+    get_network_neighbors() can provide neighbor context to Phase 3b agents.
+
+    hosts: list of {"id": str, "ip": str, "role": str, "services": [...]}
+    """
+    global _discovery_mode
+    if _discovery_mode is not None:
+        _discovery_mode["discovered_hosts"] = hosts
+
+
 def _ensure_loaded():
     if _scenario_topology is None and _backend is None and _discovery_mode is None:
         load_lab_context()

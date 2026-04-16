@@ -239,7 +239,26 @@ class Pipeline:
             "top_risk": str(lab["top_risk"]),
             "target_subnet": target_subnet,
             "scenario_context": "",
+            "network_topology_edges": "",
         }
+
+        # Build compact edge list from whatever topology is available
+        from src.agent.tools.graph_tools import _scenario_topology as _st, _backend as _bk
+        if _st is not None:
+            edges = _st.get("edges", [])
+            self.context["network_topology_edges"] = "\n".join(
+                f"  {e['source']} -> {e['target']}" for e in edges
+            )
+        elif _bk is not None:
+            try:
+                topo = _bk.to_dict()
+                edges = topo.get("edges", [])
+                self.context["network_topology_edges"] = "\n".join(
+                    f"  {e.get('source', e.get('from', '?'))} -> {e.get('target', e.get('to', '?'))}"
+                    for e in edges
+                )
+            except Exception:
+                pass
 
         print("Loading lab context...")
         print(
@@ -750,6 +769,10 @@ class Pipeline:
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
             self._run_exploit_agents(config, stream_callback)
+            # Check for newly discovered hosts and run a mini analysis cycle if found
+            new_hosts = self._collect_new_hosts()
+            if new_hosts and not self.dry_run:
+                self._run_discovery_followup(new_hosts, config, stream_callback)
             # Deterministic aggregation already wrote 04_exploitation.json
             validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
             valid, msg = validator_fn(config.deliverable_file)
@@ -1071,6 +1094,12 @@ class Pipeline:
 
         scanner_results = run_scanner(self.run_dir, surface, stream_callback)
 
+        # In discovery mode, populate the topology with discovered hosts so that
+        # Phase 3b agents can use get_network_neighbors() for network position context.
+        if self.target_network:
+            from src.agent.tools.graph_tools import update_discovery_hosts
+            update_discovery_hosts(surface)
+
         # --- Phase 3b: LLM analysis micro-agents (per device) ---
         print(f"\n{'=' * 60}")
         print(f"PHASE 3b: LLM ANALYSIS ({len(surface)} devices)")
@@ -1123,6 +1152,23 @@ class Pipeline:
             variables["trivial_findings"] = json.dumps(
                 scan_data.get("findings", []), indent=2, ensure_ascii=False
             )
+
+            # Inject network position context so the agent can reason about lateral movement
+            from src.agent.tools.graph_tools import get_network_neighbors
+            nbrs = get_network_neighbors(device_id)
+
+            def _fmt_neighbor(n: dict) -> str:
+                svcs = ", ".join(
+                    f"{s.get('name','?')}:{s.get('port','?')}"
+                    for s in n.get("services", [])
+                )
+                return f"{n.get('id', '?')} ({n.get('ip', '?')}){' [' + svcs + ']' if svcs else ''}"
+
+            upstream_str = ", ".join(_fmt_neighbor(n) for n in nbrs["upstream"]) or "none (entry point)"
+            downstream_str = ", ".join(_fmt_neighbor(n) for n in nbrs["downstream"]) or "none (dead end)"
+            variables["network_neighbors_upstream"] = upstream_str
+            variables["network_neighbors_downstream"] = downstream_str
+            variables["network_role"] = nbrs["role"]
 
             system_prompt = load_prompt("analyze_device", variables)
 
@@ -1179,6 +1225,71 @@ class Pipeline:
 
     # ------------------------------------------------------------------
     # Phase 3c: deterministic aggregation of per-device vuln results
+    # ------------------------------------------------------------------
+
+    def _detect_attack_chains(self, vulns: list[dict]) -> list[dict]:
+        """Deterministic cross-device attack chain detection.
+
+        Uses graph topology edges + aggregated vuln list to identify multi-hop paths
+        where a compromised source device enables access to a downstream target.
+        Returns a list of chain_hint dicts injected into 03_vuln_analysis.json so
+        Phase 4 and Phase 5 agents can reason about lateral movement paths.
+        """
+        from src.agent.tools.graph_tools import _scenario_topology as _st, _backend as _bk
+        from src.agent.vuln_taxonomy import is_config_only
+        from collections import defaultdict
+
+        by_ip: dict[str, list[dict]] = defaultdict(list)
+        for v in vulns:
+            by_ip[v.get("device_ip", "")].append(v)
+
+        # Resolve topology edges (scenario mode only for now; lab mode backend TBD)
+        if _st is not None:
+            edges = _st.get("edges", [])
+            node_index = _st["node_index"]
+        else:
+            return []  # No structured topology available
+
+        _RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        chains: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+
+        for e in edges:
+            src_node = node_index.get(e.get("source", ""))
+            dst_node = node_index.get(e.get("target", ""))
+            if not src_node or not dst_node:
+                continue
+
+            src_ip = src_node.get("ip", "")
+            dst_ip = dst_node.get("ip", "")
+            src_vulns = by_ip.get(src_ip, [])
+            dst_vulns = by_ip.get(dst_ip, [])
+
+            # Chain: source has exploitable (non-config-only) MEDIUM+ vuln AND dest has any finding
+            exploitable_src = [
+                v for v in src_vulns
+                if _RANK.get((v.get("severity") or "").lower(), 0) >= 2
+                and not is_config_only(v.get("type", ""))
+            ]
+
+            if exploitable_src and dst_vulns:
+                key = (src_ip, dst_ip)
+                if key not in seen:
+                    seen.add(key)
+                    chains.append({
+                        "chain": f"{e['source']} ({src_ip}) -> {e['target']} ({dst_ip})",
+                        "src_device": e["source"],
+                        "src_ip": src_ip,
+                        "dst_device": e["target"],
+                        "dst_ip": dst_ip,
+                        "pivot_vuln": exploitable_src[0]["id"],
+                        "target_vuln_ids": [v["id"] for v in dst_vulns],
+                    })
+
+        if chains:
+            log.info("Detected %d cross-device attack chain(s)", len(chains))
+        return chains
+
     # ------------------------------------------------------------------
 
     def _aggregate_device_vulns(
@@ -1291,6 +1402,7 @@ class Pipeline:
 
         result = {
             "vulnerabilities": final,
+            "attack_chain_hints": self._detect_attack_chains(final),
             "summary": {
                 "total": len(final),
                 "critical": severity_counts["critical"],
@@ -1500,6 +1612,131 @@ class Pipeline:
 
         # 3. Deterministic aggregation
         self._aggregate_exploit_results()
+
+    def _collect_new_hosts(self) -> list[dict]:
+        """Collect hosts discovered during Phase 4 exploitation that were not in the original scan.
+
+        Reads new_hosts_discovered from all Phase 4 exploit output files.
+        Returns deduplicated list of {"ip": str, "open_ports": [...], "discovered_via": str}.
+        """
+        new_hosts: list[dict] = []
+        seen_ips: set[str] = set()
+        for f in self.run_dir.glob("04_exploits/**/*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                for h in data.get("new_hosts_discovered", []):
+                    ip = h.get("ip", "").strip()
+                    if ip and ip not in seen_ips:
+                        seen_ips.add(ip)
+                        new_hosts.append(h)
+            except Exception:
+                pass
+        if new_hosts:
+            log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])
+        return new_hosts
+
+    def _run_discovery_followup(
+        self,
+        new_hosts: list[dict],
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> None:
+        """Mini Phase 2.5/3.5: scan and analyze hosts discovered during Phase 4 exploitation.
+
+        For each newly discovered host:
+        1. Run the deterministic scanner (nmap + service fingerprinting).
+        2. Run a Phase 3b LLM micro-agent to analyse the scan results.
+        3. Re-aggregate all device findings so the new vulns appear in 03_vuln_analysis.json
+           before Phase 5 report generation.
+        """
+        from src.agent.scanner import run_scanner
+        from src.agent.tools.graph_tools import update_discovery_hosts, get_network_neighbors
+
+        print(f"\n{'=' * 60}")
+        print(f"PHASE 2.5/3.5: DISCOVERY FOLLOWUP ({len(new_hosts)} new host(s))")
+        print(f"{'=' * 60}\n")
+
+        if stream_callback:
+            stream_callback({"type": "phase_start", "phase": "2.5", "label": "Discovery followup"})
+
+        skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
+        recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
+        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+
+        for host in new_hosts:
+            ip = host.get("ip", "")
+            if not ip:
+                continue
+            device_id = f"discovered-{ip.replace('.', '-')}"
+            device = {
+                "id": device_id,
+                "ip": ip,
+                "type": "unknown",
+                "role": "unknown",
+                "services": [
+                    {"name": "unknown", "port": p, "protocol": "tcp"}
+                    for p in host.get("open_ports", [])
+                ],
+            }
+            print(f"  [+] Followup scan: {device_id} ({ip})")
+
+            # 1. Targeted nmap scan
+            mini_scan = run_scanner(self.run_dir, [device], stream_callback)
+            scan_data = mini_scan.get(device_id, {})
+
+            # Prepare scan results for prompt
+            scan_for_prompt: dict = {}
+            for svc_key, entries in scan_data.get("scan_results", {}).items():
+                scan_for_prompt[svc_key] = []
+                for entry in entries:
+                    result = entry.get("result", "")
+                    if isinstance(result, str) and len(result) > 2000:
+                        result = result[:2000] + "\n[truncated]"
+                    scan_for_prompt[svc_key].append({
+                        "tool": entry["tool"],
+                        "kwargs": entry.get("kwargs", {}),
+                        "result": result,
+                    })
+
+            deliverable_file = f"03_device_{device_id}.json"
+            variables = {**self.context}
+            variables["device_id"] = device_id
+            variables["device_ip"] = ip
+            variables["device_type"] = "unknown"
+            variables["device_role"] = "unknown"
+            variables["device_services"] = ", ".join(str(p) for p in host.get("open_ports", []))
+            variables["device_os"] = "unknown"
+            variables["expected_deliverable"] = deliverable_file
+            variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
+            variables["trivial_findings"] = json.dumps(
+                scan_data.get("findings", []), indent=2, ensure_ascii=False
+            )
+            variables["network_neighbors_upstream"] = host.get("discovered_via", "unknown (pivot discovery)")
+            variables["network_neighbors_downstream"] = "unknown — newly discovered host"
+            variables["network_role"] = "PIVOT"
+
+            system_prompt = load_prompt("analyze_device", variables)
+            phase_name = f"followup_{device_id}"
+            self.tracker.start_phase(phase_name)
+            self.provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=(
+                    f"Analyze vulnerabilities for newly discovered host {ip}. "
+                    f"MANDATORY: call save_deliverable('{deliverable_file}', json_content) before finishing."
+                ),
+                tools=analysis_tools,
+                max_turns=config.max_turns,
+                max_tokens=config.max_tokens,
+                cost_tracker=self.tracker,
+                stream_callback=stream_callback,
+                required_tool="save_deliverable",
+            )
+            self.tracker.end_phase()
+            print(f"  [+] Followup done: {device_id}")
+
+        # 3. Re-aggregate all device findings (including newly discovered ones)
+        print("  [+] Re-aggregating device vulns with new findings...")
+        self._aggregate_device_vulns(config, stream_callback)
 
     def _aggregate_exploit_results(self) -> None:
         """Merge Phase 3 findings + Phase 4 exploit results into 04_exploitation.json.

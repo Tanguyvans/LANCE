@@ -11,6 +11,16 @@ All scanning tools have ALREADY been executed. You do NOT need to call ssh_audit
 - **Services**: {{device_services}}
 - **OS/Firmware**: {{device_os}}
 
+## Network position
+- **Upstream** (devices that can reach this one): {{network_neighbors_upstream}}
+- **Downstream** (devices reachable from this one): {{network_neighbors_downstream}}
+- **Strategic role**: {{network_role}}
+
+> PIVOT: A compromise here enables lateral movement to downstream targets.
+>   List downstream IPs in `suggested_technique` for suspected findings.
+> ENTRY_POINT: Directly reachable from outside — apply severity uplift for exposed services.
+> TARGET: Dead-end device — focus on data exposure and credential theft.
+
 ## Pre-computed scan results (Phase 3a)
 The deterministic scanner ran all recon tools on this device. Here are the raw results:
 
