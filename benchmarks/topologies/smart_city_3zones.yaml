@@ -1,0 +1,68 @@
+id: smart_city_3zones
+name: Smart City 3 zones
+description: Smart City avec 3 zones conceptuelles IT/IoT/OT — 14 services + routeur (15 VMs)
+base_vmid: 220
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.100.1
+services:
+# Zone IT — Management
+- name_template: s{sid}-admin
+  vmid_offset: 1
+  ip: 192.168.100.11
+  role: ssh_server
+- name_template: s{sid}-jump
+  vmid_offset: 2
+  ip: 192.168.100.12
+  role: ssh_server_v2
+- name_template: s{sid}-monitor
+  vmid_offset: 3
+  ip: 192.168.100.13
+  role: web_server_v2
+# Zone IoT
+- name_template: s{sid}-mqtt
+  vmid_offset: 4
+  ip: 192.168.100.14
+  role: mqtt_broker
+- name_template: s{sid}-mqtt2
+  vmid_offset: 5
+  ip: 192.168.100.15
+  role: mqtt_broker_v2
+- name_template: s{sid}-gw1
+  vmid_offset: 6
+  ip: 192.168.100.16
+  role: iot_gateway
+- name_template: s{sid}-gw2
+  vmid_offset: 7
+  ip: 192.168.100.17
+  role: iot_gateway
+- name_template: s{sid}-nodered
+  vmid_offset: 8
+  ip: 192.168.100.18
+  role: nodered_server
+# Zone OT — Operational Technology
+- name_template: s{sid}-plc1
+  vmid_offset: 9
+  ip: 192.168.100.19
+  role: modbus_server
+- name_template: s{sid}-plc2
+  vmid_offset: 10
+  ip: 192.168.100.20
+  role: modbus_server
+- name_template: s{sid}-hmi
+  vmid_offset: 11
+  ip: 192.168.100.21
+  role: web_server
+- name_template: s{sid}-ftp
+  vmid_offset: 12
+  ip: 192.168.100.22
+  role: ftp_server
+- name_template: s{sid}-db-ot
+  vmid_offset: 13
+  ip: 192.168.100.23
+  role: db_server
+- name_template: s{sid}-redis
+  vmid_offset: 14
+  ip: 192.168.100.24
+  role: db_server_v2

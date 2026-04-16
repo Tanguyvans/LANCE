@@ -1,0 +1,115 @@
+scenario_id: '11'
+name: Smart City 3 zones
+difficulty: hard
+posture: vulnerable
+topology: smart_city_3zones
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f6_crypto
+- f7_pivot
+- f8_info_disclosure
+attack_paths:
+- id: P1
+  title: Pivot IT→IoT→OT via routeur + admin SSH + jumphost + PLC1 Modbus
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Telnet vers routeur (port 23)
+  - hop: 2
+    device: s11-router (100.1)
+    action: Shell sans auth via telnet
+  - hop: 3
+    device: s11-admin (100.11)
+    action: SSH avec admin:admin
+  - hop: 4
+    device: s11-jump (100.12)
+    action: SSH avec clé privée récupérée (644)
+  - hop: 5
+    device: s11-plc1 (100.19)
+    action: Écriture registres Modbus sans auth
+  vulnerabilities_used: [V1, V3, V5, V16]
+  impact: Compromission complète IT→OT — contrôle des actionneurs industriels PLC1
+
+- id: P2
+  title: RCE monitoring API → Redis + DB exfiltration
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /api/exec sur serveur monitoring
+  - hop: 2
+    device: s11-monitor (100.13)
+    action: RCE root via API Flask sans auth
+  - hop: 3
+    device: s11-redis (100.24)
+    action: "Redis KEYS * sans auth \u2014 secrets exfil"
+  - hop: 4
+    device: s11-db-ot (100.23)
+    action: MySQL root sans mdp — données OT
+  vulnerabilities_used: [V8, V22, V21]
+  impact: RCE sur monitoring + exfiltration de tous les secrets IoT/OT
+
+- id: P3
+  title: "MQTT anonyme \u2192 credentials \u2192 Node-RED \u2192 PLC1 Modbus"
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT broker sans auth
+  - hop: 2
+    device: s11-mqtt (100.14)
+    action: Lecture topic admin/credentials
+  - hop: 3
+    device: s11-mqtt2 (100.15)
+    action: Login MQTT2 avec credentials récupérés
+  - hop: 4
+    device: s11-nodered (100.18)
+    action: Injection flow exec sur Node-RED
+  - hop: 5
+    device: s11-plc1 (100.19)
+    action: Envoi commande Modbus via Node-RED
+  vulnerabilities_used: [V9, V10, V11, V15, V16]
+  impact: "Cha\xEEne compl\xE8te IoT : acc\xE8s MQTT \u2192 pivot Node-RED \u2192 compromission PLC OT"
+
+- id: P4
+  title: IoT Gateway OTA tamper → PLC2 Modbus
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: Upload firmware non signé sur /update
+  - hop: 2
+    device: s11-gw1 (100.16)
+    action: Firmware compromis exécuté (OTA sans sig)
+  - hop: 3
+    device: s11-plc2 (100.20)
+    action: Modbus TCP sans auth depuis gateway
+  vulnerabilities_used: [V13, V17]
+  impact: Firmware gateway malveillant + compromission PLC2
+
+- id: P5
+  title: FTP anonyme → credentials → DB OT
+  difficulty: easy
+  chain:
+  - hop: 1
+    device: Internet
+    action: Connexion FTP anonyme
+  - hop: 2
+    device: s11-ftp (100.22)
+    action: Téléchargement /config/network.conf
+  - hop: 3
+    device: s11-db-ot (100.23)
+    action: MySQL root avec credentials exfiltrés
+  vulnerabilities_used: [V20, V21]
+  impact: Exfiltration credentials via FTP + accès base de données OT
+
+bonus_types:
+- weak_cipher
+- missing_header
+- info_disclosure
+- version_leak
+- terrapin
