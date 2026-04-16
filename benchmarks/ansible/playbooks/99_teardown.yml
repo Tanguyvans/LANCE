@@ -9,8 +9,8 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    # Plage de 10 VMIDs par scénario (base+0 router, base+1..9 services)
-    vmid_range: "{{ range(base_vmid | int, base_vmid | int + 10) | list }}"
+    # Plage dynamique : router (base+0) + N services (base+1..N)
+    vmid_range: "{{ range(base_vmid | int, base_vmid | int + scenarios[scenario_id].services | length + 1) | list }}"
 
   tasks:
 
@@ -36,4 +36,4 @@
 
     - name: Scénario S{{ scenario_id }} supprimé
       ansible.builtin.debug:
-        msg: "Toutes les VMs {{ base_vmid }}–{{ base_vmid | int + 9 }} ont été supprimées."
+        msg: "Toutes les VMs {{ base_vmid }}–{{ base_vmid | int + scenarios[scenario_id].services | length }} ont été supprimées."
