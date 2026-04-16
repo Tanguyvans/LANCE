@@ -1737,6 +1737,9 @@ class Pipeline:
         # 3. Re-aggregate all device findings (including newly discovered ones)
         print("  [+] Re-aggregating device vulns with new findings...")
         self._aggregate_device_vulns(config, stream_callback)
+        # 4. Rebuild 04_exploitation.json to reflect new Phase 3 findings
+        print("  [+] Re-aggregating exploit results with new findings...")
+        self._aggregate_exploit_results()
 
     def _aggregate_exploit_results(self) -> None:
         """Merge Phase 3 findings + Phase 4 exploit results into 04_exploitation.json.

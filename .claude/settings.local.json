@@ -39,7 +39,9 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f'Cost: \\\\${d[\\\\\"total_cost_usd\\\\\"]} | Turns: {d[\\\\\"total_turns\\\\\"]} | Duration: {int\\(d[\\\\\"total_duration_s\\\\\"]\\)}s'\\)\")",
       "Bash(venv/bin/pytest tests/ -v -p no:pytest_ethereum -p no:web3)",
       "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3)",
-      "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3 -q)"
+      "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3 -q)",
+      "Bash(ls \"/Users/gaspard/Desktop/Code Stage/NATO-SmartCity-IoT\"/.venv/bin/python*)",
+      "Bash(python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py -p no:pytest_ethereum -p no:web3 -q)"
     ]
   }
 }

@@ -296,7 +296,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
     exploit_file = run_dir / "04_exploitation.json"
     if exploit_file.exists():
         raw = json.loads(exploit_file.read_text())
-        return [
+        findings = [
             {
                 "id": t.get("vuln_id", ""),
                 "device_id": t.get("device_id", ""),
@@ -311,6 +311,9 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
             for t in raw.get("tests", [])
             if t.get("status") not in _SKIPPED_PHASE4_STATUSES
         ]
+        if findings:
+            return findings
+        # else: fall through to 03_vuln_analysis.json fallback
 
     vuln_file = run_dir / "03_vuln_analysis.json"
     if vuln_file.exists():

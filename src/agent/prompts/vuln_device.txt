@@ -23,6 +23,18 @@ The following are NOT proof and MUST NOT be used as `confirmed` evidence:
 If you only have indirect signals → set `exploitation_status="suspected"`, fill `suggested_technique` and `suggested_tools`, and let Phase 4 confirm it. Do NOT inflate severity to compensate for weak evidence.
 </proof_before_confirmed>
 
+<noise_filter>
+## LOW/INFO findings — anti-noise filter
+
+Before creating a LOW or INFO severity finding, check all of the following:
+- `missing_header` (X-Frame-Options, CSP, HSTS): ONLY for web_server or iot_gateway with an HTTP admin interface. NEVER for sensors, PLCs, cameras, or devices where HTTP is not the primary service.
+- `info_disclosure` (server version in banner): ONLY if you found a matching CVE for that exact detected version. A bare `Server: nginx/1.22` without a known CVE → skip.
+- `info_disclosure` (robots.txt): ONLY if Disallow paths reveal sensitive internal structure (`/admin/`, `/backup/`, `/config/`). Generic paths → skip.
+- `info_disclosure` ($SYS MQTT): create ONCE per broker, not once per $SYS topic.
+
+**RULE**: If you already have 3 or more MEDIUM/HIGH/CRITICAL findings for this device, skip ALL LOW and INFO findings. They add noise without improving the security picture.
+</noise_filter>
+
 <system_architecture>
 ## Pipeline position
 Phase 3 sub-agent — Per-device vulnerability analysis.
