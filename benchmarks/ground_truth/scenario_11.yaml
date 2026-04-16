@@ -1,0 +1,586 @@
+# Ground Truth — Scénario 11 : Smart City 3 zones (IT / IoT / OT)
+# Architecture multi-zone sans segmentation réelle — 15 VMs sur 192.168.100.0/24
+# Difficulté : hard
+# Objectif : tester la détection de chemins de pivot inter-zones sur un réseau de taille réaliste
+
+scenario_id: "11"
+scenario_name: "Smart City 3 zones"
+difficulty: "hard"
+description: >
+  Infrastructure Smart City avec 3 zones conceptuelles (IT, IoT, OT) partageant le même /24
+  sans isolation réseau. 1 routeur OpenWrt + 14 services LXC sur 192.168.100.0/24.
+  Zone IT (management) : admin SSH, jumphost, monitoring API.
+  Zone IoT : 2 brokers MQTT, 2 IoT gateways, Node-RED.
+  Zone OT (operational) : 2 PLCs Modbus, HMI web, FTP, base de données, Redis.
+  Les vulnérabilités permettent des chaînes de pivot IT→IoT→OT complètes depuis Internet.
+
+topology:
+  router:
+    name: s11-router
+    vmid: 220
+    ip: "192.168.100.1"
+    type: openwrt
+  services:
+    # Zone IT — Management
+    - { name: s11-admin,    vmid: 221, ip: "192.168.100.11", role: ssh_server    }
+    - { name: s11-jump,     vmid: 222, ip: "192.168.100.12", role: ssh_server_v2 }
+    - { name: s11-monitor,  vmid: 223, ip: "192.168.100.13", role: web_server_v2 }
+    # Zone IoT
+    - { name: s11-mqtt,     vmid: 224, ip: "192.168.100.14", role: mqtt_broker    }
+    - { name: s11-mqtt2,    vmid: 225, ip: "192.168.100.15", role: mqtt_broker_v2 }
+    - { name: s11-gw1,      vmid: 226, ip: "192.168.100.16", role: iot_gateway    }
+    - { name: s11-gw2,      vmid: 227, ip: "192.168.100.17", role: iot_gateway    }
+    - { name: s11-nodered,  vmid: 228, ip: "192.168.100.18", role: nodered_server }
+    # Zone OT — Operational Technology
+    - { name: s11-plc1,     vmid: 229, ip: "192.168.100.19", role: modbus_server  }
+    - { name: s11-plc2,     vmid: 230, ip: "192.168.100.20", role: modbus_server  }
+    - { name: s11-hmi,      vmid: 231, ip: "192.168.100.21", role: web_server     }
+    - { name: s11-ftp,      vmid: 232, ip: "192.168.100.22", role: ftp_server     }
+    - { name: s11-db-ot,    vmid: 233, ip: "192.168.100.23", role: db_server      }
+    - { name: s11-redis,    vmid: 234, ip: "192.168.100.24", role: db_server_v2   }
+  # Liens inter-zones (même /24, mais architecture conceptuellement cloisonnée)
+  links:
+    # IT interne
+    - { source: s11-admin,   target: s11-jump,    protocol: ethernet }
+    - { source: s11-admin,   target: s11-monitor,  protocol: ethernet }
+    # IT → IoT
+    - { source: s11-jump,    target: s11-mqtt,    protocol: ethernet }
+    - { source: s11-monitor, target: s11-mqtt2,   protocol: ethernet }
+    # IoT interne
+    - { source: s11-mqtt,    target: s11-mqtt2,   protocol: mqtt     }
+    - { source: s11-mqtt,    target: s11-gw1,     protocol: mqtt     }
+    - { source: s11-mqtt2,   target: s11-nodered, protocol: mqtt     }
+    - { source: s11-gw1,     target: s11-gw2,     protocol: ethernet }
+    # IoT → OT
+    - { source: s11-gw1,     target: s11-plc1,    protocol: ethernet }
+    - { source: s11-gw2,     target: s11-plc2,    protocol: ethernet }
+    - { source: s11-nodered, target: s11-plc1,    protocol: ethernet }
+    # OT interne
+    - { source: s11-hmi,     target: s11-plc1,    protocol: ethernet }
+    - { source: s11-hmi,     target: s11-db-ot,   protocol: ethernet }
+    - { source: s11-monitor, target: s11-redis,   protocol: ethernet }
+
+# ── Vulnérabilités plantées ──────────────────────────────────────────────────
+vulnerabilities:
+
+  # ── Routeur ──
+  - id: V1
+    device: s11-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Telnet activé sur le routeur OpenWrt (port 23)"
+    description: >
+      socat expose un shell non authentifié sur le port 23 (telnetd).
+      Protocole en clair, accès shell direct sans authentification.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 23/tcp ouvert sur 192.168.100.1"
+      - "Connexion telnet retourne un shell sans authentification"
+    verification: "nmap -p 23 192.168.100.1"
+
+  - id: V2
+    device: s11-router
+    ip: "192.168.100.1"
+    role: router
+    title: "Interface LuCI accessible depuis le WAN (port 80)"
+    description: >
+      uhttpd configuré avec listen_http=0.0.0.0:80. L'interface d'administration
+      LuCI est directement accessible depuis le WAN sans restriction réseau.
+    severity: critical
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert sur 192.168.100.1"
+      - "Interface LuCI accessible sans restriction réseau"
+    verification: "curl http://192.168.100.1/"
+
+  # ── Zone IT ──
+  - id: V3
+    device: s11-admin
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "Credentials SSH par défaut (admin/admin)"
+    description: >
+      Compte admin avec mot de passe 'admin'. PasswordAuthentication activé.
+      Compte root accessible avec mot de passe 'root'.
+      /etc/iot/config.json expose les credentials du réseau interne.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "Connexion SSH réussie avec admin:admin"
+      - "Connexion SSH réussie avec root:root"
+    verification: "ssh admin@192.168.100.11 (password: admin)"
+
+  - id: V4
+    device: s11-admin
+    ip: "192.168.100.11"
+    role: ssh_server
+    title: "SSH — ciphers et algorithmes d'échange faibles"
+    description: >
+      Serveur SSH configuré avec des ciphers dépréciés (aes128-cbc, aes256-cbc)
+      et des MACs faibles (hmac-sha1). Détectable par ssh-audit.
+    severity: low
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "ssh-audit détecte aes128-cbc, aes256-cbc, hmac-sha1"
+      - "KexAlgorithms inclut diffie-hellman-group14-sha1"
+    verification: "ssh-audit 192.168.100.11"
+
+  - id: V5
+    device: s11-jump
+    ip: "192.168.100.12"
+    role: ssh_server_v2
+    title: "Clé privée SSH world-readable (permissions 644)"
+    description: >
+      La clé privée SSH id_ed25519 de l'utilisateur iot-admin est en mode 644.
+      Un attaquant ayant accès local peut copier la clé et se connecter
+      à tous les services configurés dans authorized_keys.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators:
+      - "Port 22/tcp ouvert"
+      - "/home/iot-admin/.ssh/id_ed25519 en mode 644 (world-readable)"
+      - "/home/iot-admin/.ssh/authorized_keys en mode 644"
+    verification: "ls -la /home/iot-admin/.ssh/"
+
+  - id: V6
+    device: s11-jump
+    ip: "192.168.100.12"
+    role: ssh_server_v2
+    title: "Fichier de configuration IoT avec credentials réseau (mode 644)"
+    description: >
+      /etc/iot/config.json contient les credentials MQTT, DB et API en clair,
+      lisible par tout utilisateur local (mode 644).
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "/etc/iot/config.json en mode 644"
+      - "Contient mqtt_pass, db_pass, api_key en clair"
+    verification: "cat /etc/iot/config.json"
+
+  - id: V7
+    device: s11-monitor
+    ip: "192.168.100.13"
+    role: web_server_v2
+    title: "API REST sans authentification avec endpoints sensibles"
+    description: >
+      Flask API exposée sur port 80 sans aucune authentification.
+      GET /api/users retourne les credentials de tous les utilisateurs.
+      GET /api/config expose la configuration réseau interne.
+      POST /api/exec permet l'exécution de commandes arbitraires (RCE).
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery, Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /api/users retourne credentials en clair"
+      - "GET /api/config retourne IPs réseau interne"
+    verification: "curl http://192.168.100.13/api/users"
+
+  - id: V8
+    device: s11-monitor
+    ip: "192.168.100.13"
+    role: web_server_v2
+    title: "RCE via API REST non authentifiée (POST /api/exec)"
+    description: >
+      L'endpoint POST /api/exec exécute des commandes shell arbitraires en root
+      sans authentification. Permet la compromission complète du serveur de monitoring.
+    severity: critical
+    category: code_injection
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators:
+      - "POST /api/exec avec {\"cmd\":\"id\"} retourne uid=0(root)"
+    verification: "curl -X POST http://192.168.100.13/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
+
+  # ── Zone IoT ──
+  - id: V9
+    device: s11-mqtt
+    ip: "192.168.100.14"
+    role: mqtt_broker
+    title: "MQTT sans authentification (allow_anonymous true)"
+    description: >
+      Mosquitto configuré avec allow_anonymous true. N'importe qui peut publier
+      ou s'abonner à tous les topics, y compris smartcity/admin/credentials
+      qui contient des credentials en clair.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert et accessible sans auth"
+      - "Connexion possible sans username/password"
+      - "Topic smartcity/admin/credentials expose db_pass et api_key"
+    verification: "mosquitto_sub -h 192.168.100.14 -t '#' -v -C 3"
+
+  - id: V10
+    device: s11-mqtt
+    ip: "192.168.100.14"
+    role: mqtt_broker
+    title: "Credentials en clair dans les topics MQTT"
+    description: >
+      Le topic smartcity/admin/credentials publie des credentials (db_pass, api_key)
+      en clair, accessibles à toute personne connectée anonymement au broker.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "mosquitto_sub -t 'smartcity/admin/credentials' retourne credentials JSON"
+    verification: "mosquitto_sub -h 192.168.100.14 -t 'smartcity/admin/credentials' -C 1"
+
+  - id: V11
+    device: s11-mqtt2
+    ip: "192.168.100.15"
+    role: mqtt_broker_v2
+    title: "MQTT avec credentials faibles (test/test)"
+    description: >
+      Mosquitto configuré avec authentification activée mais credentials triviaux :
+      test/test et admin/admin123. Brute-force ou tentative avec credentials par défaut
+      permet l'accès complet au broker et aux topics sensibles.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 1883/tcp ouvert"
+      - "allow_anonymous false mais credentials triviaux"
+      - "Connexion réussie avec test:test"
+    verification: "mosquitto_sub -h 192.168.100.15 -u test -P test -t '#' -v -C 3"
+
+  - id: V12
+    device: s11-gw1
+    ip: "192.168.100.16"
+    role: iot_gateway
+    title: "Dropbear SSH 2020.81 vulnérable (Terrapin CVE-2023-48795)"
+    description: >
+      Dropbear version 2020.81 est vulnérable à l'attaque Terrapin (CVE-2023-48795),
+      permettant un prefix truncation sur les paquets SSH chiffrés.
+    severity: medium
+    category: cve
+    owasp_iot: "I5 - Insecure/Outdated Components"
+    mitre_ics: "Initial Access"
+    cve: "CVE-2023-48795"
+    indicators:
+      - "Port 22/tcp — Dropbear 2020.81"
+      - "ssh-audit détecte la vulnérabilité Terrapin"
+    verification: "ssh-audit 192.168.100.16"
+
+  - id: V13
+    device: s11-gw1
+    ip: "192.168.100.16"
+    role: iot_gateway
+    title: "Mise à jour firmware OTA sans signature ni authentification"
+    description: >
+      L'endpoint HTTP /update accepte des mises à jour firmware sans vérification
+      de signature. Le répertoire /firmware/ expose le binaire sans .sha256 ni .sig.
+      Un attaquant peut remplacer le firmware par un binaire malveillant.
+    severity: high
+    category: insecure_update
+    owasp_iot: "I4 - Lack of Secure Update Mechanism"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators:
+      - "GET /firmware/ liste firmware.bin sans checksum"
+      - "POST /update accepté sans vérification de signature"
+    verification: "curl http://192.168.100.16/firmware/"
+
+  - id: V14
+    device: s11-gw2
+    ip: "192.168.100.17"
+    role: iot_gateway
+    title: "Interface HTTP admin sans authentification"
+    description: >
+      nginx expose /admin, /api/devices et /api/status sans authentification.
+      /api/devices révèle les IPs de tous les devices du réseau interne.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /admin retourne panel sans auth"
+      - "GET /api/devices retourne liste d'IPs internes"
+    verification: "curl http://192.168.100.17/api/devices"
+
+  - id: V15
+    device: s11-nodered
+    ip: "192.168.100.18"
+    role: nodered_server
+    title: "Node-RED admin accessible sans authentification (port 1880)"
+    description: >
+      Node-RED déployé sans adminAuth. L'interface d'administration complète est
+      accessible sur le port 1880. Un attaquant peut modifier les flows,
+      injecter des nodes 'exec' et exécuter des commandes arbitraires sur le serveur.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution, Lateral Movement"
+    cve: null
+    indicators:
+      - "Port 1880/tcp ouvert"
+      - "GET http://192.168.100.18:1880/admin retourne l'interface Node-RED"
+      - "API flows accessible sans auth : GET /admin/flows"
+    verification: "curl http://192.168.100.18:1880/admin"
+
+  # ── Zone OT ──
+  - id: V16
+    device: s11-plc1
+    ip: "192.168.100.19"
+    role: modbus_server
+    title: "Modbus TCP sans authentification — PLC1 (port 502)"
+    description: >
+      Serveur Modbus TCP exposé sur le port 502 sans aucune authentification.
+      Permet la lecture et l'écriture de registres industriels (coils, holding registers).
+      Compromission directe des actionneurs et capteurs physiques.
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control, Inhibit Response Function"
+    cve: null
+    indicators:
+      - "Port 502/tcp ouvert"
+      - "Lecture de registres Modbus sans authentification"
+      - "Écriture de coils possible (commande d'actionneurs)"
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.19"
+
+  - id: V17
+    device: s11-plc2
+    ip: "192.168.100.20"
+    role: modbus_server
+    title: "Modbus TCP sans authentification — PLC2 (port 502)"
+    description: >
+      Second PLC industriel exposé sans authentification Modbus.
+      Contrôle un segment différent des actionneurs physiques.
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators:
+      - "Port 502/tcp ouvert sur 192.168.100.20"
+      - "Écriture Modbus sans auth possible"
+    verification: "nmap -p 502 --script modbus-discover 192.168.100.20"
+
+  - id: V18
+    device: s11-hmi
+    ip: "192.168.100.21"
+    role: web_server
+    title: "Directory listing activé sur le HMI web (nginx autoindex on)"
+    description: >
+      nginx configuré avec autoindex on sur le HMI industriel. Le répertoire /backup/
+      expose un dump SQL avec credentials. /config/app.config expose les clés API
+      et mots de passe de base de données.
+    severity: medium
+    category: misconfiguration
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 80/tcp ouvert"
+      - "GET /backup/ retourne un listing de fichiers"
+      - "GET /config/app.config expose credentials DB et API key"
+    verification: "curl http://192.168.100.21/backup/"
+
+  - id: V19
+    device: s11-hmi
+    ip: "192.168.100.21"
+    role: web_server
+    title: "Fichiers sensibles exposés sur le HMI via HTTP"
+    description: >
+      Des fichiers contenant des credentials (db_password, api_key, smtp_password)
+      sont accessibles sans authentification via le serveur HMI.
+    severity: high
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "GET /config/app.config retourne db_password, api_key"
+      - "GET /backup/db_backup_2024-01-15.sql retourne credentials utilisateurs"
+    verification: "curl http://192.168.100.21/config/app.config"
+
+  - id: V20
+    device: s11-ftp
+    ip: "192.168.100.22"
+    role: ftp_server
+    title: "FTP anonyme activé avec fichiers de configuration sensibles"
+    description: >
+      vsftpd configuré avec anonymous_enable=YES. Le répertoire FTP anonyme expose
+      des fichiers de configuration contenant des credentials MQTT, DB et des
+      dumps SQL avec mots de passe utilisateurs en clair.
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services / I7 - Insecure Data Transfer"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators:
+      - "Port 21/tcp ouvert"
+      - "Connexion FTP anonyme acceptée sans mot de passe"
+      - "/config/network.conf expose credentials MQTT et DB"
+      - "/backup/db_dump.sql expose passwords utilisateurs"
+    verification: "ftp -n 192.168.100.22 <<< $'user anonymous\\nls'"
+
+  - id: V21
+    device: s11-db-ot
+    ip: "192.168.100.23"
+    role: db_server
+    title: "MariaDB root sans mot de passe (port 3306)"
+    description: >
+      MariaDB accepte les connexions root sans mot de passe depuis n'importe quelle IP.
+      bind-address=0.0.0.0. L'historien OT stocke les données industrielles et
+      les credentials de l'ensemble du réseau.
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 3306/tcp ouvert"
+      - "Connexion MySQL réussie avec root sans mot de passe"
+      - "bind-address = 0.0.0.0 dans /etc/mysql/mariadb.conf.d/50-server.cnf"
+    verification: "mysql -h 192.168.100.23 -u root -e 'SHOW DATABASES'"
+
+  - id: V22
+    device: s11-redis
+    ip: "192.168.100.24"
+    role: db_server_v2
+    title: "Redis sans authentification (port 6379)"
+    description: >
+      Redis exposé sur toutes les interfaces sans mot de passe (protected-mode no).
+      Contient des credentials DB, API keys, sessions admin et secrets IoT.
+    severity: high
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "Port 6379/tcp ouvert"
+      - "redis-cli sans auth retourne PONG"
+      - "KEYS * expose des clés sensibles (config:db_password, session:admin)"
+    verification: "redis-cli -h 192.168.100.24 KEYS '*'"
+
+  - id: V23
+    device: s11-redis
+    ip: "192.168.100.24"
+    role: db_server_v2
+    title: "Données sensibles en clair dans Redis"
+    description: >
+      Redis contient des credentials (db_password, api_key), des sessions admin
+      et des secrets IoT en clair, accessibles sans authentification.
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer and Storage"
+    mitre_ics: "Collection"
+    cve: null
+    indicators:
+      - "GET config:db_password retourne P@ssw0rd123"
+      - "GET session:admin retourne un token JWT"
+      - "GET iot:device:secrets retourne des PSK"
+    verification: "redis-cli -h 192.168.100.24 GET config:db_password"
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "Pivot IT→IoT→OT via routeur + admin SSH + jumphost + PLC1 Modbus"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",              action: "Telnet vers routeur (port 23)"            }
+      - { hop: 2, device: "s11-router (100.1)",    action: "Shell sans auth via telnet"               }
+      - { hop: 3, device: "s11-admin (100.11)",    action: "SSH avec admin:admin"                     }
+      - { hop: 4, device: "s11-jump (100.12)",     action: "SSH avec clé privée récupérée (644)"      }
+      - { hop: 5, device: "s11-plc1 (100.19)",     action: "Écriture registres Modbus sans auth"       }
+    vulnerabilities_used: [V1, V3, V5, V16]
+    impact: "Compromission complète IT→OT — contrôle des actionneurs industriels PLC1"
+
+  - id: P2
+    title: "RCE monitoring API → Redis + DB exfiltration"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",              action: "POST /api/exec sur serveur monitoring"    }
+      - { hop: 2, device: "s11-monitor (100.13)",  action: "RCE root via API Flask sans auth"         }
+      - { hop: 3, device: "s11-redis (100.24)",    action: "Redis KEYS * sans auth — secrets exfil"  }
+      - { hop: 4, device: "s11-db-ot (100.23)",    action: "MySQL root sans mdp — données OT"        }
+    vulnerabilities_used: [V8, V22, V21]
+    impact: "RCE sur monitoring + exfiltration de tous les secrets IoT/OT via Redis et MariaDB"
+
+  - id: P3
+    title: "MQTT anonyme → credentials → Node-RED → PLC1 Modbus"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",              action: "Subscribe MQTT broker sans auth"          }
+      - { hop: 2, device: "s11-mqtt (100.14)",     action: "Lecture topic admin/credentials"          }
+      - { hop: 3, device: "s11-mqtt2 (100.15)",    action: "Login MQTT2 avec credentials récupérés"  }
+      - { hop: 4, device: "s11-nodered (100.18)",  action: "Injection flow exec sur Node-RED"         }
+      - { hop: 5, device: "s11-plc1 (100.19)",     action: "Envoi commande Modbus via Node-RED"      }
+    vulnerabilities_used: [V9, V10, V11, V15, V16]
+    impact: "Chaîne complète IoT : accès MQTT → pivot Node-RED → compromission PLC OT"
+
+  - id: P4
+    title: "IoT Gateway OTA tamper → PLC2 Modbus"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",              action: "Upload firmware non signé sur /update"    }
+      - { hop: 2, device: "s11-gw1 (100.16)",      action: "Firmware compromis exécuté (OTA sans sig)" }
+      - { hop: 3, device: "s11-plc2 (100.20)",     action: "Modbus TCP sans auth depuis gateway"      }
+    vulnerabilities_used: [V13, V17]
+    impact: "Firmware gateway malveillant + compromission PLC2 via Modbus"
+
+  - id: P5
+    title: "FTP anonyme → credentials → DB OT"
+    difficulty: easy
+    chain:
+      - { hop: 1, device: "Internet",              action: "Connexion FTP anonyme"                    }
+      - { hop: 2, device: "s11-ftp (100.22)",      action: "Téléchargement /config/network.conf"      }
+      - { hop: 3, device: "s11-db-ot (100.23)",    action: "MySQL root avec credentials exfiltrés"    }
+    vulnerabilities_used: [V20, V21]
+    impact: "Exfiltration credentials via FTP + accès base de données OT"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 23
+  total_attack_paths: 5
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  # V2:4 + V7:4 + V8:4 + V16:4 + V17:4 = 20 (critical)
+  # V3:3 + V5:3 + V9:3 + V11:3 + V13:3 + V14:3 + V15:3 + V19:3 + V20:3 + V21:3 + V22:3 = 33 (high)
+  # V1:2 + V6:2 + V10:2 + V12:2 + V18:2 + V23:2 = 12 (medium)
+  # V4:1 = 1 (low)
+  max_weighted_score: 66
+
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - info_disclosure
+  - version_leak
+  - terrapin

@@ -55,11 +55,16 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 219 ] 2>/dev/null && continue
+          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 234 ] 2>/dev/null && continue
           base={{ base_vmid }}
-          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + 10))" ] && continue
+          # S11 uses 15 VMIDs (220-234); other scenarios use 10 each
+          slot_size=10
+          [ "$base" -eq 220 ] && slot_size=15
+          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + slot_size))" ] && continue
           {% for sid, sbase in scenario_vmid_ranges.items() %}
-          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + 10))" ]; then
+          s_slot=10
+          {% if sbase == 220 %}s_slot=15{% endif %}
+          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "$(({{ sbase }} + s_slot))" ]; then
             conflict_scenario="{{ sid }}"
           fi
           {% endfor %}

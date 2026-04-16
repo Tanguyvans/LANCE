@@ -18,9 +18,10 @@ benchmark_lan_nic: "nic1"        # NIC physique exposé sur vmbr1 pour accès di
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
 tpl_openwrt_vmid: 9010   # KVM    — OpenWrt x86-64 configuré (LAN=192.168.100.1)
 
-# ── IDs scénarios (plage de 10 VMIDs par scénario : base → base+9) ──
+# ── IDs scénarios (plage VMIDs par scénario : base → base+N) ──
 # base+0   : router OpenWrt
 # base+1…N : services LXC (vmid_offset défini dans scenarios ci-dessous)
+# S11 utilise une plage de 15 VMIDs (220-234) — scénario 15 VMs
 scenario_vmid_ranges:
   "1": 100   # S1 Flat              → 100-109
   "2": 110   # S2 Gateway           → 110-119
@@ -32,6 +33,7 @@ scenario_vmid_ranges:
   "8": 180   # S8 Multi-zone IT/IoT/OT → 180-189
   "9": 190   # S9 Mesh IoT          → 190-199
   "10": 210  # S10 Flat variantes   → 210-219
+  "11": 220  # S11 Smart City 3 zones → 220-234 (15 VMs)
 
 # ── Credentials par défaut injectés dans les VMs (failles F1) ──
 # Ces valeurs sont volontairement faibles : c'est le but du benchmark
@@ -148,3 +150,25 @@ scenarios:
       - { name: ftp,      vmid_offset: 3, ip: "192.168.100.13", role: "ftp_server"      }
       - { name: nodered,  vmid_offset: 4, ip: "192.168.100.14", role: "nodered_server"  }
       - { name: ssh,      vmid_offset: 5, ip: "192.168.100.15", role: "ssh_server_v2"   }
+
+  "11":
+    name: "Smart City 3 zones"
+    router_vulns: [telnet, admin_wan]
+    services:
+      # Zone IT — Management
+      - { name: admin,   vmid_offset: 1,  ip: "192.168.100.11", role: "ssh_server"    }
+      - { name: jump,    vmid_offset: 2,  ip: "192.168.100.12", role: "ssh_server_v2" }
+      - { name: monitor, vmid_offset: 3,  ip: "192.168.100.13", role: "web_server_v2" }
+      # Zone IoT
+      - { name: mqtt,    vmid_offset: 4,  ip: "192.168.100.14", role: "mqtt_broker"    }
+      - { name: mqtt2,   vmid_offset: 5,  ip: "192.168.100.15", role: "mqtt_broker_v2" }
+      - { name: gw1,     vmid_offset: 6,  ip: "192.168.100.16", role: "iot_gateway"    }
+      - { name: gw2,     vmid_offset: 7,  ip: "192.168.100.17", role: "iot_gateway"    }
+      - { name: nodered, vmid_offset: 8,  ip: "192.168.100.18", role: "nodered_server" }
+      # Zone OT — Operational Technology
+      - { name: plc1,    vmid_offset: 9,  ip: "192.168.100.19", role: "modbus_server"  }
+      - { name: plc2,    vmid_offset: 10, ip: "192.168.100.20", role: "modbus_server"  }
+      - { name: hmi,     vmid_offset: 11, ip: "192.168.100.21", role: "web_server"     }
+      - { name: ftp,     vmid_offset: 12, ip: "192.168.100.22", role: "ftp_server"     }
+      - { name: db-ot,   vmid_offset: 13, ip: "192.168.100.23", role: "db_server"      }
+      - { name: redis,   vmid_offset: 14, ip: "192.168.100.24", role: "db_server_v2"   }
