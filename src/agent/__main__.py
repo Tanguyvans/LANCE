@@ -44,6 +44,15 @@ def main():
         default=None,
         help="Benchmark scenario ID (1-10). Loads VM IPs from ground_truth/scenario_N.yaml.",
     )
+    parser.add_argument(
+        "--batch",
+        default=None,
+        metavar="IDS",
+        help=(
+            "Run multiple scenarios sequentially and aggregate metrics. "
+            "Accepts comma-separated IDs (e.g. '1,2,3') or 'all'."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -52,6 +61,18 @@ def main():
     )
 
     provider = LLMProvider(provider=args.provider, model=args.model)
+
+    # Batch mode: sequential multi-scenario run
+    if args.batch is not None:
+        from src.agent.batch import run_batch
+        run_batch(
+            batch_arg=args.batch,
+            provider=provider,
+            dry_run=args.dry_run,
+            phases=args.phases,
+        )
+        return
+
     pipeline = Pipeline(
         provider=provider, dry_run=args.dry_run, phases=args.phases,
         scenario_id=args.scenario,
