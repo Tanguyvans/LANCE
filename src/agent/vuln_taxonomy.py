@@ -14,6 +14,7 @@ CANONICAL_TYPES: frozenset[str] = frozenset({
     "terrapin", "version_leak", "known_cve", "directory_listing",
     "data_exposure", "insecure_protocol", "default_credentials",
     "network_exposure", "insecure_update", "code_injection",
+    "misconfiguration",
 })
 
 
@@ -30,6 +31,22 @@ CONFIG_ONLY_TYPES: frozenset[str] = frozenset({
 NOISE_TYPES: frozenset[str] = frozenset({
     "no_applicable_cve",
     "cross_service_auth",
+    # Network topology observations (not vulns)
+    "entry_point",
+    "network_position",
+    "service_exposure",
+    "service_recon",
+    "service_discrepancy",
+    "exposed_service",
+    # Meta-observations / negations
+    "snmp_not_scanned",
+    "no_http_service",
+    "informational",
+    "potential_cve",
+    "exposure",
+    # Structural FPs
+    "cross_service",
+    "network_exposure_generic",
 })
 
 
@@ -42,6 +59,7 @@ EXPLOIT_CATEGORY_MAP: dict[str, str] = {
     "directory_listing":   "data_access",
     "insecure_protocol":   "data_access",
     "network_exposure":    "data_access",
+    "misconfiguration":    "data_access",
 }
 
 
@@ -58,6 +76,8 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "config_exposure":            "data_exposure",
     "sensitive_data_exposure":    "data_exposure",
     "file_disclosure":            "data_exposure",
+    "firmware_disclosure":        "data_exposure",
+    "sensitive_file_exposure":    "data_exposure",
     # weak_cipher synonyms
     "ssh_weak_config":            "weak_cipher",
     "weak_ssh_config":            "weak_cipher",
@@ -69,6 +89,8 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "deprecated_cipher":          "weak_cipher",
     "weak_encryption":            "weak_cipher",
     "ssh_terrapin_partial":       "weak_cipher",
+    "ssh_weak_key_exchange":      "weak_cipher",
+    "missing_encryption":         "weak_cipher",
     # info_disclosure synonyms
     "information_disclosure":     "info_disclosure",
     "banner_disclosure":          "info_disclosure",
@@ -78,10 +100,19 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "no_auth_required":           "no_auth",
     "unauthenticated_access":     "no_auth",
     "missing_authentication":     "no_auth",
+    "weak_authentication":        "no_auth",
+    "missing_auth":               "no_auth",
+    "authentication":             "no_auth",
+    "api_exposure":               "no_auth",
     # default_credentials synonyms
     "default_creds":              "default_credentials",
     "hardcoded_credentials":      "default_credentials",
     "default_password":           "default_credentials",
+    "default_credentials_exposed":"default_credentials",
+    "weak_credentials":           "default_credentials",
+    # misconfiguration synonyms
+    "configuration":              "misconfiguration",
+    "insecure_configuration":     "misconfiguration",
     # CVE synonyms — all collapse to the canonical `known_cve`
     "vulnerable_version":         "known_cve",
     "vulnerable_component":       "known_cve",
@@ -89,6 +120,15 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "outdated_software":          "known_cve",
     "ssh_vulnerability":          "known_cve",
     "cve":                        "known_cve",
+    "CVE":                        "known_cve",
+    "vulnerability":              "known_cve",
+    # directory_listing synonyms
+    "open_directory":             "directory_listing",
+    "autoindex":                  "directory_listing",
+    # insecure_update synonyms
+    "insecure_firmware_update":   "insecure_update",
+    "unsigned_firmware":          "insecure_update",
+    "ota_no_signature":           "insecure_update",
 }
 
 

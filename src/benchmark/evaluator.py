@@ -14,6 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from src.agent.vuln_taxonomy import canonicalize
+
 
 # ── Severity normalisation ────────────────────────────────────────────────────
 
@@ -232,21 +234,24 @@ def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | Non
         for f in llm_findings:
             if f.get("device_ip") != gt_ip:
                 continue
-            if f.get("type") == inferred_type:
+            f_type = f.get("type", "")
+            if f_type == inferred_type or canonicalize(f_type) == inferred_type:
                 return f
 
-    # Pass 2: exact type match (LLM type == GT category)
+    # Pass 2: exact type match (LLM type == GT category, after canonicalization)
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
-        if f.get("type") == gt_category:
+        f_type = f.get("type", "")
+        if f_type == gt_category or canonicalize(f_type) == gt_category:
             return f
 
-    # Pass 3: any type in the compatible set
+    # Pass 3: any type in the compatible set (after canonicalization)
     for f in llm_findings:
         if f.get("device_ip") != gt_ip:
             continue
-        if f.get("type") in compatible_types:
+        f_type = f.get("type", "")
+        if f_type in compatible_types or canonicalize(f_type) in compatible_types:
             return f
     return None
 
@@ -296,19 +301,22 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
     exploit_file = run_dir / "04_exploitation.json"
     if exploit_file.exists():
         raw = json.loads(exploit_file.read_text())
+        # Accept both "tests" (current pipeline format) and "vulnerabilities"
+        # (legacy MiniMax format where Phase 4 reused Phase 3 structure).
+        test_list = raw.get("tests") or raw.get("vulnerabilities") or []
         findings = [
             {
-                "id": t.get("vuln_id", ""),
+                "id": t.get("vuln_id") or t.get("id", ""),
                 "device_id": t.get("device_id", ""),
                 "device_ip": t.get("device_ip", ""),
-                "type": t.get("vuln_type", ""),
+                "type": t.get("vuln_type") or t.get("type", ""),
                 "severity": t.get("severity", ""),
-                "details": t.get("description", ""),
+                "details": t.get("description") or t.get("details", ""),
                 "evidence": t.get("evidence", ""),
                 "evidence_level": t.get("evidence_level", 0),
                 "cve_ids": t.get("cve_ids", []),
             }
-            for t in raw.get("tests", [])
+            for t in test_list
             if t.get("status") not in _SKIPPED_PHASE4_STATUSES
         ]
         if findings:
@@ -460,12 +468,13 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             continue
 
         f_type = f.get("type", "")
+        f_type_canon = canonicalize(f_type)
         f_ip = f.get("device_ip", "")
         is_bonus = False
 
-        if bonus_types and f_type in bonus_types:
+        if bonus_types and (f_type in bonus_types or f_type_canon in bonus_types):
             is_bonus = True
-        elif f_type in BONUS_TYPES_AUTO and f_ip in matched_device_ips:
+        elif (f_type in BONUS_TYPES_AUTO or f_type_canon in BONUS_TYPES_AUTO) and f_ip in matched_device_ips:
             is_bonus = True
 
         finding_summary = {

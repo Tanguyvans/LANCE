@@ -55,6 +55,33 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "target": "{ip}", "ports": "502,102,44818", "skip_discovery": True,
         }),
     ],
+    "redis": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "6379",
+            "scripts": "redis-info", "skip_discovery": True,
+        }),
+    ],
+    "ftp": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "21",
+            "scripts": "ftp-anon,ftp-bounce", "skip_discovery": True,
+        }),
+    ],
+    "snmp": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "161",
+            "scripts": "snmp-info,snmp-brute",
+            "skip_discovery": True,
+            "udp_scan": True,
+        }),
+    ],
+    "coap": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "5683",
+            "skip_discovery": True,
+            "udp_scan": True,
+        }),
+    ],
 }
 
 # Role-based extra scans (run regardless of declared services)
@@ -69,6 +96,35 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
     "iot_gateway": [
         ("nmap_scan", {"target": "{ip}", "ports": "23", "skip_discovery": True}),
     ],
+    "nodered_server": [
+        ("curl_headers", {"url": "http://{ip}:1880/admin"}),
+        ("curl_headers", {"url": "http://{ip}:1880/flows"}),
+    ],
+    "snmp_server": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "161",
+            "scripts": "snmp-info,snmp-brute",
+            "skip_discovery": True,
+            "udp_scan": True,
+        }),
+    ],
+    "coap_server": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "5683",
+            "skip_discovery": True,
+            "udp_scan": True,
+        }),
+    ],
+    "camera_server": [
+        ("curl_headers", {"url": "http://{ip}/admin"}),
+        ("curl_headers", {"url": "http://{ip}/snapshot/latest.jpg"}),
+    ],
+    "nvr_server": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "22",
+            "scripts": "ssh-auth-methods", "skip_discovery": True,
+        }),
+    ],
 }
 
 # Service name aliases → SCAN_MATRIX key
@@ -79,6 +135,10 @@ SERVICE_ALIASES: dict[str, str] = {
     "telnet": "telnet",
     "mysql": "mysql", "mariadb": "mysql",
     "modbus": "modbus",
+    "redis": "redis",
+    "ftp": "ftp",
+    "snmp": "snmp",
+    "coap": "coap",
     "port-9001": "mqtt",  # MQTT WebSocket
 }
 
@@ -478,12 +538,13 @@ def _extract_ssh_banner(entries: list[dict], device: dict, svc_name: str) -> lis
 
 
 def _extract_ssh_default_creds(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """role=ssh_server → ALWAYS add default_credentials suspected."""
+    """role=ssh_server or nvr_server → ALWAYS add default_credentials suspected."""
     role = device.get("role", "")
-    if role != "ssh_server":
+    if role not in ("ssh_server", "nvr_server"):
         return []
     # Find evidence from ssh-auth-methods if available
-    evidence = "SSH service detected on ssh_server device — credential testing deferred to Phase 4"
+    cred_hint = "ubnt:ubnt" if role == "nvr_server" else "admin:admin, root:root"
+    evidence = f"SSH service detected on {role} device — credential testing deferred to Phase 4"
     for entry in entries:
         if entry["tool"] != "nmap_scan":
             continue
@@ -498,10 +559,10 @@ def _extract_ssh_default_creds(entries: list[dict], device: dict, svc_name: str)
             evidence = f"ssh-auth-methods failed — credential testing deferred to Phase 4:\n{stdout[:200]}"
     return [_make_finding(
         device, "default_credentials", "HIGH", "ssh", 22,
-        "SSH default credentials must be tested (admin:admin, root:root)",
+        f"SSH default credentials must be tested ({cred_hint})",
         evidence,
         status="suspected",
-        technique="Test SSH login with default IoT credentials: admin:admin, root:root, ubnt:ubnt, pi:raspberry",
+        technique=f"Test SSH login with default IoT credentials: {cred_hint}",
         tools=["ssh_login"],
     )]
 
@@ -526,24 +587,161 @@ def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> lis
 
 
 def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """LuCI/admin accessible on router → no_auth CRITICAL confirmed."""
+    """Admin interface accessible without authentication on router/gateway/nodered/camera."""
     role = device.get("role", "")
-    if role not in ("router", "gateway", "iot_gateway"):
+    if role not in ("router", "gateway", "iot_gateway", "nodered_server", "camera_server"):
         return []
+
+    is_nodered = role == "nodered_server"
+    is_camera = role == "camera_server"
+
     for entry in entries:
         if entry["tool"] != "curl_headers":
             continue
         url = entry.get("kwargs", {}).get("url", "")
-        if "/cgi-bin/luci" not in url and "/admin" not in url:
+        if "/cgi-bin/luci" not in url and "/admin" not in url and "/flows" not in url:
             continue
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
         rc = result.get("return_code", -1)
         if rc == 0 and ("200" in stdout[:50] or "403" in stdout[:50] or "302" in stdout[:50]):
+            if is_nodered:
+                svc = "nodered"
+                port = 1880
+                severity = "HIGH"
+                details = "Node-RED admin interface accessible without authentication"
+            elif is_camera:
+                svc = "http"
+                port = 80
+                severity = "HIGH"
+                details = "Camera admin interface accessible without authentication"
+            else:
+                svc = "http"
+                port = 80
+                severity = "CRITICAL"
+                details = "Router/gateway admin interface accessible from network"
             return [_make_finding(
-                device, "no_auth", "CRITICAL", "http", 80,
-                "Router admin interface accessible from network",
+                device, "no_auth", severity, svc, port,
+                details,
                 f"curl {url} returned HTTP response (admin exposed)",
+            )]
+    return []
+
+
+def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """Redis port 6379 open → no_auth HIGH confirmed."""
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "6379" not in kwargs.get("ports", ""):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        if "6379/tcp" in stdout and "open" in stdout:
+            evidence = f"nmap: 6379/tcp open"
+            # Check if redis-info returned data (confirms no auth)
+            if "redis_version" in stdout.lower() or "redis" in stdout.lower():
+                evidence = f"nmap redis-info: {stdout.strip()[:200]}"
+            return [_make_finding(
+                device, "no_auth", "HIGH", "redis", 6379,
+                "Redis accessible without authentication (no requirepass set)",
+                evidence,
+                status="confirmed",
+                technique="redis-cli -h <ip> KEYS '*' to enumerate all keys and dump sensitive data",
+                tools=["nmap_scan"],
+            )]
+    return []
+
+
+def _extract_ftp_anonymous(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """FTP port 21 open (with ftp-anon script) → misconfiguration HIGH."""
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "21" not in kwargs.get("ports", ""):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        if "21/tcp" not in stdout or "open" not in stdout:
+            continue
+        # ftp-anon script output confirms anonymous access
+        if "Anonymous FTP login allowed" in stdout or "ftp-anon:" in stdout:
+            files_match = re.search(r"ftp-anon:[^\n]*\n((?:\|[^\n]*\n)*)", stdout)
+            files_info = files_match.group(0)[:200] if files_match else "anonymous login allowed"
+            return [_make_finding(
+                device, "insecure_protocol", "HIGH", "ftp", 21,
+                "FTP anonymous login enabled — sensitive files accessible without credentials",
+                files_info,
+                status="confirmed",
+                technique="ftp -n <ip>, then login as anonymous to list and download files",
+                tools=["nmap_scan"],
+            )]
+        # Port open but script didn't confirm anon — still flag as insecure_protocol
+        return [_make_finding(
+            device, "insecure_protocol", "MEDIUM", "ftp", 21,
+            "FTP service exposed (cleartext protocol, test anonymous access)",
+            f"nmap: 21/tcp open — anonymous access not confirmed",
+            status="suspected",
+            technique="ftp -n <ip>, try anonymous login",
+            tools=["nmap_scan"],
+        )]
+    return []
+
+
+def _extract_snmp_default_community(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """SNMP port 161 open or snmp-brute finds community → default_credentials HIGH."""
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "161" not in kwargs.get("ports", ""):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        # snmp-brute confirms public/private community
+        if "snmp-brute:" in stdout or "Account:" in stdout:
+            return [_make_finding(
+                device, "default_credentials", "HIGH", "snmp", 161,
+                "SNMP default community string 'public' accepted — full MIB accessible",
+                stdout.strip()[:200],
+                status="confirmed",
+                technique="snmpwalk -v2c -c public <ip> system",
+                tools=["nmap_scan"],
+            )]
+        # snmp-info returned data → no auth required
+        if "snmp-info:" in stdout or "161/udp" in stdout and "open" in stdout:
+            evidence = stdout.strip()[:200] if "snmp" in stdout.lower() else "161/udp open"
+            return [_make_finding(
+                device, "default_credentials", "HIGH", "snmp", 161,
+                "SNMP service accessible — test default community strings (public/private)",
+                evidence,
+                status="suspected",
+                technique="snmpwalk -v2c -c public <ip> system",
+                tools=["nmap_scan"],
+            )]
+    return []
+
+
+def _extract_coap_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """CoAP port 5683 open → no_auth MEDIUM confirmed."""
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "5683" not in kwargs.get("ports", ""):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        if "5683/udp" in stdout and "open" in stdout:
+            return [_make_finding(
+                device, "no_auth", "MEDIUM", "coap", 5683,
+                "CoAP service accessible without DTLS (no transport-layer security)",
+                f"nmap: 5683/udp open — CoAP accessible without authentication",
+                status="confirmed",
+                technique="coap-client -m get coap://<ip>/.well-known/core to enumerate resources",
+                tools=["nmap_scan"],
             )]
     return []
 
@@ -564,6 +762,10 @@ FINDING_EXTRACTORS = [
     _extract_ssh_default_creds,
     _extract_ot_no_auth,
     _extract_http_no_auth_admin,
+    _extract_redis_no_auth,
+    _extract_ftp_anonymous,
+    _extract_snmp_default_community,
+    _extract_coap_no_auth,
 ]
 
 

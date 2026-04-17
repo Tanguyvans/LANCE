@@ -32,6 +32,56 @@ Do NOT re-create these — they are already included:
 
 {{trivial_findings}}
 
+## Role-specific analysis priority
+
+Based on the device role, focus your analysis on these specific findings:
+
+- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH.
+- **nvr_server**: Test ubnt:ubnt credentials → default_credentials HIGH. SSH port open → always add default_credentials finding.
+- **nodered_server**: Port 1880 accessible → no_auth HIGH (not CRITICAL — Node-RED is application layer). Exec nodes accessible → code_injection CRITICAL only if POST /api/exec confirmed.
+- **camera_server**: HTTP admin accessible without auth → no_auth HIGH. Focus on /admin and /snapshot paths.
+- **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.
+- **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
+- **snmp_server**: Community 'public' accepted → default_credentials HIGH. MIB walk returns data → info_disclosure LOW bonus.
+- **coap_server**: Port 5683/udp accessible without DTLS → no_auth MEDIUM.
+- **db_server (MySQL/MariaDB)**: Root without password → default_credentials HIGH (not CRITICAL — requires network access). Port 3306 open → always add default_credentials finding.
+- **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM.
+- **modbus_server / iot_gateway**: Port 502/tcp open → no_auth CRITICAL (OT protocol with no auth by design).
+- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL.
+- **web_upload**: File upload without validation → code_injection CRITICAL.
+- **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL.
+
+## Severity rules — strictly enforce these caps
+
+| Finding | Max severity |
+|---------|-------------|
+| SSH weak ciphers (no exploit) | MEDIUM |
+| SSH banner version leak | LOW |
+| Missing HTTP security headers | LOW |
+| SNMP community string | HIGH |
+| CoAP no DTLS | MEDIUM |
+| Redis no auth | HIGH |
+| MySQL/MariaDB root no password | HIGH |
+| Node-RED admin no auth | HIGH |
+| Camera admin no auth | HIGH |
+| FTP anonymous | HIGH |
+| Modbus/S7/EtherNet-IP no auth | CRITICAL |
+| RCE via POST /api/exec | CRITICAL |
+| File upload without validation | CRITICAL |
+| MQTT anonymous (IoT exposure) | HIGH |
+| Firmware OTA without signature | HIGH (not CRITICAL) |
+| CVE with CVSS >= 9.0 | CRITICAL |
+| CVE with CVSS 7.0–8.9 | HIGH |
+| CVE with CVSS 4.0–6.9 | MEDIUM |
+| CVE with CVSS < 4.0 | LOW |
+
+## DO NOT report these noise types
+These are NOT vulnerabilities — drop them entirely:
+- `no_applicable_cve`, `cross_service_auth`, `entry_point`, `network_position`
+- `service_exposure`, `service_recon`, `exposed_service`, `informational`
+- `potential_cve` (if you can't confirm the version is vulnerable, skip it)
+- `cross_service`, `network_exposure_generic`, `snmp_not_scanned`, `no_http_service`
+
 ## Your task
 Add findings that automated extraction CANNOT detect:
 
@@ -44,7 +94,7 @@ Add findings that automated extraction CANNOT detect:
 2. **Data exposure deep analysis**: If scan results show accessible HTTP paths with sensitive content,
    call http_get(url) to retrieve the full file and classify the content (credentials, API keys, configs).
 
-3. **Cross-service correlation**: Identify if credentials from one service could be used on another.
+3. **Role-specific default credentials**: Based on role (see table above), add a suspected default_credentials finding if the service is running and no automated finding covers it.
 
 ## Rules
 - Do NOT call ssh_audit, nmap_scan, curl_headers, mqtt_listen — scanning is done.

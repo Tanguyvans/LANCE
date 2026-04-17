@@ -76,15 +76,26 @@ def load_lab_context() -> dict:
 
 
 _ROLE_SERVICES: dict[str, list[dict]] = {
-    "router":       [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
-    "mqtt_broker":  [{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
-    "web_server":   [{"name": "http", "port": 80, "protocol": "tcp"}],
-    "ssh_server":   [{"name": "ssh", "port": 22, "protocol": "tcp"}],
-    "db_server":    [{"name": "mysql", "port": 3306, "protocol": "tcp"}],
-    "iot_gateway":  [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
-    "ldap_server":  [{"name": "ldap", "port": 389, "protocol": "tcp"}],
-    "nfs_server":   [{"name": "nfs", "port": 2049, "protocol": "tcp"}],
-    "ftp_server":   [{"name": "ftp", "port": 21, "protocol": "tcp"}],
+    "router":        [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
+    "mqtt_broker":   [{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
+    "mqtt_broker_v2":[{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
+    "web_server":    [{"name": "http", "port": 80, "protocol": "tcp"}],
+    "web_server_v2": [{"name": "http", "port": 80, "protocol": "tcp"}],
+    "web_upload":    [{"name": "http", "port": 80, "protocol": "tcp"}],
+    "ssh_server":    [{"name": "ssh", "port": 22, "protocol": "tcp"}],
+    "ssh_server_v2": [{"name": "ssh", "port": 22, "protocol": "tcp"}],
+    "db_server":     [{"name": "mysql", "port": 3306, "protocol": "tcp"}],
+    "db_server_v2":  [{"name": "redis", "port": 6379, "protocol": "tcp"}],
+    "iot_gateway":   [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
+    "ldap_server":   [{"name": "ldap", "port": 389, "protocol": "tcp"}],
+    "nfs_server":    [{"name": "nfs", "port": 2049, "protocol": "tcp"}],
+    "ftp_server":    [{"name": "ftp", "port": 21, "protocol": "tcp"}],
+    "nodered_server":[{"name": "http", "port": 1880, "protocol": "tcp"}],
+    "camera_server": [{"name": "http", "port": 80, "protocol": "tcp"}],
+    "nvr_server":    [{"name": "ssh", "port": 22, "protocol": "tcp"}],
+    "coap_server":   [{"name": "coap", "port": 5683, "protocol": "udp"}],
+    "snmp_server":   [{"name": "snmp", "port": 161, "protocol": "udp"}],
+    "modbus_server": [{"name": "modbus", "port": 502, "protocol": "tcp"}],
 }
 
 _PORT_NAME: dict[int, str] = {

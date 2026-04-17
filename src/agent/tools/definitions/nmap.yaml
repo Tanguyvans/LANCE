@@ -29,3 +29,9 @@ parameters:
     required: false
     flag: "--script"
     format: "flag"
+  - name: "udp_scan"
+    type: "boolean"
+    description: "Enable UDP scanning (-sU). Required for UDP services like SNMP (161/udp) and CoAP (5683/udp). Note: requires root/sudo."
+    required: false
+    flag: "-sU"
+    format: "boolean_flag"
