@@ -41,7 +41,10 @@
       "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3)",
       "Bash(venv/bin/pytest tests/ -p no:pytest_ethereum -p no:web3 -q)",
       "Bash(ls \"/Users/gaspard/Desktop/Code Stage/NATO-SmartCity-IoT\"/.venv/bin/python*)",
-      "Bash(python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py -p no:pytest_ethereum -p no:web3 -q)"
+      "Bash(python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py -p no:pytest_ethereum -p no:web3 -q)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(./venv/bin/python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py tests/test_validators.py -v -p no:pytest_ethereum -p no:web3 -q)"
     ]
   }
 }
