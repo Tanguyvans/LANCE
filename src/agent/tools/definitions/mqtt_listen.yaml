@@ -41,6 +41,18 @@ parameters:
     default: 5
     flag: "-W"
     format: "flag"
+  - name: "username"
+    type: "string"
+    description: "MQTT username for authenticated access (e.g. 'test'). Omit for anonymous connections."
+    required: false
+    flag: "-u"
+    format: "flag"
+  - name: "password"
+    type: "string"
+    description: "MQTT password for authenticated access (e.g. 'test'). Use with username."
+    required: false
+    flag: "-P"
+    format: "flag"
 return_code_map:
   0:  "anonymous_access_confirmed_messages_received"
   27: "anonymous_access_confirmed_broker_idle"

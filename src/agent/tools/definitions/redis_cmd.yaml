@@ -1,0 +1,36 @@
+name: "redis_cmd"
+command: "redis-cli"
+args: []
+enabled: true
+timeout: 10
+short_description: "Redis CLI command runner"
+description: |
+  Run Redis commands against a Redis server to test authentication and extract data.
+  Use for testing no_auth (unauthenticated Redis) and data_exposure findings.
+  IMPORTANT — return_code interpretation:
+    return_code=0 : command succeeded (if output is non-empty, Redis is accessible without auth)
+    return_code=1 : connection refused or NOAUTH error (authentication required)
+  A successful PING response (PONG) confirms Redis is accessible without authentication.
+  A successful KEYS * response confirms data can be enumerated without credentials.
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Redis server IP or hostname"
+    required: true
+    flag: "-h"
+    format: "flag"
+  - name: "port"
+    type: "integer"
+    description: "Redis port (default: 6379)"
+    required: false
+    default: 6379
+    flag: "-p"
+    format: "flag"
+  - name: "command"
+    type: "string"
+    description: "Redis command to execute (e.g. 'PING', 'KEYS *', 'GET config:db_password', 'INFO server')"
+    required: true
+    format: "positional"
+return_code_map:
+  0: "command_executed_redis_accessible"
+  1: "connection_failed_or_auth_required"

@@ -207,12 +207,12 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 17
+        assert len(tools) == 18
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
         expected_sw = {"nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup", "modbus_scan"}
-        expected_exploit = {"ssh_login", "mysql_query", "telnet_connect", "ftp_list", "http_get"}
+        expected_exploit = {"ssh_login", "mysql_query", "telnet_connect", "ftp_list", "http_get", "redis_cmd"}
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
         assert names == expected_sw | expected_exploit | expected_hw
 
