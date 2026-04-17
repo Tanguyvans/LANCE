@@ -182,10 +182,35 @@ class LLMProvider:
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
-            response = _call_with_retry(
-                self.client.chat.completions.create,
-                model=self.model, messages=messages, tools=api_tools, max_tokens=max_tokens, parallel_tool_calls=False
-            )
+            try:
+                response = _call_with_retry(
+                    self.client.chat.completions.create,
+                    model=self.model, messages=messages, tools=api_tools, max_tokens=max_tokens, parallel_tool_calls=False
+                )
+            except Exception as exc:
+                # MiniMax (and some OpenAI-compatible APIs) return 400 when the conversation
+                # history contains a tool_call with malformed JSON arguments.
+                # Recovery: remove the offending assistant+tool messages and ask the LLM to retry.
+                err_str = str(exc)
+                is_bad_tool_args = (
+                    "400" in err_str and (
+                        "invalid function arguments" in err_str.lower()
+                        or "invalid params" in err_str.lower()
+                    )
+                )
+                if is_bad_tool_args and malformed_retries < 3:
+                    malformed_retries += 1
+                    log.warning("400 invalid tool arguments (attempt %d/3) — removing malformed messages: %s", malformed_retries, exc)
+                    # Strip tool results and the malformed assistant message from history
+                    while messages and isinstance(messages[-1], dict) and messages[-1].get("role") == "tool":
+                        messages.pop()
+                    if messages and not isinstance(messages[-1], dict):
+                        messages.pop()  # remove the OpenAI message object (assistant with tool_calls)
+                    elif messages and isinstance(messages[-1], dict) and messages[-1].get("role") == "assistant":
+                        messages.pop()
+                    messages.append({"role": "user", "content": "Your previous tool call had invalid JSON arguments and was rejected. Please retry the tool call with properly formatted JSON."})
+                    continue
+                raise
             if not response.choices: continue
             choice = response.choices[0]
             message = choice.message
@@ -226,6 +251,27 @@ class LLMProvider:
             if message.content and stream_callback:
                 stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
             if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
+
+            # Preemptive validation: check all tool call arguments for valid JSON BEFORE
+            # appending to history. If malformed, MiniMax returns 400 on the next request.
+            malformed_ids = []
+            for tc in message.tool_calls:
+                if tc.function.arguments:
+                    try:
+                        json.loads(tc.function.arguments)
+                    except (json.JSONDecodeError, ValueError):
+                        malformed_ids.append(tc.id)
+
+            if malformed_ids:
+                malformed_retries += 1
+                log.warning("Tool call(s) with malformed JSON arguments detected (attempt %d/3): %s", malformed_retries, malformed_ids)
+                if stream_callback:
+                    stream_callback({"type": "tool_call", "name": "ERROR", "args": {"error": "invalid JSON", "tool_call_ids": malformed_ids}})
+                if malformed_retries <= 3:
+                    messages.append({"role": "user", "content": f"Your last tool call had invalid JSON arguments (IDs: {malformed_ids}). Please call the tool again with valid, properly escaped JSON."})
+                    continue
+                return last_nonempty_text or "(malformed tool call JSON — max retries)"
+
             messages.append(message)
 
             for tc in message.tool_calls:
