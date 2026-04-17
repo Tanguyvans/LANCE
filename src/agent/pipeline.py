@@ -386,6 +386,7 @@ class Pipeline:
             # Generate compact context for Phase 5 (reduce token usage)
             if agent_config.phase == 5:
                 self._generate_phase5_context()
+                self._pregenerate_report_sections()
 
             # Run the agent
             status = self._run_agent(agent_config, stream_callback)
@@ -750,6 +751,12 @@ class Pipeline:
             template = template.replace("{{run_date}}", self.run_dir.name)
             template = template.replace("{{model}}", self.provider.model)
             variables["deliverable_template"] = template
+
+        # For Phase 5: inject pre-generated sections 5 & 6 so LLM only writes narrative
+        if config.phase == 5:
+            prefill_path = self.run_dir / "05_report_prefill.md"
+            if prefill_path.exists():
+                variables["prefilled_sections_5_6"] = prefill_path.read_text(encoding="utf-8")
 
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
@@ -1766,6 +1773,120 @@ class Pipeline:
             f"({len(device_list)} devices, {total_vulns} vulns, "
             f"{out_path.stat().st_size:,} bytes)"
         )
+
+    def _pregenerate_report_sections(self) -> None:
+        """Pre-generate heavy markdown tables for Phase 5 report (Sections 5 and 6).
+
+        Writes 05_report_prefill.md so the LLM only needs to produce narrative text
+        (Sections 1, 2, 3, 4, 7, 8, 9, 10) rather than re-serialising 100+ table rows.
+        This avoids MiniMax / smaller models truncating the report mid-generation.
+        """
+        # Load phase 3 vulnerabilities
+        vuln_path = self.run_dir / "03_vuln_analysis.json"
+        phase3_vulns: list[dict] = []
+        if vuln_path.exists():
+            data = json.loads(vuln_path.read_text(encoding="utf-8"))
+            phase3_vulns = data.get("vulnerabilities", [])
+
+        # Load phase 4 exploitation results
+        exploit_path = self.run_dir / "04_exploitation.json"
+        exploit_by_vuln: dict[str, dict] = {}
+        phase4_summary: dict = {}
+        if exploit_path.exists():
+            data = json.loads(exploit_path.read_text(encoding="utf-8"))
+            phase4_summary = data.get("summary", {})
+            for t in data.get("tests", []):
+                vid = t.get("vuln_id", "")
+                if vid:
+                    exploit_by_vuln[vid] = t
+
+        # --- Section 5: Vulnerability table ---
+        sev_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        sorted_vulns = sorted(
+            phase3_vulns,
+            key=lambda v: (sev_order.get((v.get("severity") or "LOW").upper(), 9), v.get("device_ip", ""))
+        )
+        sec5_rows = []
+        for v in sorted_vulns:
+            vid = v.get("id", "")
+            exploit = exploit_by_vuln.get(vid, {})
+            status_raw = exploit.get("status", "UNTESTED")
+            status_map = {
+                "CONFIRMED": "**Confirmed**",
+                "FAILED": "Not Exploitable",
+                "ERROR": "Inconclusive",
+                "UNTESTED": "Potential (untested)",
+            }
+            status = status_map.get(status_raw, "Potential (untested)")
+            evidence_level = exploit.get("evidence_level", 1)
+            evidence_note = f"L{evidence_level}" if exploit else "-"
+            title = (v.get("details") or "")[:80].replace("|", "/")
+            sec5_rows.append(
+                f"| {vid} | {v.get('device_id','')} ({v.get('device_ip','')}) "
+                f"| {v.get('type','')} | {(v.get('severity') or '').upper()} "
+                f"| {v.get('service','')}:{v.get('port','')} | {status} | {title} |"
+            )
+        sec5 = (
+            "## 5. Discovered Vulnerabilities\n\n"
+            "| ID | Device | Type | Severity | Service | Status | Evidence |\n"
+            "|----|--------|------|----------|---------|--------|----------|\n"
+            + "\n".join(sec5_rows)
+        )
+
+        # --- Section 6.1: Exploitation summary ---
+        total_tested = phase4_summary.get("total_tested", len(phase3_vulns))
+        confirmed = phase4_summary.get("confirmed", 0)
+        not_exploitable = phase4_summary.get("not_exploitable", 0)
+        errors = phase4_summary.get("errors", 0)
+        # Count real evidence (level >= 2)
+        data_exfil = sum(1 for t in exploit_by_vuln.values() if t.get("evidence_level", 0) >= 2)
+        sec61 = (
+            "### 6.1 Exploitation Summary\n\n"
+            "| Metric | Value |\n|--------|-------|\n"
+            f"| Vulnerabilities tested | {total_tested} |\n"
+            f"| Confirmed (exploited) | {confirmed} |\n"
+            f"| Data exfiltrated (level ≥ 2) | {data_exfil} |\n"
+            f"| Not exploitable | {not_exploitable} |\n"
+            f"| Errors | {errors} |"
+        )
+
+        # --- Section 6.2: Exploitation details (confirmed only, keep table manageable) ---
+        confirmed_tests = [t for t in exploit_by_vuln.values() if t.get("status") == "CONFIRMED" and t.get("evidence_level", 1) >= 2]
+        sec62_rows = []
+        for t in confirmed_tests:
+            data_list = t.get("data_extracted", [])
+            data_str = ("; ".join(str(d) for d in data_list[:2]) or "-")[:60].replace("|", "/")
+            sec62_rows.append(
+                f"| {t.get('vuln_id','')} | {t.get('device_id','')} "
+                f"| {t.get('vuln_type','')} | {t.get('tool_used','-')} "
+                f"| **Confirmed** | {t.get('evidence_level',1)} | {data_str} |"
+            )
+        sec62 = (
+            "### 6.2 Exploitation Details (evidence level ≥ 2)\n\n"
+            "| Test ID | Device | Vuln Type | Tool Used | Status | Evidence Level | Data Retrieved |\n"
+            "|---------|--------|-----------|-----------|--------|----------------|----------------|\n"
+            + ("\n".join(sec62_rows) if sec62_rows else "| — | No level-2+ exploits in this run | | | | | |")
+        )
+
+        # --- Section 6.3: Credentials recovered ---
+        creds_rows = []
+        for t in exploit_by_vuln.values():
+            for item in t.get("data_extracted", []):
+                item_str = str(item)
+                if any(kw in item_str.lower() for kw in ("password", "passwd", "cred", "login", "user", "key", "token")):
+                    creds_rows.append(f"| {t.get('device_id','')} | (see evidence) | {item_str[:80].replace('|','/')} | - | Phase 4 |")
+        sec63 = (
+            "### 6.3 Credentials Recovered\n\n"
+            "| Source | Username | Password/Key | Access Level | Retrieved From |\n"
+            "|--------|----------|--------------|--------------|----------------|\n"
+            + ("\n".join(creds_rows) if creds_rows else "| — | No credentials extracted | | | |")
+        )
+
+        # Write prefill file
+        prefill = "\n\n".join([sec5, "## 6. Exploitation Results (Phase 4)\n\n" + sec61, sec62, sec63])
+        prefill_path = self.run_dir / "05_report_prefill.md"
+        prefill_path.write_text(prefill, encoding="utf-8")
+        print(f"  [prefill] 05_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.

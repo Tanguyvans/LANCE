@@ -2,7 +2,7 @@ name: "modbus_scan"
 command: "nmap"
 args: ["-sV", "-p", "502"]
 enabled: true
-timeout: 60
+timeout: 120
 short_description: "Modbus TCP port scanner (port 502)"
 description: |
   Detect Modbus TCP service on port 502 using nmap service version detection.

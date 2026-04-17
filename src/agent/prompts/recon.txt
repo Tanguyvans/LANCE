@@ -32,33 +32,41 @@ IMPORTANT: Execute ALL steps below autonomously, one after the other, without pa
 TURN BUDGET: You have at most 20 turns. Aim to call save_deliverable by turn 18.
 RULE: Call read_deliverable EXACTLY ONCE. Never call search_history more than once.
 RULE: Do NOT call ssh_audit, curl_headers, or mqtt_listen — those are reserved for Phase 3.
+RULE: NEVER call modbus_scan — it times out and Phase 3 scanner handles Modbus automatically.
+RULE: NEVER use udp_scan=True without a ports= value. NEVER use udp_scan in Phase 2 at all.
 
 ## Step 1 — Discovery (2 tool calls)
 1. Call arp_scan() to list live hosts.
 2. Call nmap_discovery(target="{{target_subnet}}") to scan the subnet.
 3. Call read_deliverable("01_graph_analysis.md") for the device list.
 
-## Step 2 — Port scans (1 nmap_scan per IP)
-For EACH discovered IP, call ONE nmap_scan with the appropriate port list:
+## Step 2 — Port scans (BUDGET: max 15 nmap_scan calls)
+Group IPs by role and call ONE nmap_scan per role-group when possible.
+If there are more than 15 IPs, prioritise: (1) router/gateway, (2) servers, (3) a sample of sensors.
+For each IP (or representative IP per group), call ONE nmap_scan:
 - Router/OpenWrt:        ports="22,23,80,443,8080,8291"
 - IoT gateway/RPi:       ports="22,23,80,443,502,554,1883,8080,8086"
 - Database server:       ports="22,80,3306,5432,27017"
-- PLC/Modbus/OT device:  ports="22,80,502,102,44818,47808"
+- PLC/Modbus/OT device:  ports="22,80,502,102,44818"   ← NO modbus_scan, NO udp_scan
 - Camera/NVR:            ports="22,80,443,554,8080,8554"
-- Web server/HMI:        ports="22,80,443,8080,8443"
+- Web server/HMI:        ports="22,80,443,8080,8443,1880"
 - MQTT broker:           ports="22,80,1883,8883"
 - SSH server:            ports="22,80,443"
+- SNMP/CoAP device:      ports="22,80,161,5683"         ← list TCP only; Phase 3 handles UDP
 - Unknown/undocumented:  ports="22,23,80,443,502,554,1883,3306,8080,8443"
 Always use skip_discovery=true.
+IMPORTANT: If you have already used 14 nmap_scan calls, stop scanning and go directly to Step 3.
 
 ## Step 3 — Document and save
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
+For IPs not individually scanned (budget limit), document them using nmap_discovery results.
 Then immediately call save_deliverable.
 
 ## Step 4 — Completion checklist (MANDATORY before save_deliverable)
-- [ ] nmap_scan called for EVERY discovered IP
-- [ ] Every undocumented IP documented
-Fill the template with ALL nmap results, then call save_deliverable.
+- [ ] At most 15 nmap_scan calls made
+- [ ] Every discovered IP documented (scanned or noted from discovery)
+- [ ] No modbus_scan or udp_scan calls made
+Fill the template with ALL results, then call save_deliverable.
 </instructions>
 
 <output>

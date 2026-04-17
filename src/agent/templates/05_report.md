@@ -53,42 +53,16 @@
 
 <!-- List Phase 1 vs Phase 2 differences with security impact -->
 
-## 5. Discovered Vulnerabilities
+{{prefilled_sections_5_6}}
 
-| ID | Device | Type | Severity | Service | Status | Evidence |
-|----|--------|------|----------|---------|--------|----------|
-
-**Status legend:**
+**Status legend (Section 5):**
 - **Confirmed** — Phase 4 exploitation succeeded
 - **Not Exploitable** — Phase 4 test ran, exploit failed
 - **Inconclusive** — Tool error, needs manual retest
 - **Potential (untested)** — Phase 3 finding, no Phase 4 test
 - **Potential (CVE-based)** — NVD match only, no active test
 
-## 6. Exploitation Results (Phase 4)
-
-### 6.1 Exploitation Summary
-
-| Metric | Value |
-|--------|-------|
-| Vulnerabilities tested | |
-| Confirmed (exploited) | |
-| Data exfiltrated | |
-| Not exploitable | |
-| Errors | |
-
-### 6.2 Exploitation Details
-
-| Test ID | Device | Vuln Type | Tool Used | Status | Evidence Level | Data Retrieved |
-|---------|--------|-----------|-----------|--------|----------------|----------------|
-
-**Evidence levels:** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
-
-### 6.3 Credentials Recovered
-
-| Source | Username | Password | Access Level | Retrieved From |
-|--------|----------|----------|--------------|----------------|
-<!-- List ALL credentials found during exploitation: SSH logins, DB passwords, API keys, MQTT topics -->
+**Evidence levels (Section 6):** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
 
 ## 7. Attack Paths
 

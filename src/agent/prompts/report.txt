@@ -18,9 +18,19 @@ Fill in the report template below with data from previous phases. Do NOT change 
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
    WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
    The 05_phase5_context.json file contains all the data you need from those files.
-2. Fill every section and table in the template using data from the reads above
-3. Do NOT fabricate results: if a phase was skipped or failed, write "Phase skipped" in that section
-4. Do NOT add, remove, or rename sections — keep the template structure exactly as provided
+2. **Sections 5 and 6 are already pre-generated** — they appear below in the template.
+   Do NOT rewrite or regenerate them. Copy them as-is into the final report.
+3. Write ONLY the following sections from scratch:
+   - Section 1 (Executive Summary) — 5-10 lines max
+   - Section 2 (Scope and Methodology) — fill in bullet points
+   - Section 3 (Topology) — fill tables from Phase 1 and Phase 2
+   - Section 4 (Reconnaissance) — fill table from Phase 2
+   - Section 7 (Attack Paths) — 3-5 critical chains + pivot nodes
+   - Section 8 (Risk Scores) — top 10 devices by risk
+   - Section 9 (Remediation) — prioritised action table
+   - Section 10 (Appendices) — CVE list from context
+4. Do NOT fabricate results. If a phase was skipped, write "Phase skipped".
+5. Do NOT add, remove, or rename sections — keep the template structure exactly as provided.
 
 ## IMPORTANT — Data sources
 - Phase 1 = DECLARATIVE model (YAML). Useful for topology and CVEs, but listed services are THEORETICAL.
