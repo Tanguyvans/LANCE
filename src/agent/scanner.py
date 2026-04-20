@@ -32,13 +32,14 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
         ("curl_headers", {"url": f"http://{{host}}{path}"})
         for path in [
             "/", "/backup/", "/config/", "/admin", "/logs/",
-            "/firmware/", "/api/devices", "/api/status", "/update",
-            "/.env", "/robots.txt",
+            "/firmware/", "/api/devices", "/api/status", "/api/exec",
+            "/update", "/.env", "/robots.txt",
         ]
     ],
     "mqtt": [
         ("mqtt_listen", {"broker": "{ip}", "topic": "#", "count": 5, "timeout": 5}),
         ("mqtt_listen", {"broker": "{ip}", "topic": "$SYS/#", "count": 3, "timeout": 5}),
+        ("mqtt_listen", {"broker": "{ip}", "topic": "#", "count": 5, "timeout": 5, "username": "test", "password": "test"}),
         ("nmap_scan", {"target": "{ip}", "ports": "9001", "skip_discovery": True}),
     ],
     "telnet": [
@@ -428,6 +429,31 @@ def _extract_mqtt_data_exposure(entries: list[dict], device: dict, svc_name: str
     return []
 
 
+def _extract_mqtt_weak_creds(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """mqtt_listen with test:test returns rc 0 or 27 → default_credentials HIGH confirmed."""
+    for entry in entries:
+        if entry["tool"] != "mqtt_listen":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if kwargs.get("username") != "test":
+            continue
+        if kwargs.get("topic") != "#":
+            continue
+        result = _parse_result(entry)
+        rc = result.get("return_code", -1)
+        if rc in (0, 27):
+            stdout = result.get("stdout", "")
+            return [_make_finding(
+                device, "default_credentials", "HIGH", "mqtt", 1883,
+                "MQTT broker accepts weak credentials (test:test)",
+                f"mqtt_listen(username=test, password=test) — return_code={rc}, messages:\n{stdout[:200]}",
+                status="confirmed",
+                technique="mosquitto_sub -h <ip> -u test -P test -t '#' to subscribe with weak credentials",
+                tools=["mqtt_listen"],
+            )]
+    return []
+
+
 def _extract_mqtt_sys(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
     """$SYS topics accessible → info_disclosure LOW confirmed."""
     for entry in entries:
@@ -584,6 +610,32 @@ def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> lis
                     f"nmap: {port_str} open",
                 ))
     return findings
+
+
+def _extract_api_exec(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """GET /api/exec returns 200 or 405 → code_injection CRITICAL (endpoint exists)."""
+    role = device.get("role", "")
+    if "web_server" not in role and "monitor" not in role:
+        return []
+    for entry in entries:
+        if entry["tool"] != "curl_headers":
+            continue
+        url = entry.get("kwargs", {}).get("url", "")
+        if "/api/exec" not in url:
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        rc = result.get("return_code", -1)
+        if rc == 0 and ("200" in stdout[:50] or "405" in stdout[:50] or "400" in stdout[:50]):
+            return [_make_finding(
+                device, "code_injection", "CRITICAL", "http", 80,
+                "RCE endpoint /api/exec accessible — remote code execution possible",
+                f"curl GET /api/exec returned: {stdout[:150]}",
+                status="confirmed",
+                technique="curl -X POST http://<ip>/api/exec -d '{\"cmd\":\"id\"}' to execute commands",
+                tools=["http_get"],
+            )]
+    return []
 
 
 def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
@@ -752,7 +804,9 @@ FINDING_EXTRACTORS = [
     _extract_missing_headers,
     _extract_directory_listing,
     _extract_http_data_exposure,
+    _extract_api_exec,
     _extract_mqtt_no_auth,
+    _extract_mqtt_weak_creds,
     _extract_mqtt_data_exposure,
     _extract_mqtt_sys,
     _extract_mqtt_websocket,

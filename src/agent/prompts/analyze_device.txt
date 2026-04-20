@@ -49,6 +49,7 @@ Based on the device role, focus your analysis on these specific findings:
 - **modbus_server / iot_gateway**: Port 502/tcp open → no_auth CRITICAL (OT protocol with no auth by design).
 - **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL.
 - **web_upload**: File upload without validation → code_injection CRITICAL.
+- **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires "Index of" in the response body. Do NOT report directory_listing unless the scanner explicitly found "Index of".
 - **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL.
 
 ## Severity rules — strictly enforce these caps

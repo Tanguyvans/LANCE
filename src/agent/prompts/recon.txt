@@ -29,11 +29,12 @@ Your deliverable is the port/service map used by all subsequent phases.
 
 <instructions>
 IMPORTANT: Execute ALL steps below autonomously, one after the other, without pausing.
-TURN BUDGET: You have at most 20 turns. Aim to call save_deliverable by turn 18.
+TURN BUDGET: You have at most 30 turns. Aim to call save_deliverable by turn 25.
 RULE: Call read_deliverable EXACTLY ONCE. Never call search_history more than once.
 RULE: Do NOT call ssh_audit, curl_headers, or mqtt_listen — those are reserved for Phase 3.
 RULE: NEVER call modbus_scan — it times out and Phase 3 scanner handles Modbus automatically.
 RULE: NEVER use udp_scan=True without a ports= value. NEVER use udp_scan in Phase 2 at all.
+RULE: The report template is SHORT (3 sections, 3 tables). Fill it quickly — do not elaborate.
 
 ## Step 1 — Discovery (2 tool calls)
 1. Call arp_scan() to list live hosts.

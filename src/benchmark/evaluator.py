@@ -46,7 +46,7 @@ CATEGORY_TO_TYPE = {
         "default_creds", "snmp_community", "weak_credentials",
     },
     "data_exposure":       {
-        "missing_header", "version_leak", "no_auth", "data_exposure",
+        "missing_header", "version_leak", "data_exposure",
         "directory_listing", "credential_exposure", "sensitive_data_exposure",
         "info_disclosure", "config_exposure", "file_disclosure",
         "plaintext_credentials", "cleartext_storage", "backup_exposure",
@@ -288,7 +288,7 @@ def match_vuln(gt_vuln: dict, llm_findings: list[dict]) -> tuple[dict | None, st
 
 # Phase 4 statuses that mean "test ran but vuln not exploitable" or "tool error"
 # — they are excluded from the LLM findings so they don't count as false positives.
-_SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "ERROR"})
+_SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED"})
 
 
 def _load_llm_findings(run_dir: Path) -> list[dict]:
