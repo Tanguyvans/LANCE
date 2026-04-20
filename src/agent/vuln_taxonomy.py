@@ -52,6 +52,16 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "firmware_update_no_auth",
     "weak_protocol",
     "suspected_cve",
+    # Pivot/lateral movement observations (not vulnerabilities per se)
+    "pivot_enabler",
+    "pivot_opportunity",
+    "pivot_risk",
+    # Hallucinated or ambiguous types
+    "protocol_weakness",
+    "vulnerable_cve",
+    "firmware_no_signature",
+    "dos",
+    "cve_mqtt_null_deref",
 })
 
 

@@ -1651,7 +1651,27 @@ class Pipeline:
     def _resolve_exploit_verdict(self, vuln: dict, exploit_file: Path) -> dict:
         """Return a single aggregated test entry for one Phase 3 finding."""
         if not exploit_file.exists():
-            return _make_test_entry(vuln, status="CONFIRMED")
+            # Fallback: the exploit agent may have saved with a different VULN-ID.
+            # Scan for any {vuln_type}_VULN-*.json in the device directory.
+            device_dir = exploit_file.parent
+            vuln_type_prefix = exploit_file.name.split("_VULN-")[0]
+            candidates = sorted(device_dir.glob(f"{vuln_type_prefix}_VULN-*.json"))
+            if candidates:
+                # Pick the candidate with the highest evidence_level to avoid
+                # collisions when the same vuln_type has multiple findings on a device.
+                best = candidates[0]
+                best_level = -1
+                for c in candidates:
+                    try:
+                        c_level = json.loads(c.read_text(encoding="utf-8")).get("evidence_level", 0)
+                    except Exception:
+                        c_level = 0
+                    if c_level > best_level:
+                        best_level = c_level
+                        best = c
+                exploit_file = best
+            else:
+                return _make_test_entry(vuln, status="CONFIRMED")
 
         phase3_confirmed = vuln.get("exploitation_status", "") == "confirmed"
         try:
