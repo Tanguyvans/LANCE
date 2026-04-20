@@ -1,222 +1,80 @@
-# NATO Smart City IoT - Attack Path Analysis Platform
+# NATO Smart City IoT — Attack Path Analysis Platform
 
 ## Overview
 
-Cybersecurity platform for Smart City IoT infrastructures. Models a physical IoT lab network (192.168.88.0/24) as a directed graph to analyze vulnerabilities and detect multi-hop attack paths. Inspired by the Shannon/LLMDFA approach: LLM agents query the enriched graph to identify attack surfaces and generate pentest reports.
+Cybersecurity platform for Smart City IoT infrastructures. Models an IoT network as a directed graph, runs a multi-phase LLM agent pipeline (inspired by Shannon / LLMDFA) that reconnoitres, exploits, and reports on detected vulnerabilities, and scores every run against a ground truth. The platform primarily operates on **disposable Proxmox scenarios** — never against production hardware — and ships three modes:
 
-## Network Access
+- **Benchmark mode** — runs 14 scripted scenarios on Proxmox (`192.168.100.0/24`, isolated `vmbr1` bridge) to score LLMs against ground-truth YAMLs (Recall / Precision / F1 / weighted Score).
+- **Discovery mode** (Docker) — starts with an empty graph, nmap-discovers any target network from a user-supplied CIDR, displays hosts live in the dashboard.
+- **Reference lab mode** — the `S3 · Réplique NATO Lab` scenario mirrors the real IoT lab topology (LoRaWAN / Zigbee / MQTT / cameras) inside Proxmox, so the same pipeline can be validated against an NATO-Lab-like environment without touching physical devices.
 
-| Service | URL | Notes |
-|---------|-----|-------|
-| WisGate (LoRaWAN) | <http://192.168.88.238> | LoRaWAN Gateway EU868 |
-| Zigbee2MQTT | <http://192.168.88.247:8080> | Zigbee Interface |
-| MikroTik | 192.168.88.1 | Router/Firewall (WinBox) |
-| TP-Link EAP613 | <http://192.168.88.251> | WiFi AP "NATO-Lab" |
+## Dashboard
 
-### SSH
+The FastAPI + SPA dashboard runs on the master VM (Tailscale) and on the Docker image. It drives every benchmark run: select a scenario, pick an LLM (or one per phase in Expert mode), stream events live, and inspect past runs / scores.
 
-```bash
-ssh nato@192.168.88.248  # Jetson Orin Nano
-ssh nato@192.168.88.247  # Raspberry Pi 5
-ssh nato@192.168.88.231  # IoT Hub
-```
+![Main dashboard — scenario S12 "Smart City Large Scale" loaded, live event log on the right](docs/images/dashboard-main.png)
 
-## Network Architecture
+**Left panel** — new run config (global / per-phase model, scenario selector, phases, budget) + run history.
+**Center** — interactive Cytoscape topology of the selected scenario (organic / hierarchical / concentric layouts). Node colors = device type (router · compute · gateway · camera · sensor).
+**Right** — Event Log (SSE stream): every `tool_call` / `tool_result` of each phase, with expandable JSON.
+**Top bar** — Dashboard / Benchmark tabs, phase status pills (running / done / failed), running cost.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              INTERNET                                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         MikroTik RB5009 (.1)                                │
-│                           Router/Firewall                                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Netgear GS348PP (PoE)                                │
-│                           48-port Switch                                    │
-└─────────────────────────────────────────────────────────────────────────────┘
-        │          │          │          │          │          │          │
-        ▼          ▼          ▼          ▼          ▼          ▼          ▼
-  ┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐
-  │TP-Link  ││WisGate  ││iot-hub  ││rpi-nato ││Jetson   ││Ubiquiti ││Ubiquiti │
-  │EAP613   ││RAK7268  ││RPi5     ││RPi5     ││Orin Nano││AI Turret││NVR      │
-  │.251     ││.238     ││.231     ││.247     ││.248     ││.230     ││.253     │
-  │WiFi AP  ││LoRaWAN  ││MQTT     ││Zigbee   ││AI Vision││Camera   ││Video    │
-  └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘
-       │          │          ▲          │                    │          │
-       │          │          │          │                    └────┬─────┘
-       ▼          │          │          │                         │
-  ┌─────────┐     │          │          │                   ┌─────▼─────┐
-  │WiFi     │     │          │          │                   │Video Feed │
-  │Clients  │     │          │          │                   └───────────┘
-  └─────────┘     │          │          │
-                  │          │          │
-            ┌─────┴─────┐    │    ┌─────┴─────┐
-            │  LoRaWAN  │    │    │  Zigbee   │
-            └───────────┘    │    └───────────┘
-                  │          │          │
-            ┌─────┴─────┐    │    ┌─────┴─────┐
-            │Milesight  │    │    │Aqara      │
-            │EM310-UDL  │    │    │Vibration  │
-            │(ultrasonic)│   │    │Sensor     │
-            └───────────┘    │    └───────────┘
-                  │          │          │
-                  │    ┌─────┴─────┐    │
-                  └───►│   MQTT    │◄───┘
-                       │   .231    │
-                       └───────────┘
-```
+## Testing environment — Proxmox + scenarios
 
-## IoT Protocols
+All offensive testing happens on disposable VMs on a **Proxmox** hypervisor, never against the physical lab:
 
-| Protocol | Gateway | Sensors |
-|----------|---------|---------|
-| **LoRaWAN** | WisGate Edge Lite 2 | Milesight EM310-UDL, SenseCAP S2120, Elsys EMS, Dragino PS-LB |
-| **Zigbee** | Sonoff ZBDongle-P (RPi5) | Aqara Vibration, Aqara Door/Window |
-| **WiFi/BLE** | TP-Link EAP613 | Industrial Shields Ardbox |
+- **Master VM** (`LXC 200` on Proxmox) runs the FastAPI dashboard, the LLM pipeline, and the Ansible controller. Reachable via Tailscale (`nato-master.tail6b8e31.ts.net:8501`).
+- **Isolated test bridge** `vmbr1` — `192.168.100.0/24`. All nmap / ssh-audit / mqtt / modbus scans are pinned to this bridge via iptables on the master's `eth1`.
+- **Scenario** = one OpenWrt router (VMID `1N0`) + N Debian LXC services (VMIDs `1N1`…`1N9`) cloned from Proxmox templates (`9000` / `9010`).
+- **Ansible pipeline** — `deploy_master.yml` provisions the master once; then for each scenario: `03_deploy_scenario → 04_inject_vulns → 05_populate_services → 06_verify → 99_teardown`, all triggered from the dashboard or CLI.
 
-## Hardware Inventory
+### Scenarios available in the dashboard
 
-| Device | Role | IP |
-|--------|------|-----|
-| MikroTik RB5009 | Router/Firewall | 192.168.88.1 |
-| Netgear GS348PP | 48-port PoE Switch | - |
-| Jetson Orin Nano | Edge AI, Vision | 192.168.88.248 |
-| Raspberry Pi 5 | Zigbee Gateway | 192.168.88.247 |
-| Raspberry Pi 4 | MQTT Broker | - |
-| WisGate Edge Lite 2 | LoRaWAN Gateway | 192.168.88.238 |
-| TP-Link EAP613 | WiFi AP NATO-Lab | 192.168.88.251 |
+| ID | Name | Theme |
+|----|------|-------|
+| `S1` / `S1h` | Réseau plat / hardened | Flat network, minimal services |
+| `S2` | Gateway exposée | Internet-facing IoT gateway |
+| `S3` | Réplique NATO Lab | Mirror of the physical lab (wisgate / rpi5 / iot-hub / jetson / ap / cam / nvr) |
+| `S4` / `S4h` | Réseau segmenté (ICS/SCADA) / hardened | PLC + HMI + historian, segmented admin zone |
+| `S5` | Smart Building | Cameras + NVR + access control + HVAC |
+| `S6` | Domotique centralisée | Home hub + MQTT + DB + cam + web |
+| `S7` | Edge-Cloud pivot | Edge gateway ↔ cloud API/DB pivot |
+| `S8` | Multi-zone IT/IoT/OT | Three-tier segmentation |
+| `S9` | Mesh IoT | Mesh topology |
+| `S10` | Flat avec variantes | Hardening A/B variants |
+| `S11` | Smart City 3 zones | Multi-zone smart-city |
+| `S12` | Smart City Large Scale | 35 devices — IT / IoT / OT / cameras / PLCs (shown in screenshot above) |
+
+Full scenario definitions, ground truth, and playbook reference: see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/ansible/README.md](benchmarks/ansible/README.md).
+
+## Benchmark tab — model comparison
+
+Each run's `04_exploitation.json` (falling back to `03_vuln_analysis.json`) is matched against `benchmarks/ground_truth/scenario_N.yaml` and scored: Recall, Precision, F1, weighted Score (CRITICAL=4 / HIGH=3 / MEDIUM=2 / LOW=1), with penalties for severity mismatch (×0.75) and loose-category matches (×0.5). Runs can be filtered by scenario and model, and added to a comparison basket.
+
+![Benchmark tab — one row per run with cost, recall, precision, F1, score, severity, hallucination rate](docs/images/dashboard-benchmark.png)
 
 ## Pipeline Architecture
 
 ```mermaid
-graph TB
-    subgraph Infrastructure["Infrastructure (YAML)"]
-        TOPO[nato_lab.yaml<br/>15 devices topology]
-        CPE[cpe_mapping.yaml<br/>CPE → NVD]
-    end
+flowchart LR
+    YAML[Scenario YAML<br/>+ CPE mapping]
+    GRAPH[NetworkX graph<br/>+ CVE / risk]
+    AGENT["LLM pipeline<br/>5 phases"]
+    TOOLS[Tools<br/>graph · recon · hardware · skills]
+    KB[(Knowledge store<br/>ChromaDB + Voyage)]
+    OUT[Deliverables<br/>01…05 + cost_summary]
 
-    subgraph Core["Core Engine"]
-        MODELS[models.py<br/>Dataclasses]
-        GRAPH[graph_backend.py<br/>NetworkX DiGraph]
-        LOADER[loader.py<br/>YAML → Graph]
-        CVE[cve_lookup.py<br/>NIST NVD API]
-        RISK[risk_scorer.py<br/>CVSS + Centrality]
-        ATTACK[attack_path.py<br/>Dijkstra + Pivots]
-    end
-
-    subgraph Agent["LLM Agent Pipeline (5 phases)"]
-        P1[Phase 1<br/>Graph Analysis]
-        P2[Phase 2<br/>Recon]
-        P3[Phase 3<br/>Vuln Analysis<br/>(Parallel Sub-agents)]
-        P4[Phase 4<br/>Exploitation]
-        P5[Phase 5<br/>Report]
-    end
-
-    subgraph Tools["Agent Tools"]
-        direction LR
-        GTOOLS[Graph Tools<br/>Python]
-        RTOOLS[Recon Tools<br/>YAML definitions]
-        HTOOLS[Hardware Tools<br/>HackRF, Flipper<br/>Proxmark3, Kit]
-        STOOLS[Skill Tools<br/>Markdown + frontmatter]
-        DTOOLS[Deliverable Tools<br/>Aggregate Results]
-    end
-
-    subgraph Knowledge["Knowledge Store"]
-        CHROMA[(ChromaDB<br/>data/knowledge.db)]
-        VOYAGE[Voyage AI<br/>voyage-4-lite<br/>512 dims]
-        SKILLS[Skills .md<br/>7 IoT skills]
-        INGEST[Ingestion<br/>Section chunking]
-    end
-
-    subgraph Providers["LLM Providers"]
-        ANTH[Anthropic<br/>Claude]
-        OR[OpenRouter<br/>Gemini, etc.]
-    end
-
-    TOPO --> LOADER
-    CPE --> CVE
-    LOADER --> MODELS --> GRAPH
-    GRAPH --> RISK
-    GRAPH --> ATTACK
-    CVE --> RISK
-
-    P1 --> P2 --> P3 --> P4 --> P5
-
-    GTOOLS --> GRAPH
-    RTOOLS -->|nmap, ssh-audit<br/>curl, mqtt| P2
-    HTOOLS -->|hackrf, flipper<br/>proxmark3, kit| P4
-    STOOLS --> SKILLS
-    STOOLS -->|search_knowledge| CHROMA
-
-    SKILLS --> INGEST --> CHROMA
-    VOYAGE --> CHROMA
-
-    Agent -->|tool_use| Tools
-    Providers --> Agent
-
-    P5 -->|output/agent/| REPORT[Pentest Report<br/>Markdown]
-
-    style Infrastructure fill:#e1f5fe
-    style Core fill:#fff3e0
-    style Agent fill:#f3e5f5
-    style Tools fill:#e8f5e9
-    style Knowledge fill:#fce4ec
-    style Providers fill:#f5f5f5
+    YAML --> GRAPH --> AGENT
+    TOOLS --> AGENT
+    KB --> TOOLS
+    AGENT --> OUT
 ```
 
-```mermaid
-graph LR
-    subgraph SW_Tools["Software Tools (definitions/*.yaml)"]
-        N[nmap.yaml] --> TL[tool_loader.py]
-        S[ssh_audit.yaml] --> TL
-        C[curl_headers.yaml] --> TL
-        M[mqtt_listen.yaml] --> TL
-        NV[nvd_lookup.yaml] --> TL
-    end
+**Pipeline** — 5 phases, each with its own prompt and tool set: **graph analysis → recon → vuln analysis (parallel per device) → exploitation (parallel per vuln) → report**. Each phase's output is a deliverable consumed by the next.
 
-    subgraph HW_Tools["Hardware Tools (type: hardware)"]
-        HRF[hackrf.yaml] --> TL
-        FZ[flipper_zero.yaml] --> TL
-        PM[proxmark3.yaml] --> TL
-        EIK[exploit_iot_kit.yaml] --> TL
-    end
+**Tools** — 18 declarative YAML definitions (software subprocess · hardware command suggestions · Python handler for NVD) loaded by `tool_loader.py`, plus Python-native graph and deliverable tools.
 
-    TL -->|build_input_schema| SCHEMA[JSON Schema]
-    TL -->|build_subprocess_function| FUNC[Subprocess Runner]
-    TL -->|_build_hardware_function| HWFUNC[Hardware Commands]
-    TL -->|register_python_handler| PYHANDLER[Python Handler<br/>nvd_lookup]
-
-    SCHEMA --> PROVIDER[LLM Provider<br/>tool_use / function_calling]
-    FUNC --> PROVIDER
-    HWFUNC --> PROVIDER
-    PYHANDLER --> PROVIDER
-
-    style SW_Tools fill:#e8f5e9
-    style HW_Tools fill:#fff3e0
-```
-
-```mermaid
-graph LR
-    subgraph Skills["IoT Skills (skills/*.md)"]
-        S1[mqtt_security.md]
-        S2[zigbee_security.md]
-        S3[... 7 skills total]
-    end
-
-    S1 & S2 & S3 -->|YAML frontmatter| META[Metadata<br/>tags, tools, device_types]
-    S1 & S2 & S3 -->|chunking by ##| CHUNKS[512-word chunks<br/>context prefix]
-    CHUNKS -->|Voyage AI embed| CHROMA[(ChromaDB)]
-    CHROMA -->|search_knowledge| AGENT[LLM Agent]
-    META -->|list_skills / load_skill| AGENT
-
-    style Skills fill:#fce4ec
-    style S3 fill:#f5f5f5,stroke-dasharray: 5 5
-```
+**Knowledge** — 8 Markdown skills (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web, report methodology) chunked by `##` and embedded with Voyage AI into ChromaDB for `search_knowledge`.
 
 ## Tech Stack
 
@@ -227,9 +85,12 @@ graph LR
 - **Anthropic SDK** — Claude API for the LLM agent pipeline
 - **OpenAI SDK** — OpenAI-compatible API (OpenRouter, MiniMax, GLM, Qwen)
 - **ChromaDB** — Persistent vector database for the knowledge store
-- **Voyage AI** — Semantic embeddings (voyage-4-lite, 512 dims)
+- **Voyage AI** — Semantic embeddings (voyage-3.5-lite, 512 dims)
+- **FastAPI + SSE** — Backend dashboard streaming pipeline events to the SPA
+- **Cytoscape.js** — Interactive topology graph in the dashboard
+- **Docker / GHCR** — Multi-arch end-user image (`ghcr.io/tanguyvans/nato-smartcity-iot`)
 - **python-dotenv** — Environment variable loading (.env)
-- **pytest** — Unit tests (193 tests, 14 files)
+- **pytest** — Unit tests (276 tests, 15 files)
 - **Zigbee2MQTT** — Zigbee → MQTT bridge (on RPi5)
 
 ## Getting Started
@@ -293,15 +154,29 @@ print(f'{ingest_skills()} chunks ingested')
 "
 ```
 
-### 7. Access the physical network
-
-Connect to the `NATO-Lab` WiFi or plug into the switch.
+### 7. Launch the dashboard (FastAPI + SPA)
 
 ```bash
-# Check services
-curl http://192.168.88.247:8080   # Zigbee2MQTT
-curl http://192.168.88.238        # WisGate
+uvicorn src.api.main:app --host 0.0.0.0 --port 8501
+# → http://localhost:8501
 ```
+
+Tabs:
+
+- **Dashboard** — Configure provider/model (per phase in Expert mode), pick a lab/scenario/target network, start a pipeline, watch live events via SSE, explore the Cytoscape topology (nodes appear live in Discovery mode).
+- **Benchmark** — Recall / Precision / F1 / weighted Score for each past run evaluated against a ground truth.
+- **Runs** — Download past deliverables (`01_graph_analysis.md` … `05_report.md`) or a full ZIP.
+
+### 8. Run the end-user Docker image (Discovery mode)
+
+```bash
+cp .env.example .env   # fill in OPENROUTER_API_KEY, VOYAGE_API_KEY
+docker compose up
+# → http://localhost:8501
+```
+
+The simplified frontend (`src/static_docker/`) asks for a CIDR (`Réseau cible`), scans it with nmap, and adds hosts to the graph as they are discovered. No lab topology is preloaded.
+
 
 ## Repository Structure
 
@@ -314,64 +189,85 @@ NATO-SmartCity-IoT/
 │   ├── models.py                  # Dataclasses (Device, Service, Link, Network)
 │   ├── graph_backend.py           # ABC GraphBackend + NetworkX implementation
 │   ├── loader.py                  # YAML → dataclasses → graph
-│   ├── cve_lookup.py              # NIST NVD module (CVE queries by CPE)
-│   ├── risk_scorer.py             # Risk scoring (CVSS + exposure + centrality)
+│   ├── cve_lookup.py / cve_cli.py # NIST NVD module + CLI
+│   ├── risk_scorer.py / risk_cli.py
 │   ├── attack_path.py             # Weighted attack paths + pivots (Dijkstra)
 │   ├── visualize.py               # Interactive HTML generation (pyvis)
+│   ├── api/                       # FastAPI dashboard backend
+│   │   ├── main.py                # App entry (mounts routers + static files)
+│   │   └── routes/
+│   │       ├── pipeline.py        # Start / SSE stream / Stop
+│   │       ├── runs.py            # History, per-run files, score, ZIP download
+│   │       ├── topology.py        # Lab / scenario / empty graph (Cytoscape)
+│   │       ├── scenarios.py       # Benchmark scenarios listing
+│   │       └── models.py          # LLM models catalog
+│   ├── static/                    # Full dashboard (benchmark + expert mode)
+│   ├── static_docker/             # Simplified end-user SPA (CIDR + discovery)
+│   ├── benchmark/
+│   │   └── evaluator.py           # TP/FP/FN matching, weighted F1, severity rules
+│   ├── ui/app.py                  # (legacy Streamlit UI, kept for reference)
 │   └── agent/
 │       ├── __main__.py            # CLI: --provider, --model, --dry-run, --phases
 │       ├── pipeline.py            # Multi-phase orchestrator with tool resolution
-│       ├── provider.py            # LLM abstraction (Anthropic, OpenRouter, etc.)
+│       ├── orchestrator.py        # Higher-level run control (threaded exec)
+│       ├── batch.py               # Parallel per-device sub-agent execution (Phase 3)
+│       ├── scanner.py             # Network sweep helpers for discovery mode
+│       ├── provider.py            # LLM abstraction (Anthropic, OpenRouter, MiniMax, GLM, Qwen)
 │       ├── registry.py            # Declarative agent config for 5 phases
 │       ├── prompt_manager.py      # Prompt templates with variable substitution
 │       ├── cost_tracker.py        # Per-phase token/cost tracking
+│       ├── pricing.py             # Pricing tables (per-provider, per-model)
+│       ├── vuln_taxonomy.py       # Single source of truth for vuln types / aliases / noise
 │       ├── tools/
-│       │   ├── graph_tools.py     # Graph tools (load_lab_context, attack_surface, etc.)
-│       │   ├── recon_tools.py     # Network recon tools (nmap, ssh-audit, curl, mqtt)
-│       │   ├── tool_loader.py     # YAML → tool engine (subprocess + hardware + schema)
-│       │   ├── skill_tools.py     # Skill tools (list, load, search, cve_search)
-│       │   ├── deliverable.py     # File I/O (save/read/list deliverables)
-│       │   └── definitions/       # YAML tool definitions (software + hardware)
-│       │       ├── nmap.yaml            # Software: nmap -sV scanner
-│       │       ├── ssh_audit.yaml       # Software: SSH config analyzer
-│       │       ├── curl_headers.yaml    # Software: HTTP header checker
-│       │       ├── mqtt_listen.yaml     # Software: MQTT passive listener
-│       │       ├── nvd_lookup.yaml      # Software: NVD CVE search (Python handler)
-│       │       ├── hackrf.yaml          # Hardware: SDR 1-6 GHz (Zigbee, LoRa, sub-GHz)
-│       │       ├── flipper_zero.yaml    # Hardware: multi-tool (sub-GHz, RFID, NFC, IR)
-│       │       ├── proxmark3.yaml       # Hardware: RFID/NFC badge cracking
-│       │       └── exploit_iot_kit.yaml # Hardware: UART/JTAG/SPI/I2C/glitching
+│       │   ├── graph_tools.py     # load_lab_context / load_scenario_topology / load_discovery_context
+│       │   ├── recon_tools.py     # Auto-generated tools + nvd_lookup handler
+│       │   ├── tool_loader.py     # YAML → subprocess/handler/hardware tool engine
+│       │   ├── skill_tools.py     # list_skills / load_skill / search_knowledge / cve_search
+│       │   ├── deliverable.py     # save/read/list deliverables + aggregate_device_results
+│       │   └── definitions/       # 18 YAML tool definitions
+│       │       ├── nmap.yaml, nmap_discovery.yaml, arp_scan.yaml
+│       │       ├── ssh_audit.yaml, ssh_login.yaml, telnet_connect.yaml
+│       │       ├── curl_headers.yaml, http_get.yaml, ftp_list.yaml
+│       │       ├── mqtt_listen.yaml, modbus_scan.yaml
+│       │       ├── mysql_query.yaml, redis_cmd.yaml
+│       │       ├── nvd_lookup.yaml                     # Python handler
+│       │       └── hackrf.yaml, flipper_zero.yaml,
+│       │           proxmark3.yaml, exploit_iot_kit.yaml  # type: hardware
 │       ├── knowledge/
 │       │   ├── store.py           # ChromaDB wrapper (search, ingest, cache-then-query)
-│       │   ├── embedder.py        # Voyage AI client (voyage-4-lite, 512 dims)
+│       │   ├── embedder.py        # Voyage AI client (voyage-3.5-lite, 512 dims)
 │       │   └── ingest.py          # Bulk ingestion (skill chunking by ##)
-│       ├── skills/                # IoT security skills (Markdown + YAML frontmatter)
-│       │   ├── mqtt_security.md
-│       │   ├── ssh_hardening.md
-│       │   ├── lorawan_analysis.md
-│       │   ├── mikrotik_routeros.md
-│       │   ├── web_service_analysis.md
-│       │   ├── firmware_analysis.md
-│       │   └── zigbee_security.md
-│       ├── prompts/               # Per-phase prompt templates
+│       ├── skills/                # 8 IoT security skills (Markdown + YAML frontmatter)
+│       │   ├── mqtt_security.md, ssh_hardening.md, lorawan_analysis.md,
+│       │   ├── mikrotik_routeros.md, web_service_analysis.md, firmware_analysis.md,
+│       │   ├── zigbee_security.md, report_methodology.md
+│       ├── prompts/               # Per-phase prompt templates + shared context
+│       ├── templates/             # Deliverable skeletons
 │       └── validators/            # Output validators (markdown, json, file)
-├── report/
-│   ├── q4-2025.tex                # Q4 2025 progress report
-│   ├── q1-2026.tex                # Q1 2026 progress report
-│   └── slides-q1-2026.tex         # Q1 2026 presentation (Beamer)
 ├── benchmarks/                    # IoT Security Benchmark (Proxmox + Ansible)
-│   ├── bench.sh                   # CLI: deploy, run, reset, teardown
-│   ├── config.yml                 # Proxmox connection config
-│   ├── scenarios/                 # 1 folder per scenario (topology + ground truth)
-│   ├── ansible/roles/             # svc_* (services) + vuln_* (vulnerabilities)
-│   ├── scripts/proxmox_vms.py     # VM management
+│   ├── README.md                  # Benchmark overview (scenarios, metrics, playbooks)
+│   ├── ansible/                   # Playbooks + roles (see benchmarks/ansible/README.md)
+│   ├── scenarios/                 # S1…S12 + S1h, S4h (hard variants)
+│   ├── ground_truth/              # scenario_N.yaml — expected vulns, severities, CVEs
+│   ├── packs/                     # Reusable vuln + topology building blocks
+│   ├── topologies/                # Reference topologies
+│   ├── templates/                 # Ground-truth / scenario YAML templates
+│   ├── tools/                     # Benchmark helper scripts
 │   └── results/                   # Benchmark outputs
-├── tests/                         # 14 files, 193 tests
-├── data/
-│   └── knowledge.db/             # Persistent ChromaDB (generated)
+├── ansible/                       # Hardening roles (firewall, monitoring, ssh/mqtt_hardening)
+│                                  #  — used for the "hardened posture" of scenarios
+├── docker/
+│   └── entrypoint.sh              # Auto-ingests skills on first boot
+├── Dockerfile / docker-compose.yml / .env.example
+├── .github/workflows/             # CI: docker multi-arch build, master-VM update runner
+├── docs/                          # Architecture notes (benchmark refactor, scalability)
+├── report/                        # LaTeX progress reports / Beamer slides
+├── paper/                         # Papers in progress
+├── tests/                         # 15 files, 276 tests
+├── data/knowledge.db/             # Persistent ChromaDB (generated)
 ├── output/
-│   ├── nato_lab.html             # Network visualization
-│   └── agent/<timestamp>/        # Per-run reports (01_graph..05_report)
+│   ├── nato_lab.html              # Network visualization
+│   └── agent/<timestamp>/         # Per-run deliverables + cost_summary.json
 └── requirements.txt
 ```
 
@@ -444,15 +340,16 @@ Attack path scoring combines:
 Multi-phase pipeline inspired by Shannon/LLMDFA and CyberStrikeAI:
 
 - **5 specialized agents**: graph analysis → recon → vuln analysis → exploitation → report
-- **Parallel Sub-agents (Phase 3)**: Launches per-device vulnerability analysis in parallel for massive performance gains.
-- **Multi-model Pipeline**: Support for choosing different models for each phase (Expert Mode).
-- **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini, DeepSeek, GPT-4o), MiniMax, GLM, Qwen
-- **Declarative YAML tools**: 10 tools including a new `aggregate_device_results` tool for merging parallel findings.
-- **Hardware attack tools**: HackRF One (SDR), Flipper Zero (multi-tool), Proxmark3 Easy (RFID/NFC), Exploit IoT Kit (UART/JTAG/SPI). `type: hardware` returns operator command suggestions
-- **IoT skills**: 7 Markdown skills with YAML frontmatter (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web). Skills cross-reference hardware tools
-- **Knowledge Store**: ChromaDB + Voyage AI (voyage-3.5-lite, 512 dims) for semantic search over CVEs and skills (46 chunks)
-- **Cost tracking**: per-phase token/cost tracking (~$0.38 for a full run)
-- **Dry-run**: pipeline validation without LLM API calls
+- **Parallel sub-agents (Phase 3 & 4)**: Per-device vulnerability analysis and per-vuln exploitation run in parallel (`src/agent/batch.py`), merged back by `_aggregate_device_vulns` / `_aggregate_exploit_results`.
+- **Multi-model pipeline**: Choose a different LLM per phase (Expert Mode in the dashboard).
+- **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini, DeepSeek, GPT-4o), MiniMax, GLM, Qwen.
+- **18 declarative YAML tools** — software (nmap, nmap_discovery, arp_scan, ssh_audit, ssh_login, telnet_connect, curl_headers, http_get, ftp_list, mqtt_listen, modbus_scan, mysql_query, redis_cmd, nvd_lookup) + hardware (hackrf, flipper_zero, proxmark3, exploit_iot_kit) + `aggregate_device_results` for merging parallel findings.
+- **Hardware attack tools**: HackRF One (SDR 1–6 GHz), Flipper Zero (sub-GHz/RFID/NFC/IR/GPIO), Proxmark3 Easy (RFID/NFC badge cracking), Exploit IoT Kit (UART/JTAG/SPI/I2C/glitching). `type: hardware` returns protocol-specific operator command suggestions.
+- **8 IoT skills**: MQTT, SSH, LoRaWAN, Zigbee, MikroTik RouterOS, firmware analysis, web services, report methodology. Markdown + YAML frontmatter; skills cross-reference hardware tools.
+- **Knowledge store**: ChromaDB + Voyage AI (voyage-3.5-lite, 512 dims) for semantic search over CVEs and skills.
+- **Shared vuln taxonomy** (`src/agent/vuln_taxonomy.py`): canonical types, aliases, noise filters, config-only/exploit categories — the pipeline and the benchmark evaluator import from the same source.
+- **Cost tracking**: per-phase tokens/cost, persisted to `cost_summary.json` alongside deliverables.
+- **Dry-run**: pipeline validation without LLM API calls.
 
 ### Phase 5 — Progressive Pentesting
 
@@ -491,19 +388,33 @@ Hardware tools are integrated as declarative YAML definitions (`type: hardware`)
 
 ### Phase 6 — IoT Security Benchmark ✅
 
-Benchmark reproductible pour évaluer les LLMs sur la détection de vulnérabilités IoT :
+Reproducible benchmark to evaluate LLMs on IoT vulnerability detection:
 
-- **8 architectures** réseau (flat → multi-site VPN) × **10 packs de failles** (auth → insecure update)
-- **20 scénarios** de difficulté croissante avec ground truth
-- **Proxmox** hyperviseur sur mini PC BMAX + **Ansible** pour l'injection de failles
-- **Couverture** : OWASP IoT Top 10 (9/10), MITRE ATT&CK ICS (9/12)
-- **1 commande** pour déployer/détruire un scénario : `./bench.sh deploy s01`
-- Voir [benchmarks/README.md](benchmarks/README.md) pour la documentation complète
+- **14 scenarios** (S1 … S12 + hard variants S1h, S4h) of increasing difficulty, from flat networks to ICS/SCADA segmentation and Edge ↔ Cloud pivots.
+- **Proxmox hypervisor** + **Ansible** playbooks for zero-touch deploy / inject / verify / teardown, running on an isolated `192.168.100.0/24` bridge.
+- **Ground truth** in `benchmarks/ground_truth/scenario_N.yaml` (expected vulns, CVEs, severities, `bonus_types` tolerated findings).
+- **Coverage**: OWASP IoT Top 10 (9/10), MITRE ATT&CK ICS (9/12).
+- **Evaluator** (`src/benchmark/evaluator.py`): TP/FP/FN matching via CVE ID → IP+type → IP+category, weighted F1 (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1), with severity-mismatch (×0.75) and loose-category (×0.5) penalties. Prefers `04_exploitation.json` over `03_vuln_analysis.json` when available and drops Phase 4 FAILED/ERROR statuses.
+- See [benchmarks/README.md](benchmarks/README.md) and [benchmarks/ansible/README.md](benchmarks/ansible/README.md).
 
-### Phase 7 — Command & Control Dashboard ✅
+### Phase 7 — FastAPI Dashboard & SPA ✅
 
-Real-time SPA Dashboard (HTML/JS/CSS) featuring:
-- **Interactive Graph (Cytoscape.js)**: Focus mode on hover, tactical layouts (Organic, Tree, Target), and cyber-glow severity indicators.
-- **Expert Configuration**: Dynamic multi-model assignment per phase.
-- **Live Monitoring**: SSE-streamed event logs with expandable JSON details.
-- **Benchmark Integration**: Direct scoring visualization (F1, Precision, Recall) against ground truth scenarios.
+Single-page Command & Control dashboard backed by FastAPI + SSE:
+
+- **Pipeline control** (`POST /api/pipeline/start`, `GET /api/pipeline/stream`, `POST /api/pipeline/stop`) — runs the pipeline in a background thread, streams tool calls / phase transitions to the browser.
+- **Interactive graph** (Cytoscape.js): focus-on-hover, tactical layouts (Organic / Tree / Target), cyber-glow severity indicators, live node insertion in discovery mode.
+- **Expert mode**: assign a different provider/model to each phase.
+- **Benchmark tab**: Recall / Precision / F1 / weighted Score per run vs ground truth (`GET /api/runs/{id}/score`).
+- **Run history**: file viewer + ZIP download (`GET /api/runs/{id}/download/zip`).
+- Served at `:8501` — locally via `uvicorn src.api.main:app`, on the master VM via `nato-fastapi.service` reachable through Tailscale.
+
+### Phase 8 — Docker End-User Image ✅
+
+Multi-arch image (`linux/amd64` + `linux/arm64`) published to `ghcr.io/tanguyvans/nato-smartcity-iot:latest`.
+
+- **Multi-stage Dockerfile** (Python 3.12-slim) with nmap, mosquitto-clients, openssh-client baked in.
+- `docker-compose.yml` mounts `./data` (ChromaDB) and `./output` (run deliverables).
+- `docker/entrypoint.sh` auto-ingests the 8 skills into ChromaDB on first boot (`.initialized` flag).
+- Ships the **simplified end-user frontend** (`src/static_docker/`): no benchmark tab, no scenario selector, a single "Réseau cible (CIDR)" input, and a graph that grows as nmap discovers hosts.
+- CI: `.github/workflows/docker.yml` builds on every push to `main` and on `v*` tags.
+- `.env.example` documents the minimal config (`OPENROUTER_API_KEY`, `VOYAGE_API_KEY`).
