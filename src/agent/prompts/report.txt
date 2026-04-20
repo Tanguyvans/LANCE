@@ -18,19 +18,23 @@ Fill in the report template below with data from previous phases. Do NOT change 
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
    WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
    The 05_phase5_context.json file contains all the data you need from those files.
-2. **Sections 5 and 6 are already pre-generated** — they appear below in the template.
-   Do NOT rewrite or regenerate them. Copy them as-is into the final report.
-3. Write ONLY the following sections from scratch:
+2. **Sections 5 and 6 use auto-generated placeholders** — the template contains
+   `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}`. Leave these EXACTLY as-is in your
+   output — the pipeline will replace them with the real tables automatically.
+   DO NOT write any vulnerability or exploitation tables yourself.
+3. Write ONLY the following sections from scratch (use data from the reads above):
    - Section 1 (Executive Summary) — 5-10 lines max
    - Section 2 (Scope and Methodology) — fill in bullet points
-   - Section 3 (Topology) — fill tables from Phase 1 and Phase 2
-   - Section 4 (Reconnaissance) — fill table from Phase 2
-   - Section 7 (Attack Paths) — 3-5 critical chains + pivot nodes
+   - Section 3 (Topology) — fill the device table from Phase 1 and Phase 2 (max 35 rows)
+   - Section 4 (Reconnaissance) — fill services table from Phase 2 (max 20 rows)
+   - Section 7 (Attack Paths) — 3-5 critical chains + pivot nodes table
    - Section 8 (Risk Scores) — top 10 devices by risk
-   - Section 9 (Remediation) — prioritised action table
-   - Section 10 (Appendices) — CVE list from context
+   - Section 9 (Remediation) — prioritised action table (IMMEDIATE / SHORT TERM / IMPROVEMENT)
+   - Section 10 (Appendices) — CVE list from 05_phase5_context.json
 4. Do NOT fabricate results. If a phase was skipped, write "Phase skipped".
 5. Do NOT add, remove, or rename sections — keep the template structure exactly as provided.
+6. CRITICAL: your final save_deliverable call should include the literal strings
+   `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}` in the appropriate sections — do not expand them.
 
 ## IMPORTANT — Data sources
 - Phase 1 = DECLARATIVE model (YAML). Useful for topology and CVEs, but listed services are THEORETICAL.

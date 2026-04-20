@@ -53,16 +53,22 @@
 
 <!-- List Phase 1 vs Phase 2 differences with security impact -->
 
-{{prefilled_sections_5_6}}
+{{SECTION_5_TABLE}}
 
-**Status legend (Section 5):**
+*(Section 5 table is auto-generated — do not rewrite it)*
+
+**Status legend:**
 - **Confirmed** — Phase 4 exploitation succeeded
 - **Not Exploitable** — Phase 4 test ran, exploit failed
 - **Inconclusive** — Tool error, needs manual retest
 - **Potential (untested)** — Phase 3 finding, no Phase 4 test
 - **Potential (CVE-based)** — NVD match only, no active test
 
-**Evidence levels (Section 6):** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
+{{SECTION_6_TABLES}}
+
+*(Section 6 tables are auto-generated — do not rewrite them)*
+
+**Evidence levels:** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
 
 ## 7. Attack Paths
 

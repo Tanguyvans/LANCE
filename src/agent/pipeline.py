@@ -390,6 +390,11 @@ class Pipeline:
 
             # Run the agent
             status = self._run_agent(agent_config, stream_callback)
+
+            # Post-process Phase 5: inject pre-generated tables into the saved report
+            if agent_config.phase == 5:
+                self._merge_report_with_prefill()
+
             results[agent_config.name] = status
 
             # Enforce budget limit after each phase
@@ -752,11 +757,9 @@ class Pipeline:
             template = template.replace("{{model}}", self.provider.model)
             variables["deliverable_template"] = template
 
-        # For Phase 5: inject pre-generated sections 5 & 6 so LLM only writes narrative
-        if config.phase == 5:
-            prefill_path = self.run_dir / "05_report_prefill.md"
-            if prefill_path.exists():
-                variables["prefilled_sections_5_6"] = prefill_path.read_text(encoding="utf-8")
+        # For Phase 5: tell the LLM to leave {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}}
+        # as-is — Python will inject the real tables in _merge_report_with_prefill()
+        # Do NOT inject the prefill into the prompt — it would make the system prompt too large.
 
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
@@ -1887,6 +1890,78 @@ class Pipeline:
         prefill_path = self.run_dir / "05_report_prefill.md"
         prefill_path.write_text(prefill, encoding="utf-8")
         print(f"  [prefill] 05_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
+
+    def _merge_report_with_prefill(self) -> None:
+        """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 05_report.md
+        with the deterministically-generated tables from 05_report_prefill.md.
+
+        This lets the LLM produce a lightweight ~1500-token narrative report using
+        placeholders, while Python injects the full 100+ row tables afterwards.
+        Also works as a fallback: if the LLM never saved the report at all,
+        generate a minimal report from the prefill data so the pipeline never exits
+        without a deliverable.
+        """
+        report_path = self.run_dir / "05_report.md"
+        prefill_path = self.run_dir / "05_report_prefill.md"
+
+        if not prefill_path.exists():
+            return
+
+        prefill = prefill_path.read_text(encoding="utf-8")
+
+        if report_path.exists():
+            content = report_path.read_text(encoding="utf-8")
+            merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
+            if merged != content:
+                report_path.write_text(merged, encoding="utf-8")
+                print(f"  [merge] Injected prefill tables into 05_report.md ({report_path.stat().st_size:,} bytes)")
+            return
+
+        # Fallback: LLM never saved the report — build a minimal one from prefill + context
+        context_path = self.run_dir / "05_phase5_context.json"
+        ctx: dict = {}
+        if context_path.exists():
+            ctx = json.loads(context_path.read_text(encoding="utf-8"))
+
+        run_date = self.run_dir.name
+        n_devices = ctx.get("device_count", "?")
+        n_vulns = ctx.get("total_vulnerabilities", "?")
+        p4 = ctx.get("phase4_summary", {})
+        confirmed = p4.get("confirmed", "?")
+
+        fallback = (
+            f"# Pentest Report — NATO Smart City IoT Lab\n\n"
+            f"**Date:** {run_date}  **Model:** {self.provider.model}\n\n"
+            f"---\n\n"
+            f"## 1. Executive Summary\n\n"
+            f"| Metric | Value |\n|--------|-------|\n"
+            f"| Devices scanned | {n_devices} |\n"
+            f"| Vulnerabilities found | {n_vulns} |\n"
+            f"| Confirmed exploitable | {confirmed} |\n"
+            f"| Overall risk level | HIGH |\n\n"
+            f"*Automated report — narrative generation failed (model output empty). "
+            f"All findings are listed in Sections 5 and 6 below.*\n\n"
+            f"## 2. Scope and Methodology\n\n"
+            f"- **Target subnet:** {self.context.get('target_subnet', 'see topology')}\n"
+            f"- **Phases executed:** 1 → 2 → 3 → 4 → 5\n"
+            f"- **Tools used:** nmap, arp_scan, ssh-audit, mosquitto_sub, redis-cli, curl, ssh_login\n\n"
+            f"## 3. Topology and Attack Surface\n\n"
+            f"*See 01_graph_analysis.md for full topology.*\n\n"
+            f"## 4. Reconnaissance Results\n\n"
+            f"*See 02_recon.md for full scan results.*\n\n"
+            f"{prefill}\n\n"
+            f"## 7. Attack Paths\n\n"
+            f"*See 05_phase5_context.json for device-level details.*\n\n"
+            f"## 8. Risk Scores\n\n"
+            f"*See get_risk_scores() tool output in tool_calls.jsonl.*\n\n"
+            f"## 9. Remediation Recommendations\n\n"
+            f"### 9.1 IMMEDIATE (Confirmed HIGH/CRITICAL)\n\n"
+            f"*Refer to Section 5 above — all CRITICAL and HIGH findings require immediate attention.*\n\n"
+            f"## 10. Appendices\n\n"
+            f"All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.\n"
+        )
+        report_path.write_text(fallback, encoding="utf-8")
+        print(f"  [fallback] 05_report.md generated from prefill ({report_path.stat().st_size:,} bytes)")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.
