@@ -303,7 +303,14 @@ def _extract_missing_headers(entries: list[dict], device: dict, svc_name: str) -
 
 
 def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """'Index of' in curl body → directory_listing MEDIUM (config issue, not a direct exploit)."""
+    """'Index of' in curl body → directory_listing MEDIUM (config issue, not a direct exploit).
+
+    Skipped for web_upload devices: their /uploads/ directory is intentionally browsable
+    (uploaded files must be accessible). The real finding for these devices is code_injection.
+    """
+    role = device.get("role", "")
+    if role == "web_upload":
+        return []
     findings = []
     paths_found = []
     for entry in entries:

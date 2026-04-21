@@ -1240,12 +1240,22 @@ class Pipeline:
         def _severity_rank(v: dict) -> int:
             return _SEVERITY_RANK.get((v.get("severity") or "").lower(), 0)
 
+        def _is_confirmed(v: dict) -> bool:
+            return (v.get("exploitation_status") or "").lower() == "confirmed"
+
         best_by_key: dict[tuple, dict] = {}
         for v in all_vulns:
             key = (v.get("device_ip", ""), v.get("type", ""), v.get("port"))
             existing = best_by_key.get(key)
-            if existing is None or _severity_rank(v) < _severity_rank(existing):
+            if existing is None:
                 best_by_key[key] = v
+            elif _severity_rank(v) < _severity_rank(existing):
+                best_by_key[key] = v
+            elif _severity_rank(v) == _severity_rank(existing):
+                # Same severity: prefer confirmed over suspected to avoid Phase 4 FAILED
+                # excluding a finding that was legitimately confirmed by the LLM agent.
+                if _is_confirmed(v) and not _is_confirmed(existing):
+                    best_by_key[key] = v
         deduped = list(best_by_key.values())
 
         # Special dedup: if device has both directory_listing for /firmware/ and insecure_update → drop directory_listing
