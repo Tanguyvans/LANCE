@@ -77,6 +77,17 @@ NOISE_TYPES: frozenset[str] = frozenset({
     # API/key exposure duplicates (already covered by data_exposure)
     "api_key_exposed",
     "smtp_credentials_exposed",
+    # Pivot/lateral movement observations (continued)
+    "pivot_capability",
+    # Firmware update noise (different from insecure_update which is canonical)
+    "firmware_ota_no_sig",
+    # Weak credential as standalone type (covered by default_credentials alias)
+    "weak_credential",
+    # Privilege management / OT protocol observations
+    "improper_privilege_management",
+    "weak_protocol_design",
+    "missing_cryptographic_authentication",
+    "denial_of_service",
 })
 
 
@@ -163,6 +174,12 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "insecure_firmware_update":   "insecure_update",
     "unsigned_firmware":          "insecure_update",
     "ota_no_signature":           "insecure_update",
+    # code_injection synonyms (file upload without validation)
+    "file_upload_endpoint":       "code_injection",
+    "unrestricted_file_upload":   "code_injection",
+    "arbitrary_file_upload":      "code_injection",
+    # weak_cipher synonyms (continued)
+    "weak_cipher_ssh":            "weak_cipher",
 }
 
 

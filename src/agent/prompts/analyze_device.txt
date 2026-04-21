@@ -44,17 +44,17 @@ Based on the device role, focus your analysis on these specific findings:
 - **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
 - **snmp_server**: Community 'public' accepted → default_credentials HIGH. MIB walk returns data → info_disclosure LOW bonus.
 - **coap_server**: Port 5683/udp accessible without DTLS → no_auth MEDIUM.
-- **db_server (MySQL/MariaDB)**: Root without password → default_credentials HIGH (not CRITICAL — requires network access). Port 3306 open → always add default_credentials finding.
+- **db_server (MySQL/MariaDB)**: Root without password → default_credentials HIGH (not CRITICAL — requires network access). Port 3306 open → add default_credentials finding. ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses.
 - **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM.
 - **modbus_server / iot_gateway**: Port 502/tcp open → no_auth CRITICAL (OT protocol with no auth by design).
 - **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL.
-- **web_upload**: File upload without validation → code_injection CRITICAL.
+- **web_upload**: The upload endpoint is at POST /upload (not /firmware/, not /update). If scan shows HTTP 200 on root or /upload → code_injection CRITICAL. Use type `code_injection`, NOT `file_upload_endpoint` (that is a noise type). Do NOT add directory_listing — these devices don't have index pages.
 - **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires "Index of" in the response body. Do NOT report directory_listing unless the scanner explicitly found "Index of".
 - **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL.
 
 ## Severity rules — strictly enforce these caps
 
-| Finding | Max severity |
+| Finding | Severity |
 |---------|-------------|
 | SSH weak ciphers (no exploit) | MEDIUM |
 | SSH banner version leak | LOW |
@@ -65,12 +65,18 @@ Based on the device role, focus your analysis on these specific findings:
 | MySQL/MariaDB root no password | HIGH |
 | Node-RED admin no auth | HIGH |
 | Camera admin no auth | HIGH |
-| FTP anonymous | HIGH |
+| FTP anonymous login | HIGH |
 | Modbus/S7/EtherNet-IP no auth | CRITICAL |
 | RCE via POST /api/exec | CRITICAL |
 | File upload without validation | CRITICAL |
 | MQTT anonymous (IoT exposure) | HIGH |
 | Firmware OTA without signature | HIGH (not CRITICAL) |
+| Directory listing | MEDIUM |
+| Router admin (LuCI) exposed without auth | CRITICAL |
+| Gateway/IoT-GW admin exposed without auth | HIGH |
+| API REST without auth (general /api/) | HIGH |
+| API REST with exec/admin endpoints | CRITICAL |
+| SSH world-readable private key | HIGH |
 | CVE with CVSS >= 9.0 | CRITICAL |
 | CVE with CVSS 7.0–8.9 | HIGH |
 | CVE with CVSS 4.0–6.9 | MEDIUM |
@@ -82,6 +88,12 @@ These are NOT vulnerabilities — drop them entirely:
 - `service_exposure`, `service_recon`, `exposed_service`, `informational`
 - `potential_cve` (if you can't confirm the version is vulnerable, skip it)
 - `cross_service`, `network_exposure_generic`, `snmp_not_scanned`, `no_http_service`
+- `pivot_capability`, `pivot_enabler`, `pivot_opportunity`, `pivot_risk` — lateral movement is NOT a vuln
+- `firmware_ota_no_sig`, `firmware_no_signature` — use `insecure_update` if applicable
+- `weak_credential` — use `default_credentials` instead
+- `improper_privilege_management`, `weak_protocol_design` — too vague, not actionable
+- `missing_cryptographic_authentication`, `denial_of_service` — not testable by scanner
+- `file_upload_endpoint` — use `code_injection` instead
 
 ## Your task
 Add findings that automated extraction CANNOT detect:
@@ -105,6 +117,8 @@ Add findings that automated extraction CANNOT detect:
 - LOW/INFO CVE findings (CVSS < 4.0): only include if the CVE is directly exploitable
   on this device (confirmed version match). Skip informational CVEs that require local access.
 - Do NOT create findings for missing HTTP headers (missing_header) — the scanner handles those.
+- CRITICAL: Copy all automated findings EXACTLY as-is — do NOT change their severity, type, port,
+  or exploitation_status. Only ADD new findings that the scanner could not detect automatically.
 
 ## Output
 Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE with:

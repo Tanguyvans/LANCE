@@ -735,3 +735,6 @@ bonus_types:
   - version_leak
   - terrapin
   - no_auth
+  # Extra findings a pentester legitimately reports but not enumerated in GT
+  - default_credentials  # camera admin cred testing, SSH suspected creds
+  - data_exposure        # firmware file accessible, API topology leaks

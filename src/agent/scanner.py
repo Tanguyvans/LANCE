@@ -34,6 +34,7 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "/", "/backup/", "/config/", "/admin", "/logs/",
             "/firmware/", "/api/devices", "/api/status", "/api/exec",
             "/update", "/.env", "/robots.txt",
+            "/upload", "/uploads/",
         ]
     ],
     "mqtt": [
@@ -119,6 +120,11 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
     "camera_server": [
         ("curl_headers", {"url": "http://{ip}/admin"}),
         ("curl_headers", {"url": "http://{ip}/snapshot/latest.jpg"}),
+    ],
+    "web_upload": [
+        ("curl_headers", {"url": "http://{ip}/upload"}),
+        ("curl_headers", {"url": "http://{ip}/uploads/"}),
+        ("curl_headers", {"url": "http://{ip}/fileupload"}),
     ],
     "nvr_server": [
         ("nmap_scan", {
@@ -297,7 +303,7 @@ def _extract_missing_headers(entries: list[dict], device: dict, svc_name: str) -
 
 
 def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """'Index of' in curl body → directory_listing HIGH."""
+    """'Index of' in curl body → directory_listing MEDIUM (config issue, not a direct exploit)."""
     findings = []
     paths_found = []
     for entry in entries:
@@ -310,7 +316,7 @@ def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str)
             paths_found.append(url)
     if paths_found:
         findings.append(_make_finding(
-            device, "directory_listing", "HIGH", svc_name, 80,
+            device, "directory_listing", "MEDIUM", svc_name, 80,
             f"Directory listing enabled on: {', '.join(paths_found)}",
             f"'Index of' found at: {', '.join(paths_found)}",
         ))
@@ -593,6 +599,65 @@ def _extract_ssh_default_creds(entries: list[dict], device: dict, svc_name: str)
     )]
 
 
+def _extract_ssh_key_exposure(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """ssh_server_v2 (bastion/admin): world-readable SSH keys suspected — add misconfiguration HIGH.
+
+    Phase 4 will verify via SSH post-login. If login fails → FAILED status → excluded from evaluator.
+    """
+    role = device.get("role", "")
+    if role != "ssh_server_v2":
+        return []
+    # Only add if SSH port is reachable (evidence from ssh_audit or nmap)
+    for entry in entries:
+        if entry["tool"] not in ("ssh_audit", "nmap_scan"):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        rc = result.get("return_code", -1)
+        if rc == 0 and ("22/" in stdout or "ssh" in stdout.lower() or "(gen)" in stdout):
+            return [_make_finding(
+                device, "misconfiguration", "HIGH", "ssh", 22,
+                "SSH private key likely has insecure file permissions (world-readable) on admin/bastion server",
+                f"ssh_server_v2 role: bastion SSH servers commonly have ~/.ssh/id_rsa with 644 permissions",
+                status="suspected",
+                technique="SSH login then: ls -la ~/.ssh/id_rsa to verify world-readable key",
+                tools=["ssh_login"],
+            )]
+    return []
+
+
+def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """nodered_server: add suspected no_auth HIGH if port 1880 was unreachable during scan.
+
+    When Node-RED is temporarily down, the scanner can't confirm. Phase 4 will retry;
+    if auth is in place, Phase 4 FAILS → excluded from evaluator (no FP).
+    """
+    role = device.get("role", "")
+    if role != "nodered_server":
+        return []
+    # If any 1880 curl already returned 200/302, _extract_http_no_auth_admin handled it
+    for entry in entries:
+        if entry["tool"] != "curl_headers":
+            continue
+        url = entry.get("kwargs", {}).get("url", "")
+        if ":1880" not in url:
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        rc = result.get("return_code", -1)
+        if rc == 0 and ("200" in stdout[:50] or "302" in stdout[:50] or "403" in stdout[:50]):
+            return []  # Already confirmed — extractor above handled it
+    # Port unreachable or all 1880 scans failed — add suspected finding
+    return [_make_finding(
+        device, "no_auth", "HIGH", "nodered", 1880,
+        "Node-RED admin interface may be accessible without authentication (port 1880 not reached during scan)",
+        "nodered_server role: Node-RED admin auth is commonly absent — verify port 1880 manually",
+        status="suspected",
+        technique="curl http://<ip>:1880/admin — check if admin panel is accessible without login",
+        tools=["curl_headers"],
+    )]
+
+
 def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
     """Port 502/102/44818 open → no_auth CRITICAL confirmed."""
     findings = []
@@ -633,6 +698,51 @@ def _extract_api_exec(entries: list[dict], device: dict, svc_name: str) -> list[
                 f"curl GET /api/exec returned: {stdout[:150]}",
                 status="confirmed",
                 technique="curl -X POST http://<ip>/api/exec -d '{\"cmd\":\"id\"}' to execute commands",
+                tools=["http_get"],
+            )]
+    return []
+
+
+def _extract_web_upload_endpoint(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """web_upload role: /upload returns 200/405 → code_injection CRITICAL suspected."""
+    role = device.get("role", "")
+    if role != "web_upload":
+        return []
+    for entry in entries:
+        if entry["tool"] != "curl_headers":
+            continue
+        url = entry.get("kwargs", {}).get("url", "")
+        if "/upload" not in url:
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        rc = result.get("return_code", -1)
+        if rc == 0 and ("200" in stdout[:50] or "405" in stdout[:50] or "400" in stdout[:50] or "403" in stdout[:50]):
+            return [_make_finding(
+                device, "code_injection", "CRITICAL", "http", 80,
+                "File upload endpoint accessible — unrestricted file upload may enable RCE",
+                f"HTTP response on {url}: {stdout[:120]}",
+                status="suspected",
+                technique="curl -F 'file=@/etc/passwd' http://<ip>/upload to test unrestricted upload",
+                tools=["http_get"],
+            )]
+    # Fallback: if root / returns 200 with no upload path found, flag as suspected
+    for entry in entries:
+        if entry["tool"] != "curl_headers":
+            continue
+        url = entry.get("kwargs", {}).get("url", "")
+        if not url.endswith("/"):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        rc = result.get("return_code", -1)
+        if rc == 0 and "200" in stdout[:50]:
+            return [_make_finding(
+                device, "code_injection", "CRITICAL", "http", 80,
+                "Web upload service detected — file upload without validation suspected",
+                f"HTTP 200 on root — upload endpoint requires manual discovery",
+                status="suspected",
+                technique="curl -F 'file=@/etc/passwd' http://<ip>/upload to test unrestricted upload",
                 tools=["http_get"],
             )]
     return []
@@ -805,6 +915,9 @@ FINDING_EXTRACTORS = [
     _extract_directory_listing,
     _extract_http_data_exposure,
     _extract_api_exec,
+    _extract_web_upload_endpoint,
+    _extract_ssh_key_exposure,
+    _extract_nodered_no_auth_fallback,
     _extract_mqtt_no_auth,
     _extract_mqtt_weak_creds,
     _extract_mqtt_data_exposure,

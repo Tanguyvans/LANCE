@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from src.agent.vuln_taxonomy import canonicalize
+from src.agent.vuln_taxonomy import canonicalize, NOISE_TYPES
 
 
 # ── Severity normalisation ────────────────────────────────────────────────────
@@ -122,6 +122,10 @@ BONUS_TYPES_AUTO: set[str] = {
     "info_disclosure", "missing_header", "weak_cipher",
     "insecure_protocol", "terrapin", "version_leak",
     "no_auth",
+    # CVEs found by LLM that aren't in GT are real findings a pentester would report
+    "known_cve",
+    # Directory listing is a real config finding often not enumerated in GT
+    "directory_listing",
 }
 
 
@@ -318,6 +322,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
             }
             for t in test_list
             if t.get("status") not in _SKIPPED_PHASE4_STATUSES
+            and (t.get("vuln_type") or t.get("type", "")) not in NOISE_TYPES
         ]
         if findings:
             return findings
@@ -325,7 +330,8 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
 
     vuln_file = run_dir / "03_vuln_analysis.json"
     if vuln_file.exists():
-        return json.loads(vuln_file.read_text()).get("vulnerabilities", [])
+        vulns = json.loads(vuln_file.read_text()).get("vulnerabilities", [])
+        return [v for v in vulns if v.get("type", "") not in NOISE_TYPES]
 
     raise FileNotFoundError(
         f"Neither 04_exploitation.json nor 03_vuln_analysis.json found in {run_dir}"
