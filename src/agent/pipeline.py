@@ -860,9 +860,17 @@ class Pipeline:
                 f"${usage.cost_usd(self.tracker.model):.4f}"
             )
 
-        # Fallback: if the LLM never called save_deliverable, save its last text output
+        # Fallback: if the LLM never called save_deliverable, save its last text output.
+        # Exclude sentinel strings returned by the provider loop when turns are exhausted.
+        _SENTINEL_OUTPUTS: frozenset[str] = frozenset({
+            "(max turns reached)",
+            "(malformed tool call JSON — max retries)",
+        })
         deliverable_path = self.run_dir / config.deliverable_file
-        if not deliverable_path.exists() and result_text and result_text.strip():
+        if (not deliverable_path.exists()
+                and result_text
+                and result_text.strip()
+                and result_text.strip() not in _SENTINEL_OUTPUTS):
             log.warning(
                 "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
                 config.phase,
@@ -1933,11 +1941,15 @@ class Pipeline:
 
         if report_path.exists():
             content = report_path.read_text(encoding="utf-8")
-            merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
-            if merged != content:
-                report_path.write_text(merged, encoding="utf-8")
-                print(f"  [merge] Injected prefill tables into 05_report.md ({report_path.stat().st_size:,} bytes)")
-            return
+            # If the file only contains a sentinel (max turns reached), treat it as absent
+            if content.strip() in {"(max turns reached)", "(malformed tool call JSON — max retries)"}:
+                report_path.unlink()
+            else:
+                merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
+                if merged != content:
+                    report_path.write_text(merged, encoding="utf-8")
+                    print(f"  [merge] Injected prefill tables into 05_report.md ({report_path.stat().st_size:,} bytes)")
+                return
 
         # Fallback: LLM never saved the report — build a minimal one from prefill + context
         context_path = self.run_dir / "05_phase5_context.json"

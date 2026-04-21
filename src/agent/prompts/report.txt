@@ -18,6 +18,9 @@ Fill in the report template below with data from previous phases. Do NOT change 
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
    WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
    The 05_phase5_context.json file contains all the data you need from those files.
+   WARNING: Do NOT call get_risk_scores, get_attack_paths, get_network_topology — their data is
+   already included in 05_phase5_context.json and 01_graph_analysis.md. These calls waste turns.
+   TURN BUDGET: You have at most 25 turns. After the 3 mandatory reads, write and save the report immediately.
 2. **Sections 5 and 6 use auto-generated placeholders** — the template contains
    `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}`. Leave these EXACTLY as-is in your
    output — the pipeline will replace them with the real tables automatically.

@@ -58,10 +58,25 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "pivot_risk",
     # Hallucinated or ambiguous types
     "protocol_weakness",
+    "protocol_vulnerability",
     "vulnerable_cve",
     "firmware_no_signature",
+    "firmware_tampering",
     "dos",
     "cve_mqtt_null_deref",
+    "unpatched_software",
+    "network_exposure",
+    # XSS / injection noise (require manual app-layer testing, not network scanner)
+    "xss",
+    "xss_stored",
+    "prototype_pollution",
+    # Nonsensical device-type names used as vuln types by LLM
+    "ssh_server",
+    "web_server",
+    "ssh_weak_ciphers",
+    # API/key exposure duplicates (already covered by data_exposure)
+    "api_key_exposed",
+    "smtp_credentials_exposed",
 })
 
 
@@ -120,11 +135,15 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "authentication":             "no_auth",
     "api_exposure":               "no_auth",
     # default_credentials synonyms
-    "default_creds":              "default_credentials",
-    "hardcoded_credentials":      "default_credentials",
-    "default_password":           "default_credentials",
-    "default_credentials_exposed":"default_credentials",
-    "weak_credentials":           "default_credentials",
+    "default_creds":                    "default_credentials",
+    "hardcoded_credentials":            "default_credentials",
+    "default_password":                 "default_credentials",
+    "default_credentials_exposed":      "default_credentials",
+    "weak_credentials":                 "default_credentials",
+    "default_credentials_suspected":    "default_credentials",
+    "suspected_default_credentials":    "default_credentials",
+    # no_auth synonyms
+    "no_authentication":                "no_auth",
     # misconfiguration synonyms
     "configuration":              "misconfiguration",
     "insecure_configuration":     "misconfiguration",
