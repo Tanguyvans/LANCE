@@ -390,12 +390,15 @@ class Pipeline:
                 self._generate_phase5_context()
                 self._pregenerate_report_sections()
 
-            # Run the agent
-            status = self._run_agent(agent_config, stream_callback)
-
-            # Post-process Phase 5: inject pre-generated tables into the saved report
+            # Run the agent — use try/finally for Phase 5 to guarantee report generation
+            # even if the LLM provider raises an exception mid-run.
             if agent_config.phase == 5:
-                self._merge_report_with_prefill()
+                try:
+                    status = self._run_agent(agent_config, stream_callback)
+                finally:
+                    self._merge_report_with_prefill()
+            else:
+                status = self._run_agent(agent_config, stream_callback)
 
             results[agent_config.name] = status
 
@@ -1747,8 +1750,12 @@ class Pipeline:
                 if vuln_id:
                     exploit_by_vuln[vuln_id] = t
 
-        # --- Aggregate by device ---
+        # --- Aggregate by device (compact — no per-vuln details, sections 5/6 are pre-generated) ---
         devices: dict[str, dict] = {}
+        global_sev: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        cve_set: set[str] = set()
+        top_critical: list[dict] = []  # up to 10 critical findings for narrative
+
         for v in phase3_vulns:
             dev_ip = v.get("device_ip", "unknown")
             dev_id = v.get("device_id", "unknown")
@@ -1756,40 +1763,69 @@ class Pipeline:
                 devices[dev_ip] = {
                     "device_id": dev_id,
                     "device_ip": dev_ip,
-                    "vulns": [],
                     "severity_counts": {},
+                    "confirmed_count": 0,
                 }
             vuln_id = v.get("id", "")
             exploit = exploit_by_vuln.get(vuln_id, {})
             status = exploit.get("status", "UNTESTED")
             severity = (v.get("severity") or "MEDIUM").upper()
 
-            # Count severities
             devices[dev_ip]["severity_counts"][severity] = (
                 devices[dev_ip]["severity_counts"].get(severity, 0) + 1
             )
+            if status == "CONFIRMED":
+                devices[dev_ip]["confirmed_count"] += 1
 
-            devices[dev_ip]["vulns"].append({
-                "id": vuln_id,
-                "type": v.get("type", ""),
-                "severity": severity,
-                "service": v.get("service", ""),
-                "port": v.get("port", ""),
-                "status": status,
-                "cve_ids": v.get("cve_ids", []),
-                "title": v.get("details", "")[:120],
-            })
+            if severity in global_sev:
+                global_sev[severity] += 1
+
+            for cve in v.get("cve_ids", []):
+                if cve:
+                    cve_set.add(cve)
+
+            if severity == "CRITICAL" and len(top_critical) < 10:
+                top_critical.append({
+                    "device_id": dev_id,
+                    "device_ip": dev_ip,
+                    "type": v.get("type", ""),
+                    "service": v.get("service", ""),
+                    "title": v.get("details", "")[:80],
+                    "status": status,
+                })
 
         # --- Build compact output ---
         device_list = sorted(devices.values(), key=lambda d: d["device_ip"])
-        total_vulns = sum(len(d["vulns"]) for d in device_list)
+        total_vulns = sum(
+            sum(d["severity_counts"].values()) for d in device_list
+        )
+
+        # Top devices by risk (for Section 8)
+        def _risk_score(d: dict) -> int:
+            sc = d["severity_counts"]
+            return sc.get("CRITICAL", 0) * 4 + sc.get("HIGH", 0) * 3 + sc.get("MEDIUM", 0) * 2 + sc.get("LOW", 0)
+
+        top_devices = sorted(device_list, key=_risk_score, reverse=True)[:12]
 
         context = {
             "generated_for": "phase5_report",
             "device_count": len(device_list),
             "total_vulnerabilities": total_vulns,
+            "severity_breakdown": global_sev,
             "phase4_summary": phase4_summary,
-            "devices": device_list,
+            "top_critical_findings": top_critical,
+            "top_devices_by_risk": [
+                {
+                    "device_id": d["device_id"],
+                    "device_ip": d["device_ip"],
+                    "severity_counts": d["severity_counts"],
+                    "confirmed": d["confirmed_count"],
+                    "risk_score": _risk_score(d),
+                }
+                for d in top_devices
+            ],
+            "cve_list": sorted(cve_set),
+            "NOTE": "Sections 5 and 6 (vuln tables) are pre-generated in 05_report_prefill.md — do not re-list individual vulns.",
         }
 
         out_path = self.run_dir / "05_phase5_context.json"
