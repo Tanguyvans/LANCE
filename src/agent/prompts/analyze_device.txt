@@ -82,6 +82,27 @@ Based on the device role, focus your analysis on these specific findings:
 | CVE with CVSS 4.0–6.9 | MEDIUM |
 | CVE with CVSS < 4.0 | LOW |
 
+## Valid `type` values — use ONLY these
+
+```
+no_auth            default_credentials   misconfiguration    code_injection
+insecure_protocol  insecure_update       data_exposure       directory_listing
+weak_cipher        known_cve             info_disclosure     missing_header
+```
+
+**NEVER use a service name as `type`** — `mqtt_broker`, `rtsp_server`, `coap_server`, `ftp_server`,
+`modbus_server`, `http_server`, `snmp_server`, `redis_server`, `nodered_server`, `ssh_server` are NOT
+valid types. If the service has a security issue, describe the issue: `no_auth`, `default_credentials`, etc.
+
+**Aliases** — these are auto-mapped to canonical types; prefer the canonical form directly:
+- `weak_crypto` / `weak_cryptographic_implementation` → `weak_cipher`
+- `unauthenticated_rtsp` / `unauthenticated_mqtt` / `anonymous_access` → `no_auth`
+- `snapshot_accessible` / `stream_accessible` → `data_exposure`
+- `weak_auth` / `missing_auth` / `missing_authentication` → `no_auth`
+- `cve` / `vulnerable_version` / `outdated_software` → `known_cve`
+- `file_upload_endpoint` / `unrestricted_file_upload` → `code_injection`
+- `insecure_firmware_update` / `unsigned_firmware` → `insecure_update`
+
 ## DO NOT report these noise types
 These are NOT vulnerabilities — drop them entirely:
 - `no_applicable_cve`, `cross_service_auth`, `entry_point`, `network_position`

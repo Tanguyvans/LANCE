@@ -70,10 +70,21 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "xss",
     "xss_stored",
     "prototype_pollution",
-    # Nonsensical device-type names used as vuln types by LLM
+    # Service-type names used as vuln types by LLM (the service IS not the vuln)
     "ssh_server",
     "web_server",
     "ssh_weak_ciphers",
+    "mqtt_broker",
+    "mqtt_server",
+    "rtsp_server",
+    "coap_server",
+    "ftp_server",
+    "modbus_server",
+    "http_server",
+    "snmp_server",
+    "redis_server",
+    "nodered_server",
+    "camera_server",
     # API/key exposure duplicates (already covered by data_exposure)
     "api_key_exposed",
     "smtp_credentials_exposed",
@@ -106,6 +117,9 @@ EXPLOIT_CATEGORY_MAP: dict[str, str] = {
 
 VULN_TYPE_ALIASES: dict[str, str] = {
     # data_exposure synonyms
+    "snapshot_accessible":        "data_exposure",
+    "stream_accessible":          "data_exposure",
+    "unauthenticated_stream":     "data_exposure",
     "credentials_exposed":        "data_exposure",
     "credentials_exposure":       "data_exposure",
     "credential_exposure":        "data_exposure",
@@ -120,6 +134,10 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "firmware_disclosure":        "data_exposure",
     "sensitive_file_exposure":    "data_exposure",
     # weak_cipher synonyms
+    "weak_crypto":                "weak_cipher",
+    "weak_cryptographic_implementation": "weak_cipher",
+    "weak_tls":                   "weak_cipher",
+    "insecure_tls":               "weak_cipher",
     "ssh_weak_config":            "weak_cipher",
     "weak_ssh_config":            "weak_cipher",
     "weak_config":                "weak_cipher",
@@ -145,6 +163,12 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "missing_auth":               "no_auth",
     "authentication":             "no_auth",
     "api_exposure":               "no_auth",
+    "unauthenticated_rtsp":       "no_auth",
+    "unauthenticated_mqtt":       "no_auth",
+    "unauthenticated_coap":       "no_auth",
+    "unauthenticated_modbus":     "no_auth",
+    "anonymous_access":           "no_auth",
+    "weak_auth":                  "no_auth",
     # default_credentials synonyms
     "default_creds":                    "default_credentials",
     "hardcoded_credentials":            "default_credentials",

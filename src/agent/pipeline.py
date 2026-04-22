@@ -1516,6 +1516,32 @@ class Pipeline:
             log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])
         return new_hosts
 
+    @staticmethod
+    def _infer_role_from_ports(ports: list) -> str:
+        """Infer a device role from open ports so the analyze_device prompt gets meaningful guidance."""
+        port_set = set(int(p) for p in ports if str(p).isdigit())
+        if 1883 in port_set or 8883 in port_set:
+            return "mqtt_broker"
+        if 1880 in port_set:
+            return "nodered_server"
+        if 502 in port_set or 44818 in port_set or 102 in port_set:
+            return "modbus_server"
+        if 5683 in port_set:
+            return "coap_server"
+        if 554 in port_set or 8554 in port_set:
+            return "camera_server"
+        if 21 in port_set:
+            return "ftp_server"
+        if 6379 in port_set:
+            return "db_server_v2"
+        if 3306 in port_set:
+            return "db_server"
+        if 161 in port_set:
+            return "snmp_server"
+        if 8080 in port_set or 8443 in port_set or 80 in port_set or 443 in port_set:
+            return "web_server"
+        return "unknown"
+
     def _run_discovery_followup(
         self,
         new_hosts: list[dict],
@@ -1549,11 +1575,12 @@ class Pipeline:
             if not ip:
                 continue
             device_id = f"discovered-{ip.replace('.', '-')}"
+            inferred_role = self._infer_role_from_ports(host.get("open_ports", []))
             device = {
                 "id": device_id,
                 "ip": ip,
-                "type": "unknown",
-                "role": "unknown",
+                "type": inferred_role,
+                "role": inferred_role,
                 "services": [
                     {"name": "unknown", "port": p, "protocol": "tcp"}
                     for p in host.get("open_ports", [])
@@ -1583,8 +1610,8 @@ class Pipeline:
             variables = {**self.context}
             variables["device_id"] = device_id
             variables["device_ip"] = ip
-            variables["device_type"] = "unknown"
-            variables["device_role"] = "unknown"
+            variables["device_type"] = inferred_role
+            variables["device_role"] = inferred_role
             variables["device_services"] = ", ".join(str(p) for p in host.get("open_ports", []))
             variables["device_os"] = "unknown"
             variables["expected_deliverable"] = deliverable_file
