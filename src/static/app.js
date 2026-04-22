@@ -684,7 +684,7 @@ async function loadTopology(scenarioId = null) {
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
 
-  if (!cy && loading) loading.style.display = 'flex';
+  if (loading) loading.style.display = 'flex';
 
   const data = await fetchJSON(url);
 
@@ -714,10 +714,13 @@ async function loadTopology(scenarioId = null) {
 
   if (cy) {
     _clearHoverState();
-    cy.elements().remove();
-    cy.add(elements);
+    cy.batch(() => {
+      cy.elements().remove();
+      cy.add(elements);
+    });
     cy.resize();
     _runLayout(CY_LAYOUTS.cose);
+    if (loading) loading.style.display = 'none';
   } else {
     cy = cytoscape({
       container: cyDiv,
@@ -813,6 +816,7 @@ async function loadTopology(scenarioId = null) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       cy.resize();
       _runLayout(CY_LAYOUTS.cose);
+      if (loading) loading.style.display = 'none';
     }));
   }
 
@@ -1111,23 +1115,30 @@ async function teardownScenario() {
   }
 }
 
+let _sseRetryDelay = 1000;
+let _sseRetryTimer = null;
+
 function startSSE() {
   if (eventSource) eventSource.close();
+  if (_sseRetryTimer) { clearTimeout(_sseRetryTimer); _sseRetryTimer = null; }
 
   eventSource = new EventSource('/api/pipeline/stream');
 
   eventSource.onmessage = (e) => {
+    _sseRetryDelay = 1000; // reset backoff on successful message
     try { handleEvent(JSON.parse(e.data)); }
-    catch(e) { console.warn('SSE parse error', e); }
+    catch(err) { console.warn('SSE parse error', err); }
   };
 
   eventSource.onerror = () => {
-    addLog({type:'error', message:'Connexion SSE perdue'});
+    addLog({type:'error', message:`Connexion SSE perdue — reconnexion dans ${_sseRetryDelay / 1000}s`});
     eventSource.close();
     eventSource = null;
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-stop').style.display = 'none';
     loadRuns();
+    _sseRetryTimer = setTimeout(() => { startSSE(); }, _sseRetryDelay);
+    _sseRetryDelay = Math.min(_sseRetryDelay * 2, 16000); // 1s → 2s → 4s → 8s → 16s max
   };
 }
 
@@ -1497,12 +1508,23 @@ async function viewRun(runId) {
   const run = await fetchJSON(`/api/runs/${runId}`);
   if (!run) return;
 
-  // Switch graph to this run's topology
+  const eRunId = escapeHtml(runId);
   const scenarioId = run.scenario ? run.scenario.replace('S', '') : null;
-  resetNodeColors();
-  nodeVulns = {};
-  nodeHosts = {};
-  await loadTopology(scenarioId);
+  const hasScore = run.scenario && run.files.includes('03_vuln_analysis.json');
+  const reportFile = run.files.includes('06_report.md') ? '06_report.md'
+                   : run.files.includes('05_report.md') ? '05_report.md' : null;
+
+  // Kick off all independent fetches in parallel while topology loads
+  const [, score, reportData] = await Promise.all([
+    (async () => {
+      resetNodeColors();
+      nodeVulns = {};
+      nodeHosts = {};
+      await loadTopology(scenarioId);
+    })(),
+    hasScore ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
+    reportFile ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
+  ]);
 
   // Sync dropdown
   document.getElementById('sel-scenario').value = scenarioId || '';
@@ -1520,24 +1542,20 @@ async function viewRun(runId) {
   // Ensure Info tab is active
   switchDetailTab('info');
 
-  const eRunId = escapeHtml(runId);
   const pct = v => (v != null ? (v * 100).toFixed(1) + '%' : '—');
 
   // ── Info panel ────────────────────────────────────────────────────────────
   let scoreHtml = '';
-  if (run.scenario && run.files.includes('03_vuln_analysis.json')) {
-    const score = await fetchJSON(`/api/runs/${eRunId}/score`);
-    if (score && score.recall != null) {
-      scoreHtml = `
-        <div class="detail-section">
-          <h3>Score benchmark</h3>
-          <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
-          <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
-          <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
-          <div class="detail-row"><span class="detail-key">Score pondéré</span><span class="detail-val">${score.weighted_score} / ${score.max_weighted_score}</span></div>
-          <div class="detail-row"><span class="detail-key">Faux positifs</span><span class="detail-val">${score.false_positives} FP</span></div>
-        </div>`;
-    }
+  if (score && score.recall != null) {
+    scoreHtml = `
+      <div class="detail-section">
+        <h3>Score benchmark</h3>
+        <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
+        <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
+        <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
+        <div class="detail-row"><span class="detail-key">Score pondéré</span><span class="detail-val">${score.weighted_score} / ${score.max_weighted_score}</span></div>
+        <div class="detail-row"><span class="detail-key">Faux positifs</span><span class="detail-val">${score.false_positives} FP</span></div>
+      </div>`;
   }
 
   document.getElementById('detail-panel-info').innerHTML = `
@@ -1565,16 +1583,10 @@ async function viewRun(runId) {
 
   // ── Rapport panel ─────────────────────────────────────────────────────────
   const reportPanel = document.getElementById('detail-panel-report');
-  if (run.files.includes('05_report.md')) {
-    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Chargement du rapport…</div>';
-    const data = await fetchJSON(`/api/runs/${eRunId}/05_report.md`);
-    if (data && data.content) {
-      reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(data.content)}</div>`;
-    } else {
-      reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px">Rapport non disponible</div>';
-    }
+  if (reportFile && reportData && reportData.content) {
+    reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(reportData.content)}</div>`;
   } else {
-    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 5) non généré pour ce run.</div>';
+    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
   }
 
   // Load vuln data to color graph nodes
@@ -2106,9 +2118,13 @@ async function pollStatus() {
 async function fetchJSON(url) {
   try {
     const res = await fetch(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`fetchJSON ${res.status} ${res.statusText}`, url);
+      return null;
+    }
     return await res.json();
-  } catch(_) {
+  } catch(err) {
+    console.error('fetchJSON network error', url, err);
     return null;
   }
 }

@@ -29,13 +29,18 @@ app.include_router(models.router,    prefix="/api/models",    tags=["models"])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+_CACHEABLE_API_PATHS = {"/api/models", "/api/scenarios"}
+
 @app.middleware("http")
-async def no_cache_static(request: Request, call_next) -> Response:
+async def cache_control(request: Request, call_next) -> Response:
     response = await call_next(request)
-    if request.url.path.startswith("/static/") or request.url.path == "/":
+    path = request.url.path
+    if path.startswith("/static/") or path == "/":
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    elif path in _CACHEABLE_API_PATHS:
+        response.headers["Cache-Control"] = "public, max-age=3600"
     return response
 
 
