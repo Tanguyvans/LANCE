@@ -529,7 +529,7 @@
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
-        'opkg update && opkg install socat'
+        'opkg update; opkg install socat'
       when: "'telnet' in scenarios[scenario_id].router_vulns"
       changed_when: true
 
@@ -569,7 +569,7 @@
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 \
           root@{{ benchmark_gateway }} \
-          'opkg update && opkg install vsftpd &&
+          'opkg update; opkg install vsftpd &&
            echo "anonymous_enable=YES" >> /etc/vsftpd.conf &&
            /etc/init.d/vsftpd enable && /etc/init.d/vsftpd start'
       when: "'ftp' in scenarios[scenario_id].router_vulns"
