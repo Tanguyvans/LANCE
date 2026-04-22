@@ -29,34 +29,41 @@ Your deliverable is the port/service map used by all subsequent phases.
 
 <instructions>
 IMPORTANT: Execute ALL steps below autonomously, one after the other, without pausing.
-TURN BUDGET: You have at most 30 turns. Aim to call save_deliverable by turn 25.
+TURN BUDGET: You have at most 50 turns. Aim to call save_deliverable by turn 45.
 RULE: Call read_deliverable EXACTLY ONCE. Never call search_history more than once.
 RULE: Do NOT call ssh_audit, curl_headers, or mqtt_listen — those are reserved for Phase 3.
 RULE: NEVER call modbus_scan — it times out and Phase 3 scanner handles Modbus automatically.
 RULE: NEVER use udp_scan=True without a ports= value. NEVER use udp_scan in Phase 2 at all.
 RULE: The report template is SHORT (3 sections, 3 tables). Fill it quickly — do not elaborate.
 
-## Step 1 — Discovery (2 tool calls)
+## Step 1 — Discovery (3 tool calls)
 1. Call arp_scan() to list live hosts.
 2. Call nmap_discovery(target="{{target_subnet}}") to scan the subnet.
 3. Call read_deliverable("01_graph_analysis.md") for the device list.
 
-## Step 2 — Port scans (BUDGET: max 15 nmap_scan calls)
-Group IPs by role and call ONE nmap_scan per role-group when possible.
-If there are more than 15 IPs, prioritise: (1) router/gateway, (2) servers, (3) a sample of sensors.
-For each IP (or representative IP per group), call ONE nmap_scan:
-- Router/OpenWrt:        ports="22,23,80,443,8080,8291"
-- IoT gateway/RPi:       ports="22,23,80,443,502,554,1883,8080,8086"
-- Database server:       ports="22,80,3306,5432,27017"
-- PLC/Modbus/OT device:  ports="22,80,502,102,44818"   ← NO modbus_scan, NO udp_scan
-- Camera/NVR:            ports="22,80,443,554,8080,8554"
-- Web server/HMI:        ports="22,80,443,8080,8443,1880"
-- MQTT broker:           ports="22,80,1883,8883"
-- SSH server:            ports="22,80,443"
-- SNMP/CoAP device:      ports="22,80,161,5683"         ← list TCP only; Phase 3 handles UDP
-- Unknown/undocumented:  ports="22,23,80,443,502,554,1883,3306,8080,8443"
+## Step 2 — Port scans (BUDGET: max 25 nmap_scan calls)
+**MANDATORY: Group IPs by role-type and scan the whole group in ONE call.**
+Pass all IPs of the same type as a comma-separated list in the `target` parameter.
+NEVER scan one IP at a time if multiple IPs share the same role — that wastes your budget.
+
+| Role group | nmap_scan target | ports |
+|------------|-----------------|-------|
+| Router/OpenWrt | one IP | `"22,23,80,443,8080,8291"` |
+| PLCs (all Modbus/OT) | `"x.x.x.41,x.x.x.42,x.x.x.43,x.x.x.44"` | `"22,80,502,102,44818"` |
+| MQTT brokers | `"x.x.x.21,x.x.x.22,x.x.x.23"` | `"22,80,1883,8883"` |
+| Cameras/NVR | `"x.x.x.29,x.x.x.30,x.x.x.31"` | `"22,80,443,554,8080,8554"` |
+| IoT gateways | `"x.x.x.24,x.x.x.25,x.x.x.26,x.x.x.27"` | `"22,80,443,502,8080,8086"` |
+| Web/HMI servers | `"x.x.x.45,x.x.x.46,x.x.x.51"` | `"22,80,443,8080,8443,1880"` |
+| DB/Redis/Historian | `"x.x.x.47,x.x.x.48,x.x.x.49,x.x.x.50"` | `"22,80,3306,5432,6379"` |
+| Admin/Jump/SSH-only | `"x.x.x.11,x.x.x.12,x.x.x.13"` | `"22,80,443"` |
+| FTP servers | `"x.x.x.16,x.x.x.52"` | `"21,22,80"` |
+| Node-RED | `"x.x.x.15,x.x.x.28"` | `"22,80,1880,8080"` |
+| SNMP/CoAP | `"x.x.x.32,x.x.x.33"` | `"22,80,161,5683"` |
+| Upload/misc web | `"x.x.x.34"` | `"22,80,443,8080"` |
+| Monitor/SCADA | `"x.x.x.14,x.x.x.51"` | `"22,80,443,5000,8080"` |
+
 Always use skip_discovery=true.
-IMPORTANT: If you have already used 14 nmap_scan calls, stop scanning and go directly to Step 3.
+IMPORTANT: If you have already used 24 nmap_scan calls, stop scanning and go directly to Step 3.
 
 ## Step 3 — Document and save
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
@@ -64,7 +71,8 @@ For IPs not individually scanned (budget limit), document them using nmap_discov
 Then immediately call save_deliverable.
 
 ## Step 4 — Completion checklist (MANDATORY before save_deliverable)
-- [ ] At most 15 nmap_scan calls made
+- [ ] At most 25 nmap_scan calls made
+- [ ] IPs grouped by role — no individual scans when grouping was possible
 - [ ] Every discovered IP documented (scanned or noted from discovery)
 - [ ] No modbus_scan or udp_scan calls made
 Fill the template with ALL results, then call save_deliverable.
