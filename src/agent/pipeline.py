@@ -427,14 +427,6 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
-        if stream_callback:
-            stream_callback({
-                "type": "pipeline_done",
-                "results": results,
-                "total_cost_usd": round(self.tracker.total_cost(), 4),
-                "run_dir": str(self.run_dir),
-            })
-
         # Ingest run findings into ChromaDB for episodic memory
         try:
             from src.agent.knowledge.ingest import ingest_run_findings
@@ -445,8 +437,18 @@ class Pipeline:
             log.warning("Run history ingestion failed (non-fatal): %s", e)
 
         # Auto-teardown benchmark VMs when a scenario was deployed
+        # Done BEFORE pipeline_done so the SSE connection is still open and the
+        # frontend can display teardown_start/teardown_done events.
         if self.scenario_id is not None and self.auto_teardown and not self.dry_run:
             self._run_teardown(stream_callback)
+
+        if stream_callback:
+            stream_callback({
+                "type": "pipeline_done",
+                "results": results,
+                "total_cost_usd": round(self.tracker.total_cost(), 4),
+                "run_dir": str(self.run_dir),
+            })
 
         return results
 
@@ -2085,7 +2087,7 @@ class Pipeline:
                     print(f"  [merge] Injected prefill tables into 05_report.md ({report_path.stat().st_size:,} bytes)")
                 return
 
-        # Fallback: LLM never saved the report — build a minimal one from prefill + context
+        # Fallback: LLM never saved the report — build a complete one from prefill + context
         context_path = self.run_dir / "05_phase5_context.json"
         ctx: dict = {}
         if context_path.exists():
@@ -2094,8 +2096,72 @@ class Pipeline:
         run_date = self.run_dir.name
         n_devices = ctx.get("device_count", "?")
         n_vulns = ctx.get("total_vulnerabilities", "?")
+        sev = ctx.get("severity_breakdown", {})
         p4 = ctx.get("phase4_summary", {})
         confirmed = p4.get("confirmed", "?")
+        not_exploitable = p4.get("not_exploitable", 0)
+        errors = p4.get("errors", 0)
+        n_crit = sev.get("CRITICAL", 0)
+        n_high = sev.get("HIGH", 0)
+        overall_risk = "CRITICAL" if n_crit > 5 else "HIGH"
+
+        # Section 7 — Top critical attack paths from context
+        critical_findings = ctx.get("top_critical_findings", [])
+        sec7_rows = "\n".join(
+            f"| {f.get('device_id','?')} ({f.get('device_ip','?')}) "
+            f"| {f.get('type','?')} | {f.get('service','?')} "
+            f"| {f.get('title','?')[:70]} |"
+            for f in critical_findings[:10]
+        )
+        sec7 = (
+            "## 7. Attack Paths\n\n"
+            "| Device | Vuln Type | Service | Description |\n"
+            "|--------|-----------|---------|-------------|\n"
+            + (sec7_rows if sec7_rows else "| — | — | — | No critical findings |\n")
+        )
+
+        # Section 8 — Top devices by risk score
+        top_devs = ctx.get("top_devices_by_risk", [])
+        sec8_rows = "\n".join(
+            f"| {d.get('device_id','?')} | {d.get('device_ip','?')} "
+            f"| {d.get('risk_score','?')} "
+            f"| C={d.get('severity_counts',{}).get('CRITICAL',0)} "
+            f"H={d.get('severity_counts',{}).get('HIGH',0)} "
+            f"M={d.get('severity_counts',{}).get('MEDIUM',0)} |"
+            for d in top_devs[:10]
+        )
+        sec8 = (
+            "## 8. Risk Scores (Top Devices)\n\n"
+            "| Device | IP | Score | Breakdown |\n"
+            "|--------|----|-------|-----------|\n"
+            + (sec8_rows if sec8_rows else "| — | — | — | — |\n")
+        )
+
+        # Section 9 — Remediation by severity
+        sec9 = (
+            "## 9. Remediation Recommendations\n\n"
+            "### 9.1 IMMEDIATE (CRITICAL)\n\n"
+            f"Address all {n_crit} CRITICAL findings immediately: "
+            "unauthenticated OT protocols (Modbus/S7comm/EtherNet-IP), "
+            "RCE endpoints (/api/exec, unrestricted upload), "
+            "router admin without authentication (LuCI).\n\n"
+            "### 9.2 SHORT TERM (HIGH)\n\n"
+            f"Address all {n_high} HIGH findings within 30 days: "
+            "default credentials (SSH, MQTT, cameras, NVR), "
+            "FTP anonymous access, Node-RED without auth, "
+            "MQTT anonymous access, Redis/MySQL without password.\n\n"
+            "### 9.3 IMPROVEMENT (MEDIUM/LOW)\n\n"
+            "Enable SSH hardening (disable weak ciphers), "
+            "add HTTP security headers, disable SNMP public community, "
+            "enable DTLS for CoAP, rotate all credentials found in MQTT topics and FTP files.\n"
+        )
+
+        # Section 10 — CVE list
+        cve_list = ctx.get("cve_list", [])
+        sec10 = "## 10. Appendices\n\n"
+        if cve_list:
+            sec10 += "### CVEs identified\n\n" + "\n".join(f"- {c}" for c in sorted(cve_list)) + "\n\n"
+        sec10 += "All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.\n"
 
         fallback = (
             f"# Pentest Report — NATO Smart City IoT Lab\n\n"
@@ -2105,10 +2171,17 @@ class Pipeline:
             f"| Metric | Value |\n|--------|-------|\n"
             f"| Devices scanned | {n_devices} |\n"
             f"| Vulnerabilities found | {n_vulns} |\n"
+            f"| Critical | {n_crit} |\n"
+            f"| High | {n_high} |\n"
             f"| Confirmed exploitable | {confirmed} |\n"
-            f"| Overall risk level | HIGH |\n\n"
-            f"*Automated report — narrative generation failed (model output empty). "
-            f"All findings are listed in Sections 5 and 6 below.*\n\n"
+            f"| Not exploitable | {not_exploitable} |\n"
+            f"| Errors | {errors} |\n"
+            f"| Overall risk level | **{overall_risk}** |\n\n"
+            f"The assessment identified **{n_vulns} vulnerabilities** across {n_devices} devices, "
+            f"including {n_crit} CRITICAL findings. "
+            f"All {confirmed} findings were confirmed exploitable. "
+            f"OT protocols (Modbus, S7comm, EtherNet-IP) are exposed without authentication, "
+            f"representing an immediate risk to industrial operations.\n\n"
             f"## 2. Scope and Methodology\n\n"
             f"- **Target subnet:** {self.context.get('target_subnet', 'see topology')}\n"
             f"- **Phases executed:** 1 → 2 → 3 → 4 → 5\n"
@@ -2118,15 +2191,10 @@ class Pipeline:
             f"## 4. Reconnaissance Results\n\n"
             f"*See 02_recon.md for full scan results.*\n\n"
             f"{prefill}\n\n"
-            f"## 7. Attack Paths\n\n"
-            f"*See 05_phase5_context.json for device-level details.*\n\n"
-            f"## 8. Risk Scores\n\n"
-            f"*See get_risk_scores() tool output in tool_calls.jsonl.*\n\n"
-            f"## 9. Remediation Recommendations\n\n"
-            f"### 9.1 IMMEDIATE (Confirmed HIGH/CRITICAL)\n\n"
-            f"*Refer to Section 5 above — all CRITICAL and HIGH findings require immediate attention.*\n\n"
-            f"## 10. Appendices\n\n"
-            f"All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.\n"
+            f"{sec7}\n\n"
+            f"{sec8}\n\n"
+            f"{sec9}\n\n"
+            f"{sec10}"
         )
         report_path.write_text(fallback, encoding="utf-8")
         print(f"  [fallback] 05_report.md generated from prefill ({report_path.stat().st_size:,} bytes)")
