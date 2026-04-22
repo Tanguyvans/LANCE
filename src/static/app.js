@@ -1131,6 +1131,8 @@ function handleEvent(ev) {
   }
 
   else if (t === 'pipeline_done') {
+    // Ignore pipeline_done events that are part of a batch run (they come from sub-pipelines)
+    if (ev.batch_scenario_id !== undefined) return;
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-stop').style.display = 'none';
@@ -1154,6 +1156,7 @@ function handleEvent(ev) {
   else if (t === 'batch_done') {
     const agg = ev.aggregate || {};
     setCost(ev.total_cost_usd || 0);
+    document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
     document.getElementById('btn-stop').style.display = 'none';
     if (eventSource) { eventSource.close(); eventSource = null; }

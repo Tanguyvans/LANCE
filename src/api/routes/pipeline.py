@@ -277,7 +277,6 @@ def _batch_thread(req: BatchRequest):
                 phases=req.phases or None,
                 scenario_id=int(sid) if sid.isdigit() else sid,
                 auto_teardown=True,
-                stop_event=_state.get("stop_event"),
             )
 
             def make_callback(scenario_id):
