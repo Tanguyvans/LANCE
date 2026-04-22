@@ -482,7 +482,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
     loadTopology(this.value || null);
     document.getElementById('btn-teardown').disabled = !this.value;
+    document.getElementById('btn-deploy').disabled = !this.value;
+    document.getElementById('blind-mode-label').hidden = !this.value;
+    if (!this.value) document.getElementById('cb-blind-mode').checked = false;
   });
+  document.getElementById('btn-deploy').addEventListener('click', deployScenario);
   document.getElementById('btn-start').addEventListener('click', startRun);
   document.getElementById('btn-batch-start').addEventListener('click', startBatch);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
@@ -1005,11 +1009,14 @@ async function startRun() {
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
 
+  const blindMode = document.getElementById('cb-blind-mode')?.checked && mode === 'preset' && scenario;
+
   const body = {
     model,
     provider,
-    scenario_id: scenario,
-    phases: phases.length < 5 ? phases : null,
+    scenario_id: blindMode ? null : scenario,
+    target_network: blindMode ? '192.168.100.0/24' : null,
+    phases: phases.length < 6 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
     phase_models: phaseModels,
@@ -1086,6 +1093,44 @@ async function stopRun() {
   document.getElementById('btn-batch-start').disabled = false;
   document.getElementById('btn-stop').style.display = 'none';
   addLog({type:'error', message:"Run interrompu par l'utilisateur"});
+}
+
+async function deployScenario() {
+  const scenarioId = document.getElementById('sel-scenario').value;
+  if (!scenarioId) return;
+  if (_state.running) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
+
+  const modelSel = document.getElementById('sel-model');
+  const model    = modelSel.value;
+  const selectedOpt = modelSel.options[modelSel.selectedIndex];
+  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
+
+  const btn = document.getElementById('btn-deploy');
+  btn.disabled = true;
+  btn.textContent = 'Déploiement…';
+  addLog({type:'info', message:`Déploiement S${scenarioId} en cours (Ansible deploy + inject)…`});
+
+  clearPhasePills();
+  setCost(0);
+
+  try {
+    const r = await fetch('/api/pipeline/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({model, provider, scenario_id: scenarioId, deploy_only: true}),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({detail: r.statusText}));
+      addLog({type:'error', message:`Déploiement échoué : ${err.detail}`});
+    } else {
+      startSSE();
+    }
+  } catch(e) {
+    addLog({type:'error', message:`Déploiement erreur réseau : ${e}`});
+  } finally {
+    btn.textContent = 'Déployer';
+    btn.disabled = !scenarioId;
+  }
 }
 
 async function teardownScenario() {

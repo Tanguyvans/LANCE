@@ -465,6 +465,28 @@ class Pipeline:
 
         return results
 
+    def run_deploy_only(self, stream_callback: Callable[[dict], None] | None = None) -> None:
+        """Deploy benchmark scenario VMs without running any pentest phase.
+
+        Runs Ansible deploy + inject + verify, then emits pipeline_done so the
+        frontend closes the SSE connection cleanly.
+        """
+        if not self.scenario_id:
+            if stream_callback:
+                stream_callback({"type": "error", "message": "deploy_only requiert un scenario_id"})
+                stream_callback({"type": "pipeline_done", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
+            return
+        if stream_callback:
+            stream_callback({"type": "pipeline_start", "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": None})
+        success = self._run_scenario_deploy(stream_callback)
+        if stream_callback:
+            stream_callback({
+                "type": "pipeline_done",
+                "results": {"deploy": "completed" if success else "failed"},
+                "total_cost_usd": 0,
+                "run_dir": str(self.run_dir),
+            })
+
     def _run_playbook(self, playbook: str, stream_callback, event_type_start: str, event_type_done: str, extra_msg: str = "") -> bool:
         """Run an Ansible playbook and return True on success."""
         repo_root = Path(__file__).resolve().parents[2]

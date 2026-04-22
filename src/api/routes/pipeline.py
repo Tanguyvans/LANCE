@@ -54,6 +54,8 @@ class StartRequest(BaseModel):
     phase_models: dict[int, str] | None = None
     # Discovery mode (Docker end-user): scan a live network instead of a pre-defined topology
     target_network: str | None = None  # CIDR e.g. "192.168.1.0/24"
+    # Deploy-only mode: run Ansible deploy+inject but skip all pentest phases
+    deploy_only: bool = False
     # Custom mode fields
     architecture: str | None = None
     posture: str | None = None       # "vulnerable" | "hardened"
@@ -142,7 +144,10 @@ def _pipeline_thread(req: StartRequest):
                 _state["run_dir"] = event.get("run_dir")
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
 
-        pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
+        if req.deploy_only:
+            pipeline.run_deploy_only(stream_callback=callback)
+        else:
+            pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
 
     except Exception as exc:
         q = _state["queue"]

@@ -99,9 +99,16 @@
       <!-- Preset mode -->
       <div id="preset-mode">
         <label for="sel-scenario">Scénario</label>
-        <select id="sel-scenario">
-          <option value="">— Lab physique —</option>
-        </select>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="sel-scenario" style="flex:1">
+            <option value="">— Lab physique —</option>
+          </select>
+          <button id="btn-deploy" disabled title="Déployer les VMs du scénario sans lancer le pentest">Déployer</button>
+        </div>
+        <label id="blind-mode-label" hidden style="margin-top:4px;font-size:12px;gap:6px;display:flex;align-items:center">
+          <input type="checkbox" id="cb-blind-mode">
+          Mode aveugle (pentest sans connaissance préalable)
+        </label>
       </div>
 
       <!-- Batch mode -->
