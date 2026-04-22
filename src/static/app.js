@@ -914,6 +914,17 @@ function highlightAttackEdge(fromIp, toIp, fromId, toId) {
   }
 }
 
+async function loadIntrusionOverlay(runId) {
+  const data = await fetchJSON(`/api/runs/${runId}/05_intrusion.json`);
+  if (!data || !data.content || !data.content.chains) return;
+  for (const chain of data.content.chains) {
+    for (const hop of chain.hops) {
+      markNodeCompromised(hop.device_ip);
+      if (hop.pivot_to) highlightAttackEdge(hop.device_ip, hop.pivot_to, hop.device_id, '');
+    }
+  }
+}
+
 function _addDiscoveredEdge(srcIp, dstIp, linkType) {
   if (!cy) return;
   // Find or create nodes for IPs not yet in graph (intermediate hops like gateways)
@@ -1686,6 +1697,11 @@ async function viewRun(runId) {
   // Load vuln data to color graph nodes
   if (run.files.includes('03_vuln_analysis.json')) {
     await fetchVulnResults(runId);
+  }
+
+  // Overlay intrusion chains (pwned edges + compromised node colors)
+  if (run.files.includes('05_intrusion.json')) {
+    await loadIntrusionOverlay(runId);
   }
 }
 
