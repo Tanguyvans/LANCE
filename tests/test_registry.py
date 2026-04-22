@@ -40,16 +40,16 @@ class TestAgentsRegistry:
         deliverables = [a.deliverable_file for a in AGENTS.values()]
         assert len(deliverables) == len(set(deliverables)), "Duplicate deliverable files"
 
-    def test_five_agents(self):
-        assert len(AGENTS) == 5
+    def test_six_agents(self):
+        assert len(AGENTS) == 6
 
     def test_expected_agent_names(self):
-        expected = {"graph_analysis", "recon", "vuln_analysis", "exploitation", "report"}
+        expected = {"graph_analysis", "recon", "vuln_analysis", "exploitation", "intrusion", "report"}
         assert set(AGENTS.keys()) == expected
 
     def test_phases_sequential(self):
         phases = sorted(a.phase for a in AGENTS.values())
-        assert phases == [1, 2, 3, 4, 5]
+        assert phases == [1, 2, 3, 4, 5, 6]
 
     def test_validators_exist(self):
         for config in AGENTS.values():
@@ -58,7 +58,7 @@ class TestAgentsRegistry:
             )
 
     def test_tool_groups_valid(self):
-        valid_groups = {"graph", "recon", "deliverable", "skill"}
+        valid_groups = {"graph", "recon", "deliverable", "skill", "intrusion"}
         for config in AGENTS.values():
             for tool in config.tools:
                 assert tool in valid_groups, (
@@ -75,5 +75,15 @@ class TestAgentsRegistry:
     def test_exploitation_has_conditional(self):
         assert AGENTS["exploitation"].conditional == "03_vuln_analysis.json"
 
+    def test_intrusion_has_conditional(self):
+        assert AGENTS["intrusion"].conditional == "04_exploitation.json"
+
     def test_report_prerequisites(self):
         assert AGENTS["report"].prerequisites == ["exploitation"]
+
+    def test_intrusion_prerequisites(self):
+        assert AGENTS["intrusion"].prerequisites == ["exploitation"]
+
+    def test_report_is_phase_6(self):
+        assert AGENTS["report"].phase == 6
+        assert AGENTS["report"].deliverable_file == "06_report.md"

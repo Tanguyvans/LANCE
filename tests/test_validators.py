@@ -124,3 +124,4 @@ class TestValidatorsRegistry:
         assert "markdown_with_sections" in VALIDATORS
         assert "json_vuln_queue" in VALIDATORS
         assert "json_exploitation" in VALIDATORS
+        assert "json_valid" in VALIDATORS

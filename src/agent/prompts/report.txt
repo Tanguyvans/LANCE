@@ -11,16 +11,20 @@ Fill in the report template below with data from previous phases. Do NOT change 
 
 ## Methodology
 1. MANDATORY reads ONCE each (in this order — do NOT re-read any file):
-   a. read_deliverable("05_phase5_context.json") — compact summary of ALL vulnerabilities
+   a. read_deliverable("06_phase6_context.json") — compact summary of ALL vulnerabilities
       grouped by device, with Phase 4 exploitation status. This is your PRIMARY data source.
    b. read_deliverable("01_graph_analysis.md") — topology and attack paths
    c. read_deliverable("02_recon.md") — real scan results (nmap/services)
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
    WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
-   The 05_phase5_context.json file contains all the data you need from those files.
+   The 06_phase6_context.json file contains all the data you need from those files.
    WARNING: Do NOT call get_risk_scores, get_attack_paths, get_network_topology — their data is
-   already included in 05_phase5_context.json and 01_graph_analysis.md. These calls waste turns.
-   TURN BUDGET: You have at most 25 turns. After the 3 mandatory reads, write and save the report immediately.
+   already included in 06_phase6_context.json and 01_graph_analysis.md. These calls waste turns.
+   TURN BUDGET: You have at most 25 turns. After the mandatory reads, write and save the report immediately.
+2. OPTIONAL read (use 1 extra turn if the file exists in the deliverables list):
+   d. read_deliverable("05_intrusion.json") — Phase 5 lateral movement results.
+      If present, add Section 5.5 "Attack Chains (Lateral Movement)" between Sections 5 and 6,
+      showing the hop-by-hop intrusion path and credentials harvested.
 2. **Sections 5 and 6 use auto-generated placeholders** — the template contains
    `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}`. Leave these EXACTLY as-is in your
    output — the pipeline will replace them with the real tables automatically.

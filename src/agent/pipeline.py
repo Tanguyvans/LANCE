@@ -32,11 +32,18 @@ from src.agent.validators import VALIDATORS
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
+def _build_intrusion_tools() -> list[dict]:
+    """Extract ssh_exec and try_credential from RECON_TOOLS for the intrusion group."""
+    _intrusion_names = {"ssh_exec", "try_credential"}
+    return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
+
+
 TOOL_GROUPS: dict[str, list[dict]] = {
     "graph": GRAPH_TOOLS,
     "recon": RECON_TOOLS,
     "deliverable": DELIVERABLE_TOOLS,
     "skill": SKILL_TOOLS,
+    "intrusion": _build_intrusion_tools(),
 }
 
 # ---------------------------------------------------------------------------
@@ -389,14 +396,16 @@ class Pipeline:
                 results[agent_config.name] = "skipped:conditional"
                 continue
 
-            # Generate compact context for Phase 5 (reduce token usage)
+            # Pre-generate context files before certain phases
             if agent_config.phase == 5:
-                self._generate_phase5_context()
+                self._generate_intrusion_context()
+            if agent_config.phase == 6:
+                self._generate_phase6_context()
                 self._pregenerate_report_sections()
 
-            # Run the agent — use try/finally for Phase 5 to guarantee report generation
+            # Run the agent — use try/finally for Phase 6 to guarantee report generation
             # even if the LLM provider raises an exception mid-run.
-            if agent_config.phase == 5:
+            if agent_config.phase == 6:
                 try:
                     status = self._run_agent(agent_config, stream_callback)
                 finally:
@@ -405,6 +414,10 @@ class Pipeline:
                 status = self._run_agent(agent_config, stream_callback)
 
             results[agent_config.name] = status
+
+            # After Phase 5 (intrusion), emit hop events for frontend topology coloring
+            if agent_config.phase == 5:
+                self._emit_intrusion_events(stream_callback)
 
             # Enforce budget limit after each phase
             if self.max_cost_usd is not None and self.tracker.total_cost() >= self.max_cost_usd:
@@ -1819,11 +1832,148 @@ class Pipeline:
         return _make_test_entry(vuln, status=final_status, result=result)
 
     # ------------------------------------------------------------------
-    # Phase 5 context compaction
+    # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
-    def _generate_phase5_context(self) -> None:
-        """Generate a compact 05_phase5_context.json for the report agent.
+    def _generate_intrusion_context(self) -> None:
+        """Pre-generate 05_intrusion_context.json for the intrusion agent.
+
+        Extracts confirmed exploits, recovered credentials, attack chains,
+        and entry points from Phases 3 and 4.
+        """
+        import re as _re
+
+        vuln_path = self.run_dir / "03_vuln_analysis.json"
+        exploit_path = self.run_dir / "04_exploitation.json"
+
+        chains: list = []
+        confirmed: list = []
+        entry_points: list = []
+        credentials: list = []
+
+        if vuln_path.exists():
+            vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
+            chains = vuln_data.get("attack_chain_hints", [])
+
+        if exploit_path.exists():
+            exploit_data = json.loads(exploit_path.read_text(encoding="utf-8"))
+            all_exploits = exploit_data if isinstance(exploit_data, list) else []
+            confirmed = [e for e in all_exploits if e.get("status") == "CONFIRMED"]
+
+            # Extract credentials from evidence fields
+            _cred_pattern = _re.compile(
+                r'(?:user(?:name)?|login)[=:\s]+([a-zA-Z0-9_@.\-]+)[,;\s]+(?:pass(?:word)?|pwd)[=:\s]+([^\s,;"\]]+)',
+                _re.IGNORECASE,
+            )
+            _simple_pattern = _re.compile(r'([a-zA-Z0-9_]+):([a-zA-Z0-9@!#$%^&*_\-+=.]{4,32})')
+            seen_creds: set = set()
+            for exp in confirmed:
+                evidence = exp.get("evidence", "") or ""
+                data_retrieved = exp.get("data_retrieved", "") or ""
+                for text in [evidence, data_retrieved]:
+                    for m in _cred_pattern.finditer(text):
+                        cred = (m.group(1), m.group(2), exp.get("device_ip", ""))
+                        if cred not in seen_creds:
+                            seen_creds.add(cred)
+                            credentials.append({
+                                "user": m.group(1), "password": m.group(2),
+                                "source_ip": exp.get("device_ip", ""),
+                                "source_device": exp.get("device_id", ""),
+                            })
+
+            # Identify entry points: devices reachable from outside (from graph attack surface)
+            try:
+                surface = get_attack_surface()
+                entry_ips = {
+                    node.get("ip") for node in surface.get("nodes", [])
+                    if node.get("network_role") in ("ENTRY_POINT", "PIVOT")
+                }
+            except Exception:
+                entry_ips = set()
+
+            for exp in confirmed:
+                if exp.get("device_ip") in entry_ips:
+                    entry_points.append({
+                        "device_id": exp.get("device_id"),
+                        "device_ip": exp.get("device_ip"),
+                        "vuln_type": exp.get("type") or exp.get("vuln_type"),
+                        "service": exp.get("service"),
+                        "port": exp.get("port"),
+                        "evidence": (exp.get("evidence") or "")[:200],
+                    })
+
+        # Deduplicate entry points by device_ip
+        seen_ep: set = set()
+        unique_entries = []
+        for ep in entry_points:
+            if ep["device_ip"] not in seen_ep:
+                seen_ep.add(ep["device_ip"])
+                unique_entries.append(ep)
+
+        ctx = {
+            "generated_for": "phase5_intrusion",
+            "attack_chains": chains,
+            "entry_points": unique_entries[:5],
+            "confirmed_exploits": len(confirmed),
+            "recovered_credentials": credentials[:20],
+            "NOTE": (
+                "Use try_credential to test recovered_credentials on entry_points first. "
+                "Then ssh_exec to enumerate and harvest more credentials for lateral movement. "
+                "Follow attack_chains for the suggested pivot path."
+            ),
+        }
+
+        out_path = self.run_dir / "05_intrusion_context.json"
+        out_path.write_text(json.dumps(ctx, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(
+            f"  [intrusion] 05_intrusion_context.json "
+            f"({len(unique_entries)} entry points, {len(credentials)} creds, "
+            f"{len(chains)} chains, {out_path.stat().st_size:,} bytes)"
+        )
+
+    def _emit_intrusion_events(self, stream_callback) -> None:
+        """Parse 05_intrusion.json and emit intrusion_hop / intrusion_done SSE events."""
+        if not stream_callback:
+            return
+        intrusion_path = self.run_dir / "05_intrusion.json"
+        if not intrusion_path.exists():
+            return
+        try:
+            data = json.loads(intrusion_path.read_text(encoding="utf-8"))
+            chains = data.get("chains", [])
+            summary = data.get("summary", {})
+            for chain in chains:
+                hops = chain.get("hops", [])
+                for i, hop in enumerate(hops):
+                    pivot_to = hop.get("pivot_to")
+                    if pivot_to and i + 1 < len(hops):
+                        stream_callback({
+                            "type": "intrusion_hop",
+                            "hop_index": i + 1,
+                            "from_ip": hop.get("device_ip"),
+                            "from_id": hop.get("device_id"),
+                            "to_ip": pivot_to,
+                            "to_id": hops[i + 1].get("device_id", pivot_to),
+                            "method": hop.get("access_method", ""),
+                            "chain_id": chain.get("id"),
+                        })
+            stream_callback({
+                "type": "intrusion_done",
+                "chains": summary.get("chains_attempted", len(chains)),
+                "chains_successful": summary.get("chains_successful", 0),
+                "hops": summary.get("total_hops", 0),
+                "crown_jewels_reached": summary.get("crown_jewels_reached", []),
+                "credentials_harvested": summary.get("credentials_harvested", 0),
+            })
+        except Exception as exc:
+            log.warning("Failed to parse intrusion results for SSE: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Phase 6 context compaction
+    # ------------------------------------------------------------------
+
+    def _generate_phase6_context(self) -> None:
+        """Generate a compact 06_phase6_context.json for the report agent.
 
         Aggregates 03_vuln_analysis.json and 04_exploitation.json by device,
         stripping verbose evidence/details fields. Reduces Phase 5 context
@@ -1908,7 +2058,7 @@ class Pipeline:
         top_devices = sorted(device_list, key=_risk_score, reverse=True)[:12]
 
         context = {
-            "generated_for": "phase5_report",
+            "generated_for": "phase6_report",
             "device_count": len(device_list),
             "total_vulnerabilities": total_vulns,
             "severity_breakdown": global_sev,
@@ -1925,10 +2075,10 @@ class Pipeline:
                 for d in top_devices
             ],
             "cve_list": sorted(cve_set),
-            "NOTE": "Sections 5 and 6 (vuln tables) are pre-generated in 05_report_prefill.md — do not re-list individual vulns.",
+            "NOTE": "Sections 5 and 6 (vuln tables) are pre-generated in 06_report_prefill.md — do not re-list individual vulns.",
         }
 
-        out_path = self.run_dir / "05_phase5_context.json"
+        out_path = self.run_dir / "06_phase6_context.json"
         out_path.write_text(
             json.dumps(context, indent=2, ensure_ascii=False),
             encoding="utf-8",
@@ -1938,7 +2088,7 @@ class Pipeline:
             len(device_list), total_vulns, out_path, out_path.stat().st_size,
         )
         print(
-            f"  [context] 05_phase5_context.json "
+            f"  [context] 06_phase6_context.json "
             f"({len(device_list)} devices, {total_vulns} vulns, "
             f"{out_path.stat().st_size:,} bytes)"
         )
@@ -2053,13 +2203,13 @@ class Pipeline:
 
         # Write prefill file
         prefill = "\n\n".join([sec5, "## 6. Exploitation Results (Phase 4)\n\n" + sec61, sec62, sec63])
-        prefill_path = self.run_dir / "05_report_prefill.md"
+        prefill_path = self.run_dir / "06_report_prefill.md"
         prefill_path.write_text(prefill, encoding="utf-8")
-        print(f"  [prefill] 05_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
+        print(f"  [prefill] 06_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
 
     def _merge_report_with_prefill(self) -> None:
-        """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 05_report.md
-        with the deterministically-generated tables from 05_report_prefill.md.
+        """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 06_report.md
+        with the deterministically-generated tables from 06_report_prefill.md.
 
         This lets the LLM produce a lightweight ~1500-token narrative report using
         placeholders, while Python injects the full 100+ row tables afterwards.
@@ -2067,8 +2217,8 @@ class Pipeline:
         generate a minimal report from the prefill data so the pipeline never exits
         without a deliverable.
         """
-        report_path = self.run_dir / "05_report.md"
-        prefill_path = self.run_dir / "05_report_prefill.md"
+        report_path = self.run_dir / "06_report.md"
+        prefill_path = self.run_dir / "06_report_prefill.md"
 
         if not prefill_path.exists():
             return
@@ -2084,11 +2234,11 @@ class Pipeline:
                 merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
                 if merged != content:
                     report_path.write_text(merged, encoding="utf-8")
-                    print(f"  [merge] Injected prefill tables into 05_report.md ({report_path.stat().st_size:,} bytes)")
+                    print(f"  [merge] Injected prefill tables into 06_report.md ({report_path.stat().st_size:,} bytes)")
                 return
 
         # Fallback: LLM never saved the report — build a complete one from prefill + context
-        context_path = self.run_dir / "05_phase5_context.json"
+        context_path = self.run_dir / "06_phase6_context.json"
         ctx: dict = {}
         if context_path.exists():
             ctx = json.loads(context_path.read_text(encoding="utf-8"))
@@ -2197,7 +2347,7 @@ class Pipeline:
             f"{sec10}"
         )
         report_path.write_text(fallback, encoding="utf-8")
-        print(f"  [fallback] 05_report.md generated from prefill ({report_path.stat().st_size:,} bytes)")
+        print(f"  [fallback] 06_report.md generated from prefill ({report_path.stat().st_size:,} bytes)")
 
     def _resolve_tools(self, config: AgentConfig) -> list[dict]:
         """Resolve tool references to actual tool definitions.

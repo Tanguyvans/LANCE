@@ -8,7 +8,7 @@ let activeRunId = null;  // run being viewed in detail panel
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 
-const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Report'};
+const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Intrusion',6:'Report'};
 
 function _cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -786,6 +786,22 @@ async function loadTopology(scenarioId = null) {
             'z-index': 100,
           },
         },
+        {
+          selector: 'edge[type="intrusion"]',
+          style: {
+            'line-color': '#ff4444',
+            'target-arrow-color': '#ff4444',
+            'target-arrow-shape': 'triangle',
+            'line-style': 'dashed',
+            'width': 3,
+            'label': 'pwned',
+            'font-size': 10,
+            'color': '#ff4444',
+            'text-background-color': _cssVar('--bg'),
+            'text-background-opacity': 0.8,
+            'z-index': 200,
+          },
+        },
       ],
       layout: { name: 'null' }, // positions set by layout engine below
     });
@@ -846,6 +862,30 @@ function resetNodeColors() {
     n.style('border-color', 'rgba(255,255,255,.1)');
     n.style('border-width', '2px');
   });
+  cy.remove('edge[type="intrusion"]');
+}
+
+function markNodeCompromised(ip) {
+  if (!cy) return;
+  cy.nodes().forEach(n => {
+    if (n.data('ip') === ip || n.id() === ip) {
+      if (!n.data('_origColor')) n.data('_origColor', n.style('background-color'));
+      n.style('background-color', '#ff4444');
+      n.style('border-color', '#cc0000');
+      n.style('border-width', '3px');
+    }
+  });
+}
+
+function highlightAttackEdge(fromIp, toIp, fromId, toId) {
+  if (!cy) return;
+  const src = cy.nodes().filter(n => n.data('ip') === fromIp || n.id() === fromId).first();
+  const dst = cy.nodes().filter(n => n.data('ip') === toIp || n.id() === toId).first();
+  if (!src.length || !dst.length) return;
+  const edgeId = `intrusion-${src.id()}-${dst.id()}`;
+  if (!cy.getElementById(edgeId).length) {
+    cy.add({group:'edges', data:{id:edgeId, source:src.id(), target:dst.id(), type:'intrusion'}});
+  }
 }
 
 // ── Detail panel ───────────────────────────────────────────────────────────
@@ -1138,6 +1178,17 @@ function handleEvent(ev) {
     document.getElementById('btn-stop').style.display = 'none';
     if (eventSource) { eventSource.close(); eventSource = null; }
     loadRuns();
+  }
+
+  else if (t === 'intrusion_hop') {
+    highlightAttackEdge(ev.from_ip, ev.to_ip, ev.from_id, ev.to_id);
+    markNodeCompromised(ev.to_ip);
+    addLog({type:'warn', message:`Pivot [${ev.hop_index}] ${ev.from_id||ev.from_ip} → ${ev.to_id||ev.to_ip} (${ev.method||''})`});
+  }
+
+  else if (t === 'intrusion_done') {
+    const jewels = (ev.crown_jewels_reached||[]).join(', ') || 'aucun';
+    addLog({type:'info', message:`Intrusion terminée — ${ev.chains_successful||0}/${ev.chains||0} chaîne(s) réussie(s), ${ev.hops||0} hops, crown jewels: ${jewels}`});
   }
 
   else if (t === 'batch_scenario_start') {

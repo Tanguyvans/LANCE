@@ -177,6 +177,77 @@ def arp_scan(**kwargs) -> str:
     })
 
 
+def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) -> str:
+    """Execute a shell command on a remote host via SSH."""
+    cmd = [
+        "sshpass", "-p", password,
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=10",
+        "-o", "BatchMode=no",
+        f"-p{port}",
+        f"{user}@{ip}",
+        command,
+    ]
+    result = _run(cmd, timeout=30)
+    result["success"] = result["return_code"] == 0
+    return json.dumps(result)
+
+
+def try_credential(ip: str, service: str, user: str, password: str, port: int | None = None) -> str:
+    """Test a username/password credential against a service (ssh|http|ftp|mqtt)."""
+    service = service.lower().strip()
+
+    if service == "ssh":
+        p = port or 22
+        cmd = [
+            "sshpass", "-p", password,
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=10",
+            "-o", "BatchMode=no",
+            f"-p{p}",
+            f"{user}@{ip}",
+            "echo __ok__",
+        ]
+        result = _run(cmd, timeout=15)
+        success = result["return_code"] == 0 and "__ok__" in result["stdout"]
+        return json.dumps({"success": success, "service": "ssh", "port": p,
+                           "stdout": result["stdout"][:200], "stderr": result["stderr"][:200]})
+
+    if service == "http":
+        p = port or 80
+        url = f"http://{ip}:{p}/"
+        cmd = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+               "--connect-timeout", "10", "-u", f"{user}:{password}", url]
+        result = _run(cmd, timeout=15)
+        code = result["stdout"].strip()
+        success = code not in ("401", "403", "000", "")
+        return json.dumps({"success": success, "service": "http", "port": p,
+                           "http_code": code})
+
+    if service == "ftp":
+        p = port or 21
+        cmd = ["curl", "-s", "--ftp-pasv", "--connect-timeout", "10",
+               "-u", f"{user}:{password}", f"ftp://{ip}:{p}/", "--head"]
+        result = _run(cmd, timeout=15)
+        success = result["return_code"] == 0
+        return json.dumps({"success": success, "service": "ftp", "port": p,
+                           "stdout": result["stdout"][:200], "stderr": result["stderr"][:100]})
+
+    if service == "mqtt":
+        p = port or 1883
+        cmd = ["mosquitto_sub", "-h", ip, "-p", str(p),
+               "-u", user, "-P", password,
+               "-t", "$SYS/#", "-C", "1", "--quiet", "-W", "5"]
+        result = _run(cmd, timeout=10)
+        success = result["return_code"] == 0
+        return json.dumps({"success": success, "service": "mqtt", "port": p,
+                           "stdout": result["stdout"][:200]})
+
+    return json.dumps({"success": False, "error": f"Unsupported service: {service}. Use ssh|http|ftp|mqtt"})
+
+
 def nvd_lookup(query: str, top_k: int = 10) -> str:
     """Search NIST NVD for known CVEs by CPE string or keyword."""
     api_key = os.environ.get("NVD_API_KEY")
@@ -207,6 +278,8 @@ def _load_recon_tools() -> list[dict]:
     tools = load_all_tools()
     register_python_handler(tools, "nvd_lookup", nvd_lookup)
     register_python_handler(tools, "arp_scan", arp_scan)
+    register_python_handler(tools, "ssh_exec", ssh_exec)
+    register_python_handler(tools, "try_credential", try_credential)
     return tools
 
 

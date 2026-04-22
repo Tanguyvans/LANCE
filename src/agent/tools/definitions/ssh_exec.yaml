@@ -1,0 +1,31 @@
+name: ssh_exec
+handler: python
+description: >
+  Execute a shell command on a remote host via SSH using provided credentials.
+  Returns stdout, stderr, and return_code.
+  Use this to enumerate a compromised device or harvest credentials from config files.
+  Example commands: "cat /etc/passwd", "env", "ls /home", "cat /etc/mosquitto/passwd",
+  "find /etc -name '*.conf' 2>/dev/null | head -20".
+tags: ["ssh", "intrusion", "lateral_movement"]
+parameters:
+  - name: ip
+    type: string
+    description: "Target IP address"
+    required: true
+  - name: user
+    type: string
+    description: "SSH username"
+    required: true
+  - name: password
+    type: string
+    description: "SSH password"
+    required: true
+  - name: command
+    type: string
+    description: "Shell command to execute on the remote host"
+    required: true
+  - name: port
+    type: integer
+    description: "SSH port (default 22)"
+    required: false
+    default: 22

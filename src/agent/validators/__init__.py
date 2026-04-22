@@ -78,10 +78,23 @@ def validate_json_exploit_result(filename: str) -> tuple[bool, str]:
     return True, "OK"
 
 
+def validate_json_valid(filename: str) -> tuple[bool, str]:
+    """Check that the file exists and contains valid JSON."""
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+    try:
+        json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return False, f"Invalid JSON in '{filename}': {e}"
+    return True, "OK"
+
+
 VALIDATORS = {
     "default": validate_default,
     "markdown_with_sections": validate_markdown_with_sections,
     "json_vuln_queue": validate_json_vuln_queue,
     "json_exploitation": validate_json_exploitation,
     "json_exploit_result": validate_json_exploit_result,
+    "json_valid": validate_json_valid,
 }
