@@ -44,7 +44,11 @@
       "Bash(python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py -p no:pytest_ethereum -p no:web3 -q)",
       "Bash(python3 -c ' *)",
       "Bash(python3 *)",
-      "Bash(./venv/bin/python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py tests/test_validators.py -v -p no:pytest_ethereum -p no:web3 -q)"
+      "Bash(./venv/bin/python3 -m pytest tests/test_pipeline.py tests/test_evaluator.py tests/test_validators.py -v -p no:pytest_ethereum -p no:web3 -q)",
+      "Read(//Users/gaspard/Downloads/2026-04-21_181025/**)",
+      "Read(//Users/gaspard/Downloads/2026-04-21_150413/**)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
