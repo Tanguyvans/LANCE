@@ -332,3 +332,9 @@ scoring:
 bonus_types:
   - weak_cipher
   - missing_header
+  - info_disclosure   # server version banners
+  - version_leak
+  - terrapin
+  - no_auth           # router LuCI, FTP anonymous
+  - known_cve         # Dropbear, Mosquitto with confirmed versions
+  - default_credentials  # SSH suspected creds (Phase 3 hypothesis)

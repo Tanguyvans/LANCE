@@ -369,3 +369,8 @@ scoring:
 bonus_types:
   - weak_cipher
   - missing_header
+  - terrapin
+  - info_disclosure   # server version banners
+  - version_leak
+  - no_auth           # router LuCI, FTP anonymous, camera without auth
+  - known_cve         # CVEs with confirmed version strings

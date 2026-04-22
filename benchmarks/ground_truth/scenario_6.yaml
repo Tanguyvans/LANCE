@@ -395,5 +395,10 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - missing_header  # nginx sans security headers
-  - terrapin        # Dropbear injecté sur s6-hub (iot_gateway) — non en GT, valide si trouvé
+  - weak_cipher
+  - missing_header
+  - terrapin
+  - info_disclosure   # server version banners
+  - version_leak
+  - no_auth           # router LuCI, FTP anonymous, camera without auth
+  - known_cve         # CVEs with confirmed version strings

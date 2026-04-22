@@ -99,6 +99,22 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "weak_protocol_design",
     "missing_cryptographic_authentication",
     "denial_of_service",
+    # Process / OS configuration observations (not network vulns)
+    "process_running_as_root",
+    "redis_running_as_root",
+    "running_as_root",
+    "root_process",
+    # Firmware exposure — already covered by insecure_update
+    "firmware_accessible",
+    "firmware_download",
+    "firmware_binary_exposed",
+    # MQTT auth observations that are not actual data leaks
+    "mqtt_auth_required",
+    "mqtt_weak_auth",
+    # Generic "might be vulnerable" noise
+    "potential_vulnerability",
+    "suspected_vulnerability",
+    "unverified_vulnerability",
 })
 
 
@@ -204,6 +220,20 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "arbitrary_file_upload":      "code_injection",
     # weak_cipher synonyms (continued)
     "weak_cipher_ssh":            "weak_cipher",
+    # insecure_update synonyms (continued)
+    "firmware_no_auth":           "insecure_update",
+    "ota_no_auth":                "insecure_update",
+    "firmware_update_unauthenticated": "insecure_update",
+    # no_auth synonyms (continued)
+    "passwordless_root":          "no_auth",
+    "root_no_password":           "no_auth",
+    "empty_password":             "no_auth",
+    # code_injection synonyms (exec node / command exec)
+    "command_execution":          "code_injection",
+    "os_command_injection":       "code_injection",
+    "rce":                        "code_injection",
+    "remote_code_execution":      "code_injection",
+    "exec_node":                  "code_injection",
 }
 
 

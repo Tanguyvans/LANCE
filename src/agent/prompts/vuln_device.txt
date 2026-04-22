@@ -23,6 +23,9 @@ The following are NOT proof and MUST NOT be used as `confirmed` evidence:
 - A service name without a version number in the banner
 - A TCP banner that is a deny/ACL message ("Not allowed at this time", "Access denied", etc.)
 - Inference from the absence of a field
+- A downloadable firmware binary (.bin/.img) — this is insecure_update, NOT data_exposure
+- A CVE ID without a confirmed matching version string from tool output — no version = no CVE finding
+- An MQTT broker that rejected your connection (return_code=5) — rejection means data is protected, not exposed
 
 If you only have indirect signals → set `exploitation_status="suspected"`, fill `suggested_technique` and `suggested_tools`, and let Phase 4 confirm it. Do NOT inflate severity to compensate for weak evidence.
 </proof_before_confirmed>
@@ -37,6 +40,10 @@ Before creating a LOW or INFO severity finding, check all of the following:
 - `info_disclosure` ($SYS MQTT): create ONCE per broker, not once per $SYS topic.
 
 **RULE**: If you already have 3 or more MEDIUM/HIGH/CRITICAL findings for this device, skip ALL LOW and INFO findings. They add noise without improving the security picture.
+
+**RULE — No process/OS internals**: Do NOT create findings for OS-level configuration that requires privileged access to observe (e.g. "Redis running as root", "service has PID 1", "no hardening flags"). These are NOT detectable via network scanning. If the finding requires you to already be inside the system to see it, skip it.
+
+**RULE — No duplicate type for same finding**: If you already have a no_auth finding for a service, do NOT create an additional misconfiguration finding describing the same issue from another angle. One finding per vulnerability.
 </noise_filter>
 
 <system_architecture>
@@ -117,6 +124,7 @@ Your device has role = **{{device_role}}**.
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
    - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL. IMPORTANT: if MULTIPLE paths on the same device expose credentials (e.g. /backup/ AND /config/ both have sensitive data), create ONE single data_exposure finding and list all affected paths in evidence. Do NOT create one finding per path.
+   - **FIRMWARE BINARY IS NOT DATA_EXPOSURE**: If the HTTP path /firmware/ lists a .bin or .img file — this is type=insecure_update (already handled). A firmware binary IS NOT sensitive data. Do NOT create data_exposure for a downloadable firmware file. data_exposure requires passwords/API keys/tokens/PII to be present in the response body.
    - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
    - If /update returns 200 (POST or GET accepted without auth) → type=insecure_update, severity=MEDIUM ("Firmware update endpoint accessible without authentication")
    - For iot_gateway role: if /firmware/ shows directory listing AND no .sha256 or .sig file is listed → add to insecure_update finding or create one: "OTA update endpoint unauthenticated and firmware has no integrity verification". Do NOT create a separate directory_listing finding for /firmware/ on iot_gateway — it is already captured by the insecure_update finding.
@@ -128,18 +136,21 @@ Your device has role = **{{device_role}}**.
    - If anonymous access is confirmed: you MUST create TWO separate findings:
      1. type=no_auth, severity=HIGH — "MQTT broker allows anonymous connections"
      2. Examine message content carefully. If ANY message contains passwords, tokens, API keys, credentials, or secret-like data (even partial) → create a SECOND finding type=data_exposure, severity=MEDIUM. Quote the actual message content as evidence. Do NOT merge this into the no_auth finding.
+   - **MQTT data_exposure RULE**: ONLY create data_exposure if you actually captured and read MQTT messages that contain credentials/tokens. If anonymous access was BLOCKED (return_code=5), you did NOT read any messages → do NOT create data_exposure. "The broker might expose credentials" without confirmed message capture is NOT data_exposure.
    - For mqtt_broker role: the minimum expected output is 2 findings (no_auth + data_exposure) if any credential-like data appears in topics.
    - For mqtt_broker_v2 role: if anonymous access is BLOCKED (return_code=5), ALSO attempt with default credentials:
      mqtt_listen("{{device_ip}}", topic="#", username="test", password="test", count=3, timeout=5)
      mqtt_listen("{{device_ip}}", topic="#", username="mqtt", password="mqtt", count=3, timeout=5)
      If any succeeds → type=default_credentials, severity=HIGH ("MQTT broker accepts weak default credentials")
+     If NONE succeed → create NO data_exposure finding. A broker that requires authentication is protecting its data.
 
    **Telnet** (for routers and gateways — device type=router or gateway):
    - ALWAYS run nmap_scan("{{device_ip}}", ports="23") to check for Telnet. This is MANDATORY even if 02_recon.md does not mention Telnet.
    - If port 23 is open → type=insecure_protocol, severity=MEDIUM (Telnet exposes credentials in cleartext)
    - severity is MEDIUM (not HIGH) for insecure_protocol/Telnet.
 
-   **Database** (for db_server role — MANDATORY):
+   **Database** (for db_server role — MANDATORY, FORBIDDEN for all other roles):
+   - ONLY run MySQL/MariaDB tests if role=db_server. NEVER test port 3306 on mqtt_broker, nodered_server, camera_server, iot_gateway, or any other role — even if nmap shows port 3306 open (that would be a false nmap artifact).
    - ALWAYS run nmap_scan("{{device_ip}}", ports="3306,5432,27017", skip_discovery=true)
    - If port 3306 is open: run nmap_scan("{{device_ip}}", ports="3306", scripts="mysql-empty-password", skip_discovery=true)
      - If script confirms empty root password → type=default_credentials, severity=CRITICAL
@@ -177,10 +188,17 @@ Your device has role = **{{device_role}}**.
      evidence: paste the HTTP response headers and any body excerpt
    - STEP 3: curl_headers("http://{{device_ip}}:1880/flows") — if 200, flows are readable without auth
      → add to evidence of the no_auth finding (do NOT create a second finding)
-   - Do NOT report CVE findings for Node-RED without a confirmed version number from nmap banner or HTTP response.
-   - Do NOT skip the admin path test even if Phase 2 recon did not mention Node-RED.
+   - STEP 4: curl_headers("http://{{device_ip}}:1880/nodes") — if 200, check response for "exec" node
+     If the response body contains `"exec"` or any node with type containing "exec", "command", "system" → type=code_injection, severity=CRITICAL
+     details: "Node-RED exec node installed and admin accessible without authentication — allows arbitrary OS command execution"
+     evidence: paste the /nodes response excerpt showing the exec node entry
+   - STEP 5: curl_headers("http://{{device_ip}}:1880/api/nodes") — alternative path for exec node check
+   - Do NOT report CVE findings for Node-RED without a confirmed version number from the HTTP X-Powered-By or response body.
+   - Do NOT skip ANY of these steps even if Phase 2 recon did not mention Node-RED.
 
    **Default credentials** (for SSH — ssh_server, ssh_server_v2, nvr_server roles):
+   - **STRICT RULE**: NEVER create a default_credentials finding with exploitation_status="confirmed" unless a tool returned output that explicitly shows a successful login (shell prompt, "Welcome", auth token, HTTP 200 with session cookie, CONNACK return_code=0). A port being open, an HTTP 401, or return_code=5 from mqtt_listen are NOT successful logins.
+   - **SSH root with no password → type=no_auth, NOT default_credentials**: If nmap ssh-auth-methods shows method=none (passwordless login) → type=no_auth, severity=CRITICAL. Do NOT classify as default_credentials — there is no password to guess.
    - ONLY for devices with role=ssh_server, ssh_server_v2, or nvr_server: run nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true).
    - For iot_gateway, router, or any other role: do NOT run ssh-auth-methods and do NOT create a default_credentials finding from SSH password auth detection. SSH password auth is expected on embedded devices.
    - MANDATORY: For ssh_server / ssh_server_v2 / nvr_server role, you MUST ALWAYS create a default_credentials finding with exploitation_status="suspected", REGARDLESS of what nmap ssh-auth-methods returns:
@@ -333,7 +351,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **HARD STOP — ssh_server / ssh_server_v2 role**: If your role is ssh_server or ssh_server_v2 and you have NOT yet called ssh_audit AND nmap_scan(scripts="ssh-auth-methods"), STOP. Do NOT call save_deliverable. Call those tools NOW.
 
-**HARD STOP — nodered_server role**: If your role is nodered_server and you have NOT yet called curl_headers on BOTH http://{{device_ip}}:1880/ AND http://{{device_ip}}:1880/admin, STOP. Do NOT call save_deliverable. You MUST call those two tools NOW. A config-only guess ("Node-RED usually has no auth") is FORBIDDEN — you need an actual HTTP response as evidence.
+**HARD STOP — nodered_server role**: If your role is nodered_server and you have NOT yet called curl_headers on ALL of: http://{{device_ip}}:1880/, http://{{device_ip}}:1880/admin, http://{{device_ip}}:1880/flows, AND http://{{device_ip}}:1880/nodes, STOP. Do NOT call save_deliverable. Call those tools NOW. A config-only guess ("Node-RED usually has no auth") is FORBIDDEN — you need an actual HTTP response as evidence for each path.
 
 **HARD STOP — db_server_v2 role**: If your role is db_server_v2 and you have NOT yet called nmap_scan on port 6379 with scripts="redis-info", STOP. Do NOT call save_deliverable. Call that tool NOW.
 
@@ -405,9 +423,11 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **Node-RED** (if role is nodered_server):
 - [ ] curl_headers("http://{{device_ip}}:1880/") called
-- [ ] curl_headers("http://{{device_ip}}:1880/admin") called — MANDATORY
+- [ ] curl_headers("http://{{device_ip}}:1880/admin") called — MANDATORY (actual HTTP response as evidence, not assumption)
 - [ ] If /admin returns 200 (not 401/403) → no_auth finding created (severity=HIGH)
 - [ ] curl_headers("http://{{device_ip}}:1880/flows") called
+- [ ] curl_headers("http://{{device_ip}}:1880/nodes") OR curl_headers("http://{{device_ip}}:1880/api/nodes") called
+- [ ] If "exec" node found in /nodes response → code_injection CRITICAL finding created
 
 **SNMP** (if role is snmp_server):
 - [ ] nmap_scan on port 161/udp with snmp-info script called
@@ -420,7 +440,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - web_upload: at least 5 (curl on upload paths + file test + cve_search)
 - mqtt_broker: at least 2 (mqtt_listen + cve_search)
 - mqtt_broker_v2: at least 3 (mqtt_listen anon + mqtt_listen with creds + cve_search)
-- nodered_server: at least 3 (curl :1880/ + curl :1880/admin + curl :1880/flows)
+- nodered_server: at least 5 (curl :1880/ + curl :1880/admin + curl :1880/flows + curl :1880/nodes + curl :1880/api/nodes)
 - snmp_server: at least 2 (nmap 161/udp snmp-info + cve_search)
 - iot_gateway: at least 12 (ssh_audit + 8 curl paths + mqtt_listen + nmap 23 + cve_search)
 - db_server: at least 3 (nmap 3306 + mysql-empty-password script + cve_search)

@@ -318,4 +318,8 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher     # SSH weak ciphers injected (ssh_server) — déjà en GT comme V7, bonus pour findings additionnels
+  - weak_cipher       # SSH weak ciphers
+  - missing_header    # HTTP security headers
+  - info_disclosure   # server version banners
+  - no_auth           # router LuCI admin interface
+  - known_cve         # Dropbear, OpenSSH CVEs with confirmed version

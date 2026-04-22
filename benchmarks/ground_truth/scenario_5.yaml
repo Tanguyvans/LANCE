@@ -394,4 +394,10 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
-  - weak_cipher     # SSH weak ciphers si détectés sur NVR
+  - weak_cipher
+  - missing_header
+  - terrapin
+  - info_disclosure   # server version banners
+  - version_leak
+  - no_auth           # router LuCI, FTP anonymous, camera without auth
+  - known_cve         # CVEs with confirmed version strings
