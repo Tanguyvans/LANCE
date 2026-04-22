@@ -2425,7 +2425,11 @@ class Pipeline:
         return True
 
     def _check_conditional(self, config: AgentConfig) -> bool:
-        """Check conditional execution (e.g., vuln queue non-empty)."""
+        """Check conditional execution (e.g., vuln queue non-empty).
+
+        Supports both 03_vuln_analysis.json (key: "vulnerabilities") and
+        04_exploitation.json (key: "tests" with CONFIRMED entries).
+        """
         if not config.conditional:
             return True
         path = self.run_dir / config.conditional
@@ -2433,8 +2437,14 @@ class Pipeline:
             return False
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            vulns = data.get("vulnerabilities", [])
-            return len(vulns) > 0
+            # 03_vuln_analysis.json style
+            if "vulnerabilities" in data:
+                return len(data["vulnerabilities"]) > 0
+            # 04_exploitation.json style — only proceed if there are CONFIRMED exploits
+            if "tests" in data:
+                confirmed = [t for t in data["tests"] if t.get("status") == "CONFIRMED"]
+                return len(confirmed) > 0
+            return False
         except (json.JSONDecodeError, KeyError):
             return False
 
