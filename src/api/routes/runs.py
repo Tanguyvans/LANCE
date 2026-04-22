@@ -70,9 +70,9 @@ def _run_status(run_dir: Path) -> str:
     """Infer run status from deliverable files."""
     files = list(run_dir.glob("*"))
     names = [f.name for f in files]
-    if "05_report.md" in names:
+    if "06_report.md" in names or "05_report.md" in names:
         return "done"
-    if any(n.startswith("04_") for n in names):
+    if any(n.startswith("04_") or n.startswith("05_") for n in names):
         return "partial"
     return "incomplete"
 

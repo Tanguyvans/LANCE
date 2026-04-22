@@ -77,7 +77,8 @@ Your device has role = **{{device_role}}**.
 - If role = **ssh_server** or **ssh_server_v2**: MANDATORY — your first tool calls MUST be (in order): read_deliverable("01_graph_analysis.md"), read_deliverable("02_recon.md"), ssh_audit("{{device_ip}}"), nmap_scan("{{device_ip}}", ports="22", scripts="ssh-auth-methods", skip_discovery=true). Do NOT output the final JSON before calling ALL four of these tools. Even if the recon phase shows only port 22 open and nothing suspicious — you MUST run the tools and report what you find. Saving an empty JSON without calling tools is FORBIDDEN for ssh_server/ssh_server_v2 role.
 - If role = **ssh_server_v2**: In addition to SSH audit, check for exposed config files and SSH keys using http_get or by inspecting the scan data. World-readable SSH private keys (/home/*/.ssh/id_*) and plaintext config files (/etc/iot/config.json) are common findings on _v2 variants.
 - If role = **web_server_v2**: This device runs an API with potentially dangerous endpoints. MANDATORY path tests: `/api/users`, `/api/config`, `/api/exec`, `/api/status`, `/admin`. Test BOTH GET and note POST endpoints. If `/api/exec` or similar returns 200 → type=code_injection, severity=CRITICAL.
-- If role = **nodered_server**: MANDATORY first test — curl_headers("http://{{device_ip}}:1880/") then curl_headers("http://{{device_ip}}:1880/admin"). If response is NOT 401/403 → type=no_auth, severity=HIGH. Do NOT report CVEs without a confirmed version number. Do NOT skip the admin path test under any circumstances.
+- If role = **nodered_server**: Your FIRST two tool calls (after reading deliverables) MUST be curl_headers("http://{{device_ip}}:1880/") and curl_headers("http://{{device_ip}}:1880/admin"). Saving the deliverable before calling BOTH of these tools is FORBIDDEN. If the admin path returns 200 → type=no_auth, severity=HIGH. The evidence MUST include the actual HTTP response header showing the status code.
+- If role = **db_server_v2**: This device runs Redis on port 6379. Your FIRST tool call MUST be nmap_scan("{{device_ip}}", ports="6379", scripts="redis-info", skip_discovery=true). If port 6379 is open with no AUTH required → type=no_auth, severity=HIGH. Then run nmap_scan with script="redis-info" to enumerate stored keys — if any key contains passwords, tokens, API keys, or credentials → type=data_exposure, severity=CRITICAL. Saving without calling nmap on port 6379 is FORBIDDEN.
 - If role = **snmp_server**: MANDATORY — nmap_scan("{{device_ip}}", ports="161", protocol="udp", scripts="snmp-info,snmp-sysdescr"). If port 161/udp is open, community string "public" gives access → type=default_credentials, severity=HIGH. See "SNMP" section.
 - If role = **iot_gateway**: Do NOT run ssh-auth-methods. Do NOT report default_credentials. Focus on: HTTP admin paths (no_auth), SSH weak ciphers/Terrapin, OTA/firmware update endpoint, Telnet. Do NOT create directory_listing for /firmware/ — it is covered by insecure_update.
 
@@ -144,6 +145,18 @@ Your device has role = **{{device_role}}**.
      - If script confirms empty root password → type=default_credentials, severity=CRITICAL
      - If port is merely open (no auth confirmed) → type=network_exposure, severity=HIGH ("Database port exposed to network without firewall")
    - If port 5432 is open → type=network_exposure, severity=HIGH
+
+   **Redis** (for db_server_v2 role — MANDATORY):
+   - STEP 1: nmap_scan("{{device_ip}}", ports="6379", scripts="redis-info", skip_discovery=true)
+     - If port 6379 open and redis-info returns data without AUTH → type=no_auth, severity=HIGH
+       details: "Redis instance on port 6379 accepts connections without authentication"
+       evidence: paste the full redis-info nmap output including keyspace and server info
+   - STEP 2: Check the redis-info output for keys in any database (keyspace section: `db0:keys=N`)
+     - If keys exist: run a second nmap_scan("{{device_ip}}", ports="6379", scripts="redis-info", skip_discovery=true) and look for key names in the output
+     - If key names or values contain credentials, tokens, passwords, API keys, or session data → type=data_exposure, severity=CRITICAL
+       details: "Redis stores sensitive data accessible without authentication"
+       evidence: paste the key names and values (or patterns) found in the keyspace
+   - Do NOT create a separate data_exposure finding if the redis-info output shows an empty keyspace (no keys). Only create it when actual sensitive data is confirmed.
 
    **SNMP** (for snmp_server role — MANDATORY):
    - STEP 1: nmap_scan("{{device_ip}}", ports="161", protocol="udp", scripts="snmp-info,snmp-sysdescr", skip_discovery=true)
@@ -320,7 +333,9 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 
 **HARD STOP — ssh_server / ssh_server_v2 role**: If your role is ssh_server or ssh_server_v2 and you have NOT yet called ssh_audit AND nmap_scan(scripts="ssh-auth-methods"), STOP. Do NOT call save_deliverable. Call those tools NOW.
 
-**HARD STOP — nodered_server role**: If your role is nodered_server and you have NOT yet called curl_headers on port 1880 /admin, STOP. Do NOT call save_deliverable. Call that tool NOW.
+**HARD STOP — nodered_server role**: If your role is nodered_server and you have NOT yet called curl_headers on BOTH http://{{device_ip}}:1880/ AND http://{{device_ip}}:1880/admin, STOP. Do NOT call save_deliverable. You MUST call those two tools NOW. A config-only guess ("Node-RED usually has no auth") is FORBIDDEN — you need an actual HTTP response as evidence.
+
+**HARD STOP — db_server_v2 role**: If your role is db_server_v2 and you have NOT yet called nmap_scan on port 6379 with scripts="redis-info", STOP. Do NOT call save_deliverable. Call that tool NOW.
 
 **HARD STOP — snmp_server role**: If your role is snmp_server and you have NOT yet called nmap_scan on port 161/udp, STOP. Do NOT call save_deliverable. Call that tool NOW.
 
@@ -360,6 +375,11 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 **Database** (if role is db_server):
 - [ ] nmap_scan with scripts="mysql-empty-password" called
 - [ ] If empty root password confirmed → default_credentials CRITICAL
+
+**Redis** (if role is db_server_v2):
+- [ ] nmap_scan on port 6379 with scripts="redis-info" called
+- [ ] If port open without auth → no_auth HIGH finding created with redis-info output as evidence
+- [ ] Keyspace inspected for keys — if keys contain credentials or sensitive data → data_exposure CRITICAL
 
 **Telnet** (if role is router or gateway):
 - [ ] nmap_scan on port 23 — MANDATORY, do NOT skip
@@ -404,6 +424,7 @@ Go through this checklist. If any applicable item is NOT done, do it now before 
 - snmp_server: at least 2 (nmap 161/udp snmp-info + cve_search)
 - iot_gateway: at least 12 (ssh_audit + 8 curl paths + mqtt_listen + nmap 23 + cve_search)
 - db_server: at least 3 (nmap 3306 + mysql-empty-password script + cve_search)
+- db_server_v2: at least 2 (nmap 6379 redis-info + cve_search) — must confirm no_auth AND check keyspace for data_exposure
 - modbus_server / plc: at least 2 (nmap port 502 + cve_search)
 - camera_server / nvr_server: at least 5 (curl paths + nmap ports + cve_search)
 
