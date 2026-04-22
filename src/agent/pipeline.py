@@ -280,6 +280,8 @@ class Pipeline:
             self.context["network_topology_edges"] = "\n".join(
                 f"  {e['source']} -> {e['target']}" for e in edges
             )
+            # Pre-compute nmap_scan groups by role so Phase 2 doesn't have to guess
+            self.context["nmap_scan_groups"] = self._build_nmap_groups(_st.get("nodes", []))
         elif _bk is not None:
             try:
                 topo = _bk.to_dict()
@@ -290,6 +292,8 @@ class Pipeline:
                 )
             except Exception:
                 pass
+        if "nmap_scan_groups" not in self.context:
+            self.context["nmap_scan_groups"] = ""
 
         print("Loading lab context...")
         print(
@@ -1515,6 +1519,63 @@ class Pipeline:
         if new_hosts:
             log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])
         return new_hosts
+
+    @staticmethod
+    def _build_nmap_groups(nodes: list) -> str:
+        """Group topology nodes by role and return a ready-to-use nmap_scan call table.
+
+        Each row is one nmap_scan call the Phase 2 agent should make, with the target
+        IPs pre-filled from the actual topology — no guessing required.
+        """
+        _ROLE_PORTS: dict[str, str] = {
+            "router":          "22,23,80,443,8080,8291",
+            "modbus_server":   "22,80,502,102,44818",
+            "mqtt_broker":     "22,80,1883,8883",
+            "mqtt_broker_v2":  "22,80,1883,8883",
+            "camera_server":   "22,80,443,554,8080,8554",
+            "nvr_server":      "22,80,443,554,8080,8554",
+            "iot_gateway":     "22,80,443,502,8080,8086",
+            "web_server":      "22,80,443,8080,8443",
+            "web_server_v2":   "22,80,443,8080,8443",
+            "web_upload":      "22,80,443,8080",
+            "hmi_server":      "22,80,443,8080,8443",
+            "nodered_server":  "22,80,1880,8080",
+            "db_server":       "22,80,3306,5432,27017",
+            "db_server_v2":    "22,80,6379",
+            "historian_server":"22,80,3306,8086",
+            "scada_server":    "22,80,443,5000,8080",
+            "ftp_server":      "21,22,80",
+            "snmp_server":     "22,80,161",
+            "coap_server":     "22,80,5683",
+            "ssh_server":      "22,80,443",
+            "ssh_server_v2":   "22,80,443",
+        }
+        _DEFAULT_PORTS = "22,23,80,443,502,554,1883,3306,8080,8443"
+
+        from collections import defaultdict
+        groups: dict[str, list[str]] = defaultdict(list)
+        for node in nodes:
+            ip = node.get("ip", "")
+            role = node.get("role") or node.get("type") or "unknown"
+            if ip:
+                groups[role].append(ip)
+
+        if not groups:
+            return ""
+
+        lines = ["Pre-built nmap_scan groups from topology — use these EXACTLY, one call per row:"]
+        lines.append("")
+        lines.append("| Call # | target (comma-separated IPs) | ports |")
+        lines.append("|--------|------------------------------|-------|")
+        call_n = 1
+        for role, ips in sorted(groups.items()):
+            ports = _ROLE_PORTS.get(role, _DEFAULT_PORTS)
+            target = ",".join(sorted(ips))
+            lines.append(f"| {call_n} | `{target}` | `{ports}` |")
+            call_n += 1
+        lines.append("")
+        lines.append(f"Total: {call_n - 1} nmap_scan calls to cover all {sum(len(v) for v in groups.values())} devices.")
+        return "\n".join(lines)
 
     @staticmethod
     def _infer_role_from_ports(ports: list) -> str:
