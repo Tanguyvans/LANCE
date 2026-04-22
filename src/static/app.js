@@ -587,12 +587,14 @@ const CY_LAYOUTS = {
     randomize:       false,
   },
   breadthfirst: {
-    name:            'breadthfirst',
-    directed:        true,
-    padding:         60,
+    name:            'concentric',
     animate:         true,
     animationDuration: 400,
-    spacingFactor:   1.6,
+    padding:         60,
+    minNodeSpacing:  50,
+    concentric:      function(node){ return node.degree(); },
+    levelWidth:      function(nodes){ return Math.max(1, Math.ceil(nodes.length / 8)); },
+    equidistant:     true,
   },
   concentric: {
     name:            'concentric',

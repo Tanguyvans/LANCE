@@ -132,31 +132,27 @@ body {
 
 #phase-bar {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 3px;
 }
 
 .phase-pill {
   padding: 3px 11px;
-  border-radius: 7px;
+  border-radius: 20px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   color: var(--muted);
-  background: transparent;
+  background: var(--bg);
   white-space: nowrap;
   min-height: auto;
   line-height: 1.5;
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-.phase-pill:hover    { background: var(--white-hover); color: var(--text); }
-.phase-pill.done     { background: var(--green-bg-20); border-color: rgba(63,185,80,0.25); color: var(--green); }
-.phase-pill.failed   { background: rgba(248,81,73,0.12); border-color: rgba(248,81,73,0.3); color: var(--red); }
+.phase-pill:hover    { border-color: var(--accent); color: var(--accent); }
+.phase-pill.done     { background: var(--green-bg-20); border-color: rgba(63,185,80,0.35); color: var(--green); }
+.phase-pill.failed   { background: rgba(248,81,73,0.12); border-color: rgba(248,81,73,0.35); color: var(--red); }
 
 #cost-badge {
   font-size: 12px;
