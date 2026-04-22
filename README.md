@@ -59,10 +59,10 @@ Each run's `04_exploitation.json` (falling back to `03_vuln_analysis.json`) is m
 flowchart LR
     YAML[Scenario YAML<br/>+ CPE mapping]
     GRAPH[NetworkX graph<br/>+ CVE / risk]
-    AGENT["LLM pipeline<br/>5 phases"]
-    TOOLS[Tools<br/>graph · recon · hardware · skills]
+    AGENT["LLM pipeline<br/>6 phases"]
+    TOOLS[Tools<br/>graph · recon · intrusion · hardware · skills]
     KB[(Knowledge store<br/>ChromaDB + Voyage)]
-    OUT[Deliverables<br/>01…05 + cost_summary]
+    OUT[Deliverables<br/>01…06 + cost_summary]
 
     YAML --> GRAPH --> AGENT
     TOOLS --> AGENT
@@ -70,9 +70,9 @@ flowchart LR
     AGENT --> OUT
 ```
 
-**Pipeline** — 5 phases, each with its own prompt and tool set: **graph analysis → recon → vuln analysis (parallel per device) → exploitation (parallel per vuln) → report**. Each phase's output is a deliverable consumed by the next.
+**Pipeline** — 6 phases, each with its own prompt and tool set: **graph analysis → recon → vuln analysis (parallel per device) → exploitation (parallel per vuln) → intrusion (lateral movement) → report**. Each phase's output is a deliverable consumed by the next. Phase 5 (Intrusion) is optional — if no confirmed exploits exist, it is skipped and the report adapts.
 
-**Tools** — 18 declarative YAML definitions (software subprocess · hardware command suggestions · Python handler for NVD) loaded by `tool_loader.py`, plus Python-native graph and deliverable tools.
+**Tools** — 21 declarative YAML definitions (software subprocess · hardware command suggestions · Python handler for NVD) loaded by `tool_loader.py`, plus Python-native graph and deliverable tools. Intrusion-specific tools (`ssh_exec`, `try_credential`, `traceroute`) are only available in Phase 5.
 
 **Knowledge** — 8 Markdown skills (MQTT, SSH, LoRaWAN, Zigbee, MikroTik, firmware, web, report methodology) chunked by `##` and embedded with Voyage AI into ChromaDB for `search_knowledge`.
 
@@ -90,7 +90,7 @@ flowchart LR
 - **Cytoscape.js** — Interactive topology graph in the dashboard
 - **Docker / GHCR** — Multi-arch end-user image (`ghcr.io/tanguyvans/nato-smartcity-iot`)
 - **python-dotenv** — Environment variable loading (.env)
-- **pytest** — Unit tests (276 tests, 15 files)
+- **pytest** — Unit tests (280+ tests, 15 files)
 - **Zigbee2MQTT** — Zigbee → MQTT bridge (on RPi5)
 
 ## Getting Started
@@ -140,8 +140,8 @@ python3 -m src.agent --dry-run --verbose
 # Full run with Anthropic
 python3 -m src.agent --provider anthropic --verbose
 
-# Specific phases only
-python3 -m src.agent --phases 1 3 5 --verbose
+# Specific phases only (Phase 5 = Intrusion, Phase 6 = Report)
+python3 -m src.agent --phases 1 3 5 6 --verbose
 ```
 
 ### 6. Ingest skills into the knowledge store
@@ -165,7 +165,7 @@ Tabs:
 
 - **Dashboard** — Configure provider/model (per phase in Expert mode), pick a lab/scenario/target network, start a pipeline, watch live events via SSE, explore the Cytoscape topology (nodes appear live in Discovery mode).
 - **Benchmark** — Recall / Precision / F1 / weighted Score for each past run evaluated against a ground truth.
-- **Runs** — Download past deliverables (`01_graph_analysis.md` … `05_report.md`) or a full ZIP.
+- **Runs** — Download past deliverables (`01_graph_analysis.md` … `06_report.md`) or a full ZIP. Phase 5 intrusion edges (pwned nodes, attack chain arrows) are overlaid on the topology when viewing a historical run.
 
 ### 8. Run the end-user Docker image (Discovery mode)
 
@@ -213,7 +213,7 @@ NATO-SmartCity-IoT/
 │       ├── batch.py               # Parallel per-device sub-agent execution (Phase 3)
 │       ├── scanner.py             # Network sweep helpers for discovery mode
 │       ├── provider.py            # LLM abstraction (Anthropic, OpenRouter, MiniMax, GLM, Qwen)
-│       ├── registry.py            # Declarative agent config for 5 phases
+│       ├── registry.py            # Declarative agent config for 6 phases
 │       ├── prompt_manager.py      # Prompt templates with variable substitution
 │       ├── cost_tracker.py        # Per-phase token/cost tracking
 │       ├── pricing.py             # Pricing tables (per-provider, per-model)
@@ -230,6 +230,8 @@ NATO-SmartCity-IoT/
 │       │       ├── curl_headers.yaml, http_get.yaml, ftp_list.yaml
 │       │       ├── mqtt_listen.yaml, modbus_scan.yaml
 │       │       ├── mysql_query.yaml, redis_cmd.yaml
+│       │       ├── ssh_exec.yaml, try_credential.yaml  # Phase 5 intrusion
+│       │       ├── traceroute.yaml                     # topology inference
 │       │       ├── nvd_lookup.yaml                     # Python handler
 │       │       └── hackrf.yaml, flipper_zero.yaml,
 │       │           proxmark3.yaml, exploit_iot_kit.yaml  # type: hardware
@@ -339,11 +341,11 @@ Attack path scoring combines:
 
 Multi-phase pipeline inspired by Shannon/LLMDFA and CyberStrikeAI:
 
-- **5 specialized agents**: graph analysis → recon → vuln analysis → exploitation → report
+- **6 specialized agents**: graph analysis → recon → vuln analysis → exploitation → intrusion (lateral movement) → report
 - **Parallel sub-agents (Phase 3 & 4)**: Per-device vulnerability analysis and per-vuln exploitation run in parallel (`src/agent/batch.py`), merged back by `_aggregate_device_vulns` / `_aggregate_exploit_results`.
 - **Multi-model pipeline**: Choose a different LLM per phase (Expert Mode in the dashboard).
 - **Multi-provider**: Anthropic (Claude), OpenRouter (Gemini, DeepSeek, GPT-4o), MiniMax, GLM, Qwen.
-- **18 declarative YAML tools** — software (nmap, nmap_discovery, arp_scan, ssh_audit, ssh_login, telnet_connect, curl_headers, http_get, ftp_list, mqtt_listen, modbus_scan, mysql_query, redis_cmd, nvd_lookup) + hardware (hackrf, flipper_zero, proxmark3, exploit_iot_kit) + `aggregate_device_results` for merging parallel findings.
+- **21 declarative YAML tools** — software (nmap, nmap_discovery, arp_scan, ssh_audit, ssh_login, telnet_connect, curl_headers, http_get, ftp_list, mqtt_listen, modbus_scan, mysql_query, redis_cmd, nvd_lookup, traceroute) + intrusion (ssh_exec, try_credential) + hardware (hackrf, flipper_zero, proxmark3, exploit_iot_kit) + `aggregate_device_results` for merging parallel findings.
 - **Hardware attack tools**: HackRF One (SDR 1–6 GHz), Flipper Zero (sub-GHz/RFID/NFC/IR/GPIO), Proxmark3 Easy (RFID/NFC badge cracking), Exploit IoT Kit (UART/JTAG/SPI/I2C/glitching). `type: hardware` returns protocol-specific operator command suggestions.
 - **8 IoT skills**: MQTT, SSH, LoRaWAN, Zigbee, MikroTik RouterOS, firmware analysis, web services, report methodology. Markdown + YAML frontmatter; skills cross-reference hardware tools.
 - **Knowledge store**: ChromaDB + Voyage AI (voyage-3.5-lite, 512 dims) for semantic search over CVEs and skills.
