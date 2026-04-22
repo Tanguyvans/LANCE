@@ -137,7 +137,8 @@ body {
 }
 
 .phase-pill {
-  padding: 3px 11px;
+  padding: 0 12px;
+  height: 26px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 500;
@@ -145,8 +146,10 @@ body {
   color: var(--muted);
   background: var(--bg);
   white-space: nowrap;
-  min-height: auto;
-  line-height: 1.5;
+  min-height: unset;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
