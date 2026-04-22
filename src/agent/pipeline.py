@@ -415,6 +415,10 @@ class Pipeline:
 
             results[agent_config.name] = status
 
+            # After Phase 2 in discovery mode, infer topology links via traceroute
+            if agent_config.phase == 2 and self.target_network:
+                self._infer_topology_links(stream_callback)
+
             # After Phase 5 (intrusion), emit hop events for frontend topology coloring
             if agent_config.phase == 5:
                 self._emit_intrusion_events(stream_callback)
@@ -1989,6 +1993,120 @@ class Pipeline:
             })
         except Exception as exc:
             log.warning("Failed to parse intrusion results for SSE: %s", exc)
+
+    # ------------------------------------------------------------------
+    # Discovery mode — topology link inference (Niveau 2: traceroute)
+    # ------------------------------------------------------------------
+
+    def _infer_topology_links(self, stream_callback) -> None:
+        """Infer network links between discovered hosts using traceroute.
+
+        Runs after Phase 2 when target_network is set (discovery mode).
+        For each host in 02_recon.md, runs traceroute and deduces edges:
+          - hop at distance 1 = direct gateway link
+          - shared intermediate hops = common router between two hosts
+        Emits topology_edge SSE events consumed by the Cytoscape frontend.
+        """
+        import re as _re
+        import subprocess as _sub
+
+        log.info("Discovery mode: inferring topology links via traceroute")
+
+        # Extract discovered host IPs from 02_recon.md
+        recon_path = self.run_dir / "02_recon.md"
+        if not recon_path.exists():
+            log.warning("02_recon.md not found — skipping topology inference")
+            return
+
+        recon_text = recon_path.read_text(encoding="utf-8")
+        # Parse IPs that look like 192.168.x.x from the recon report
+        subnet_prefix = self.target_network.rsplit(".", 1)[0] if self.target_network else ""
+        host_ips = list(dict.fromkeys(  # deduplicate, preserve order
+            m for m in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text)
+            if subnet_prefix and m.startswith(subnet_prefix) and not m.endswith(".0") and not m.endswith(".255")
+        ))
+
+        if not host_ips:
+            log.warning("No host IPs found in 02_recon.md — skipping topology inference")
+            return
+
+        log.info("Running traceroute on %d hosts: %s", len(host_ips), host_ips[:10])
+
+        # {ip: [hop_ip, ...]} — ordered list of hops for each host
+        host_hops: dict[str, list[str]] = {}
+
+        def _traceroute(target: str, max_hops: int = 8) -> list[str]:
+            import platform
+            cmd = (["traceroute", "-n", "-m", str(max_hops), target]
+                   if platform.system() == "Darwin"
+                   else ["traceroute", "-n", "-m", str(max_hops), "-w", "1", target])
+            try:
+                r = _sub.run(cmd, capture_output=True, text=True, timeout=max_hops * 3 + 5)
+                hops = []
+                for line in r.stdout.splitlines():
+                    m = _re.match(r"^\s*\d+\s+([\d.]+)", line)
+                    if m and m.group(1) != target:
+                        hops.append(m.group(1))
+                return hops
+            except Exception as exc:
+                log.debug("traceroute to %s failed: %s", target, exc)
+                return []
+
+        emitted_edges: set[tuple[str, str]] = set()
+
+        def _emit_edge(src: str, dst: str, link_type: str = "ethernet"):
+            key = (min(src, dst), max(src, dst))
+            if key in emitted_edges:
+                return
+            emitted_edges.add(key)
+            log.info("Topology edge inferred: %s → %s (%s)", src, dst, link_type)
+            if stream_callback:
+                stream_callback({
+                    "type": "topology_edge",
+                    "source": src,
+                    "target": dst,
+                    "link_type": link_type,
+                })
+
+        for ip in host_ips:
+            hops = _traceroute(ip, max_hops=8)
+            host_hops[ip] = hops
+            if hops:
+                # Direct link: host ↔ first hop (gateway/switch)
+                _emit_edge(ip, hops[0], "ethernet")
+                # Intermediate hops form a chain
+                for i in range(len(hops) - 1):
+                    _emit_edge(hops[i], hops[i + 1], "ethernet")
+
+        # Shared intermediate hops → same router serves multiple hosts
+        # (already handled above via direct edge emission)
+
+        # Service-based inference: MQTT broker on port 1883 = hub
+        # Parse nmap results from 02_recon.md for service hints
+        mqtt_broker = None
+        for m in _re.finditer(r"([\d.]+).*?1883/tcp.*?open", recon_text, _re.DOTALL):
+            mqtt_broker = m.group(1)
+            break
+        if not mqtt_broker:
+            # Also check line-by-line for "host | ... | 1883"
+            for line in recon_text.splitlines():
+                if "1883" in line:
+                    m = _re.search(r"([\d]+\.[\d]+\.[\d]+\.[\d]+)", line)
+                    if m:
+                        mqtt_broker = m.group(1)
+                        break
+
+        if mqtt_broker:
+            log.info("MQTT broker detected at %s — adding spoke edges", mqtt_broker)
+            for ip in host_ips:
+                if ip != mqtt_broker:
+                    _emit_edge(ip, mqtt_broker, "mqtt")
+
+        # Save inferred edges to run directory for report context
+        edges_path = self.run_dir / "02_topology_edges.json"
+        edges_data = [{"source": s, "target": t} for s, t in emitted_edges]
+        edges_path.write_text(json.dumps({"edges": edges_data, "host_hops": host_hops}, indent=2))
+        log.info("Topology inference complete: %d edges, saved to %s", len(edges_data), edges_path)
 
     # ------------------------------------------------------------------
     # Phase 6 context compaction

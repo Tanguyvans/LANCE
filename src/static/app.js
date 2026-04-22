@@ -809,6 +809,22 @@ async function loadTopology(scenarioId = null) {
             'z-index': 200,
           },
         },
+        {
+          selector: 'edge[type="discovered"]',
+          style: {
+            'line-color': '#4488ff',
+            'target-arrow-color': '#4488ff',
+            'target-arrow-shape': 'none',
+            'line-style': 'dotted',
+            'width': 2,
+            'label': 'data(link_type)',
+            'font-size': 9,
+            'color': '#4488ff',
+            'text-background-color': _cssVar('--bg'),
+            'text-background-opacity': 0.7,
+            'z-index': 50,
+          },
+        },
       ],
       layout: { name: 'null' }, // positions set by layout engine below
     });
@@ -893,6 +909,32 @@ function highlightAttackEdge(fromIp, toIp, fromId, toId) {
   const edgeId = `intrusion-${src.id()}-${dst.id()}`;
   if (!cy.getElementById(edgeId).length) {
     cy.add({group:'edges', data:{id:edgeId, source:src.id(), target:dst.id(), type:'intrusion'}});
+  }
+}
+
+function _addDiscoveredEdge(srcIp, dstIp, linkType) {
+  if (!cy) return;
+  // Find or create nodes for IPs not yet in graph (intermediate hops like gateways)
+  function _ensureNode(ip) {
+    let node = cy.nodes().filter(n => n.data('ip') === ip || n.id() === ip).first();
+    if (!node.length) {
+      const nodeId = `discovered-${ip}`;
+      if (!cy.getElementById(nodeId).length) {
+        cy.add({group:'nodes', data:{id:nodeId, label:ip, ip, type:'router', _origColor:'#8888aa'}});
+        node = cy.getElementById(nodeId);
+        node.style('background-color', '#8888aa');
+      } else {
+        node = cy.getElementById(nodeId);
+      }
+    }
+    return node;
+  }
+  const src = _ensureNode(srcIp);
+  const dst = _ensureNode(dstIp);
+  if (!src.length || !dst.length) return;
+  const edgeId = `discovered-${src.id()}-${dst.id()}`;
+  if (!cy.getElementById(edgeId).length) {
+    cy.add({group:'edges', data:{id:edgeId, source:src.id(), target:dst.id(), type:'discovered', link_type:linkType}});
   }
 }
 
@@ -1245,6 +1287,11 @@ function handleEvent(ev) {
   else if (t === 'intrusion_done') {
     const jewels = (ev.crown_jewels_reached||[]).join(', ') || 'aucun';
     addLog({type:'info', message:`Intrusion terminée — ${ev.chains_successful||0}/${ev.chains||0} chaîne(s) réussie(s), ${ev.hops||0} hops, crown jewels: ${jewels}`});
+  }
+
+  else if (t === 'topology_edge') {
+    _addDiscoveredEdge(ev.source, ev.target, ev.link_type || 'ethernet');
+    addLog({type:'info', message:`Lien découvert : ${ev.source} ↔ ${ev.target} (${ev.link_type||'ethernet'})`});
   }
 
   else if (t === 'batch_scenario_start') {

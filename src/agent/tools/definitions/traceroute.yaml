@@ -1,0 +1,15 @@
+name: "traceroute"
+handler: python
+enabled: true
+short_description: "Discover network hops to a target host"
+description: "Run traceroute to reveal intermediate network hops between this machine and a target host. Returns the list of hop IPs. Use this in discovery mode to infer the network topology (routers, gateways, multi-hop paths). Call once per discovered host."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target IP address or hostname"
+    required: true
+  - name: "max_hops"
+    type: "integer"
+    description: "Maximum number of hops (default 10). Use 5 for fast local network discovery."
+    required: false
+    default: 10

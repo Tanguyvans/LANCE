@@ -269,6 +269,39 @@ def nvd_lookup(query: str, top_k: int = 10) -> str:
         return json.dumps({"error": str(e)})
 
 
+def traceroute(target: str, max_hops: int = 10) -> str:
+    """Discover network hops to a target using traceroute."""
+    import platform
+    import re as _re
+
+    system = platform.system()
+    if system == "Darwin":
+        cmd = ["traceroute", "-n", "-m", str(max_hops), target]
+    else:
+        # Linux: traceroute or tracepath as fallback
+        cmd = ["traceroute", "-n", "-m", str(max_hops), "-w", "1", target]
+
+    result = _run(cmd, timeout=max_hops * 3 + 5)
+
+    # Parse hop IPs from output lines like:
+    #  1  192.168.88.1  1.234 ms
+    #  2  10.0.0.1  2.345 ms
+    hop_pattern = _re.compile(r"^\s*(\d+)\s+([\d.]+)")
+    hops = []
+    for line in result["stdout"].splitlines():
+        m = hop_pattern.match(line)
+        if m:
+            hops.append({"hop": int(m.group(1)), "ip": m.group(2)})
+
+    return json.dumps({
+        "target": target,
+        "hops": hops,
+        "hop_count": len(hops),
+        "stdout": result["stdout"][:500],
+        "return_code": result["return_code"],
+    })
+
+
 # ── Tool definitions (generated from YAML) ───────────────────────
 
 def _load_recon_tools() -> list[dict]:
@@ -280,6 +313,7 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "arp_scan", arp_scan)
     register_python_handler(tools, "ssh_exec", ssh_exec)
     register_python_handler(tools, "try_credential", try_credential)
+    register_python_handler(tools, "traceroute", traceroute)
     return tools
 
 
