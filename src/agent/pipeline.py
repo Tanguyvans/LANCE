@@ -403,11 +403,13 @@ class Pipeline:
                 self._generate_phase6_context()
                 self._pregenerate_report_sections()
 
-            # Run the agent — use try/finally for Phase 6 to guarantee report generation
-            # even if the LLM provider raises an exception mid-run.
+            # Run the agent — catch Phase 6 errors so teardown always runs.
             if agent_config.phase == 6:
                 try:
                     status = self._run_agent(agent_config, stream_callback)
+                except Exception as exc:
+                    log.warning("Phase 6 agent error (non-fatal): %s", exc)
+                    status = "error"
                 finally:
                     self._merge_report_with_prefill()
             else:
