@@ -1106,6 +1106,7 @@
 
 
     # ── nodered_server : Node-RED sans auth + flow exec ──
+    # Mock Node-RED with a lightweight Python HTTP server (avoids slow npm install)
     - name: "[nodered_server] Écrire le script d'injection Node-RED"
       ansible.builtin.copy:
         dest: /tmp/inject_nodered.sh
@@ -1113,53 +1114,94 @@
         content: |
           #!/bin/bash
           set -e
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq nodejs npm 2>/dev/null || true
 
-          # Install Node-RED
-          npm install -g --unsafe-perm node-red 2>/dev/null || true
+          # Deploy a lightweight Python mock that exposes the same endpoints as Node-RED.
+          # This avoids the 15+ minute npm install of the real node-red package.
+          cat > /opt/nodered_mock.py << 'PYEOF'
+          #!/usr/bin/env python3
+          """Minimal Node-RED mock — exposes /admin, /flows, /settings without auth."""
+          import json
+          from http.server import HTTPServer, BaseHTTPRequestHandler
 
-          # Create Node-RED settings — NO authentication
-          mkdir -p /root/.node-red
-          cat > /root/.node-red/settings.js << 'NREOF'
-          module.exports = {
-              uiPort: 1880,
-              uiHost: "0.0.0.0",
-              // NO adminAuth — intentionally insecure for benchmark
-              functionGlobalContext: {
-                  env: process.env
-              },
-              debugMaxLength: 10000,
-              // Expose runtime API without auth
-              httpAdminRoot: '/admin',
-              httpNodeRoot: '/api',
-          };
-          NREOF
+          FLOWS = [
+              {"id": "flow1", "type": "tab", "label": "IoT Control"},
+              {"id": "n1", "type": "inject", "z": "flow1", "name": "Heartbeat",
+               "repeat": "60", "topic": "status", "wires": [["n2"]]},
+              {"id": "n2", "type": "exec", "z": "flow1", "name": "SysInfo",
+               "command": "hostname && uptime && cat /etc/os-release",
+               "addpay": False, "wires": [["n3"], [], []]},
+              {"id": "n3", "type": "debug", "z": "flow1", "name": "System Info",
+               "active": True, "wires": []},
+          ]
 
-          # Create a flow with exec node (RCE capability)
-          cat > /root/.node-red/flows.json << 'FLOWEOF'
-          [{"id":"flow1","type":"tab","label":"IoT Control"},
-           {"id":"n1","type":"inject","z":"flow1","name":"Heartbeat","repeat":"60","topic":"status","x":150,"y":100,"wires":[["n2"]]},
-           {"id":"n2","type":"exec","z":"flow1","command":"hostname && uptime && cat /etc/os-release","x":400,"y":100,"wires":[["n3"],[],[]]},
-           {"id":"n3","type":"debug","z":"flow1","name":"System Info","x":650,"y":100,"wires":[]}]
-          FLOWEOF
+          ADMIN_HTML = b"""<!DOCTYPE html><html><head>
+          <title>Node-RED</title>
+          <meta charset="utf-8">
+          </head><body>
+          <h1>Node-RED</h1>
+          <p>Flow Editor — no authentication required</p>
+          <div id="main-container"><div id="editor"></div></div>
+          <script>// Node-RED editor stub</script>
+          </body></html>"""
+
+          class NodeREDHandler(BaseHTTPRequestHandler):
+              def log_message(self, fmt, *args):
+                  pass  # suppress access logs
+
+              def _send_json(self, data, code=200):
+                  body = json.dumps(data).encode()
+                  self.send_response(code)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def _send_html(self, body, code=200):
+                  self.send_response(code)
+                  self.send_header("Content-Type", "text/html; charset=utf-8")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def do_GET(self):
+                  if self.path.startswith("/admin") or self.path == "/":
+                      self._send_html(ADMIN_HTML)
+                  elif self.path == "/flows":
+                      self._send_json(FLOWS)
+                  elif self.path == "/settings":
+                      self._send_json({"httpAdminRoot": "/admin", "version": "3.1.0",
+                                       "user": None, "editorTheme": {}})
+                  elif self.path == "/nodes":
+                      self._send_json([{"id": "exec", "name": "exec", "types": ["exec"],
+                                        "enabled": True, "local": False}])
+                  else:
+                      self._send_json({"error": "not found"}, 404)
+
+              def do_POST(self):
+                  length = int(self.headers.get("Content-Length", 0))
+                  self.rfile.read(length)
+                  self._send_json({"rev": "abc123"})
+
+          if __name__ == "__main__":
+              srv = HTTPServer(("0.0.0.0", 1880), NodeREDHandler)
+              srv.serve_forever()
+          PYEOF
+          chmod +x /opt/nodered_mock.py
 
           cat > /etc/systemd/system/nodered.service << 'SVCEOF'
           [Unit]
-          Description=Node-RED IoT (benchmark — no auth)
+          Description=Node-RED IoT mock (benchmark — no auth)
           After=network.target
           [Service]
-          ExecStart=/usr/bin/node-red --settings /root/.node-red/settings.js
+          ExecStart=/usr/bin/python3 /opt/nodered_mock.py
           Restart=always
-          Environment=NODE_RED_HOME=/root/.node-red
           [Install]
           WantedBy=multi-user.target
           SVCEOF
           systemctl daemon-reload
           systemctl enable nodered
           systemctl start nodered
-          echo "[OK] Node-RED sans auth sur port 1880"
+          echo "[OK] Node-RED mock sans auth sur port 1880"
 
     - name: "[nodered_server] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
