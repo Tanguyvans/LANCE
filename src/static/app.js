@@ -2153,9 +2153,15 @@ function addLog(ev) {
   else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
   else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
-  else if (t === 'deploy_done')    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
+  else if (t === 'deploy_done') {
+    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
+    if (!ev.success && ev.output) fullText = ev.output;
+  }
   else if (t === 'inject_start')   text = `Injection vulns…`;
-  else if (t === 'inject_done')    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
+  else if (t === 'inject_done') {
+    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
+    if (!ev.success && ev.output) fullText = ev.output;
+  }
   else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;
   else if (t === 'teardown_done')  text = `Teardown terminé`;
 
