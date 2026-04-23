@@ -588,14 +588,15 @@ const CY_LAYOUTS = {
     randomize:       false,
   },
   breadthfirst: {
-    name:            'concentric',
+    name:            'breadthfirst',
     animate:         true,
     animationDuration: 400,
     padding:         60,
-    minNodeSpacing:  50,
-    concentric:      function(node){ return node.degree(); },
-    levelWidth:      function(nodes){ return Math.max(1, Math.ceil(nodes.length / 8)); },
-    equidistant:     true,
+    spacingFactor:   1.6,
+    directed:        false,
+    circle:          false,
+    grid:            true,
+    // roots resolved at call time from the router node
   },
   concentric: {
     name:            'concentric',
