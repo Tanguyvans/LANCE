@@ -561,6 +561,16 @@ class Pipeline:
             scenario_ids = [int(k) for k in _all_data.get("scenario_vmid_ranges", {}).keys()]
         except Exception:
             scenario_ids = list(range(1, 11))
+
+        # Read Proxmox host IP from inventory (single source of truth)
+        proxmox_host = "192.168.88.100"
+        try:
+            inv_yml = repo_root / "benchmarks/ansible/inventory.yml"
+            inv = _yaml.safe_load(inv_yml.read_text())
+            proxmox_host = inv["all"]["hosts"]["proxmox"]["ansible_host"]
+        except Exception:
+            pass
+
         for sid in scenario_ids:
             if sid == self.scenario_id:
                 continue  # Will be redeployed fresh
@@ -574,7 +584,7 @@ class Pipeline:
                 continue
             check = subprocess.run(
                 ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
-                 "root@10.0.0.110", f"(qm status {base} 2>/dev/null || pct status {base} 2>/dev/null) && echo EXISTS || true"],
+                 f"root@{proxmox_host}", f"(qm status {base} 2>/dev/null || pct status {base} 2>/dev/null) && echo EXISTS || true"],
                 capture_output=True, text=True, timeout=10,
             )
             if "EXISTS" not in check.stdout:
