@@ -7,6 +7,7 @@ let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
+let colorMode = 'type';  // 'type' | 'security' — current graph coloring mode
 
 const PHASE_NAMES = {1:'Graph',2:'Recon',3:'Vuln',4:'Exploit',5:'Intrusion',6:'Report'};
 
@@ -630,13 +631,34 @@ function _clearHoverState() {
   document.body.style.cursor = '';
 }
 
+function _setColorMode(mode) {
+  colorMode = mode;
+  document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById(mode === 'type' ? 'color-type' : 'color-security');
+  if (activeBtn) activeBtn.classList.add('active');
+
+  if (mode === 'type') {
+    resetNodeColors();
+  } else {
+    // Re-apply severity colors from current nodeVulns
+    resetNodeColors();
+    const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
+    Object.entries(nodeVulns).forEach(([nodeId, vulns]) => {
+      const worst = order.find(s => vulns.some(v => v.severity === s));
+      if (worst) colorNodeBySeverity(nodeId, worst);
+    });
+  }
+}
+
 function initGraphToolbar() {
+  // Layout buttons — only deactivate other layout buttons
   const layouts = ['cose', 'breadthfirst', 'concentric'];
   layouts.forEach(l => {
     const btn = document.getElementById(`layout-${l.split('first')[0]}`);
     if (btn) {
+      btn.classList.add('layout-btn');
       btn.onclick = () => {
-        document.querySelectorAll('.graph-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         _clearHoverState();
         _runLayout(CY_LAYOUTS[l]);
@@ -647,6 +669,10 @@ function initGraphToolbar() {
   document.getElementById('graph-fit').onclick = () => {
     cy.animate({ fit: { padding: 50 }, duration: 400, easing: 'ease-out' });
   };
+
+  // Color mode buttons
+  document.getElementById('color-type')?.addEventListener('click', () => _setColorMode('type'));
+  document.getElementById('color-security')?.addEventListener('click', () => _setColorMode('security'));
 }
 
 function initGraphInteractions() {
@@ -703,6 +729,10 @@ async function loadTopology(scenarioId = null) {
 
   nodeVulns = {};
   nodeHosts = {};
+  // Reset to type coloring when loading a new topology
+  colorMode = 'type';
+  document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('color-type')?.classList.add('active');
 
   const nodes = data.nodes || [];
   const edges = data.edges || [];
@@ -883,12 +913,20 @@ function _setNodeColor(node, severity) {
 }
 
 function resetNodeColors() {
+  if (!cy) return;
   cy.nodes().forEach(n => {
     n.style('background-color', n.data('_origColor') || n.data('color'));
     n.style('border-color', 'rgba(255,255,255,.1)');
     n.style('border-width', '2px');
   });
   cy.remove('edge[type="intrusion"]');
+}
+
+// Switch to security mode and apply (called when run starts/is viewed)
+function activateSecurityMode() {
+  colorMode = 'security';
+  document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('color-security')?.classList.add('active');
 }
 
 function markNodeCompromised(ip) {
@@ -1052,6 +1090,9 @@ async function startRun() {
   }
 
   // Reset graph colors and state
+  colorMode = 'type';
+  document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('color-type')?.classList.add('active');
   resetNodeColors();
   nodeVulns = {};
   nodeHosts = {};
@@ -1395,7 +1436,10 @@ async function fetchDeviceVulns(runDir, deviceId, deviceIp) {
 
     const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
     const worst = order.find(s => vulns.some(v => v.severity === s));
-    if (worst) colorNodeBySeverity(deviceIp || deviceId, worst);
+    if (worst) {
+      activateSecurityMode();
+      colorNodeBySeverity(deviceIp || deviceId, worst);
+    }
     if (cy) _updateTopologyTable(cy.nodes().map(n => n.data()));
   } catch(e) { console.warn('fetchDeviceVulns failed', e); }
 }
@@ -1416,7 +1460,8 @@ async function fetchVulnResults(runIdOrDir) {
       nodeVulns[nodeId].push(vuln);
     });
 
-    // Color nodes by worst severity
+    // Auto-switch to security mode and color nodes by worst severity
+    activateSecurityMode();
     Object.entries(nodeVulns).forEach(([nodeId, vulns]) => {
       const order = ['CRITICAL','HIGH','MEDIUM','LOW','INFO'];
       const worst = order.find(s => vulns.some(v => v.severity === s));
