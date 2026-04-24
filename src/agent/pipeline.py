@@ -1988,6 +1988,14 @@ class Pipeline:
             f"{len(credentials)} creds, {len(chains)} chains, {out_path.stat().st_size:,} bytes)"
         )
 
+    @staticmethod
+    def _repair_json(text: str) -> str:
+        """Best-effort repair for common LLM JSON issues (embedded unescaped quotes inside strings)."""
+        import re
+        # Replace control characters that break JSON
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+        return text
+
     def _emit_intrusion_events(self, stream_callback) -> None:
         """Parse 05_intrusion.json and emit intrusion_hop / intrusion_done SSE events."""
         if not stream_callback:
@@ -1996,34 +2004,57 @@ class Pipeline:
         if not intrusion_path.exists():
             return
         try:
-            data = json.loads(intrusion_path.read_text(encoding="utf-8"))
+            raw = intrusion_path.read_text(encoding="utf-8")
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                data = json.loads(self._repair_json(raw))
+        except Exception as exc:
+            log.warning("Failed to parse intrusion results for SSE: %s", exc)
+            return
+
+        try:
             chains = data.get("chains", [])
             summary = data.get("summary", {})
+            compromised_devices = data.get("compromised_devices", [])
+
+            # Emit one compromised event per device from the compromised_devices list
+            for dev in compromised_devices:
+                stream_callback({
+                    "type": "intrusion_compromised",
+                    "device_id": dev.get("device_id"),
+                    "device_ip": dev.get("device_ip"),
+                    "access_method": dev.get("access_method", ""),
+                    "credentials_found": len(dev.get("credentials_found", [])),
+                })
+
+            # Emit hop events for multi-hop chains
             for chain in chains:
                 hops = chain.get("hops", [])
                 for i, hop in enumerate(hops):
-                    pivot_to = hop.get("pivot_to")
-                    if pivot_to and i + 1 < len(hops):
+                    if i + 1 < len(hops):
+                        next_hop = hops[i + 1]
                         stream_callback({
                             "type": "intrusion_hop",
                             "hop_index": i + 1,
                             "from_ip": hop.get("device_ip"),
                             "from_id": hop.get("device_id"),
-                            "to_ip": pivot_to,
-                            "to_id": hops[i + 1].get("device_id", pivot_to),
+                            "to_ip": next_hop.get("device_ip"),
+                            "to_id": next_hop.get("device_id"),
                             "method": hop.get("access_method", ""),
                             "chain_id": chain.get("id"),
                         })
+
             stream_callback({
                 "type": "intrusion_done",
+                "devices_compromised": summary.get("devices_compromised", len(compromised_devices)),
                 "chains": summary.get("chains_attempted", len(chains)),
-                "chains_successful": summary.get("chains_successful", 0),
                 "hops": summary.get("total_hops", 0),
                 "crown_jewels_reached": summary.get("crown_jewels_reached", []),
                 "credentials_harvested": summary.get("credentials_harvested", 0),
             })
         except Exception as exc:
-            log.warning("Failed to parse intrusion results for SSE: %s", exc)
+            log.warning("Failed to emit intrusion SSE events: %s", exc)
 
     # ------------------------------------------------------------------
     # Discovery mode — topology link inference (Niveau 2: traceroute)

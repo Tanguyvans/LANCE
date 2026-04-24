@@ -48,7 +48,9 @@
       "Read(//Users/gaspard/Downloads/2026-04-21_181025/**)",
       "Read(//Users/gaspard/Downloads/2026-04-21_150413/**)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(curl -s http://localhost:8502/api/scenarios)",
+      "Read(//Users/gaspard/Downloads/2026-04-24_110002/**)"
     ]
   }
 }

@@ -7,10 +7,11 @@ const state = {
   running: false,
   currentRun: null,
   layers: new Set(['network']),
-  nodes: {},        // id → node data
-  vulns: {},        // ip → [{type, severity, status}]
-  compromised: [],  // ips compromised by intrusion
-  hopEdges: [],     // intrusion hop pairs
+  nodes: {},          // id → node data
+  vulns: {},          // ip → [{type, severity, status}]
+  compromised: [],    // ips compromised by intrusion
+  hopEdges: [],       // intrusion hop pairs
+  allScenarios: [],   // loaded from API
   sse: null,
 };
 
@@ -295,7 +296,9 @@ async function loadTopology() {
   cy.add(elements);
   applyLayout();
   applyLayers();
-  updateMetrics(data);
+  updateMetric('metricDevices', data.nodes?.length ?? '—');
+  const vulns = data.nodes?.reduce((acc, n) => acc + (n.data?.vuln_count || 0), 0);
+  if (vulns) updateMetric('metricVulns', vulns);
 }
 
 function applyLayout() {
@@ -495,6 +498,14 @@ function handleEvent(ev) {
     log(`  ${ok ? '✓' : '✗'} ${ev.vuln_type} ${ev.device_id} — ${ev.status}`, ok ? 'success' : 'warn');
   }
 
+  else if (t === 'intrusion_compromised') {
+    const ip = ev.device_ip;
+    if (ip && !state.compromised.includes(ip)) state.compromised.push(ip);
+    const node = cy.nodes().filter(n => n.data('ip') === ip);
+    if (node.length) node.addClass('compromised');
+    log(`  Compromised: ${ev.device_id} (${ip}) via ${ev.access_method || '?'}`, 'intrusion');
+  }
+
   else if (t === 'intrusion_hop') {
     const from = ev.from_ip;
     const to = ev.to_ip;
@@ -509,15 +520,14 @@ function handleEvent(ev) {
         cy.getElementById(edgeId).addClass('intrusion-hop');
         state.hopEdges.push(`${fromNode.id()}-${toNode.id()}`);
       }
-      if (!state.compromised.includes(to)) state.compromised.push(to);
-      const toNodeEl = cy.nodes().filter(n => n.data('ip') === to);
-      toNodeEl.addClass('compromised');
     }
-    log(`  ⤷ Hop: ${from} → ${to} via ${ev.method || '?'}`, 'intrusion');
+    log(`  Hop: ${from} → ${to} via ${ev.method || '?'}`, 'intrusion');
   }
 
   else if (t === 'intrusion_done') {
-    log(`Infiltration done — ${ev.devices_compromised || 0} devices compromised`, 'intrusion');
+    const cj = (ev.crown_jewels_reached || []).join(', ') || 'none';
+    log(`Infiltration done — ${ev.devices_compromised || 0} compromised, ${ev.credentials_harvested || 0} creds, crown jewels: ${cj}`, 'intrusion');
+    updateMetric('metricVulns', totalVulns());
   }
 
   else if (t === 'tool_result') {
@@ -696,11 +706,20 @@ function bindScenarioBtn(btn) {
 
 async function loadScenarios() {
   const data = await fetchJSON('/api/scenarios');
+  const scenarios = (data.scenarios || []).slice().sort((a, b) => {
+    // Sort numerically when possible, then alphabetically
+    const na = parseInt(a.id), nb = parseInt(b.id);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
+    return String(a.id).localeCompare(String(b.id));
+  });
+  state.allScenarios = scenarios;
+
   const grid = document.getElementById('scenarioBtns');
-  // Bind existing LAB button
   bindScenarioBtn(grid.querySelector('.s-btn[data-s=""]'));
-  // Add one button per scenario
-  for (const s of (data.scenarios || [])) {
+
+  for (const s of scenarios) {
     const btn = document.createElement('button');
     btn.className = 's-btn';
     btn.dataset.s = s.id;
@@ -736,13 +755,15 @@ const batchSelected = new Set();
 document.getElementById('btnBatch').addEventListener('click', () => {
   const grid = document.getElementById('batchGrid');
   grid.innerHTML = '';
-  for (let i = 1; i <= 9; i++) {
+  const scenarios = state.allScenarios || [];
+  for (const s of scenarios) {
     const btn = document.createElement('button');
-    btn.className = 'batch-btn' + (batchSelected.has(i) ? ' selected' : '');
-    btn.textContent = `S${i}`;
+    btn.className = 'batch-btn' + (batchSelected.has(s.id) ? ' selected' : '');
+    btn.textContent = `S${s.id}`;
+    btn.title = s.name || '';
     btn.addEventListener('click', () => {
-      if (batchSelected.has(i)) { batchSelected.delete(i); btn.classList.remove('selected'); }
-      else { batchSelected.add(i); btn.classList.add('selected'); }
+      if (batchSelected.has(s.id)) { batchSelected.delete(s.id); btn.classList.remove('selected'); }
+      else { batchSelected.add(s.id); btn.classList.add('selected'); }
     });
     grid.appendChild(btn);
   }
@@ -762,11 +783,18 @@ document.getElementById('btnBatchRun').addEventListener('click', async () => {
 });
 
 // ── Model selector ─────────────────────────────────────────────────────────
+const FALLBACK_MODELS = [
+  { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
+  { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o' },
+];
+
 async function loadModels() {
   const data = await fetchJSON('/api/models');
+  const models = (data.models && data.models.length) ? data.models : FALLBACK_MODELS;
   const sel = document.getElementById('modelSelect');
   sel.innerHTML = '';
-  (data.models || []).forEach(m => {
+  models.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.label || m.id;
@@ -814,11 +842,15 @@ function escHtml(s) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 async function init() {
-  initPhaseBar();
-  connectSSE();
-  await Promise.all([loadModels(), loadRuns(), loadScenarios()]);
-  await loadTopology();
-  log('Monitor online', 'success');
+  try {
+    initPhaseBar();
+    connectSSE();
+    await Promise.all([loadModels(), loadRuns(), loadScenarios()]);
+    await loadTopology();
+    log('Monitor online', 'success');
+  } catch(e) {
+    log(`Init error: ${e.message}`, 'error');
+  }
 }
 
 // Clear log button
