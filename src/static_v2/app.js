@@ -24,15 +24,38 @@ const SEV = {
   SAFE:     { color: '#00d4ff', glow: 6,  order: 5 },
 };
 
-const ROLE_ICON = {
-  router: '⬡', gateway: '⬡', switch: '⬡',
-  sensor: '◉', camera: '◎', ap: '⊙',
-  compute: '▣', server: '▣',
-  mqtt_broker: 'M', web_server: 'W', ssh_server: 'S',
-  db_server: 'D', plc: 'P', historian: 'H',
-  nodered_server: 'N', snmp_server: 'R', coap_server: 'C',
-  external: '⊕',
+// Role → base color (used when no vuln severity)
+const ROLE_COLOR = {
+  router:         '#2979ff',
+  gateway:        '#2979ff',
+  switch:         '#448aff',
+  ap:             '#40c4ff',
+  server:         '#00bcd4',
+  compute:        '#00bcd4',
+  mqtt_broker:    '#ff6d00',
+  mqtt_broker_v2: '#ff6d00',
+  web_server:     '#00bcd4',
+  ssh_server:     '#00bcd4',
+  db_server:      '#e040fb',
+  plc:            '#ff1744',
+  historian:      '#e040fb',
+  nodered_server: '#ff9100',
+  snmp_server:    '#00bcd4',
+  coap_server:    '#00bcd4',
+  camera:         '#ff6d00',
+  camera_server:  '#ff6d00',
+  sensor:         '#69f0ae',
+  iot_gateway:    '#2979ff',
+  external:       '#546e7a',
 };
+
+// Role → node size (width/height)
+const ROLE_SIZE = {
+  router: 60, gateway: 60, switch: 55, ap: 50,
+  external: 46,
+  plc: 58, historian: 58, db_server: 58,
+};
+function nodeSize(role) { return ROLE_SIZE[role] || 52; }
 
 // ── Cytoscape init ─────────────────────────────────────────────────────────
 const cy = cytoscape({
@@ -50,8 +73,8 @@ function buildCyStyle() {
     {
       selector: 'node',
       style: {
-        'background-color': '#0a1e38',
-        'border-color': '#00d4ff',
+        'background-color': '#071628',
+        'border-color': 'data(baseColor)',
         'border-width': 2,
         'color': '#c8e4f8',
         'label': 'data(label)',
@@ -59,18 +82,20 @@ function buildCyStyle() {
         'font-size': 10,
         'text-valign': 'bottom',
         'text-halign': 'center',
-        'text-margin-y': 6,
-        'text-background-color': 'rgba(5,10,20,0.8)',
+        'text-margin-y': 8,
+        'text-wrap': 'wrap',
+        'text-max-width': '120px',
+        'text-background-color': 'rgba(5,10,20,0.85)',
         'text-background-opacity': 1,
         'text-background-padding': '3px',
         'text-background-shape': 'roundrectangle',
-        'shadow-blur': 14,
-        'shadow-color': '#00d4ff',
-        'shadow-opacity': 0.5,
+        'shadow-blur': 18,
+        'shadow-color': 'data(baseColor)',
+        'shadow-opacity': 0.55,
         'shadow-offset-x': 0,
         'shadow-offset-y': 0,
-        'width': 38,
-        'height': 38,
+        'width': 'data(sz)',
+        'height': 'data(sz)',
         'shape': 'ellipse',
       }
     },
@@ -79,9 +104,10 @@ function buildCyStyle() {
       style: {
         'border-color': '#ff1744',
         'shadow-color': '#ff1744',
-        'shadow-opacity': 0.9,
-        'shadow-blur': 40,
-        'border-width': 3,
+        'shadow-opacity': 0.95,
+        'shadow-blur': 45,
+        'border-width': 3.5,
+        'background-color': '#1a0510',
       }
     },
     {
@@ -89,9 +115,10 @@ function buildCyStyle() {
       style: {
         'border-color': '#ff6d00',
         'shadow-color': '#ff6d00',
-        'shadow-opacity': 0.8,
-        'shadow-blur': 28,
-        'border-width': 2.5,
+        'shadow-opacity': 0.85,
+        'shadow-blur': 32,
+        'border-width': 3,
+        'background-color': '#1a0e05',
       }
     },
     {
@@ -99,8 +126,10 @@ function buildCyStyle() {
       style: {
         'border-color': '#ffd600',
         'shadow-color': '#ffd600',
-        'shadow-opacity': 0.6,
-        'shadow-blur': 20,
+        'shadow-opacity': 0.65,
+        'shadow-blur': 22,
+        'border-width': 2.5,
+        'background-color': '#131000',
       }
     },
     {
@@ -109,7 +138,7 @@ function buildCyStyle() {
         'border-color': '#69f0ae',
         'shadow-color': '#69f0ae',
         'shadow-opacity': 0.5,
-        'shadow-blur': 14,
+        'shadow-blur': 16,
       }
     },
     {
@@ -134,19 +163,19 @@ function buildCyStyle() {
       selector: 'node[type = "external"]',
       style: {
         'shape': 'diamond',
-        'background-color': '#0a0a20',
-        'border-color': '#3d5a78',
+        'background-color': '#080e18',
+        'border-color': '#546e7a',
         'border-style': 'dashed',
-        'shadow-blur': 0,
-        'width': 28,
-        'height': 28,
+        'shadow-color': '#546e7a',
+        'shadow-blur': 8,
+        'shadow-opacity': 0.4,
       }
     },
     {
       selector: 'edge',
       style: {
-        'line-color': 'rgba(0, 180, 255, 0.18)',
-        'width': 1.5,
+        'line-color': 'rgba(0, 180, 255, 0.25)',
+        'width': 1.8,
         'curve-style': 'bezier',
         'target-arrow-shape': 'none',
       }
@@ -226,19 +255,27 @@ async function loadTopology() {
 
   for (const n of (data.nodes || [])) {
     state.nodes[n.id] = n;
+    const role = n.role || n.type || 'server';
     const sev = topSeverity(n.id);
+    const baseColor = ROLE_COLOR[role] || '#00d4ff';
+    const sz = nodeSize(role);
+    // Label: device name (id without prefix) + IP
+    const shortId = n.id.replace(/^s\d+-/, '').replace(/_/g, '-');
+    const labelName = (shortId !== n.ip && shortId !== n.id) ? shortId : (role !== 'server' ? role : n.id);
     elements.push({
       group: 'nodes',
       data: {
         id: n.id,
-        label: n.ip || n.id,
+        label: `${labelName}\n${n.ip || ''}`,
         ip: n.ip,
-        role: n.role || n.type,
+        role,
         os: n.os,
-        sev: sev,
+        sev,
         type: n.type,
         services: n.services || [],
         cve_count: n.cve_count || 0,
+        baseColor,
+        sz,
       },
     });
   }
@@ -266,19 +303,17 @@ function applyLayout() {
   if (n === 0) return;
 
   const layout = cy.layout({
-    name: n <= 8 ? 'cose' : 'cose',
+    name: 'breadthfirst',
     animate: true,
-    animationDuration: 800,
-    animationEasing: 'ease-in-out-cubic',
+    animationDuration: 900,
     fit: true,
-    padding: 80,
-    nodeRepulsion: () => 8000,
-    idealEdgeLength: () => 120,
-    edgeElasticity: () => 0.4,
-    gravity: 1.2,
-    numIter: 1500,
-    randomize: true,
-    componentSpacing: 80,
+    padding: 60,
+    directed: true,
+    spacingFactor: 1.8,
+    circle: false,
+    grid: false,
+    avoidOverlap: true,
+    maximal: false,
   });
   layout.run();
 }
