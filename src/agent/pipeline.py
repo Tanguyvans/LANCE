@@ -1013,7 +1013,8 @@ class Pipeline:
         # --- Phase 3a: Deterministic scanning ---
         surface = json.loads(get_attack_surface())
         if isinstance(surface, dict):
-            surface = surface.get("nodes", list(surface.values()) if surface else [])
+            # Discovery mode returns {"note": ..., "target_network": ...} — no pre-defined nodes
+            surface = surface.get("nodes", [])
 
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
@@ -1251,7 +1252,7 @@ class Pipeline:
                         # Look up device info from attack surface to get the correct role
                         surface = json.loads(get_attack_surface())
                         if isinstance(surface, dict):
-                            surface = surface.get("nodes", list(surface.values()) if surface else [])
+                            surface = surface.get("nodes", [])
                         fallback_device = next(
                             (d for d in surface if d.get("id") == device_id),
                             {"id": device_id, "ip": "", "role": ""},

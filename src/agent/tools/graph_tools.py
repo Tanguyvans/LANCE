@@ -154,7 +154,8 @@ def load_scenario_topology(scenario_id: int) -> dict:
     return the scenario VMs (192.168.100.x) instead of the physical lab.
     Returns a summary dict (device_count, link_count, cve_count, top_risk).
     """
-    global _scenario_topology
+    global _scenario_topology, _discovery_mode
+    _discovery_mode = None  # Discovery mode must not take precedence over scenario topology
 
     gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
     if not gt_path.exists():
