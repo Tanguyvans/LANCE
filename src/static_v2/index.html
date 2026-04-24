@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NATO IoT Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static_v2/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header id="topbar">
+    <div class="tb-left">
+      <div class="logo">
+        <span class="logo-hex">⬡</span>
+        <span class="logo-text">NATO<span class="logo-accent"> IoT</span> Monitor</span>
+      </div>
+      <div class="tb-selectors">
+        <select id="scenarioSelect" class="glass-select">
+          <option value="">— Lab physique —</option>
+        </select>
+        <select id="modelSelect" class="glass-select"></select>
+      </div>
+    </div>
+    <div class="tb-center">
+      <div id="phaseBar">
+        <div id="phaseSteps"></div>
+        <div id="phaseLabel">En attente</div>
+      </div>
+    </div>
+    <div class="tb-right">
+      <div class="metric" id="metricCost"><span class="m-val">$0.000</span><span class="m-lbl">COÛT</span></div>
+      <div class="metric" id="metricDevices"><span class="m-val">—</span><span class="m-lbl">DEVICES</span></div>
+      <div class="metric" id="metricVulns"><span class="m-val">—</span><span class="m-lbl">VULNS</span></div>
+      <div class="status-dot" id="statusDot" title="Idle"></div>
+    </div>
+  </header>
+
+  <!-- Main graph -->
+  <div id="cy"></div>
+
+  <!-- Left panel: layers + controls -->
+  <aside id="leftPanel" class="glass-panel">
+    <div class="panel-section">
+      <div class="panel-title">LAYERS</div>
+      <div class="layer-list" id="layerList">
+        <label class="layer-item active" data-layer="network">
+          <span class="layer-dot" style="background:#00d4ff"></span>
+          <span>Network</span>
+          <input type="checkbox" checked hidden>
+        </label>
+        <label class="layer-item" data-layer="vulnerabilities">
+          <span class="layer-dot" style="background:#ff6d00"></span>
+          <span>Vulnerabilities</span>
+          <input type="checkbox" hidden>
+        </label>
+        <label class="layer-item" data-layer="paths">
+          <span class="layer-dot" style="background:#ff1744"></span>
+          <span>Attack Paths</span>
+          <input type="checkbox" hidden>
+        </label>
+        <label class="layer-item" data-layer="exploitation">
+          <span class="layer-dot" style="background:#ff9100"></span>
+          <span>Exploitation</span>
+          <input type="checkbox" hidden>
+        </label>
+        <label class="layer-item" data-layer="infiltration">
+          <span class="layer-dot" style="background:#d500f9"></span>
+          <span>Infiltration</span>
+          <input type="checkbox" hidden>
+        </label>
+        <label class="layer-item" data-layer="services">
+          <span class="layer-dot" style="background:#69f0ae"></span>
+          <span>Services</span>
+          <input type="checkbox" hidden>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">SCENARIO</div>
+      <div class="scenario-grid" id="scenarioBtns">
+        <button class="s-btn active" data-s="">LAB</button>
+        <button class="s-btn" data-s="1">S1</button>
+        <button class="s-btn" data-s="2">S2</button>
+        <button class="s-btn" data-s="3">S3</button>
+        <button class="s-btn" data-s="4">S4</button>
+        <button class="s-btn" data-s="5">S5</button>
+        <button class="s-btn" data-s="6">S6</button>
+        <button class="s-btn" data-s="7">S7</button>
+        <button class="s-btn" data-s="8">S8</button>
+        <button class="s-btn" data-s="9">S9</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">RUN</div>
+      <div class="run-controls">
+        <button class="run-btn primary" id="btnRun">▶ RUN</button>
+        <button class="run-btn danger" id="btnStop" disabled>■ STOP</button>
+      </div>
+      <div class="run-controls" style="margin-top:8px">
+        <button class="run-btn secondary" id="btnBatch">BATCH</button>
+        <button class="run-btn secondary" id="btnTeardown">TEARDOWN</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">RUNS</div>
+      <div id="runsList" class="runs-list"></div>
+    </div>
+  </aside>
+
+  <!-- Right panel: device details (hidden by default) -->
+  <aside id="rightPanel" class="glass-panel hidden">
+    <div class="rp-header">
+      <div id="rpTitle" class="rp-title">—</div>
+      <button id="rpClose" class="rp-close">✕</button>
+    </div>
+    <div id="rpContent" class="rp-content"></div>
+  </aside>
+
+  <!-- Bottom event log -->
+  <div id="eventLog" class="glass-panel">
+    <div class="log-header">
+      <span class="panel-title">EVENT LOG</span>
+      <button id="btnClearLog" class="log-clear">CLEAR</button>
+    </div>
+    <div id="logEntries" class="log-entries"></div>
+  </div>
+
+  <!-- Batch modal -->
+  <div id="batchModal" class="modal hidden">
+    <div class="modal-box glass-panel">
+      <div class="panel-title" style="margin-bottom:16px">BATCH RUN</div>
+      <div class="batch-grid" id="batchGrid"></div>
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="run-btn primary" id="btnBatchRun">▶ LAUNCH</button>
+        <button class="run-btn secondary" id="btnBatchClose">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static_v2/app.js"></script>
+</body>
+</html>
