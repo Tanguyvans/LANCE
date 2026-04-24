@@ -18,9 +18,17 @@ _RETRYABLE_CODES = {429, 500, 502, 503, 529}
 _MAX_RETRIES = 5
 _RETRY_BASE_DELAY = 5.0  # seconds
 
+# Exception type names that indicate a network-level connection failure (no HTTP code)
+_RETRYABLE_EXC_NAMES = {"APIConnectionError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout"}
+
+
+def _is_network_error(exc: Exception) -> bool:
+    """True for connection-level errors that have no HTTP status code."""
+    return type(exc).__name__ in _RETRYABLE_EXC_NAMES or isinstance(exc, (ConnectionError, TimeoutError))
+
 
 def _call_with_retry(fn, *args, **kwargs):
-    """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529)."""
+    """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529) and connection errors."""
     last_exc = None
     for attempt in range(_MAX_RETRIES + 1):
         try:
@@ -28,13 +36,13 @@ def _call_with_retry(fn, *args, **kwargs):
         except Exception as exc:
             code = getattr(exc, "status_code", None)
             if code is None:
-                # openai library wraps code differently
                 resp = getattr(exc, "response", None)
                 if resp is not None:
                     code = getattr(resp, "status_code", None)
-            if code in _RETRYABLE_CODES and attempt < _MAX_RETRIES:
+            retryable = (code in _RETRYABLE_CODES) or (code is None and _is_network_error(exc))
+            if retryable and attempt < _MAX_RETRIES:
                 delay = _RETRY_BASE_DELAY * (2 ** attempt)
-                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code, attempt + 1, _MAX_RETRIES, delay, exc)
+                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code or type(exc).__name__, attempt + 1, _MAX_RETRIES, delay, exc)
                 time.sleep(delay)
                 last_exc = exc
                 continue
