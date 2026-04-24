@@ -36,6 +36,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME_LOWER=${IMAGE_NAME,,}" >> $GITHUB_ENV
+
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -55,5 +58,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ env.IMAGE_NAME_LOWER }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ env.IMAGE_NAME_LOWER }}:buildcache,mode=max
