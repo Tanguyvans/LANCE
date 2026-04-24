@@ -681,8 +681,8 @@ document.querySelectorAll('.layer-item').forEach(item => {
   });
 });
 
-// ── Scenario selector (buttons) ────────────────────────────────────────────
-document.querySelectorAll('.s-btn').forEach(btn => {
+// ── Scenario selector (dynamic) ────────────────────────────────────────────
+function bindScenarioBtn(btn) {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.s-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -692,7 +692,24 @@ document.querySelectorAll('.s-btn').forEach(btn => {
     state.hopEdges = [];
     loadTopology();
   });
-});
+}
+
+async function loadScenarios() {
+  const data = await fetchJSON('/api/scenarios');
+  const grid = document.getElementById('scenarioBtns');
+  // Bind existing LAB button
+  bindScenarioBtn(grid.querySelector('.s-btn[data-s=""]'));
+  // Add one button per scenario
+  for (const s of (data.scenarios || [])) {
+    const btn = document.createElement('button');
+    btn.className = 's-btn';
+    btn.dataset.s = s.id;
+    btn.title = s.name || `Scenario ${s.id}`;
+    btn.textContent = `S${s.id}`;
+    grid.appendChild(btn);
+    bindScenarioBtn(btn);
+  }
+}
 
 // ── Run controls ───────────────────────────────────────────────────────────
 document.getElementById('btnRun').addEventListener('click', async () => {
@@ -799,7 +816,7 @@ function escHtml(s) {
 async function init() {
   initPhaseBar();
   connectSSE();
-  await Promise.all([loadModels(), loadRuns()]);
+  await Promise.all([loadModels(), loadRuns(), loadScenarios()]);
   await loadTopology();
   log('Monitor online', 'success');
 }
