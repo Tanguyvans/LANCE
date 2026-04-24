@@ -379,6 +379,7 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
+  - default_credentials   # mqtt_broker anonyme — tout credentials fonctionne (FP structurel)
   - weak_cipher
   - missing_header
   - terrapin

@@ -288,6 +288,7 @@ scoring:
   max_weighted_score: 27   # V1:2 + V2:3 + V3:2 + V4:3 + V5:2 + V6:3 + V7:2 + V8:3 + V9:3 + V10:3 + V11:1
 
 bonus_types:
+  - default_credentials   # mqtt_broker anonyme — tout credentials fonctionne (FP structurel)
   - weak_cipher
   - missing_header
   - terrapin
