@@ -367,6 +367,7 @@ scoring:
   max_weighted_score: 42   # V1:4 + V2:2 + V3:3 + V4:2 + V5:3 + V6:3 + V7:2 + V8:3 + V9:4 + V10:4 + V11:4 + V12:3 + V13:2 + V14:3
 
 bonus_types:
+  - data_exposure     # firmware binary iot_gateway — FP structurel
   - weak_cipher
   - missing_header
   - terrapin

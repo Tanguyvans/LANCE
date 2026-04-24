@@ -13,6 +13,9 @@
 | Devices scanned | |
 | Vulnerabilities found | |
 | Confirmed exploitable (Phase 4) | |
+| Devices compromised (Phase 5) | |
+| Credentials harvested (Phase 5) | |
+| Crown jewels reached (Phase 5) | |
 | Data exfiltrated (Level 3 evidence) | |
 | Overall risk level | |
 
@@ -81,6 +84,39 @@
 
 | Device | Betweenness | Role |
 |--------|-------------|------|
+
+### 7.3 Infiltration Campaign (Phase 5)
+
+<!-- Fill from 05_intrusion.json. If Phase 5 was skipped, write "Phase 5 not executed." -->
+
+**Campaign summary:**
+
+| Metric | Value |
+|--------|-------|
+| Devices targeted | |
+| Devices compromised | |
+| Credentials harvested | |
+| Crown jewels reached | |
+
+**Compromised devices:**
+
+| Device | IP | Access method | Credentials used | Data exfiltrated |
+|--------|----|---------------|-----------------|-----------------|
+
+**Credential harvest:**
+
+| Username | Password | Service | Harvested from | Used to compromise |
+|----------|----------|---------|---------------|-------------------|
+
+**Attack chains:**
+
+<!-- For each chain in 05_intrusion.json, write:
+     Hop 1: entry_ip (method) → Hop 2: pivot_ip (method) → ... → Crown jewel
+     Include the commands run and key output at each hop. -->
+
+**Crown jewels reached:**
+
+<!-- For each crown jewel: device, access method, data retrieved (passwords, configs, shadow, DB dump) -->
 
 ## 8. Risk Scores
 

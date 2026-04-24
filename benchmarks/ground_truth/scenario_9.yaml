@@ -289,6 +289,7 @@ scoring:
 
 bonus_types:
   - default_credentials   # mqtt_broker anonyme — tout credentials fonctionne (FP structurel)
+  - data_exposure     # FP structurel sur endpoints accessibles (api/devices, etc.)
   - weak_cipher
   - missing_header
   - terrapin

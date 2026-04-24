@@ -15,29 +15,36 @@ Fill in the report template below with data from previous phases. Do NOT change 
       grouped by device, with Phase 4 exploitation status. This is your PRIMARY data source.
    b. read_deliverable("01_graph_analysis.md") — topology and attack paths
    c. read_deliverable("02_recon.md") — real scan results (nmap/services)
+   d. read_deliverable("05_intrusion.json") — Phase 5 infiltration campaign results.
+      MANDATORY if the file exists in the deliverables list. If absent, write "Phase 5 not executed." in Section 7.3.
    RULE: Call each read_deliverable EXACTLY ONCE. Never call the same filename twice.
    WARNING: Do NOT read 03_vuln_analysis.json or 04_exploitation.json — they are too large.
    The 06_phase6_context.json file contains all the data you need from those files.
    WARNING: Do NOT call get_risk_scores, get_attack_paths, get_network_topology — their data is
    already included in 06_phase6_context.json and 01_graph_analysis.md. These calls waste turns.
    TURN BUDGET: You have at most 25 turns. After the mandatory reads, write and save the report immediately.
-2. OPTIONAL read (use 1 extra turn if the file exists in the deliverables list):
-   d. read_deliverable("05_intrusion.json") — Phase 5 lateral movement results.
-      If present, add Section 5.5 "Attack Chains (Lateral Movement)" between Sections 5 and 6,
-      showing the hop-by-hop intrusion path and credentials harvested.
-2. **Sections 5 and 6 use auto-generated placeholders** — the template contains
+2. **Section 7.3 — Infiltration Campaign** MUST be filled from 05_intrusion.json:
+   - Fill the "Campaign summary" table: devices_targeted, devices_compromised, credentials_harvested, crown_jewels_reached
+   - Fill "Compromised devices" table: one row per device in compromised_devices[]
+   - Fill "Credential harvest" table: one row per unique credential in credential_pool[], show where it came from and what it unlocked
+   - Fill "Attack chains": for each chain, write the hop-by-hop path with the actual commands run and key output at each hop (max 200 chars per hop)
+   - Fill "Crown jewels reached": for each crown jewel, write device name, access method, and verbatim data exfiltrated (passwords, shadow entries, DB records, config files)
+   - If no devices were compromised, write the reason (no credentials recovered, no entry points reachable, etc.)
+3. **Sections 5 and 6 use auto-generated placeholders** — the template contains
    `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}`. Leave these EXACTLY as-is in your
    output — the pipeline will replace them with the real tables automatically.
    DO NOT write any vulnerability or exploitation tables yourself.
-3. Write ONLY the following sections from scratch (use data from the reads above):
-   - Section 1 (Executive Summary) — 5-10 lines max
+4. Write ONLY the following sections from scratch (use data from the reads above):
+   - Section 1 (Executive Summary) — 5-10 lines max, include infiltration results if Phase 5 ran
    - Section 2 (Scope and Methodology) — fill in bullet points
    - Section 3 (Topology) — fill the device table from Phase 1 and Phase 2 (max 35 rows)
    - Section 4 (Reconnaissance) — fill services table from Phase 2 (max 20 rows)
-   - Section 7 (Attack Paths) — 3-5 critical chains + pivot nodes table
+   - Section 7.1 (Critical Multi-Hop Chains) — 3-5 critical chains + pivot nodes table
+   - Section 7.2 (Pivot Nodes) — betweenness table
+   - Section 7.3 (Infiltration Campaign) — MANDATORY, fill from 05_intrusion.json (see rule 2 above)
    - Section 8 (Risk Scores) — top 10 devices by risk
    - Section 9 (Remediation) — prioritised action table (IMMEDIATE / SHORT TERM / IMPROVEMENT)
-   - Section 10 (Appendices) — CVE list from 05_phase5_context.json
+   - Section 10 (Appendices) — CVE list from 06_phase6_context.json
 4. Do NOT fabricate results. If a phase was skipped, write "Phase skipped".
 5. Do NOT add, remove, or rename sections — keep the template structure exactly as provided.
 6. CRITICAL: your final save_deliverable call should include the literal strings

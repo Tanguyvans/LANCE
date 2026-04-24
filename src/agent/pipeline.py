@@ -1948,16 +1948,35 @@ class Pipeline:
                 seen_ep.add(ep["device_ip"])
                 unique_entries.append(ep)
 
+        # All devices in the network — full target list for credential spraying
+        all_targets: list = []
+        try:
+            surface = get_attack_surface()
+            for node in surface.get("nodes", []):
+                ip = node.get("ip")
+                if ip:
+                    all_targets.append({
+                        "device_id": node.get("id"),
+                        "device_ip": ip,
+                        "role": node.get("role"),
+                        "services": [s.get("port") for s in node.get("services", []) if s.get("port")],
+                    })
+        except Exception:
+            pass
+
         ctx = {
             "generated_for": "phase5_intrusion",
             "attack_chains": chains,
-            "entry_points": unique_entries[:5],
+            "entry_points": unique_entries,
+            "all_targets": all_targets,
             "confirmed_exploits": len(confirmed),
-            "recovered_credentials": credentials[:20],
+            "recovered_credentials": credentials[:30],
             "NOTE": (
-                "Use try_credential to test recovered_credentials on entry_points first. "
-                "Then ssh_exec to enumerate and harvest more credentials for lateral movement. "
-                "Follow attack_chains for the suggested pivot path."
+                "STRATEGY: (1) Use entry_points as starting devices. "
+                "(2) After gaining access, harvest all credentials from the host. "
+                "(3) Spray ALL harvested credentials against ALL devices in all_targets. "
+                "(4) Repeat from each newly compromised device until no new hosts are reachable. "
+                "Goal: maximize compromised devices and reach crown jewels (db, plc, historian, admin)."
             ),
         }
 
@@ -1965,8 +1984,8 @@ class Pipeline:
         out_path.write_text(json.dumps(ctx, indent=2, ensure_ascii=False), encoding="utf-8")
         print(
             f"  [intrusion] 05_intrusion_context.json "
-            f"({len(unique_entries)} entry points, {len(credentials)} creds, "
-            f"{len(chains)} chains, {out_path.stat().st_size:,} bytes)"
+            f"({len(unique_entries)} entry points, {len(all_targets)} targets, "
+            f"{len(credentials)} creds, {len(chains)} chains, {out_path.stat().st_size:,} bytes)"
         )
 
     def _emit_intrusion_events(self, stream_callback) -> None:

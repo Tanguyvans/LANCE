@@ -334,6 +334,8 @@ scoring:
 
 # Findings attendus mais non injectés (LLM a raison d'en faire mention → pas comptés comme FP)
 bonus_types:
+  - default_credentials   # mqtt_broker anonyme — tout credentials fonctionne (FP structurel)
+  - data_exposure     # firmware binary iot_gateway ou snapshot camera — FP structurel
   - weak_cipher
   - terrapin
   - info_disclosure   # server version banners

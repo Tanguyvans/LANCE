@@ -335,9 +335,33 @@
         daemon_reload: true
 
     - name: Authenticate Tailscale
-      ansible.builtin.command: tailscale up --authkey {{ vault_tailscale_auth_key }} --accept-routes
+      ansible.builtin.command: tailscale up --authkey {{ vault_tailscale_auth_key }} --accept-routes --accept-dns=false
       register: ts_result
       changed_when: "'already authenticated' not in ts_result.stderr"
+
+    - name: Fix DNS — créer service systemd pour forcer 1.1.1.1 après Tailscale
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/fix-dns.service
+        content: |
+          [Unit]
+          Description=Fix DNS after Tailscale
+          After=tailscaled.service
+          Wants=tailscaled.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/tailscale set --accept-dns=false
+          ExecStartPost=/bin/bash -c 'echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf'
+          RemainAfterExit=yes
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Activer fix-dns.service
+      ansible.builtin.systemd:
+        name: fix-dns.service
+        enabled: true
+        daemon_reload: true
 
     - name: Get Tailscale IP
       ansible.builtin.command: tailscale ip -4

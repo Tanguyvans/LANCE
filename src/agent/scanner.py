@@ -656,7 +656,7 @@ def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_nam
             return []  # Already confirmed — extractor above handled it
     # Port unreachable or all 1880 scans failed — add suspected finding
     return [_make_finding(
-        device, "no_auth", "HIGH", "nodered", 1880,
+        device, "no_auth", "CRITICAL", "nodered", 1880,
         "Node-RED admin interface may be accessible without authentication (port 1880 not reached during scan)",
         "nodered_server role: Node-RED admin auth is commonly absent — verify port 1880 manually",
         status="suspected",
@@ -777,7 +777,7 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
             if is_nodered:
                 svc = "nodered"
                 port = 1880
-                severity = "HIGH"
+                severity = "CRITICAL"
                 details = "Node-RED admin interface accessible without authentication"
             elif is_camera:
                 svc = "http"
