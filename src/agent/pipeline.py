@@ -13,6 +13,16 @@ import yaml
 
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.provider import LLMProvider
+from src.config import (
+    BENCHMARK_SUBNET,
+    DEFAULT_PORTS,
+    DEVICE_DEFAULT_PORTS,
+    EXPLOIT_MAX_TOKENS,
+    EXPLOIT_MAX_TURNS,
+    INTRUSION_MAX_TOKENS,
+    INTRUSION_MAX_TURNS,
+    PHYSICAL_SUBNET,
+)
 from src.agent.prompt_manager import load_prompt
 from src.agent.cost_tracker import CostTracker
 from src.agent.tools.graph_tools import (
@@ -266,10 +276,10 @@ class Pipeline:
         elif self.scenario_id is not None:
             from src.agent.tools.graph_tools import load_scenario_topology
             lab = load_scenario_topology(self.scenario_id)
-            target_subnet = "192.168.100.0/24"
+            target_subnet = BENCHMARK_SUBNET
         else:
             lab = load_lab_context()
-            target_subnet = "192.168.88.0/24"
+            target_subnet = PHYSICAL_SUBNET
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
@@ -1117,8 +1127,8 @@ class Pipeline:
                     f"Then call save_deliverable('{deliverable_file}', json_content)."
                 ),
                 tools=analysis_tools,
-                max_turns=10,
-                max_tokens=4096,
+                max_turns=EXPLOIT_MAX_TURNS,
+                max_tokens=EXPLOIT_MAX_TOKENS,
                 cost_tracker=self.tracker,
                 stream_callback=stream_callback,
                 required_tool="save_deliverable",
@@ -1481,8 +1491,8 @@ class Pipeline:
                         f"Call save_deliverable('{deliverable_file}', json_content) when done."
                     ),
                     tools=tools,
-                    max_turns=10,
-                    max_tokens=2048,
+                    max_turns=INTRUSION_MAX_TURNS,
+                    max_tokens=INTRUSION_MAX_TOKENS,
                     cost_tracker=self.tracker,
                     stream_callback=stream_callback,
                     required_tool="save_deliverable",
@@ -1581,31 +1591,6 @@ class Pipeline:
         Each row is one nmap_scan call the Phase 2 agent should make, with the target
         IPs pre-filled from the actual topology — no guessing required.
         """
-        _ROLE_PORTS: dict[str, str] = {
-            "router":          "22,23,80,443,8080,8291",
-            "modbus_server":   "22,80,502,102,44818",
-            "mqtt_broker":     "22,80,1883,8883",
-            "mqtt_broker_v2":  "22,80,1883,8883",
-            "camera_server":   "22,80,443,554,8080,8554",
-            "nvr_server":      "22,80,443,554,8080,8554",
-            "iot_gateway":     "22,80,443,502,8080,8086",
-            "web_server":      "22,80,443,8080,8443",
-            "web_server_v2":   "22,80,443,8080,8443",
-            "web_upload":      "22,80,443,8080",
-            "hmi_server":      "22,80,443,8080,8443",
-            "nodered_server":  "22,80,1880,8080",
-            "db_server":       "22,80,3306,5432,27017",
-            "db_server_v2":    "22,80,6379",
-            "historian_server":"22,80,3306,8086",
-            "scada_server":    "22,80,443,5000,8080",
-            "ftp_server":      "21,22,80",
-            "snmp_server":     "22,80,161",
-            "coap_server":     "22,80,5683",
-            "ssh_server":      "22,80,443",
-            "ssh_server_v2":   "22,80,443",
-        }
-        _DEFAULT_PORTS = "22,23,80,443,502,554,1883,3306,8080,8443"
-
         from collections import defaultdict
         groups: dict[str, list[str]] = defaultdict(list)
         for node in nodes:
@@ -1623,7 +1608,7 @@ class Pipeline:
         lines.append("|--------|------------------------------|-------|")
         call_n = 1
         for role, ips in sorted(groups.items()):
-            ports = _ROLE_PORTS.get(role, _DEFAULT_PORTS)
+            ports = DEVICE_DEFAULT_PORTS.get(role, DEFAULT_PORTS)
             target = ",".join(sorted(ips))
             lines.append(f"| {call_n} | `{target}` | `{ports}` |")
             call_n += 1

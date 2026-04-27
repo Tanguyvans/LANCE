@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+from typing import Any
+
+from src.config import API_TIMEOUT
 import time
 from collections.abc import Callable
 
@@ -88,7 +91,7 @@ class LLMProvider:
             self.client = openai.OpenAI(
                 base_url=cfg["base_url"],
                 api_key=os.environ.get(cfg["api_key_env"]),
-                timeout=120.0,
+                timeout=API_TIMEOUT,
             )
             self.model = model or cfg["default_model"]
         else:

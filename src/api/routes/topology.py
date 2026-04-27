@@ -32,6 +32,8 @@ PROTOCOL_COLORS = {
 
 def _load_physical_lab() -> dict:
     lab_yaml = ROOT / "infrastructure" / "nato_lab.yaml"
+    if not lab_yaml.exists():
+        raise HTTPException(status_code=404, detail="Physical lab infrastructure not found")
     data = yaml.safe_load(lab_yaml.read_text())
 
     nodes = []

@@ -205,11 +205,9 @@ NATO-SmartCity-IoT/
 │   ├── static_docker/             # Simplified end-user SPA (CIDR + discovery)
 │   ├── benchmark/
 │   │   └── evaluator.py           # TP/FP/FN matching, weighted F1, severity rules
-│   ├── ui/app.py                  # (legacy Streamlit UI, kept for reference)
 │   └── agent/
 │       ├── __main__.py            # CLI: --provider, --model, --dry-run, --phases
 │       ├── pipeline.py            # Multi-phase orchestrator with tool resolution
-│       ├── orchestrator.py        # Higher-level run control (threaded exec)
 │       ├── batch.py               # Parallel per-device sub-agent execution (Phase 3)
 │       ├── scanner.py             # Network sweep helpers for discovery mode
 │       ├── provider.py            # LLM abstraction (Anthropic, OpenRouter, MiniMax, GLM, Qwen)

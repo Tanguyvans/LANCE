@@ -97,7 +97,7 @@ class TestSkillToolDefinitions:
     """Test that SKILL_TOOLS are properly formatted."""
 
     def test_tool_count(self):
-        assert len(SKILL_TOOLS) == 5
+        assert len(SKILL_TOOLS) == 6
 
     def test_all_have_required_fields(self):
         for tool in SKILL_TOOLS:

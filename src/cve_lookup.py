@@ -12,6 +12,13 @@ from pathlib import Path
 import requests
 import yaml
 
+from src.config import (
+    NVD_MAX_REQUESTS_NO_KEY,
+    NVD_MAX_REQUESTS_WITH_KEY,
+    NVD_RATE_WINDOW_SECONDS,
+    NVD_REQUEST_TIMEOUT,
+)
+
 NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 NVD_CVE_URL = "https://nvd.nist.gov/vuln/detail/"
 _request_timestamps: list[float] = []
@@ -43,8 +50,8 @@ def load_cpe_mapping(path: Path) -> dict[str, list[str]]:
 
 def _rate_limit(has_api_key: bool) -> None:
     """Sleep if necessary to respect NVD rate limits."""
-    max_requests = 50 if has_api_key else 5
-    window = 30.0
+    max_requests = NVD_MAX_REQUESTS_WITH_KEY if has_api_key else NVD_MAX_REQUESTS_NO_KEY
+    window = NVD_RATE_WINDOW_SECONDS
     now = time.time()
     _request_timestamps[:] = [t for t in _request_timestamps if now - t < window]
     if len(_request_timestamps) >= max_requests:
@@ -66,7 +73,7 @@ def _nvd_get(params: dict, api_key: str | None = None) -> dict:
             delay = 2 * (2 ** (attempt - 1))  # 2s, 4s
             time.sleep(delay)
         try:
-            resp = requests.get(NVD_BASE_URL, params=params, headers=headers, timeout=30)
+            resp = requests.get(NVD_BASE_URL, params=params, headers=headers, timeout=NVD_REQUEST_TIMEOUT)
             resp.raise_for_status()
             return resp.json()
         except requests.RequestException as e:

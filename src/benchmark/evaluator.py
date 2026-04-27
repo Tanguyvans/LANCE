@@ -9,12 +9,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from datetime import date
 
 import yaml
 
 from src.agent.vuln_taxonomy import canonicalize, NOISE_TYPES
+
+
+# ── CVE year sanity ─────────────────────────────────────────────────────────────
+
+_CVE_YEAR_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+
+
+def _cve_is_suspicious(cve: str) -> bool:
+    """Return True if the CVE ID has a year in the future."""
+    if not _CVE_YEAR_RE.match(cve):
+        return False
+    year_str = cve.split("-")[1]
+    try:
+        year = int(year_str)
+        return year > date.today().year
+    except ValueError:
+        return False
+
+
+def _sanitize_cve_ids(cve_ids: list) -> list:
+    """Remove CVEs with future years (hallucinated or wrong)."""
+    return [c for c in cve_ids if not _cve_is_suspicious(c)]
 
 
 # ── Severity normalisation ────────────────────────────────────────────────────
@@ -33,7 +57,7 @@ CATEGORY_TO_TYPE = {
         "cleartext", "insecure_default", "telnet", "ftp_anonymous",
         "open_port", "service_exposure", "coap_no_dtls", "snmp_default",
         "redis_no_auth", "nodered_no_auth", "world_readable",
-        "directory_listing", "insecure_update",
+        "directory_listing", "insecure_update", "coap_no_auth",
     },
     "cve":                 {
         "known_cve", "terrapin", "weak_cipher", "outdated_software",
@@ -55,7 +79,7 @@ CATEGORY_TO_TYPE = {
         "no_auth", "missing_header", "no_auth_required", "unauthenticated_access",
         "missing_authentication", "insecure_access", "open_access",
         "unauthenticated", "auth_bypass", "redis_no_auth", "coap_no_auth",
-        "modbus_no_auth", "nodered_no_auth", "api_no_auth",
+        "modbus_no_auth", "nodered_no_auth", "api_no_auth", "coap_no_dtls",
     },
     "code_injection":      {
         "rce", "code_injection", "upload_bypass", "no_auth",
@@ -220,6 +244,12 @@ def _infer_type_from_title(title: str) -> str | None:
         ("telnet", "insecure_protocol"),
         ("ftp anonymous", "insecure_protocol"),
         ("ftp anonyme", "insecure_protocol"),
+        # ── CoAP (EN + FR) ───────────────────────────────────────────────────
+        ("coap", "coap_no_dtls"),
+        ("dtls", "coap_no_dtls"),
+        ("actionneur", "coap_no_auth"),
+        ("actuator", "coap_no_auth"),
+        ("valve", "coap_no_auth"),
         # ── OTA / firmware update (EN + FR) — before no_auth to avoid collision
         ("ota sans signature", "insecure_update"),
         ("firmware ota sans", "insecure_update"),
@@ -417,7 +447,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                 "details": t.get("description") or t.get("details", ""),
                 "evidence": t.get("evidence", ""),
                 "evidence_level": t.get("evidence_level", 0),
-                "cve_ids": t.get("cve_ids", []),
+                "cve_ids": _sanitize_cve_ids(t.get("cve_ids", [])),
             })
         if findings:
             return findings
@@ -425,7 +455,14 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
 
     if vuln_file.exists():
         vulns = json.loads(vuln_file.read_text()).get("vulnerabilities", [])
-        return [v for v in vulns if v.get("type", "") not in NOISE_TYPES]
+        sanitized = []
+        for v in vulns:
+            if v.get("type", "") in NOISE_TYPES:
+                continue
+            v = dict(v)
+            v["cve_ids"] = _sanitize_cve_ids(v.get("cve_ids", []))
+            sanitized.append(v)
+        return sanitized
 
     raise FileNotFoundError(
         f"Neither 04_exploitation.json nor 03_vuln_analysis.json found in {run_dir}"
@@ -473,6 +510,10 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     def _category_specificity(gt_vuln: dict) -> int:
         category = gt_vuln.get("category", "")
         compatible = CATEGORY_TO_TYPE.get(category, set())
+        # Fallback: check title-inferred type size (more specific titles first)
+        inferred = _infer_type_from_title(gt_vuln.get("title", ""))
+        if inferred and inferred not in compatible:
+            return 0  # title-inferred types are highest priority, sort first
         return len(compatible) if compatible else 999
 
     sorted_gt = sorted(enumerate(gt_vulns), key=lambda pair: _category_specificity(pair[1]))

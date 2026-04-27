@@ -14,7 +14,7 @@ CANONICAL_TYPES: frozenset[str] = frozenset({
     "terrapin", "version_leak", "known_cve", "directory_listing",
     "data_exposure", "insecure_protocol", "default_credentials",
     "network_exposure", "insecure_update", "code_injection",
-    "misconfiguration",
+    "misconfiguration", "privilege_escalation",
 })
 
 
@@ -128,6 +128,7 @@ EXPLOIT_CATEGORY_MAP: dict[str, str] = {
     "insecure_protocol":   "data_access",
     "network_exposure":    "data_access",
     "misconfiguration":    "data_access",
+    "privilege_escalation":"injection",
 }
 
 
