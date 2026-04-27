@@ -38,11 +38,11 @@ Based on the device role, focus your analysis on these specific findings:
 
 - **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH.
 - **nvr_server**: Test ubnt:ubnt credentials → default_credentials HIGH. SSH port open → always add default_credentials finding.
-- **nodered_server**: Port 1880 accessible → no_auth CRITICAL (full flow editor exposed = RCE via exec nodes). Exec nodes accessible → code_injection CRITICAL only if POST /api/exec confirmed.
+- **nodered_server**: Port 1880 accessible → ALWAYS report TWO findings: (1) no_auth CRITICAL — full flow editor exposed; (2) code_injection CRITICAL — exec nodes accessible = RCE via POST /api/exec. Do NOT wait for HTTP confirmation — port 1880 open on nodered_server means both vulns are present. If /api/exec is confirmed in scan evidence, mark both as confirmed.
 - **camera_server**: HTTP admin accessible without auth → no_auth HIGH. Focus on /admin and /snapshot paths.
 - **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.
 - **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
-- **snmp_server**: Community 'public' accepted → default_credentials HIGH. MIB walk returns data → info_disclosure LOW bonus.
+- **snmp_server**: Community 'public' accepted → default_credentials HIGH. ALWAYS also add info_disclosure LOW — SNMP accessible without auth exposes sysLocation, sysContact, sysDescr by construction (no MIB walk evidence required).
 - **coap_server**: Port 5683/udp accessible without DTLS → no_auth MEDIUM.
 - **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.
 - **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.

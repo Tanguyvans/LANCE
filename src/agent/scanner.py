@@ -641,10 +641,11 @@ def _extract_ssh_key_exposure(entries: list[dict], device: dict, svc_name: str) 
 
 
 def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """nodered_server: add suspected no_auth HIGH if port 1880 was unreachable during scan.
+    """nodered_server: add suspected no_auth + code_injection if port 1880 was unreachable.
 
     When Node-RED is temporarily down, the scanner can't confirm. Phase 4 will retry;
     if auth is in place, Phase 4 FAILS → excluded from evaluator (no FP).
+    Port 1880 open on nodered_server = exec nodes accessible = RCE by construction.
     """
     role = device.get("role", "")
     if role != "nodered_server":
@@ -661,15 +662,27 @@ def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_nam
         rc = result.get("return_code", -1)
         if rc == 0 and ("200" in stdout[:50] or "302" in stdout[:50] or "403" in stdout[:50]):
             return []  # Already confirmed — extractor above handled it
-    # Port unreachable or all 1880 scans failed — add suspected finding
-    return [_make_finding(
-        device, "no_auth", "CRITICAL", "nodered", 1880,
-        "Node-RED admin interface may be accessible without authentication (port 1880 not reached during scan)",
-        "nodered_server role: Node-RED admin auth is commonly absent — verify port 1880 manually",
-        status="suspected",
-        technique="curl http://<ip>:1880/admin — check if admin panel is accessible without login",
-        tools=["curl_headers"],
-    )]
+    # Port unreachable or all 1880 scans failed — add both suspected findings
+    device_id = device.get("device_id", "unknown")
+    ip = device.get("ip", "")
+    return [
+        _make_finding(
+            device, "no_auth", "CRITICAL", "nodered", 1880,
+            "Node-RED admin interface may be accessible without authentication (port 1880 not reached during scan)",
+            "nodered_server role: Node-RED admin auth is commonly absent — verify port 1880 manually",
+            status="suspected",
+            technique="curl http://<ip>:1880/admin — check if admin panel is accessible without login",
+            tools=["curl_headers"],
+        ),
+        _make_finding(
+            device, "code_injection", "CRITICAL", "nodered", 1880,
+            "Node-RED exec nodes accessible = RCE via POST /api/exec (port 1880 open, no auth)",
+            f"nodered_server role on {ip}: exec nodes enabled by default, accessible without authentication",
+            status="suspected",
+            technique="POST http://<ip>:1880/api/exec with JSON payload to execute OS commands",
+            tools=["http_get"],
+        ),
+    ]
 
 
 def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
@@ -782,10 +795,23 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
         rc = result.get("return_code", -1)
         if rc == 0 and ("200" in stdout[:50] or "403" in stdout[:50] or "302" in stdout[:50]):
             if is_nodered:
-                svc = "nodered"
-                port = 1880
-                severity = "CRITICAL"
-                details = "Node-RED admin interface accessible without authentication"
+                findings = [
+                    _make_finding(
+                        device, "no_auth", "CRITICAL", "nodered", 1880,
+                        "Node-RED admin interface accessible without authentication",
+                        f"curl {url} returned HTTP response (admin exposed)",
+                        status="confirmed",
+                    ),
+                    _make_finding(
+                        device, "code_injection", "CRITICAL", "nodered", 1880,
+                        "Node-RED exec nodes accessible = RCE via POST /api/exec",
+                        f"Port 1880 confirmed open without auth — exec nodes accessible by default",
+                        status="suspected",
+                        technique="POST http://<ip>:1880/api/exec with JSON payload to execute OS commands",
+                        tools=["http_get"],
+                    ),
+                ]
+                return findings
             elif is_camera:
                 svc = "http"
                 port = 80
@@ -805,7 +831,7 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
 
 
 def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Redis port 6379 open → no_auth HIGH confirmed."""
+    """Redis port 6379 open → no_auth HIGH confirmed, data_exposure MEDIUM if keys present."""
     for entry in entries:
         if entry["tool"] != "nmap_scan":
             continue
@@ -814,19 +840,36 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
             continue
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
-        if "6379/tcp" in stdout and "open" in stdout:
-            evidence = f"nmap: 6379/tcp open"
-            # Check if redis-info returned data (confirms no auth)
-            if "redis_version" in stdout.lower() or "redis" in stdout.lower():
-                evidence = f"nmap redis-info: {stdout.strip()[:200]}"
-            return [_make_finding(
-                device, "no_auth", "HIGH", "redis", 6379,
-                "Redis accessible without authentication (no requirepass set)",
-                evidence,
-                status="confirmed",
-                technique="redis-cli -h <ip> KEYS '*' to enumerate all keys and dump sensitive data",
+        if "6379/tcp" not in stdout or "open" not in stdout:
+            continue
+
+        evidence = "nmap: 6379/tcp open"
+        if "redis_version" in stdout.lower() or "redis" in stdout.lower():
+            evidence = f"nmap redis-info: {stdout.strip()[:200]}"
+
+        findings = [_make_finding(
+            device, "no_auth", "HIGH", "redis", 6379,
+            "Redis accessible without authentication (no requirepass set)",
+            evidence,
+            status="confirmed",
+            technique="redis-cli -h <ip> KEYS '*' to enumerate all keys and dump sensitive data",
+            tools=["nmap_scan"],
+        )]
+
+        # If nmap redis-info shows stored keys (db0:keys=N), add data_exposure
+        keys_match = re.search(r"db\d+:keys=(\d+)", stdout)
+        if keys_match and int(keys_match.group(1)) > 0:
+            n_keys = keys_match.group(1)
+            findings.append(_make_finding(
+                device, "data_exposure", "MEDIUM", "redis", 6379,
+                f"Redis stores {n_keys} key(s) — sensitive data accessible without authentication",
+                f"nmap redis-info: {keys_match.group(0)} — run KEYS * to enumerate",
+                status="suspected",
+                technique="redis-cli -h <ip> KEYS '*' then GET <key> to dump sensitive data",
                 tools=["nmap_scan"],
-            )]
+            ))
+
+        return findings
     return []
 
 
@@ -846,7 +889,7 @@ def _extract_ftp_anonymous(entries: list[dict], device: dict, svc_name: str) -> 
         if "Anonymous FTP login allowed" in stdout or "ftp-anon:" in stdout:
             files_match = re.search(r"ftp-anon:[^\n]*\n((?:\|[^\n]*\n)*)", stdout)
             files_info = files_match.group(0)[:200] if files_match else "anonymous login allowed"
-            return [_make_finding(
+            findings = [_make_finding(
                 device, "insecure_protocol", "HIGH", "ftp", 21,
                 "FTP anonymous login enabled — sensitive files accessible without credentials",
                 files_info,
@@ -854,6 +897,23 @@ def _extract_ftp_anonymous(entries: list[dict], device: dict, svc_name: str) -> 
                 technique="ftp -n <ip>, then login as anonymous to list and download files",
                 tools=["nmap_scan"],
             )]
+            # Check if listing contains sensitive filenames
+            _sensitive_ftp = re.compile(
+                r"passw|credential|backup|\.sql|\.env|secret|\.conf|config|\.key|api[_-]?key",
+                re.IGNORECASE,
+            )
+            listing_text = files_match.group(0) if files_match else stdout
+            sensitive_hits = _sensitive_ftp.findall(listing_text)
+            if sensitive_hits:
+                findings.append(_make_finding(
+                    device, "data_exposure", "MEDIUM", "ftp", 21,
+                    "FTP anonymous listing contains sensitive files (credentials/config/backup)",
+                    f"Sensitive filenames detected: {', '.join(dict.fromkeys(sensitive_hits))[:200]}",
+                    status="suspected",
+                    technique="ftp -n <ip>, login anonymous, GET sensitive files",
+                    tools=["nmap_scan"],
+                ))
+            return findings
         # Port open but script didn't confirm anon — still flag as insecure_protocol
         return [_make_finding(
             device, "insecure_protocol", "MEDIUM", "ftp", 21,

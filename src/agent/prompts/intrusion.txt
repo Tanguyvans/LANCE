@@ -85,9 +85,14 @@ ip route; cat /etc/hosts; arp -n 2>/dev/null
 
 # Running services
 ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null
+
+# Privilege escalation — SUID binaries and writable cron
+find / -perm -4000 -type f 2>/dev/null | grep -v '/proc\|/sys' | head -20
+ls -la /etc/cron* /var/spool/cron 2>/dev/null; find /etc/cron.d /etc/cron.daily /etc/cron.weekly -writable 2>/dev/null | head -10
 ```
 
 Extract EVERY credential found → add to `credential_pool`.
+If SUID binaries outside /bin/su, /usr/bin/passwd, /usr/bin/sudo are found, document in `data_exfiltrated` as potential privilege escalation vector.
 Note every new IP discovered → add to `target_queue` if not already there.
 
 ---

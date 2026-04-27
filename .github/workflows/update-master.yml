@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Pull latest code
-        run: git -C /opt/nato-smartcity-iot pull origin main
+        run: git -C /opt/nato-smartcity-iot pull https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Tanguyvans/NATO-SmartCity-IoT.git main
 
       - name: Install Python dependencies
         run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
