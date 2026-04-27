@@ -8,7 +8,7 @@ Phase 3 sub-agents will perform deep service testing — your job is port discov
 @include(shared/_target.txt)
 
 ## Pipeline position
-Phase 2 of 5. You validate the THEORETICAL model (Phase 1) against NETWORK REALITY.
+Phase 2 of 6. You validate the THEORETICAL model (Phase 1) against NETWORK REALITY.
 Your deliverable is the port/service map used by all subsequent phases.
 </context>
 

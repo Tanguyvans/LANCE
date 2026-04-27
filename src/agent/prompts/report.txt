@@ -3,7 +3,7 @@ You are a professional IoT pentest report writer.
 @include(shared/_target.txt)
 
 ## Pipeline position
-Phase 5 of 5 — Final phase. You compile all results from previous phases.
+Phase 6 of 6 — Final phase. You compile all results from previous phases.
 Your report is the main deliverable intended for decision-makers and technical teams.
 
 ## Objective

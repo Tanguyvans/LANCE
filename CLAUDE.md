@@ -34,6 +34,7 @@ python3 -m src.agent --provider openrouter --model google/gemini-2.5-flash-previ
 python3 -m src.agent --dry-run          # validate without calling LLM
 python3 -m src.agent --phases 1 3 5     # run specific phases only
 python3 -m src.agent --verbose           # detailed output
+python3 -m src.agent --batch "1,2,3"    # run multiple scenarios sequentially, aggregate metrics
 ```
 
 ## Architecture
@@ -54,14 +55,14 @@ python3 -m src.agent --verbose           # detailed output
 - `src/risk_cli.py` — CLI wrapper for risk scoring analysis.
 - `src/attack_path.py` — Dijkstra-based attack path analysis. Weights edges by CVSS exploitability and protocol factors. Identifies pivots (high betweenness), choke points, multi-hop chains.
 
-### LLM Agent Pipeline (Phase 4–5)
+### LLM Agent Pipeline (Phase 4–6)
 
 - `src/agent/__main__.py` — CLI entry point. Accepts `--provider`, `--model`, `--dry-run`, `--phases`, `--verbose`.
 - `src/agent/provider.py` — LLM provider abstraction. Translates tool schemas between Anthropic (native `tool_use`) and OpenAI-compatible APIs (function calling). Supports multi-turn agentic loops. Providers: Anthropic, OpenRouter, MiniMax, GLM, Qwen.
-- `src/agent/registry.py` — Declarative agent config. 5 agents across 5 phases, each with name, prompt, tool groups, prerequisites, and validators.
-- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically. Saves `cost_summary.json` at end of run. Phase 3 aggregation (`_aggregate_device_vulns`) applies deterministic filters in this order: (1) canonicalize types via `vuln_taxonomy.canonicalize`, (2) drop `NOISE_TYPES` and `severity=INFO` findings, (3) severity-aware dedup (keeps the LOWER severity on `(ip, type, port)` collisions to avoid inflating match penalties). Phase 4 aggregation (`_aggregate_exploit_results`) merges per-vuln exploit JSON with Phase 3 via `_make_test_entry` and `_exploit_relpath` helpers.
+- `src/agent/registry.py` — Declarative agent config. 6 agents across phases 1–6, each with name, prompt, tool groups, prerequisites, and validators.
+- `src/agent/pipeline.py` — Pipeline orchestrator. Executes agents in phase sequence, resolves tool groups (graph/recon/deliverable/skill/intrusion), passes deliverables between phases, tracks cost. When a scenario is active, loads scenario topology instead of physical lab. Fallback: if the LLM never calls `save_deliverable`, the last text output is saved automatically. Saves `cost_summary.json` at end of run. Phase 3 aggregation (`_aggregate_device_vulns`) applies deterministic filters in this order: (1) canonicalize types via `vuln_taxonomy.canonicalize`, (2) drop `NOISE_TYPES` and `severity=INFO` findings, (3) severity-aware dedup (keeps the LOWER severity on `(ip, type, port)` collisions to avoid inflating match penalties). Phase 4 aggregation (`_aggregate_exploit_results`) merges per-vuln exploit JSON with Phase 3 via `_make_test_entry` and `_exploit_relpath` helpers. Phase 4 uses `EXPLOIT_INSTRUCTIONS` (credentials / data_access / injection categories) routed via `exploit_category()` from vuln_taxonomy. Phase 5 (`intrusion`) and Phase 6 (`report`) pre-generate context files before their agents run: `_generate_intrusion_context()` → `05_intrusion_context.json`, `_generate_phase6_context()` → `06_phase6_context.json` + `_pregenerate_report_sections()` → `06_report_prefill.md`.
 - `src/agent/vuln_taxonomy.py` — Single source of truth for vuln-type taxonomy, shared by pipeline and evaluator. Exports `CANONICAL_TYPES`, `CONFIG_ONLY_TYPES`, `NOISE_TYPES`, `EXPLOIT_CATEGORY_MAP`, `VULN_TYPE_ALIASES`, and the helpers `canonicalize()`, `is_config_only()`, `is_noise()`, `exploit_category()`. Any new vuln type or synonym goes here, not scattered across modules.
-- `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_findings}`).
+- `src/agent/prompt_manager.py` — Loads prompt templates from `prompts/*.txt` with variable substitution (`{lab_context}`, `{previous_deliverables}`, etc.).
 - `src/agent/cost_tracker.py` — Token/cost tracking per phase. Pricing tables for Anthropic, MiniMax, GLM, Qwen, Gemini, DeepSeek. `summary()` computes all metrics under a single lock (avoid deadlock on nested lock acquisition).
 
 ### FastAPI Backend & Dashboard
@@ -74,6 +75,9 @@ python3 -m src.agent --verbose           # detailed output
 - `src/static/style.css` — Dashboard styles.
 - `src/static_docker/index.html` — Simplified end-user dashboard (no Benchmark tab, no scenario selector, no Teardown). Has a "Réseau cible (CIDR)" input field.
 - `src/static_docker/app.js` — Simplified JS for end-user Docker image. Starts with an empty graph (`?empty=true`), reads `target_network` from the CIDR input and passes it to the pipeline start request. Nodes are added live as nmap discovers hosts.
+- `src/static_v2/index.html` — Internal real-time monitoring dashboard (dark cyberpunk aesthetic, Cytoscape graph with layered rendering, intrusion hop tracking, batch runs, scenario selector). Served at `/v2`. No benchmark evaluation tab.
+- `src/static_v2/app.js` — Monitor JS: SSE pipeline stream, phase progress bar, layer toggles, device detail right panel, event log.
+- `src/static_v2/style.css` — Glassmorphism dark theme with glowing severity nodes.
 
 ### Benchmark Evaluation
 
@@ -86,7 +90,8 @@ python3 -m src.agent --verbose           # detailed output
 - `src/agent/tools/graph_tools.py` — Exposes Phase 1–3 analysis to agents: `load_lab_context()`, `load_scenario_topology()`, `load_discovery_context()`, `get_attack_surface()`, `get_risk_scores()`, `get_device_info()`. Three modes: (1) physical lab (`192.168.88.x`), (2) benchmark scenario (`192.168.100.x`), (3) discovery mode (empty — agent uses nmap to discover the target network, all graph tool functions return "run nmap first" guidance).
 - `src/agent/tools/recon_tools.py` — YAML-based network recon tools (`_run()` subprocess runner, `nvd_lookup()` Python handler). `RECON_TOOLS` is auto-generated from YAML definitions at import time.
 - `src/agent/tools/tool_loader.py` — YAML-to-tool engine. Loads declarative tool definitions from `definitions/*.yaml`, builds JSON Schema and subprocess functions. Supports three tool types: subprocess (auto-generated CLI), handler: python, and type: hardware (physical attack tools with protocol-specific commands).
-- `src/agent/tools/definitions/` — Declarative YAML tool definitions. Software tools: `nmap.yaml`, `ssh_audit.yaml`, `curl_headers.yaml`, `mqtt_listen.yaml`, `nvd_lookup.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
+- `src/agent/tools/definitions/` — 21 declarative YAML tool definitions. Key tools: `nmap.yaml`, `nmap_discovery.yaml` (ping scan), `ssh_audit.yaml`, `curl_headers.yaml`, `http_get.yaml`, `mqtt_listen.yaml`, `ssh_login.yaml`, `ssh_exec.yaml`, `try_credential.yaml`, `ftp_list.yaml`, `mysql_query.yaml`, `redis_cmd.yaml`, `telnet_connect.yaml`, `nvd_lookup.yaml`, `arp_scan.yaml`, `traceroute.yaml`. Hardware tools: `hackrf.yaml` (SDR 1 MHz–6 GHz), `flipper_zero.yaml` (sub-GHz/RFID/NFC/IR/GPIO), `proxmark3.yaml` (RFID/NFC badge cracking), `exploit_iot_kit.yaml` (UART/JTAG/SPI/I2C/glitching). Hardware tools return protocol-specific command suggestions for the operator.
+- `src/agent/scanner.py` — Phase 3a deterministic scanner. Runs all recon tools on every device in parallel, saves raw results to `03_scans/{device_id}.json`, auto-extracts ~22 types of trivial findings, writes per-device fallback JSON (LLM overwrites on success). Feeds `{{scan_results}}` and `{{trivial_findings}}` into `analyze_device.txt` prompts.
 - `src/agent/tools/skill_tools.py` — IoT security skill tools: `list_skills()`, `load_skill()`, `search_knowledge()` (ChromaDB semantic search), `cve_search()` (cache-then-query NVD).
 - `src/agent/tools/deliverable.py` — File I/O: `save_deliverable()` (JSON/Markdown), `read_deliverable()`, `list_deliverables()`, and `aggregate_device_results()` for parallel merging.
 - `src/agent/validators/__init__.py` — Output validators: `markdown_with_sections()`, `json_valid()`, `file_exists()`.
@@ -95,10 +100,13 @@ python3 -m src.agent --verbose           # detailed output
 
 - `src/agent/prompts/graph_analysis.txt` — Phase 1: Topology analysis
 - `src/agent/prompts/recon.txt` — Phase 2: Network reconnaissance
-- `src/agent/prompts/vuln_analysis.txt` — Phase 3: Vulnerability analysis
-- `src/agent/prompts/vuln_device.txt` — Per-device vulnerability analysis
+- `src/agent/prompts/vuln_analysis.txt` — Phase 3: Aggregation (reads per-device results)
+- `src/agent/prompts/analyze_device.txt` — Phase 3b: Per-device vulnerability analysis (scanner results as input)
+- `src/agent/prompts/exploit_device_vuln.txt` — Phase 4: Per-vuln exploit micro-agent template
 - `src/agent/prompts/exploitation.txt` — Phase 4: Exploitation strategies
-- `src/agent/prompts/report.txt` — Phase 5: Final report generation
+- `src/agent/prompts/intrusion.txt` — Phase 5: Full infiltration campaign (credential spraying, lateral movement)
+- `src/agent/prompts/report.txt` — Phase 6: Final report generation (reads `06_phase6_context.json` as primary input)
+- `src/agent/prompts/vuln_device.txt` — [DEPRECATED] Retired; replaced by `analyze_device.txt`
 - `src/agent/prompts/shared/_tools.txt`, `_target.txt`, `_rules.txt` — Shared context
 
 ### Knowledge Store & Skills
@@ -180,30 +188,29 @@ voyageai>=0.3.0        # Voyage AI embeddings (voyage-3.5-lite)
 - Pivot points identified (Netgear betweenness 0.72, WisGate 0.48)
 
 ### Phase 4 — LLM agent pentester (DONE)
-- Multi-phase pipeline: graph analysis → recon → vuln analysis → exploitation → report
+- Multi-phase pipeline: graph analysis → recon → vuln analysis → exploitation → intrusion → report
+- Per-vuln micro-agents in Phase 4 via `EXPLOIT_INSTRUCTIONS` (credentials / data_access / injection categories)
 - Multi-provider support: Anthropic, OpenRouter, MiniMax, GLM, Qwen
-- Tool-calling architecture with graph, recon, and deliverable tool groups
+- Phase 3a deterministic scanner (`src/agent/scanner.py`) runs all recon tools before LLM device agents
+- Phase 5 intrusion: credential spraying, lateral movement, crown jewel access (`05_intrusion.json`)
+- Phase 6 report: reads `06_phase6_context.json` as primary input, auto-fills Sections 5/6 tables from `06_report_prefill.md`
 - Cost tracking per phase with per-model pricing
 - Dry-run mode for validation without API calls
+- `--batch "1,2,3"` / `--batch all` — run multiple scenarios sequentially, aggregate metrics into `batch_summary.json`
 
 ### Phase 5 — Benchmark LLM sur scénarios Proxmox ✅
 - VM maître (LXC 200) sur Proxmox (`10.0.0.110`) — orchestre le pipeline
-- 7 scénarios Ansible déployés sur `192.168.100.0/24` (vmbr1) avec vulnérabilités injectées
-- Dashboard FastAPI + SPA (HTML/JS/CSS) accessible via Tailscale `nato-master.tail6b8e31.ts.net:8501`
-- CI/CD : self-hosted GitHub Actions runner sur la VM maître (git pull + restart `nato-fastapi.service`)
-- Graph tools contextualisés : topologie scénario (`192.168.100.x`) vs lab physique (`192.168.88.x`)
-- Benchmark evaluator : Recall / Precision / F1 / Score pondéré par sévérité vs ground truth YAML
-- ssh-audit installé, Voyage AI (knowledge store ChromaDB) opérationnel
-- Secrets dans `benchmarks/ansible/group_vars/all/vault_master.yml` (Ansible Vault)
+- Scénarios déployés via Ansible sur `192.168.100.0/24` (vmbr1), vulnérabilités injectées via playbooks
+- Dashboard FastAPI accessible via Tailscale; CI/CD self-hosted runner sur la VM maître
+- Secrets injectés via Ansible Vault (`group_vars/all/vault_master.yml`)
 
-### Phase 6 — Image Docker end-user ✅
-- Image multi-arch (amd64 + arm64) : `ghcr.io/tanguyvans/nato-smartcity-iot:latest`
-- CI/CD GitHub Actions (`.github/workflows/docker.yml`) : build automatique sur push main + tags `v*`
-- `Dockerfile` — multi-stage build (Python 3.12-slim, nmap, mosquitto-clients, openssh-client)
-- `docker-compose.yml` — volumes `./data` (knowledge store) et `./output` (résultats pipeline)
+### Infrastructure & Deployment
+
+- `benchmarks/ansible/` — Playbooks pour déployer et injecter des vulnérabilités dans les VMs Proxmox (`192.168.100.0/24`)
+- `benchmarks/packs/definitions/f*.yaml` — Paquets de vulnérabilités organisés par catégorie (weak_auth, misconfig, data_exposure, injection, crypto, etc.)
+- `benchmarks/topologies/*.yaml` — topologies scénarios (flat, mesh, gateway, ics_scada, smart_city_*, etc.)
+- `Dockerfile` — image multi-stage Python 3.12-slim avec nmap, mosquitto-clients, openssh-client
+- `docker-compose.yml` — volumes `./data` (ChromaDB knowledge store) et `./output` (résultats pipeline)
 - `docker/entrypoint.sh` — auto-ingestion des skills ChromaDB au premier démarrage (flag `.initialized`)
 - `.env.example` — template de configuration (OPENROUTER_API_KEY, VOYAGE_API_KEY)
-- Deux frontends séparés : `src/static/` (benchmark complet) et `src/static_docker/` (end-user simplifié)
-- Mode découverte : graphe vide au démarrage, nœuds ajoutés dynamiquement dans Cytoscape au fur et à mesure que nmap découvre des hôtes sur le réseau cible
-- `target_network` CIDR saisi dans le dashboard → API → Pipeline → `load_discovery_context()` → tools nmap
-- `GET /api/topology?empty=true` retourne un graphe vide (utilisé par le frontend Docker)
+- `src/static_v2/` — tableau de bord interne (monitoring temps-réel, `/v2`), distinct de `src/static/` (benchmark) et `src/static_docker/` (end-user)
