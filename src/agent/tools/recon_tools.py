@@ -245,7 +245,41 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
         return json.dumps({"success": success, "service": "mqtt", "port": p,
                            "stdout": result["stdout"][:200]})
 
-    return json.dumps({"success": False, "error": f"Unsupported service: {service}. Use ssh|http|ftp|mqtt"})
+    if service == "telnet":
+        p = port or 23
+        # Use netcat to send credentials and check response
+        cmd = ["bash", "-c",
+               f"(echo '{user}'; sleep 0.5; echo '{password}'; sleep 1; echo 'id') | "
+               f"nc -w 5 {ip} {p} 2>/dev/null"]
+        result = _run(cmd, timeout=12)
+        stdout = result["stdout"]
+        success = "uid=" in stdout or "$" in stdout or "#" in stdout
+        return json.dumps({"success": success, "service": "telnet", "port": p,
+                           "stdout": stdout[:300]})
+
+    if service == "redis":
+        p = port or 6379
+        # Try AUTH then PING
+        cmd = ["bash", "-c",
+               f"(echo 'AUTH {password}'; echo 'PING'; echo 'KEYS *') | "
+               f"nc -w 5 {ip} {p} 2>/dev/null"]
+        result = _run(cmd, timeout=10)
+        stdout = result["stdout"]
+        success = "+OK" in stdout or "+PONG" in stdout
+        return json.dumps({"success": success, "service": "redis", "port": p,
+                           "stdout": stdout[:300]})
+
+    if service == "mysql":
+        p = port or 3306
+        cmd = ["mysql", f"-h{ip}", f"-P{p}", f"-u{user}",
+               f"-p{password}", "--connect-timeout=5",
+               "-e", "SELECT user,host FROM mysql.user LIMIT 5;", "2>/dev/null"]
+        result = _run(cmd, timeout=12)
+        success = result["return_code"] == 0 and "ERROR" not in result["stderr"]
+        return json.dumps({"success": success, "service": "mysql", "port": p,
+                           "stdout": result["stdout"][:300], "stderr": result["stderr"][:100]})
+
+    return json.dumps({"success": False, "error": f"Unsupported service: {service}. Use ssh|http|ftp|mqtt|telnet|redis|mysql"})
 
 
 def nvd_lookup(query: str, top_k: int = 10) -> str:

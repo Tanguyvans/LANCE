@@ -834,12 +834,21 @@ async function loadTopology(scenarioId = null) {
             'target-arrow-shape': 'triangle',
             'line-style': 'dashed',
             'width': 3,
-            'label': 'pwned',
-            'font-size': 10,
+            'label': 'data(hop_label)',
+            'font-size': 11,
+            'font-weight': 'bold',
             'color': '#ff4444',
             'text-background-color': _cssVar('--bg'),
-            'text-background-opacity': 0.8,
+            'text-background-opacity': 0.9,
             'z-index': 200,
+          },
+        },
+        {
+          selector: 'node[intrusion_role="entry"]',
+          style: {
+            'border-color': '#ffcc00',
+            'border-width': '4px',
+            'border-style': 'solid',
           },
         },
         {
@@ -942,24 +951,54 @@ function markNodeCompromised(ip) {
   });
 }
 
-function highlightAttackEdge(fromIp, toIp, fromId, toId) {
+function highlightAttackEdge(fromIp, toIp, fromId, toId, hopLabel) {
   if (!cy) return;
   const src = cy.nodes().filter(n => n.data('ip') === fromIp || n.id() === fromId).first();
   const dst = cy.nodes().filter(n => n.data('ip') === toIp || n.id() === toId).first();
   if (!src.length || !dst.length) return;
   const edgeId = `intrusion-${src.id()}-${dst.id()}`;
   if (!cy.getElementById(edgeId).length) {
-    cy.add({group:'edges', data:{id:edgeId, source:src.id(), target:dst.id(), type:'intrusion'}});
+    cy.add({group:'edges', data:{
+      id: edgeId, source: src.id(), target: dst.id(),
+      type: 'intrusion', hop_label: hopLabel || '',
+    }});
   }
+}
+
+function markNodeEntryPoint(ip, deviceId) {
+  if (!cy) return;
+  cy.nodes().forEach(n => {
+    if (n.data('ip') === ip || n.id() === deviceId) {
+      n.data('intrusion_role', 'entry');
+    }
+  });
 }
 
 async function loadIntrusionOverlay(runId) {
   const data = await fetchJSON(`/api/runs/${runId}/05_intrusion.json`);
-  if (!data || !data.content || !data.content.chains) return;
-  for (const chain of data.content.chains) {
-    for (const hop of chain.hops) {
+  if (!data || !data.content) return;
+  const content = data.content;
+
+  // Mark all compromised devices (including those not part of a chain)
+  if (content.compromised_devices) {
+    for (const dev of content.compromised_devices) {
+      markNodeCompromised(dev.device_ip);
+    }
+  }
+
+  if (!content.chains) return;
+  let globalHop = 0;
+  for (const chain of content.chains) {
+    for (let i = 0; i < chain.hops.length; i++) {
+      const hop = chain.hops[i];
+      globalHop++;
       markNodeCompromised(hop.device_ip);
-      if (hop.pivot_to) highlightAttackEdge(hop.device_ip, hop.pivot_to, hop.device_id, '');
+      // First hop of first chain = entry point → yellow border
+      if (globalHop === 1) markNodeEntryPoint(hop.device_ip, hop.device_id);
+      if (hop.pivot_to) {
+        const label = `hop ${hop.hop_index ?? globalHop}`;
+        highlightAttackEdge(hop.device_ip, hop.pivot_to, hop.device_id, '', label);
+      }
     }
   }
 }
@@ -1334,8 +1373,9 @@ function handleEvent(ev) {
   }
 
   else if (t === 'intrusion_hop') {
-    highlightAttackEdge(ev.from_ip, ev.to_ip, ev.from_id, ev.to_id);
+    highlightAttackEdge(ev.from_ip, ev.to_ip, ev.from_id, ev.to_id, `hop ${ev.hop_index || ''}`);
     markNodeCompromised(ev.to_ip);
+    if (ev.hop_index === 1) markNodeEntryPoint(ev.from_ip, ev.from_id);
     addLog({type:'warn', message:`Pivot [${ev.hop_index}] ${ev.from_id||ev.from_ip} → ${ev.to_id||ev.to_ip} (${ev.method||''})`});
   }
 
