@@ -184,34 +184,101 @@ def _match_by_cve(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
 
 
 def _infer_type_from_title(title: str) -> str | None:
-    """Extract an expected LLM type from the GT title keywords."""
+    """Extract an expected LLM type from the GT title keywords.
+
+    Order matters: more specific patterns first to avoid broad matches stealing narrow ones.
+    Supports both English and French GT titles.
+    """
     title_lower = title.lower()
-    # Order matters: check specific keywords first
     keyword_map = [
-        ("telnet", "insecure_protocol"),
-        ("ftp anonymous", "insecure_protocol"),
+        # ── Privilege escalation (EN + FR) ───────────────────────────────────
+        ("privilege escalation", "privilege_escalation"),
+        ("suid binary", "privilege_escalation"),
+        ("suid", "privilege_escalation"),
+        ("escalade de privilège", "privilege_escalation"),
+        ("escalade", "privilege_escalation"),
+        ("cron writable", "privilege_escalation"),
+        # ── CVE / known vulns ────────────────────────────────────────────────
+        ("terrapin", "terrapin"),
+        ("cve-", "known_cve"),
+        # ── Weak ciphers (EN + FR) ───────────────────────────────────────────
+        ("weak cipher", "weak_cipher"),
+        ("weak crypto", "weak_cipher"),
+        ("weak kex", "weak_cipher"),
+        ("ciphers faibles", "weak_cipher"),
+        ("algorithmes faibles", "weak_cipher"),
+        # ── Missing headers ──────────────────────────────────────────────────
+        ("missing header", "missing_header"),
+        ("security header", "missing_header"),
+        ("hsts", "missing_header"),
+        # ── Directory listing (EN + FR) ──────────────────────────────────────
         ("directory listing", "directory_listing"),
         ("autoindex", "directory_listing"),
+        ("directory listing activé", "directory_listing"),
+        ("listing activé", "directory_listing"),
+        # ── Insecure protocol: Telnet / FTP / cleartext (EN + FR) ────────────
+        ("telnet", "insecure_protocol"),
+        ("ftp anonymous", "insecure_protocol"),
+        ("ftp anonyme", "insecure_protocol"),
+        # ── OTA / firmware update (EN + FR) — before no_auth to avoid collision
+        ("ota sans signature", "insecure_update"),
+        ("firmware ota sans", "insecure_update"),
+        ("firmware sans signature", "insecure_update"),
+        ("mise à jour firmware", "insecure_update"),
+        ("update without signature", "insecure_update"),
+        ("insecure update", "insecure_update"),
+        # ── Code injection / RCE ─────────────────────────────────────────────
+        ("exec node", "code_injection"),
+        ("rce", "code_injection"),
+        ("command injection", "code_injection"),
+        ("ssrf", "auth_bypass"),
+        # ── Data exposure (EN + FR) ──────────────────────────────────────────
         ("server version", "info_disclosure"),
         ("banner disclosure", "info_disclosure"),
         ("$sys topic", "info_disclosure"),
         ("sys topic", "info_disclosure"),
-        ("websocket", "no_auth"),
+        ("données sensibles", "data_exposure"),
+        ("fichiers sensibles", "data_exposure"),
+        ("credentials en clair", "data_exposure"),
+        ("credentials réseau", "data_exposure"),
+        ("clé privée", "data_exposure"),
+        ("backup", "data_exposure"),
+        ("fichier .env", "data_exposure"),
+        ("redis", "data_exposure"),
+        # ── Default credentials (EN + FR) ────────────────────────────────────
         ("default credential", "default_credentials"),
         ("default password", "default_credentials"),
         ("hardcoded password", "default_credentials"),
-        ("weak cipher", "weak_cipher"),
-        ("weak crypto", "weak_cipher"),
-        ("weak kex", "weak_cipher"),
-        ("terrapin", "terrapin"),
-        ("privilege escalation", "privilege_escalation"),
-        ("suid binary", "privilege_escalation"),
-        ("missing header", "missing_header"),
-        ("security header", "missing_header"),
-        ("hsts", "missing_header"),
-        ("directory traversal", "path_traversal"),
+        ("root sans mot de passe", "default_credentials"),
+        ("sans mot de passe", "default_credentials"),
+        ("mariadb root", "default_credentials"),
+        ("mysql root", "default_credentials"),
+        # ── No-auth patterns (EN + FR) — broad, must come after specifics ─────
+        ("websocket", "no_auth"),
         ("anonymous mqtt", "no_auth"),
         ("mqtt sans auth", "no_auth"),
+        ("mqtt anonymous", "no_auth"),
+        ("node-red", "no_auth"),
+        ("nodered", "no_auth"),
+        ("luci", "no_auth"),
+        ("web admin", "no_auth"),
+        ("admin interface", "no_auth"),
+        ("admin accessible", "no_auth"),
+        ("interface admin", "no_auth"),
+        ("interface web admin", "no_auth"),
+        ("http admin", "no_auth"),
+        ("admin sans auth", "no_auth"),
+        ("sans authentification", "no_auth"),
+        ("without authentication", "no_auth"),
+        ("sans auth", "no_auth"),
+        ("api rest", "no_auth"),
+        ("api sans", "no_auth"),
+        ("coap", "no_auth"),
+        ("bacnet", "no_auth"),
+        ("caméra ip sans", "no_auth"),
+        ("camera ip sans", "no_auth"),
+        ("flux caméra", "no_auth"),
+        ("directory traversal", "path_traversal"),
     ]
     for keyword, llm_type in keyword_map:
         if keyword in title_lower:
@@ -298,37 +365,64 @@ _SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED"})
 def _load_llm_findings(run_dir: Path) -> list[dict]:
     """Return LLM findings from a run dir.
 
-    Prefers `04_exploitation.json` (post-exploitation, drops Phase 4 FAILED/ERROR)
-    then falls back to `03_vuln_analysis.json` (detection only).
+    Prefers `04_exploitation.json` (post-exploitation), drops Phase 4 FAILED statuses,
+    but rescues Phase 3 CONFIRMED findings that were FAILed in Phase 4.
+    Falls back entirely to `03_vuln_analysis.json` when no Phase 4 file exists.
     Raises FileNotFoundError if neither exists.
     """
     exploit_file = run_dir / "04_exploitation.json"
+    vuln_file = run_dir / "03_vuln_analysis.json"
+
+    p3_by_id: dict[str, dict] = {}
+    if vuln_file.exists():
+        for v in json.loads(vuln_file.read_text()).get("vulnerabilities", []):
+            vid = v.get("id", "")
+            if vid:
+                p3_by_id[vid] = v
+
     if exploit_file.exists():
         raw = json.loads(exploit_file.read_text())
         # Accept both "tests" (current pipeline format) and "vulnerabilities"
         # (legacy MiniMax format where Phase 4 reused Phase 3 structure).
         test_list = raw.get("tests") or raw.get("vulnerabilities") or []
-        findings = [
-            {
+        findings = []
+        for t in test_list:
+            vuln_type = t.get("vuln_type") or t.get("type", "")
+            if vuln_type in NOISE_TYPES:
+                continue
+            status = t.get("status", "")
+            if status in _SKIPPED_PHASE4_STATUSES:
+                # Phase 3 CONFIRMED over Phase 4 FAILED: rescue the P3 finding.
+                vuln_id = t.get("vuln_id") or t.get("id", "")
+                p3 = p3_by_id.get(vuln_id)
+                if p3 and p3.get("exploitation_status") in ("confirmed", "suspected") and p3.get("type", "") not in NOISE_TYPES:
+                    findings.append({
+                        "id": p3.get("id", ""),
+                        "device_id": p3.get("device_id", ""),
+                        "device_ip": p3.get("device_ip", ""),
+                        "type": p3.get("type", ""),
+                        "severity": p3.get("severity", ""),
+                        "details": p3.get("details", ""),
+                        "evidence": p3.get("evidence", ""),
+                        "evidence_level": 1,
+                        "cve_ids": p3.get("cve_ids", []),
+                    })
+                continue
+            findings.append({
                 "id": t.get("vuln_id") or t.get("id", ""),
                 "device_id": t.get("device_id", ""),
                 "device_ip": t.get("device_ip", ""),
-                "type": t.get("vuln_type") or t.get("type", ""),
+                "type": vuln_type,
                 "severity": t.get("severity", ""),
                 "details": t.get("description") or t.get("details", ""),
                 "evidence": t.get("evidence", ""),
                 "evidence_level": t.get("evidence_level", 0),
                 "cve_ids": t.get("cve_ids", []),
-            }
-            for t in test_list
-            if t.get("status") not in _SKIPPED_PHASE4_STATUSES
-            and (t.get("vuln_type") or t.get("type", "")) not in NOISE_TYPES
-        ]
+            })
         if findings:
             return findings
         # else: fall through to 03_vuln_analysis.json fallback
 
-    vuln_file = run_dir / "03_vuln_analysis.json"
     if vuln_file.exists():
         vulns = json.loads(vuln_file.read_text()).get("vulnerabilities", [])
         return [v for v in vulns if v.get("type", "") not in NOISE_TYPES]

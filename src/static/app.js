@@ -1665,26 +1665,26 @@ async function viewRun(runId) {
   const reportFile = run.files.includes('06_report.md') ? '06_report.md'
                    : run.files.includes('05_report.md') ? '05_report.md' : null;
 
-  // Kick off all independent fetches in parallel while topology loads
-  const [, score, reportData] = await Promise.all([
-    (async () => {
-      resetNodeColors();
-      nodeVulns = {};
-      nodeHosts = {};
-      await loadTopology(scenarioId);
-    })(),
-    hasScore ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
-    reportFile ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
-  ]);
+  // Load topology first (fast), then fetch score + report in parallel
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  await loadTopology(scenarioId);
 
-  // Sync dropdown
+  // Sync dropdown after topology is loaded
   document.getElementById('sel-scenario').value = scenarioId || '';
 
-  // Show run view in detail panel
+  // Show run view in detail panel immediately after topology
   document.getElementById('detail-placeholder').hidden = true;
   document.getElementById('detail-content').hidden = false;
   document.getElementById('detail-node-view').hidden = true;
   document.getElementById('detail-run-view').hidden = false;
+
+  // Fetch score + report in parallel (both can be slow)
+  const [score, reportData] = await Promise.all([
+    hasScore ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
+    reportFile ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
+  ]);
 
   // Title
   const label = runId.replace(/_/g, ' ');

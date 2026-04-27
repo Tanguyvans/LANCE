@@ -390,8 +390,15 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
                 evidence_parts.append(f"{url}: ...{stdout[start:end].strip()}...")
 
     if exposed_urls:
+        # Static backup/config files served via HTTP → HIGH (download required, not live API)
+        # Live API endpoints exposing credentials → CRITICAL (direct access)
+        is_static_file = any(
+            any(kw in u.lower() for kw in ("/backup", "/dump", ".sql", ".env", "/config", "/logs", ".conf"))
+            for u in exposed_urls
+        )
+        severity = "HIGH" if is_static_file else "CRITICAL"
         findings.append(_make_finding(
-            device, "data_exposure", "CRITICAL", svc_name, 80,
+            device, "data_exposure", severity, svc_name, 80,
             f"Sensitive data exposed via HTTP at: {', '.join(exposed_urls)}",
             "\n".join(evidence_parts[:3])[:400],
             status="confirmed",
@@ -526,7 +533,7 @@ def _extract_telnet_open(entries: list[dict], device: dict, svc_name: str) -> li
 
 
 def _extract_ssh_weak_ciphers(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """[fail] lines in ssh_audit → weak_cipher MEDIUM confirmed."""
+    """[fail] lines in ssh_audit → weak_cipher LOW confirmed (no exploit, detection only)."""
     for entry in entries:
         if entry["tool"] != "ssh_audit":
             continue
@@ -535,7 +542,7 @@ def _extract_ssh_weak_ciphers(entries: list[dict], device: dict, svc_name: str) 
         fail_lines = [l.strip() for l in stdout.splitlines() if "[fail]" in l]
         if fail_lines:
             return [_make_finding(
-                device, "weak_cipher", "MEDIUM", "ssh", 22,
+                device, "weak_cipher", "LOW", "ssh", 22,
                 "SSH uses weak cryptographic algorithms",
                 "\n".join(fail_lines[:5]),
             )]

@@ -44,7 +44,7 @@ Based on the device role, focus your analysis on these specific findings:
 - **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
 - **snmp_server**: Community 'public' accepted → default_credentials HIGH. MIB walk returns data → info_disclosure LOW bonus.
 - **coap_server**: Port 5683/udp accessible without DTLS → no_auth MEDIUM.
-- **db_server (MySQL/MariaDB)**: Root without password → default_credentials HIGH (not CRITICAL — requires network access). Port 3306 open → add default_credentials finding. ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.
+- **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.
 - **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.
 - **modbus_server / iot_gateway**: Port 502/tcp open → no_auth CRITICAL (OT protocol with no auth by design).
 - **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.
@@ -56,13 +56,14 @@ Based on the device role, focus your analysis on these specific findings:
 
 | Finding | Severity |
 |---------|-------------|
-| SSH weak ciphers (no exploit) | MEDIUM |
+| SSH weak ciphers / weak algorithms (no exploit) | LOW |
+| SSH Terrapin (CVE-2023-48795) | HIGH |
 | SSH banner version leak | LOW |
 | Missing HTTP security headers | LOW |
 | SNMP community string | HIGH |
 | CoAP no DTLS | MEDIUM |
 | Redis no auth | HIGH |
-| MySQL/MariaDB root no password | HIGH |
+| MySQL/MariaDB root no password (network-accessible, port 3306 open) | CRITICAL |
 | Node-RED admin no auth | CRITICAL |
 | Camera admin no auth | HIGH |
 | FTP anonymous login | HIGH |
@@ -71,7 +72,10 @@ Based on the device role, focus your analysis on these specific findings:
 | File upload without validation | CRITICAL |
 | MQTT anonymous (IoT exposure) | HIGH |
 | Firmware OTA without signature | HIGH (not CRITICAL) |
-| Directory listing | MEDIUM |
+| OTA update endpoint accessible without auth/signature (active update mechanism) | MEDIUM |
+| Directory listing (static file index) | MEDIUM |
+| Backup/config file accessible via HTTP (static exposure) | HIGH |
+| API REST without auth exposing sensitive data (user creds, network config) | CRITICAL |
 | Router admin (LuCI) exposed without auth | CRITICAL |
 | Gateway/IoT-GW admin exposed without auth | HIGH |
 | API REST without auth (general /api/) | HIGH |

