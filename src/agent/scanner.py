@@ -99,6 +99,7 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
         ("nmap_scan", {"target": "{ip}", "ports": "23", "skip_discovery": True}),
     ],
     "nodered_server": [
+        ("nmap_scan", {"target": "{ip}", "ports": "1880", "skip_discovery": True}),
         ("curl_headers", {"url": "http://{ip}:1880/admin"}),
         ("curl_headers", {"url": "http://{ip}:1880/flows"}),
     ],
@@ -662,6 +663,16 @@ def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_nam
         rc = result.get("return_code", -1)
         if rc == 0 and ("200" in stdout[:50] or "302" in stdout[:50] or "403" in stdout[:50]):
             return []  # Already confirmed — extractor above handled it
+    # Check if nmap explicitly confirmed port 1880 as closed/filtered — skip if so
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        if "1880" not in entry.get("kwargs", {}).get("ports", ""):
+            continue
+        stdout = _parse_result(entry).get("stdout", "")
+        if "1880/tcp" in stdout and "open" not in stdout:
+            return []  # Port confirmed closed/filtered by nmap — not a real finding
+
     # Port unreachable or all 1880 scans failed — add both suspected findings
     device_id = device.get("device_id", "unknown")
     ip = device.get("ip", "")
@@ -856,18 +867,19 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
             tools=["nmap_scan"],
         )]
 
-        # If nmap redis-info shows stored keys (db0:keys=N), add data_exposure
+        # Any unauthenticated Redis is presumed to expose data — always add data_exposure.
+        # Phase 4 will run redis_cmd KEYS * + GET to confirm actual sensitive content.
+        # (nmap redis-info may not report db key counts for newer Redis versions.)
         keys_match = re.search(r"db\d+:keys=(\d+)", stdout)
-        if keys_match and int(keys_match.group(1)) > 0:
-            n_keys = keys_match.group(1)
-            findings.append(_make_finding(
-                device, "data_exposure", "MEDIUM", "redis", 6379,
-                f"Redis stores {n_keys} key(s) — sensitive data accessible without authentication",
-                f"nmap redis-info: {keys_match.group(0)} — run KEYS * to enumerate",
-                status="suspected",
-                technique="redis-cli -h <ip> KEYS '*' then GET <key> to dump sensitive data",
-                tools=["nmap_scan"],
-            ))
+        detail = f"Redis stores {keys_match.group(1)} key(s)" if keys_match else "Redis accessible without authentication"
+        findings.append(_make_finding(
+            device, "data_exposure", "MEDIUM", "redis", 6379,
+            f"{detail} — stored keys may contain sensitive data (credentials, tokens, configs)",
+            f"nmap redis-info: {stdout.strip()[:200]}" if "redis" in stdout.lower() else "nmap: 6379/tcp open",
+            status="suspected",
+            technique="redis-cli -h <ip> KEYS '*' then GET <key> to dump sensitive data",
+            tools=["nmap_scan"],
+        ))
 
         return findings
     return []

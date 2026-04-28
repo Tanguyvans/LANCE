@@ -417,9 +417,11 @@ class Pipeline:
             if agent_config.phase == 6:
                 try:
                     status = self._run_agent(agent_config, stream_callback)
+                    self._update_run_meta({"phase6_llm": "completed"})
                 except Exception as exc:
-                    log.warning("Phase 6 agent error (non-fatal): %s", exc)
+                    log.warning("Phase 6 agent error — using prefill fallback: %s", exc)
                     status = "error"
+                    self._update_run_meta({"phase6_llm": "fallback", "phase6_error": str(exc)})
                 finally:
                     self._merge_report_with_prefill()
             else:
@@ -1276,6 +1278,30 @@ class Pipeline:
         # Normalize non-standard vuln types to canonical names before dedup
         for v in all_vulns:
             v["type"] = canonicalize(v.get("type", ""))
+
+        # Normalize port to int so that port=22 and port="22" share the same dedup key
+        for v in all_vulns:
+            p = v.get("port")
+            if isinstance(p, str) and p.isdigit():
+                v["port"] = int(p)
+
+        # Remap device_id for "discovered-X-X-X-X" devices to their canonical s12 counterpart
+        # when both share the same IP — prevents duplicate findings with different device_ids.
+        try:
+            surface_raw = json.loads(get_attack_surface())
+            surface_nodes = surface_raw.get("nodes", []) if isinstance(surface_raw, dict) else []
+            ip_to_s12_id: dict[str, str] = {
+                d["ip"]: d["id"]
+                for d in surface_nodes
+                if d.get("id", "").startswith("s12-") and d.get("ip")
+            }
+            for v in all_vulns:
+                if v.get("device_id", "").startswith("discovered-"):
+                    canonical = ip_to_s12_id.get(v.get("device_ip", ""))
+                    if canonical:
+                        v["device_id"] = canonical
+        except Exception as e:
+            log.debug("device_id remap skipped: %s", e)
 
         # Drop noise findings: categorically-non-vuln types (e.g. "no_applicable_cve",
         # "cross_service_auth" — LLM over-reporting) and INFO severity (reserved for
@@ -2394,6 +2420,13 @@ class Pipeline:
         prefill_path = self.run_dir / "06_report_prefill.md"
         prefill_path.write_text(prefill, encoding="utf-8")
         print(f"  [prefill] 06_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
+
+    def _update_run_meta(self, updates: dict) -> None:
+        """Merge updates into run_meta.json for traceability (phase status, errors)."""
+        path = self.run_dir / "run_meta.json"
+        meta = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        meta.update(updates)
+        path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     def _merge_report_with_prefill(self) -> None:
         """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 06_report.md
