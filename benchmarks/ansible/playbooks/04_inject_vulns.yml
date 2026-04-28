@@ -29,7 +29,7 @@
     - name: Configurer le DNS dans tous les CTs du scénario
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
-        --nameserver {{ benchmark_dns }}
+        --nameserver {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_dns }}{% endif %}
       loop: "{{ scenarios[scenario_id].services }}"
       register: dns_set
       changed_when: dns_set.rc == 0
@@ -40,6 +40,110 @@
       register: add_tmp_ip
       failed_when: false
       changed_when: add_tmp_ip.rc == 0
+
+
+    # ════════════════════════════════════════════════════
+    # S13 ONLY — Configuration OpenWrt VLAN + apt proxy
+    # (doit tourner AVANT les installs apt pour que les
+    #  containers VLAN aient un gateway + proxy fonctionnel)
+    # ════════════════════════════════════════════════════
+
+    - name: "[S13] Écrire le script de configuration OpenWrt VLAN"
+      ansible.builtin.copy:
+        dest: /tmp/inject_openwrt_vlan.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -e
+
+          # ── Interfaces VLAN sur eth1 (trunk 802.1Q vmbr1) ──
+          uci batch << 'UCIEOF'
+          set network.vlan10=interface
+          set network.vlan10.ifname='eth1.10'
+          set network.vlan10.proto='static'
+          set network.vlan10.ipaddr='192.168.10.1'
+          set network.vlan10.netmask='255.255.255.0'
+          set network.vlan20=interface
+          set network.vlan20.ifname='eth1.20'
+          set network.vlan20.proto='static'
+          set network.vlan20.ipaddr='192.168.20.1'
+          set network.vlan20.netmask='255.255.255.0'
+          set network.vlan30=interface
+          set network.vlan30.ifname='eth1.30'
+          set network.vlan30.proto='static'
+          set network.vlan30.ipaddr='192.168.30.1'
+          set network.vlan30.netmask='255.255.255.0'
+          UCIEOF
+          uci commit network
+          /etc/init.d/network restart
+          sleep 8
+
+          # ── Détecter l'interface WAN (celle qui a la default route) ──
+          WAN_IF=$(ip route show default 2>/dev/null | awk '/default/{print $5}' | head -1)
+          [ -z "$WAN_IF" ] && WAN_IF="eth0"
+          echo "[S13] WAN_IF=${WAN_IF}"
+
+          # ── nftables fw4 : INSERT avant tout DROP existant ──
+          # INPUT : accepter les requetes vers les gateways VLAN
+          for IFACE in eth1.10 eth1.20 eth1.30; do
+            nft insert rule inet fw4 input  iifname "$IFACE" counter accept 2>/dev/null || true
+            # FORWARD VLAN<->WAN : pour apt-cacher-ng + pipeline
+            nft insert rule inet fw4 forward iifname "$IFACE" oifname "$WAN_IF" counter accept 2>/dev/null || true
+            nft insert rule inet fw4 forward iifname "$WAN_IF" oifname "$IFACE" counter accept 2>/dev/null || true
+          done
+
+          # ── MASQUERADE : containers VLAN -> WAN ──
+          # (NAT indispensable pour que le master reply via vmbr0)
+          for NET in 192.168.10.0/24 192.168.20.0/24 192.168.30.0/24; do
+            nft add rule inet fw4 srcnat ip saddr "$NET" masquerade 2>/dev/null || \
+            iptables -t nat -A POSTROUTING -s "$NET" -j MASQUERADE 2>/dev/null || true
+          done
+
+          # ── Filtrage inter-zone (vulnérabilités benchmark S13) ──
+          # Règles APPEND : elles s'appliquent APRÈS les INSERT VLAN<->WAN ci-dessus
+          # (le trafic intra-VLAN ne correspond pas aux règles iifname+oifname WAN)
+
+          # IT -> IoT : MQTT/1883 seulement
+          # TROU V17 : Redis 6379 sur OT non filtré (IT peut y accéder)
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
+
+          # IT -> OT : SSH/22 seulement
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
+
+          # IoT -> OT : DROP TCP (TROU V2 : UDP CoAP 5683 passe)
+          nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
+
+          # ── Vuln V3 : SSH routeur root:password ──
+          echo "root:password" | chpasswd
+
+          # ── Persister les règles nft ──
+          nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+          cat > /etc/rc.local << 'RCEOF'
+          #!/bin/sh
+          [ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null
+          exit 0
+          RCEOF
+          chmod +x /etc/rc.local
+
+          echo "[OK] S13 OpenWrt VLAN + firewall configuré"
+      when: scenario_id == '13'
+
+    - name: "[S13] Exécuter la configuration VLAN sur OpenWrt via SSH"
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20
+        root@{{ benchmark_gateway }} 'bash -s' < /tmp/inject_openwrt_vlan.sh
+      when: scenario_id == '13'
+      changed_when: true
+
+    - name: "[S13] Configurer le proxy apt dans les CTs VLAN (accès apt-cacher-ng sur master)"
+      ansible.builtin.shell: |
+        printf 'Acquire::http::Proxy "http://192.168.88.183:3142/";\nAcquire::ForceIPv4 "true";\n' > /tmp/s13_01proxy
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s13_01proxy /etc/apt/apt.conf.d/01proxy
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: scenario_id == '13'
+      changed_when: true
 
 
     # ════════════════════════════════════════════════════
@@ -1212,72 +1316,8 @@
       changed_when: true
 
 
-    # ── S13 : Configuration OpenWrt VLAN + iptables inter-zone ──
-    - name: "[S13-OpenWrt] Préparer le script de configuration VLAN"
-      ansible.builtin.copy:
-        dest: /tmp/inject_openwrt_vlan.sh
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          # Interfaces VLAN sur eth1 (trunk 802.1Q)
-          uci batch << 'UCIEOF'
-          set network.vlan10=interface
-          set network.vlan10.ifname='eth1.10'
-          set network.vlan10.proto='static'
-          set network.vlan10.ipaddr='192.168.10.1'
-          set network.vlan10.netmask='255.255.255.0'
-          set network.vlan20=interface
-          set network.vlan20.ifname='eth1.20'
-          set network.vlan20.proto='static'
-          set network.vlan20.ipaddr='192.168.20.1'
-          set network.vlan20.netmask='255.255.255.0'
-          set network.vlan30=interface
-          set network.vlan30.ifname='eth1.30'
-          set network.vlan30.proto='static'
-          set network.vlan30.ipaddr='192.168.30.1'
-          set network.vlan30.netmask='255.255.255.0'
-          UCIEOF
-          uci commit network
-          /etc/init.d/network restart
-          sleep 5
-
-          # Autoriser forwarding WAN<->VLANs (acces pipeline depuis le master)
-          iptables -I FORWARD -i eth0 -o eth1.10 -j ACCEPT
-          iptables -I FORWARD -i eth0 -o eth1.20 -j ACCEPT
-          iptables -I FORWARD -i eth0 -o eth1.30 -j ACCEPT
-          iptables -I FORWARD -i eth1.10 -o eth0 -j ACCEPT
-          iptables -I FORWARD -i eth1.20 -o eth0 -j ACCEPT
-          iptables -I FORWARD -i eth1.30 -o eth0 -j ACCEPT
-
-          # IT -> IoT : MQTT/1883 TCP seulement
-          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.20.0/24 -p tcp --dport 1883 -j ACCEPT
-          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.20.0/24 -j DROP
-
-          # IT -> OT : SSH/22 seulement
-          # TROU VOLONTAIRE (V17) : port 6379 Redis non filtre - vuln data_exposure
-          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.30.0/24 -p tcp --dport 22 -j ACCEPT
-          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.30.0/24 -j DROP
-
-          # IoT -> OT : DROP TCP uniquement
-          # TROU VOLONTAIRE (V2) : UDP non filtre - CoAP UDP 5683 IoT->OT passe
-          iptables -A FORWARD -s 192.168.20.0/24 -d 192.168.30.0/24 -p tcp -j DROP
-
-          # Vuln V1 : admin LuCI accessible depuis toutes zones (pas de DROP port 80)
-          # Vuln V3 : SSH routeur credentials faibles root:password
-          echo "root:password" | chpasswd
-
-          # Persister les regles iptables
-          iptables-save > /etc/iptables.rules 2>/dev/null || true
-      when: scenario_id == '13'
-      delegate_to: localhost
-
-    - name: "[S13-OpenWrt] Pousser et executer la configuration VLAN"
-      ansible.builtin.shell: >-
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15
-        root@{{ benchmark_gateway }}
-        'bash -s' < /tmp/inject_openwrt_vlan.sh
-      when: scenario_id == '13'
-      changed_when: true
+    # [S13] La configuration OpenWrt VLAN est effectuée en début de playbook
+    # (voir tâches "[S13] Écrire/Exécuter le script de configuration OpenWrt VLAN")
 
     # ── Nettoyage IP temporaire ──
     - name: Retirer l'IP temporaire de vmbr1

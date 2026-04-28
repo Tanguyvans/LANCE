@@ -182,7 +182,8 @@
 
     - name: Vérifier la connectivité réseau de chaque CT
       ansible.builtin.command: >-
-        pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2 {{ benchmark_gateway }}
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2
+        {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
