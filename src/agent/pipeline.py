@@ -1907,7 +1907,12 @@ class Pipeline:
 
         if exploit_path.exists():
             exploit_data = json.loads(exploit_path.read_text(encoding="utf-8"))
-            all_exploits = exploit_data if isinstance(exploit_data, list) else []
+            if isinstance(exploit_data, list):
+                all_exploits = exploit_data
+            elif isinstance(exploit_data, dict):
+                all_exploits = exploit_data.get("tests", [])
+            else:
+                all_exploits = []
             confirmed = [e for e in all_exploits if e.get("status") == "CONFIRMED"]
 
             # Extract credentials from evidence fields
@@ -1933,7 +1938,7 @@ class Pipeline:
 
             # Identify entry points: devices reachable from outside (from graph attack surface)
             try:
-                surface = get_attack_surface()
+                surface = json.loads(get_attack_surface())
                 entry_ips = {
                     node.get("ip") for node in surface.get("nodes", [])
                     if node.get("network_role") in ("ENTRY_POINT", "PIVOT")
@@ -1963,7 +1968,7 @@ class Pipeline:
         # All devices in the network — full target list for credential spraying
         all_targets: list = []
         try:
-            surface = get_attack_surface()
+            surface = json.loads(get_attack_surface())
             for node in surface.get("nodes", []):
                 ip = node.get("ip")
                 if ip:
