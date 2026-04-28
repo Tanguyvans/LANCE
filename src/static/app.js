@@ -294,7 +294,7 @@ async function loadModels() {
 
 async function loadScenariosConfig() {
   try {
-    const data = await fetchJSON('/api/scenarios');
+    const data = await fetchJSON('/api/scenarios?_=' + Date.now());
     if (data && data.architectures && data.architectures.length > 0) {
       _scenariosData = data;
     } else {
