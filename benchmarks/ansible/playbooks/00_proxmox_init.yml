@@ -71,6 +71,15 @@
               # Bridge interne pour les VMs benchmark (pas de NIC physique)
       when: bridge_check.rc != 0
 
+    - name: Activer VLAN-aware sur vmbr1 (requis pour S13 VLAN tagging)
+      ansible.builtin.blockinfile:
+        path: /etc/network/interfaces
+        marker: "# {mark} ANSIBLE MANAGED - vmbr1 vlan-aware"
+        insertafter: "# Bridge interne pour les VMs benchmark"
+        block: |
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+
     - name: Activer le bridge vmbr1 immédiatement (sans reboot)
       ansible.builtin.command: ifreload -a
       when: bridge_check.rc != 0

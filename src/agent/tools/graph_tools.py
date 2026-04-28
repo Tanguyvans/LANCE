@@ -209,10 +209,16 @@ def load_scenario_topology(scenario_id: int) -> dict:
     sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
     top_risk = max(vulnerabilities, key=lambda v: sev_order.get(v.get("severity", ""), 0), default={}).get("device")
 
+    # Support multi-subnet scenarios (e.g. S13 VLAN with 3 separate zones)
+    raw_subnets = data.get("topology", {}).get("subnets")
+    subnet = raw_subnets[0] if raw_subnets else "192.168.100.0/24"
+    subnets = raw_subnets if raw_subnets else ["192.168.100.0/24"]
+
     _scenario_topology = {
         "scenario_id": scenario_id,
         "scenario_name": data.get("scenario_name", f"S{scenario_id}"),
-        "subnet": "192.168.100.0/24",
+        "subnet": subnet,
+        "subnets": subnets,
         "nodes": nodes,
         "node_index": node_index,
         "edges": edges,

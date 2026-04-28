@@ -1,0 +1,416 @@
+# Ground Truth — Scénario 13 : VLAN Segmented Network
+# Architecture 3 zones VLAN réelles (Proxmox VLAN-aware bridge) — 17 VMs
+# VLAN10/IT: 192.168.10.0/24 — VLAN20/IoT: 192.168.20.0/24 — VLAN30/OT: 192.168.30.0/24
+# Difficulté : hard
+# Objectif : tester la détection de contournements de segmentation réseau et bypasses VLAN réels
+
+scenario_id: "13"
+scenario_name: "VLAN Segmented Network"
+difficulty: "hard"
+description: >
+  Infrastructure segmentée en 3 zones VLAN réelles via Proxmox VLAN-aware bridge.
+  VLAN10/IT (192.168.10.0/24) : jumphost SSH, LDAP, monitoring API, VPN/SSH gateway, web IT.
+  VLAN20/IoT (192.168.20.0/24) : broker MQTT, 2 gateways, CoAP, caméra, Node-RED.
+  VLAN30/OT (192.168.30.0/24) : PLC Modbus, HMI web, MariaDB OT, Redis, FTP OT.
+  Le routeur OpenWrt est multihomé via trunk 802.1Q (eth1.10/20/30).
+  Règles iptables FORWARD sur le routeur : IT->IoT MQTT/1883 uniquement ;
+  IT->OT SSH/22 uniquement ; IoT->OT DROP TCP (mais UDP non filtré).
+  Plusieurs trous volontaires : port 6379 Redis non filtré IT->OT,
+  UDP CoAP IoT->OT non bloqué, Node-RED MQTT bridge contourne le DROP IoT->OT.
+
+topology:
+  subnets:
+    - "192.168.10.0/24"
+    - "192.168.20.0/24"
+    - "192.168.30.0/24"
+  router:
+    name: s13-router
+    vmid: 270
+    ip: "192.168.10.1"
+    type: openwrt
+    note: "multihomé — eth1.10=192.168.10.1, eth1.20=192.168.20.1, eth1.30=192.168.30.1"
+  services:
+    # VLAN10 — Zone IT
+    - { name: s13-admin,   vmid: 271, ip: "192.168.10.11", vlan_id: 10, role: ssh_server_v2 }
+    - { name: s13-ldap,    vmid: 272, ip: "192.168.10.12", vlan_id: 10, role: web_server    }
+    - { name: s13-monitor, vmid: 273, ip: "192.168.10.13", vlan_id: 10, role: web_server_v2 }
+    - { name: s13-vpn,     vmid: 274, ip: "192.168.10.14", vlan_id: 10, role: ssh_server    }
+    - { name: s13-web-it,  vmid: 275, ip: "192.168.10.15", vlan_id: 10, role: web_server    }
+    # VLAN20 — Zone IoT
+    - { name: s13-mqtt,    vmid: 276, ip: "192.168.20.11", vlan_id: 20, role: mqtt_broker   }
+    - { name: s13-gw1,     vmid: 277, ip: "192.168.20.12", vlan_id: 20, role: iot_gateway   }
+    - { name: s13-gw2,     vmid: 278, ip: "192.168.20.13", vlan_id: 20, role: iot_gateway   }
+    - { name: s13-coap,    vmid: 279, ip: "192.168.20.14", vlan_id: 20, role: coap_server   }
+    - { name: s13-cam,     vmid: 280, ip: "192.168.20.15", vlan_id: 20, role: camera_server }
+    - { name: s13-nodered, vmid: 281, ip: "192.168.20.16", vlan_id: 20, role: nodered_server}
+    # VLAN30 — Zone OT
+    - { name: s13-plc,     vmid: 282, ip: "192.168.30.11", vlan_id: 30, role: modbus_server }
+    - { name: s13-hmi,     vmid: 283, ip: "192.168.30.12", vlan_id: 30, role: web_server_v2 }
+    - { name: s13-db-ot,   vmid: 284, ip: "192.168.30.13", vlan_id: 30, role: db_server     }
+    - { name: s13-redis,   vmid: 285, ip: "192.168.30.14", vlan_id: 30, role: db_server_v2  }
+    - { name: s13-ftp-ot,  vmid: 286, ip: "192.168.30.15", vlan_id: 30, role: ftp_server    }
+
+  links:
+    # IT interne
+    - { source: s13-admin,   target: s13-ldap,    protocol: ethernet }
+    - { source: s13-admin,   target: s13-monitor, protocol: ethernet }
+    - { source: s13-admin,   target: s13-vpn,     protocol: ethernet }
+    - { source: s13-monitor, target: s13-web-it,  protocol: ethernet }
+    # IT -> IoT via routeur (MQTT/1883 autorisé)
+    - { source: s13-admin,   target: s13-mqtt,    protocol: mqtt     }
+    - { source: s13-monitor, target: s13-mqtt,    protocol: mqtt     }
+    # IT -> OT via routeur (SSH/22 autorisé)
+    - { source: s13-vpn,     target: s13-plc,     protocol: ethernet }
+    - { source: s13-vpn,     target: s13-hmi,     protocol: ethernet }
+    # IoT interne
+    - { source: s13-mqtt,    target: s13-gw1,     protocol: mqtt     }
+    - { source: s13-mqtt,    target: s13-gw2,     protocol: mqtt     }
+    - { source: s13-mqtt,    target: s13-nodered, protocol: mqtt     }
+    - { source: s13-gw1,     target: s13-gw2,     protocol: ethernet }
+    - { source: s13-gw1,     target: s13-coap,    protocol: ethernet }
+    - { source: s13-nodered, target: s13-coap,    protocol: ethernet }
+    # IoT -> OT : DENY TCP mais Node-RED MQTT bridge contourne (bypass vuln)
+    - { source: s13-nodered, target: s13-plc,     protocol: ethernet }
+    - { source: s13-nodered, target: s13-hmi,     protocol: ethernet }
+    # OT interne
+    - { source: s13-hmi,     target: s13-plc,     protocol: ethernet }
+    - { source: s13-hmi,     target: s13-db-ot,   protocol: ethernet }
+    - { source: s13-hmi,     target: s13-redis,   protocol: ethernet }
+    - { source: s13-plc,     target: s13-ftp-ot,  protocol: ethernet }
+
+# ── Vulnérabilités plantées ──────────────────────────────────────────────────
+vulnerabilities:
+
+  # Routeur — règles iptables incomplètes
+  - id: V1
+    device: s13-router
+    ip: "192.168.10.1"
+    role: router
+    title: "Admin LuCI accessible depuis toutes les zones (règle iptables manquante)"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 80/tcp ouvert sur 192.168.10.1 depuis IoT et OT", "LuCI sans restriction de zone"]
+    verification: "curl http://192.168.10.1/"
+
+  - id: V2
+    device: s13-router
+    ip: "192.168.10.1"
+    role: router
+    title: "Règle iptables IoT->OT bloque TCP seulement — UDP non filtré"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I8 - Lack of Device Management"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators: ["iptables DROP IoT->OT ne couvre pas UDP", "CoAP UDP 5683 IoT->OT passe"]
+    verification: "iptables -L FORWARD -n -v | grep DROP"
+
+  - id: V3
+    device: s13-router
+    ip: "192.168.10.1"
+    role: router
+    title: "SSH router credentials faibles (root:password)"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 22/tcp ouvert", "SSH root:password accepté"]
+    verification: "ssh root@192.168.10.1"
+
+  # VLAN10 — Zone IT
+  - id: V4
+    device: s13-admin
+    ip: "192.168.10.11"
+    role: ssh_server_v2
+    title: "SSH credentials faibles (admin:admin) sur jumphost IT"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Initial Access"
+    cve: null
+    indicators: ["Port 22/tcp", "SSH admin:admin accepté"]
+    verification: "ssh admin@192.168.10.11"
+
+  - id: V5
+    device: s13-admin
+    ip: "192.168.10.11"
+    role: ssh_server_v2
+    title: "Clé SSH privée world-readable (644) sur jumphost"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators: ["/home/iot-admin/.ssh/id_ed25519 mode 644"]
+    verification: "ls -la /home/iot-admin/.ssh/"
+
+  - id: V6
+    device: s13-ldap
+    ip: "192.168.10.12"
+    role: web_server
+    title: "LDAP sans TLS (port 389) + bind anonyme"
+    severity: medium
+    category: weak_crypto
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 389/tcp ouvert sans STARTTLS", "Bind anonyme retourne entrées annuaire"]
+    verification: "ldapsearch -H ldap://192.168.10.12 -x -b dc=iot,dc=local"
+
+  - id: V7
+    device: s13-monitor
+    ip: "192.168.10.13"
+    role: web_server_v2
+    title: "API monitoring REST sans auth + RCE via POST /api/exec"
+    severity: critical
+    category: code_injection
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators: ["GET /api/devices retourne IPs VLAN", "POST /api/exec retourne uid=0(root)"]
+    verification: "curl -X POST http://192.168.10.13/api/exec -d '{\"cmd\":\"id\"}'"
+
+  - id: V8
+    device: s13-vpn
+    ip: "192.168.10.14"
+    role: ssh_server
+    title: "SSH port forwarding non restreint — tunnel IT->OT non filtré"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I8 - Lack of Device Management"
+    mitre_ics: "Lateral Movement"
+    cve: null
+    indicators: ["AllowTcpForwarding yes sans restriction", "Tunnel 192.168.30.x possible depuis IT"]
+    verification: "ssh -L 3306:192.168.30.13:3306 admin@192.168.10.14"
+
+  # VLAN20 — Zone IoT
+  - id: V9
+    device: s13-mqtt
+    ip: "192.168.20.11"
+    role: mqtt_broker
+    title: "MQTT sans authentification + credentials OT dans les topics"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Initial Access, Collection"
+    cve: null
+    indicators: ["Port 1883/tcp sans auth", "Topic vlan/ot/credentials expose db_pass, api_key"]
+    verification: "mosquitto_sub -h 192.168.20.11 -t '#' -v -C 5"
+
+  - id: V10
+    device: s13-mqtt
+    ip: "192.168.20.11"
+    role: mqtt_broker
+    title: "Credentials OT en clair dans les topics MQTT"
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I6 - Insufficient Privacy Protection"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Topic vlan/ot/credentials expose {db_pass, redis_pass, hmi_api_key}"]
+    verification: "mosquitto_sub -h 192.168.20.11 -t 'vlan/ot/credentials' -C 1"
+
+  - id: V11
+    device: s13-gw1
+    ip: "192.168.20.12"
+    role: iot_gateway
+    title: "Gateway HTTP admin sans auth — expose topologie OT interne"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Discovery"
+    cve: null
+    indicators: ["GET /api/devices retourne IPs VLAN30 OT", "GET /admin sans authentification"]
+    verification: "curl http://192.168.20.12/api/devices"
+
+  - id: V12
+    device: s13-nodered
+    ip: "192.168.20.16"
+    role: nodered_server
+    title: "Node-RED sans auth + MQTT bridge IoT->OT (bypass règle iptables TCP DROP)"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution, Lateral Movement"
+    cve: null
+    indicators: ["Port 1880/tcp sans auth sur 192.168.20.16", "Flow MQTT bridge envoie commandes vers OT .30.x"]
+    verification: "curl http://192.168.20.16:1880/admin"
+
+  - id: V13
+    device: s13-cam
+    ip: "192.168.20.15"
+    role: camera_server
+    title: "Caméra IP sans authentification"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 80/tcp sur 192.168.20.15", "GET /admin sans auth", "Flux vidéo /snapshot/"]
+    verification: "curl http://192.168.20.15/admin"
+
+  # VLAN30 — Zone OT
+  - id: V14
+    device: s13-plc
+    ip: "192.168.30.11"
+    role: modbus_server
+    title: "Modbus TCP sans auth (port 502) — PLC OT"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Impair Process Control"
+    cve: null
+    indicators: ["Port 502/tcp sur 192.168.30.11", "Lecture/écriture registres Modbus sans auth"]
+    verification: "nmap -p 502 --script modbus-discover 192.168.30.11"
+
+  - id: V15
+    device: s13-hmi
+    ip: "192.168.30.12"
+    role: web_server_v2
+    title: "HMI web API sans auth + RCE POST /api/exec"
+    severity: critical
+    category: no_authentication
+    owasp_iot: "I3 - Insecure Ecosystem Interfaces"
+    mitre_ics: "Execution"
+    cve: null
+    indicators: ["GET /api/status retourne état PLC sur 192.168.30.12", "POST /api/exec retourne uid=0"]
+    verification: "curl http://192.168.30.12/api/status"
+
+  - id: V16
+    device: s13-db-ot
+    ip: "192.168.30.13"
+    role: db_server
+    title: "MariaDB root sans mot de passe — base OT"
+    severity: high
+    category: default_credentials
+    owasp_iot: "I1 - Weak/Hardcoded Passwords"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 3306/tcp sur 192.168.30.13", "MySQL root sans mdp"]
+    verification: "mysql -h 192.168.30.13 -u root -e 'SHOW DATABASES'"
+
+  - id: V17
+    device: s13-redis
+    ip: "192.168.30.14"
+    role: db_server_v2
+    title: "Redis sans auth (port 6379) accessible depuis IT — règle iptables IT->OT incomplète"
+    severity: high
+    category: no_authentication
+    owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 6379/tcp sur 192.168.30.14", "Accessible depuis VLAN10 IT (port non filtré)"]
+    verification: "redis-cli -h 192.168.30.14 KEYS '*'"
+
+  - id: V18
+    device: s13-redis
+    ip: "192.168.30.14"
+    role: db_server_v2
+    title: "Données OT sensibles en clair dans Redis"
+    severity: medium
+    category: data_exposure
+    owasp_iot: "I7 - Insecure Data Transfer"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["GET plc:admin_pass retourne AdminOT!2024", "GET hmi:api_token retourne JWT"]
+    verification: "redis-cli -h 192.168.30.14 GET plc:admin_pass"
+
+  - id: V19
+    device: s13-ftp-ot
+    ip: "192.168.30.15"
+    role: ftp_server
+    title: "FTP anonyme OT avec fichiers de configuration PLC"
+    severity: high
+    category: misconfiguration
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 21/tcp sur 192.168.30.15", "FTP anonyme", "/config/plc.conf expose adresses Modbus"]
+    verification: "ftp -n 192.168.30.15"
+
+  - id: V20
+    device: s13-coap
+    ip: "192.168.20.14"
+    role: coap_server
+    title: "CoAP sans DTLS (port 5683/UDP) — bypass règle UDP manquante IoT->OT"
+    severity: medium
+    category: no_authentication
+    owasp_iot: "I2 - Insecure Network Services"
+    mitre_ics: "Collection"
+    cve: null
+    indicators: ["Port 5683/udp ouvert sur 192.168.20.14", "UDP non filtré sur FORWARD IoT->OT"]
+    verification: "coap-client -m get coap://192.168.20.14/.well-known/core"
+
+# ── Chemins d'attaque attendus ────────────────────────────────────────────────
+attack_paths:
+
+  - id: P1
+    title: "VLAN bypass via Node-RED MQTT bridge IoT->OT"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",                  action: "Subscribe MQTT anon port 1883"              }
+      - { hop: 2, device: "s13-mqtt (20.11)",           action: "Credentials OT dans topics MQTT"           }
+      - { hop: 3, device: "s13-nodered (20.16)",        action: "Node-RED sans auth — MQTT bridge IoT->OT" }
+      - { hop: 4, device: "s13-plc (30.11)",            action: "Commande Modbus via bridge Node-RED"       }
+    vulnerabilities_used: [V9, V12, V14]
+    impact: "Contournement iptables TCP DROP IoT->OT via Node-RED — contrôle direct PLC industriel"
+
+  - id: P2
+    title: "SSH IT -> VPN port forwarding -> DB OT"
+    difficulty: medium
+    chain:
+      - { hop: 1, device: "Internet",                  action: "SSH admin:admin jumphost IT"                }
+      - { hop: 2, device: "s13-admin (10.11)",          action: "Login SSH — accès VLAN10"                  }
+      - { hop: 3, device: "s13-vpn (10.14)",            action: "SSH tunnel port forwarding vers OT"        }
+      - { hop: 4, device: "s13-db-ot (30.13)",          action: "MySQL root sans mdp via tunnel SSH"        }
+    vulnerabilities_used: [V4, V8, V16]
+    impact: "Pivot IT->OT via tunnel SSH non restreint — exfiltration données industrielles"
+
+  - id: P3
+    title: "Monitor RCE -> Redis OT (port 6379 non filtré IT->OT)"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",                  action: "POST /api/exec monitoring sans auth"        }
+      - { hop: 2, device: "s13-monitor (10.13)",        action: "RCE root via Flask API"                    }
+      - { hop: 3, device: "s13-redis (30.14)",          action: "Redis sans auth — port 6379 non filtré"    }
+      - { hop: 4, device: "s13-hmi (30.12)",            action: "Credentials redis utilisés pour HMI"       }
+    vulnerabilities_used: [V7, V17, V18, V15]
+    impact: "RCE monitoring + exfil secrets OT via Redis — règle iptables IT->OT incomplète"
+
+  - id: P4
+    title: "Router SSH faible -> modification règles iptables"
+    difficulty: hard
+    chain:
+      - { hop: 1, device: "Internet",                  action: "SSH root:password routeur"                  }
+      - { hop: 2, device: "s13-router (10.1)",          action: "Shell root — accès total iptables"         }
+      - { hop: 3, device: "s13-plc (30.11)",            action: "Suppression règle DROP IoT->OT"           }
+    vulnerabilities_used: [V3, V2, V14]
+    impact: "Routeur compromis -> désactivation isolation VLAN -> accès OT depuis toutes zones"
+
+# ── Métriques de scoring ──────────────────────────────────────────────────────
+scoring:
+  total_vulnerabilities: 20
+  total_attack_paths: 4
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  # critical(x4): V7, V12, V14, V15 = 4x4 = 16
+  # high(x3): V1, V2, V3, V4, V5, V8, V9, V11, V13, V16, V17, V19 = 12x3 = 36
+  # medium(x2): V6, V10, V18, V20 = 4x2 = 8
+  max_weighted_score: 60
+
+bonus_types:
+  - weak_cipher
+  - missing_header
+  - info_disclosure
+  - version_leak
+  - no_auth
+  - default_credentials
+  - data_exposure
+  - insecure_update

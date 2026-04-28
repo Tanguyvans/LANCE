@@ -1,0 +1,159 @@
+id: vlan_segmented
+name: VLAN Segmented Network
+description: Reseau segmente en 3 zones VLAN (IT/IoT/OT) avec regles iptables strictes — 16 services + routeur (17 VMs)
+base_vmid: 270
+router:
+  name_template: s{sid}-router
+  type: openwrt
+  ip: 192.168.10.1
+services:
+# VLAN10 — Zone IT (192.168.10.0/24, .11-.15)
+- name_template: s{sid}-admin
+  vmid_offset: 1
+  ip: 192.168.10.11
+  vlan_id: 10
+  role: ssh_server_v2
+- name_template: s{sid}-ldap
+  vmid_offset: 2
+  ip: 192.168.10.12
+  vlan_id: 10
+  role: web_server
+- name_template: s{sid}-monitor
+  vmid_offset: 3
+  ip: 192.168.10.13
+  vlan_id: 10
+  role: web_server_v2
+- name_template: s{sid}-vpn
+  vmid_offset: 4
+  ip: 192.168.10.14
+  vlan_id: 10
+  role: ssh_server
+- name_template: s{sid}-web-it
+  vmid_offset: 5
+  ip: 192.168.10.15
+  vlan_id: 10
+  role: web_server
+# VLAN20 — Zone IoT (192.168.20.0/24, .11-.16)
+- name_template: s{sid}-mqtt
+  vmid_offset: 6
+  ip: 192.168.20.11
+  vlan_id: 20
+  role: mqtt_broker
+- name_template: s{sid}-gw1
+  vmid_offset: 7
+  ip: 192.168.20.12
+  vlan_id: 20
+  role: iot_gateway
+- name_template: s{sid}-gw2
+  vmid_offset: 8
+  ip: 192.168.20.13
+  vlan_id: 20
+  role: iot_gateway
+- name_template: s{sid}-coap
+  vmid_offset: 9
+  ip: 192.168.20.14
+  vlan_id: 20
+  role: coap_server
+- name_template: s{sid}-cam
+  vmid_offset: 10
+  ip: 192.168.20.15
+  vlan_id: 20
+  role: camera_server
+- name_template: s{sid}-nodered
+  vmid_offset: 11
+  ip: 192.168.20.16
+  vlan_id: 20
+  role: nodered_server
+# VLAN30 — Zone OT (192.168.30.0/24, .11-.15)
+- name_template: s{sid}-plc
+  vmid_offset: 12
+  ip: 192.168.30.11
+  vlan_id: 30
+  role: modbus_server
+- name_template: s{sid}-hmi
+  vmid_offset: 13
+  ip: 192.168.30.12
+  vlan_id: 30
+  role: web_server_v2
+- name_template: s{sid}-db-ot
+  vmid_offset: 14
+  ip: 192.168.30.13
+  vlan_id: 30
+  role: db_server
+- name_template: s{sid}-redis
+  vmid_offset: 15
+  ip: 192.168.30.14
+  vlan_id: 30
+  role: db_server_v2
+- name_template: s{sid}-ftp-ot
+  vmid_offset: 16
+  ip: 192.168.30.15
+  vlan_id: 30
+  role: ftp_server
+links:
+# IT interne (VLAN10)
+- source: s{sid}-admin
+  target: s{sid}-ldap
+  protocol: ethernet
+- source: s{sid}-admin
+  target: s{sid}-monitor
+  protocol: ethernet
+- source: s{sid}-admin
+  target: s{sid}-vpn
+  protocol: ethernet
+- source: s{sid}-monitor
+  target: s{sid}-web-it
+  protocol: ethernet
+# IT -> IoT (VLAN10->VLAN20 via routeur : MQTT/1883 autorise)
+- source: s{sid}-admin
+  target: s{sid}-mqtt
+  protocol: mqtt
+- source: s{sid}-monitor
+  target: s{sid}-mqtt
+  protocol: mqtt
+# IT -> OT (VLAN10->VLAN30 via routeur : SSH/22 autorise)
+- source: s{sid}-vpn
+  target: s{sid}-plc
+  protocol: ethernet
+- source: s{sid}-vpn
+  target: s{sid}-hmi
+  protocol: ethernet
+# IoT interne (VLAN20)
+- source: s{sid}-mqtt
+  target: s{sid}-gw1
+  protocol: mqtt
+- source: s{sid}-mqtt
+  target: s{sid}-gw2
+  protocol: mqtt
+- source: s{sid}-mqtt
+  target: s{sid}-nodered
+  protocol: mqtt
+- source: s{sid}-gw1
+  target: s{sid}-gw2
+  protocol: ethernet
+- source: s{sid}-gw1
+  target: s{sid}-coap
+  protocol: ethernet
+- source: s{sid}-nodered
+  target: s{sid}-coap
+  protocol: ethernet
+# IoT -> OT : DENY TCP par iptables — bypass via Node-RED MQTT bridge (vuln V12)
+- source: s{sid}-nodered
+  target: s{sid}-plc
+  protocol: ethernet
+- source: s{sid}-nodered
+  target: s{sid}-hmi
+  protocol: ethernet
+# OT interne (VLAN30)
+- source: s{sid}-hmi
+  target: s{sid}-plc
+  protocol: ethernet
+- source: s{sid}-hmi
+  target: s{sid}-db-ot
+  protocol: ethernet
+- source: s{sid}-hmi
+  target: s{sid}-redis
+  protocol: ethernet
+- source: s{sid}-plc
+  target: s{sid}-ftp-ot
+  protocol: ethernet

@@ -1,0 +1,93 @@
+scenario_id: '13'
+name: VLAN Segmented Network
+difficulty: hard
+posture: vulnerable
+topology: vlan_segmented
+packs:
+- f1_weak_auth
+- f2_misconfig
+- f3_data_exposure
+- f5_injection
+- f7_pivot
+attack_paths:
+- id: P1
+  title: VLAN bypass via Node-RED MQTT bridge IoT→OT
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: Subscribe MQTT anon sans auth (port 1883)
+  - hop: 2
+    device: s13-mqtt (100.21)
+    action: Credentials OT dans topics MQTT — db_pass, api_key
+  - hop: 3
+    device: s13-nodered (100.26)
+    action: Node-RED sans auth — MQTT bridge IoT→OT (contourne iptables)
+  - hop: 4
+    device: s13-plc (100.31)
+    action: Ecriture registres Modbus sans auth depuis Node-RED
+  vulnerabilities_used: [V9, V12, V14]
+  impact: Contournement regle iptables IoT→OT — controle direct PLC depuis zone IoT
+
+- id: P2
+  title: SSH IT → VPN port forwarding → DB OT
+  difficulty: medium
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH admin:admin sur jumphost IT (port 22)
+  - hop: 2
+    device: s13-admin (100.11)
+    action: Login SSH reussi — acces VLAN10
+  - hop: 3
+    device: s13-vpn (100.14)
+    action: SSH port forwarding non restreint vers OT
+  - hop: 4
+    device: s13-db-ot (100.33)
+    action: Tunnel SSH vers MySQL root sans mdp
+  vulnerabilities_used: [V4, V8, V16]
+  impact: Pivot IT→OT via tunnel SSH — exfiltration base de donnees industrielle
+
+- id: P3
+  title: Monitor RCE → Redis OT (regle iptables incomplete)
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: POST /api/exec monitor sans auth
+  - hop: 2
+    device: s13-monitor (100.13)
+    action: RCE root via API Flask — acces VLAN10
+  - hop: 3
+    device: s13-redis (100.34)
+    action: Redis sans auth accessible depuis IT (port 6379 non filtre IT→OT)
+  - hop: 4
+    device: s13-hmi (100.32)
+    action: Credentials redis utilises pour login HMI
+  vulnerabilities_used: [V7, V17, V18, V15]
+  impact: RCE monitoring → exfil secrets OT via Redis — contourne isolation VLAN
+
+- id: P4
+  title: Router SSH faible → regles iptables modifiables
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: Internet
+    action: SSH root:password sur routeur (port 22)
+  - hop: 2
+    device: s13-router (100.1)
+    action: Shell root — acces iptables complet
+  - hop: 3
+    device: s13-plc (100.31)
+    action: Suppression regle DROP IoT→OT — acces direct PLC
+  vulnerabilities_used: [V3, V2, V14]
+  impact: Compromission routeur → desactivation isolation VLAN → acces OT total
+
+bonus_types:
+- weak_cipher
+- missing_header
+- info_disclosure
+- version_leak
+- no_auth
+- data_exposure
+- terrapin

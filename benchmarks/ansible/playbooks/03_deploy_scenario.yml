@@ -57,15 +57,16 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 269 ] 2>/dev/null && continue
+          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 286 ] 2>/dev/null && continue
           base={{ base_vmid }}
-          # S11 uses 15 VMIDs (220-234); S12 uses 35 VMIDs (235-269); others use 10 each
+          # S11: 15 VMIDs (220-234); S12: 35 VMIDs (235-269); S13: 17 VMIDs (270-286); others: 10
           slot_size=10
           [ "$base" -eq 220 ] && slot_size=15
           [ "$base" -eq 235 ] && slot_size=35
+          [ "$base" -eq 270 ] && slot_size=17
           [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + slot_size))" ] && continue
           {% for sid, sbase in scenario_vmid_ranges.items() %}
-          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "{{ sbase + (15 if sbase == 220 else (35 if sbase == 235 else 10)) }}" ]; then
+          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "{{ sbase + (15 if sbase == 220 else (35 if sbase == 235 else (17 if sbase == 270 else 10))) }}" ]; then
             conflict_scenario="{{ sid }}"
           fi
           {% endfor %}
@@ -111,6 +112,11 @@
         --full
       when: router_check.rc != 0
 
+    - name: "[S13] Ajouter NIC trunk VLAN 10/20/30 au routeur"
+      ansible.builtin.command: >-
+        qm set {{ base_vmid }} --net1 virtio,bridge={{ benchmark_bridge }},trunks=10;20;30
+      when: scenario_id == '13' and router_check.rc != 0
+
     - name: Démarrer le router OpenWrt
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
@@ -149,8 +155,8 @@
     - name: Configurer le réseau et le DNS de chaque CT
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
-        --net0 name=eth0,bridge={{ benchmark_bridge }},ip={{ item.ip }}/24,gw={{ benchmark_gateway }}
-        --nameserver {{ benchmark_dns }}
+        --net0 name=eth0,bridge={{ benchmark_bridge }}{% if item.vlan_id is defined %},tag={{ item.vlan_id }}{% endif %},ip={{ item.ip }}/24,gw={% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
+        --nameserver {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_dns }}{% endif %}
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
@@ -182,6 +188,23 @@
         index_var: idx
       register: ct_ping
       changed_when: false
+      failed_when: false
+
+    - name: "[S13] Ajouter routes VLAN sur le master LXC (200) via OpenWrt WAN"
+      ansible.builtin.shell: |
+        router_wan=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ benchmark_gateway }} \
+          'ip route get 1.1.1.1 2>/dev/null | grep -o "src [0-9.]*" | awk "{print $2}"')
+        if [ -z "$router_wan" ]; then
+          echo "WARN: impossible de récupérer l'IP WAN du routeur S13" >&2
+          exit 0
+        fi
+        pct exec 200 -- sh -c "
+          ip route replace 192.168.10.0/24 via $router_wan 2>/dev/null || true
+          ip route replace 192.168.20.0/24 via $router_wan 2>/dev/null || true
+          ip route replace 192.168.30.0/24 via $router_wan 2>/dev/null || true
+        "
+      when: scenario_id == '13'
+      changed_when: true
       failed_when: false
 
     - name: Résumé du déploiement

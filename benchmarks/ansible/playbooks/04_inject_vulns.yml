@@ -1212,6 +1212,73 @@
       changed_when: true
 
 
+    # ── S13 : Configuration OpenWrt VLAN + iptables inter-zone ──
+    - name: "[S13-OpenWrt] Préparer le script de configuration VLAN"
+      ansible.builtin.copy:
+        dest: /tmp/inject_openwrt_vlan.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # Interfaces VLAN sur eth1 (trunk 802.1Q)
+          uci batch << 'UCIEOF'
+          set network.vlan10=interface
+          set network.vlan10.ifname='eth1.10'
+          set network.vlan10.proto='static'
+          set network.vlan10.ipaddr='192.168.10.1'
+          set network.vlan10.netmask='255.255.255.0'
+          set network.vlan20=interface
+          set network.vlan20.ifname='eth1.20'
+          set network.vlan20.proto='static'
+          set network.vlan20.ipaddr='192.168.20.1'
+          set network.vlan20.netmask='255.255.255.0'
+          set network.vlan30=interface
+          set network.vlan30.ifname='eth1.30'
+          set network.vlan30.proto='static'
+          set network.vlan30.ipaddr='192.168.30.1'
+          set network.vlan30.netmask='255.255.255.0'
+          UCIEOF
+          uci commit network
+          /etc/init.d/network restart
+          sleep 5
+
+          # Autoriser forwarding WAN<->VLANs (acces pipeline depuis le master)
+          iptables -I FORWARD -i eth0 -o eth1.10 -j ACCEPT
+          iptables -I FORWARD -i eth0 -o eth1.20 -j ACCEPT
+          iptables -I FORWARD -i eth0 -o eth1.30 -j ACCEPT
+          iptables -I FORWARD -i eth1.10 -o eth0 -j ACCEPT
+          iptables -I FORWARD -i eth1.20 -o eth0 -j ACCEPT
+          iptables -I FORWARD -i eth1.30 -o eth0 -j ACCEPT
+
+          # IT -> IoT : MQTT/1883 TCP seulement
+          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.20.0/24 -p tcp --dport 1883 -j ACCEPT
+          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.20.0/24 -j DROP
+
+          # IT -> OT : SSH/22 seulement
+          # TROU VOLONTAIRE (V17) : port 6379 Redis non filtre - vuln data_exposure
+          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.30.0/24 -p tcp --dport 22 -j ACCEPT
+          iptables -A FORWARD -s 192.168.10.0/24 -d 192.168.30.0/24 -j DROP
+
+          # IoT -> OT : DROP TCP uniquement
+          # TROU VOLONTAIRE (V2) : UDP non filtre - CoAP UDP 5683 IoT->OT passe
+          iptables -A FORWARD -s 192.168.20.0/24 -d 192.168.30.0/24 -p tcp -j DROP
+
+          # Vuln V1 : admin LuCI accessible depuis toutes zones (pas de DROP port 80)
+          # Vuln V3 : SSH routeur credentials faibles root:password
+          echo "root:password" | chpasswd
+
+          # Persister les regles iptables
+          iptables-save > /etc/iptables.rules 2>/dev/null || true
+      when: scenario_id == '13'
+      delegate_to: localhost
+
+    - name: "[S13-OpenWrt] Pousser et executer la configuration VLAN"
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15
+        root@{{ benchmark_gateway }}
+        'bash -s' < /tmp/inject_openwrt_vlan.sh
+      when: scenario_id == '13'
+      changed_when: true
+
     # ── Nettoyage IP temporaire ──
     - name: Retirer l'IP temporaire de vmbr1
       ansible.builtin.command: ip addr del {{ proxmox_tmp_ip }}/24 dev vmbr1
