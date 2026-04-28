@@ -26,7 +26,7 @@
       ansible.builtin.copy:
         dest: /etc/apt/sources.list.d/pve-no-subscription.list
         content: |
-          deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription
+          deb http://download.proxmox.com/debian/pve {{ ansible_distribution_release }} pve-no-subscription
         mode: "0644"
 
     - name: Désactiver le repo ceph enterprise si présent
@@ -36,10 +36,10 @@
         replace: '# deb '
       ignore_errors: true
 
-    - name: Mise à jour des paquets
+    - name: Mettre à jour le cache apt
       ansible.builtin.apt:
         update_cache: true
-        upgrade: safe
+      ignore_errors: true
       tags: [apt]
 
     - name: Installer les dépendances Python pour modules Ansible Proxmox

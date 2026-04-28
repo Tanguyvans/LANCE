@@ -40,7 +40,7 @@ app.mount("/static",    StaticFiles(directory=str(STATIC_DIR)),    name="static"
 app.mount("/static_v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="static_v2")
 
 
-_CACHEABLE_API_PATHS = {"/api/models", "/api/scenarios"}
+_CACHEABLE_API_PATHS = {"/api/models"}
 
 @app.middleware("http")
 async def cache_control(request: Request, call_next) -> Response:
