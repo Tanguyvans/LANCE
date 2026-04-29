@@ -191,18 +191,12 @@
       changed_when: false
       failed_when: false
 
-    - name: "[S13] Ajouter routes VLAN sur le master LXC (200) via OpenWrt WAN"
+    - name: "[S13] Ajouter routes VLAN sur le master LXC (200) via OpenWrt LAN"
       ansible.builtin.shell: |
-        router_wan=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@{{ benchmark_gateway }} \
-          'ip route get 1.1.1.1 2>/dev/null | grep -o "src [0-9.]*" | awk "{print $2}"')
-        if [ -z "$router_wan" ]; then
-          echo "WARN: impossible de récupérer l'IP WAN du routeur S13" >&2
-          exit 0
-        fi
         pct exec 200 -- sh -c "
-          ip route replace 192.168.10.0/24 via $router_wan 2>/dev/null || true
-          ip route replace 192.168.20.0/24 via $router_wan 2>/dev/null || true
-          ip route replace 192.168.30.0/24 via $router_wan 2>/dev/null || true
+          ip route replace 192.168.10.0/24 via {{ benchmark_gateway }} dev eth1 2>/dev/null || true
+          ip route replace 192.168.20.0/24 via {{ benchmark_gateway }} dev eth1 2>/dev/null || true
+          ip route replace 192.168.30.0/24 via {{ benchmark_gateway }} dev eth1 2>/dev/null || true
         "
       when: scenario_id == '13'
       changed_when: true
