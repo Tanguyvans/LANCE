@@ -1,0 +1,34 @@
+% §8 Discussion & Limitations — target 0.5 page
+
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\paragraph{Where LLMs help, where they don't}
+\systemname{} surfaces an empirical pattern: LLM agents reach high recall on
+misconfigurations, default credentials, and information disclosure — findings
+that are textually expressible and well represented in their training corpora.
+They consistently underperform on binary industrial protocols (Modbus, CoAP,
+LoRaWAN) and on cross-device inferences that require holding an aggregated
+network view. This suggests a hybrid deployment model: LLM agents for
+configuration auditing, traditional scanners for CVE coverage, and human
+operators for the OT/ICS layer.
+
+\paragraph{Implications for agentic systems}
+The harness's per-device and per-vulnerability micro-agent structure is one
+answer to context scaling, but it cedes cross-device inference. Designs that
+keep a global aggregator agent in the loop without paying the full
+network-context cost are an open research direction.
+
+\paragraph{Limitations}
+(i)~\emph{Simulated infrastructure.} \systemname{} scenarios emulate IoT
+devices on Linux VMs; real constrained hardware introduces embedded-specific
+attack surfaces (bootloaders, RTOS, firmware) we do not cover.
+(ii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP even
+without ground-truth matches, which inflates precision.
+(iii)~\emph{Model variance.} With $k{=}3$ runs per configuration, confidence
+intervals on F1 remain wide for some scenarios.
+(iv)~\emph{Prompt sensitivity.} We fix a single prompt family across models;
+per-model prompt tuning would likely raise scores.
+(v)~\emph{Static architectures.} The five patterns are fixed; real deployments
+evolve over time and include devices not represented here (RFID badge readers,
+industrial PLCs, medical devices).

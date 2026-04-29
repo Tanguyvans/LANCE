@@ -1,0 +1,144 @@
+% §2 Background & Related Work — target 1.5 page
+% Written 2026-04-23. Positions against 3 clusters.
+% Key deliverable: Table 1 comparison grid.
+
+\section{Background and Related Work}
+\label{sec:related}
+
+\subsection{LLM-based penetration testing agents}
+\label{sec:related:llm}
+
+\paragraph{Single-agent origins}
+Deng~\emph{et al.}~proposed \textsc{PentestGPT}~\cite{pentestgpt24}, the first
+published LLM-driven penetration testing agent. \textsc{PentestGPT} couples a
+single ChatGPT-class model with a human-in-the-loop interface that translates
+natural-language guidance into shell commands, and was evaluated on $182$
+hand-selected sub-tasks drawn from HackTheBox and VulnHub targets. The work
+established three findings that recur throughout the subsequent literature:
+LLMs produce plausible reconnaissance plans, they excel on text-rich web
+vulnerabilities (SQLi, XSS, IDOR), and they fail on long-context tasks where
+state must be maintained across many command invocations.
+
+\paragraph{Multi-agent decomposition}
+Later systems address the context limitation through role specialization.
+\textsc{VulnBot}~\cite{vulnbot25} decomposes the task into three
+phase-specific agents (\emph{reconnaissance}, \emph{scanning}, \emph{exploitation})
+coordinated by a Penetration Task Graph (PTG); on the
+AUTOPENBENCH corpus~\cite{autopenbench24} its \textsc{Llama3.1-405B} variant
+reaches a completion rate of $30.3\%$ versus $9.1\%$ for the same model used
+single-agent and $21.2\%$ for GPT-4o.
+\textsc{AutoPentester}~\cite{autopentester25} uses five cooperating agents
+(summarizer, strategy analyzer, command generator, results verifier, reporter)
+with Retrieval-Augmented Generation and a Pentest Tree data structure,
+reporting a $27\%$ gain in sub-task completion and $39.5\%$ more vulnerability
+coverage over \textsc{PentestGPT} on HackTheBox plus a custom set of OWASP-Top-10
+machines.
+\textsc{PentestAgent}~\cite{pentestagent25} likewise builds on a multi-stage
+pipeline with RAG, published at ACM ASIA~CCS'25.
+
+\paragraph{Learning-based and long-running variants}
+\textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement
+learning to the reasoning traces of a mid-scale model, and
+\textsc{xOffense}~\cite{xoffense25} fine-tunes a Qwen3-32B with offensive
+knowledge corpora, reporting $79\%$ sub-task completion on CTF-style targets.
+A complementary strand addresses session duration:
+\textsc{CHAP}~\cite{chap26} introduces a context-relay mechanism that
+transfers distilled protocols between successive agent instances during
+long-running engagements, and \textsc{AWE}~\cite{awe26} adds persistent memory
+and browser-backed verification to web-application pentest.
+\textsc{CheckMate}~\cite{checkmate25} couples LLM agents with classical
+planning to obtain deterministic action selection, improving benchmark
+success by over $20$ percentage points.
+
+\paragraph{Production-grade frameworks}
+\textsc{CAI}~\cite{cai25}, developed by the \textsc{PentestGPT} authors,
+generalizes the single-agent prototype into a bug-bounty-oriented framework
+with modular tool support and a public leaderboard; on CAIBench's CTF subset
+it consistently outperforms prior open-source systems.
+
+\paragraph{Gap}
+Despite this trajectory, every system in this cluster is evaluated on a
+\emph{single-host} target unit: HackTheBox machines, VulnHub VMs,
+AUTOPENBENCH challenges, or CTF containers. Success is reported either as
+flag capture or as sub-task completion within one host.
+None evaluates at the scale of a deployed IP network containing heterogeneous
+devices and IoT-specific application protocols.
+
+\subsection{Penetration testing benchmarks}
+\label{sec:related:bench}
+
+\paragraph{Academic corpora}
+AUTOPENBENCH~\cite{autopenbench24} is the current academic reference,
+consisting of VulnHub-derived single-VM challenges with scripted flag
+checkers; it is used as the canonical evaluation by
+\textsc{VulnBot} and \textsc{Pentest-R1}. \textsc{PentestGPT} reported on a
+hand-curated set of $182$ sub-tasks drawn from HackTheBox and VulnHub. More
+recently, \textsc{CAIBench}~\cite{caibench25} consolidates the field into a
+meta-benchmark spanning Jeopardy-style CTFs, attack-and-defense exercises,
+cyber-range scenarios, and knowledge/privacy assessments, reporting that
+state-of-the-art models saturate around $70\%$ on static knowledge tests but
+collapse to $20$--$40\%$ on multi-step adversarial tasks. Within \textsc{CAIBench},
+the RCTF2 subset contributes $27$~challenges targeting robotics and
+cyber-physical systems --- the first inclusion of CPS in an LLM-pentest
+benchmark --- yet each challenge remains an isolated CTF-style target rather
+than a deployed network.
+
+\paragraph{Training-oriented lab infrastructures}
+\textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad} Active-Directory
+scenario deliver reproducible Proxmox-based labs with Ansible-driven
+deployment and idempotent configuration. Methodologically these projects are
+the closest precedent to our infrastructure, but they are training tools for
+human operators: they do not ship a ground-truth schema, do not define a
+scoring procedure, and have not been used to evaluate LLM agents in the
+published literature.
+
+\paragraph{Gap}
+No benchmark in the published literature provides all of
+(i)~network-scale evaluation on a deployed multi-device IP range,
+(ii)~IoT-specific application protocols (MQTT, LoRaWAN, Modbus, CoAP),
+(iii)~per-vulnerability ground truth usable for automated scoring, and
+(iv)~evidence-level granularity beyond binary flag capture. \systemname\ is
+designed to fill exactly this intersection.
+
+\subsection{IoT security methodology}
+\label{sec:related:iot}
+
+We ground scenario design and ground-truth taxonomy in three widely adopted
+frameworks. The OWASP~IoT~Top~10~\cite{owasp-iot} structures our vulnerability
+categories and ensures coverage of the attack surfaces most commonly observed
+in IoT deployments (hardcoded credentials, insecure network services,
+insecure ecosystem interfaces, insufficient update mechanisms). The
+MITRE~ATT\&CK~for~ICS~\cite{mitre-ics} matrix provides a tactics vocabulary
+for OT-inclusive scenarios; each injected vulnerability in \systemname\ carries
+a MITRE-ICS tactic annotation where applicable. Finally,
+NIST~SP~800-82~Rev.~3~\cite{nist80082} informs our segmentation and
+safety conventions, in particular the IT/OT separation underpinning
+architectural pattern~P3 (\cref{sec:iotbench:patterns}).
+
+% ── comparison table (Table 1) ────────────────────────────────────────────
+\begin{table*}[t]
+\centering
+\caption{Comparison with prior LLM penetration testing systems and benchmarks.
+``Scope'' is the unit of evaluation; ``Network-scale'' means evaluation
+occurs on a multi-device IP network rather than isolated targets.}
+\label{tab:related}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+System & Scope & Protocols & Architectures & IoT-specific & Scoring & Ground truth & Reproducible \\
+\midrule
+PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS    & n/a       & no      & sub-task      & hand-curated  & partial \\
+VulnBot~\cite{vulnbot25}                & single-host & Web/OS    & n/a       & no      & task-graph    & AUTOPENBENCH  & yes     \\
+AutoPentester~\cite{autopentester25}    & single-host & Web/OS    & n/a       & no      & sub-task      & HTB + custom  & yes     \\
+PentestAgent~\cite{pentestagent25}      & single-host & Web/OS    & n/a       & no      & composite     & custom        & partial \\
+Pentest-R1~\cite{pentestr125}           & single-host & Web/OS    & n/a       & no      & sub-task      & AUTOPENBENCH  & partial \\
+xOffense~\cite{xoffense25}              & single-host & Web/CTF   & n/a       & no      & sub-task      & CTF           & partial \\
+CAI~\cite{cai25}                        & single-host & Web/CTF   & n/a       & no      & CTF           & CAIBench      & yes     \\
+CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed     & n/a       & 27 CPS  & CTF           & yes           & yes     \\
+Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD / Win  & AD only   & no      & (training)    & no            & yes     \\
+\midrule
+\textbf{\systemname\ (ours)}            & \textbf{network} & \textbf{MQTT, Modbus, LoRa, \ldots} & \textbf{5 patterns} & \textbf{yes} & \textbf{L1/L2/L3 + wt.} & \textbf{per-vuln YAML} & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{table*}

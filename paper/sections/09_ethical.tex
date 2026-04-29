@@ -1,0 +1,33 @@
+% §9 Ethical Considerations — target 0.25 page (mandatory per ACSAC CFP)
+
+\section{Ethical Considerations}
+\label{sec:ethical}
+
+\paragraph{Isolation}
+All experiments run on an isolated Proxmox cluster with a dedicated bridge
+(\texttt{vmbr1}) and no route to external networks; the OpenWrt gateway's
+\texttt{WAN} interface is firewall-isolated. No live hosts, production
+services, or third-party infrastructure are probed.
+
+\paragraph{Responsible disclosure}
+\systemname{} vulnerabilities are deterministically injected into our own
+lab VMs via Ansible. No 0-days are introduced; all categories (misconfig,
+weak credentials, Terrapin CVE-2023-48795, outdated Dropbear) correspond to
+patterns already publicly documented. No responsible-disclosure process is
+triggered.
+
+\paragraph{Misuse risk of released artifact}
+The benchmark artifact (Ansible playbooks, ground truth, evaluator) does not
+embed exploitation payloads for unknown vulnerabilities, and the injected
+weaknesses are common misconfigurations documented in OWASP~IoT~Top~10.
+The harness uses only standard pentest tools already in widespread use.
+We judge the net societal benefit — reproducible evaluation of LLM pentest
+agents, and a concrete evaluation surface for future defenders — to exceed
+the incremental misuse risk.
+
+\paragraph{IRB / human subjects}
+No human subjects are involved. No personal data is collected or processed.
+
+\paragraph{LLM costs and environmental footprint}
+All reported experiments together consume an estimated \todo{X} kWh and
+cost under \todo{USD Y} in API billing.

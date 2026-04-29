@@ -1,0 +1,161 @@
+% §4 IoTBench: Benchmark Design — target 2 pages
+% Purpose: sell the artifact.
+% Key figure: Fig 1 — 5 architectural patterns side by side.
+% Key table: Table 2 — scenarios × protocols × vulns × OWASP mapping.
+
+\section{\systemname: A Network-Scale Benchmark}
+\label{sec:iotbench}
+
+% ── §4.1 design principles ────────────────────────────────────────────────
+\subsection{Design principles}
+\label{sec:iotbench:principles}
+
+\systemname{} is built around four principles derived from the gap analysis in
+\cref{sec:related}:
+
+\begin{description}
+  \item[Reproducibility.] The entire infrastructure deploys from Ansible
+  playbooks against a Proxmox cluster; every vulnerability is injected
+  idempotently with no manual post-deployment steps.
+  \item[Architectural diversity.] Scenarios span five network patterns
+  (\cref{fig:patterns}) with distinct attacker reachability graphs enforced by
+  OpenWrt firewall rules, not just by service labels.
+  \item[Protocol coverage.] Each scenario mixes multiple IoT and OT protocols
+  (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus standard SSH/HTTP/FTP/Telnet)
+  to exercise protocol-specific reasoning.
+  \item[Ground-truth granularity.] Every injected vulnerability is documented in
+  YAML with \texttt{device}, \texttt{IP}, \texttt{role}, \texttt{severity},
+  \texttt{category}, \texttt{OWASP IoT} and \texttt{MITRE ICS} mappings,
+  optional \texttt{CVE}, \texttt{indicators} (expected detection strings), and
+  a \texttt{verification} command.
+\end{description}
+
+% ── §4.2 five architectural patterns ──────────────────────────────────────
+\subsection{Five architectural patterns}
+\label{sec:iotbench:patterns}
+
+\begin{figure*}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{figures/fig1_patterns.pdf}
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{
+    Fig.~1 placeholder: five topology diagrams side-by-side.\\
+    (Flat)~— (Gateway-centric)~— (Segmented IT/OT)~— (Hub-star)~— (Edge-cloud)
+  }}}
+  \caption{The five architectural patterns in \systemname. Each pattern is enforced
+  by OpenWrt firewall rules that constrain the attacker's reachability from the
+  entry point, not by service labels alone.}
+  \label{fig:patterns}
+\end{figure*}
+
+\todo{Write §4.2 prose — for each of the 5 patterns: (i)~one sentence naming the
+pattern, (ii)~the real-world IoT deployment it models, (iii)~the firewall
+reachability invariant.}
+
+Concretely:
+\begin{enumerate}
+  \item \textbf{Flat.} All devices are directly reachable from the entry point;
+  no pivot is required.
+  \item \textbf{Gateway-centric.} A single IoT gateway mediates all access to
+  back-end services; inter-service traffic is blocked without gateway compromise.
+  \item \textbf{Segmented IT/OT.} Three zones (admin/IT/OT) with access-control
+  lists; the OT zone (Modbus PLCs, HMI) is reachable only via a jump host.
+  \item \textbf{Hub-centric star.} A central home-automation hub is the only
+  device that can reach MQTT broker, DB, and camera; peripherals cannot talk
+  to each other directly.
+  \item \textbf{Edge-cloud pivot.} Edge subnet and cloud subnet are separated;
+  only the edge gateway bridges them, making cloud-side services unreachable
+  without edge compromise.
+\end{enumerate}
+
+% ── §4.3 vulnerability injection ──────────────────────────────────────────
+\subsection{Deterministic vulnerability injection}
+\label{sec:iotbench:inject}
+
+Vulnerabilities are injected by a single Ansible role (\texttt{04\_inject\_vulns.yml})
+parameterized by \texttt{scenario\_id}. Each scenario YAML lists \texttt{router\_vulns}
+(OpenWrt-level: Telnet, WAN admin, FTP) and per-service \texttt{role} definitions
+that trigger role-specific injections: \emph{e.g.}, the \texttt{mqtt\_broker} role
+sets \texttt{allow\_anonymous true} and binds on \texttt{0.0.0.0:1883}; the
+\texttt{ssh\_server} role installs weak credentials (\texttt{admin:admin}) and
+enables \texttt{PasswordAuthentication}; the \texttt{db\_server} role starts
+MariaDB with a passwordless \texttt{root}. Category distribution is shown in
+\cref{tab:categories}.
+
+\begin{table}[t]
+\centering
+\caption{Vulnerability categories and severity distribution across \systemname
+(87~injected instances).}
+\label{tab:categories}
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Category & Count & CRIT & HIGH & MED/LOW \\
+\midrule
+\texttt{misconfiguration}      & 17 & 3 & 8 & 6 \\
+\texttt{data\_exposure}        & 12 & 0 & 7 & 5 \\
+\texttt{default\_credentials}  & 11 & 6 & 5 & 0 \\
+\texttt{info\_disclosure}      & 10 & 0 & 0 & 10 \\
+\texttt{no\_authentication}    &  9 & 2 & 4 & 3 \\
+\texttt{insecure\_update}      &  4 & 0 & 0 & 4 \\
+\texttt{weak\_crypto}          &  3 & 0 & 0 & 3 \\
+\texttt{missing\_header}       &  3 & 0 & 0 & 3 \\
+\texttt{known\_cve}            &  3 & 0 & 3 & 0 \\
+\texttt{code\_injection}       &  3 & 2 & 1 & 0 \\
+\texttt{privilege\_escalation} &  2 & 0 & 2 & 0 \\
+\midrule
+\textbf{Total}                 &\textbf{87} & 13 & 30 & 44 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── §4.4 ground truth schema ──────────────────────────────────────────────
+\subsection{Ground-truth schema}
+\label{sec:iotbench:gt}
+
+Each scenario ships a YAML file describing every injected vulnerability. An
+entry example (from \texttt{scenario\_1.yaml}):
+
+\begin{figure}[t]
+\footnotesize
+\begin{verbatim}
+- id: V1
+  device: s1-mqtt
+  ip: "192.168.100.11"
+  role: mqtt_broker
+  title: "MQTT without authentication"
+  severity: high
+  category: misconfiguration
+  owasp_iot: "I1 / I9"
+  mitre_ics: "Initial Access, Collection"
+  cve: null
+  indicators:
+    - "allow_anonymous true"
+    - "Anonymous clients connected"
+  verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v"
+\end{verbatim}
+\caption{Ground-truth entry example.}
+\label{lst:gt}
+\end{figure}
+
+% ── §4.5 evaluator ────────────────────────────────────────────────────────
+\subsection{Evaluator}
+\label{sec:iotbench:eval}
+
+The evaluator (\S\,\ref{sec:harness:report} integrates results into Phase~5)
+matches each LLM finding against ground truth in four passes, in order:
+(1)~exact CVE match; (2)~\texttt{(ip, vuln\_type)}; (3)~\texttt{(ip, category)};
+(4)~\texttt{(ip, severity)}. Severity weights are
+$w = \{\text{critical}{=}4,\text{high}{=}3,\text{medium}{=}2,\text{low}{=}1\}$;
+loose category matches apply $0.5\times$, severity mismatches $0.75\times$.
+The composite score is the weighted True-Positive sum normalized by
+$\sum_{g \in \text{GT}} w(g)$.
+
+\paragraph{Evidence levels}
+Beyond match accuracy, the evaluator tracks, per True Positive, the deepest
+\emph{evidence level} achieved by the harness: \textsf{L1}~(detection — banner
+or port), \textsf{L2}~(exploitation — authenticated action), \textsf{L3}~(data
+exfiltration — sensitive content retrieved). We report
+$\text{L\textit{k}-coverage} = |\{t \in \text{TP} : \text{level}(t) \geq k\}| / |\text{TP}|$.
+This metric cannot be computed on single-host binary-flag benchmarks and
+captures a dimension of pentest quality that existing LLM-pentest evaluations
+conflate.

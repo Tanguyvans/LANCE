@@ -1,0 +1,41 @@
+% §6 Experimental Setup — target 0.75 page
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Infrastructure}
+All scenarios run on a single Proxmox VE host. Networks are Linux bridges
+(\texttt{vmbr1}, \texttt{192.168.100.0/24}) with an OpenWrt router as gateway.
+Per-scenario deployment and teardown are automated via Ansible and complete
+in under 10~minutes per scenario.
+
+\paragraph{Models evaluated}
+Five state-of-the-art LLMs are evaluated under identical prompts and tool sets:
+\todo{Finalize exact model IDs and providers (Anthropic, OpenRouter, MiniMax).}
+(i)~Claude Sonnet 4,
+(ii)~Gemini 2.5,
+(iii)~GPT-4.1,
+(iv)~DeepSeek-V3,
+(v)~MiniMax / Qwen3-large.
+Each scenario is run $k{=}3$ times per model to estimate variance, for a total
+of $7{\times}5{\times}3 = 105$ harness runs.
+
+\paragraph{Baselines}
+\begin{itemize}
+  \item \textbf{Traditional scanners:} OpenVAS and Nmap~NSE
+  (\texttt{--script=vuln,default,discovery}) against the same target CIDR.
+  Scanner outputs are converted to the evaluator's JSON schema.
+  \item \textbf{Single-host LLM agents adapted to network scope:} CAI and
+  VulnBot invoked with the full \texttt{/24} as scope. Adaptation consists of
+  wrapping each discovered host as a separate invocation and merging results.
+\end{itemize}
+
+\paragraph{Metrics}
+We report: per-severity Recall, Precision, F1, and weighted Score
+(\S\ref{sec:iotbench:eval}); evidence-level coverage $L_1, L_2, L_3$;
+monetary cost (USD) from provider billing APIs; and wall-clock time per scenario.
+
+\paragraph{Compute and budget}
+All runs consume a combined API budget under \$NNN, bounded by per-phase turn
+caps and the concurrency limit in Phase~4.
+\todo{Insert exact budget after all runs complete (freeze 2 May).}

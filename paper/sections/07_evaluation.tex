@@ -1,0 +1,127 @@
+% §7 Evaluation — target 2.25 pages
+% Structure mirrors RQ1-RQ4.
+
+\section{Evaluation}
+\label{sec:eval}
+
+% ── §7.1 overall ──────────────────────────────────────────────────────────
+\subsection{Overall performance (RQ1)}
+\label{sec:eval:overall}
+
+\begin{table*}[t]
+\centering
+\caption{Main results — Recall / Precision / F1 / weighted Score, averaged over
+7 scenarios $\times$ 3 runs per model. Weighted Score normalizes by
+$\sum w(g)$ for $g \in \text{GT}$.}
+\label{tab:main}
+\footnotesize
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Model & Recall & Precision & F1 & Score & Cost (\$) \\
+\midrule
+Claude Sonnet 4     & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+Gemini 2.5          & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+GPT-4.1             & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+DeepSeek-V3         & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+MiniMax/Qwen3       & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\todo{Write §7.1 prose — headline finding: best LLM reaches XX\% recall at /24
+scale, variance across runs stays under YY\%.}
+
+% ── §7.2 baselines ────────────────────────────────────────────────────────
+\subsection{Network-scale vs baselines (RQ4)}
+\label{sec:eval:baselines}
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{figures/fig4_baselines.pdf}
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~4 placeholder: bar chart,
+  F1 and Score for \harnessname vs OpenVAS, Nmap NSE, CAI-adapted,
+  VulnBot-adapted.}}}
+  \caption{Baseline comparison. Scanners capture known CVEs but miss
+  configuration vulnerabilities. Single-host LLM agents lose cross-device
+  signal when adapted to a network scope.}
+  \label{fig:baselines}
+\end{figure}
+
+\todo{Write §7.2 — explicit narrative: (i) scanners win on CVE category,
+(ii) LLMs win on misconfig/default-creds, (iii) single-host LLMs adapted to
+network fall behind native harness on F1 by ZZ\%.}
+
+% ── §7.3 per-architecture ─────────────────────────────────────────────────
+\subsection{Per-architecture analysis (RQ3)}
+\label{sec:eval:arch}
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{figures/fig5_heatmap.pdf}
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~5 placeholder:
+  heatmap scenario $\times$ model, cell = weighted Score.}}}
+  \caption{Per-scenario Score heatmap. \todo{Note which pattern consistently
+  breaks LLMs.}}
+  \label{fig:heatmap}
+\end{figure}
+
+\todo{Write §7.3 — pattern-by-pattern commentary. Expected finding:
+gateway-centric and hub-star degrade most, because they require pivot
+reasoning. Edge-cloud may also degrade on cloud-side service discovery.}
+
+% ── §7.4 evidence level depth ─────────────────────────────────────────────
+\subsection{Evidence-level depth (RQ2)}
+\label{sec:eval:evidence}
+
+\begin{table}[t]
+\centering
+\caption{Evidence-level coverage. $L_k$ is the fraction of true positives
+reaching level~$k$ or deeper. Absent from binary-flag benchmarks.}
+\label{tab:evidence}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Model & $L_1$ (detect) & $L_2$ (exploit) & $L_3$ (exfiltrate) \\
+\midrule
+Claude Sonnet 4  & \todo{} & \todo{} & \todo{} \\
+Gemini 2.5       & \todo{} & \todo{} & \todo{} \\
+GPT-4.1          & \todo{} & \todo{} & \todo{} \\
+DeepSeek-V3      & \todo{} & \todo{} & \todo{} \\
+MiniMax/Qwen3    & \todo{} & \todo{} & \todo{} \\
+\midrule
+OpenVAS          & --      & --      & --      \\
+Nmap NSE         & --      & --      & --      \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\todo{Write §7.4 — expected: detection (L1) near-parity with scanners, but
+L2/L3 is LLM-only. This is the strongest argument for LLM agents in this
+context.}
+
+% ── §7.5 per-protocol ─────────────────────────────────────────────────────
+\subsection{Per-protocol analysis}
+\label{sec:eval:protocol}
+
+\todo{Write §7.5 — 2 paragraphs. Expected: LLMs excel on MQTT/SSH/HTTP
+(text-rich, well-represented in training), fall short on Modbus/LoRaWAN
+(binary, sparse training data). Report numbers per protocol.}
+
+% ── §7.6 failure modes, cost, time ────────────────────────────────────────
+\subsection{Failure modes and cost/time envelope}
+\label{sec:eval:failures}
+
+\begin{figure}[t]
+  \centering
+  % \includegraphics[width=\linewidth]{figures/fig6_pareto.pdf}
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~6 placeholder:
+  Pareto plot, USD cost vs weighted Score, one point per model.}}}
+  \caption{Cost--performance Pareto. \todo{Annotate which model dominates
+  on each axis and the efficient frontier.}}
+  \label{fig:pareto}
+\end{figure}
+
+\todo{Write §7.6 — categorize failure modes: (a) hallucinated findings on
+devices with no services, (b) missed vulnerabilities on binary protocols,
+(c) over-reporting info-disclosure without severity calibration. Brief
+quantitative table.}

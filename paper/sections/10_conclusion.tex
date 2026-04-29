@@ -1,0 +1,26 @@
+% §10 Conclusion — target 0.25 page
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented \systemname, the first reproducible benchmark for evaluating LLM
+penetration testing agents at \emph{network scale} on IoT infrastructure, and
+\harnessname, a network-native harness that keeps LLM context tractable
+through per-device and per-vulnerability parallelization. Our empirical study
+of five state-of-the-art models across 7~scenarios and three architectural
+patterns\todo{(update to five once firewall rules land)} shows that LLM agents
+outperform traditional scanners on configuration and credential categories
+while underperforming on industrial protocols, and that the
+detection-to-exfiltration (L1--L3) evidence spectrum exposes model
+differences that binary-flag benchmarks conflate.
+
+\paragraph{Future work}
+(i)~\emph{Credential propagation} — closing the Phase~4 $\to$ Phase~2 loop to
+enable multi-hop exploitation chains;
+(ii)~\emph{Real hardware} — extending to embedded Zigbee, LoRaWAN, and
+sub-GHz attack surfaces via SDR tooling;
+(iii)~\emph{Defender's side} — using \systemname{} as a benchmark for
+LLM-assisted IoT defense (detection, patching recommendation).
+
+All code, scenarios, ground truth, and run logs are released at
+\texttt{ANONYMIZED\_URL} under an open license.

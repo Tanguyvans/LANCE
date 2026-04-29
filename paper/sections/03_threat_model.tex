@@ -1,0 +1,40 @@
+% §3 Threat Model & Problem Definition — target 0.5 page
+% Purpose: formalize. ACSAC reviewers expect this explicitly.
+
+\section{Threat Model and Problem Definition}
+\label{sec:threat}
+
+\paragraph{Network-scale pentest}
+We define \emph{network-scale penetration testing} as the task of: (i)~discovering
+all live hosts in a target IP range, (ii)~enumerating services and identifying
+vulnerabilities on each host, (iii)~producing evidence of exploitability where
+feasible, and (iv)~aggregating findings at the network level. The \emph{unit of
+evaluation} is the network, not an individual host.
+
+\paragraph{Attacker model}
+The attacker holds network-layer access to the target subnet (post-ingress,
+pre-compromise). They hold no prior credentials, no privileged vantage, and no
+knowledge of deployed software beyond what is observable through scans. The
+attacker has access to standard offensive tooling (Nmap, MQTT clients, SSH, \ldots)
+and an LLM with tool-calling. Time and budget are bounded.
+
+\paragraph{Goals}
+\begin{enumerate}
+  \item Enumerate all devices reachable from the entry point.
+  \item For each device, identify vulnerabilities from misconfiguration, weak
+  credentials, information disclosure, insecure protocols, and known CVEs.
+  \item For each finding, attempt to produce \emph{evidence} at one of three
+  levels: \textsf{L1}~detection (port open, banner leak), \textsf{L2}~exploitation
+  (authenticated session, protocol handshake), \textsf{L3}~data exfiltration
+  (configuration files, credentials, sensor data).
+  \item Report findings at the network level (severity-ranked, deduplicated).
+\end{enumerate}
+
+\paragraph{Scope and non-goals}
+We evaluate at the \emph{IP/application layer} on deployed IoT networks. We
+do \emph{not} evaluate: (a)~physical/side-channel attacks on hardware,
+(b)~RF-layer attacks requiring SDR captures,
+(c)~firmware extraction from physical devices,
+(d)~post-exploitation persistence or impact,
+(e)~insider threats or supply-chain compromise.
+Hardware-assisted attacks are left as future work (\cref{sec:conclusion}).

@@ -1,0 +1,86 @@
+% IoTBench — ACSAC 2026 submission
+% Target format: 11 pages double-column IEEEtran conference compsoc
+% Double-blind review — NO author info before camera-ready.
+
+\documentclass[conference,compsoc]{IEEEtran}
+
+% ── packages ──────────────────────────────────────────────────────────────
+% Using default OT1 encoding — TinyTeX lacks the T1 Courier metric (pcrr8t).
+% Once the `psnfss` + `courier` metric files are installed (`tlmgr install courier
+% psnfss`), you may re-enable:
+%   \usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% TinyTeX also lacks URW Courier OT1 metrics; fall back to Computer Modern
+% Typewriter, which is always available.
+\renewcommand{\ttdefault}{cmtt}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{xspace}
+\usepackage{verbatim}
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+% Optional polish packages — install with tlmgr once TeX tree is writable:
+%   tlmgr install microtype subcaption caption algorithms algorithmicx preprint listings enumitem cleveref
+
+% ── macros ────────────────────────────────────────────────────────────────
+\newcommand{\systemname}{IoTBench\xspace}         % benchmark name
+\newcommand{\harnessname}{\textsc{IoTPent}\xspace} % harness/agent name (provisional — TBD)
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\note}[1]{\textcolor{blue}{\textit{[note: #1]}}}
+
+% Fallback when cleveref is not installed — plain \ref
+\providecommand{\Cref}[1]{Section~\ref{#1}}
+\providecommand{\cref}[1]{\S\ref{#1}}
+
+% Remove lstset/lstdefinelanguage: use verbatim for YAML listings instead
+\newenvironment{yamlquote}{\par\vspace{.3em}\footnotesize\verbatim}{\endverbatim\normalsize\par\vspace{.3em}}
+
+% ── title & anonymous authors (ACSAC double-blind) ────────────────────────
+\title{\systemname: A Network-Scale Benchmark for LLM-Based IoT Penetration Testing}
+
+\author{\IEEEauthorblockN{Anonymous Authors}
+\IEEEauthorblockA{Paper~\#XXXX, Anonymized for Double-Blind Review}}
+
+% ──────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% TARGET: 200-250 words
+% Structure:
+%   1. Context: IoT pentest is slow/manual; LLM agents promise automation.
+%   2. Gap: every published LLM-pentest benchmark evaluates isolated hosts.
+%   3. Contribution: IoTBench (benchmark) + harness (method) + empirical study.
+%   4. Key results with numbers (recall, L2/L3 coverage, cost).
+%   5. Artifact: released under OPEN_LICENSE at ANONYMIZED_URL.
+\todo{Abstract — write last. Lead with the network-scale gap, not the harness.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+IoT security, penetration testing, large language models, autonomous agents,
+benchmark, cyber-physical systems
+\end{IEEEkeywords}
+
+% ── sections ──────────────────────────────────────────────────────────────
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_threat_model}
+\input{sections/04_iotbench}
+\input{sections/05_harness}
+\input{sections/06_setup}
+\input{sections/07_evaluation}
+\input{sections/08_discussion}
+\input{sections/09_ethical}
+\input{sections/10_conclusion}
+
+% ── bibliography ──────────────────────────────────────────────────────────
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+% ── LLM Usage Statement (outside page quota per ACSAC CFP) ────────────────
+\input{sections/11_llm_usage}
+
+\end{document}
