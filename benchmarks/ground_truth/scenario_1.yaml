@@ -43,6 +43,7 @@ vulnerabilities:
       - "Topic smartcity/admin/credentials expose db_pass et api_key"
     verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v"
     confidence_required: high   # le LLM doit explicitement nommer allow_anonymous ou MQTT sans auth
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V2
     device: s1-web
@@ -65,6 +66,7 @@ vulnerabilities:
       - "GET /config/app.config expose des credentials"
     verification: "curl http://192.168.100.12/backup/"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V3
     device: s1-web
@@ -84,6 +86,7 @@ vulnerabilities:
       - "GET /backup/db_backup_2024-01-15.sql retourne INSERT INTO users avec passwords"
     verification: "curl http://192.168.100.12/config/app.config"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V4
     device: s1-ssh
@@ -106,6 +109,7 @@ vulnerabilities:
       - "PasswordAuthentication yes dans /etc/ssh/sshd_config"
     verification: "ssh admin@192.168.100.13 (password: admin)"
     confidence_required: high
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V5
     device: s1-router
@@ -126,6 +130,7 @@ vulnerabilities:
       - "Connexion telnet possible sans authentification (OpenWrt par défaut)"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V6
     device: s1-mqtt
@@ -144,6 +149,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V7
     device: s1-ssh
@@ -165,6 +171,7 @@ vulnerabilities:
       - "KexAlgorithms inclut diffie-hellman-group1-sha1"
     verification: "ssh-audit 192.168.100.13"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V8
     device: s1-mqtt
@@ -185,6 +192,7 @@ vulnerabilities:
       - "Upgrade WebSocket accepté sans authentification"
     verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://192.168.100.11:9001/"
     confidence_required: medium
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V9
     device: s1-web
@@ -206,6 +214,7 @@ vulnerabilities:
       - "Réponse HTTP sans Content-Security-Policy"
     verification: "curl -sI http://192.168.100.12/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
     confidence_required: low
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V10
     device: s1-web
@@ -224,6 +233,7 @@ vulnerabilities:
       - "Header Server contient nginx/ suivi d'un numéro de version"
     verification: "curl -sI http://192.168.100.12/ | grep Server"
     confidence_required: low
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V11
     device: s1-mqtt
@@ -243,6 +253,7 @@ vulnerabilities:
       - "$SYS/broker/version expose la version Mosquitto"
     verification: "mosquitto_sub -h 192.168.100.11 -t '$SYS/#' -v -C 5"
     confidence_required: low
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
   - id: V12
     device: s1-ssh
@@ -261,6 +272,7 @@ vulnerabilities:
       - "Connexion TCP port 22 retourne SSH-2.0-OpenSSH_X.Xp1 Debian-..."
     verification: "nc -w2 192.168.100.13 22"
     confidence_required: low
+    hop_depth: 0   # S1 = réseau plat, tous devices joignables directement
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

@@ -136,6 +136,8 @@ class MatchResult:
     llm_severity: str = ""
     match_method: str = ""        # "cve", "ip+type", "ip+category"
     severity_match: bool = False  # True if LLM severity == GT severity
+    gt_hop_depth: int = 0         # Min number of network segments crossed from attacker
+                                   # to reach gt_ip. 0 = direct, 1 = behind 1 firewall, etc.
 
 
 # Types considered "bonus" when found on a device that already has matched vulns.
@@ -185,6 +187,15 @@ class EvaluationResult:
     exploitation_coverage: float = 0.0  # % of TP findings with evidence_level >= 2
     tp_exploited: int = 0               # TP findings with evidence_level >= 2
     tp_detected_only: int = 0           # TP findings with evidence_level < 2
+
+    # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
+    # None when no GT entry exists at that depth (metric undefined for that scenario,
+    # e.g. a flat topology has MHR_1 = MHR_2 = MHR_3 = None).
+    mhr_1: float | None = None
+    mhr_2: float | None = None
+    mhr_3: float | None = None
+    gt_at_depth: dict = field(default_factory=dict)  # {0: 5, 1: 3, 2: 1} — GT counts per depth bucket
+    tp_at_depth: dict = field(default_factory=dict)  # {0: 4, 1: 2, 2: 0} — TP counts per depth bucket
 
     # Details
     matches: list[dict] = field(default_factory=list)
@@ -385,6 +396,48 @@ def match_vuln(gt_vuln: dict, llm_findings: list[dict]) -> tuple[dict | None, st
     return None, ""
 
 
+# ── Multi-Hop Reach (MHR) ──────────────────────────────────────────────────────
+
+def compute_mhr(matches: list[dict], k: int) -> float | None:
+    """Multi-Hop Reach @ depth k.
+
+    MHR_k = | TP at hop_depth >= k | / | GT at hop_depth >= k |
+
+    Returns None when no GT entry has hop_depth >= k (the metric is undefined for
+    that scenario — e.g. a flat topology has MHR_1 = MHR_2 = MHR_3 = None).
+
+    `matches` is the result.matches list (asdict'd MatchResult), each entry has
+    keys 'matched' (bool) and 'gt_hop_depth' (int).
+
+    The interpretation: how good is the system at finding vulnerabilities that
+    require crossing at least k network segments from the attacker's entry point?
+    Mono-host LLM agents (PentestGPT, CAI per-IP, etc.) are expected to score
+    near zero on MHR_2 and MHR_3 by construction — they cannot pivot. Network-
+    native pipelines should score significantly higher.
+    """
+    gt_at_k = [m for m in matches if int(m.get("gt_hop_depth", 0)) >= k]
+    if not gt_at_k:
+        return None
+    tp_at_k = sum(1 for m in gt_at_k if m.get("matched"))
+    return round(tp_at_k / len(gt_at_k), 3)
+
+
+def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
+    """Return (gt_at_depth, tp_at_depth) histograms keyed by hop_depth value.
+
+    Useful for debugging and for the §7 paper table — readers want to see
+    how many GT entries exist at each depth, not just the cumulative MHR.
+    """
+    gt_hist: dict[int, int] = {}
+    tp_hist: dict[int, int] = {}
+    for m in matches:
+        d = int(m.get("gt_hop_depth", 0))
+        gt_hist[d] = gt_hist.get(d, 0) + 1
+        if m.get("matched"):
+            tp_hist[d] = tp_hist.get(d, 0) + 1
+    return gt_hist, tp_hist
+
+
 # ── Evaluator ─────────────────────────────────────────────────────────────────
 
 # Phase 4 statuses that mean "test ran but vuln not exploitable" or "tool error"
@@ -555,6 +608,7 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
             gt_ip=gt.get("ip", ""),
             gt_severity=severity,
             matched=match is not None,
+            gt_hop_depth=int(gt.get("hop_depth", 0)),
         )
 
         if match:
@@ -653,6 +707,16 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         result.tp_exploited / tp, 3
     ) if tp > 0 else 0.0
 
+    # Multi-Hop Reach — fraction of GT vulns at depth >= k that were detected.
+    # Computed on result.matches (which carries gt_hop_depth per match).
+    result.mhr_1 = compute_mhr(result.matches, k=1)
+    result.mhr_2 = compute_mhr(result.matches, k=2)
+    result.mhr_3 = compute_mhr(result.matches, k=3)
+    gt_hist, tp_hist = _depth_histograms(result.matches)
+    # Convert int keys to str for JSON serialisability of the dataclass
+    result.gt_at_depth = {str(k): v for k, v in sorted(gt_hist.items())}
+    result.tp_at_depth = {str(k): v for k, v in sorted(tp_hist.items())}
+
     return result
 
 
@@ -666,6 +730,21 @@ def print_report(result: EvaluationResult) -> None:
     print(f"    Recall (vulns found)     : {result.recall:.1%}  ({result.true_positives}/{result.total_gt_vulns})")
     print(f"    Weighted Score           : {result.weighted_score}/{result.max_weighted_score} ({result.score_pct:.1f}%)")
     print(f"    Exploitation Coverage    : {result.exploitation_coverage:.1%}  ({result.tp_exploited}/{result.true_positives} TP prouvés niveau ≥ 2)")
+    print(f"{'─'*60}")
+
+    # Multi-Hop Reach
+    def _fmt_mhr(v: float | None) -> str:
+        return "N/A" if v is None else f"{v:.1%}"
+    print("  MULTI-HOP REACH")
+    print(f"    MHR_1 (vulns at depth >= 1) : {_fmt_mhr(result.mhr_1)}")
+    print(f"    MHR_2 (vulns at depth >= 2) : {_fmt_mhr(result.mhr_2)}")
+    print(f"    MHR_3 (vulns at depth >= 3) : {_fmt_mhr(result.mhr_3)}")
+    if result.gt_at_depth:
+        depth_breakdown = ", ".join(
+            f"d{d}: {result.tp_at_depth.get(d, 0)}/{n}"
+            for d, n in result.gt_at_depth.items()
+        )
+        print(f"    Breakdown by depth          : {depth_breakdown}")
     print(f"{'─'*60}")
 
     # Counts breakdown

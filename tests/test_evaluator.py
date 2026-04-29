@@ -14,6 +14,7 @@ from src.benchmark.evaluator import (
     _match_by_cve,
     _match_by_ip_and_service,
     _match_by_ip_and_type,
+    compute_mhr,
     evaluate,
     match_vuln,
 )
@@ -22,9 +23,10 @@ from src.benchmark.evaluator import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguration",
-        cve=None, device="s1-mqtt"):
+        cve=None, device="s1-mqtt", hop_depth=0):
     return {"id": id, "ip": ip, "severity": severity, "category": category,
-            "cve": cve, "device": device, "title": f"Vuln {id}"}
+            "cve": cve, "device": device, "title": f"Vuln {id}",
+            "hop_depth": hop_depth}
 
 
 def _finding(id="F1", ip="192.168.100.11", type="no_auth", severity="high",
@@ -431,3 +433,154 @@ class TestEvaluateCategories:
         result = evaluate(run_dir, gt_file)
         assert result.true_positives == 1
         assert result.matches[0]["match_method"] == "ip+type"
+
+
+# ── MHR (Multi-Hop Reach) ──────────────────────────────────────────────────────
+
+class TestComputeMhr:
+    """Unit tests for compute_mhr() — the core MHR computation."""
+
+    def test_no_gt_at_depth_returns_none(self):
+        """Flat topology: all GT at depth 0. MHR_1/2/3 must be None."""
+        matches = [
+            {"matched": True, "gt_hop_depth": 0},
+            {"matched": False, "gt_hop_depth": 0},
+        ]
+        assert compute_mhr(matches, k=1) is None
+        assert compute_mhr(matches, k=2) is None
+        assert compute_mhr(matches, k=3) is None
+
+    def test_full_recall_at_depth(self):
+        """All deep vulns matched: MHR_k = 1.0."""
+        matches = [
+            {"matched": True, "gt_hop_depth": 1},
+            {"matched": True, "gt_hop_depth": 2},
+            {"matched": True, "gt_hop_depth": 0},
+        ]
+        assert compute_mhr(matches, k=1) == 1.0  # 2 of 2 at depth >= 1
+        assert compute_mhr(matches, k=2) == 1.0  # 1 of 1 at depth >= 2
+        assert compute_mhr(matches, k=3) is None  # no GT at depth >= 3
+
+    def test_partial_recall_cumulative(self):
+        """MHR is cumulative: MHR_1 includes both depth 1 and depth 2 GTs."""
+        matches = [
+            {"matched": True,  "gt_hop_depth": 1},
+            {"matched": False, "gt_hop_depth": 1},
+            {"matched": False, "gt_hop_depth": 2},
+        ]
+        # depth >= 1: 1 TP / 3 GT = 0.333
+        assert compute_mhr(matches, k=1) == 0.333
+        # depth >= 2: 0 TP / 1 GT = 0.0
+        assert compute_mhr(matches, k=2) == 0.0
+        # depth >= 3: no GT
+        assert compute_mhr(matches, k=3) is None
+
+    def test_zero_when_no_match_at_depth(self):
+        """Deep GT exists but none matched: MHR_k = 0.0 (not None)."""
+        matches = [
+            {"matched": False, "gt_hop_depth": 2},
+            {"matched": False, "gt_hop_depth": 2},
+        ]
+        assert compute_mhr(matches, k=1) == 0.0
+        assert compute_mhr(matches, k=2) == 0.0
+        assert compute_mhr(matches, k=3) is None
+
+    def test_handles_string_hop_depth(self):
+        """YAML may load hop_depth as string in some edge cases — coerce."""
+        matches = [
+            {"matched": True, "gt_hop_depth": "2"},
+            {"matched": False, "gt_hop_depth": "1"},
+        ]
+        assert compute_mhr(matches, k=1) == 0.5
+        assert compute_mhr(matches, k=2) == 1.0
+
+
+class TestEvaluateMhr:
+    """Integration tests: MHR populated correctly in EvaluationResult."""
+
+    def test_flat_scenario_mhr_undefined(self, tmp_path):
+        """All GT at depth 0: result.mhr_1/2/3 all None."""
+        vulns = [
+            _gt(id="V1", ip="192.168.100.11", hop_depth=0),
+            _gt(id="V2", ip="192.168.100.12", hop_depth=0),
+        ]
+        findings = [
+            _finding(id="F1", ip="192.168.100.11"),
+            _finding(id="F2", ip="192.168.100.12"),
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+        result = evaluate(run_dir, gt_file)
+
+        assert result.mhr_1 is None
+        assert result.mhr_2 is None
+        assert result.mhr_3 is None
+        # But recall is full
+        assert result.recall == 1.0
+        assert result.gt_at_depth == {"0": 2}
+        assert result.tp_at_depth == {"0": 2}
+
+    def test_multi_hop_mhr_partial(self, tmp_path):
+        """3 vulns at depths 0/1/2, only depth-0 and depth-1 found."""
+        vulns = [
+            _gt(id="V1", ip="192.168.100.1",  hop_depth=0),
+            _gt(id="V2", ip="192.168.100.11", hop_depth=1),
+            _gt(id="V3", ip="192.168.100.50", hop_depth=2),
+        ]
+        findings = [
+            _finding(id="F1", ip="192.168.100.1"),
+            _finding(id="F2", ip="192.168.100.11"),
+            # nothing on 192.168.100.50
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+        result = evaluate(run_dir, gt_file)
+
+        # depth >= 1: V2 found, V3 missed → 1/2 = 0.5
+        assert result.mhr_1 == 0.5
+        # depth >= 2: V3 missed → 0/1 = 0.0
+        assert result.mhr_2 == 0.0
+        # depth >= 3: no GT
+        assert result.mhr_3 is None
+        assert result.gt_at_depth == {"0": 1, "1": 1, "2": 1}
+        assert result.tp_at_depth == {"0": 1, "1": 1}
+
+    def test_mhr_in_serialized_result(self, tmp_path):
+        """MHR fields survive asdict() round-trip — required for evaluator_score.json."""
+        from dataclasses import asdict
+        vulns = [_gt(id="V1", hop_depth=2)]
+        findings = [_finding(id="F1")]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+        result = evaluate(run_dir, gt_file)
+
+        d = asdict(result)
+        assert "mhr_1" in d and d["mhr_1"] == 1.0
+        assert "mhr_2" in d and d["mhr_2"] == 1.0
+        assert "mhr_3" in d and d["mhr_3"] is None
+        assert "gt_at_depth" in d
+        assert "tp_at_depth" in d
+
+    def test_gt_hop_depth_propagated_to_match(self, tmp_path):
+        """MatchResult.gt_hop_depth carries the depth from GT YAML."""
+        vulns = [_gt(id="V1", hop_depth=2)]
+        findings = [_finding(id="F1")]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+        result = evaluate(run_dir, gt_file)
+
+        assert result.matches[0]["gt_hop_depth"] == 2
+
+    def test_missing_hop_depth_defaults_to_zero(self, tmp_path):
+        """GT entries without hop_depth field default to 0 (backward compat)."""
+        # Build vuln without hop_depth using helper but stripping the field
+        vuln = _gt(id="V1")
+        del vuln["hop_depth"]
+        findings = [_finding(id="F1")]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, [vuln])
+        result = evaluate(run_dir, gt_file)
+
+        # Should not crash; treats as flat
+        assert result.matches[0]["gt_hop_depth"] == 0
+        assert result.mhr_1 is None
