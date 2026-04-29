@@ -43,127 +43,204 @@
 
 
     # ── S13 : s'assurer qu'apt-cacher-ng tourne sur le master (LXC 200) ──
-    - name: "[S13] Configurer apt-cacher-ng sur le master (écoute 0.0.0.0:3142)"
+    - name: "[S13] Vérifier/démarrer apt-cacher-ng sur le master"
       ansible.builtin.shell: |
         pct exec 200 -- sh -c "
           dpkg -l apt-cacher-ng 2>/dev/null | grep -q '^ii' || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apt-cacher-ng
           sed -i 's/^BindAddress:.*/#&/' /etc/apt-cacher-ng/acng.conf
-          grep -q '^AllowedClients' /etc/apt-cacher-ng/acng.conf || echo 'AllowedClients: 0.0.0.0/0' >> /etc/apt-cacher-ng/acng.conf
+          sed -i '/^AllowedClients/d' /etc/apt-cacher-ng/acng.conf
           systemctl enable apt-cacher-ng
+          systemctl reset-failed apt-cacher-ng 2>/dev/null || true
           systemctl restart apt-cacher-ng
           sleep 1
           ss -tlnp | grep 3142 && echo ACN_OK || echo ACN_FAIL
         "
       when: scenario_id == '13'
+      register: acng_result
       changed_when: false
-      failed_when: false
+      failed_when: "'ACN_FAIL' in acng_result.stdout or acng_result.rc != 0"
 
     # ════════════════════════════════════════════════════
-    # S13 ONLY — Configuration OpenWrt VLAN + apt proxy
-    # (doit tourner AVANT les installs apt pour que les
-    #  containers VLAN aient un gateway + proxy fonctionnel)
-    # ════════════════════════════════════════════════════
+    # S13 ONLY — Configuration OpenWrt VLAN + isolement
     #
-    # ARCHITECTURE : on crée deux tables nft INDÉPENDANTES de fw4 :
-    #   inet s13_filter (priority -1, avant fw4) : FORWARD VLAN↔LAN + règles inter-VLAN
-    #   inet s13_nat    (priority srcnat)         : MASQUERADE VLAN→LAN + VLAN→WAN
-    # fw4 peut recharger autant qu'il veut (hotplug VLAN up), nos tables ne sont pas touchées.
+    # Architecture : OpenWrt multihomé (VMID {{ base_vmid }})
+    #   eth0 → vmbr1 LAN (192.168.100.1) — accès master + pipeline
+    #   eth1 → vmbr0 WAN (DHCP) — internet
+    #   eth2 → vmbr1 trunk (tag=10;20;30) — sous-interfaces eth2.10/20/30
+    #
+    # Méthode : SSH direct depuis Proxmox via IP temp 192.168.100.254
+    # OpenWrt n'a pas de QEMU guest agent — qm exec non disponible.
+    # ════════════════════════════════════════════════════
 
-    - name: "[S13] UCI réseau + pare-feu VLAN (commit avant network restart)"
-      ansible.builtin.shell: |
-        qm exec {{ base_vmid }} -- sh -c "
+    - name: "[S13] Écrire le script de configuration réseau OpenWrt (eth2 UP + UCI VLAN)"
+      ansible.builtin.copy:
+        dest: /tmp/s13_openwrt_net.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # eth2 démarre DOWN — doit être monté avant network restart
+          ip link set eth2 up 2>/dev/null || true
+          uci -q delete network.vlan10 2>/dev/null || true
           uci set network.vlan10=interface
-          uci set network.vlan10.ifname='eth2.10'
-          uci set network.vlan10.proto='static'
-          uci set network.vlan10.ipaddr='192.168.10.1'
-          uci set network.vlan10.netmask='255.255.255.0'
+          uci set network.vlan10.ifname=eth2.10
+          uci set network.vlan10.proto=static
+          uci set network.vlan10.ipaddr=192.168.10.1
+          uci set network.vlan10.netmask=255.255.255.0
+          uci -q delete network.vlan20 2>/dev/null || true
           uci set network.vlan20=interface
-          uci set network.vlan20.ifname='eth2.20'
-          uci set network.vlan20.proto='static'
-          uci set network.vlan20.ipaddr='192.168.20.1'
-          uci set network.vlan20.netmask='255.255.255.0'
+          uci set network.vlan20.ifname=eth2.20
+          uci set network.vlan20.proto=static
+          uci set network.vlan20.ipaddr=192.168.20.1
+          uci set network.vlan20.netmask=255.255.255.0
+          uci -q delete network.vlan30 2>/dev/null || true
           uci set network.vlan30=interface
-          uci set network.vlan30.ifname='eth2.30'
-          uci set network.vlan30.proto='static'
-          uci set network.vlan30.ipaddr='192.168.30.1'
-          uci set network.vlan30.netmask='255.255.255.0'
+          uci set network.vlan30.ifname=eth2.30
+          uci set network.vlan30.proto=static
+          uci set network.vlan30.ipaddr=192.168.30.1
+          uci set network.vlan30.netmask=255.255.255.0
           uci commit network
-          /etc/init.d/network restart
-          echo UCI_OK
-        "
+          # Lance en arrière-plan — la connexion SSH va chuter brièvement
+          /etc/init.d/network restart >/dev/null 2>&1 &
+          sleep 1
+          exit 0
+      when: scenario_id == '13'
+
+    - name: "[S13] Pousser + exécuter la config réseau sur OpenWrt (connexion peut chuter)"
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'cat > /tmp/s13_openwrt_net.sh' < /tmp/s13_openwrt_net.sh
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'sh /tmp/s13_openwrt_net.sh' 2>/dev/null || true
       when: scenario_id == '13'
       changed_when: true
 
-    - name: "[S13] Attendre que les interfaces VLAN soient up (eth2.20 avec 192.168.20.1)"
+    - name: "[S13] Attendre la fin du network restart (15s)"
+      ansible.builtin.pause:
+        seconds: 15
+      when: scenario_id == '13'
+
+    - name: "[S13] Vérifier eth2.20 avec IP 192.168.20.1 (retry 15×5s)"
       ansible.builtin.shell: >-
-        qm exec {{ base_vmid }} -- sh -c "ip addr show eth2.20 2>/dev/null | grep -q '192.168.20.1' && echo ok"
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+        root@{{ benchmark_gateway }}
+        'ip addr show eth2.20 2>/dev/null | grep -q 192.168.20.1 && echo ok'
       register: vlan_up
-      until: vlan_up.rc == 0
-      retries: 20
-      delay: 3
+      until: vlan_up.rc == 0 and 'ok' in vlan_up.stdout
+      retries: 15
+      delay: 5
       when: scenario_id == '13'
       changed_when: false
 
-    - name: "[S13] Créer tables nft indépendantes (s13_filter + s13_nat) + règles VLAN"
+    - name: "[S13] Écrire le script de configuration pare-feu OpenWrt (UCI fw4 + règles inter-VLAN)"
+      ansible.builtin.copy:
+        dest: /tmp/s13_openwrt_fw.sh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -e
+
+          # Zones VLAN avec masquerade — fw4 génère les chains srcnat automatiquement
+          uci set firewall.vlan10=zone
+          uci set firewall.vlan10.name=vlan10
+          uci set firewall.vlan10.network=vlan10
+          uci set firewall.vlan10.input=ACCEPT
+          uci set firewall.vlan10.output=ACCEPT
+          uci set firewall.vlan10.forward=REJECT
+          uci set firewall.vlan10.masq=1
+
+          uci set firewall.vlan20=zone
+          uci set firewall.vlan20.name=vlan20
+          uci set firewall.vlan20.network=vlan20
+          uci set firewall.vlan20.input=ACCEPT
+          uci set firewall.vlan20.output=ACCEPT
+          uci set firewall.vlan20.forward=REJECT
+          uci set firewall.vlan20.masq=1
+
+          uci set firewall.vlan30=zone
+          uci set firewall.vlan30.name=vlan30
+          uci set firewall.vlan30.network=vlan30
+          uci set firewall.vlan30.input=ACCEPT
+          uci set firewall.vlan30.output=ACCEPT
+          uci set firewall.vlan30.forward=REJECT
+          uci set firewall.vlan30.masq=1
+
+          # VLAN → lan : internet + proxy apt-cacher-ng (192.168.100.200:3142)
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=vlan10; uci set firewall.@forwarding[-1].dest=lan
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=vlan20; uci set firewall.@forwarding[-1].dest=lan
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=vlan30; uci set firewall.@forwarding[-1].dest=lan
+
+          # lan → VLAN : pipeline master peut scanner toutes les cibles
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=lan; uci set firewall.@forwarding[-1].dest=vlan10
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=lan; uci set firewall.@forwarding[-1].dest=vlan20
+          uci add firewall forwarding; uci set firewall.@forwarding[-1].src=lan; uci set firewall.@forwarding[-1].dest=vlan30
+
+          # IT → IoT : MQTT/1883 seulement (reste REJECT par zone forward=REJECT)
+          uci add firewall rule
+          uci set firewall.@rule[-1].name=s13-it-iot-mqtt
+          uci set firewall.@rule[-1].src=vlan10
+          uci set firewall.@rule[-1].dest=vlan20
+          uci set firewall.@rule[-1].proto=tcp
+          uci set firewall.@rule[-1].dest_port=1883
+          uci set firewall.@rule[-1].target=ACCEPT
+
+          # IT → OT : SSH/22 (tunnel port-forwarding P2 — VPN pivot)
+          uci add firewall rule
+          uci set firewall.@rule[-1].name=s13-it-ot-ssh
+          uci set firewall.@rule[-1].src=vlan10
+          uci set firewall.@rule[-1].dest=vlan30
+          uci set firewall.@rule[-1].proto=tcp
+          uci set firewall.@rule[-1].dest_port=22
+          uci set firewall.@rule[-1].target=ACCEPT
+
+          # IT → OT : Redis/6379 (V17 — trou volontaire, non filtré, chemin P3)
+          uci add firewall rule
+          uci set firewall.@rule[-1].name=s13-it-ot-redis
+          uci set firewall.@rule[-1].src=vlan10
+          uci set firewall.@rule[-1].dest=vlan30
+          uci set firewall.@rule[-1].proto=tcp
+          uci set firewall.@rule[-1].dest_port=6379
+          uci set firewall.@rule[-1].target=ACCEPT
+
+          # IoT → OT : Modbus/502 (V14 — pont Node-RED→PLC, chemin P1)
+          uci add firewall rule
+          uci set firewall.@rule[-1].name=s13-iot-ot-modbus
+          uci set firewall.@rule[-1].src=vlan20
+          uci set firewall.@rule[-1].dest=vlan30
+          uci set firewall.@rule[-1].proto=tcp
+          uci set firewall.@rule[-1].dest_port=502
+          uci set firewall.@rule[-1].target=ACCEPT
+
+          # V2 : CoAP UDP/5683 IoT→OT non bloqué (pas de règle DROP UDP explicite)
+
+          uci commit firewall
+          /etc/init.d/firewall restart
+          echo FW_OK
+      when: scenario_id == '13'
+
+    - name: "[S13] Pousser + exécuter la config pare-feu sur OpenWrt"
       ansible.builtin.shell: |
-        qm exec {{ base_vmid }} -- sh -c "
-          nft delete table inet s13_filter 2>/dev/null; true
-          nft delete table inet s13_nat 2>/dev/null; true
-
-          nft add table inet s13_filter
-          nft add chain inet s13_filter forward '{ type filter hook forward priority -1; policy accept; }'
-          nft add chain inet s13_filter input '{ type filter hook input priority -1; policy accept; }'
-
-          nft add table inet s13_nat
-          nft add chain inet s13_nat postrouting '{ type nat hook postrouting priority srcnat; policy accept; }'
-
-          nft add rule inet s13_filter input iifname 'eth2.10' accept
-          nft add rule inet s13_filter input iifname 'eth2.20' accept
-          nft add rule inet s13_filter input iifname 'eth2.30' accept
-
-          nft add rule inet s13_filter forward iifname 'eth2.10' oifname 'eth0' accept
-          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.10' accept
-          nft add rule inet s13_filter forward iifname 'eth2.20' oifname 'eth0' accept
-          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.20' accept
-          nft add rule inet s13_filter forward iifname 'eth2.30' oifname 'eth0' accept
-          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.30' accept
-
-          nft add rule inet s13_filter forward iifname 'eth2.10' oifname 'eth1' accept
-          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.10' accept
-          nft add rule inet s13_filter forward iifname 'eth2.20' oifname 'eth1' accept
-          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.20' accept
-          nft add rule inet s13_filter forward iifname 'eth2.30' oifname 'eth1' accept
-          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.30' accept
-
-          nft add rule inet s13_nat postrouting ip saddr 192.168.10.0/24 oifname 'eth0' masquerade
-          nft add rule inet s13_nat postrouting ip saddr 192.168.20.0/24 oifname 'eth0' masquerade
-          nft add rule inet s13_nat postrouting ip saddr 192.168.30.0/24 oifname 'eth0' masquerade
-          nft add rule inet s13_nat postrouting ip saddr 192.168.10.0/24 oifname 'eth1' masquerade
-          nft add rule inet s13_nat postrouting ip saddr 192.168.20.0/24 oifname 'eth1' masquerade
-          nft add rule inet s13_nat postrouting ip saddr 192.168.30.0/24 oifname 'eth1' masquerade
-
-          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept
-          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp drop
-
-          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport { 22, 6379 } accept
-          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp drop
-
-          nft add rule inet s13_filter forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop
-
-          printf 'password\npassword\n' | passwd root 2>/dev/null || true
-
-          nft list ruleset > /etc/nftables.conf
-          printf '#!/bin/sh\n[ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null\nexit 0\n' > /etc/rc.local
-          chmod +x /etc/rc.local
-          nft list table inet s13_nat | grep -c masquerade
-          echo NFT_OK
-        "
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'cat > /tmp/s13_openwrt_fw.sh' < /tmp/s13_openwrt_fw.sh
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 root@{{ benchmark_gateway }} 'sh /tmp/s13_openwrt_fw.sh'
       when: scenario_id == '13'
       changed_when: true
-      register: nft_result
-      failed_when: "'NFT_OK' not in nft_result.stdout"
+      register: fw_result
+      failed_when: "'FW_OK' not in fw_result.stdout"
 
-    - name: "[S13] Configurer le proxy apt dans les CTs VLAN (apt-cacher-ng sur master vmbr1)"
+    - name: "[S13] Injecter vulns OpenWrt (V3: root:password, V1: LuCI WAN, eth2 persist)"
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 \
+          root@{{ benchmark_gateway }} \
+          'echo "root:password" | chpasswd
+           uci set uhttpd.main.listen_http="0.0.0.0:80"
+           uci commit uhttpd
+           /etc/init.d/uhttpd restart 2>/dev/null || true
+           grep -q "ip link set eth2 up" /etc/rc.local 2>/dev/null || printf "#!/bin/sh\nip link set eth2 up\nexit 0\n" > /etc/rc.local
+           chmod +x /etc/rc.local
+           echo VULN_OK'
+      when: scenario_id == '13'
+      changed_when: true
+      register: vuln_result
+      failed_when: "'VULN_OK' not in vuln_result.stdout"
+
+    - name: "[S13] Configurer le proxy apt dans les CTs VLAN (apt-cacher-ng sur master)"
       ansible.builtin.shell: |
         printf 'Acquire::http::Proxy "http://192.168.100.200:3142/";\nAcquire::ForceIPv4 "true";\n' > /tmp/s13_01proxy
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s13_01proxy /etc/apt/apt.conf.d/01proxy
@@ -193,7 +270,7 @@
 
     - name: "[S13] FAIL si au moins un CT ne peut pas joindre apt-cacher-ng"
       ansible.builtin.fail:
-        msg: "Proxy inaccessible depuis {{ item.item.name }} ({{ item.item.ip }}) — vérifier nft s13_nat + apt-cacher-ng sur LXC 200"
+        msg: "Proxy inaccessible depuis {{ item.item.name }} ({{ item.item.ip }}) — vérifier UCI fw4 zones + apt-cacher-ng sur LXC 200"
       loop: "{{ proxy_check.results }}"
       loop_control:
         label: "{{ item.item.name }}"
