@@ -64,101 +64,86 @@
     #  containers VLAN aient un gateway + proxy fonctionnel)
     # ════════════════════════════════════════════════════
 
-    # ── S13 étape 1 : UCI VLAN + network restart (la session SSH sera coupée, c'est normal) ──
-    - name: "[S13] Configurer interfaces VLAN sur OpenWrt (UCI + network restart)"
+    # ── S13 : configurer VLAN + nft fw4 directement via qm exec (pas de SSH) ──
+    # qm exec tourne sur Proxmox sans SSH → pas de session coupée, pas de mot de passe
+
+    - name: "[S13] Configurer interfaces VLAN via qm exec (UCI + network restart)"
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
-            root@{{ benchmark_gateway }} 'sh -s' << 'SSHEOF'
-        uci batch << 'UCIEOF'
-        set network.vlan10=interface
-        set network.vlan10.ifname='eth2.10'
-        set network.vlan10.proto='static'
-        set network.vlan10.ipaddr='192.168.10.1'
-        set network.vlan10.netmask='255.255.255.0'
-        set network.vlan20=interface
-        set network.vlan20.ifname='eth2.20'
-        set network.vlan20.proto='static'
-        set network.vlan20.ipaddr='192.168.20.1'
-        set network.vlan20.netmask='255.255.255.0'
-        set network.vlan30=interface
-        set network.vlan30.ifname='eth2.30'
-        set network.vlan30.proto='static'
-        set network.vlan30.ipaddr='192.168.30.1'
-        set network.vlan30.netmask='255.255.255.0'
-        UCIEOF
-        uci commit network
-        /etc/init.d/network restart &
-        sleep 2
-        echo "UCI committed, network restarting"
-        SSHEOF
+        qm exec {{ base_vmid }} -- sh -c "
+          uci set network.vlan10=interface
+          uci set network.vlan10.ifname='eth2.10'
+          uci set network.vlan10.proto='static'
+          uci set network.vlan10.ipaddr='192.168.10.1'
+          uci set network.vlan10.netmask='255.255.255.0'
+          uci set network.vlan20=interface
+          uci set network.vlan20.ifname='eth2.20'
+          uci set network.vlan20.proto='static'
+          uci set network.vlan20.ipaddr='192.168.20.1'
+          uci set network.vlan20.netmask='255.255.255.0'
+          uci set network.vlan30=interface
+          uci set network.vlan30.ifname='eth2.30'
+          uci set network.vlan30.proto='static'
+          uci set network.vlan30.ipaddr='192.168.30.1'
+          uci set network.vlan30.netmask='255.255.255.0'
+          uci commit network
+          /etc/init.d/network restart
+          echo UCI_OK
+        "
       when: scenario_id == '13'
-      failed_when: false
       changed_when: true
 
-    # ── S13 étape 2 : attendre que le routeur soit de nouveau joignable ──
-    - name: "[S13] Attendre que OpenWrt soit de nouveau joignable après network restart"
+    - name: "[S13] Attendre que les interfaces VLAN soient up (eth2.20)"
       ansible.builtin.shell: >-
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
-        -o ConnectTimeout=5 root@{{ benchmark_gateway }} 'echo ok'
-      register: openwrt_ready
-      until: openwrt_ready.rc == 0
-      retries: 12
-      delay: 5
+        qm exec {{ base_vmid }} -- sh -c "ip addr show eth2.20 | grep -q '192.168.20.1' && echo ok"
+      register: vlan_up
+      until: vlan_up.rc == 0
+      retries: 15
+      delay: 3
       when: scenario_id == '13'
       changed_when: false
 
-    # ── S13 étape 3 : appliquer les règles nft fw4 (nouvelle session SSH) ──
-    - name: "[S13] Appliquer règles nft fw4 + mot de passe routeur"
+    - name: "[S13] Appliquer règles nft fw4 via qm exec"
       ansible.builtin.shell: |
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=20 root@{{ benchmark_gateway }} 'sh -s' << 'SSHEOF'
-        # INPUT : interfaces VLAN joignables
-        nft insert rule inet fw4 input iifname "eth2" counter accept 2>/dev/null || true
-        for IFACE in eth2.10 eth2.20 eth2.30; do
-          nft insert rule inet fw4 input iifname "$IFACE" counter accept 2>/dev/null || true
-        done
-
-        # FORWARD VLAN ↔ LAN (eth0 = 192.168.100.0/24, proxy apt sur master)
-        for IFACE in eth2.10 eth2.20 eth2.30; do
-          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth0" counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname "eth0"   oifname "$IFACE" counter accept 2>/dev/null || true
-        done
-
-        # FORWARD eth2 trunk ↔ VLAN
-        for IFACE in eth2.10 eth2.20 eth2.30; do
-          nft insert rule inet fw4 forward iifname "eth2"   oifname "$IFACE" counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth2"   counter accept 2>/dev/null || true
-        done
-
-        # FORWARD VLAN ↔ WAN (eth1)
-        for IFACE in eth2.10 eth2.20 eth2.30; do
-          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth1" counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname "eth1"   oifname "$IFACE" counter accept 2>/dev/null || true
-        done
-
-        # MASQUERADE VLAN → WAN
-        for NET in 192.168.10.0/24 192.168.20.0/24 192.168.30.0/24; do
-          nft add rule inet fw4 srcnat ip saddr "$NET" oifname "eth1" masquerade 2>/dev/null || true
-        done
-
-        # Filtrage inter-zone (vulnérabilités volontaires)
-        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
-        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
-        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
-        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
-        nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
-
-        # Vuln V3 : SSH root:password
-        printf 'password\npassword\n' | passwd root 2>/dev/null || true
-
-        # Persister
-        nft list ruleset > /etc/nftables.conf 2>/dev/null || true
-        printf '#!/bin/sh\n[ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null\nexit 0\n' > /etc/rc.local
-        chmod +x /etc/rc.local
-
-        echo "[OK] S13 nft fw4 + passwd root configurés"
-        SSHEOF
+        qm exec {{ base_vmid }} -- sh -c "
+          nft insert rule inet fw4 input iifname eth2 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 input iifname eth2.10 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 input iifname eth2.20 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 input iifname eth2.30 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.10 oifname eth0 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth0 oifname eth2.10 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.20 oifname eth0 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth0 oifname eth2.20 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.30 oifname eth0 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth0 oifname eth2.30 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2 oifname eth2.10 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.10 oifname eth2 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2 oifname eth2.20 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.20 oifname eth2 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2 oifname eth2.30 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.30 oifname eth2 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.10 oifname eth1 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth1 oifname eth2.10 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.20 oifname eth1 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth1 oifname eth2.20 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth2.30 oifname eth1 counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname eth1 oifname eth2.30 counter accept 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.10.0/24 oifname eth1 masquerade 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.20.0/24 oifname eth1 masquerade 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.30.0/24 oifname eth1 masquerade 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.10.0/24 oifname eth0 masquerade 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.20.0/24 oifname eth0 masquerade 2>/dev/null || true
+          nft add rule inet fw4 srcnat ip saddr 192.168.30.0/24 oifname eth0 masquerade 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
+          nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
+          printf 'password\npassword\n' | passwd root 2>/dev/null || true
+          nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+          printf '#!/bin/sh\n[ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null\nexit 0\n' > /etc/rc.local
+          chmod +x /etc/rc.local
+          echo NFT_OK
+        "
       when: scenario_id == '13'
       changed_when: true
 
