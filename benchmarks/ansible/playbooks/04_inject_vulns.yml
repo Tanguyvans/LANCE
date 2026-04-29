@@ -42,115 +42,123 @@
       changed_when: add_tmp_ip.rc == 0
 
 
+    # ── S13 : s'assurer qu'apt-cacher-ng tourne sur le master (LXC 200) ──
+    - name: "[S13] Vérifier que apt-cacher-ng écoute sur le master (192.168.100.200:3142)"
+      ansible.builtin.shell: >-
+        pct exec 200 -- sh -c "
+          systemctl is-active apt-cacher-ng 2>/dev/null || apt-get install -y -qq apt-cacher-ng;
+          systemctl enable apt-cacher-ng;
+          systemctl start apt-cacher-ng;
+          grep -q 'BindAddress' /etc/apt-cacher-ng/acng.conf &&
+            sed -i 's/^BindAddress:.*/#BindAddress: localhost/' /etc/apt-cacher-ng/acng.conf &&
+            systemctl restart apt-cacher-ng;
+          ss -tlnp | grep 3142
+        "
+      when: scenario_id == '13'
+      changed_when: false
+      failed_when: false
+
     # ════════════════════════════════════════════════════
     # S13 ONLY — Configuration OpenWrt VLAN + apt proxy
     # (doit tourner AVANT les installs apt pour que les
     #  containers VLAN aient un gateway + proxy fonctionnel)
     # ════════════════════════════════════════════════════
 
-    - name: "[S13] Écrire le script de configuration OpenWrt VLAN"
-      ansible.builtin.copy:
-        dest: /tmp/inject_openwrt_vlan.sh
-        mode: "0755"
-        content: |
-          #!/bin/sh
-
-          # ── Architecture réseau S13 ──
-          # net0 (eth0) → vmbr1 untagged → LAN OpenWrt 192.168.100.1
-          # net1 (eth1) → vmbr0           → WAN DHCP 192.168.88.x (internet)
-          # net2 (eth2) → vmbr1 trunk     → VLAN subinterfaces eth2.10/20/30
-          # master LXC 200 → vmbr1 untagged → eth1=192.168.100.200
-          # Proxy apt : 192.168.100.200:3142 (master, accessible via LAN eth0)
-
-          # ── Interfaces VLAN sur eth2 (trunk 802.1Q net2 → vmbr1) ──
-          uci batch << 'UCIEOF'
-          set network.vlan10=interface
-          set network.vlan10.ifname='eth2.10'
-          set network.vlan10.proto='static'
-          set network.vlan10.ipaddr='192.168.10.1'
-          set network.vlan10.netmask='255.255.255.0'
-          set network.vlan20=interface
-          set network.vlan20.ifname='eth2.20'
-          set network.vlan20.proto='static'
-          set network.vlan20.ipaddr='192.168.20.1'
-          set network.vlan20.netmask='255.255.255.0'
-          set network.vlan30=interface
-          set network.vlan30.ifname='eth2.30'
-          set network.vlan30.proto='static'
-          set network.vlan30.ipaddr='192.168.30.1'
-          set network.vlan30.netmask='255.255.255.0'
-          UCIEOF
-          uci commit network
-          /etc/init.d/network restart
-          sleep 8
-
-          # ── nftables fw4 : INSERT avant tout DROP existant ──
-
-          # INPUT : gateways VLAN + trunk eth2 joignables
-          nft insert rule inet fw4 input iifname "eth2" counter accept 2>/dev/null || true
-          for IFACE in eth2.10 eth2.20 eth2.30; do
-            nft insert rule inet fw4 input iifname "$IFACE" counter accept 2>/dev/null || true
-          done
-
-          # FORWARD VLAN → LAN (eth0, 192.168.100.0/24) : accès proxy apt sur master
-          # FORWARD LAN  → VLAN : réponses master + accès pipeline
-          for IFACE in eth2.10 eth2.20 eth2.30; do
-            nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth0" counter accept 2>/dev/null || true
-            nft insert rule inet fw4 forward iifname "eth0"   oifname "$IFACE" counter accept 2>/dev/null || true
-          done
-
-          # FORWARD eth2 (trunk untagged) → VLAN : routing master→containers via trunk
-          for IFACE in eth2.10 eth2.20 eth2.30; do
-            nft insert rule inet fw4 forward iifname "eth2" oifname "$IFACE" counter accept 2>/dev/null || true
-            nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth2" counter accept 2>/dev/null || true
-          done
-
-          # FORWARD VLAN → WAN (eth1) : accès internet si besoin
-          for IFACE in eth2.10 eth2.20 eth2.30; do
-            nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth1" counter accept 2>/dev/null || true
-            nft insert rule inet fw4 forward iifname "eth1"   oifname "$IFACE" counter accept 2>/dev/null || true
-          done
-
-          # MASQUERADE VLAN → WAN (eth1 = vmbr0 = internet réel)
-          for NET in 192.168.10.0/24 192.168.20.0/24 192.168.30.0/24; do
-            nft add rule inet fw4 srcnat ip saddr "$NET" oifname "eth1" masquerade 2>/dev/null || true
-          done
-
-          # ── Filtrage inter-zone (vulnérabilités benchmark S13) ──
-          # Règles APPEND : après les INSERT ci-dessus
-          # Le trafic intra-VLAN (eth2.X → eth2.Y) ne matche pas les INSERT
-          # et tombe sur ces règles de filtrage
-
-          # IT → IoT : MQTT/1883 seulement (TROU V17 : Redis 6379 OT non filtré)
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
-
-          # IT → OT : SSH/22 seulement
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
-
-          # IoT → OT : DROP TCP (TROU V2 : UDP CoAP 5683 passe)
-          nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
-
-          # ── Vuln V3 : SSH routeur root:password ──
-          printf 'password\npassword\n' | passwd root 2>/dev/null || true
-
-          # ── Persister les règles nft ──
-          nft list ruleset > /etc/nftables.conf 2>/dev/null || true
-          cat > /etc/rc.local << 'RCEOF'
-          #!/bin/sh
-          [ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null
-          exit 0
-          RCEOF
-          chmod +x /etc/rc.local
-
-          echo "[OK] S13 OpenWrt VLAN + firewall configuré (eth2.10/20/30)"
+    # ── S13 étape 1 : UCI VLAN + network restart (la session SSH sera coupée, c'est normal) ──
+    - name: "[S13] Configurer interfaces VLAN sur OpenWrt (UCI + network restart)"
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
+            root@{{ benchmark_gateway }} 'sh -s' << 'SSHEOF'
+        uci batch << 'UCIEOF'
+        set network.vlan10=interface
+        set network.vlan10.ifname='eth2.10'
+        set network.vlan10.proto='static'
+        set network.vlan10.ipaddr='192.168.10.1'
+        set network.vlan10.netmask='255.255.255.0'
+        set network.vlan20=interface
+        set network.vlan20.ifname='eth2.20'
+        set network.vlan20.proto='static'
+        set network.vlan20.ipaddr='192.168.20.1'
+        set network.vlan20.netmask='255.255.255.0'
+        set network.vlan30=interface
+        set network.vlan30.ifname='eth2.30'
+        set network.vlan30.proto='static'
+        set network.vlan30.ipaddr='192.168.30.1'
+        set network.vlan30.netmask='255.255.255.0'
+        UCIEOF
+        uci commit network
+        /etc/init.d/network restart &
+        sleep 2
+        echo "UCI committed, network restarting"
+        SSHEOF
       when: scenario_id == '13'
+      failed_when: false
+      changed_when: true
 
-    - name: "[S13] Exécuter la configuration VLAN sur OpenWrt via SSH"
+    # ── S13 étape 2 : attendre que le routeur soit de nouveau joignable ──
+    - name: "[S13] Attendre que OpenWrt soit de nouveau joignable après network restart"
       ansible.builtin.shell: >-
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20
-        root@{{ benchmark_gateway }} 'sh' < /tmp/inject_openwrt_vlan.sh
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+        -o ConnectTimeout=5 root@{{ benchmark_gateway }} 'echo ok'
+      register: openwrt_ready
+      until: openwrt_ready.rc == 0
+      retries: 12
+      delay: 5
+      when: scenario_id == '13'
+      changed_when: false
+
+    # ── S13 étape 3 : appliquer les règles nft fw4 (nouvelle session SSH) ──
+    - name: "[S13] Appliquer règles nft fw4 + mot de passe routeur"
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 root@{{ benchmark_gateway }} 'sh -s' << 'SSHEOF'
+        # INPUT : interfaces VLAN joignables
+        nft insert rule inet fw4 input iifname "eth2" counter accept 2>/dev/null || true
+        for IFACE in eth2.10 eth2.20 eth2.30; do
+          nft insert rule inet fw4 input iifname "$IFACE" counter accept 2>/dev/null || true
+        done
+
+        # FORWARD VLAN ↔ LAN (eth0 = 192.168.100.0/24, proxy apt sur master)
+        for IFACE in eth2.10 eth2.20 eth2.30; do
+          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth0" counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname "eth0"   oifname "$IFACE" counter accept 2>/dev/null || true
+        done
+
+        # FORWARD eth2 trunk ↔ VLAN
+        for IFACE in eth2.10 eth2.20 eth2.30; do
+          nft insert rule inet fw4 forward iifname "eth2"   oifname "$IFACE" counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth2"   counter accept 2>/dev/null || true
+        done
+
+        # FORWARD VLAN ↔ WAN (eth1)
+        for IFACE in eth2.10 eth2.20 eth2.30; do
+          nft insert rule inet fw4 forward iifname "$IFACE" oifname "eth1" counter accept 2>/dev/null || true
+          nft insert rule inet fw4 forward iifname "eth1"   oifname "$IFACE" counter accept 2>/dev/null || true
+        done
+
+        # MASQUERADE VLAN → WAN
+        for NET in 192.168.10.0/24 192.168.20.0/24 192.168.30.0/24; do
+          nft add rule inet fw4 srcnat ip saddr "$NET" oifname "eth1" masquerade 2>/dev/null || true
+        done
+
+        # Filtrage inter-zone (vulnérabilités volontaires)
+        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
+        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
+        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
+        nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
+        nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
+
+        # Vuln V3 : SSH root:password
+        printf 'password\npassword\n' | passwd root 2>/dev/null || true
+
+        # Persister
+        nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+        printf '#!/bin/sh\n[ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null\nexit 0\n' > /etc/rc.local
+        chmod +x /etc/rc.local
+
+        echo "[OK] S13 nft fw4 + passwd root configurés"
+        SSHEOF
       when: scenario_id == '13'
       changed_when: true
 
@@ -161,6 +169,26 @@
       loop: "{{ scenarios[scenario_id].services }}"
       when: scenario_id == '13'
       changed_when: true
+
+    - name: "[S13] Vérifier connectivité CT→proxy (VLAN→LAN, 192.168.100.200:3142)"
+      ansible.builtin.shell: >-
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        sh -c "ping -c1 -W3 192.168.100.200 && curl -sf --max-time 5 http://192.168.100.200:3142/ > /dev/null && echo PROXY_OK"
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: scenario_id == '13'
+      register: proxy_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[S13] Résumé connectivité proxy"
+      ansible.builtin.debug:
+        msg: "{{ item.item.name }} ({{ item.item.ip }}) → proxy: {{ 'OK' if item.rc == 0 else 'FAIL (rc=' + item.rc | string + ')' }}"
+      loop: "{{ proxy_check.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: scenario_id == '13'
 
 
     # ════════════════════════════════════════════════════
