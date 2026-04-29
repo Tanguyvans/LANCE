@@ -54,7 +54,6 @@
         mode: "0755"
         content: |
           #!/bin/sh
-          set -e
 
           # ── Interfaces VLAN sur eth1 (trunk 802.1Q vmbr1) ──
           uci batch << 'UCIEOF'
@@ -116,7 +115,7 @@
           nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
 
           # ── Vuln V3 : SSH routeur root:password ──
-          echo "root:password" | chpasswd
+          printf 'password\npassword\n' | passwd root 2>/dev/null || true
 
           # ── Persister les règles nft ──
           nft list ruleset > /etc/nftables.conf 2>/dev/null || true
