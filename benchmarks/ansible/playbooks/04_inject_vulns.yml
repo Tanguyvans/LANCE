@@ -133,7 +133,7 @@
     - name: "[S13] Exécuter la configuration VLAN sur OpenWrt via SSH"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20
-        root@{{ benchmark_gateway }} 'bash -s' < /tmp/inject_openwrt_vlan.sh
+        root@{{ benchmark_gateway }} 'sh' < /tmp/inject_openwrt_vlan.sh
       when: scenario_id == '13'
       changed_when: true
 
