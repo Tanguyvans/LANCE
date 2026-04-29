@@ -795,11 +795,12 @@ class Pipeline:
         router = topology.get("router", {})
         router_ip = router.get("ip", "192.168.100.1")
         subnets_str = ", ".join(raw_subnets)
+        mgmt_exclusion = "NOT 192.168.88.0/24 (physical lab) nor 192.168.100.0/24 (management)"
         lines = [
             f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
-            f"Scan networks: {subnets_str} (NOT 192.168.88.0/24 — that is the physical lab)",
-            f"Gateway/router: {router_ip} (OpenWrt router)",
-            "Known target hosts (scan ALL of them):",
+            f"Scan networks: {subnets_str} ({mgmt_exclusion})",
+            f"Gateway/router: {router_ip} (OpenWrt router — management IP 192.168.100.1 is NOT a scan target)",
+            "Known target hosts — scan ALL using the VLAN IPs below (not 192.168.100.x):",
         ]
         if router:
             lines.append(f"  - {router.get('name', 'router')} ({router_ip}) — role: router")
@@ -1599,7 +1600,10 @@ class Pipeline:
 
         Reads new_hosts_discovered from all Phase 4 exploit output files.
         Returns deduplicated list of {"ip": str, "open_ports": [...], "discovered_via": str}.
+        For scenario runs, only returns hosts within the scenario's expected subnets.
         """
+        import ipaddress as _ip
+
         new_hosts: list[dict] = []
         seen_ips: set[str] = set()
         for f in self.run_dir.glob("04_exploits/**/*.json"):
@@ -1612,6 +1616,27 @@ class Pipeline:
                         new_hosts.append(h)
             except Exception:
                 pass
+
+        if new_hosts and self.scenario_id is not None:
+            from src.agent.tools.graph_tools import _scenario_topology
+            subnets = (_scenario_topology or {}).get("subnets", [])
+            if subnets:
+                try:
+                    nets = [_ip.ip_network(s, strict=False) for s in subnets]
+                    filtered = []
+                    for h in new_hosts:
+                        try:
+                            addr = _ip.ip_address(h["ip"])
+                            if any(addr in n for n in nets):
+                                filtered.append(h)
+                            else:
+                                log.info("Excluding out-of-scope discovered host %s (not in %s)", h["ip"], subnets)
+                        except ValueError:
+                            filtered.append(h)
+                    new_hosts = filtered
+                except Exception:
+                    pass
+
         if new_hosts:
             log.info("Phase 4 discovered %d new host(s): %s", len(new_hosts), [h["ip"] for h in new_hosts])
         return new_hosts

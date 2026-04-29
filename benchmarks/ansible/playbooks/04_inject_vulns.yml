@@ -43,16 +43,16 @@
 
 
     # ── S13 : s'assurer qu'apt-cacher-ng tourne sur le master (LXC 200) ──
-    - name: "[S13] Vérifier que apt-cacher-ng écoute sur le master (192.168.100.200:3142)"
-      ansible.builtin.shell: >-
+    - name: "[S13] Configurer apt-cacher-ng sur le master (écoute 0.0.0.0:3142)"
+      ansible.builtin.shell: |
         pct exec 200 -- sh -c "
-          systemctl is-active apt-cacher-ng 2>/dev/null || apt-get install -y -qq apt-cacher-ng;
-          systemctl enable apt-cacher-ng;
-          systemctl start apt-cacher-ng;
-          grep -q 'BindAddress' /etc/apt-cacher-ng/acng.conf &&
-            sed -i 's/^BindAddress:.*/#BindAddress: localhost/' /etc/apt-cacher-ng/acng.conf &&
-            systemctl restart apt-cacher-ng;
-          ss -tlnp | grep 3142
+          dpkg -l apt-cacher-ng 2>/dev/null | grep -q '^ii' || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apt-cacher-ng
+          sed -i 's/^BindAddress:.*/#&/' /etc/apt-cacher-ng/acng.conf
+          grep -q '^AllowedClients' /etc/apt-cacher-ng/acng.conf || echo 'AllowedClients: 0.0.0.0/0' >> /etc/apt-cacher-ng/acng.conf
+          systemctl enable apt-cacher-ng
+          systemctl restart apt-cacher-ng
+          sleep 1
+          ss -tlnp | grep 3142 && echo ACN_OK || echo ACN_FAIL
         "
       when: scenario_id == '13'
       changed_when: false
@@ -63,11 +63,13 @@
     # (doit tourner AVANT les installs apt pour que les
     #  containers VLAN aient un gateway + proxy fonctionnel)
     # ════════════════════════════════════════════════════
+    #
+    # ARCHITECTURE : on crée deux tables nft INDÉPENDANTES de fw4 :
+    #   inet s13_filter (priority -1, avant fw4) : FORWARD VLAN↔LAN + règles inter-VLAN
+    #   inet s13_nat    (priority srcnat)         : MASQUERADE VLAN→LAN + VLAN→WAN
+    # fw4 peut recharger autant qu'il veut (hotplug VLAN up), nos tables ne sont pas touchées.
 
-    # ── S13 : configurer VLAN + nft fw4 directement via qm exec (pas de SSH) ──
-    # qm exec tourne sur Proxmox sans SSH → pas de session coupée, pas de mot de passe
-
-    - name: "[S13] Configurer interfaces VLAN via qm exec (UCI + network restart)"
+    - name: "[S13] UCI réseau + pare-feu VLAN (commit avant network restart)"
       ansible.builtin.shell: |
         qm exec {{ base_vmid }} -- sh -c "
           uci set network.vlan10=interface
@@ -92,60 +94,74 @@
       when: scenario_id == '13'
       changed_when: true
 
-    - name: "[S13] Attendre que les interfaces VLAN soient up (eth2.20)"
+    - name: "[S13] Attendre que les interfaces VLAN soient up (eth2.20 avec 192.168.20.1)"
       ansible.builtin.shell: >-
-        qm exec {{ base_vmid }} -- sh -c "ip addr show eth2.20 | grep -q '192.168.20.1' && echo ok"
+        qm exec {{ base_vmid }} -- sh -c "ip addr show eth2.20 2>/dev/null | grep -q '192.168.20.1' && echo ok"
       register: vlan_up
       until: vlan_up.rc == 0
-      retries: 15
+      retries: 20
       delay: 3
       when: scenario_id == '13'
       changed_when: false
 
-    - name: "[S13] Appliquer règles nft fw4 via qm exec"
+    - name: "[S13] Créer tables nft indépendantes (s13_filter + s13_nat) + règles VLAN"
       ansible.builtin.shell: |
         qm exec {{ base_vmid }} -- sh -c "
-          nft insert rule inet fw4 input iifname eth2 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 input iifname eth2.10 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 input iifname eth2.20 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 input iifname eth2.30 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.10 oifname eth0 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth0 oifname eth2.10 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.20 oifname eth0 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth0 oifname eth2.20 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.30 oifname eth0 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth0 oifname eth2.30 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2 oifname eth2.10 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.10 oifname eth2 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2 oifname eth2.20 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.20 oifname eth2 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2 oifname eth2.30 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.30 oifname eth2 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.10 oifname eth1 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth1 oifname eth2.10 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.20 oifname eth1 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth1 oifname eth2.20 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth2.30 oifname eth1 counter accept 2>/dev/null || true
-          nft insert rule inet fw4 forward iifname eth1 oifname eth2.30 counter accept 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.10.0/24 oifname eth1 masquerade 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.20.0/24 oifname eth1 masquerade 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.30.0/24 oifname eth1 masquerade 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.10.0/24 oifname eth0 masquerade 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.20.0/24 oifname eth0 masquerade 2>/dev/null || true
-          nft add rule inet fw4 srcnat ip saddr 192.168.30.0/24 oifname eth0 masquerade 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 drop 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport 22 accept 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 drop 2>/dev/null || true
-          nft add rule inet fw4 forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop 2>/dev/null || true
+          nft delete table inet s13_filter 2>/dev/null; true
+          nft delete table inet s13_nat 2>/dev/null; true
+
+          nft add table inet s13_filter
+          nft add chain inet s13_filter forward '{ type filter hook forward priority -1; policy accept; }'
+          nft add chain inet s13_filter input '{ type filter hook input priority -1; policy accept; }'
+
+          nft add table inet s13_nat
+          nft add chain inet s13_nat postrouting '{ type nat hook postrouting priority srcnat; policy accept; }'
+
+          nft add rule inet s13_filter input iifname 'eth2.10' accept
+          nft add rule inet s13_filter input iifname 'eth2.20' accept
+          nft add rule inet s13_filter input iifname 'eth2.30' accept
+
+          nft add rule inet s13_filter forward iifname 'eth2.10' oifname 'eth0' accept
+          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.10' accept
+          nft add rule inet s13_filter forward iifname 'eth2.20' oifname 'eth0' accept
+          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.20' accept
+          nft add rule inet s13_filter forward iifname 'eth2.30' oifname 'eth0' accept
+          nft add rule inet s13_filter forward iifname 'eth0' oifname 'eth2.30' accept
+
+          nft add rule inet s13_filter forward iifname 'eth2.10' oifname 'eth1' accept
+          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.10' accept
+          nft add rule inet s13_filter forward iifname 'eth2.20' oifname 'eth1' accept
+          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.20' accept
+          nft add rule inet s13_filter forward iifname 'eth2.30' oifname 'eth1' accept
+          nft add rule inet s13_filter forward iifname 'eth1' oifname 'eth2.30' accept
+
+          nft add rule inet s13_nat postrouting ip saddr 192.168.10.0/24 oifname 'eth0' masquerade
+          nft add rule inet s13_nat postrouting ip saddr 192.168.20.0/24 oifname 'eth0' masquerade
+          nft add rule inet s13_nat postrouting ip saddr 192.168.30.0/24 oifname 'eth0' masquerade
+          nft add rule inet s13_nat postrouting ip saddr 192.168.10.0/24 oifname 'eth1' masquerade
+          nft add rule inet s13_nat postrouting ip saddr 192.168.20.0/24 oifname 'eth1' masquerade
+          nft add rule inet s13_nat postrouting ip saddr 192.168.30.0/24 oifname 'eth1' masquerade
+
+          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp dport 1883 accept
+          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.20.0/24 tcp drop
+
+          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp dport { 22, 6379 } accept
+          nft add rule inet s13_filter forward ip saddr 192.168.10.0/24 ip daddr 192.168.30.0/24 tcp drop
+
+          nft add rule inet s13_filter forward ip saddr 192.168.20.0/24 ip daddr 192.168.30.0/24 tcp drop
+
           printf 'password\npassword\n' | passwd root 2>/dev/null || true
-          nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+
+          nft list ruleset > /etc/nftables.conf
           printf '#!/bin/sh\n[ -f /etc/nftables.conf ] && nft -f /etc/nftables.conf 2>/dev/null\nexit 0\n' > /etc/rc.local
           chmod +x /etc/rc.local
+          nft list table inet s13_nat | grep -c masquerade
           echo NFT_OK
         "
       when: scenario_id == '13'
       changed_when: true
+      register: nft_result
+      failed_when: "'NFT_OK' not in nft_result.stdout"
 
     - name: "[S13] Configurer le proxy apt dans les CTs VLAN (apt-cacher-ng sur master vmbr1)"
       ansible.builtin.shell: |
@@ -155,10 +171,10 @@
       when: scenario_id == '13'
       changed_when: true
 
-    - name: "[S13] Vérifier connectivité CT→proxy (VLAN→LAN, 192.168.100.200:3142)"
+    - name: "[S13] Vérifier connectivité CT→proxy (VLAN→LAN 192.168.100.200:3142)"
       ansible.builtin.shell: >-
         pct exec {{ base_vmid | int + item.vmid_offset }} --
-        sh -c "ping -c1 -W3 192.168.100.200 && curl -sf --max-time 5 http://192.168.100.200:3142/ > /dev/null && echo PROXY_OK"
+        sh -c "ping -c1 -W3 192.168.100.200 >/dev/null 2>&1 && nc -zw3 192.168.100.200 3142 >/dev/null 2>&1 && echo PROXY_OK"
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }}"
@@ -169,11 +185,19 @@
 
     - name: "[S13] Résumé connectivité proxy"
       ansible.builtin.debug:
-        msg: "{{ item.item.name }} ({{ item.item.ip }}) → proxy: {{ 'OK' if item.rc == 0 else 'FAIL (rc=' + item.rc | string + ')' }}"
+        msg: "{{ item.item.name }} ({{ item.item.ip }}) → proxy: {{ 'OK' if item.rc == 0 else 'FAIL (rc=' + (item.rc | string) + ')' }}"
       loop: "{{ proxy_check.results }}"
       loop_control:
         label: "{{ item.item.name }}"
       when: scenario_id == '13'
+
+    - name: "[S13] FAIL si au moins un CT ne peut pas joindre apt-cacher-ng"
+      ansible.builtin.fail:
+        msg: "Proxy inaccessible depuis {{ item.item.name }} ({{ item.item.ip }}) — vérifier nft s13_nat + apt-cacher-ng sur LXC 200"
+      loop: "{{ proxy_check.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: scenario_id == '13' and item.rc != 0
 
 
     # ════════════════════════════════════════════════════
