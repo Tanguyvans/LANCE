@@ -11,8 +11,8 @@ Votre machine locale
    ▼
 Proxmox (192.168.88.100)
    ├── VM Maître LXC 200  (192.168.88.183 + Tailscale 100.x.x.x)
-   │     ├── Streamlit UI  :8501
-   │     ├── Pipeline LLM  (5 phases)
+   │     ├── FastAPI dashboard  :8501  (uvicorn, service nato-fastapi)
+   │     ├── Pipeline LLM  (6 phases)
    │     └── Ansible controller → lance les playbooks 03–99
    │
    ├── vmbr0  (192.168.88.0/24)   management
@@ -42,14 +42,14 @@ Le playbook crée et configure entièrement la VM maître :
 - LXC Debian 13, dual NIC (management `10.0.0.10` + benchmark `192.168.100.200`)
 - Repo cloné, dépendances Python installées, `.env` injecté depuis le vault
 - Clé SSH générée et autorisée sur Proxmox (pour piloter les scénarios)
-- Tailscale configuré → accès SSH/Streamlit depuis n'importe où
-- Streamlit lancé en service systemd sur `:8501`
+- Tailscale configuré → accès SSH/dashboard depuis n'importe où
+- FastAPI dashboard lancé en service systemd `nato-fastapi.service` sur `:8501`
 - iptables : tout le trafic offensif isolé sur eth1 (réseau benchmark)
 - GitHub Actions self-hosted runner installé (label `nato-master`)
 
 Le résumé final affiche :
 ```
-Streamlit : http://<tailscale-ip>:8501
+Dashboard : http://<tailscale-ip>:8501
 SSH WAN   : ssh root@<tailscale-ip>
 SSH LAN   : ssh root@10.0.0.10
 ```
@@ -59,7 +59,7 @@ SSH LAN   : ssh root@10.0.0.10
 À chaque push sur `main`, le workflow `.github/workflows/update-master.yml` s'exécute sur le runner self-hosted de la VM maître et :
 1. Fait un `git pull` sur `/opt/nato-smartcity-iot`
 2. Installe les nouvelles dépendances Python
-3. Redémarre Streamlit
+3. Redémarre `nato-fastapi.service`
 
 **Mise en place (une seule fois, avant de lancer `deploy_master.yml`) :**
 
@@ -170,7 +170,7 @@ ansible-playbook benchmarks/ansible/playbooks/05_populate_services.yml \
   -i benchmarks/ansible/inventory.yml --vault-password-file /root/.vault_pass \
   --extra-vars "scenario_id=$SCENARIO"
 
-# Lancer le pipeline LLM (via Streamlit http://<tailscale-ip>:8501 ou CLI)
+# Lancer le pipeline LLM (via le dashboard http://<tailscale-ip>:8501 ou CLI)
 python3 -m src.agent --provider openrouter --model google/gemini-2.5-flash
 
 # Nettoyer
@@ -192,7 +192,7 @@ ansible/
 │       └── vault_master.yml       # Secrets chiffrés (Vault, Tailscale, OpenRouter, GitHub)
 ├── group_vars/vault_master.yml.example  # Template des secrets à renseigner
 └── playbooks/
-    ├── deploy_master.yml          # Provisioning VM maître (LXC + Tailscale + Streamlit)
+    ├── deploy_master.yml          # Provisioning VM maître (LXC + Tailscale + nato-fastapi)
     ├── 00_proxmox_init.yml        # Init Proxmox (bridge vmbr1, user, token API)
     ├── 01_create_templates.yml    # Templates LXC Debian (9000) + KVM OpenWrt (9001)
     ├── 02_config_openwrt.yml      # Configuration OpenWrt → template final (9010)

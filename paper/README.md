@@ -16,7 +16,8 @@
 | `etat_de_lart.md` | État de l'art (4 clusters de littérature) + méthodologie d'évaluation + grille de comparaison étendue | Avant d'écrire / mettre à jour §2 Related Work |
 | `baselines.md` | Sélection détaillée des 4 catégories de baselines + outils traditionnels (Metasploit, BloodHound) avec phrase-bouclier | Avant d'écrire §7.2 et de lancer les baselines |
 | `plan.md` | Calendrier semaine par semaine (S1→S5), dépendances, plan de repli, lot F robustesse | Référence d'exécution principale, à mettre à jour à chaque jalon |
-| `integration_cai.md` | Plan opérationnel d'intégration CAI comme baseline (install, prompt, parser JSONL) | Avant de coder l'adaptateur CAI |
+| `integration_cai.md` | Plan opérationnel d'intégration CAI comme baseline (architecture v2 Pydantic) | Avant de coder l'adaptateur CAI |
+| `plan_cai_comparison.md` | Plan d'exécution chronologique CAI vs notre pipeline (8 phases, gate pilote scenario_3, livrables, repli) | Référence d'exécution chantier C |
 | `target_conferences.md` | ACSAC 2026 details + internal timeline + comparison grid (legacy) | Référence conférence |
 
 ## Build
