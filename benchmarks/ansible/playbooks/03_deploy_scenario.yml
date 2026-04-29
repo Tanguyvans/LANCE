@@ -112,9 +112,9 @@
         --full
       when: router_check.rc != 0
 
-    - name: "[S13] Ajouter NIC trunk VLAN 10/20/30 au routeur"
+    - name: "[S13] Ajouter NIC trunk VLAN 10/20/30 au routeur (net2 — ne pas écraser le WAN net1)"
       ansible.builtin.command: >-
-        qm set {{ base_vmid }} --net1 virtio,bridge={{ benchmark_bridge }},trunks=10;20;30
+        qm set {{ base_vmid }} --net2 virtio,bridge={{ benchmark_bridge }},trunks=10;20;30
       when: scenario_id == '13' and router_check.rc != 0
 
     - name: Démarrer le router OpenWrt
