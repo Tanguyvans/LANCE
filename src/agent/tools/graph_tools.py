@@ -129,9 +129,16 @@ def _build_edges_from_attack_paths(attack_paths_data: list[dict], node_index: di
         name = chain_device.split(" (")[0].strip()
         if name in node_index:
             return name
-        m = re.search(r'\(100\.(\d+)\)', chain_device)
+        # Match IP shorthands: (100.11) → 192.168.100.11, (20.11) → 192.168.20.11
+        m = re.search(r'\((\d+\.\d+)\)', chain_device)
         if m:
-            return ip_to_id.get(f"192.168.100.{m.group(1)}")
+            suffix = m.group(1)
+            parts = suffix.split(".")
+            if len(parts) == 2:
+                # Two-octet shorthand: treat as last two octets with 192.168 prefix
+                candidate = f"192.168.{parts[0]}.{parts[1]}"
+                if candidate in ip_to_id:
+                    return ip_to_id[candidate]
         return None
 
     edges: list[dict] = []

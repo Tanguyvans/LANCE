@@ -472,111 +472,71 @@ class TestStripCodeFences:
 
 
 class TestPhase5Context:
-    """Tests for _generate_phase5_context compact summary."""
+    """Tests for _generate_intrusion_context."""
 
-    def test_generates_compact_context(self, mock_provider, output_dir):
-        """Phase 5 context should aggregate vulns by device."""
+    def test_generates_intrusion_context(self, mock_provider, output_dir):
+        """Phase 5 context should extract confirmed exploits and entry points."""
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
-        # Write Phase 3 vuln analysis
-        vuln_data = {
-            "vulnerabilities": [
-                {"id": "VULN-001", "device_id": "router", "device_ip": "10.0.0.1",
-                 "type": "weak_cipher", "severity": "MEDIUM", "service": "ssh",
-                 "port": 22, "details": "Weak cipher detected", "evidence": "long evidence text " * 20,
-                 "cve_ids": [], "exploitation_status": "confirmed"},
-                {"id": "VULN-002", "device_id": "router", "device_ip": "10.0.0.1",
-                 "type": "no_auth", "severity": "HIGH", "service": "http",
-                 "port": 80, "details": "Admin panel exposed", "evidence": "HTTP 200 on /admin",
-                 "cve_ids": ["CVE-2023-1234"], "exploitation_status": "suspected"},
-                {"id": "VULN-003", "device_id": "sensor", "device_ip": "10.0.0.2",
-                 "type": "default_credentials", "severity": "CRITICAL", "service": "ssh",
-                 "port": 22, "details": "Default root password", "evidence": "root:root works",
-                 "cve_ids": [], "exploitation_status": "confirmed"},
-            ],
-            "summary": {"total": 3, "critical": 1, "high": 1, "medium": 1, "low": 0, "info": 0},
-        }
-        (run_dir / "03_vuln_analysis.json").write_text(json.dumps(vuln_data))
-
-        # Write Phase 4 exploitation results
+        # Write Phase 4 exploitation results with CONFIRMED entries
         exploit_data = {
             "summary": {"total_tested": 3, "confirmed": 2, "not_exploitable": 1, "errors": 0},
             "tests": [
-                {"vuln_id": "VULN-001", "status": "CONFIRMED", "device_id": "router", "device_ip": "10.0.0.1"},
-                {"vuln_id": "VULN-002", "status": "FAILED", "device_id": "router", "device_ip": "10.0.0.1"},
-                {"vuln_id": "VULN-003", "status": "CONFIRMED", "device_id": "sensor", "device_ip": "10.0.0.2"},
+                {"vuln_id": "VULN-001", "status": "CONFIRMED", "device_id": "router",
+                 "device_ip": "10.0.0.1", "evidence": "SSH login root:password succeeded"},
+                {"vuln_id": "VULN-002", "status": "FAILED", "device_id": "router",
+                 "device_ip": "10.0.0.1", "evidence": ""},
+                {"vuln_id": "VULN-003", "status": "CONFIRMED", "device_id": "sensor",
+                 "device_ip": "10.0.0.2", "evidence": "redis-cli KEYS * returned 5 keys"},
             ],
         }
         (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_data))
 
-        pipeline._generate_phase5_context()
+        pipeline._generate_intrusion_context()
 
-        ctx_path = run_dir / "05_phase5_context.json"
+        ctx_path = run_dir / "05_intrusion_context.json"
         assert ctx_path.exists()
         ctx = json.loads(ctx_path.read_text())
 
-        assert ctx["device_count"] == 2
-        assert ctx["total_vulnerabilities"] == 3
-        assert ctx["phase4_summary"]["confirmed"] == 2
-
-        # Check device aggregation
-        devices_by_ip = {d["device_ip"]: d for d in ctx["devices"]}
-        assert "10.0.0.1" in devices_by_ip
-        assert "10.0.0.2" in devices_by_ip
-        assert len(devices_by_ip["10.0.0.1"]["vulns"]) == 2
-        assert devices_by_ip["10.0.0.1"]["severity_counts"]["MEDIUM"] == 1
-        assert devices_by_ip["10.0.0.1"]["severity_counts"]["HIGH"] == 1
-
-        # Evidence should NOT be in compact output
-        for dev in ctx["devices"]:
-            for v in dev["vulns"]:
-                assert "evidence" not in v
-
-        # Compact file should be much smaller than originals
-        orig_size = len(json.dumps(vuln_data)) + len(json.dumps(exploit_data))
-        compact_size = ctx_path.stat().st_size
-        assert compact_size < orig_size
+        # Check required keys
+        assert "generated_for" in ctx
+        assert ctx["generated_for"] == "phase5_intrusion"
+        assert "entry_points" in ctx
+        assert "all_targets" in ctx
+        assert "confirmed_exploits" in ctx
+        assert "recovered_credentials" in ctx
+        assert ctx["confirmed_exploits"] == 2
 
     def test_handles_missing_phase4(self, mock_provider, output_dir):
         """Context should still generate if Phase 4 was skipped."""
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
-        vuln_data = {
-            "vulnerabilities": [
-                {"id": "VULN-001", "device_id": "router", "device_ip": "10.0.0.1",
-                 "type": "weak_cipher", "severity": "MEDIUM", "service": "ssh",
-                 "port": 22, "details": "Weak cipher", "evidence": "...",
-                 "cve_ids": [], "exploitation_status": "confirmed"},
-            ],
-            "summary": {"total": 1},
-        }
-        (run_dir / "03_vuln_analysis.json").write_text(json.dumps(vuln_data))
+        pipeline._generate_intrusion_context()
 
-        pipeline._generate_phase5_context()
+        ctx_path = run_dir / "05_intrusion_context.json"
+        assert ctx_path.exists()
+        ctx = json.loads(ctx_path.read_text())
+        assert ctx["confirmed_exploits"] == 0
+        assert ctx["entry_points"] == []
+        assert ctx["recovered_credentials"] == []
 
-        ctx = json.loads((run_dir / "05_phase5_context.json").read_text())
-        assert ctx["total_vulnerabilities"] == 1
-        assert ctx["phase4_summary"] == {}
-        # Status should be UNTESTED when no Phase 4
-        assert ctx["devices"][0]["vulns"][0]["status"] == "UNTESTED"
-
-    def test_handles_empty_vulns(self, mock_provider, output_dir):
-        """Context should handle scenarios with no vulnerabilities."""
+    def test_handles_list_format_phase4(self, mock_provider, output_dir):
+        """Context should handle Phase 4 output as a plain list."""
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
-        (run_dir / "03_vuln_analysis.json").write_text(
-            json.dumps({"vulnerabilities": [], "summary": {"total": 0}})
-        )
+        exploit_list = [
+            {"vuln_id": "VULN-001", "status": "CONFIRMED", "device_id": "gw",
+             "device_ip": "10.0.0.5", "evidence": "login ok"},
+        ]
+        (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_list))
 
-        pipeline._generate_phase5_context()
+        pipeline._generate_intrusion_context()
 
-        ctx = json.loads((run_dir / "05_phase5_context.json").read_text())
-        assert ctx["device_count"] == 0
-        assert ctx["total_vulnerabilities"] == 0
-        assert ctx["devices"] == []
+        ctx = json.loads((run_dir / "05_intrusion_context.json").read_text())
+        assert ctx["confirmed_exploits"] == 1
 
 
 class TestPipelineRun:
@@ -618,16 +578,16 @@ class TestPipelineRun:
             "device_count": 1, "link_count": 1,
             "cve_count": 0, "top_risk": "none",
         }
-        pipeline = Pipeline(provider=mock_provider, phases=[5])
+        pipeline = Pipeline(provider=mock_provider, phases=[1])
         run_dir = pipeline.run_dir
 
-        # Phase 5 (report) has no prerequisites, so it should run
+        # Phase 1 (graph_analysis) has no prerequisites, so it should run
         with patch("src.agent.pipeline.load_prompt", return_value="prompt"):
             def write_deliverable(**kwargs):
-                (run_dir / "05_report.md").write_text("## A\n## B\n")
+                (run_dir / "01_graph_analysis.md").write_text("## A\n## B\n")
                 return "Done."
             mock_provider.chat_with_tools.side_effect = write_deliverable
             results = pipeline.run()
 
         assert len(results) == 1
-        assert "report" in results
+        assert "graph_analysis" in results

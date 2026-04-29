@@ -274,9 +274,11 @@ class Pipeline:
             lab = load_discovery_context(self.target_network)
             target_subnet = self.target_network
         elif self.scenario_id is not None:
-            from src.agent.tools.graph_tools import load_scenario_topology
+            from src.agent.tools.graph_tools import load_scenario_topology, _scenario_topology as _st_pre
             lab = load_scenario_topology(self.scenario_id)
-            target_subnet = BENCHMARK_SUBNET
+            from src.agent.tools.graph_tools import _scenario_topology as _st_post
+            _subnets = (_st_post or {}).get("subnets", [BENCHMARK_SUBNET])
+            target_subnet = " ".join(_subnets) if len(_subnets) > 1 else (_subnets[0] if _subnets else BENCHMARK_SUBNET)
         else:
             lab = load_lab_context()
             target_subnet = PHYSICAL_SUBNET
@@ -788,16 +790,20 @@ class Pipeline:
             log.warning("Scenario ground truth not found: %s", gt_path)
             return ""
         data = yaml.safe_load(gt_path.read_text())
+        topology = data.get("topology", {})
+        raw_subnets = topology.get("subnets", [BENCHMARK_SUBNET])
+        router = topology.get("router", {})
+        router_ip = router.get("ip", "192.168.100.1")
+        subnets_str = ", ".join(raw_subnets)
         lines = [
             f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
-            f"Scan network: 192.168.100.0/24 (NOT 192.168.88.0/24 — that is the physical lab)",
-            f"Gateway: 192.168.100.1 (OpenWrt router)",
+            f"Scan networks: {subnets_str} (NOT 192.168.88.0/24 — that is the physical lab)",
+            f"Gateway/router: {router_ip} (OpenWrt router)",
             "Known target hosts (scan ALL of them):",
         ]
-        router = data.get("topology", {}).get("router", {})
         if router:
-            lines.append(f"  - {router.get('name', 'router')} ({router.get('ip', '192.168.100.1')}) — role: router")
-        for svc in data.get("topology", {}).get("services", []):
+            lines.append(f"  - {router.get('name', 'router')} ({router_ip}) — role: router")
+        for svc in topology.get("services", []):
             lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)
 
