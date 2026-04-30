@@ -414,3 +414,5 @@ bonus_types:
   - default_credentials
   - data_exposure
   - insecure_update
+  - misconfiguration
+  - insecure_protocol

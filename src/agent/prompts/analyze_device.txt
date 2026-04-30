@@ -36,17 +36,18 @@ Do NOT re-create these — they are already included:
 
 Based on the device role, focus your analysis on these specific findings:
 
-- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH.
+- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH. If the device role is a jumphost or VPN gateway and AllowTcpForwarding is not explicitly disabled → misconfiguration HIGH (unrestricted SSH tunnel to other network zones possible, especially dangerous in VLAN-segmented architectures where the tunnel bypasses firewall FORWARD rules).
 - **nvr_server**: Test ubnt:ubnt credentials → default_credentials HIGH. SSH port open → always add default_credentials finding.
 - **nodered_server**: Port 1880 accessible → ALWAYS report TWO findings: (1) no_auth CRITICAL — full flow editor exposed; (2) code_injection CRITICAL — exec nodes accessible = RCE via POST /api/exec. Do NOT wait for HTTP confirmation — port 1880 open on nodered_server means both vulns are present. If /api/exec is confirmed in scan evidence, mark both as confirmed.
-- **camera_server**: HTTP admin accessible without auth → no_auth HIGH. Focus on /admin and /snapshot paths.
+- **camera_server**: HTTP admin accessible without auth → no_auth HIGH. Check /admin, /snapshot, /stream paths — if any returns HTTP 200 without an auth challenge, report no_auth HIGH. ONVIF discovery (port 80 + /onvif/device_service) → default_credentials HIGH (ubnt:ubnt or admin:admin common). RTSP stream on port 554 without auth → data_exposure MEDIUM.
 - **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.
 - **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
 - **snmp_server**: Community 'public' accepted → default_credentials HIGH. ALWAYS also add info_disclosure LOW — SNMP accessible without auth exposes sysLocation, sysContact, sysDescr by construction (no MIB walk evidence required).
-- **coap_server**: Port 5683/udp accessible without DTLS → no_auth MEDIUM.
+- **coap_server**: Port 5683/udp open → ALWAYS report no_auth MEDIUM (CoAP has no built-in authentication). The absence of DTLS means traffic is in cleartext — add also weak_cipher MEDIUM if UDP is confirmed reachable. In VLAN-segmented networks, UDP 5683 may bypass iptables FORWARD rules that only drop TCP — mention this in `details` as a firewall bypass vector (the router's misconfiguration is the root cause, not this device).
 - **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.
 - **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.
-- **modbus_server / iot_gateway**: Port 502/tcp open → no_auth CRITICAL (OT protocol with no auth by design).
+- **modbus_server**: Port 502/tcp open → no_auth CRITICAL (Modbus has no auth by design). Also note: unit ID 1 accessible, read/write coils and holding registers without credentials — data exchanged in cleartext.
+- **iot_gateway**: Check (1) nginx HTTP admin accessible at /admin or /api/devices without auth → no_auth HIGH (topology disclosure = CRITICAL if OT IPs are exposed in the response); (2) Dropbear SSH running — check for CVE-2023-48795 Terrapin (weak_cipher HIGH) if version < 2020.82; (3) OTA firmware endpoint at /firmware/firmware.bin accessible → data_exposure LOW. Do NOT report insecure_update unless the endpoint actively accepts firmware uploads (POST /upload or /firmware).
 - **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.
 - **web_upload**: The upload endpoint is at POST /upload (not /firmware/, not /update). If scan shows HTTP 200 on root or /upload → code_injection CRITICAL. Use type `code_injection`, NOT `file_upload_endpoint` (that is a noise type). Do NOT add directory_listing — these devices don't have index pages.
 - **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires "Index of" in the response body. Do NOT report directory_listing unless the scanner explicitly found "Index of". Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.
@@ -85,6 +86,14 @@ Based on the device role, focus your analysis on these specific findings:
 | CVE with CVSS 7.0–8.9 | HIGH |
 | CVE with CVSS 4.0–6.9 | MEDIUM |
 | CVE with CVSS < 4.0 | LOW |
+
+## VLAN/firewall bypass analysis (multi-subnet scenarios)
+
+If the topology context shows multiple subnets or vlan_id per device, check these bypass patterns:
+- **Router FORWARD rules incomplete**: A DROP for TCP only leaves UDP services (CoAP 5683, SNMP 161) unfiltered. If iptables evidence shows TCP-only DROP without matching UDP rule → misconfiguration HIGH on the router.
+- **OT service reachable across VLAN boundary**: If Redis (6379), MariaDB (3306), or Modbus (502) in OT zone is reachable from IT or IoT zones despite a FORWARD filter → misconfiguration HIGH on the router (the filter has a hole).
+- **Node-RED MQTT bridge bypass**: If nodered_server and mqtt_broker coexist and both are accessible, Node-RED can forward MQTT→TCP to OT services, bypassing TCP FORWARD DROP. Report this as: misconfiguration HIGH (the bridge bypasses segmentation) + code_injection CRITICAL (exec nodes reachable).
+- Do NOT report the OT service itself as misconfigured for the VLAN bypass — report the router's incomplete rules.
 
 ## Valid `type` values — use ONLY these
 

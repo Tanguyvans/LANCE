@@ -196,9 +196,35 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "suspected_default_credentials":    "default_credentials",
     # no_auth synonyms
     "no_authentication":                "no_auth",
+    "coap_no_dtls":                     "no_auth",
+    "modbus_no_auth":                   "no_auth",
+    "mqtt_no_auth":                     "no_auth",
+    "redis_no_auth":                    "no_auth",
+    "http_no_auth":                     "no_auth",
+    "camera_no_auth":                   "no_auth",
+    "gateway_no_auth":                  "no_auth",
+    # weak_cipher synonyms (LDAP/TLS)
+    "ldap_no_tls":                      "weak_cipher",
+    "ldap_cleartext":                   "weak_cipher",
+    "cleartext_ldap":                   "weak_cipher",
+    "insecure_ldap":                    "weak_cipher",
+    "no_tls":                           "weak_cipher",
+    "no_dtls":                          "weak_cipher",
     # misconfiguration synonyms
     "configuration":              "misconfiguration",
     "insecure_configuration":     "misconfiguration",
+    "port_forwarding":            "misconfiguration",
+    "ssh_port_forwarding":        "misconfiguration",
+    "tcp_forwarding":             "misconfiguration",
+    "allow_tcp_forwarding":       "misconfiguration",
+    "unrestricted_forwarding":    "misconfiguration",
+    "world_readable":             "misconfiguration",
+    "world_readable_file":        "misconfiguration",
+    "insecure_file_permissions":  "misconfiguration",
+    "firewall_misconfiguration":  "misconfiguration",
+    "incomplete_firewall_rules":  "misconfiguration",
+    "iptables_bypass":            "misconfiguration",
+    "network_segmentation_bypass": "misconfiguration",
     # CVE synonyms — all collapse to the canonical `known_cve`
     "vulnerable_version":         "known_cve",
     "vulnerable_component":       "known_cve",
@@ -211,6 +237,11 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     # directory_listing synonyms
     "open_directory":             "directory_listing",
     "autoindex":                  "directory_listing",
+    # insecure_protocol synonyms
+    "ftp_anonymous":              "insecure_protocol",
+    "anonymous_ftp":              "insecure_protocol",
+    "cleartext_ftp":              "insecure_protocol",
+    "telnet_open":                "insecure_protocol",
     # insecure_update synonyms
     "insecure_firmware_update":   "insecure_update",
     "unsigned_firmware":          "insecure_update",

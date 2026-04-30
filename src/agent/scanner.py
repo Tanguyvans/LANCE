@@ -994,6 +994,54 @@ def _extract_coap_no_auth(entries: list[dict], device: dict, svc_name: str) -> l
     return []
 
 
+def _extract_ldap_no_tls(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """LDAP port 389 open without STARTTLS → weak_cipher MEDIUM."""
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "389" not in kwargs.get("ports", ""):
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        if "389" not in stdout or "open" not in stdout:
+            return []
+        if "starttls" in stdout.lower() or ("tls" in stdout.lower() and "389" in stdout):
+            return []
+        return [_make_finding(
+            device, "weak_cipher", "MEDIUM", "ldap", 389,
+            "LDAP port 389 open without STARTTLS — credentials transmitted in cleartext",
+            "nmap: 389/tcp open — no STARTTLS advertised",
+            status="suspected",
+            technique="ldapsearch -H ldap://<ip> -x -b dc=local to verify anonymous bind",
+            tools=["nmap_scan"],
+        )]
+    return []
+
+
+def _extract_ssh_port_forwarding(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """ssh_server/ssh_server_v2 with port 22 open → suspected AllowTcpForwarding misconfiguration."""
+    role = device.get("role", "")
+    if role != "ssh_server":
+        return []
+    for entry in entries:
+        if entry["tool"] != "nmap_scan":
+            continue
+        result = _parse_result(entry)
+        stdout = result.get("stdout", "")
+        if "22/tcp" not in stdout or "open" not in stdout:
+            continue
+        return [_make_finding(
+            device, "misconfiguration", "HIGH", "ssh", 22,
+            "SSH port forwarding likely unrestricted (AllowTcpForwarding not disabled) — tunnel to other network zones possible",
+            "nmap: 22/tcp open — AllowTcpForwarding not confirmed disabled",
+            status="suspected",
+            technique="ssh -L <port>:<ot-ip>:<port> <user>@<ip> to verify tunnel capability",
+            tools=["nmap_scan"],
+        )]
+    return []
+
+
 # All extractors in order
 FINDING_EXTRACTORS = [
     _extract_server_version,
@@ -1019,6 +1067,8 @@ FINDING_EXTRACTORS = [
     _extract_ftp_anonymous,
     _extract_snmp_default_community,
     _extract_coap_no_auth,
+    _extract_ldap_no_tls,
+    _extract_ssh_port_forwarding,
 ]
 
 
