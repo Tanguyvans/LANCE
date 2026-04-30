@@ -78,12 +78,14 @@ Vérifié dans la conversation précédente. Synthèse rapide :
 |---|---|---|---|
 | **CAI** | arXiv 2504.06017 + 2 suites 2025, Dragos OT top-10 | ✅ | **OUI — P1** (concurrent canonique 2025) |
 | **PentestGPT** | USENIX Security 2024 ⭐ | ✅ | **OUI — P1** (référence historique) |
-| **VulnBot** | arXiv 2501.13411 (multi-agent + PTG) | ✅ | OUI — P2 (le plus proche structurellement) |
+| **VulnBot** | arXiv 2501.13411 (multi-agent + PTG, CAS) | ✅ | **OUI — P1** (le plus proche structurellement, contraste *task-graph vs infrastructure-graph*) |
 | **PentestAgent** | AsiaCCS 2025 ⭐ | ✅ | NON (web-only, peu transférable) |
 | **AutoPentester** | arXiv 2510.05605 (IEEE) | ⚠️ à vérifier | NON (peu de différence vs PentestGPT pour notre angle) |
 | **HackingBuddyGPT** | arXiv 2310.11409 (TU Wien) | ✅ | NON (privilege escalation Linux mono-host, trop minimaliste) |
 
-→ **Recommandation C : CAI (P1) + PentestGPT (P1) + VulnBot (P2).**
+→ **Recommandation C : CAI (P1) + PentestGPT (P1) + VulnBot (P1).** 3 baselines LLM lockées.
+
+**Justification VulnBot en P1 (révisée 2026-04-29) :** sans VulnBot, le claim "graph-guided" du papier est attaquable — un reviewer dira *"vous n'avez pas comparé à un autre système graph-based"*. Avec VulnBot (multi-agent + Penetration Task Graph), le contraste devient un argument scientifique précis : **task-graph (VulnBot, ordonnancement de tâches) vs infrastructure-graph (notre pipeline, reachability réseau)**. Ce sont deux objets orthogonaux, et nos MHR_2/3 doivent rester supérieurs aux leurs précisément parce que leur PTG ne capte pas la topologie réseau.
 
 ---
 
@@ -109,10 +111,11 @@ Pour prouver que **chaque** module du pipeline contribue, donc que les choix arc
 | Priorité | Item | Effort | Why |
 |---|---|---|---|
 | 1 | **Nmap NSE** complet sur 7 scénarios | 1 j | Lower bound non-LLM, déjà dans le repo |
-| 2 | **CAI** sur 7 scénarios (1 run/scénario) | 3 j | Concurrent canonique 2025 — incontournable |
-| 3 | **PentestGPT** sur 7 scénarios (1 run/scénario) | 2 j | Référence USENIX'24 historique |
-| 4 | **Ablation w/o Phase 1 (graph)** sur 7 scénarios | 1 j | Prouve le claim "graph-guided" |
-| 5 | **Ablation w/o Phase 5 (intrusion)** sur 7 scénarios | 1 j | Prouve la valeur du multi-hop |
+| 2 | **CAI** sur 7 scénarios (Variantes A1 + B) | 3 j | Concurrent canonique 2025 — incontournable |
+| 3 | **PentestGPT** sur 7 scénarios | 2 j | Référence USENIX'24 historique |
+| 4 | **VulnBot** sur 7 scénarios | 2 j | Contraste task-graph vs infra-graph (réutilise 80% adapter CAI) |
+| 5 | **Ablation w/o Phase 1 (graph)** sur 7 scénarios | 1 j | Prouve le claim "infrastructure-graph-guided" |
+| 6 | **Ablation w/o Phase 5 (intrusion)** sur 7 scénarios | 1 j | Prouve la valeur du multi-hop |
 
 **Total : ~8 jours** de travail expérimental + la mesure (calculer R/P/F1/Score/MHR pour tous).
 
@@ -144,10 +147,10 @@ C'est le paragraphe-bouclier anti-reviewer. Ne pas l'oublier.
 
 ## 8. TL;DR pour décider maintenant
 
-**3 catégories, 5 outils à tester, ~8 jours d'effort expérimental :**
+**3 catégories, 6 items à tester, ~10 jours d'effort expérimental :**
 
 1. **Scanner non-LLM** : Nmap NSE (1 j)
-2. **LLM agents canoniques** : CAI (3 j) + PentestGPT (2 j)
+2. **LLM agents canoniques** : CAI (3 j) + PentestGPT (2 j) + VulnBot (2 j)
 3. **Ablations internes** : Phase 1 off (1 j) + Phase 5 off (1 j)
 
-Si tu valides cette liste, on commence par **Nmap NSE** (le plus rapide à mettre en place, débloque l'évaluateur sur un format de baseline) puis on enchaîne CAI.
+Tableau §7.1 final = 8 lignes (notre pipeline complet + 2 ablations + 4 baselines externes + Nmap NSE).

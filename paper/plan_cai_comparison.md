@@ -1,9 +1,10 @@
-# Plan d'implémentation — Comparaison CAI vs notre pipeline (ACSAC 2026)
+# Plan d'implémentation — Comparaison baselines LLM vs notre pipeline (ACSAC 2026)
 
 > Document opérationnel. Complète `paper/plan.md` (chantier C), `paper/baselines.md` (§4) et `paper/integration_cai.md` (architecture v2). Ne duplique pas — se concentre sur l'**ordonnancement chronologique exécutable**, le **gate pilote**, et les **commandes concrètes**.
 >
 > **Date de référence :** 29 avril 2026 — **Deadline :** 26 mai 2026 (27 j)
-> **Effort total :** 4–5 j calendrier (~3 j homme + ~1.5 j calcul)
+> **Baselines LLM lockées :** CAI + PentestGPT + VulnBot (mises à jour 2026-04-29)
+> **Effort total :** 5–6 j calendrier (~4 j homme + ~2 j calcul)
 > **Coût LLM estimé :** $0 (MiniMax Coding Plan, cf. `plan.md` F0)
 
 ---
@@ -12,11 +13,16 @@
 
 Cette comparaison fournit la **table headline §7.1** du papier :
 
-| Métrique | Notre pipeline | CAI Variante A (per-IP) | CAI Variante B (CIDR) |
+| Système | F1 / Score | MHR_1/2/3 | Crown jewel |
 |---|---|---|---|
-| Recall / Precision / F1 / Weighted Score | à mesurer | à mesurer | à mesurer |
-| MHR_1 / MHR_2 / MHR_3 | à mesurer | à mesurer | à mesurer |
-| Crown jewel reached | yes/no | yes/no | yes/no |
+| Notre pipeline complet | à mesurer | à mesurer | yes/no |
+| Notre pipeline w/o Phase 1 (ablation graph) | à mesurer | à mesurer | yes/no |
+| Notre pipeline w/o Phase 5 (ablation multi-hop) | à mesurer | à mesurer | **0** attendu |
+| CAI Variante A1 (per-IP) | à mesurer | MHR_2 ≈ 0 | no |
+| CAI Variante B (CIDR) | à mesurer | à mesurer | likely no |
+| **VulnBot** (multi-agent + task-PTG) | à mesurer | à mesurer | likely no |
+| PentestGPT (single-agent) | à mesurer | MHR_2 ≈ 0 | no |
+| Nmap NSE (non-LLM) | à mesurer | MHR_2 = 0 | no |
 
 **Contraintes de fairness verrouillées (cf. `integration_cai.md` §5) :**
 - LLM unique : `MiniMax-M2.7` des deux côtés.
@@ -25,9 +31,17 @@ Cette comparaison fournit la **table headline §7.1** du papier :
 - Même évaluateur : `src/benchmark/evaluator.py` (avec MHR ajouté).
 
 **Variantes testées (cf. `integration_cai.md` §4) :**
-- **A (primaire)** : per-IP, CAI relancé pour chaque IP de la GT.
-- **B (fairness)** : 1 session CAI sur tout le CIDR.
-- (A2 multi-agent `offsec_pattern` reporté en optionnel — cf. §8 plan de repli.)
+- **CAI A (primaire)** : per-IP, CAI relancé pour chaque IP de la GT.
+- **CAI B (fairness)** : 1 session CAI sur tout le CIDR.
+- **PentestGPT** : per-IP autonome (analogue à CAI A).
+- **VulnBot** : per-IP avec son PTG (analogue à CAI A, mais avec ordonnancement task-graph).
+- (A2 CAI multi-agent `offsec_pattern` reporté en optionnel — cf. §8 plan de repli.)
+
+**Argument scientifique de chaque baseline :**
+- CAI A → "single-host architecture appliquée N fois → pas de pivot"
+- CAI B → "même avec CIDR scope, pas de structure multi-hop dédiée"
+- PentestGPT → "single-agent ne suffit pas"
+- VulnBot → **"multi-agent + graph ne suffit pas si le graph est task-graph et pas infrastructure-graph"** (le contraste le plus précis)
 
 ---
 
@@ -76,18 +90,30 @@ Cette comparaison fournit la **table headline §7.1** du papier :
 
 **Validation :** MHR_2(complet) − MHR_2(P5off) > 0.20 → critère pilote pré-rempli.
 
-### Phase 4 — Intégration CAI : code (1 j) — **bloquante pour pilote**
+### Phase 4 — Intégration baselines LLM : code (2 j) — **bloquante pour pilote**
 
 #### 4.1 Création de l'arbre
 
 ```
-scripts/baselines/cai/
+scripts/baselines/
 ├── __init__.py
-├── cai_schema.py              # Pydantic models (Finding, CAIReport, ScenarioReport)
-├── run_cai.py                 # CLI launcher (variantes A et B)
-├── cai_to_findings.py         # Pydantic → 04_exploitation.json
-└── cai_jsonl_fallback.py      # parser JSONL si output_type ignoré
+├── common/
+│   ├── findings_schema.py     # Pydantic models partagés (Finding, ScenarioReport)
+│   └── adapter_base.py        # classes parent réutilisées par chaque baseline
+├── cai/
+│   ├── cai_schema.py          # CAIReport (per-IP) + ScenarioReport (CIDR)
+│   ├── run_cai.py             # CLI launcher (variantes A et B)
+│   ├── cai_to_findings.py     # Pydantic → 04_exploitation.json
+│   └── cai_jsonl_fallback.py
+├── pentestgpt/
+│   ├── run_pentestgpt.py      # CLI launcher per-IP
+│   └── pentestgpt_to_findings.py
+└── vulnbot/
+    ├── run_vulnbot.py         # CLI launcher per-IP
+    └── vulnbot_to_findings.py # parser de leur output (texte ou JSONL selon mode)
 ```
+
+**Stratégie de réutilisation** : 80% du code commun entre les 3 baselines LLM (boucle sur IPs, retry MiniMax, sérialisation findings). Schema Pydantic identique (`Finding` partagé). Adapters spécifiques par outil pour parser leur sortie native.
 
 #### 4.2 Spécifications par fichier
 
@@ -144,20 +170,23 @@ output/baselines/cai/<scenario>/<variant>/
 
 **Validation :** `python -m scripts.baselines.cai.run_cai --variant A --scenario 3 --target 192.168.100.11 --scope 192.168.100.0/24 --max-turns 40 --dry-run` doit afficher la commande CAI sans l'exécuter.
 
-### Phase 5 — Pilote sur scenario_3 (0.5 j calcul, ~4h) — **GO/NO-GO**
+### Phase 5 — Pilote sur scenario_3 (1 j calcul, ~6h) — **GO/NO-GO**
 
 > Aligné avec `integration_cai.md` §6.
 
-4 configs à exécuter :
+6 configs à exécuter (1 run chacune sur scenario_3, le scénario IT/OT segmenté qui exige du multi-hop) :
 
 ```bash
 # Config 1 — pipeline complet (référence)
 python3 -m src.agent --scenario 3 --provider minimax --model MiniMax-M2.7
 
-# Config 2 — pipeline sans P5 (ablation multi-hop)
+# Config 2 — pipeline sans P1 (ablation graph d'infrastructure)
+python3 -m src.agent --scenario 3 --provider minimax --model MiniMax-M2.7 --phases 2 3 4 5 6
+
+# Config 3 — pipeline sans P5 (ablation multi-hop)
 python3 -m src.agent --scenario 3 --provider minimax --model MiniMax-M2.7 --phases 1 2 3 4 6
 
-# Config 3 — CAI Variante A (per-IP)
+# Config 4 — CAI Variante A (per-IP)
 for ip in $(yq '.vulnerabilities[].ip' benchmarks/ground_truth/scenario_3.yaml | sort -u); do
   python -m scripts.baselines.cai.run_cai \
     --variant A --scenario 3 --target $ip --scope 192.168.100.0/24 \
@@ -165,29 +194,42 @@ for ip in $(yq '.vulnerabilities[].ip' benchmarks/ground_truth/scenario_3.yaml |
     --output-dir output/baselines/cai/scenario_3/A/
 done
 python -m scripts.baselines.cai.cai_to_findings output/baselines/cai/scenario_3/A/
-python -m src.benchmark.evaluator \
-  --run-dir output/baselines/cai/scenario_3/A \
-  --ground-truth benchmarks/ground_truth/scenario_3.yaml
 
-# Config 4 — CAI Variante B (CIDR unique)
-python -m scripts.baselines.cai.run_cai \
-  --variant B --scenario 3 --scope 192.168.100.0/24 \
-  --max-turns 200 --model MiniMax-M2.7 \
-  --output-dir output/baselines/cai/scenario_3/B/
-python -m scripts.baselines.cai.cai_to_findings output/baselines/cai/scenario_3/B/
-python -m src.benchmark.evaluator \
-  --run-dir output/baselines/cai/scenario_3/B \
-  --ground-truth benchmarks/ground_truth/scenario_3.yaml
+# Config 5 — VulnBot per-IP
+for ip in $(yq '.vulnerabilities[].ip' benchmarks/ground_truth/scenario_3.yaml | sort -u); do
+  python -m scripts.baselines.vulnbot.run_vulnbot \
+    --scenario 3 --target $ip --scope 192.168.100.0/24 \
+    --max-steps 15 --model MiniMax-M2.7 \
+    --output-dir output/baselines/vulnbot/scenario_3/
+done
+python -m scripts.baselines.vulnbot.vulnbot_to_findings output/baselines/vulnbot/scenario_3/
+
+# Config 6 — PentestGPT per-IP
+for ip in $(yq '.vulnerabilities[].ip' benchmarks/ground_truth/scenario_3.yaml | sort -u); do
+  python -m scripts.baselines.pentestgpt.run_pentestgpt \
+    --scenario 3 --target $ip --scope 192.168.100.0/24 \
+    --max-iterations 50 --model MiniMax-M2.7 \
+    --output-dir output/baselines/pentestgpt/scenario_3/
+done
+python -m scripts.baselines.pentestgpt.pentestgpt_to_findings output/baselines/pentestgpt/scenario_3/
+
+# Évaluation des 6 configs
+for config in agent baselines/cai/scenario_3/A baselines/vulnbot/scenario_3 baselines/pentestgpt/scenario_3; do
+  python -m src.benchmark.evaluator \
+    --run-dir output/$config \
+    --ground-truth benchmarks/ground_truth/scenario_3.yaml
+done
 ```
 
-**Critères GO (les 4 doivent être vrais) :**
+**Critères GO (les 5 doivent être vrais) :**
 
 | # | Critère | Seuil | Action si KO |
 |---|---|---|---|
 | G1 | F1(notre complet) − F1(CAI A) | > 0.10 | Investiguer matching évaluateur (canonicalize, severity normalisation) |
 | G2 | MHR_2(complet) − MHR_2(P5off) | > 0.20 | Vérifier annotation `hop_depth` scenario_3 |
-| G3 | MHR_2(CAI A) | < 0.10 | Confirmer architecture (per-IP attendu = pas de pivot) — c'est le résultat attendu |
-| G4 | Schéma Pydantic correctement rempli | 100% des runs | Activer fallback JSONL (+0.5 j) |
+| G3 | MHR_2(CAI A) ET MHR_2(VulnBot) ET MHR_2(PentestGPT) | < 0.10 chacun | Confirmer architecture (per-IP = pas de pivot) — résultat attendu |
+| G4 | F1(notre complet) − F1(VulnBot) | > 0.05 | **Critère sensible** : VulnBot est le concurrent le plus proche. Si gap < 0.05, retravailler la narrative *"infra-graph vs task-graph"* ; si VulnBot bat notre pipeline, blocker rouge |
+| G5 | Schéma Pydantic correctement rempli | 100% des runs (3 outils) | Activer fallbacks parsing texte (+1 j) |
 
 **Livrable pilote :** `paper/notes/pilot_scenario_3.md` avec les 4 `evaluator_score.json` et décision GO/NO-GO horodatée.
 

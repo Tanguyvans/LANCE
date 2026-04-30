@@ -88,6 +88,9 @@ paper/
 
 - Hardware tools (HackRF/Flipper/Proxmark) are recommendation templates, not executable — **do not market as functional**.
 - "Autonomous exploitation" — Phase 4 *verifies* via default creds / unauth services, it does not chain RCEs. Say "verification with evidence levels L1/L2/L3".
-- "Graph-guided" — VulnBot's PTG collides with this term. **Mitigation décidée:** prouver l'apport par ablation Phase 1 on/off (cf. `plan.md` chantier B). Si l'ablation valide, OK pour garder le terme avec une note de différenciation (graph d'infra vs PTG de tâches).
+- "Graph-guided" — risque de collision avec VulnBot's PTG (task-graph). **Mitigation triple:**
+  (1) ne plus dire "graph-guided" tout court, dire **"infrastructure-graph-guided"** ou **"topology-aware"** ;
+  (2) §2 inclura un paragraphe explicite sur l'orthogonalité *PTG (task-dependency DAG, VulnBot) vs infrastructure graph (device reachability, ours)* ;
+  (3) ablation Phase 1 on/off pour prouver chiffres à l'appui (cf. `plan.md` chantier B).
 - "Multi-hop chain" — **promu en contribution conditionnelle** depuis l'introduction de la métrique MHR (Multi-Hop Reach). Si MHR_2 et MHR_3 sont mesurés et significatifs sur les baselines, multi-hop devient un résultat majeur de §7. Cf. `plan.md` chantier A.
 - "7 diverse architectures" — only true once firewall rules by pattern are merged; until then say "5 architectural patterns".
