@@ -223,7 +223,7 @@ scenarios:
     services:
       # VLAN10 — Zone IT (192.168.10.0/24)
       - { name: admin,   vmid_offset:  1, ip: "192.168.10.11", vlan_id: 10, role: "ssh_server_v2" }
-      - { name: ldap,    vmid_offset:  2, ip: "192.168.10.12", vlan_id: 10, role: "web_server"    }
+      - { name: ldap,    vmid_offset:  2, ip: "192.168.10.12", vlan_id: 10, role: "ldap_server"   }
       - { name: monitor, vmid_offset:  3, ip: "192.168.10.13", vlan_id: 10, role: "web_server_v2" }
       - { name: vpn,     vmid_offset:  4, ip: "192.168.10.14", vlan_id: 10, role: "ssh_server"    }
       - { name: web-it,  vmid_offset:  5, ip: "192.168.10.15", vlan_id: 10, role: "web_server"    }

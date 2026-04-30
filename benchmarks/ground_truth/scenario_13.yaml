@@ -32,7 +32,7 @@ topology:
   services:
     # VLAN10 — Zone IT
     - { name: s13-admin,   vmid: 271, ip: "192.168.10.11", vlan_id: 10, role: ssh_server_v2 }
-    - { name: s13-ldap,    vmid: 272, ip: "192.168.10.12", vlan_id: 10, role: web_server    }
+    - { name: s13-ldap,    vmid: 272, ip: "192.168.10.12", vlan_id: 10, role: ldap_server   }
     - { name: s13-monitor, vmid: 273, ip: "192.168.10.13", vlan_id: 10, role: web_server_v2 }
     - { name: s13-vpn,     vmid: 274, ip: "192.168.10.14", vlan_id: 10, role: ssh_server    }
     - { name: s13-web-it,  vmid: 275, ip: "192.168.10.15", vlan_id: 10, role: web_server    }

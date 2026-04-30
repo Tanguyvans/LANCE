@@ -43,6 +43,7 @@ Based on the device role, focus your analysis on these specific findings:
 - **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.
 - **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.
 - **snmp_server**: Community 'public' accepted → default_credentials HIGH. ALWAYS also add info_disclosure LOW — SNMP accessible without auth exposes sysLocation, sysContact, sysDescr by construction (no MIB walk evidence required).
+- **ldap_server**: Port 389/tcp open → ALWAYS report weak_cipher MEDIUM (LDAP without TLS = credentials in cleartext). If anonymous bind returns entries (ldap-search nmap script output) → also report no_auth MEDIUM (anonymous read access to directory). Entries containing `userPassword` → data_exposure HIGH.
 - **coap_server**: Port 5683/udp open → ALWAYS report no_auth MEDIUM (CoAP has no built-in authentication). The absence of DTLS means traffic is in cleartext — add also weak_cipher MEDIUM if UDP is confirmed reachable. In VLAN-segmented networks, UDP 5683 may bypass iptables FORWARD rules that only drop TCP — mention this in `details` as a firewall bypass vector (the router's misconfiguration is the root cause, not this device).
 - **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.
 - **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.
@@ -151,8 +152,10 @@ Add findings that automated extraction CANNOT detect:
 - LOW/INFO CVE findings (CVSS < 4.0): only include if the CVE is directly exploitable
   on this device (confirmed version match). Skip informational CVEs that require local access.
 - Do NOT create findings for missing HTTP headers (missing_header) — the scanner handles those.
-- CRITICAL: Copy all automated findings EXACTLY as-is — do NOT change their severity, type, port,
-  or exploitation_status. Only ADD new findings that the scanner could not detect automatically.
+- Copy all automated findings as-is, EXCEPT: you MAY upgrade `exploitation_status` from `suspected`
+  to `confirmed` when the scan evidence clearly confirms the vulnerability (e.g., port is open AND
+  the service type by role makes the vuln certain). Never downgrade confirmed to suspected.
+  Never change severity, type, or port of automated findings.
 
 ## Output
 Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE with:

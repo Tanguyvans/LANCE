@@ -369,6 +369,74 @@
       changed_when: true
 
 
+    # ── LDAP Server : slapd sans TLS + bind anonyme (V6 S13) ──
+    - name: "[ldap_server] Écrire le script d'injection LDAP"
+      ansible.builtin.copy:
+        dest: /tmp/inject_ldap.sh
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          set -e
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq slapd ldap-utils
+          # Reconfigurer slapd sans TLS, bind anonyme activé
+          systemctl stop slapd || true
+          # Configuration basique sans TLS
+          cat > /etc/ldap/slapd.conf << 'LDAPCONF'
+          include /etc/ldap/schema/core.schema
+          include /etc/ldap/schema/cosine.schema
+          include /etc/ldap/schema/inetorgperson.schema
+          pidfile /var/run/slapd/slapd.pid
+          database mdb
+          suffix "dc=iot,dc=local"
+          rootdn "cn=admin,dc=iot,dc=local"
+          rootpw secret
+          directory /var/lib/ldap
+          allow bind_anon_dn
+          access to * by anonymous read by * read
+          LDAPCONF
+          # Démarrer slapd sur port 389 (sans TLS, sans ldaps)
+          sed -i 's|SLAPD_SERVICES=.*|SLAPD_SERVICES="ldap:/// ldapi:///"|' /etc/default/slapd 2>/dev/null || true
+          systemctl enable slapd
+          systemctl restart slapd
+          # Peupler l'annuaire avec des entrées sensibles
+          sleep 2
+          ldapadd -x -H ldap://localhost -D "cn=admin,dc=iot,dc=local" -w secret << 'LDIF' || true
+          dn: dc=iot,dc=local
+          objectClass: top
+          objectClass: dcObject
+          objectClass: organization
+          o: IoT Local
+          dc: iot
+
+          dn: ou=users,dc=iot,dc=local
+          objectClass: organizationalUnit
+          ou: users
+
+          dn: cn=iot-admin,ou=users,dc=iot,dc=local
+          objectClass: inetOrgPerson
+          cn: iot-admin
+          sn: admin
+          userPassword: AdminOT!2024
+          description: OT admin credentials
+
+          dn: cn=plc-user,ou=users,dc=iot,dc=local
+          objectClass: inetOrgPerson
+          cn: plc-user
+          sn: plcuser
+          userPassword: plc_secret_2024
+          LDIF
+          echo "[OK] slapd configuré (port 389, bind anonyme, no TLS)"
+
+    - name: "[ldap_server] Push + exécuter dans chaque CT concerné"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ldap.sh /tmp/inject.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
+      loop: "{{ scenarios[scenario_id].services }}"
+      when: item.role == 'ldap_server'
+      changed_when: true
+
     # ── SSH Server : creds admin/admin ──
     - name: "[ssh_server] Écrire le script d'injection SSH"
       ansible.builtin.copy:

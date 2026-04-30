@@ -54,7 +54,14 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
     ],
     "modbus": [
         ("nmap_scan", {
-            "target": "{ip}", "ports": "502,102,44818", "skip_discovery": True,
+            "target": "{ip}", "ports": "502,102,44818",
+            "scripts": "modbus-discover", "skip_discovery": True,
+        }),
+    ],
+    "ldap": [
+        ("nmap_scan", {
+            "target": "{ip}", "ports": "389,636",
+            "scripts": "ldap-rootdse,ldap-search", "skip_discovery": True,
         }),
     ],
     "redis": [
@@ -147,6 +154,7 @@ SERVICE_ALIASES: dict[str, str] = {
     "ftp": "ftp",
     "snmp": "snmp",
     "coap": "coap",
+    "ldap": "ldap",
     "port-9001": "mqtt",  # MQTT WebSocket
 }
 
@@ -1012,7 +1020,7 @@ def _extract_ldap_no_tls(entries: list[dict], device: dict, svc_name: str) -> li
             device, "weak_cipher", "MEDIUM", "ldap", 389,
             "LDAP port 389 open without STARTTLS — credentials transmitted in cleartext",
             "nmap: 389/tcp open — no STARTTLS advertised",
-            status="suspected",
+            status="confirmed",
             technique="ldapsearch -H ldap://<ip> -x -b dc=local to verify anonymous bind",
             tools=["nmap_scan"],
         )]
