@@ -532,6 +532,8 @@
           done
           if [ "${DROPBEAR_INSTALLED}" = "false" ]; then
             echo "[WARN] Dropbear 2020.81 inaccessible — installation du dropbear système"
+            # Lever le hold éventuel laissé par un run précédent avant d'installer
+            apt-mark unhold dropbear-bin 2>/dev/null || true
             apt-get install -y -qq dropbear
           fi
           # Bloquer les mises à jour automatiques du paquet
@@ -561,8 +563,8 @@
             systemctl enable dropbear
             systemctl restart dropbear 2>/dev/null || systemctl start dropbear || true
           fi
-          systemctl is-active dropbear || { echo "[ERROR] Dropbear failed to start"; exit 1; }
-          echo "[OK] nginx HTTP admin + Dropbear SSH + OTA sans signature configuré"
+          systemctl is-active dropbear && echo "[OK] Dropbear actif" || echo "[WARN] Dropbear inactif — nginx toujours OK"
+          echo "[OK] nginx HTTP admin + OTA sans signature configuré"
 
     - name: "[iot_gateway] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
@@ -1095,7 +1097,8 @@
 
           # Generate SSH key pair (simulating a deployed key)
           mkdir -p /home/iot-admin/.ssh
-          ssh-keygen -t ed25519 -f /home/iot-admin/.ssh/id_ed25519 -N "" -q
+          ssh-keygen -t ed25519 -f /home/iot-admin/.ssh/id_ed25519 -N "" -q -y 2>/dev/null || \
+            ssh-keygen -t ed25519 -f /home/iot-admin/.ssh/id_ed25519 -N "" -q <<< "y"
           cp /home/iot-admin/.ssh/id_ed25519.pub /home/iot-admin/.ssh/authorized_keys
 
           # FLAW: authorized_keys world-readable (should be 600)
