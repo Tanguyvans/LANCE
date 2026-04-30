@@ -1420,6 +1420,9 @@
           #!/bin/bash
           set -e
 
+          # Ensure Python 3 is available
+          command -v python3 >/dev/null 2>&1 || apt-get install -y -qq python3
+
           # Deploy a lightweight Python mock that exposes the same endpoints as Node-RED.
           # This avoids the 15+ minute npm install of the real node-red package.
           cat > /opt/nodered_mock.py << 'PYEOF'
@@ -1493,20 +1496,12 @@
           PYEOF
           chmod +x /opt/nodered_mock.py
 
-          cat > /etc/systemd/system/nodered.service << 'SVCEOF'
-          [Unit]
-          Description=Node-RED IoT mock (benchmark — no auth)
-          After=network.target
-          [Service]
-          ExecStart=/usr/bin/python3 /opt/nodered_mock.py
-          Restart=always
-          [Install]
-          WantedBy=multi-user.target
-          SVCEOF
+          printf '[Unit]\nDescription=Node-RED IoT mock (benchmark - no auth)\nAfter=network.target\n[Service]\nExecStart=/usr/bin/python3 /opt/nodered_mock.py\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/nodered.service
           systemctl daemon-reload
           systemctl enable nodered
           systemctl start nodered
-          echo "[OK] Node-RED mock sans auth sur port 1880"
+          sleep 1
+          systemctl is-active nodered && echo "[OK] Node-RED mock actif sur port 1880" || { journalctl -u nodered -n 10 --no-pager; echo "[WARN] Node-RED inactif"; }
 
     - name: "[nodered_server] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |

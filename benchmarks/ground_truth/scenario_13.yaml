@@ -416,3 +416,5 @@ bonus_types:
   - insecure_update
   - misconfiguration
   - insecure_protocol
+  - directory_listing
+  - known_cve
