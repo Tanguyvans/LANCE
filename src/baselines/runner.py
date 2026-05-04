@@ -135,7 +135,24 @@ def _run_remote_target(
         if not quiet:
             _log(f"failed target {target.ip} after {elapsed}s (ssh exit {rc})")
         _emit(event_callback, "target_failed", target=asdict(target), elapsed=elapsed, returncode=rc)
-        raise subprocess.CalledProcessError(rc, ["ssh", baseline_host, wrapped])
+        local_raw_dir.mkdir(parents=True, exist_ok=True)
+        local_output.write_text(
+            json.dumps(
+                {
+                    "tool": config.name,
+                    "target": target.ip,
+                    "scenario": scenario_id,
+                    "findings": [],
+                    "adapter_status": "ssh_or_remote_error",
+                    "summary": f"Remote baseline command failed with exit code {rc}",
+                    "exit_code": rc,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        _emit(event_callback, "target_result_saved", target=asdict(target), output=str(local_output))
+        return local_output
 
     if not quiet:
         _log(f"finished target {target.ip} in {elapsed}s; fetching result")

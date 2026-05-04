@@ -10,7 +10,7 @@
 tools:
   cai:
     remote_workdir: /opt/baseline-tools
-    timeout_seconds: 1800
+    timeout_seconds: 360
     output_glob: "cai_S{scenario}_{variant}_{ip}.json"
     command: "./adapters/cai_run.sh --variant {variant} --target {ip} --scope {scope} --scenario {scenario} --max-turns {max_turns} --model {model} --output {output}"
 

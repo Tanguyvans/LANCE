@@ -10,6 +10,7 @@ from pathlib import Path
 
 DEFAULT_REMOTE_DIR = "/opt/baseline-tools"
 DEFAULT_MODEL = "MiniMax-M2.7"
+DEFAULT_TARGET_TIMEOUT_SECONDS = 240
 
 
 CAI_ADAPTER = r"""#!/usr/bin/env bash
@@ -51,6 +52,10 @@ fi
 
 mkdir -p "$(dirname "$OUTPUT")" /opt/baseline-tools/logs
 RAW="$(mktemp /opt/baseline-tools/logs/cai_${SCENARIO}_${VARIANT}_XXXXXX.txt)"
+TARGET_TIMEOUT="${CAI_TARGET_TIMEOUT:-$(( MAX_TURNS * 6 ))}"
+if [[ "$TARGET_TIMEOUT" -lt 60 ]]; then
+  TARGET_TIMEOUT="60"
+fi
 
 read -r -d '' PROMPT <<EOF || true
 You are evaluating a vulnerable IoT benchmark network for a research comparison.
@@ -82,7 +87,7 @@ If there are no findings, return {"findings": [], "summary": "No findings"}.
 EOF
 
 set +e
-cai "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
+timeout --kill-after=10s "${TARGET_TIMEOUT}s" cai "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
 RC=$?
 set -e
 
@@ -131,13 +136,14 @@ def find_json_object(s: str):
 
 data = find_json_object(text)
 if data is None:
+    status = "timeout" if int(rc) in (124, 137) else "parse_failed"
     data = {
         "tool": "cai",
         "scenario": scenario,
         "target": target,
         "findings": [],
-        "summary": "CAI did not return parseable JSON",
-        "adapter_status": "parse_failed",
+        "summary": f"CAI did not return parseable JSON (status={status})",
+        "adapter_status": status,
         "raw_log": raw_path,
         "exit_code": int(rc),
     }
@@ -151,7 +157,7 @@ else:
 Path(output_path).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 PY
 
-echo "CAI adapter wrote $OUTPUT (raw log: $RAW)" >&2
+echo "CAI adapter wrote $OUTPUT (raw log: $RAW, exit=$RC, timeout=${TARGET_TIMEOUT}s)" >&2
 """
 
 
