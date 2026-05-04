@@ -21,6 +21,13 @@ all:
       ansible_user: root
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 
+    # ── VM Baseline (outils concurrents isolés : CAI, PentGPT, etc.) ──
+    # ansible_host sera mis à jour après déploiement avec l'IP DHCP obtenue
+    baseline:
+      ansible_host: "{{ baseline_ip | default('192.168.88.184') }}"
+      ansible_user: root
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
   vars:
     # ── Proxmox API (utilisé par les modules community.general.proxmox_kvm) ──
     proxmox_api_host: "{{ hostvars['proxmox']['ansible_host'] }}"

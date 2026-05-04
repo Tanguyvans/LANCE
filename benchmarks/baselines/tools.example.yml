@@ -1,0 +1,33 @@
+# External baseline tool definitions.
+#
+# The master VM runs each command on the isolated baseline VM once per target IP.
+# Available placeholders:
+#   {tool}, {scenario}, {scenario_id}, {ip}, {target}, {role}, {name}, {output}
+#
+# Each command must write JSON findings to {output}. The normalizer accepts common
+# keys such as findings/vulnerabilities/results and ip/type/severity/evidence.
+
+tools:
+  cai:
+    remote_workdir: /opt/baseline-tools
+    timeout_seconds: 1800
+    output_glob: "cai_S{scenario}_{variant}_{ip}.json"
+    command: "./adapters/cai_run.sh --variant {variant} --target {ip} --scope {scope} --scenario {scenario} --max-turns {max_turns} --model {model} --output {output}"
+
+  pentgpt:
+    remote_workdir: /opt/baseline-tools
+    timeout_seconds: 1800
+    output_glob: "pentgpt_S{scenario}_{variant}_{ip}.json"
+    command: "./adapters/pentgpt_run.sh --target {ip} --scope {scope} --scenario {scenario} --max-turns {max_turns} --model {model} --output {output}"
+
+  vulnbot:
+    remote_workdir: /opt/baseline-tools
+    timeout_seconds: 1800
+    output_glob: "vulnbot_S{scenario}_{variant}_{ip}.json"
+    command: "./adapters/vulnbot_run.sh --target {ip} --scope {scope} --scenario {scenario} --max-turns {max_turns} --model {model} --output {output}"
+
+  nmap_nse:
+    remote_workdir: /opt/baseline-tools
+    timeout_seconds: 600
+    output_glob: "nmap_nse_S{scenario}_{variant}_{ip}.json"
+    command: "./adapters/nmap_nse_run.sh --target {ip} --scope {scope} --scenario {scenario} --output {output}"

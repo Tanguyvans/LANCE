@@ -1,0 +1,38 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from src.baselines.runner import run_baseline
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run VulnBot baseline per target")
+    parser.add_argument("--scenario", required=True)
+    parser.add_argument("--target", default=None)
+    parser.add_argument("--scope", default="192.168.100.0/24")
+    parser.add_argument("--max-steps", "--max-turns", dest="max_turns", type=int, default=200)
+    parser.add_argument("--model", default="MiniMax-M2.7")
+    parser.add_argument("--output-dir", type=Path, default=Path("output/baselines"))
+    parser.add_argument("--baseline-host", default="baseline")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    print(
+        run_baseline(
+            tool="vulnbot",
+            scenario_id=args.scenario,
+            baseline_host=args.baseline_host,
+            variant="A",
+            scope=args.scope,
+            max_turns=args.max_turns,
+            model=args.model,
+            output_dir=args.output_dir,
+            dry_run=args.dry_run,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
+

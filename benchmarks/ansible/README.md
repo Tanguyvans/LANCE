@@ -15,6 +15,11 @@ Proxmox (192.168.88.100)
    │     ├── Pipeline LLM  (6 phases)
    │     └── Ansible controller → lance les playbooks 03–99
    │
+   ├── VM Baseline LXC 201  (CAI, PentGPT, autres outils comparés)
+   │     ├── dépendances isolées
+   │     ├── adapters /opt/baseline-tools/adapters/*.sh
+   │     └── accès direct au réseau benchmark via eth1
+   │
    ├── vmbr0  (192.168.88.0/24)   management
    └── vmbr1  (192.168.100.0/24)  réseau benchmark isolé
          ├── S1: 100 router + 101–103 services
@@ -52,6 +57,40 @@ Le résumé final affiche :
 Dashboard : http://<tailscale-ip>:8501
 SSH WAN   : ssh root@<tailscale-ip>
 SSH LAN   : ssh root@10.0.0.10
+```
+
+## Déployer la VM baseline isolée
+
+La VM baseline sert uniquement à installer et lancer des solutions existantes
+comme CAI ou PentGPT, sans risquer de casser l'environnement Python de la VM
+maître.
+
+```bash
+cd benchmarks/ansible
+ansible-playbook playbooks/deploy_baseline_vm.yml \
+  --vault-password-file ~/.vault_pass -i inventory.yml
+```
+
+Le playbook crée un LXC Debian 13 séparé :
+- VMID `201`, hostname `nato-baseline`
+- management DHCP sur `vmbr0`
+- IP benchmark fixe `192.168.100.201/24` sur `vmbr1`
+- dossiers `/opt/baseline-tools/adapters` et `/opt/baseline-tools/results`
+- placeholders `cai_run.sh` et `pentgpt_run.sh` à remplacer par les vraies commandes
+
+Depuis la VM maître, lancer un outil externe device par device :
+
+```bash
+python3 -m src.baselines run \
+  --tool cai \
+  --scenario 3 \
+  --baseline-host root@<baseline-management-ip>
+```
+
+Puis scorer le résultat agrégé contre la ground truth :
+
+```bash
+python3 -m src.baselines compare output/baselines/cai/S3_YYYY-mm-dd_HHMMSS
 ```
 
 ## CI/CD — Mise à jour automatique
@@ -193,6 +232,7 @@ ansible/
 ├── group_vars/vault_master.yml.example  # Template des secrets à renseigner
 └── playbooks/
     ├── deploy_master.yml          # Provisioning VM maître (LXC + Tailscale + nato-fastapi)
+    ├── deploy_baseline_vm.yml     # Provisioning VM baseline isolée pour CAI/PentGPT
     ├── 00_proxmox_init.yml        # Init Proxmox (bridge vmbr1, user, token API)
     ├── 01_create_templates.yml    # Templates LXC Debian (9000) + KVM OpenWrt (9001)
     ├── 02_config_openwrt.yml      # Configuration OpenWrt → template final (9010)
