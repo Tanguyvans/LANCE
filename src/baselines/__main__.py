@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.baselines import compare, deploy, install_tools, runner, wizard
+from src.baselines import compare, deploy, install_tools, runner, ui, wizard
 from src.baselines.scenarios import load_scenario_targets
 
 
@@ -73,6 +73,7 @@ def main() -> None:
     pilot.add_argument("--dry-run", action="store_true")
 
     sub.add_parser("wizard", help="Open the interactive terminal interface")
+    sub.add_parser("dashboard", help="Open the rich real-time terminal dashboard")
 
     args = parser.parse_args()
     if args.command == "deploy-vm":
@@ -161,6 +162,8 @@ def main() -> None:
         print(run_dir)
     elif args.command == "wizard":
         wizard.run_wizard()
+    elif args.command == "dashboard":
+        ui.run_dashboard()
 
 
 if __name__ == "__main__":

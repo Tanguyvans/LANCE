@@ -51,6 +51,12 @@ The normalizer also accepts common aliases such as `host`, `target`,
 Open the guided terminal interface:
 
 ```bash
+python3 -m src.baselines dashboard
+```
+
+If `rich` is not installed, use the plain fallback:
+
+```bash
 python3 -m src.baselines wizard
 ```
 

@@ -9,6 +9,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Callable, Any
 
 from src.benchmark.evaluator import evaluate
 from src.baselines.config import DEFAULT_CONFIG, ToolConfig, load_tool_config
@@ -18,10 +19,16 @@ from src.baselines.scenarios import BaselineTarget, load_ground_truth_targets, l
 
 DEFAULT_OUTPUT_DIR = Path("output/baselines")
 HEARTBEAT_SECONDS = 30
+EventCallback = Callable[[dict[str, Any]], None]
 
 
 def _log(message: str) -> None:
     print(f"[baseline] {message}", flush=True)
+
+
+def _emit(callback: EventCallback | None, event: str, **payload: Any) -> None:
+    if callback:
+        callback({"event": event, **payload})
 
 
 def _render(
@@ -75,6 +82,8 @@ def _run_remote_target(
     max_turns: int,
     model: str,
     dry_run: bool = False,
+    event_callback: EventCallback | None = None,
+    quiet: bool = False,
 ) -> Path:
     output_name = _remote_output_name(config, scenario_id, target, variant, scope, max_turns, model)
     remote_output = f"{config.remote_workdir.rstrip('/')}/results/{output_name}"
@@ -86,15 +95,25 @@ def _run_remote_target(
     )
     local_output = local_raw_dir / output_name
     if dry_run:
-        _log(f"dry-run target {target.ip} ({target.name}) -> {local_output}")
+        if not quiet:
+            _log(f"dry-run target {target.ip} ({target.name}) -> {local_output}")
+        _emit(event_callback, "target_dry_run", target=asdict(target), output=str(local_output))
         local_output.write_text(
             json.dumps({"dry_run_command": wrapped, "target": asdict(target)}, indent=2),
             encoding="utf-8",
         )
         return local_output
 
-    _log(f"start {config.name} target {target.ip} ({target.name})")
-    _log(f"remote output: {remote_output}")
+    if not quiet:
+        _log(f"start {config.name} target {target.ip} ({target.name})")
+        _log(f"remote output: {remote_output}")
+    _emit(
+        event_callback,
+        "target_start",
+        tool=config.name,
+        target=asdict(target),
+        remote_output=remote_output,
+    )
     started = time.monotonic()
     process = subprocess.Popen(["ssh", baseline_host, wrapped])
     last_heartbeat = started
@@ -105,19 +124,27 @@ def _run_remote_target(
             break
         if now - last_heartbeat >= HEARTBEAT_SECONDS:
             elapsed = int(now - started)
-            _log(f"still running target {target.ip} after {elapsed}s")
+            if not quiet:
+                _log(f"still running target {target.ip} after {elapsed}s")
+            _emit(event_callback, "target_heartbeat", target=asdict(target), elapsed=elapsed)
             last_heartbeat = now
         time.sleep(1)
 
     elapsed = round(time.monotonic() - started, 1)
     if rc != 0:
-        _log(f"failed target {target.ip} after {elapsed}s (ssh exit {rc})")
+        if not quiet:
+            _log(f"failed target {target.ip} after {elapsed}s (ssh exit {rc})")
+        _emit(event_callback, "target_failed", target=asdict(target), elapsed=elapsed, returncode=rc)
         raise subprocess.CalledProcessError(rc, ["ssh", baseline_host, wrapped])
 
-    _log(f"finished target {target.ip} in {elapsed}s; fetching result")
+    if not quiet:
+        _log(f"finished target {target.ip} in {elapsed}s; fetching result")
+    _emit(event_callback, "target_finished", target=asdict(target), elapsed=elapsed)
     local_raw_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(["scp", f"{baseline_host}:{remote_output}", str(local_output)], check=True)
-    _log(f"saved raw result: {local_output}")
+    if not quiet:
+        _log(f"saved raw result: {local_output}")
+    _emit(event_callback, "target_result_saved", target=asdict(target), output=str(local_output))
     return local_output
 
 
@@ -134,6 +161,8 @@ def run_baseline(
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     include_router: bool = True,
     dry_run: bool = False,
+    event_callback: EventCallback | None = None,
+    quiet: bool = False,
 ) -> Path:
     config = load_tool_config(tool, config_file)
     if target_source == "ground_truth":
@@ -158,16 +187,29 @@ def run_baseline(
     raw_dir = run_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    _log(
-        f"run tool={tool} scenario={scenario_id} variant={variant.upper()} "
-        f"targets={len(targets)} host={baseline_host}"
+    if not quiet:
+        _log(
+            f"run tool={tool} scenario={scenario_id} variant={variant.upper()} "
+            f"targets={len(targets)} host={baseline_host}"
+        )
+        _log(f"output dir: {run_dir}")
+    _emit(
+        event_callback,
+        "run_start",
+        tool=tool,
+        scenario_id=str(scenario_id),
+        variant=variant.upper(),
+        target_count=len(targets),
+        baseline_host=baseline_host,
+        run_dir=str(run_dir),
     )
-    _log(f"output dir: {run_dir}")
 
     started_at = datetime.now()
     target_outputs: list[tuple[BaselineTarget, Path]] = []
     for index, target in enumerate(targets, 1):
-        _log(f"target {index}/{len(targets)}: {target.ip} ({target.name}, {target.source})")
+        if not quiet:
+            _log(f"target {index}/{len(targets)}: {target.ip} ({target.name}, {target.source})")
+        _emit(event_callback, "target_selected", index=index, total=len(targets), target=asdict(target))
         local_output = _run_remote_target(
             baseline_host=baseline_host,
             config=config,
@@ -179,10 +221,14 @@ def run_baseline(
             max_turns=max_turns,
             model=model,
             dry_run=dry_run,
+            event_callback=event_callback,
+            quiet=quiet,
         )
         target_outputs.append((target, local_output))
 
-    _log("normalizing findings")
+    if not quiet:
+        _log("normalizing findings")
+    _emit(event_callback, "normalizing")
     findings = [] if dry_run else normalize_tool_outputs(tool, target_outputs)
     write_exploitation_results(tool, scenario_id, findings, run_dir)
     write_vuln_analysis(tool, scenario_id, findings, run_dir)
@@ -218,17 +264,33 @@ def run_baseline(
 
     gt_file = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
     if gt_file.exists():
-        _log(f"evaluating against {gt_file}")
+        if not quiet:
+            _log(f"evaluating against {gt_file}")
+        _emit(event_callback, "evaluating", ground_truth=str(gt_file))
         score = evaluate(run_dir, gt_file)
         (run_dir / "evaluator_score.json").write_text(
             json.dumps(asdict(score), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        _log(
-            f"score recall={score.recall:.3f} precision={score.precision:.3f} "
-            f"f1={score.f1_score:.3f} score={score.score_pct:.1f}%"
+        if not quiet:
+            _log(
+                f"score recall={score.recall:.3f} precision={score.precision:.3f} "
+                f"f1={score.f1_score:.3f} score={score.score_pct:.1f}%"
+            )
+        _emit(
+            event_callback,
+            "score",
+            recall=score.recall,
+            precision=score.precision,
+            f1=score.f1_score,
+            score_pct=score.score_pct,
+            true_positives=score.true_positives,
+            false_positives=score.false_positives,
+            false_negatives=score.false_negatives,
         )
-    _log(f"done: {run_dir}")
+    if not quiet:
+        _log(f"done: {run_dir}")
+    _emit(event_callback, "run_done", run_dir=str(run_dir), finding_count=len(findings))
     return run_dir
 
 
