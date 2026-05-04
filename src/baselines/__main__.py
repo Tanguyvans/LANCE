@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.baselines import compare, deploy, install_tools, runner
+from src.baselines import compare, deploy, install_tools, runner, wizard
 from src.baselines.scenarios import load_scenario_targets
 
 
@@ -19,6 +19,18 @@ def main() -> None:
     deploy_vm.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
     deploy_vm.add_argument("--check", action="store_true")
     deploy_vm.add_argument("--extra-vars", action="append", default=[])
+
+    deploy_scenario = sub.add_parser("deploy-scenario", help="Deploy and prepare a benchmark scenario")
+    deploy_scenario.add_argument("--scenario", required=True)
+    deploy_scenario.add_argument("--inventory", default=str(deploy.DEFAULT_INVENTORY))
+    deploy_scenario.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
+    deploy_scenario.add_argument("--no-populate", action="store_true")
+    deploy_scenario.add_argument("--verify", action="store_true")
+
+    teardown = sub.add_parser("teardown-scenario", help="Destroy a benchmark scenario")
+    teardown.add_argument("--scenario", required=True)
+    teardown.add_argument("--inventory", default=str(deploy.DEFAULT_INVENTORY))
+    teardown.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
 
     setup_cai = sub.add_parser("setup-cai", help="Install CAI and deploy the CAI adapter on the baseline VM")
     setup_cai.add_argument("--baseline-host", required=True)
@@ -60,6 +72,8 @@ def main() -> None:
     pilot.add_argument("--model", default="MiniMax-M2.7")
     pilot.add_argument("--dry-run", action="store_true")
 
+    sub.add_parser("wizard", help="Open the interactive terminal interface")
+
     args = parser.parse_args()
     if args.command == "deploy-vm":
         deploy.deploy_baseline_vm(
@@ -68,6 +82,20 @@ def main() -> None:
             vault_password_file=Path(args.vault_password_file).expanduser(),
             check=args.check,
             extra_vars=args.extra_vars,
+        )
+    elif args.command == "deploy-scenario":
+        deploy.deploy_scenario(
+            scenario_id=args.scenario,
+            inventory=Path(args.inventory),
+            vault_password_file=Path(args.vault_password_file).expanduser(),
+            populate=not args.no_populate,
+            verify=args.verify,
+        )
+    elif args.command == "teardown-scenario":
+        deploy.teardown_scenario(
+            scenario_id=args.scenario,
+            inventory=Path(args.inventory),
+            vault_password_file=Path(args.vault_password_file).expanduser(),
         )
     elif args.command == "setup-cai":
         import os
@@ -131,6 +159,8 @@ def main() -> None:
             dry_run=args.dry_run,
         )
         print(run_dir)
+    elif args.command == "wizard":
+        wizard.run_wizard()
 
 
 if __name__ == "__main__":

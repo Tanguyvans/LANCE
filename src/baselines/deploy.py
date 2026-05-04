@@ -9,6 +9,7 @@ from pathlib import Path
 DEFAULT_INVENTORY = Path("benchmarks/ansible/inventory.yml")
 DEFAULT_PLAYBOOK = Path("benchmarks/ansible/playbooks/deploy_baseline_vm.yml")
 DEFAULT_VAULT_PASSWORD = Path.home() / ".vault_pass"
+PLAYBOOK_DIR = Path("benchmarks/ansible/playbooks")
 
 
 def deploy_baseline_vm(
@@ -32,6 +33,58 @@ def deploy_baseline_vm(
     for item in extra_vars or []:
         cmd.extend(["--extra-vars", item])
     subprocess.run(cmd, check=True)
+
+
+def run_playbook(
+    playbook: Path,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+    extra_vars: list[str] | None = None,
+    check: bool = False,
+) -> None:
+    cmd = [
+        "ansible-playbook",
+        str(playbook),
+        "-i",
+        str(inventory),
+        "--vault-password-file",
+        str(vault_password_file),
+    ]
+    if check:
+        cmd.append("--check")
+    for item in extra_vars or []:
+        cmd.extend(["--extra-vars", item])
+    subprocess.run(cmd, check=True)
+
+
+def deploy_scenario(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+    populate: bool = True,
+    verify: bool = False,
+) -> None:
+    """Deploy a benchmark scenario and inject its vulnerabilities."""
+    extra_vars = [f"scenario_id={scenario_id}"]
+    run_playbook(PLAYBOOK_DIR / "03_deploy_scenario.yml", inventory, vault_password_file, extra_vars)
+    run_playbook(PLAYBOOK_DIR / "04_inject_vulns.yml", inventory, vault_password_file, extra_vars)
+    if populate:
+        run_playbook(PLAYBOOK_DIR / "05_populate_services.yml", inventory, vault_password_file, extra_vars)
+    if verify:
+        run_playbook(PLAYBOOK_DIR / "06_verify.yml", inventory, vault_password_file, extra_vars)
+
+
+def teardown_scenario(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+) -> None:
+    run_playbook(
+        PLAYBOOK_DIR / "99_teardown.yml",
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=[f"scenario_id={scenario_id}"],
+    )
 
 
 def main() -> None:
@@ -59,4 +112,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

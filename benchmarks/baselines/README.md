@@ -48,6 +48,12 @@ The normalizer also accepts common aliases such as `host`, `target`,
 
 ## Commands
 
+Open the guided terminal interface:
+
+```bash
+python3 -m src.baselines wizard
+```
+
 Deploy the isolated baseline VM:
 
 ```bash
@@ -74,6 +80,18 @@ List the targets for a scenario:
 
 ```bash
 python3 -m src.baselines targets --scenario 3
+```
+
+Deploy and prepare a benchmark scenario:
+
+```bash
+python3 -m src.baselines deploy-scenario --scenario 3
+```
+
+Destroy a benchmark scenario:
+
+```bash
+python3 -m src.baselines teardown-scenario --scenario 3
 ```
 
 Dry-run the CAI baseline from the master VM:
