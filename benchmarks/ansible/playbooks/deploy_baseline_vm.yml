@@ -87,19 +87,28 @@
       changed_when: "'Host ' in baseline_known_host_remove.stdout or 'updated original contents' in baseline_known_host_remove.stderr"
       failed_when: false
 
-    - name: Trust current baseline SSH host key on controller
-      ansible.builtin.known_hosts:
-        name: "{{ baseline_ip }}"
-        key: "{{ lookup('pipe', 'ssh-keyscan ' + baseline_ip) }}"
-        state: present
-      delegate_to: localhost
-
     - name: Wait for baseline SSH
       ansible.builtin.wait_for:
         host: "{{ baseline_ip }}"
         port: 22
         delay: 5
         timeout: 60
+
+    - name: Scan current baseline SSH host key
+      ansible.builtin.command: ssh-keyscan -T 10 {{ baseline_ip }}
+      delegate_to: localhost
+      register: baseline_host_key
+      changed_when: false
+      retries: 6
+      delay: 5
+      until: baseline_host_key.rc == 0 and baseline_host_key.stdout | length > 0
+
+    - name: Trust current baseline SSH host key on controller
+      ansible.builtin.known_hosts:
+        name: "{{ baseline_ip }}"
+        key: "{{ baseline_host_key.stdout }}"
+        state: present
+      delegate_to: localhost
 
 - name: Configure isolated baseline VM
   hosts: baseline
