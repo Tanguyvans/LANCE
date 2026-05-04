@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import getpass
 import os
+import sys
+import termios
 import time
+import tty
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +29,17 @@ DEFAULT_BASELINE_HOST = "root@192.168.88.36"
 DEFAULT_SCENARIO = "3"
 DEFAULT_SCOPE = "192.168.100.0/24"
 DEFAULT_MODEL = "MiniMax-M2.7"
+MENU_ACTIONS = [
+    ("1", "Configure"),
+    ("2", "Deploy baseline VM"),
+    ("3", "Setup CAI on baseline VM"),
+    ("4", "Deploy benchmark scenario"),
+    ("5", "Run CAI baseline with live remote status"),
+    ("6", "Compare last/run directory"),
+    ("7", "Full CAI pilot"),
+    ("8", "Teardown benchmark scenario"),
+    ("0", "Quit"),
+]
 
 
 @dataclass
@@ -84,23 +98,64 @@ def _render_header(state: DashboardState):
     return Panel(table, title="NATO Smart City IoT Baseline", border_style="cyan")
 
 
-def _render_menu():
+def _render_menu(selected: int = 0):
     menu = Table(show_header=False, box=None, expand=True)
-    menu.add_column("key", style="bold cyan", width=4)
+    menu.add_column("cursor", width=2)
+    menu.add_column("key", width=4)
     menu.add_column("action")
-    for key, action in [
-        ("1", "Configure"),
-        ("2", "Deploy baseline VM"),
-        ("3", "Setup CAI on baseline VM"),
-        ("4", "Deploy benchmark scenario"),
-        ("5", "Run CAI baseline with live remote status"),
-        ("6", "Compare last/run directory"),
-        ("7", "Full CAI pilot"),
-        ("8", "Teardown benchmark scenario"),
-        ("0", "Quit"),
-    ]:
-        menu.add_row(key, action)
-    return Panel(menu, title="Actions", border_style="magenta")
+    for index, (key, action) in enumerate(MENU_ACTIONS):
+        if index == selected:
+            menu.add_row("[bold cyan]>[/bold cyan]", f"[bold cyan]{key}[/bold cyan]", f"[bold reverse]{action}[/bold reverse]")
+        else:
+            menu.add_row("", f"[dim]{key}[/dim]", action)
+    return Panel(menu, title="Actions - use ↑/↓ then Enter, q to quit", border_style="magenta")
+
+
+def _read_key() -> str:
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        first = sys.stdin.read(1)
+        if first == "\x1b":
+            rest = sys.stdin.read(2)
+            return first + rest
+        return first
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def _render_dashboard_shell(console: Console, state: DashboardState, selected: int) -> None:
+    console.clear()
+    console.print(Align.center("[bold cyan]NATO Smart City IoT[/bold cyan] [white]Baseline Terminal[/white]"))
+    console.print(_render_header(state))
+    console.print(_render_menu(selected))
+
+
+def _select_action(console: Console, state: DashboardState, selected: int) -> tuple[str, int]:
+    """Return (menu key, selected index), using arrows when stdin is interactive."""
+    if not sys.stdin.isatty():
+        choice = console.input("\n[bold cyan]Choice[/bold cyan]: ").strip()
+        for index, (key, _) in enumerate(MENU_ACTIONS):
+            if key == choice:
+                return key, index
+        return choice, selected
+
+    while True:
+        _render_dashboard_shell(console, state, selected)
+        key = _read_key()
+        if key in {"\x1b[A", "k"}:
+            selected = (selected - 1) % len(MENU_ACTIONS)
+        elif key in {"\x1b[B", "j"}:
+            selected = (selected + 1) % len(MENU_ACTIONS)
+        elif key in {"\r", "\n"}:
+            return MENU_ACTIONS[selected][0], selected
+        elif key.lower() == "q":
+            return "0", selected
+        else:
+            for index, (menu_key, _) in enumerate(MENU_ACTIONS):
+                if key == menu_key:
+                    return menu_key, index
 
 
 def _render_live(state: DashboardState, progress: Progress | None = None):
@@ -281,12 +336,9 @@ def run_dashboard() -> None:
 
     console = Console()
     state = DashboardState()
+    selected = 0
     while True:
-        console.clear()
-        console.print(Align.center("[bold cyan]NATO Smart City IoT[/bold cyan] [white]Baseline Terminal[/white]"))
-        console.print(_render_header(state))
-        console.print(_render_menu())
-        choice = console.input("\n[bold cyan]Choice[/bold cyan]: ").strip()
+        choice, selected = _select_action(console, state, selected)
         try:
             if choice == "1":
                 _configure(console, state)
@@ -319,4 +371,3 @@ def run_dashboard() -> None:
 
 if __name__ == "__main__":
     run_dashboard()
-
