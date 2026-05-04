@@ -61,10 +61,9 @@
       changed_when: false
 
     - name: Install controller SSH public key in baseline LXC
-      ansible.builtin.command: >
-        pct exec {{ baseline_vmid }} --
-        sh -c 'grep -qxF {{ (controller_pubkey.content | b64decode | trim) | quote }} /root/.ssh/authorized_keys 2>/dev/null
-        || echo {{ (controller_pubkey.content | b64decode | trim) | quote }} >> /root/.ssh/authorized_keys'
+      ansible.builtin.command: pct exec {{ baseline_vmid }} -- tee /root/.ssh/authorized_keys
+      args:
+        stdin: "{{ controller_pubkey.content | b64decode | trim }}\n"
       changed_when: true
 
     - name: Fix baseline root SSH permissions
