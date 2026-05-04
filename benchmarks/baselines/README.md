@@ -48,6 +48,20 @@ The normalizer also accepts common aliases such as `host`, `target`,
 
 ## Commands
 
+Deploy the isolated baseline VM:
+
+```bash
+python3 -m src.baselines deploy-vm
+```
+
+Override resources without editing YAML:
+
+```bash
+python3 -m src.baselines deploy-vm \
+  --extra-vars "baseline_memory=4096" \
+  --extra-vars "baseline_cores=2"
+```
+
 List the targets for a scenario:
 
 ```bash
@@ -60,6 +74,14 @@ Dry-run the CAI baseline from the master VM:
 python3 -m src.baselines run \
   --tool cai \
   --scenario 3 \
+  --baseline-host root@192.168.88.184 \
+  --dry-run
+```
+
+Pilot CAI exactly like the paper plan shortcut:
+
+```bash
+python3 -m src.baselines pilot-cai \
   --baseline-host root@192.168.88.184 \
   --dry-run
 ```
@@ -94,4 +116,3 @@ installed. Keep their CLI stable:
 ```bash
 ./adapters/cai_run.sh --target 192.168.100.12 --scenario 3 --output /opt/baseline-tools/results/cai_S3_192.168.100.12.json
 ```
-
