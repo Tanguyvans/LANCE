@@ -5,6 +5,7 @@ import argparse
 import json
 import shlex
 import subprocess
+import time
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +17,11 @@ from src.baselines.scenarios import BaselineTarget, load_ground_truth_targets, l
 
 
 DEFAULT_OUTPUT_DIR = Path("output/baselines")
+HEARTBEAT_SECONDS = 30
+
+
+def _log(message: str) -> None:
+    print(f"[baseline] {message}", flush=True)
 
 
 def _render(
@@ -80,15 +86,38 @@ def _run_remote_target(
     )
     local_output = local_raw_dir / output_name
     if dry_run:
+        _log(f"dry-run target {target.ip} ({target.name}) -> {local_output}")
         local_output.write_text(
             json.dumps({"dry_run_command": wrapped, "target": asdict(target)}, indent=2),
             encoding="utf-8",
         )
         return local_output
 
-    subprocess.run(["ssh", baseline_host, wrapped], check=True)
+    _log(f"start {config.name} target {target.ip} ({target.name})")
+    _log(f"remote output: {remote_output}")
+    started = time.monotonic()
+    process = subprocess.Popen(["ssh", baseline_host, wrapped])
+    last_heartbeat = started
+    while True:
+        rc = process.poll()
+        now = time.monotonic()
+        if rc is not None:
+            break
+        if now - last_heartbeat >= HEARTBEAT_SECONDS:
+            elapsed = int(now - started)
+            _log(f"still running target {target.ip} after {elapsed}s")
+            last_heartbeat = now
+        time.sleep(1)
+
+    elapsed = round(time.monotonic() - started, 1)
+    if rc != 0:
+        _log(f"failed target {target.ip} after {elapsed}s (ssh exit {rc})")
+        raise subprocess.CalledProcessError(rc, ["ssh", baseline_host, wrapped])
+
+    _log(f"finished target {target.ip} in {elapsed}s; fetching result")
     local_raw_dir.mkdir(parents=True, exist_ok=True)
     subprocess.run(["scp", f"{baseline_host}:{remote_output}", str(local_output)], check=True)
+    _log(f"saved raw result: {local_output}")
     return local_output
 
 
@@ -129,9 +158,16 @@ def run_baseline(
     raw_dir = run_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
+    _log(
+        f"run tool={tool} scenario={scenario_id} variant={variant.upper()} "
+        f"targets={len(targets)} host={baseline_host}"
+    )
+    _log(f"output dir: {run_dir}")
+
     started_at = datetime.now()
     target_outputs: list[tuple[BaselineTarget, Path]] = []
-    for target in targets:
+    for index, target in enumerate(targets, 1):
+        _log(f"target {index}/{len(targets)}: {target.ip} ({target.name}, {target.source})")
         local_output = _run_remote_target(
             baseline_host=baseline_host,
             config=config,
@@ -146,6 +182,7 @@ def run_baseline(
         )
         target_outputs.append((target, local_output))
 
+    _log("normalizing findings")
     findings = [] if dry_run else normalize_tool_outputs(tool, target_outputs)
     write_exploitation_results(tool, scenario_id, findings, run_dir)
     write_vuln_analysis(tool, scenario_id, findings, run_dir)
@@ -181,11 +218,17 @@ def run_baseline(
 
     gt_file = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
     if gt_file.exists():
+        _log(f"evaluating against {gt_file}")
         score = evaluate(run_dir, gt_file)
         (run_dir / "evaluator_score.json").write_text(
             json.dumps(asdict(score), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        _log(
+            f"score recall={score.recall:.3f} precision={score.precision:.3f} "
+            f"f1={score.f1_score:.3f} score={score.score_pct:.1f}%"
+        )
+    _log(f"done: {run_dir}")
     return run_dir
 
 
