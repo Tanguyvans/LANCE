@@ -13,6 +13,160 @@ DEFAULT_MODEL = "MiniMax-M2.7"
 DEFAULT_TARGET_TIMEOUT_SECONDS = 240
 
 
+CAI_SDK_RUNNER = r'''#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import traceback
+from pathlib import Path
+
+
+def build_prompt(args: argparse.Namespace) -> str:
+    return f"""You are evaluating a vulnerable IoT benchmark network for a research comparison.
+
+Scope CIDR: {args.scope}
+Scenario: {args.scenario}
+Variant: {args.variant}
+Target: {args.target}
+Model budget hint: {args.max_turns} turns/steps maximum.
+
+Use CAI's normal pentest workflow against the target. Return ONLY valid JSON with this schema:
+{{
+  "findings": [
+    {{
+      "ip": "target IP",
+      "type": "default_credentials|no_auth|known_cve|misconfiguration|info_disclosure|weak_cipher|data_exposure|code_injection|privilege_escalation|insecure_protocol",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW|INFO",
+      "details": "short explanation",
+      "evidence": "raw proof, command output, HTTP response, login result, banner, or other evidence",
+      "evidence_level": 1,
+      "cve_ids": []
+    }}
+  ],
+  "summary": "short summary"
+}}
+
+Evidence level: 1=detected, 2=exploited/authenticated, 3=sensitive data exfiltrated.
+If there are no findings, return {{"findings": [], "summary": "No findings"}}.
+"""
+
+
+def find_json_object(text: str):
+    candidates = []
+    for start in [m.start() for m in re.finditer(r"\{", text)]:
+        depth = 0
+        in_string = False
+        escape = False
+        for idx in range(start, len(text)):
+            ch = text[idx]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidates.append(text[start:idx + 1])
+                        break
+    for candidate in reversed(candidates):
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and isinstance(data.get("findings"), list):
+            return data
+    return None
+
+
+def write_output(path: str, payload: dict) -> None:
+    Path(path).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--variant", required=True)
+    parser.add_argument("--target", required=True)
+    parser.add_argument("--scope", required=True)
+    parser.add_argument("--scenario", required=True)
+    parser.add_argument("--max-turns", type=int, required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
+    os.environ.setdefault("CAI_STREAM", "false")
+    os.environ.setdefault("CAI_PARALLEL", "1")
+    os.environ["CAI_MODEL"] = args.model
+    os.environ["CAI_MAX_TURNS"] = str(args.max_turns)
+    os.environ["CAI_MAX_INTERACTIONS"] = str(args.max_turns)
+    os.environ.setdefault("CAI_PRICE_LIMIT", "1")
+    os.environ.setdefault("CAI_AGENT_TYPE", "redteam_agent")
+
+    prompt = build_prompt(args)
+    try:
+        from cai.agents import get_agent_by_name
+        from cai.cli import update_agent_models_recursively
+        from cai.sdk.agents import Runner
+
+        agent_type = os.environ.get("CAI_AGENT_TYPE", "redteam_agent")
+        agent = get_agent_by_name(agent_type, agent_id="P1")
+        update_agent_models_recursively(agent, args.model)
+        result = Runner.run_sync(agent, prompt, max_turns=args.max_turns)
+        final_output = getattr(result, "final_output", None) or str(result)
+        data = find_json_object(final_output)
+        if data is None:
+            data = {
+                "tool": "cai",
+                "scenario": args.scenario,
+                "target": args.target,
+                "findings": [],
+                "summary": "CAI SDK returned no parseable JSON",
+                "adapter_status": "sdk_parse_failed",
+                "raw_output": final_output[-4000:],
+                "exit_code": 0,
+            }
+        else:
+            data.setdefault("tool", "cai")
+            data.setdefault("scenario", args.scenario)
+            data.setdefault("target", args.target)
+            data.setdefault("adapter_status", "ok")
+            data.setdefault("exit_code", 0)
+        write_output(args.output, data)
+        return 0
+    except Exception as exc:
+        write_output(
+            args.output,
+            {
+                "tool": "cai",
+                "scenario": args.scenario,
+                "target": args.target,
+                "findings": [],
+                "summary": f"CAI SDK failed: {exc}",
+                "adapter_status": "sdk_error",
+                "traceback": traceback.format_exc()[-4000:],
+                "exit_code": 1,
+            },
+        )
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+
 CAI_ADAPTER = r"""#!/usr/bin/env bash
 set -euo pipefail
 
@@ -44,11 +198,27 @@ fi
 
 cd /opt/baseline-tools
 source /opt/baseline-tools/venv/bin/activate
+CALLER_CAI_AGENT_TYPE="${CAI_AGENT_TYPE:-}"
+CALLER_CAI_MAX_INTERACTIONS="${CAI_MAX_INTERACTIONS:-}"
+CALLER_CAI_PARALLEL="${CAI_PARALLEL:-}"
+CALLER_CAI_PRICE_LIMIT="${CAI_PRICE_LIMIT:-}"
+CALLER_CAI_RUN_MODE="${CAI_RUN_MODE:-}"
+CALLER_CAI_STREAM="${CAI_STREAM:-}"
+CALLER_CAI_TARGET_TIMEOUT="${CAI_TARGET_TIMEOUT:-}"
+CALLER_PROMPT_TOOLKIT_NO_CPR="${PROMPT_TOOLKIT_NO_CPR:-}"
 if [[ -f /opt/baseline-tools/.env ]]; then
   set -a
   source /opt/baseline-tools/.env
   set +a
 fi
+if [[ -n "$CALLER_CAI_AGENT_TYPE" ]]; then CAI_AGENT_TYPE="$CALLER_CAI_AGENT_TYPE"; fi
+if [[ -n "$CALLER_CAI_MAX_INTERACTIONS" ]]; then CAI_MAX_INTERACTIONS="$CALLER_CAI_MAX_INTERACTIONS"; fi
+if [[ -n "$CALLER_CAI_PARALLEL" ]]; then CAI_PARALLEL="$CALLER_CAI_PARALLEL"; fi
+if [[ -n "$CALLER_CAI_PRICE_LIMIT" ]]; then CAI_PRICE_LIMIT="$CALLER_CAI_PRICE_LIMIT"; fi
+if [[ -n "$CALLER_CAI_RUN_MODE" ]]; then CAI_RUN_MODE="$CALLER_CAI_RUN_MODE"; fi
+if [[ -n "$CALLER_CAI_STREAM" ]]; then CAI_STREAM="$CALLER_CAI_STREAM"; fi
+if [[ -n "$CALLER_CAI_TARGET_TIMEOUT" ]]; then CAI_TARGET_TIMEOUT="$CALLER_CAI_TARGET_TIMEOUT"; fi
+if [[ -n "$CALLER_PROMPT_TOOLKIT_NO_CPR" ]]; then PROMPT_TOOLKIT_NO_CPR="$CALLER_PROMPT_TOOLKIT_NO_CPR"; fi
 
 mkdir -p "$(dirname "$OUTPUT")" /opt/baseline-tools/logs
 RAW="$(mktemp /opt/baseline-tools/logs/cai_${SCENARIO}_${VARIANT}_XXXXXX.txt)"
@@ -56,6 +226,7 @@ TARGET_TIMEOUT="${CAI_TARGET_TIMEOUT:-$(( MAX_TURNS * 6 ))}"
 if [[ "$TARGET_TIMEOUT" -lt 60 ]]; then
   TARGET_TIMEOUT="60"
 fi
+RUN_MODE="${CAI_RUN_MODE:-sdk}"
 
 read -r -d '' PROMPT <<EOF || true
 You are evaluating a vulnerable IoT benchmark network for a research comparison.
@@ -87,7 +258,19 @@ If there are no findings, return {"findings": [], "summary": "No findings"}.
 EOF
 
 set +e
-timeout --kill-after=10s "${TARGET_TIMEOUT}s" cai "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
+if [[ "$RUN_MODE" == "sdk" ]]; then
+  timeout --kill-after=10s "${TARGET_TIMEOUT}s" \
+    python3 /opt/baseline-tools/adapters/cai_sdk_runner.py \
+      --variant "$VARIANT" \
+      --target "$TARGET" \
+      --scope "$SCOPE" \
+      --scenario "$SCENARIO" \
+      --max-turns "$MAX_TURNS" \
+      --model "$MODEL" \
+      --output "$OUTPUT" > "$RAW" 2>&1
+else
+  timeout --kill-after=10s "${TARGET_TIMEOUT}s" cai "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
+fi
 RC=$?
 set -e
 
@@ -99,6 +282,17 @@ from pathlib import Path
 
 raw_path, output_path, target, scenario, rc = sys.argv[1:]
 text = Path(raw_path).read_text(encoding="utf-8", errors="ignore")
+output = Path(output_path)
+if output.exists():
+    try:
+        data = json.loads(output.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        data = None
+    if isinstance(data, dict):
+        data.setdefault("raw_log", raw_path)
+        data.setdefault("exit_code", int(rc))
+        output.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        raise SystemExit(0)
 
 def find_json_object(s: str):
     candidates = []
@@ -165,6 +359,39 @@ def _ssh(host: str, command: str, stdin: str | None = None) -> None:
     subprocess.run(["ssh", host, command], input=stdin, text=True, check=True)
 
 
+def deploy_cai_adapter(baseline_host: str, remote_dir: str = DEFAULT_REMOTE_DIR) -> None:
+    qdir = shlex.quote(remote_dir)
+    _ssh(
+        baseline_host,
+        f"mkdir -p {qdir}/adapters {qdir}/results {qdir}/logs",
+    )
+    _ssh(
+        baseline_host,
+        f"cat > {qdir}/adapters/cai_run.sh && chmod 755 {qdir}/adapters/cai_run.sh",
+        stdin=CAI_ADAPTER,
+    )
+    _ssh(
+        baseline_host,
+        f"cat > {qdir}/adapters/cai_sdk_runner.py && chmod 755 {qdir}/adapters/cai_sdk_runner.py",
+        stdin=CAI_SDK_RUNNER,
+    )
+    _ssh(
+        baseline_host,
+        (
+            f"touch {qdir}/.env && chmod 600 {qdir}/.env "
+            f"&& grep -q '^CAI_RUN_MODE=' {qdir}/.env || echo 'CAI_RUN_MODE=sdk' >> {qdir}/.env "
+            f"&& grep -q '^CAI_AGENT_TYPE=bug_bounter_agent$' {qdir}/.env && sed -i 's/^CAI_AGENT_TYPE=bug_bounter_agent$/CAI_AGENT_TYPE=redteam_agent/' {qdir}/.env || true "
+            f"&& grep -q '^CAI_AGENT_TYPE=' {qdir}/.env || echo 'CAI_AGENT_TYPE=redteam_agent' >> {qdir}/.env "
+            f"&& grep -q '^CAI_TARGET_TIMEOUT=' {qdir}/.env || echo 'CAI_TARGET_TIMEOUT={DEFAULT_TARGET_TIMEOUT_SECONDS}' >> {qdir}/.env "
+            f"&& grep -q '^CAI_MAX_INTERACTIONS=' {qdir}/.env || echo 'CAI_MAX_INTERACTIONS=40' >> {qdir}/.env "
+            f"&& grep -q '^CAI_PRICE_LIMIT=' {qdir}/.env || echo 'CAI_PRICE_LIMIT=1' >> {qdir}/.env "
+            f"&& grep -q '^CAI_STREAM=' {qdir}/.env || echo 'CAI_STREAM=false' >> {qdir}/.env "
+            f"&& grep -q '^CAI_PARALLEL=' {qdir}/.env || echo 'CAI_PARALLEL=1' >> {qdir}/.env "
+            f"&& grep -q '^PROMPT_TOOLKIT_NO_CPR=' {qdir}/.env || echo 'PROMPT_TOOLKIT_NO_CPR=1' >> {qdir}/.env"
+        ),
+    )
+
+
 def setup_cai(
     baseline_host: str,
     minimax_api_key: str,
@@ -190,6 +417,14 @@ def setup_cai(
     env_content = (
         f"MINIMAX_API_KEY={minimax_api_key}\n"
         f"CAI_MODEL={model}\n"
+        "CAI_AGENT_TYPE=redteam_agent\n"
+        "CAI_RUN_MODE=sdk\n"
+        f"CAI_TARGET_TIMEOUT={DEFAULT_TARGET_TIMEOUT_SECONDS}\n"
+        "CAI_MAX_INTERACTIONS=40\n"
+        "CAI_PRICE_LIMIT=1\n"
+        "CAI_STREAM=false\n"
+        "CAI_PARALLEL=1\n"
+        "PROMPT_TOOLKIT_NO_CPR=1\n"
         f"OPENAI_API_KEY={openai_api_key}\n"
     )
     _ssh(
@@ -197,11 +432,7 @@ def setup_cai(
         f"cat > {qdir}/.env && chmod 600 {qdir}/.env",
         stdin=env_content,
     )
-    _ssh(
-        baseline_host,
-        f"cat > {qdir}/adapters/cai_run.sh && chmod 755 {qdir}/adapters/cai_run.sh",
-        stdin=CAI_ADAPTER,
-    )
+    deploy_cai_adapter(baseline_host, remote_dir)
 
 
 def main() -> None:
@@ -212,9 +443,13 @@ def main() -> None:
     parser.add_argument("--minimax-api-key-env", default="MINIMAX_API_KEY")
     parser.add_argument("--openai-api-key", default="sk-placeholder")
     parser.add_argument("--install-command", default="pip install cai-framework")
+    parser.add_argument("--preserve-remote-env", action="store_true")
     args = parser.parse_args()
 
     api_key = os.environ.get(args.minimax_api_key_env)
+    if args.preserve_remote_env:
+        deploy_cai_adapter(args.baseline_host, args.remote_dir)
+        return
     if not api_key:
         raise SystemExit(
             f"Missing {args.minimax_api_key_env}. Export it locally first, "

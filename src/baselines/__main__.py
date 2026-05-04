@@ -39,6 +39,7 @@ def main() -> None:
     setup_cai.add_argument("--minimax-api-key-env", default="MINIMAX_API_KEY")
     setup_cai.add_argument("--openai-api-key", default="sk-placeholder")
     setup_cai.add_argument("--install-command", default="pip install cai-framework")
+    setup_cai.add_argument("--preserve-remote-env", action="store_true")
 
     targets = sub.add_parser("targets", help="Print scenario targets as JSON")
     targets.add_argument("--scenario", required=True)
@@ -101,6 +102,9 @@ def main() -> None:
     elif args.command == "setup-cai":
         import os
 
+        if args.preserve_remote_env:
+            install_tools.deploy_cai_adapter(args.baseline_host, args.remote_dir)
+            return
         api_key = os.environ.get(args.minimax_api_key_env)
         if not api_key:
             raise SystemExit(

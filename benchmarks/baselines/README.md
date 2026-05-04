@@ -74,6 +74,14 @@ python3 -m src.baselines setup-cai \
   --baseline-host root@192.168.88.36
 ```
 
+Update only the CAI adapter scripts without touching the remote `.env` secrets:
+
+```bash
+python3 -m src.baselines setup-cai \
+  --baseline-host root@192.168.88.36 \
+  --preserve-remote-env
+```
+
 Override resources without editing YAML:
 
 ```bash
@@ -148,3 +156,9 @@ other tools, replace their script once installed. Keep their CLI stable:
 ```bash
 ./adapters/cai_run.sh --target 192.168.100.12 --scenario 3 --output /opt/baseline-tools/results/cai_S3_192.168.100.12.json
 ```
+
+The CAI adapter defaults to `CAI_RUN_MODE=sdk`, which calls CAI's Python
+`Runner.run_sync()` entry point instead of the interactive `cai` TUI. Set
+`CAI_RUN_MODE=cli` on the baseline VM only when you explicitly want to reproduce
+the interactive CLI baseline; in unattended runs it commonly times out on the
+welcome screen without producing parseable findings.
