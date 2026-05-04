@@ -56,17 +56,19 @@
         ansible_host: "{{ baseline_ip }}"
         ansible_user: root
         ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=accept-new"
 
-    - name: Remove stale baseline SSH host key from controller
-      ansible.builtin.known_hosts:
-        name: "{{ baseline_ip }}"
-        state: absent
+    - name: Remove stale baseline SSH host key from controller known_hosts
+      ansible.builtin.command: ssh-keygen -R {{ baseline_ip }}
       delegate_to: localhost
+      register: baseline_known_host_remove
+      changed_when: "'Host ' in baseline_known_host_remove.stdout or 'updated original contents' in baseline_known_host_remove.stderr"
+      failed_when: false
 
     - name: Trust current baseline SSH host key on controller
       ansible.builtin.known_hosts:
         name: "{{ baseline_ip }}"
-        key: "{{ lookup('pipe', 'ssh-keyscan -H ' + baseline_ip) }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan ' + baseline_ip) }}"
         state: present
       delegate_to: localhost
 
