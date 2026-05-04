@@ -82,7 +82,7 @@ If there are no findings, return {"findings": [], "summary": "No findings"}.
 EOF
 
 set +e
-cai --continue --prompt "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
+cai "$PROMPT" ${CAI_EXTRA_ARGS:-} > "$RAW" 2>&1
 RC=$?
 set -e
 
@@ -227,4 +227,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
