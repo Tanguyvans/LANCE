@@ -5,18 +5,21 @@
 
 We presented \systemname, the first reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
-\harnessname, a network-native harness that keeps LLM context tractable
-through per-device and per-vulnerability parallelization. Our empirical study
-of five state-of-the-art models across 7~scenarios and three architectural
-patterns\todo{(update to five once firewall rules land)} shows that LLM agents
-outperform traditional scanners on configuration and credential categories
-while underperforming on industrial protocols, and that the
-detection-to-exfiltration (L1--L3) evidence spectrum exposes model
-differences that binary-flag benchmarks conflate.
+\harnessname, a network-native multi-agent harness whose infrastructure-graph
+guidance and dedicated lateral movement phase keep LLM context tractable while
+explicitly modelling firewall-enforced reachability. Holding the LLM constant
+(\texttt{MiniMax-M2.7}) across our pipeline, two ablations, and four
+external baselines (CAI in two scope variants, VulnBot, PentestGPT, Nmap NSE),
+we isolate the \emph{architectural} contribution: \harnessname\ outperforms
+single-host LLM agents on multi-hop reach (MHR$_2$, MHR$_3$) by a margin that
+collapses near zero for every baseline by construction, and demonstrates that
+the L1--L3 evidence spectrum exposes architectural differences that binary
+flag-capture benchmarks conflate.
 
 \paragraph{Future work}
-(i)~\emph{Credential propagation} — closing the Phase~4 $\to$ Phase~2 loop to
-enable multi-hop exploitation chains;
+(i)~\emph{Multi-model robustness} — extending the architectural comparison to
+recent frontier models (Claude Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro, DeepSeek
+V4, Qwen 3.6) to confirm model-independence of the architectural advantage;
 (ii)~\emph{Real hardware} — extending to embedded Zigbee, LoRaWAN, and
 sub-GHz attack surfaces via SDR tooling;
 (iii)~\emph{Defender's side} — using \systemname{} as a benchmark for

@@ -40,9 +40,13 @@
   \item \textbf{Evidence-level scoring (L1/L2/L3)} — a severity-weighted evaluator
   that distinguishes detection, exploitation, and data exfiltration, beyond the
   binary flag-capture of single-host benchmarks.
-  \item \textbf{Empirical study} — 5~LLMs $\times$ 7~scenarios $\times$ 3~runs
-  ($105$~runs), compared against traditional scanners (OpenVAS, Nmap~NSE) and
-  single-host LLM agents adapted to network targets (CAI, VulnBot).
+  \item \textbf{Empirical study} — using a single shared LLM (\texttt{MiniMax-M2.7})
+  to isolate architectural contributions, we compare \harnessname\ against
+  three categories of baselines: a non-LLM scanner (Nmap NSE), single-agent
+  LLM (PentestGPT), and multi-agent LLM systems with and without graph guidance
+  (CAI in two scope variants, VulnBot with task-graph). We additionally report
+  two ablations of our pipeline that isolate the individual contributions of
+  the infrastructure-graph phase and the multi-hop intrusion phase.
 \end{itemize}
 
 % ── ¶5 findings teaser (with numbers) ─────────────────────────────────────

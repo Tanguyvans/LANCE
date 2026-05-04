@@ -7,19 +7,22 @@
 This paper involves Large Language Models in two distinct roles.
 
 \paragraph{LLM as subject of study}
-The experimental work evaluates the penetration testing capabilities of five
-commercially available LLMs (see \S\ref{sec:setup}). All inference calls were
-made through their respective official APIs under the providers' standard terms
-of service. No model weights were fine-tuned; all models were used out-of-the-box
-with identical tool schemas and prompt templates. Prompt templates, full
-conversation transcripts, and per-phase token counts are released as part of
-the artifact.
+The experimental work evaluates the penetration testing capabilities of LLM
+agents using \texttt{MiniMax-M2.7}~\cite{minimax27} as the shared model across
+\harnessname\ and all baselines (CAI, VulnBot, PentestGPT) to isolate the
+architectural contribution from the model variable (see \S\ref{sec:setup}).
+All inference calls were made through MiniMax's official API under standard
+terms of service. No model weights were fine-tuned; all systems were used
+out-of-the-box with identical tool schemas and prompt templates per system.
+Prompt templates, full conversation transcripts, and per-phase token counts
+are released as part of the artifact.
 
 \paragraph{LLM as writing aid}
-During manuscript preparation, the authors used Anthropic Claude and OpenAI
-GPT-4-class models for: (i)~drafting candidate section outlines subsequently
-edited by the authors; (ii)~copy-editing for grammar, clarity, and concision;
-(iii)~consistency checks on terminology and notation. No section was written
-end-to-end by an LLM. All claims, experimental results, related-work
-positioning, and scientific interpretations are the authors' own. Every
-LLM-suggested citation was verified by retrieving the cited work.
+During manuscript preparation, the authors used current frontier LLMs
+(Anthropic Claude Opus 4.7, OpenAI GPT-5.5) for: (i)~drafting candidate
+section outlines subsequently edited by the authors; (ii)~copy-editing for
+grammar, clarity, and concision; (iii)~consistency checks on terminology and
+notation. No section was written end-to-end by an LLM. All claims,
+experimental results, related-work positioning, and scientific interpretations
+are the authors' own. Every LLM-suggested citation was verified by retrieving
+the cited work.
