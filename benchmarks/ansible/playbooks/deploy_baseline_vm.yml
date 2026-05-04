@@ -57,6 +57,19 @@
         ansible_user: root
         ansible_ssh_private_key_file: ~/.ssh/id_ed25519
 
+    - name: Remove stale baseline SSH host key from controller
+      ansible.builtin.known_hosts:
+        name: "{{ baseline_ip }}"
+        state: absent
+      delegate_to: localhost
+
+    - name: Trust current baseline SSH host key on controller
+      ansible.builtin.known_hosts:
+        name: "{{ baseline_ip }}"
+        key: "{{ lookup('pipe', 'ssh-keyscan -H ' + baseline_ip) }}"
+        state: present
+      delegate_to: localhost
+
     - name: Wait for baseline SSH
       ansible.builtin.wait_for:
         host: "{{ baseline_ip }}"
