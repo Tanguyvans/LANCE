@@ -54,6 +54,14 @@ Deploy the isolated baseline VM:
 python3 -m src.baselines deploy-vm
 ```
 
+Install CAI and replace the placeholder adapter:
+
+```bash
+export MINIMAX_API_KEY="..."
+python3 -m src.baselines setup-cai \
+  --baseline-host root@192.168.88.36
+```
+
 Override resources without editing YAML:
 
 ```bash
@@ -110,8 +118,8 @@ The Ansible playbook creates placeholders:
 /opt/baseline-tools/adapters/pentgpt_run.sh
 ```
 
-Replace those scripts with the real CAI/PentGPT invocation once the tools are
-installed. Keep their CLI stable:
+`setup-cai` automatically replaces `cai_run.sh` with a CAI-backed adapter. For
+other tools, replace their script once installed. Keep their CLI stable:
 
 ```bash
 ./adapters/cai_run.sh --target 192.168.100.12 --scenario 3 --output /opt/baseline-tools/results/cai_S3_192.168.100.12.json

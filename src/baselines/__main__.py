@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.baselines import compare, deploy, runner
+from src.baselines import compare, deploy, install_tools, runner
 from src.baselines.scenarios import load_scenario_targets
 
 
@@ -19,6 +19,14 @@ def main() -> None:
     deploy_vm.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
     deploy_vm.add_argument("--check", action="store_true")
     deploy_vm.add_argument("--extra-vars", action="append", default=[])
+
+    setup_cai = sub.add_parser("setup-cai", help="Install CAI and deploy the CAI adapter on the baseline VM")
+    setup_cai.add_argument("--baseline-host", required=True)
+    setup_cai.add_argument("--remote-dir", default=install_tools.DEFAULT_REMOTE_DIR)
+    setup_cai.add_argument("--model", default=install_tools.DEFAULT_MODEL)
+    setup_cai.add_argument("--minimax-api-key-env", default="MINIMAX_API_KEY")
+    setup_cai.add_argument("--openai-api-key", default="sk-placeholder")
+    setup_cai.add_argument("--install-command", default="pip install cai-framework")
 
     targets = sub.add_parser("targets", help="Print scenario targets as JSON")
     targets.add_argument("--scenario", required=True)
@@ -60,6 +68,23 @@ def main() -> None:
             vault_password_file=Path(args.vault_password_file).expanduser(),
             check=args.check,
             extra_vars=args.extra_vars,
+        )
+    elif args.command == "setup-cai":
+        import os
+
+        api_key = os.environ.get(args.minimax_api_key_env)
+        if not api_key:
+            raise SystemExit(
+                f"Missing {args.minimax_api_key_env}. Export it locally first, "
+                f"or choose another env var with --minimax-api-key-env."
+            )
+        install_tools.setup_cai(
+            baseline_host=args.baseline_host,
+            minimax_api_key=api_key,
+            remote_dir=args.remote_dir,
+            model=args.model,
+            install_command=args.install_command,
+            openai_api_key=args.openai_api_key,
         )
     elif args.command == "targets":
         import json
