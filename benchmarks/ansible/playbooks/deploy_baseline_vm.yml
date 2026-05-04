@@ -50,6 +50,29 @@
       ansible.builtin.set_fact:
         baseline_ip: "{{ baseline_ip_raw.stdout | regex_search('inet (\\d+\\.\\d+\\.\\d+\\.\\d+)', '\\1') | first }}"
 
+    - name: Read controller SSH public key
+      ansible.builtin.slurp:
+        src: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub"
+      delegate_to: localhost
+      register: controller_pubkey
+
+    - name: Ensure root SSH directory exists in baseline LXC
+      ansible.builtin.command: pct exec {{ baseline_vmid }} -- mkdir -p /root/.ssh
+      changed_when: false
+
+    - name: Install controller SSH public key in baseline LXC
+      ansible.builtin.command: >
+        pct exec {{ baseline_vmid }} --
+        sh -c 'grep -qxF {{ (controller_pubkey.content | b64decode | trim) | quote }} /root/.ssh/authorized_keys 2>/dev/null
+        || echo {{ (controller_pubkey.content | b64decode | trim) | quote }} >> /root/.ssh/authorized_keys'
+      changed_when: true
+
+    - name: Fix baseline root SSH permissions
+      ansible.builtin.command: >
+        pct exec {{ baseline_vmid }} --
+        sh -c 'chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys'
+      changed_when: false
+
     - name: Register baseline host for configuration
       ansible.builtin.add_host:
         name: baseline
