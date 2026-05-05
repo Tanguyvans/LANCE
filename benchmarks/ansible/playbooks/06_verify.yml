@@ -31,6 +31,15 @@
       failed_when: false
       changed_when: true
 
+    - name: Attendre que le routeur benchmark réponde depuis Proxmox
+      ansible.builtin.command: ping -c1 -W1 {{ benchmark_gateway }}
+      register: router_ping_check
+      until: router_ping_check.rc == 0
+      retries: 10
+      delay: 1
+      changed_when: false
+      failed_when: false
+
 
     # ════════════════════════════════════════════════════
     # VÉRIFICATIONS PAR RÔLE
@@ -310,7 +319,7 @@
     # ── Router : Telnet + FTP ──
     - name: "[router] Vérifier port Telnet (23)"
       ansible.builtin.shell: >
-        nmap -p 23 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '23/tcp open' &&
+        nmap -Pn --host-timeout 15s -p 23 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '23/tcp open' &&
         echo OK || echo FAIL
       register: router_telnet_check
       changed_when: false
@@ -318,7 +327,7 @@
 
     - name: "[router] Vérifier port FTP (21) — scénario 3 uniquement"
       ansible.builtin.shell: >
-        nmap -p 21 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '21/tcp open' &&
+        nmap -Pn --host-timeout 15s -p 21 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '21/tcp open' &&
         echo OK || echo FAIL
       register: router_ftp_check
       changed_when: false
@@ -327,7 +336,7 @@
 
     - name: "[router] Vérifier interface web admin sur WAN (80)"
       ansible.builtin.shell: >
-        nmap -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
+        nmap -Pn --host-timeout 15s -p 80 --open {{ benchmark_gateway }} 2>/dev/null | grep -q '80/tcp open' &&
         echo OK || echo FAIL
       register: router_wan_check
       changed_when: false
