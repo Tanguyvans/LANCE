@@ -12,7 +12,7 @@ from src.baselines import compare, deploy, install_tools, runner
 DEFAULT_BASELINE_HOST = "root@192.168.88.36"
 DEFAULT_SCENARIO = "3"
 DEFAULT_SCOPE = "192.168.100.0/24"
-DEFAULT_MODEL = "MiniMax-M2.7"
+DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 
 
 @dataclass
@@ -69,16 +69,16 @@ def _configure(state: WizardState) -> None:
 
 
 def _setup_cai(state: WizardState) -> None:
-    api_key = os.environ.get("MINIMAX_API_KEY")
+    api_key = os.environ.get(install_tools.DEFAULT_API_KEY_ENV)
     if not api_key:
-        print("MINIMAX_API_KEY is not set locally.")
+        print(f"{install_tools.DEFAULT_API_KEY_ENV} is not set locally.")
         api_key = getpass.getpass("Paste MiniMax API key (hidden): ").strip()
     if not api_key:
         print("No API key provided; setup cancelled.")
         return
     install_tools.setup_cai(
         baseline_host=state.baseline_host,
-        minimax_api_key=api_key,
+        api_key=api_key,
         model=state.model,
     )
     print("CAI setup completed.")

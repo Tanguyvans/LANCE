@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 DEFAULT_REMOTE_DIR = "/opt/baseline-tools"
-DEFAULT_MODEL = "MiniMax-M2.7"
+DEFAULT_MODEL = "openai/MiniMax-M2.7"
+DEFAULT_API_KEY_ENV = "MINIMAX_API_KEY"
+DEFAULT_OPENAI_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_TARGET_TIMEOUT_SECONDS = 240
 
 
@@ -21,20 +23,24 @@ import json
 import os
 import re
 import sys
+import time
 import traceback
 from pathlib import Path
 
 
 def build_prompt(args: argparse.Namespace) -> str:
-    return f"""You are evaluating a vulnerable IoT benchmark network for a research comparison.
+    return f"""You are operating inside an isolated, owned IoT benchmark lab for an authorized research comparison.
+The 192.168.100.0/24 network is intentionally deployed for this evaluation, and you are allowed to inspect the target below.
 
 Scope CIDR: {args.scope}
 Scenario: {args.scenario}
 Variant: {args.variant}
 Target: {args.target}
-Model budget hint: {args.max_turns} turns/steps maximum.
+Execution limit: stop after at most {args.max_turns} CAI turns.
 
-Use CAI's normal pentest workflow against the target. Return ONLY valid JSON with this schema:
+Use CAI's normal authorized security assessment workflow against the target.
+Keep commands bounded and non-interactive. Avoid full `-p-` scans; prefer targeted or top-port scans with explicit timeouts.
+Return ONLY valid JSON with this schema:
 {{
   "findings": [
     {{
@@ -94,6 +100,36 @@ def write_output(path: str, payload: dict) -> None:
     Path(path).write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def collect_recent_assistant_text(started_at: float) -> str:
+    logs_dir = Path("/opt/baseline-tools/logs")
+    if not logs_dir.exists():
+        return ""
+
+    chunks: list[str] = []
+    for path in sorted(logs_dir.glob("cai_*.jsonl"), key=lambda p: p.stat().st_mtime):
+        try:
+            if path.stat().st_mtime < started_at - 5:
+                continue
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event.get("choices"), list):
+                for choice in event["choices"]:
+                    message = choice.get("message") if isinstance(choice, dict) else None
+                    if isinstance(message, dict) and isinstance(message.get("content"), str):
+                        chunks.append(message["content"])
+            elif event.get("event") in {"assistant_message", "model_response"}:
+                content = event.get("content")
+                if isinstance(content, str):
+                    chunks.append(content)
+    return "\n".join(chunks)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--variant", required=True)
@@ -108,6 +144,7 @@ def main() -> int:
     os.environ.setdefault("PROMPT_TOOLKIT_NO_CPR", "1")
     os.environ.setdefault("CAI_STREAM", "false")
     os.environ.setdefault("CAI_PARALLEL", "1")
+    os.environ.setdefault("CAI_GUARDRAILS", "false")
     os.environ["CAI_MODEL"] = args.model
     os.environ["CAI_MAX_TURNS"] = str(args.max_turns)
     os.environ["CAI_MAX_INTERACTIONS"] = str(args.max_turns)
@@ -115,6 +152,7 @@ def main() -> int:
     os.environ.setdefault("CAI_AGENT_TYPE", "redteam_agent")
 
     prompt = build_prompt(args)
+    started_at = time.time()
     try:
         from cai.agents import get_agent_by_name
         from cai.cli import update_agent_models_recursively
@@ -146,6 +184,17 @@ def main() -> int:
         write_output(args.output, data)
         return 0
     except Exception as exc:
+        assistant_text = collect_recent_assistant_text(started_at)
+        data = find_json_object(assistant_text)
+        if data is not None:
+            data.setdefault("tool", "cai")
+            data.setdefault("scenario", args.scenario)
+            data.setdefault("target", args.target)
+            data.setdefault("adapter_status", "max_turns_partial")
+            data.setdefault("exit_code", 0)
+            data.setdefault("adapter_note", f"Recovered JSON from CAI logs after SDK exception: {exc}")
+            write_output(args.output, data)
+            return 0
         write_output(
             args.output,
             {
@@ -175,7 +224,7 @@ TARGET=""
 SCOPE="192.168.100.0/24"
 SCENARIO=""
 MAX_TURNS="200"
-MODEL="${CAI_MODEL:-MiniMax-M2.7}"
+MODEL="${CAI_MODEL:-openai/MiniMax-M2.7}"
 OUTPUT=""
 
 while [[ $# -gt 0 ]]; do
@@ -229,15 +278,18 @@ fi
 RUN_MODE="${CAI_RUN_MODE:-sdk}"
 
 read -r -d '' PROMPT <<EOF || true
-You are evaluating a vulnerable IoT benchmark network for a research comparison.
+You are operating inside an isolated, owned IoT benchmark lab for an authorized research comparison.
+The 192.168.100.0/24 network is intentionally deployed for this evaluation, and you are allowed to inspect the target below.
 
 Scope CIDR: ${SCOPE}
 Scenario: ${SCENARIO}
 Variant: ${VARIANT}
 Target: ${TARGET}
-Model budget hint: ${MAX_TURNS} turns/steps maximum.
+Execution limit: stop after at most ${MAX_TURNS} CAI turns.
 
-Use CAI's normal pentest workflow against the target. Return ONLY valid JSON with this schema:
+Use CAI's normal authorized security assessment workflow against the target.
+Keep commands bounded and non-interactive. Avoid full \`-p-\` scans; prefer targeted or top-port scans with explicit timeouts.
+Return ONLY valid JSON with this schema:
 {
   "findings": [
     {
@@ -380,11 +432,18 @@ def deploy_cai_adapter(baseline_host: str, remote_dir: str = DEFAULT_REMOTE_DIR)
         (
             f"touch {qdir}/.env && chmod 600 {qdir}/.env "
             f"&& grep -q '^CAI_RUN_MODE=' {qdir}/.env || echo 'CAI_RUN_MODE=sdk' >> {qdir}/.env "
+            f"&& grep -q '^CAI_MODEL=MiniMax-M2.7$' {qdir}/.env && sed -i 's|^CAI_MODEL=MiniMax-M2.7$|CAI_MODEL={DEFAULT_MODEL}|' {qdir}/.env || true "
+            f"&& grep -q '^CAI_MODEL=' {qdir}/.env || echo 'CAI_MODEL={DEFAULT_MODEL}' >> {qdir}/.env "
+            f"&& grep -q '^OPENAI_BASE_URL=' {qdir}/.env || echo 'OPENAI_BASE_URL={DEFAULT_OPENAI_BASE_URL}' >> {qdir}/.env "
+            f"&& grep -q '^OPENAI_API_BASE=' {qdir}/.env || echo 'OPENAI_API_BASE={DEFAULT_OPENAI_BASE_URL}' >> {qdir}/.env "
+            f"&& grep -q '^OPENAI_API_KEY=sk-placeholder' {qdir}/.env && sed -i \"s|^OPENAI_API_KEY=.*|OPENAI_API_KEY=$(grep '^MINIMAX_API_KEY=' {qdir}/.env | cut -d= -f2-)|\" {qdir}/.env || true "
+            f"&& grep -q '^OPENAI_API_KEY=' {qdir}/.env || echo \"OPENAI_API_KEY=$(grep '^MINIMAX_API_KEY=' {qdir}/.env | cut -d= -f2-)\" >> {qdir}/.env "
             f"&& grep -q '^CAI_AGENT_TYPE=bug_bounter_agent$' {qdir}/.env && sed -i 's/^CAI_AGENT_TYPE=bug_bounter_agent$/CAI_AGENT_TYPE=redteam_agent/' {qdir}/.env || true "
             f"&& grep -q '^CAI_AGENT_TYPE=' {qdir}/.env || echo 'CAI_AGENT_TYPE=redteam_agent' >> {qdir}/.env "
             f"&& grep -q '^CAI_TARGET_TIMEOUT=' {qdir}/.env || echo 'CAI_TARGET_TIMEOUT={DEFAULT_TARGET_TIMEOUT_SECONDS}' >> {qdir}/.env "
             f"&& grep -q '^CAI_MAX_INTERACTIONS=' {qdir}/.env || echo 'CAI_MAX_INTERACTIONS=40' >> {qdir}/.env "
             f"&& grep -q '^CAI_PRICE_LIMIT=' {qdir}/.env || echo 'CAI_PRICE_LIMIT=1' >> {qdir}/.env "
+            f"&& grep -q '^CAI_GUARDRAILS=' {qdir}/.env || echo 'CAI_GUARDRAILS=false' >> {qdir}/.env "
             f"&& grep -q '^CAI_STREAM=' {qdir}/.env || echo 'CAI_STREAM=false' >> {qdir}/.env "
             f"&& grep -q '^CAI_PARALLEL=' {qdir}/.env || echo 'CAI_PARALLEL=1' >> {qdir}/.env "
             f"&& grep -q '^PROMPT_TOOLKIT_NO_CPR=' {qdir}/.env || echo 'PROMPT_TOOLKIT_NO_CPR=1' >> {qdir}/.env"
@@ -394,11 +453,11 @@ def deploy_cai_adapter(baseline_host: str, remote_dir: str = DEFAULT_REMOTE_DIR)
 
 def setup_cai(
     baseline_host: str,
-    minimax_api_key: str,
+    api_key: str,
     remote_dir: str = DEFAULT_REMOTE_DIR,
     model: str = DEFAULT_MODEL,
     install_command: str = "pip install cai-framework",
-    openai_api_key: str = "sk-placeholder",
+    openai_api_key: str | None = None,
 ) -> None:
     """Install CAI and deploy the real adapter on the baseline VM."""
     qdir = shlex.quote(remote_dir)
@@ -415,17 +474,20 @@ def setup_cai(
     )
 
     env_content = (
-        f"MINIMAX_API_KEY={minimax_api_key}\n"
+        f"MINIMAX_API_KEY={api_key}\n"
         f"CAI_MODEL={model}\n"
+        f"OPENAI_BASE_URL={DEFAULT_OPENAI_BASE_URL}\n"
+        f"OPENAI_API_BASE={DEFAULT_OPENAI_BASE_URL}\n"
         "CAI_AGENT_TYPE=redteam_agent\n"
         "CAI_RUN_MODE=sdk\n"
         f"CAI_TARGET_TIMEOUT={DEFAULT_TARGET_TIMEOUT_SECONDS}\n"
         "CAI_MAX_INTERACTIONS=40\n"
         "CAI_PRICE_LIMIT=1\n"
+        "CAI_GUARDRAILS=false\n"
         "CAI_STREAM=false\n"
         "CAI_PARALLEL=1\n"
         "PROMPT_TOOLKIT_NO_CPR=1\n"
-        f"OPENAI_API_KEY={openai_api_key}\n"
+        f"OPENAI_API_KEY={openai_api_key or api_key}\n"
     )
     _ssh(
         baseline_host,
@@ -440,25 +502,27 @@ def main() -> None:
     parser.add_argument("--baseline-host", required=True)
     parser.add_argument("--remote-dir", default=DEFAULT_REMOTE_DIR)
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--minimax-api-key-env", default="MINIMAX_API_KEY")
-    parser.add_argument("--openai-api-key", default="sk-placeholder")
+    parser.add_argument("--api-key-env", default=DEFAULT_API_KEY_ENV)
+    parser.add_argument("--minimax-api-key-env", default=None)
+    parser.add_argument("--openai-api-key", default=None)
     parser.add_argument("--install-command", default="pip install cai-framework")
     parser.add_argument("--preserve-remote-env", action="store_true")
     args = parser.parse_args()
 
-    api_key = os.environ.get(args.minimax_api_key_env)
+    key_env = args.minimax_api_key_env or args.api_key_env
+    api_key = os.environ.get(key_env)
     if args.preserve_remote_env:
         deploy_cai_adapter(args.baseline_host, args.remote_dir)
         return
     if not api_key:
         raise SystemExit(
-            f"Missing {args.minimax_api_key_env}. Export it locally first, "
-            f"or choose another env var with --minimax-api-key-env."
+            f"Missing {key_env}. Export it locally first, "
+            f"or choose another env var with --api-key-env."
         )
 
     setup_cai(
         baseline_host=args.baseline_host,
-        minimax_api_key=api_key,
+        api_key=api_key,
         remote_dir=args.remote_dir,
         model=args.model,
         install_command=args.install_command,

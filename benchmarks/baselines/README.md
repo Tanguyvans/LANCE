@@ -74,6 +74,26 @@ python3 -m src.baselines setup-cai \
   --baseline-host root@192.168.88.36
 ```
 
+For direct MiniMax usage, `setup-cai` writes both `MINIMAX_API_KEY` and the
+OpenAI-compatible variables CAI actually reads:
+
+```text
+OPENAI_BASE_URL=https://api.minimax.io/v1
+OPENAI_API_BASE=https://api.minimax.io/v1
+OPENAI_API_KEY=<same MiniMax key>
+CAI_MODEL=openai/MiniMax-M2.7
+CAI_GUARDRAILS=false
+```
+
+The `openai/` prefix is required by CAI's LiteLLM layer to select the
+OpenAI-compatible provider; the request still goes directly to MiniMax through
+`https://api.minimax.io/v1`.
+
+`CAI_GUARDRAILS=false` is scoped to the isolated baseline VM because the
+benchmark prompts are authorized security-assessment prompts against lab
+targets; otherwise CAI's prompt-injection guard can block the run before the
+agent gets to use its tools.
+
 Update only the CAI adapter scripts without touching the remote `.env` secrets:
 
 ```bash

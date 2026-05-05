@@ -13,6 +13,7 @@ from typing import Callable, Any
 
 from src.benchmark.evaluator import evaluate
 from src.baselines.config import DEFAULT_CONFIG, ToolConfig, load_tool_config
+from src.baselines.install_tools import DEFAULT_MODEL
 from src.baselines.normalizer import normalize_tool_outputs, write_exploitation_results, write_vuln_analysis
 from src.baselines.scenarios import BaselineTarget, load_ground_truth_targets, load_scenario_targets
 
@@ -172,7 +173,7 @@ def run_baseline(
     variant: str = "A",
     scope: str = "192.168.100.0/24",
     max_turns: int = 200,
-    model: str = "MiniMax-M2.7",
+    model: str = DEFAULT_MODEL,
     target_source: str = "ground_truth",
     config_file: Path = DEFAULT_CONFIG,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
@@ -319,7 +320,7 @@ def main() -> None:
     parser.add_argument("--variant", default="A", choices=["A", "B"], help="A=per-IP, B=single CIDR session")
     parser.add_argument("--scope", default="192.168.100.0/24", help="CIDR scope passed to the baseline tool")
     parser.add_argument("--max-turns", type=int, default=200, help="Total turn/step budget for this baseline run")
-    parser.add_argument("--model", default="MiniMax-M2.7", help="LLM model passed to the baseline adapter")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model passed to the baseline adapter")
     parser.add_argument("--target-source", default="ground_truth", choices=["ground_truth", "inventory"])
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

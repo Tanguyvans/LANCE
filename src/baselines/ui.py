@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
 DEFAULT_BASELINE_HOST = "root@192.168.88.36"
 DEFAULT_SCENARIO = "3"
 DEFAULT_SCOPE = "192.168.100.0/24"
-DEFAULT_MODEL = "MiniMax-M2.7"
+DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 MENU_ACTIONS = [
     ("1", "Configure"),
     ("2", "Deploy baseline VM"),
@@ -200,9 +200,9 @@ def _configure(console: Console, state: DashboardState) -> None:
 
 
 def _setup_cai(console: Console, state: DashboardState) -> None:
-    api_key = os.environ.get("MINIMAX_API_KEY")
+    api_key = os.environ.get(install_tools.DEFAULT_API_KEY_ENV)
     if not api_key:
-        console.print("[yellow]MINIMAX_API_KEY is not set locally.[/yellow]")
+        console.print(f"[yellow]{install_tools.DEFAULT_API_KEY_ENV} is not set locally.[/yellow]")
         api_key = getpass.getpass("Paste MiniMax API key (hidden): ").strip()
     if not api_key:
         console.print("[red]No API key provided; setup cancelled.[/red]")

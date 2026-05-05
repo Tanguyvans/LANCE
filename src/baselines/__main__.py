@@ -36,8 +36,9 @@ def main() -> None:
     setup_cai.add_argument("--baseline-host", required=True)
     setup_cai.add_argument("--remote-dir", default=install_tools.DEFAULT_REMOTE_DIR)
     setup_cai.add_argument("--model", default=install_tools.DEFAULT_MODEL)
-    setup_cai.add_argument("--minimax-api-key-env", default="MINIMAX_API_KEY")
-    setup_cai.add_argument("--openai-api-key", default="sk-placeholder")
+    setup_cai.add_argument("--api-key-env", default=install_tools.DEFAULT_API_KEY_ENV)
+    setup_cai.add_argument("--minimax-api-key-env", default=None)
+    setup_cai.add_argument("--openai-api-key", default=None)
     setup_cai.add_argument("--install-command", default="pip install cai-framework")
     setup_cai.add_argument("--preserve-remote-env", action="store_true")
 
@@ -53,7 +54,7 @@ def main() -> None:
     run.add_argument("--variant", default="A", choices=["A", "B"])
     run.add_argument("--scope", default="192.168.100.0/24")
     run.add_argument("--max-turns", default="200")
-    run.add_argument("--model", default="MiniMax-M2.7")
+    run.add_argument("--model", default=install_tools.DEFAULT_MODEL)
     run.add_argument("--target-source", default="ground_truth", choices=["ground_truth", "inventory"])
     run.add_argument("--config", default=str(runner.DEFAULT_CONFIG))
     run.add_argument("--output-dir", default=str(runner.DEFAULT_OUTPUT_DIR))
@@ -70,7 +71,7 @@ def main() -> None:
     pilot.add_argument("--scenario", default="3")
     pilot.add_argument("--scope", default="192.168.100.0/24")
     pilot.add_argument("--max-turns", default="40")
-    pilot.add_argument("--model", default="MiniMax-M2.7")
+    pilot.add_argument("--model", default=install_tools.DEFAULT_MODEL)
     pilot.add_argument("--dry-run", action="store_true")
 
     sub.add_parser("wizard", help="Open the interactive terminal interface")
@@ -105,15 +106,16 @@ def main() -> None:
         if args.preserve_remote_env:
             install_tools.deploy_cai_adapter(args.baseline_host, args.remote_dir)
             return
-        api_key = os.environ.get(args.minimax_api_key_env)
+        key_env = args.minimax_api_key_env or args.api_key_env
+        api_key = os.environ.get(key_env)
         if not api_key:
             raise SystemExit(
-                f"Missing {args.minimax_api_key_env}. Export it locally first, "
-                f"or choose another env var with --minimax-api-key-env."
+                f"Missing {key_env}. Export it locally first, "
+                f"or choose another env var with --api-key-env."
             )
         install_tools.setup_cai(
             baseline_host=args.baseline_host,
-            minimax_api_key=api_key,
+            api_key=api_key,
             remote_dir=args.remote_dir,
             model=args.model,
             install_command=args.install_command,
