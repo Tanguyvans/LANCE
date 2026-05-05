@@ -271,6 +271,7 @@ if [[ -n "$CALLER_PROMPT_TOOLKIT_NO_CPR" ]]; then PROMPT_TOOLKIT_NO_CPR="$CALLER
 
 mkdir -p "$(dirname "$OUTPUT")" /opt/baseline-tools/logs
 RAW="$(mktemp /opt/baseline-tools/logs/cai_${SCENARIO}_${VARIANT}_XXXXXX.txt)"
+rm -f "$OUTPUT"
 TARGET_TIMEOUT="${CAI_TARGET_TIMEOUT:-$(( MAX_TURNS * 6 ))}"
 if [[ "$TARGET_TIMEOUT" -lt 60 ]]; then
   TARGET_TIMEOUT="60"
@@ -333,7 +334,8 @@ import sys
 from pathlib import Path
 
 raw_path, output_path, target, scenario, rc = sys.argv[1:]
-text = Path(raw_path).read_text(encoding="utf-8", errors="ignore")
+raw = Path(raw_path)
+text = raw.read_text(encoding="utf-8", errors="ignore")
 output = Path(output_path)
 if output.exists():
     try:
@@ -381,6 +383,35 @@ def find_json_object(s: str):
     return None
 
 data = find_json_object(text)
+if data is None:
+    chunks = []
+    logs_dir = Path("/opt/baseline-tools/logs")
+    started_at = raw.stat().st_mtime if raw.exists() else 0
+    for path in sorted(logs_dir.glob("cai_*.jsonl"), key=lambda p: p.stat().st_mtime):
+        try:
+            if path.stat().st_mtime < started_at - 5:
+                continue
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event.get("choices"), list):
+                for choice in event["choices"]:
+                    message = choice.get("message") if isinstance(choice, dict) else None
+                    if isinstance(message, dict) and isinstance(message.get("content"), str):
+                        chunks.append(message["content"])
+            elif event.get("event") in {"assistant_message", "model_response"}:
+                content = event.get("content")
+                if isinstance(content, str):
+                    chunks.append(content)
+    data = find_json_object("\n".join(chunks))
+    if data is not None:
+        data.setdefault("adapter_status", "timeout_partial" if int(rc) in (124, 137) else "log_recovered")
+
 if data is None:
     status = "timeout" if int(rc) in (124, 137) else "parse_failed"
     data = {
