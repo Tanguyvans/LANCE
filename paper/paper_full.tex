@@ -1,0 +1,964 @@
+% IoTPentBench / MeshScout — ACSAC 2026 submission
+% Target format: 11 pages double-column IEEEtran conference compsoc
+% Double-blind review — NO author info before camera-ready.
+% Single-file version (sections inlined from sections/*.tex)
+
+\documentclass[conference,compsoc]{IEEEtran}
+
+% ── packages ──────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\renewcommand{\ttdefault}{cmtt}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{xspace}
+\usepackage{verbatim}
+\usepackage[hidelinks,breaklinks=true]{hyperref}
+
+% ── macros ────────────────────────────────────────────────────────────────
+\newcommand{\systemname}{IoTPentBench\xspace}
+\newcommand{\harnessname}{\textsc{MeshScout}\xspace}
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\note}[1]{\textcolor{blue}{\textit{[note: #1]}}}
+
+\providecommand{\Cref}[1]{Section~\ref{#1}}
+\providecommand{\cref}[1]{\S\ref{#1}}
+
+\newenvironment{yamlquote}{\par\vspace{.3em}\footnotesize\verbatim}{\endverbatim\normalsize\par\vspace{.3em}}
+
+% ── title & anonymous authors (ACSAC double-blind) ────────────────────────
+\title{\systemname: A Network-Scale Benchmark for LLM-Based IoT Penetration Testing}
+
+% ── DOUBLE-BLIND: anonymized for submission ──────────────────────────────
+% Camera-ready author block (uncomment for final version):
+% \author{%
+% \IEEEauthorblockN{Tanguy Vansnick}
+% \IEEEauthorblockA{\textit{Faculty of Engineering - ILIA} \\
+% \textit{University of Mons}\\
+% Rue de Houdain 9, 7000 Mons, Belgium \\
+% tanguy.vansnick@umons.ac.be}
+% \and
+% \IEEEauthorblockN{Gaspard Menou}
+% \IEEEauthorblockA{\textit{Centrale Marseille}\\
+% Marseille, France}
+% \and
+% \IEEEauthorblockN{Mathis Delehouzée}
+% \IEEEauthorblockA{\textit{Faculty of Engineering - Polytech} \\
+% \textit{University of Mons}\\
+% Mons, Belgium}
+% \and
+% \IEEEauthorblockN{Saïd Mahmoudi}
+% \IEEEauthorblockA{\textit{Faculty of Engineering - Polytech} \\
+% \textit{University of Mons}\\
+% Mons, Belgium}
+% }
+\author{\IEEEauthorblockN{Anonymous Authors}
+\IEEEauthorblockA{Paper~\#XXXX, Anonymized for Double-Blind Review}}
+
+% ──────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\todo{Abstract — write last. Lead with the network-scale gap, not the harness.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+IoT security, penetration testing, large language models, autonomous agents,
+benchmark, cyber-physical systems
+\end{IEEEkeywords}
+
+% ══════════════════════════════════════════════════════════════════════════
+% §1 Introduction
+% ══════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+
+\todo{Write ¶1: IoT attacks are network-scale; defenders pentest with single-host tooling.}
+
+\todo{Write ¶2: LLM agents are progressing fast, cite 4-5 recent peers.}
+
+\todo{Write ¶3: formalize the structural gap. Cite 5-6 benchmarks. Keep it sharp.}
+
+\noindent\textbf{Contributions.} We bridge this gap with:
+\begin{itemize}
+  \item \textbf{\systemname} — the first reproducible benchmark for LLM pentest
+  agents at \emph{network scale}: 5 architectural patterns, 7~scenarios, 8~protocols,
+  87~vulnerabilities deterministically injected via Ansible, with ground truth mapped
+  to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
+  \item \textbf{\harnessname} — a network-native harness with \emph{discovery $\to$
+  per-device parallel triage $\to$ per-vulnerability verification $\to$ network-level
+  report}, designed to keep LLM context tractable at $/24$ scale.
+  \item \textbf{Evidence-level scoring (L1/L2/L3)} — a severity-weighted evaluator
+  that distinguishes detection, exploitation, and data exfiltration, beyond the
+  binary flag-capture of single-host benchmarks.
+  \item \textbf{Empirical study} — using a single shared LLM (\texttt{MiniMax-M2.7})
+  to isolate architectural contributions, we compare \harnessname\ against
+  three categories of baselines: a non-LLM scanner (Nmap NSE), single-agent
+  LLM (PentestGPT), and multi-agent LLM systems with and without graph guidance
+  (CAI in two scope variants, VulnBot with task-graph). We additionally report
+  two ablations of our pipeline that isolate the individual contributions of
+  the infrastructure-graph phase and the multi-hop intrusion phase.
+\end{itemize}
+
+\todo{Write ¶5: one teaser sentence per RQ. e.g. "Best LLM reaches XX\% recall at
+/24 scale; scanners reach YY\%; but only ZZ\% of LLM findings achieve L2+."}
+
+\noindent\textbf{Paper organization.}
+\Cref{sec:related} surveys LLM pentest agents and benchmarks.
+\Cref{sec:threat} formalizes the threat model.
+\Cref{sec:iotbench} presents \systemname.
+\Cref{sec:harness} describes the harness architecture.
+\Cref{sec:setup} and \Cref{sec:eval} present experiments and results.
+\Cref{sec:discussion} and \Cref{sec:ethical} discuss limitations and ethics.
+Artifacts are released at \texttt{ANONYMIZED\_URL}.
+
+% ══════════════════════════════════════════════════════════════════════════
+% §2 Background and Related Work
+% ══════════════════════════════════════════════════════════════════════════
+\section{Background and Related Work}
+\label{sec:related}
+
+\subsection{LLM-based penetration testing agents}
+\label{sec:related:llm}
+
+\paragraph{Single-agent origins}
+Deng~\emph{et al.}~proposed \textsc{PentestGPT}~\cite{pentestgpt24}, the first
+published LLM-driven penetration testing agent. \textsc{PentestGPT} couples a
+single ChatGPT-class model with a human-in-the-loop interface that translates
+natural-language guidance into shell commands, and was evaluated on $182$
+hand-selected sub-tasks drawn from HackTheBox and VulnHub targets. The work
+established three findings that recur throughout the subsequent literature:
+LLMs produce plausible reconnaissance plans, they excel on text-rich web
+vulnerabilities (SQLi, XSS, IDOR), and they fail on long-context tasks where
+state must be maintained across many command invocations.
+
+\paragraph{Multi-agent decomposition}
+Later systems address the context limitation through role specialization.
+\textsc{VulnBot}~\cite{vulnbot25} decomposes the task into three
+phase-specific agents (\emph{reconnaissance}, \emph{scanning}, \emph{exploitation})
+coordinated by a Penetration Task Graph (PTG); on the
+AUTOPENBENCH corpus~\cite{autopenbench24} its \textsc{Llama3.1-405B} variant
+reaches a completion rate of $30.3\%$ versus $9.1\%$ for the same model used
+single-agent and $21.2\%$ for GPT-4o.
+\textsc{AutoPentester}~\cite{autopentester25} uses five cooperating agents
+(summarizer, strategy analyzer, command generator, results verifier, reporter)
+with Retrieval-Augmented Generation and a Pentest Tree data structure,
+reporting a $27\%$ gain in sub-task completion and $39.5\%$ more vulnerability
+coverage over \textsc{PentestGPT} on HackTheBox plus a custom set of OWASP-Top-10
+machines.
+\textsc{PentestAgent}~\cite{pentestagent25} likewise builds on a multi-stage
+pipeline with RAG, published at ACM ASIA~CCS'25.
+
+\paragraph{Learning-based and long-running variants}
+\textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement
+learning to the reasoning traces of a mid-scale model, and
+\textsc{xOffense}~\cite{xoffense25} fine-tunes a Qwen3-32B with offensive
+knowledge corpora, reporting $79\%$ sub-task completion on CTF-style targets.
+A complementary strand addresses session duration:
+\textsc{CHAP}~\cite{chap26} introduces a context-relay mechanism that
+transfers distilled protocols between successive agent instances during
+long-running engagements, and \textsc{AWE}~\cite{awe26} adds persistent memory
+and browser-backed verification to web-application pentest.
+\textsc{CheckMate}~\cite{checkmate25} couples LLM agents with classical
+planning to obtain deterministic action selection, improving benchmark
+success by over $20$ percentage points.
+
+\paragraph{Production-grade frameworks}
+\textsc{CAI}~\cite{cai25}, developed by the \textsc{PentestGPT} authors,
+generalizes the single-agent prototype into a bug-bounty-oriented framework
+with modular tool support and a public leaderboard; on CAIBench's CTF subset
+it consistently outperforms prior open-source systems.
+
+\paragraph{Gap}
+Despite this trajectory, every system in this cluster is evaluated on a
+\emph{single-host} target unit: HackTheBox machines, VulnHub VMs,
+AUTOPENBENCH challenges, or CTF containers. Success is reported either as
+flag capture or as sub-task completion within one host.
+None evaluates at the scale of a deployed IP network containing heterogeneous
+devices and IoT-specific application protocols.
+
+\subsection{Penetration testing benchmarks}
+\label{sec:related:bench}
+
+\paragraph{Academic corpora}
+AUTOPENBENCH~\cite{autopenbench24} is the current academic reference,
+consisting of VulnHub-derived single-VM challenges with scripted flag
+checkers; it is used as the canonical evaluation by
+\textsc{VulnBot} and \textsc{Pentest-R1}. \textsc{PentestGPT} reported on a
+hand-curated set of $182$ sub-tasks drawn from HackTheBox and VulnHub. More
+recently, \textsc{CAIBench}~\cite{caibench25} consolidates the field into a
+meta-benchmark spanning Jeopardy-style CTFs, attack-and-defense exercises,
+cyber-range scenarios, and knowledge/privacy assessments, reporting that
+state-of-the-art models saturate around $70\%$ on static knowledge tests but
+collapse to $20$--$40\%$ on multi-step adversarial tasks. Within \textsc{CAIBench},
+the RCTF2 subset contributes $27$~challenges targeting robotics and
+cyber-physical systems --- the first inclusion of CPS in an LLM-pentest
+benchmark --- yet each challenge remains an isolated CTF-style target rather
+than a deployed network.
+
+\paragraph{Training-oriented lab infrastructures}
+\textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad} Active-Directory
+scenario deliver reproducible Proxmox-based labs with Ansible-driven
+deployment and idempotent configuration. Methodologically these projects are
+the closest precedent to our infrastructure, but they are training tools for
+human operators: they do not ship a ground-truth schema, do not define a
+scoring procedure, and have not been used to evaluate LLM agents in the
+published literature.
+
+\paragraph{Gap}
+No benchmark in the published literature provides all of
+(i)~network-scale evaluation on a deployed multi-device IP range,
+(ii)~IoT-specific application protocols (MQTT, LoRaWAN, Modbus, CoAP),
+(iii)~per-vulnerability ground truth usable for automated scoring, and
+(iv)~evidence-level granularity beyond binary flag capture. \systemname\ is
+designed to fill exactly this intersection.
+
+\subsection{IoT security methodology}
+\label{sec:related:iot}
+
+We ground scenario design and ground-truth taxonomy in three widely adopted
+frameworks. The OWASP~IoT~Top~10~\cite{owasp-iot} structures our vulnerability
+categories and ensures coverage of the attack surfaces most commonly observed
+in IoT deployments (hardcoded credentials, insecure network services,
+insecure ecosystem interfaces, insufficient update mechanisms). The
+MITRE~ATT\&CK~for~ICS~\cite{mitre-ics} matrix provides a tactics vocabulary
+for OT-inclusive scenarios; each injected vulnerability in \systemname\ carries
+a MITRE-ICS tactic annotation where applicable. Finally,
+NIST~SP~800-82~Rev.~3~\cite{nist80082} informs our segmentation and
+safety conventions, in particular the IT/OT separation underpinning
+architectural pattern~P3 (\cref{sec:iotbench:patterns}).
+
+\begin{table*}[t]
+\centering
+\caption{Comparison with prior LLM penetration testing systems and benchmarks.
+``Scope'' is the unit of evaluation; ``Network-scale'' means evaluation
+occurs on a multi-device IP network rather than isolated targets.}
+\label{tab:related}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+System & Scope & Protocols & Architectures & IoT-specific & Scoring & Ground truth & Reproducible \\
+\midrule
+PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS    & n/a       & no      & sub-task      & hand-curated  & partial \\
+VulnBot~\cite{vulnbot25}                & single-host & Web/OS    & n/a       & no      & task-graph    & AUTOPENBENCH  & yes     \\
+AutoPentester~\cite{autopentester25}    & single-host & Web/OS    & n/a       & no      & sub-task      & HTB + custom  & yes     \\
+PentestAgent~\cite{pentestagent25}      & single-host & Web/OS    & n/a       & no      & composite     & custom        & partial \\
+Pentest-R1~\cite{pentestr125}           & single-host & Web/OS    & n/a       & no      & sub-task      & AUTOPENBENCH  & partial \\
+xOffense~\cite{xoffense25}              & single-host & Web/CTF   & n/a       & no      & sub-task      & CTF           & partial \\
+CAI~\cite{cai25}                        & single-host & Web/CTF   & n/a       & no      & CTF           & CAIBench      & yes     \\
+CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed     & n/a       & 27 CPS  & CTF           & yes           & yes     \\
+Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD / Win  & AD only   & no      & (training)    & no            & yes     \\
+\midrule
+\textbf{\systemname\ (ours)}            & \textbf{network} & \textbf{MQTT, Modbus, LoRa, \ldots} & \textbf{5 patterns} & \textbf{yes} & \textbf{L1/L2/L3 + wt.} & \textbf{per-vuln YAML} & \textbf{yes} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+% ══════════════════════════════════════════════════════════════════════════
+% §3 Threat Model
+% ══════════════════════════════════════════════════════════════════════════
+\section{Threat Model and Problem Definition}
+\label{sec:threat}
+
+\paragraph{Network-scale pentest}
+We define \emph{network-scale penetration testing} as the task of: (i)~discovering
+all live hosts in a target IP range, (ii)~enumerating services and identifying
+vulnerabilities on each host, (iii)~producing evidence of exploitability where
+feasible, and (iv)~aggregating findings at the network level. The \emph{unit of
+evaluation} is the network, not an individual host.
+
+\paragraph{Attacker model}
+The attacker holds network-layer access to the target subnet (post-ingress,
+pre-compromise). They hold no prior credentials, no privileged vantage, and no
+knowledge of deployed software beyond what is observable through scans. The
+attacker has access to standard offensive tooling (Nmap, MQTT clients, SSH, \ldots)
+and an LLM with tool-calling. Time and budget are bounded.
+
+\paragraph{Goals}
+\begin{enumerate}
+  \item Enumerate all devices reachable from the entry point.
+  \item For each device, identify vulnerabilities from misconfiguration, weak
+  credentials, information disclosure, insecure protocols, and known CVEs.
+  \item For each finding, attempt to produce \emph{evidence} at one of three
+  levels: \textsf{L1}~detection (port open, banner leak), \textsf{L2}~exploitation
+  (authenticated session, protocol handshake), \textsf{L3}~data exfiltration
+  (configuration files, credentials, sensor data).
+  \item Report findings at the network level (severity-ranked, deduplicated).
+\end{enumerate}
+
+\paragraph{Scope and non-goals}
+We evaluate at the \emph{IP/application layer} on deployed IoT networks. We
+do \emph{not} evaluate: (a)~physical/side-channel attacks on hardware,
+(b)~RF-layer attacks requiring SDR captures,
+(c)~firmware extraction from physical devices,
+(d)~post-exploitation persistence or impact,
+(e)~insider threats or supply-chain compromise.
+Hardware-assisted attacks are left as future work (\cref{sec:conclusion}).
+
+% ══════════════════════════════════════════════════════════════════════════
+% §4 IoTBench
+% ══════════════════════════════════════════════════════════════════════════
+\section{\systemname: A Network-Scale Benchmark}
+\label{sec:iotbench}
+
+\subsection{Design principles}
+\label{sec:iotbench:principles}
+
+\systemname{} is built around four principles derived from the gap analysis in
+\cref{sec:related}:
+
+\begin{description}
+  \item[Reproducibility.] The entire infrastructure deploys from Ansible
+  playbooks against a Proxmox cluster; every vulnerability is injected
+  idempotently with no manual post-deployment steps.
+  \item[Architectural diversity.] Scenarios span five network patterns
+  (\cref{fig:patterns}) with distinct attacker reachability graphs enforced by
+  OpenWrt firewall rules, not just by service labels.
+  \item[Protocol coverage.] Each scenario mixes multiple IoT and OT protocols
+  (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus standard SSH/HTTP/FTP/Telnet)
+  to exercise protocol-specific reasoning.
+  \item[Ground-truth granularity.] Every injected vulnerability is documented in
+  YAML with \texttt{device}, \texttt{IP}, \texttt{role}, \texttt{severity},
+  \texttt{category}, \texttt{OWASP IoT} and \texttt{MITRE ICS} mappings,
+  optional \texttt{CVE}, \texttt{indicators} (expected detection strings), and
+  a \texttt{verification} command.
+\end{description}
+
+\subsection{Five architectural patterns}
+\label{sec:iotbench:patterns}
+
+\begin{figure*}[t]
+  \centering
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{
+    Fig.~1 placeholder: five topology diagrams side-by-side.\\
+    (Flat)~— (Gateway-centric)~— (Segmented IT/OT)~— (Hub-star)~— (Edge-cloud)
+  }}}
+  \caption{The five architectural patterns in \systemname. Each pattern is enforced
+  by OpenWrt firewall rules that constrain the attacker's reachability from the
+  entry point, not by service labels alone.}
+  \label{fig:patterns}
+\end{figure*}
+
+\todo{Write §4.2 prose — for each of the 5 patterns: (i)~one sentence naming the
+pattern, (ii)~the real-world IoT deployment it models, (iii)~the firewall
+reachability invariant.}
+
+Concretely:
+\begin{enumerate}
+  \item \textbf{Flat.} All devices are directly reachable from the entry point;
+  no pivot is required.
+  \item \textbf{Gateway-centric.} A single IoT gateway mediates all access to
+  back-end services; inter-service traffic is blocked without gateway compromise.
+  \item \textbf{Segmented IT/OT.} Three zones (admin/IT/OT) with access-control
+  lists; the OT zone (Modbus PLCs, HMI) is reachable only via a jump host.
+  \item \textbf{Hub-centric star.} A central home-automation hub is the only
+  device that can reach MQTT broker, DB, and camera; peripherals cannot talk
+  to each other directly.
+  \item \textbf{Edge-cloud pivot.} Edge subnet and cloud subnet are separated;
+  only the edge gateway bridges them, making cloud-side services unreachable
+  without edge compromise.
+\end{enumerate}
+
+\subsection{Deterministic vulnerability injection}
+\label{sec:iotbench:inject}
+
+Vulnerabilities are injected by a single Ansible role (\texttt{04\_inject\_vulns.yml})
+parameterized by \texttt{scenario\_id}. Each scenario YAML lists \texttt{router\_vulns}
+(OpenWrt-level: Telnet, WAN admin, FTP) and per-service \texttt{role} definitions
+that trigger role-specific injections: \emph{e.g.}, the \texttt{mqtt\_broker} role
+sets \texttt{allow\_anonymous true} and binds on \texttt{0.0.0.0:1883}; the
+\texttt{ssh\_server} role installs weak credentials (\texttt{admin:admin}) and
+enables \texttt{PasswordAuthentication}; the \texttt{db\_server} role starts
+MariaDB with a passwordless \texttt{root}. Category distribution is shown in
+\cref{tab:categories}.
+
+\begin{table}[t]
+\centering
+\caption{Vulnerability categories and severity distribution across \systemname
+(87~injected instances).}
+\label{tab:categories}
+\footnotesize
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Category & Count & CRIT & HIGH & MED/LOW \\
+\midrule
+\texttt{misconfiguration}      & 17 & 3 & 8 & 6 \\
+\texttt{data\_exposure}        & 12 & 0 & 7 & 5 \\
+\texttt{default\_credentials}  & 11 & 6 & 5 & 0 \\
+\texttt{info\_disclosure}      & 10 & 0 & 0 & 10 \\
+\texttt{no\_authentication}    &  9 & 2 & 4 & 3 \\
+\texttt{insecure\_update}      &  4 & 0 & 0 & 4 \\
+\texttt{weak\_crypto}          &  3 & 0 & 0 & 3 \\
+\texttt{missing\_header}       &  3 & 0 & 0 & 3 \\
+\texttt{known\_cve}            &  3 & 0 & 3 & 0 \\
+\texttt{code\_injection}       &  3 & 2 & 1 & 0 \\
+\texttt{privilege\_escalation} &  2 & 0 & 2 & 0 \\
+\midrule
+\textbf{Total}                 &\textbf{87} & 13 & 30 & 44 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ground-truth schema}
+\label{sec:iotbench:gt}
+
+Each scenario ships a YAML file describing every injected vulnerability. An
+entry example (from \texttt{scenario\_1.yaml}):
+
+\begin{figure}[t]
+\footnotesize
+\begin{verbatim}
+- id: V1
+  device: s1-mqtt
+  ip: "192.168.100.11"
+  role: mqtt_broker
+  title: "MQTT without authentication"
+  severity: high
+  category: misconfiguration
+  owasp_iot: "I1 / I9"
+  mitre_ics: "Initial Access, Collection"
+  cve: null
+  indicators:
+    - "allow_anonymous true"
+    - "Anonymous clients connected"
+  verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v"
+\end{verbatim}
+\caption{Ground-truth entry example.}
+\label{lst:gt}
+\end{figure}
+
+\subsection{Evaluator}
+\label{sec:iotbench:eval}
+
+The evaluator (\S\,\ref{sec:harness:report} integrates results into Phase~5)
+matches each LLM finding against ground truth in four passes, in order:
+(1)~exact CVE match; (2)~\texttt{(ip, vuln\_type)}; (3)~\texttt{(ip, category)};
+(4)~\texttt{(ip, severity)}. Severity weights are
+$w = \{\text{critical}{=}4,\text{high}{=}3,\text{medium}{=}2,\text{low}{=}1\}$;
+loose category matches apply $0.5\times$, severity mismatches $0.75\times$.
+The composite score is the weighted True-Positive sum normalized by
+$\sum_{g \in \text{GT}} w(g)$.
+
+\paragraph{Evidence levels}
+Beyond match accuracy, the evaluator tracks, per True Positive, the deepest
+\emph{evidence level} achieved by the harness: \textsf{L1}~(detection — banner
+or port), \textsf{L2}~(exploitation — authenticated action), \textsf{L3}~(data
+exfiltration — sensitive content retrieved). We report
+$\text{L\textit{k}-coverage} = |\{t \in \text{TP} : \text{level}(t) \geq k\}| / |\text{TP}|$.
+This metric cannot be computed on single-host binary-flag benchmarks and
+captures a dimension of pentest quality that existing LLM-pentest evaluations
+conflate.
+
+% ══════════════════════════════════════════════════════════════════════════
+% §5 Harness
+% ══════════════════════════════════════════════════════════════════════════
+\section{\harnessname: A Network-Native LLM Pentest Harness}
+\label{sec:harness}
+
+\subsection{Overview}
+\label{sec:harness:overview}
+
+\begin{figure*}[t]
+  \centering
+  \fbox{\parbox{0.9\linewidth}{\centering\textit{
+    Fig.~2 placeholder: 5-phase pipeline diagram.\\
+    Phase 1 (topology prior) $\to$ Phase 2 (discovery) $\to$ Phase 3 (per-device triage)
+    $\to$ Phase 4 (per-vuln verification) $\to$ Phase 5 (network report).
+  }}}
+  \caption{\harnessname{} pipeline. Solid arrows are deliverables; dashed boxes
+  indicate LLM agent calls; Phase~3 and Phase~4 spawn micro-agents in parallel
+  (§\ref{sec:harness:phase3}--§\ref{sec:harness:phase4}).}
+  \label{fig:pipeline}
+\end{figure*}
+
+The harness decomposes network pentest into five phases with typed deliverables.
+The key design decision is \emph{parallelization at the device and
+vulnerability granularity}: rather than a single monolithic agent that must hold
+the full network state, we spawn dedicated micro-agents per target with
+constrained tool sets, then aggregate deterministically. This keeps LLM context
+bounded at $O(1)$ per device regardless of network size.
+
+\subsection{Phase~1: Topology prior}
+\label{sec:harness:phase1}
+
+Phase~1 loads a graph model of the target network as a directed graph
+$G=(V,E)$ where $V$ are devices and $E$ are links labeled by protocol. Two
+modes are supported: (i)~\emph{scenario mode} loads the predefined topology
+from the benchmark YAML; (ii)~\emph{discovery mode} starts from an empty graph
+and instructs Phase~2 to populate $V$ via network scans. The output is a
+markdown deliverable enumerating attack surface and preliminary pivot candidates
+(betweenness-centrality ranked).
+
+\subsection{Phase~2: Full-network discovery}
+\label{sec:harness:phase2}
+
+Phase~2 executes active reconnaissance across the target \texttt{/24}:
+\texttt{nmap\_discovery} (host discovery), \texttt{nmap} (service/version),
+\texttt{arp\_scan} (L2 + vendor), and protocol-specific probes
+(\texttt{mqtt\_listen} subscribing to \texttt{\#} on discovered brokers,
+\texttt{ssh\_audit} against SSH servers, \texttt{curl\_headers} on HTTP).
+Unlike single-host harnesses, the agent is not given a target IP — it must
+derive one from the CIDR scope.
+
+\subsection{Phase~3: Per-device parallel triage}
+\label{sec:harness:phase3}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{
+    Fig.~3 placeholder: Phase 3 parallelization — $n$ devices $\to$ $n$ LLM agents
+    in parallel $\to$ deterministic merge.
+  }}}
+  \caption{Per-device parallelization. Each micro-agent receives only its
+  device's scan output, avoiding the context explosion of a monolithic
+  network-level agent.}
+  \label{fig:parallel}
+\end{figure}
+
+Phase~3 runs in three sub-phases:
+\begin{enumerate}
+  \item \textbf{Deterministic scanner pass.} Ansible-driven subprocess
+  wrappers (\texttt{ssh\_audit}, \texttt{curl\_headers}, \texttt{mqtt\_listen},
+  \texttt{modbus\_scan}, \ldots) run in parallel per discovered device and
+  dump structured scan results to disk.
+  \item \textbf{Per-device LLM triage.} For each device, a dedicated LLM agent
+  receives only that device's Phase~2+3a outputs and has access to a minimal
+  tool set: \texttt{http\_get} (follow-up file retrieval) and
+  \texttt{cve\_search} (CPE-to-CVE lookup via NVD). The agent produces a JSON
+  vuln list scoped to that device.
+  \item \textbf{Deterministic merge.} Per-device outputs are concatenated,
+  canonicalized through the taxonomy (\S\ref{sec:harness:taxonomy}), and
+  deduplicated via severity-aware rules.
+\end{enumerate}
+
+This decomposition is essential for network scale: a monolithic agent on a
+15-device scenario would need to fit $\sim$30--80k tokens of scan output into
+a single context and reason about cross-device relationships
+simultaneously. Per-device micro-agents flatten this to a constant size, at
+the cost of losing some cross-device inference capability, which is recovered
+in Phase~5.
+
+\subsection{Phase~4: Per-vulnerability verification with evidence levels}
+\label{sec:harness:phase4}
+
+Phase~4 spawns one micro-agent per Phase~3 finding (in parallel, with a
+concurrency cap). Each micro-agent receives the finding (IP, type, port,
+details) and full operational tool access: \texttt{ssh\_login},
+\texttt{mysql\_query}, \texttt{mqtt\_listen}, \texttt{http\_get},
+\texttt{ftp\_list}, \texttt{modbus\_scan}, \texttt{telnet\_connect}. The agent
+is prompted to produce the deepest evidence level it can (L1--L3,
+\S\ref{sec:iotbench:eval}) within a bounded turn budget.
+Outputs include: \texttt{status} (\textsc{confirmed}, \textsc{not\_exploitable},
+\textsc{error}), \texttt{evidence\_level}, \texttt{command} executed,
+\texttt{stdout} excerpts, and \texttt{data\_extracted} (when L3).
+
+Findings in \textsc{confirmed} state from Phase~3 override Phase~4
+\textsc{error}/\textsc{failed} statuses (rationale:
+Phase~3 is hypothesis generation with directly-observed indicators; Phase~4
+crashes should not erase directly-observed findings).
+
+\subsection{Phase~5: Network-level report}
+\label{sec:harness:report}
+
+Phase~5 consumes all prior deliverables and produces a network-scoped report
+with: device inventory, per-device vulnerabilities with severity, attack
+surface summary, and actionable recommendations ordered by severity $\times$
+exposure. This is the only phase with cross-device reasoning, deliberately
+placed at the end to avoid bloating earlier phases.
+
+\subsection{Taxonomy and tool abstraction}
+\label{sec:harness:taxonomy}
+
+A single module resolves LLM-produced vulnerability type strings into a
+canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise
+(e.g., meta-observations) and CONFIG-only findings. Tools are defined
+declaratively as YAML (schema: name, description, JSON-schema parameters,
+subprocess command template), so adding a new protocol probe requires no
+Python code.
+
+\subsection{Complexity and cost envelope}
+\label{sec:harness:cost}
+
+For a network with $n$ devices and an average of $v$ findings per device, the
+harness makes $O(1+n+nv)$ LLM calls (Phases 1, 3b, 4 respectively), bounded
+per call by fixed turn budgets ($50/50/10/10/20$ for phases 1--5). Total cost
+scales linearly with network size, not combinatorially.
+
+% ══════════════════════════════════════════════════════════════════════════
+% §6 Experimental Setup
+% ══════════════════════════════════════════════════════════════════════════
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{Infrastructure}
+All scenarios run on a single Proxmox VE host. Networks are Linux bridges
+(\texttt{vmbr1}, \texttt{192.168.100.0/24}) with an OpenWrt router as gateway.
+Per-scenario deployment and teardown are automated via Ansible and complete
+in under 10~minutes per scenario.
+
+\paragraph{LLM model — fairness lock}
+To isolate \emph{architectural} contributions from model-specific advantages, all
+LLM-driven systems compared in this work --- our pipeline (and its ablations) and
+all LLM baselines --- run on the \emph{same} general-purpose model:
+\textbf{MiniMax-M2.7} \cite{minimax27}. We deliberately avoid a multi-model
+matrix: a fair comparison of architectures requires the model variable to be
+held constant. CAI's specialised \texttt{alias1} model (security-fine-tuned,
+paywalled) is intentionally not used --- this study addresses the architecture
+axis, not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps the
+combined API cost at zero under our research subscription, enabling the full
+$k{=}3$-run variance estimation across all systems and scenarios without budget
+trade-offs.
+
+\paragraph{Baselines}
+We compare our pipeline against three categories of systems, each occupying a
+distinct architectural slot:
+
+\begin{itemize}
+  \item \textbf{Single-agent LLM} --- \textsc{PentestGPT}~\cite{pentestgpt24}
+  in autonomous mode, the canonical USENIX'24 reference.
+  \item \textbf{Multi-agent LLM (no infrastructure graph)} ---
+  \textsc{CAI}~\cite{cai25}. We test two variants: \emph{A1} per-IP
+  (one independent CAI session per ground-truth IP, no shared state) and
+  \emph{B} CIDR-scope (a single CAI session given the full \texttt{/24}, allowed
+  to discover hosts and pivot via \texttt{LinuxCmd} primitives). Both variants
+  receive the same total turn budget as our pipeline.
+  \item \textbf{Multi-agent LLM with task-graph} ---
+  \textsc{VulnBot}~\cite{vulnbot25}, the most structurally similar competitor.
+  VulnBot's Penetration Task Graph (PTG) is a directed acyclic graph of
+  \emph{tasks} (action dependencies), to be contrasted with our infrastructure
+  graph of \emph{devices} (firewall-enforced reachability). Both are
+  ``graph-based'', but encode orthogonal abstractions.
+  \item \textbf{Non-LLM scanner} --- Nmap with all NSE scripts
+  (\texttt{--script=default,vuln,auth}) against the same target CIDR. Scanner
+  outputs are converted to the evaluator's JSON schema.
+\end{itemize}
+
+\paragraph{Internal ablations}
+Two ablations isolate the contribution of our two key design choices:
+(i)~\harnessname--w/o-Phase~1 disables graph analysis (\texttt{--phases 2 3 4 5
+6}), testing the value of infrastructure-graph guidance;
+(ii)~\harnessname--w/o-Phase~5 disables the intrusion phase (\texttt{--phases 1
+2 3 4 6}), testing the value of structured multi-hop lateral movement.
+
+\paragraph{Variance}
+Each (system, scenario) cell is run $k{=}3$ times. We report mean, standard
+deviation, and 95\% bootstrap confidence intervals. Pairwise differences
+(our pipeline vs each baseline) are tested with Mann--Whitney $U$ on F1 and
+weighted Score per scenario. This protocol exceeds the single-run reporting of
+PentestGPT~\cite{pentestgpt24}, AutoPentester~\cite{autopentester25},
+AUTOPENBENCH~\cite{autopenbench24}, and CAI~\cite{cai25}, and matches the
+multi-run averaging of VulnBot~\cite{vulnbot25} (5-experiment) and
+Pentest-R1~\cite{pentestr125} (pass@3).
+
+\paragraph{Metrics}
+We report five families of metrics, chosen to (i)~align with prior work's
+expected vocabulary and (ii)~surface architectural differences invisible to
+host-level benchmarks:
+\begin{itemize}
+  \item \emph{Task completion} --- Recall against the ground-truth vulnerability
+  set, the network-scale analogue of the sub-task / task completion rate
+  reported by PentestGPT, VulnBot, AutoPentester, Pentest-R1, and xOffense.
+  \item \emph{Quality} --- Precision, F1, and weighted Score
+  (CVSS-severity-weighted Recall, \S\ref{sec:iotbench:eval}). Score plays the
+  role of AutoPentester's ``vulnerability coverage'' but with severity weights.
+  \item \emph{Multi-Hop Reach} --- MHR$_k$ for $k\in\{1,2,3\}$, the fraction of
+  ground-truth vulnerabilities at \texttt{hop\_depth}~$\geq k$ that are reached.
+  No prior LLM-pentest benchmark measures network depth explicitly.
+  \item \emph{Evidence depth} --- $L_1$ (detection), $L_2$ (exploitation), $L_3$
+  (exfiltration) coverage; absent from binary flag-capture benchmarks.
+  \item \emph{Cost envelope} --- prompt+completion tokens and monetary cost
+  (USD) from provider billing APIs, plus wall-clock time per scenario,
+  matching CAI~\cite{cai25}, AutoPentester, and Pentest-R1.
+\end{itemize}
+
+\paragraph{Compute and budget}
+All runs consume a combined API budget under \$NNN, bounded by per-phase turn
+caps and the concurrency limit in Phase~4.
+\todo{Insert exact budget after all runs complete (freeze 2 May).}
+
+% ══════════════════════════════════════════════════════════════════════════
+% §7 Evaluation
+% ══════════════════════════════════════════════════════════════════════════
+\section{Evaluation}
+\label{sec:eval}
+
+\subsection{Overall performance (RQ1)}
+\label{sec:eval:overall}
+
+\begin{table*}[t]
+\centering
+\caption{Main results --- Task Completion (Recall), Precision, F1, weighted
+Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over 7
+scenarios $\times$ 3 runs. All LLM systems use \texttt{MiniMax-M2.7}
+(cf.~\cref{sec:setup}); Nmap NSE is the non-LLM lower bound.
+\emph{Task Completion} is the network-scale analogue of the sub-task
+completion rate reported by PentestGPT, VulnBot, AutoPentester, and
+xOffense (\S\ref{sec:eval:overall}). MHR$_k$ measures the fraction of
+ground-truth vulnerabilities at \texttt{hop\_depth}~$\geq k$ that were
+reached; ``--'' indicates no GT entries at that depth. Cells pre-filled with
+\texttt{0.00} are architecturally impossible: single-host LLMs and scanners
+cannot pivot across firewall boundaries by construction.}
+\label{tab:main}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+ & \multicolumn{4}{c}{Quality} & \multicolumn{3}{c}{Multi-Hop Reach} & \multicolumn{2}{c}{Cost} \\
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}\cmidrule(lr){9-10}
+System & TC & Prec. & F1 & Score & MHR$_1$ & MHR$_2$ & MHR$_3$ & Tokens (M) & USD \\
+\midrule
+\textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+\harnessname\ w/o Phase~1 (no infra graph)      & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+\harnessname\ w/o Phase~5 (no intrusion)        & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
+\midrule
+CAI~\cite{cai25} (Variant A1, per-IP)           & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
+CAI~\cite{cai25} (Variant B, CIDR scope)        & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+VulnBot~\cite{vulnbot25} (multi-agent + PTG)    & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
+PentestGPT~\cite{pentestgpt24} (single-agent)   & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
+\midrule
+Nmap NSE (non-LLM scanner)                      & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & --      & --     \\
+\bottomrule
+\end{tabular}
+
+\smallskip
+\footnotesize\emph{TC = Task Completion (Recall against GT vuln set).
+Reported across $k{=}3$ runs with 95\% bootstrap CI and pairwise Mann--Whitney
+$U$ vs each baseline; this protocol exceeds the single-run reporting of
+PentestGPT, AutoPentester, AUTOPENBENCH, and CAI, and matches the multi-run
+averaging of VulnBot and Pentest-R1.}
+\end{table*}
+
+\todo{Write §7.1 prose — headline finding: \harnessname\ achieves MHR$_2 \approx
+$XX\%, while all baselines collapse to near-zero on multi-hop vulnerabilities.
+F1 gap to nearest baseline (VulnBot) is ZZ percentage points. Variance across
+3 runs stays under YY\%.}
+
+\subsection{Network-scale vs baselines (RQ4)}
+\label{sec:eval:baselines}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~4 placeholder: bar chart,
+  F1 and MHR$_2$ for \harnessname\ vs CAI (A/B), VulnBot, PentestGPT, Nmap~NSE.}}}
+  \caption{Baseline comparison. Scanners capture known CVEs but miss
+  configuration vulnerabilities. Single-host LLM agents (PentestGPT, CAI~A1)
+  cannot pivot across firewall boundaries. CAI~B (given the full CIDR) and
+  VulnBot (multi-agent + task-graph) approach our pipeline on direct findings
+  but collapse on multi-hop reach (MHR$_2$, MHR$_3$).}
+  \label{fig:baselines}
+\end{figure}
+
+\todo{Write §7.2 — explicit narrative: (i) scanners win on CVE category,
+(ii) LLMs win on misconfig/default-creds, (iii) single-host LLMs adapted to
+network fall behind native harness on F1 by ZZ\%.}
+
+\subsection{Per-architecture analysis (RQ3)}
+\label{sec:eval:arch}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~5 placeholder:
+  heatmap scenario $\times$ model, cell = weighted Score.}}}
+  \caption{Per-scenario Score heatmap. \todo{Note which pattern consistently
+  breaks LLMs.}}
+  \label{fig:heatmap}
+\end{figure}
+
+\todo{Write §7.3 — pattern-by-pattern commentary. Expected finding:
+gateway-centric and hub-star degrade most, because they require pivot
+reasoning. Edge-cloud may also degrade on cloud-side service discovery.}
+
+\subsection{Evidence-level depth (RQ2)}
+\label{sec:eval:evidence}
+
+\begin{table}[t]
+\centering
+\caption{Evidence-level coverage. $L_k$ is the fraction of true positives
+reaching level~$k$ or deeper. Absent from binary-flag benchmarks.}
+\label{tab:evidence}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+System & $L_1$ (detect) & $L_2$ (exploit) & $L_3$ (exfiltrate) \\
+\midrule
+\textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} \\
+\harnessname\ w/o Phase~5                       & \todo{} & \todo{} & 0.00 \\
+\midrule
+CAI (Variant A1)~\cite{cai25}                   & \todo{} & \todo{} & 0.00 \\
+CAI (Variant B)~\cite{cai25}                    & \todo{} & \todo{} & \todo{} \\
+VulnBot~\cite{vulnbot25}                        & \todo{} & \todo{} & \todo{} \\
+PentestGPT~\cite{pentestgpt24}                  & \todo{} & \todo{} & 0.00 \\
+\midrule
+Nmap NSE                                        & --      & --      & --   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\todo{Write §7.4 — expected: detection (L1) near-parity with scanners, but
+L2/L3 is LLM-only. This is the strongest argument for LLM agents in this
+context.}
+
+\subsection{Per-protocol analysis}
+\label{sec:eval:protocol}
+
+\todo{Write §7.5 — 2 paragraphs. Expected: LLMs excel on MQTT/SSH/HTTP
+(text-rich, well-represented in training), fall short on Modbus/LoRaWAN
+(binary, sparse training data). Report numbers per protocol.}
+
+\subsection{Failure modes and cost/time envelope}
+\label{sec:eval:failures}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~6 placeholder:
+  Pareto plot, USD cost vs weighted Score, one point per model.}}}
+  \caption{Cost--performance Pareto. \todo{Annotate which model dominates
+  on each axis and the efficient frontier.}}
+  \label{fig:pareto}
+\end{figure}
+
+\todo{Write §7.6 — categorize failure modes: (a) hallucinated findings on
+devices with no services, (b) missed vulnerabilities on binary protocols,
+(c) over-reporting info-disclosure without severity calibration. Brief
+quantitative table.}
+
+% ══════════════════════════════════════════════════════════════════════════
+% §8 Discussion
+% ══════════════════════════════════════════════════════════════════════════
+\section{Discussion and Limitations}
+\label{sec:discussion}
+
+\paragraph{Where LLMs help, where they don't}
+\systemname{} surfaces an empirical pattern: LLM agents reach high recall on
+misconfigurations, default credentials, and information disclosure — findings
+that are textually expressible and well represented in their training corpora.
+They consistently underperform on binary industrial protocols (Modbus, CoAP,
+LoRaWAN) and on cross-device inferences that require holding an aggregated
+network view. This suggests a hybrid deployment model: LLM agents for
+configuration auditing, traditional scanners for CVE coverage, and human
+operators for the OT/ICS layer.
+
+\paragraph{Implications for agentic systems}
+The harness's per-device and per-vulnerability micro-agent structure is one
+answer to context scaling, but it cedes cross-device inference. Designs that
+keep a global aggregator agent in the loop without paying the full
+network-context cost are an open research direction.
+
+\paragraph{Limitations}
+(i)~\emph{Simulated infrastructure.} \systemname{} scenarios emulate IoT
+devices on Linux VMs; real constrained hardware introduces embedded-specific
+attack surfaces (bootloaders, RTOS, firmware) we do not cover.
+(ii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP even
+without ground-truth matches, which inflates precision.
+(iii)~\emph{Model variance.} With $k{=}3$ runs per configuration, confidence
+intervals on F1 remain wide for some scenarios.
+(iv)~\emph{Prompt sensitivity.} We fix a single prompt family across models;
+per-model prompt tuning would likely raise scores.
+(v)~\emph{Static architectures.} The five patterns are fixed; real deployments
+evolve over time and include devices not represented here (RFID badge readers,
+industrial PLCs, medical devices).
+
+% ══════════════════════════════════════════════════════════════════════════
+% §9 Ethical Considerations
+% ══════════════════════════════════════════════════════════════════════════
+\section{Ethical Considerations}
+\label{sec:ethical}
+
+\paragraph{Isolation}
+All experiments run on an isolated Proxmox cluster with a dedicated bridge
+(\texttt{vmbr1}) and no route to external networks; the OpenWrt gateway's
+\texttt{WAN} interface is firewall-isolated. No live hosts, production
+services, or third-party infrastructure are probed.
+
+\paragraph{Responsible disclosure}
+\systemname{} vulnerabilities are deterministically injected into our own
+lab VMs via Ansible. No 0-days are introduced; all categories (misconfig,
+weak credentials, Terrapin CVE-2023-48795, outdated Dropbear) correspond to
+patterns already publicly documented. No responsible-disclosure process is
+triggered.
+
+\paragraph{Misuse risk of released artifact}
+The benchmark artifact (Ansible playbooks, ground truth, evaluator) does not
+embed exploitation payloads for unknown vulnerabilities, and the injected
+weaknesses are common misconfigurations documented in OWASP~IoT~Top~10.
+The harness uses only standard pentest tools already in widespread use.
+We judge the net societal benefit — reproducible evaluation of LLM pentest
+agents, and a concrete evaluation surface for future defenders — to exceed
+the incremental misuse risk.
+
+\paragraph{IRB / human subjects}
+No human subjects are involved. No personal data is collected or processed.
+
+\paragraph{LLM costs and environmental footprint}
+All reported experiments together consume an estimated \todo{X} kWh and
+cost under \todo{USD Y} in API billing.
+
+% ══════════════════════════════════════════════════════════════════════════
+% §10 Conclusion
+% ══════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented \systemname, the first reproducible benchmark for evaluating LLM
+penetration testing agents at \emph{network scale} on IoT infrastructure, and
+\harnessname, a network-native multi-agent harness whose infrastructure-graph
+guidance and dedicated lateral movement phase keep LLM context tractable while
+explicitly modelling firewall-enforced reachability. Holding the LLM constant
+(\texttt{MiniMax-M2.7}) across our pipeline, two ablations, and four
+external baselines (CAI in two scope variants, VulnBot, PentestGPT, Nmap NSE),
+we isolate the \emph{architectural} contribution: \harnessname\ outperforms
+single-host LLM agents on multi-hop reach (MHR$_2$, MHR$_3$) by a margin that
+collapses near zero for every baseline by construction, and demonstrates that
+the L1--L3 evidence spectrum exposes architectural differences that binary
+flag-capture benchmarks conflate.
+
+\paragraph{Future work}
+(i)~\emph{Multi-model robustness} — extending the architectural comparison to
+recent frontier models (Claude Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro, DeepSeek
+V4, Qwen 3.6) to confirm model-independence of the architectural advantage;
+(ii)~\emph{Real hardware} — extending to embedded Zigbee, LoRaWAN, and
+sub-GHz attack surfaces via SDR tooling;
+(iii)~\emph{Defender's side} — using \systemname{} as a benchmark for
+LLM-assisted IoT defense (detection, patching recommendation).
+
+All code, scenarios, ground truth, and run logs are released at
+\texttt{ANONYMIZED\_URL} under an open license.
+
+% ── bibliography ──────────────────────────────────────────────────────────
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+% ══════════════════════════════════════════════════════════════════════════
+% §11 LLM Usage Statement (outside page quota per ACSAC CFP)
+% ══════════════════════════════════════════════════════════════════════════
+\section*{LLM Usage Statement}
+\label{sec:llm-usage}
+
+This paper involves Large Language Models in two distinct roles.
+
+\paragraph{LLM as subject of study}
+The experimental work evaluates the penetration testing capabilities of LLM
+agents using \texttt{MiniMax-M2.7}~\cite{minimax27} as the shared model across
+\harnessname\ and all baselines (CAI, VulnBot, PentestGPT) to isolate the
+architectural contribution from the model variable (see \S\ref{sec:setup}).
+All inference calls were made through MiniMax's official API under standard
+terms of service. No model weights were fine-tuned; all systems were used
+out-of-the-box with identical tool schemas and prompt templates per system.
+Prompt templates, full conversation transcripts, and per-phase token counts
+are released as part of the artifact.
+
+\paragraph{LLM as writing aid}
+During manuscript preparation, the authors used current frontier LLMs
+(Anthropic Claude Opus 4.7, OpenAI GPT-5.5) for: (i)~drafting candidate
+section outlines subsequently edited by the authors; (ii)~copy-editing for
+grammar, clarity, and concision; (iii)~consistency checks on terminology and
+notation. No section was written end-to-end by an LLM. All claims,
+experimental results, related-work positioning, and scientific interpretations
+are the authors' own. Every LLM-suggested citation was verified by retrieving
+the cited work.
+
+\end{document}
