@@ -130,30 +130,38 @@ analysis and the security frameworks underlying our scenario taxonomy.
 \subsection{LLM Penetration-Testing Agents}
 \label{sec:related:llm}
 
-Happe and Cito~\cite{happe23} reported the first study of LLM-driven
-penetration testing, showing that an LLM with shell access could
-autonomously compromise a small set of vulnerable VMs; the
-\textsc{HackingBuddyGPT} project~\cite{hackingbuddygpt} extended this line
-into an open-source agent. \textsc{PentestGPT}~\cite{pentestgpt24} reused the
-same single-agent plus human-in-the-loop blueprint and was the first to
-scale evaluation, using $182$ hand-curated HackTheBox and VulnHub sub-tasks;
-it established the recurring failure mode that motivates all subsequent
-work, namely state collapse over long command sequences.
-\textsc{AutoAttacker}~\cite{autoattacker24} and
-\textsc{Nebula}~\cite{nebula24} are contemporaneous single-agent variants
-oriented towards offensive operations and operator assistance.
+Happe and Cito~\cite{happe23} reported one of the first peer-reviewed
+studies of LLM-driven penetration testing, showing that a single LLM
+driving a shell could autonomously perform privilege-escalation tasks on
+Linux VMs; the \textsc{HackingBuddyGPT} project~\cite{hackingbuddygpt}
+extended this single-agent line into an open-source tool.
+\textsc{PentestGPT}~\cite{pentestgpt24} introduced the first multi-module
+design: three coordinated LLM sessions (Reasoning, Generation, Parsing)
+operate over a \emph{Pentesting Task Tree} (PTT) that encodes the testing
+state in natural language. Evaluated on $182$ hand-curated HackTheBox and
+VulnHub sub-tasks across 13 targets, it established the recurring failure
+mode that motivates all subsequent work --- loss of session context across
+long command sequences --- and reported a $228.6\%$ task-completion
+increase over a vanilla GPT-3.5 baseline. \textsc{AutoAttacker}
+\cite{autoattacker24} (offensive operations) and
+\textsc{Nebula}~\cite{nebula24} (operator assistant) are subsequent
+single-LLM variants in the same line as Happe~\&~Cito.
 
-Multi-agent decomposition addresses context exhaustion through role
-specialisation. \textsc{VulnBot}~\cite{vulnbot25} runs three phase-specific
-agents (reconnaissance, scanning, exploitation) coordinated by a Penetration
-Task Graph and reports $30.3\%$ task completion on AUTOPENBENCH, a
-$21$-point gain over single-agent baselines.
+Later systems push specialisation from cognitive roles to penetration
+phases. \textsc{VulnBot}~\cite{vulnbot25} decomposes the workflow into
+three specialised phases (reconnaissance, scanning, exploitation), each
+driven by five cooperating modules (planner, generator, executor,
+summariser, memory retriever) over a Penetration Task Graph (PTG) of task
+dependencies. It reports up to $30.3\%$ task completion on AUTOPENBENCH
+for its Llama3.1-405B variant, a $21$-point gain over the same model used
+single-agent.
 \textsc{AutoPentester}~\cite{autopentester25} adds Retrieval-Augmented
-Generation and a Pentest Tree across five cooperating roles, reporting a
-$27$-point gain over \textsc{PentestGPT}. \textsc{PentestAgent}
-\cite{pentestagent25} (ASIA~CCS'25) and the production-grade
-\textsc{CAI}~\cite{cai25}, from the \textsc{PentestGPT} authors, follow the
-same pipeline-with-RAG blueprint.
+Generation and a Pentest Tree across five cooperating roles, reporting
+$+27\%$ sub-task completion over \textsc{PentestGPT}.
+\textsc{PentestAgent}~\cite{pentestagent25} (ASIA~CCS'25) and the
+production-grade \textsc{CAI}~\cite{cai25}, co-authored by the
+\textsc{PentestGPT} team, generalise this multi-agent blueprint with
+modular tool use and a public leaderboard.
 
 A complementary thread improves the underlying agent rather than its
 orchestration. \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage
@@ -171,8 +179,9 @@ selection deterministic, improving benchmark success by over $20$ points.
 
 Despite the diversity of these designs, every system above is evaluated on
 a \emph{single host}: a HackTheBox machine, a VulnHub VM, or a CTF
-container. None reasons over a multi-device IP network with
-firewall-enforced reachability or IoT-specific application protocols.
+container. None of them models multi-device reachability as an explicit
+infrastructure graph or handles IoT-specific application protocols
+(MQTT, Modbus, LoRaWAN, CoAP).
 
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
