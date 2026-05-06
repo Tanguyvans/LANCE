@@ -185,6 +185,20 @@ Destroy a benchmark scenario:
 python3 -m src.baselines teardown-scenario --scenario 3
 ```
 
+Switch from one deployed scenario to another in one command:
+
+```bash
+python3 -m src.baselines switch-scenario \
+  --current-scenario 1 \
+  --next-scenario 2
+```
+
+This runs the safe scenario handoff:
+
+```text
+99_teardown.yml -> 03_deploy_scenario.yml -> 04_inject_vulns.yml -> 05_populate_services.yml -> 06_verify.yml
+```
+
 Dry-run a baseline from the master VM:
 
 ```bash

@@ -4,12 +4,19 @@ from __future__ import annotations
 import argparse
 import subprocess
 from pathlib import Path
+from typing import Callable, Any
 
 
 DEFAULT_INVENTORY = Path("benchmarks/ansible/inventory.yml")
 DEFAULT_PLAYBOOK = Path("benchmarks/ansible/playbooks/deploy_baseline_vm.yml")
 DEFAULT_VAULT_PASSWORD = Path.home() / ".vault_pass"
 PLAYBOOK_DIR = Path("benchmarks/ansible/playbooks")
+DeployEventCallback = Callable[[dict[str, Any]], None]
+
+
+def _emit(event_callback: DeployEventCallback | None, event: str, **payload: Any) -> None:
+    if event_callback:
+        event_callback({"event": event, **payload})
 
 
 def deploy_baseline_vm(
@@ -72,6 +79,49 @@ def deploy_scenario(
         run_playbook(PLAYBOOK_DIR / "05_populate_services.yml", inventory, vault_password_file, extra_vars)
     if verify:
         run_playbook(PLAYBOOK_DIR / "06_verify.yml", inventory, vault_password_file, extra_vars)
+
+
+def switch_scenario(
+    current_scenario_id: str,
+    next_scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+    populate: bool = True,
+    verify: bool = True,
+    event_callback: DeployEventCallback | None = None,
+) -> None:
+    """Teardown the current scenario, then deploy and prepare the next one."""
+    _emit(
+        event_callback,
+        "switch_start",
+        current_scenario_id=str(current_scenario_id),
+        next_scenario_id=str(next_scenario_id),
+    )
+    _emit(event_callback, "switch_step_start", step="teardown", scenario_id=str(current_scenario_id))
+    teardown_scenario(current_scenario_id, inventory=inventory, vault_password_file=vault_password_file)
+    _emit(event_callback, "switch_step_done", step="teardown", scenario_id=str(current_scenario_id))
+
+    extra_vars = [f"scenario_id={next_scenario_id}"]
+    steps = [
+        ("deploy", PLAYBOOK_DIR / "03_deploy_scenario.yml"),
+        ("inject", PLAYBOOK_DIR / "04_inject_vulns.yml"),
+    ]
+    if populate:
+        steps.append(("populate", PLAYBOOK_DIR / "05_populate_services.yml"))
+    if verify:
+        steps.append(("verify", PLAYBOOK_DIR / "06_verify.yml"))
+
+    for step, playbook in steps:
+        _emit(event_callback, "switch_step_start", step=step, scenario_id=str(next_scenario_id))
+        run_playbook(playbook, inventory, vault_password_file, extra_vars)
+        _emit(event_callback, "switch_step_done", step=step, scenario_id=str(next_scenario_id))
+
+    _emit(
+        event_callback,
+        "switch_done",
+        current_scenario_id=str(current_scenario_id),
+        next_scenario_id=str(next_scenario_id),
+    )
 
 
 def inject_vulnerabilities(

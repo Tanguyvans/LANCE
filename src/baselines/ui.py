@@ -34,6 +34,7 @@ SUPPORTED_TOOLS = ("cai", "pentgpt", "vulnbot")
 MENU_ACTIONS = [
     ("1", "Configure"),
     ("s", "Change scenario"),
+    ("x", "Teardown current and deploy another scenario"),
     ("2", "Deploy baseline VM"),
     ("3", "Setup baseline tools on baseline VM"),
     ("4", "Deploy full scenario (deploy + inject + populate + verify)"),
@@ -219,20 +220,70 @@ def _ask_yes_no(console: Console, prompt: str, default: bool = True) -> bool:
 
 
 def _change_scenario(console: Console, state: DashboardState) -> None:
-    scenarios = list_ground_truth_scenarios()
-    if scenarios:
-        state.scenario_id = _select_choice(
-            console,
-            "Scenario",
-            [(f"S{sid}", f"Use scenario {sid}", sid) for sid in scenarios],
-            state.scenario_id,
-        )
-    else:
-        state.scenario_id = _ask(console, "Scenario id", state.scenario_id)
+    state.scenario_id = _select_scenario_id(console, state.scenario_id)
     state.last_run_dir = None
     state.last_suite_dir = None
     state.score = None
     console.print(f"[green]Scenario set to S{state.scenario_id}.[/green]")
+
+
+def _select_scenario_id(console: Console, current: str) -> str:
+    scenarios = list_ground_truth_scenarios()
+    if scenarios:
+        return str(
+            _select_choice(
+                console,
+                "Scenario",
+                [(f"S{sid}", f"Use scenario {sid}", sid) for sid in scenarios],
+                current,
+            )
+        )
+    return _ask(console, "Scenario id", current)
+
+
+def _switch_scenario(console: Console, state: DashboardState) -> None:
+    current = state.scenario_id
+    next_scenario = _select_scenario_id(console, current)
+    if not next_scenario:
+        console.print("[red]No scenario selected.[/red]")
+        return
+    populate = _ask_yes_no(console, "Populate services after vulnerability injection?", True)
+    verify = _ask_yes_no(console, "Run verification playbook after deployment?", True)
+    if not _ask_yes_no(console, f"Teardown S{current}, then deploy/inject S{next_scenario}?", False):
+        console.print("[yellow]Switch cancelled.[/yellow]")
+        return
+
+    def on_event(event: dict[str, Any]) -> None:
+        name = event["event"]
+        step = event.get("step")
+        scenario_id = event.get("scenario_id")
+        labels = {
+            "teardown": "Teardown",
+            "deploy": "Clone/deploy VMs",
+            "inject": "Inject vulnerabilities",
+            "populate": "Populate services",
+            "verify": "Verify vulnerabilities",
+        }
+        if name == "switch_start":
+            console.print(f"[cyan]Switching S{event['current_scenario_id']} -> S{event['next_scenario_id']}[/cyan]")
+        elif name == "switch_step_start":
+            console.print(f"[cyan]{labels.get(step, step)} for S{scenario_id}...[/cyan]")
+        elif name == "switch_step_done":
+            console.print(f"[green]{labels.get(step, step)} done for S{scenario_id}.[/green]")
+        elif name == "switch_done":
+            console.print(f"[green]Scenario S{event['next_scenario_id']} is deployed, injected and ready.[/green]")
+
+    deploy.switch_scenario(
+        current_scenario_id=current,
+        next_scenario_id=next_scenario,
+        populate=populate,
+        verify=verify,
+        event_callback=on_event,
+    )
+    state.scenario_id = next_scenario
+    state.last_run_dir = None
+    state.last_suite_dir = None
+    state.score = None
 
 
 def _render_live(state: DashboardState, progress: Progress | None = None):
@@ -566,6 +617,8 @@ def run_dashboard() -> None:
                 _configure(console, state)
             elif choice == "s":
                 _change_scenario(console, state)
+            elif choice == "x":
+                _switch_scenario(console, state)
             elif choice == "2":
                 with console.status("[cyan]Deploying baseline VM...[/cyan]"):
                     deploy.deploy_baseline_vm()

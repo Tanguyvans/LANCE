@@ -89,6 +89,51 @@ def _change_scenario(state: WizardState) -> None:
     print(f"Scenario set to S{state.scenario_id}.")
 
 
+def _switch_scenario(state: WizardState) -> None:
+    current = state.scenario_id
+    scenarios = list_ground_truth_scenarios()
+    if scenarios:
+        print("Available scenarios: " + ", ".join(f"S{sid}" for sid in scenarios))
+    next_scenario = _ask("Next scenario id", current)
+    populate = _ask_yes_no("Populate services after vulnerability injection?", True)
+    verify = _ask_yes_no("Run verification playbook after deployment?", True)
+    if not _ask_yes_no(f"Teardown S{current}, then deploy/inject S{next_scenario}?", False):
+        print("Switch cancelled.")
+        return
+
+    labels = {
+        "teardown": "Teardown",
+        "deploy": "Clone/deploy VMs",
+        "inject": "Inject vulnerabilities",
+        "populate": "Populate services",
+        "verify": "Verify vulnerabilities",
+    }
+
+    def on_event(event: dict) -> None:
+        name = event["event"]
+        step = event.get("step")
+        scenario_id = event.get("scenario_id")
+        if name == "switch_start":
+            print(f"Switching S{event['current_scenario_id']} -> S{event['next_scenario_id']}")
+        elif name == "switch_step_start":
+            print(f"{labels.get(step, step)} for S{scenario_id}...")
+        elif name == "switch_step_done":
+            print(f"{labels.get(step, step)} done for S{scenario_id}.")
+        elif name == "switch_done":
+            print(f"Scenario S{event['next_scenario_id']} is deployed, injected and ready.")
+
+    deploy.switch_scenario(
+        current_scenario_id=current,
+        next_scenario_id=next_scenario,
+        populate=populate,
+        verify=verify,
+        event_callback=on_event,
+    )
+    state.scenario_id = next_scenario
+    state.last_run_dir = None
+    state.last_suite_dir = None
+
+
 def _setup_baseline_tools(state: WizardState) -> None:
     api_key = os.environ.get(install_tools.DEFAULT_API_KEY_ENV)
     if not api_key:
@@ -184,6 +229,7 @@ def run_wizard() -> None:
         _print_header(state)
         print("1. Configure")
         print("s. Change scenario")
+        print("x. Teardown current and deploy another scenario")
         print("2. Deploy baseline VM")
         print("3. Setup baseline tools on baseline VM")
         print("4. Deploy full scenario (deploy + inject + populate + verify)")
@@ -201,6 +247,8 @@ def run_wizard() -> None:
                 _configure(state)
             elif choice == "s":
                 _change_scenario(state)
+            elif choice == "x":
+                _switch_scenario(state)
             elif choice == "2":
                 deploy.deploy_baseline_vm()
             elif choice == "3":

@@ -56,6 +56,17 @@ def main() -> None:
     teardown.add_argument("--inventory", default=str(deploy.DEFAULT_INVENTORY))
     teardown.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
 
+    switch = sub.add_parser(
+        "switch-scenario",
+        help="Teardown one scenario, then deploy, inject, populate and verify another one",
+    )
+    switch.add_argument("--current-scenario", required=True)
+    switch.add_argument("--next-scenario", required=True)
+    switch.add_argument("--inventory", default=str(deploy.DEFAULT_INVENTORY))
+    switch.add_argument("--vault-password-file", default=str(deploy.DEFAULT_VAULT_PASSWORD))
+    switch.add_argument("--no-populate", action="store_true")
+    switch.add_argument("--no-verify", action="store_true")
+
     setup_cai = sub.add_parser("setup-cai", help="Install CAI and deploy the CAI adapter on the baseline VM")
     setup_cai.add_argument("--baseline-host", required=True)
     setup_cai.add_argument("--remote-dir", default=install_tools.DEFAULT_REMOTE_DIR)
@@ -199,6 +210,29 @@ def main() -> None:
             scenario_id=args.scenario,
             inventory=Path(args.inventory),
             vault_password_file=Path(args.vault_password_file).expanduser(),
+        )
+    elif args.command == "switch-scenario":
+        def on_event(event: dict) -> None:
+            name = event["event"]
+            step = event.get("step")
+            scenario_id = event.get("scenario_id")
+            if name == "switch_start":
+                print(f"Switching S{event['current_scenario_id']} -> S{event['next_scenario_id']}")
+            elif name == "switch_step_start":
+                print(f"{step} S{scenario_id}...")
+            elif name == "switch_step_done":
+                print(f"{step} S{scenario_id}: done")
+            elif name == "switch_done":
+                print(f"S{event['next_scenario_id']} ready")
+
+        deploy.switch_scenario(
+            current_scenario_id=args.current_scenario,
+            next_scenario_id=args.next_scenario,
+            inventory=Path(args.inventory),
+            vault_password_file=Path(args.vault_password_file).expanduser(),
+            populate=not args.no_populate,
+            verify=not args.no_verify,
+            event_callback=on_event,
         )
     elif args.command == "setup-cai":
         import os
