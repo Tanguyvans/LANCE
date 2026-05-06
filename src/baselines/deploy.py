@@ -74,6 +74,62 @@ def deploy_scenario(
         run_playbook(PLAYBOOK_DIR / "06_verify.yml", inventory, vault_password_file, extra_vars)
 
 
+def inject_vulnerabilities(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+) -> None:
+    """Inject vulnerabilities into an already deployed benchmark scenario."""
+    run_playbook(
+        PLAYBOOK_DIR / "04_inject_vulns.yml",
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=[f"scenario_id={scenario_id}"],
+    )
+
+
+def populate_services(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+) -> None:
+    """Populate benchmark services after vulnerability injection."""
+    run_playbook(
+        PLAYBOOK_DIR / "05_populate_services.yml",
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=[f"scenario_id={scenario_id}"],
+    )
+
+
+def verify_scenario(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+) -> None:
+    """Verify that the expected vulnerabilities are present."""
+    run_playbook(
+        PLAYBOOK_DIR / "06_verify.yml",
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=[f"scenario_id={scenario_id}"],
+    )
+
+
+def reset_scenario(
+    scenario_id: str,
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+) -> None:
+    """Reset a deployed scenario back to the vulnerable benchmark state."""
+    run_playbook(
+        PLAYBOOK_DIR / "08_reset_scenario.yml",
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=[f"scenario_id={scenario_id}"],
+    )
+
+
 def teardown_scenario(
     scenario_id: str,
     inventory: Path = DEFAULT_INVENTORY,

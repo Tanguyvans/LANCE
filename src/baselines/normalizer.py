@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.agent.vuln_taxonomy import canonicalize
+from src.agent.vuln_taxonomy import canonicalize, is_noise
 from src.baselines.scenarios import BaselineTarget
 
 
@@ -114,7 +114,10 @@ def normalize_tool_outputs(
             raw = {"findings": _parse_markdown_findings(path.read_text(encoding="utf-8"))}
         for item in _findings_from_json(raw):
             if isinstance(item, dict):
-                findings.append(normalize_finding(item, target, tool, len(findings) + 1))
+                finding = normalize_finding(item, target, tool, len(findings) + 1)
+                if finding["severity"] == "INFO" or is_noise(finding["type"]):
+                    continue
+                findings.append(finding)
     return findings
 
 

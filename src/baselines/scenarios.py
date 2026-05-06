@@ -29,6 +29,18 @@ class BaselineTarget:
         return asdict(self)
 
 
+def list_ground_truth_scenarios(ground_truth_dir: Path = DEFAULT_GT_DIR) -> list[str]:
+    """Return scenario ids that have a ground-truth file."""
+    scenario_ids: list[str] = []
+    for path in ground_truth_dir.glob("scenario_*.yaml"):
+        scenario_ids.append(path.stem.removeprefix("scenario_"))
+
+    def sort_key(value: str) -> tuple[int, int | str]:
+        return (0, int(value)) if value.isdigit() else (1, value)
+
+    return sorted(scenario_ids, key=sort_key)
+
+
 def load_scenario_targets(
     scenario_id: str | int,
     vars_file: Path = DEFAULT_ANSIBLE_VARS,

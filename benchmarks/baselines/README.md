@@ -1,7 +1,8 @@
 # Baseline comparison VM
 
 This folder contains the lightweight contract for comparing external pentest
-agents such as CAI and PentGPT against the NATO Smart City IoT benchmarks.
+agents such as CAI, PentestGPT, and VulnBot against the NATO Smart City IoT
+benchmarks.
 
 The important rule is: external tools stay isolated on the baseline VM, while
 the master VM only orchestrates runs, retrieves JSON, and evaluates results.
@@ -18,7 +19,7 @@ master VM
   evaluates with src.benchmark.evaluator
 
 baseline VM
-  contains CAI / PentGPT / dependencies
+  contains CAI / PentestGPT / VulnBot adapters / dependencies
   has eth1 on the benchmark network
   writes one JSON result per target
 ```
@@ -66,7 +67,39 @@ Deploy the isolated baseline VM:
 python3 -m src.baselines deploy-vm
 ```
 
-Install CAI and replace the placeholder adapter:
+Install all supported baseline adapters:
+
+```bash
+export MINIMAX_API_KEY="..."
+python3 -m src.baselines setup-baselines \
+  --baseline-host root@192.168.88.36
+```
+
+This deploys:
+
+```text
+/opt/baseline-tools/adapters/cai_run.sh
+/opt/baseline-tools/adapters/pentgpt_run.sh
+/opt/baseline-tools/adapters/vulnbot_run.sh
+```
+
+Update only the adapter scripts without touching the remote `.env` secrets:
+
+```bash
+python3 -m src.baselines setup-baselines \
+  --baseline-host root@192.168.88.36 \
+  --preserve-remote-env
+```
+
+CAI uses its SDK by default. PentestGPT and VulnBot use benchmark-compatible
+non-interactive adapters by default: they run bounded recon from the isolated VM,
+send the evidence to MiniMax through the OpenAI-compatible API, and emit the same
+per-IP JSON contract as CAI. To plug in upstream tool installs later, set
+`PENTGPT_RUN_MODE=external` or `VULNBOT_RUN_MODE=external` on the baseline VM and
+provide `PENTGPT_COMMAND` / `VULNBOT_COMMAND` templates that write the requested
+`{output}` file.
+
+Install only CAI and replace only the CAI adapter:
 
 ```bash
 export MINIMAX_API_KEY="..."
@@ -122,19 +155,43 @@ Deploy and prepare a benchmark scenario:
 python3 -m src.baselines deploy-scenario --scenario 3
 ```
 
+`deploy-scenario` already runs the full preparation chain:
+
+```text
+03_deploy_scenario.yml -> 04_inject_vulns.yml -> 05_populate_services.yml
+```
+
+If the scenario is already deployed and you only want to re-inject the
+vulnerabilities:
+
+```bash
+python3 -m src.baselines inject-vulns \
+  --scenario 3 \
+  --populate \
+  --verify
+```
+
+For a faster reset back to the vulnerable benchmark state:
+
+```bash
+python3 -m src.baselines reset-scenario \
+  --scenario 3 \
+  --verify
+```
+
 Destroy a benchmark scenario:
 
 ```bash
 python3 -m src.baselines teardown-scenario --scenario 3
 ```
 
-Dry-run the CAI baseline from the master VM:
+Dry-run a baseline from the master VM:
 
 ```bash
 python3 -m src.baselines run \
-  --tool cai \
+  --tool pentgpt \
   --scenario 3 \
-  --baseline-host root@192.168.88.184 \
+  --baseline-host root@192.168.88.36 \
   --dry-run
 ```
 
@@ -142,7 +199,7 @@ Pilot CAI exactly like the paper plan shortcut:
 
 ```bash
 python3 -m src.baselines pilot-cai \
-  --baseline-host root@192.168.88.184 \
+  --baseline-host root@192.168.88.36 \
   --dry-run
 ```
 
@@ -152,14 +209,66 @@ Run for real:
 python3 -m src.baselines run \
   --tool pentgpt \
   --scenario 3 \
-  --baseline-host root@192.168.88.184
+  --baseline-host root@192.168.88.36
+```
+
+Run the three comparison baselines sequentially for the same scenario:
+
+```bash
+python3 -m src.baselines suite \
+  --scenario 3 \
+  --baseline-host root@192.168.88.36
+```
+
+Before the suite starts, the CLI refreshes the real adapter wrappers on the
+baseline VM without touching the remote `.env` secrets. This protects against
+`deploy_baseline_vm.yml` recreating placeholder scripts. To skip that refresh:
+
+```bash
+python3 -m src.baselines suite \
+  --scenario 3 \
+  --baseline-host root@192.168.88.36 \
+  --no-refresh-adapters
+```
+
+The suite writes a timestamped folder so previous runs are not overwritten:
+
+```text
+output/baselines/suites/scenario_3_YYYYmmdd_HHMMSS/
+  suite_summary.json
+  cai/scenario_3/A/
+  pentgpt/scenario_3/A/
+  vulnbot/scenario_3/A/
+```
+
+Each tool run contains:
+
+```text
+raw/                 # JSON returned by the remote adapter for each target
+logs/                # raw logs copied back from the baseline VM
+03_vuln_analysis.json
+04_exploitation.json
+evaluator_score.json
+metadata.json
 ```
 
 Evaluate the resulting run directory:
 
 ```bash
-python3 -m src.baselines compare output/baselines/pentgpt/S3_YYYY-mm-dd_HHMMSS
+python3 -m src.baselines compare output/baselines/pentgpt/scenario_3/A
 ```
+
+The terminal dashboard exposes the same workflow with arrow-key selection:
+
+```bash
+python3 -m src.baselines dashboard
+```
+
+Use `Configure` to choose `cai`, `pentgpt`, or `vulnbot`, then `Run selected
+baseline with live remote status`.
+
+To run all three tools from the dashboard, choose `Run CAI + PentestGPT +
+VulnBot suite`.
 
 ## Adapter scripts on the baseline VM
 
@@ -168,6 +277,7 @@ The Ansible playbook creates placeholders:
 ```text
 /opt/baseline-tools/adapters/cai_run.sh
 /opt/baseline-tools/adapters/pentgpt_run.sh
+/opt/baseline-tools/adapters/vulnbot_run.sh
 ```
 
 `setup-cai` automatically replaces `cai_run.sh` with a CAI-backed adapter. For
