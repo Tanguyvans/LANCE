@@ -118,138 +118,156 @@ Artifacts are released at \texttt{ANONYMIZED\_URL}.
 % ══════════════════════════════════════════════════════════════════════════
 % §2 Background and Related Work
 % ══════════════════════════════════════════════════════════════════════════
-\section{Background and Related Work}
+\section{Related Work}
 \label{sec:related}
 
-\subsection{LLM-based penetration testing agents}
+This section reviews prior work relevant to our approach. We first survey
+LLM-driven penetration-testing agents and the benchmarks used to evaluate
+them, then discuss the classical attack-graph literature that informs
+\harnessname's topology-aware design, and finally review IoT firmware
+analysis and the security frameworks underlying our scenario taxonomy.
+
+\subsection{LLM Penetration-Testing Agents}
 \label{sec:related:llm}
 
-\paragraph{Single-agent origins}
-Deng~\emph{et al.}~proposed \textsc{PentestGPT}~\cite{pentestgpt24}, the first
-published LLM-driven penetration testing agent. \textsc{PentestGPT} couples a
-single ChatGPT-class model with a human-in-the-loop interface that translates
-natural-language guidance into shell commands, and was evaluated on $182$
-hand-selected sub-tasks drawn from HackTheBox and VulnHub targets. The work
-established three findings that recur throughout the subsequent literature:
-LLMs produce plausible reconnaissance plans, they excel on text-rich web
-vulnerabilities (SQLi, XSS, IDOR), and they fail on long-context tasks where
-state must be maintained across many command invocations.
+Happe and Cito~\cite{happe23} reported the first study of LLM-driven
+penetration testing, showing that an LLM with shell access could
+autonomously compromise a small set of vulnerable VMs; the
+\textsc{HackingBuddyGPT} project~\cite{hackingbuddygpt} extended this line
+into an open-source agent. \textsc{PentestGPT}~\cite{pentestgpt24} reused the
+same single-agent plus human-in-the-loop blueprint and was the first to
+scale evaluation, using $182$ hand-curated HackTheBox and VulnHub sub-tasks;
+it established the recurring failure mode that motivates all subsequent
+work, namely state collapse over long command sequences.
+\textsc{AutoAttacker}~\cite{autoattacker24} and
+\textsc{Nebula}~\cite{nebula24} are contemporaneous single-agent variants
+oriented towards offensive operations and operator assistance.
 
-\paragraph{Multi-agent decomposition}
-Later systems address the context limitation through role specialization.
-\textsc{VulnBot}~\cite{vulnbot25} decomposes the task into three
-phase-specific agents (\emph{reconnaissance}, \emph{scanning}, \emph{exploitation})
-coordinated by a Penetration Task Graph (PTG); on the
-AUTOPENBENCH corpus~\cite{autopenbench24} its \textsc{Llama3.1-405B} variant
-reaches a completion rate of $30.3\%$ versus $9.1\%$ for the same model used
-single-agent and $21.2\%$ for GPT-4o.
-\textsc{AutoPentester}~\cite{autopentester25} uses five cooperating agents
-(summarizer, strategy analyzer, command generator, results verifier, reporter)
-with Retrieval-Augmented Generation and a Pentest Tree data structure,
-reporting a $27\%$ gain in sub-task completion and $39.5\%$ more vulnerability
-coverage over \textsc{PentestGPT} on HackTheBox plus a custom set of OWASP-Top-10
-machines.
-\textsc{PentestAgent}~\cite{pentestagent25} likewise builds on a multi-stage
-pipeline with RAG, published at ACM ASIA~CCS'25.
+Multi-agent decomposition addresses context exhaustion through role
+specialisation. \textsc{VulnBot}~\cite{vulnbot25} runs three phase-specific
+agents (reconnaissance, scanning, exploitation) coordinated by a Penetration
+Task Graph and reports $30.3\%$ task completion on AUTOPENBENCH, a
+$21$-point gain over single-agent baselines.
+\textsc{AutoPentester}~\cite{autopentester25} adds Retrieval-Augmented
+Generation and a Pentest Tree across five cooperating roles, reporting a
+$27$-point gain over \textsc{PentestGPT}. \textsc{PentestAgent}
+\cite{pentestagent25} (ASIA~CCS'25) and the production-grade
+\textsc{CAI}~\cite{cai25}, from the \textsc{PentestGPT} authors, follow the
+same pipeline-with-RAG blueprint.
 
-\paragraph{Learning-based and long-running variants}
-\textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement
-learning to the reasoning traces of a mid-scale model, and
-\textsc{xOffense}~\cite{xoffense25} fine-tunes a Qwen3-32B with offensive
-knowledge corpora, reporting $79\%$ sub-task completion on CTF-style targets.
-A complementary strand addresses session duration:
-\textsc{CHAP}~\cite{chap26} introduces a context-relay mechanism that
-transfers distilled protocols between successive agent instances during
-long-running engagements, and \textsc{AWE}~\cite{awe26} adds persistent memory
-and browser-backed verification to web-application pentest.
-\textsc{CheckMate}~\cite{checkmate25} couples LLM agents with classical
-planning to obtain deterministic action selection, improving benchmark
-success by over $20$ percentage points.
+A complementary thread improves the underlying agent rather than its
+orchestration. \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage
+reinforcement learning on reasoning traces, and \textsc{xOffense}
+\cite{xoffense25} fine-tunes Qwen3-32B on offensive-knowledge corpora,
+reporting $79\%$ sub-task completion on CTF targets.
+\textsc{EnIGMA}~\cite{enigma25} pairs an LLM with interactive shell tools
+on CTF challenges, and \textsc{IRIS}~\cite{iris25} couples an LLM with
+static analysis to surface code-level vulnerabilities. For long-running
+sessions, \textsc{CHAP}~\cite{chap26} relays distilled context across
+successive agent instances and \textsc{AWE}~\cite{awe26} adds persistent
+memory plus browser-backed verification. \textsc{CheckMate}
+\cite{checkmate25} couples an LLM with a symbolic planner to make action
+selection deterministic, improving benchmark success by over $20$ points.
 
-\paragraph{Production-grade frameworks}
-\textsc{CAI}~\cite{cai25}, developed by the \textsc{PentestGPT} authors,
-generalizes the single-agent prototype into a bug-bounty-oriented framework
-with modular tool support and a public leaderboard; on CAIBench's CTF subset
-it consistently outperforms prior open-source systems.
+Despite the diversity of these designs, every system above is evaluated on
+a \emph{single host}: a HackTheBox machine, a VulnHub VM, or a CTF
+container. None reasons over a multi-device IP network with
+firewall-enforced reachability or IoT-specific application protocols.
 
-\paragraph{Gap}
-Despite this trajectory, every system in this cluster is evaluated on a
-\emph{single-host} target unit: HackTheBox machines, VulnHub VMs,
-AUTOPENBENCH challenges, or CTF containers. Success is reported either as
-flag capture or as sub-task completion within one host.
-None evaluates at the scale of a deployed IP network containing heterogeneous
-devices and IoT-specific application protocols.
-
-\subsection{Penetration testing benchmarks}
+\subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
 
-\paragraph{Academic corpora}
-AUTOPENBENCH~\cite{autopenbench24} is the current academic reference,
+The dominant academic corpus is AUTOPENBENCH~\cite{autopenbench24},
 consisting of VulnHub-derived single-VM challenges with scripted flag
-checkers; it is used as the canonical evaluation by
-\textsc{VulnBot} and \textsc{Pentest-R1}. \textsc{PentestGPT} reported on a
-hand-curated set of $182$ sub-tasks drawn from HackTheBox and VulnHub. More
-recently, \textsc{CAIBench}~\cite{caibench25} consolidates the field into a
-meta-benchmark spanning Jeopardy-style CTFs, attack-and-defense exercises,
-cyber-range scenarios, and knowledge/privacy assessments, reporting that
-state-of-the-art models saturate around $70\%$ on static knowledge tests but
-collapse to $20$--$40\%$ on multi-step adversarial tasks. Within \textsc{CAIBench},
-the RCTF2 subset contributes $27$~challenges targeting robotics and
-cyber-physical systems --- the first inclusion of CPS in an LLM-pentest
-benchmark --- yet each challenge remains an isolated CTF-style target rather
-than a deployed network.
+checkers; it is used by \textsc{VulnBot} and \textsc{Pentest-R1}. Recent
+benchmarks broaden the scope without changing the unit of evaluation:
+\textsc{NYU CTF Bench}~\cite{nyuctfbench24} contributes $200$ Jeopardy
+challenges with reproducible containers, \textsc{Cybench}~\cite{cybench24}
+co-evaluates capability and risk on a curated CTF subset, and
+\textsc{CyberSecEval}~\cite{cybereval24} measures cybersecurity risk and
+helpfulness across a large prompt corpus.
+\textsc{CAIBench}~\cite{caibench25} consolidates the field into a
+meta-benchmark spanning Jeopardy CTFs, attack-and-defense ranges, and
+knowledge tests; its RCTF2 subset adds $27$ robotics challenges --- the
+first cyber-physical inclusion in this benchmark family --- yet each
+challenge remains an isolated container.
 
-\paragraph{Training-oriented lab infrastructures}
-\textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad} Active-Directory
-scenario deliver reproducible Proxmox-based labs with Ansible-driven
-deployment and idempotent configuration. Methodologically these projects are
-the closest precedent to our infrastructure, but they are training tools for
-human operators: they do not ship a ground-truth schema, do not define a
-scoring procedure, and have not been used to evaluate LLM agents in the
-published literature.
+A separate community ships reproducible multi-host labs.
+\textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
+Active-Directory scenario deliver Proxmox+Ansible deployments of
+representative enterprise networks, methodologically the closest precedent
+to our infrastructure. They ship no ground-truth schema and no scoring
+procedure, and have not been used to evaluate LLM agents in the published
+literature. No prior benchmark therefore offers the combination on which
+\systemname\ is built: network-scale evaluation, IoT/OT application
+protocols (MQTT, Modbus, LoRaWAN, CoAP), per-vulnerability
+machine-readable ground truth, and evidence-level granularity beyond
+binary flag capture (Table~\ref{tab:related}).
 
-\paragraph{Gap}
-No benchmark in the published literature provides all of
-(i)~network-scale evaluation on a deployed multi-device IP range,
-(ii)~IoT-specific application protocols (MQTT, LoRaWAN, Modbus, CoAP),
-(iii)~per-vulnerability ground truth usable for automated scoring, and
-(iv)~evidence-level granularity beyond binary flag capture. \systemname\ is
-designed to fill exactly this intersection.
+\subsection{Attack Graphs and Network Reachability}
+\label{sec:related:graph}
 
-\subsection{IoT security methodology}
+Representing a network as a graph for security analysis predates deep
+learning by decades. Phillips and Swiler~\cite{phillips98} introduced
+graph-based network-vulnerability analysis, Sheyner~\emph{et al.}
+\cite{sheyner02} developed automated attack-graph generation via model
+checking, and \textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog
+inference, becoming the de facto reference for attack-graph research. These
+systems compute reachable attacker states from a \emph{static} encoding of
+host configurations and exposed services. We borrow their reachability
+abstraction --- nodes are devices, edges are firewall-permitted protocol
+flows --- but \harnessname\ operates on a \emph{live} network: edges are
+validated by actual probes, the LLM proposes the next action, and the graph
+is updated as new hosts are discovered. Classical attack-graph generation
+is therefore complementary rather than competing.
+
+\subsection{IoT Security Context}
 \label{sec:related:iot}
 
-We ground scenario design and ground-truth taxonomy in three widely adopted
-frameworks. The OWASP~IoT~Top~10~\cite{owasp-iot} structures our vulnerability
-categories and ensures coverage of the attack surfaces most commonly observed
-in IoT deployments (hardcoded credentials, insecure network services,
-insecure ecosystem interfaces, insufficient update mechanisms). The
-MITRE~ATT\&CK~for~ICS~\cite{mitre-ics} matrix provides a tactics vocabulary
-for OT-inclusive scenarios; each injected vulnerability in \systemname\ carries
-a MITRE-ICS tactic annotation where applicable. Finally,
-NIST~SP~800-82~Rev.~3~\cite{nist80082} informs our segmentation and
-safety conventions, in particular the IT/OT separation underpinning
-architectural pattern~P3 (\cref{sec:iotbench:patterns}).
+Scenario design and ground-truth taxonomy follow three references: the
+OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE
+ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST
+SP\,800-82~Rev.\,3~\cite{nist80082} for segmentation conventions, notably
+the IT/OT split underpinning pattern~P3 (\cref{sec:iotbench:patterns}). On
+the empirical side, the closest IoT security work targets firmware rather
+than deployed networks: Costin~\emph{et al.}~\cite{costin14} performed the
+first large-scale firmware study, \textsc{Firmadyne}~\cite{firmadyne16}
+introduced dynamic firmware emulation for vulnerability discovery, and
+\textsc{FirmAE}~\cite{firmae20} substantially improved emulation success
+rates. OWASP \textsc{IoTGoat}~\cite{iotgoat} provides a deliberately
+insecure firmware image used as a teaching artefact. These projects
+produce vulnerable images; \systemname\ produces a deployed multi-device
+network with firewall-enforced reachability, the dimension along which we
+evaluate \harnessname.
 
 \begin{table*}[t]
 \centering
-\caption{Comparison with prior LLM penetration testing systems and benchmarks.
-``Scope'' is the unit of evaluation; ``Network-scale'' means evaluation
-occurs on a multi-device IP network rather than isolated targets.}
+\caption{Comparison with prior LLM pentest systems and benchmarks.
+\emph{Scope} is the unit of evaluation (\emph{single-host} = one VM or
+container; \emph{network} = multi-device IP range). \emph{Topologies}
+is the diversity of target network architectures.}
 \label{tab:related}
 \setlength{\tabcolsep}{3pt}
 \scriptsize
-\begin{tabular}{@{}lccccccc@{}}
+\begin{tabular}{@{}lcccccccc@{}}
 \toprule
-System & Scope & Protocols & Architectures & IoT-specific & Scoring & Ground truth & Reproducible \\
+System & Scope & Protocols & Topologies & IoT-specific & Scoring & Ground truth & Reproducible \\
 \midrule
+Happe \& Cito~\cite{happe23}            & single-host & Web/OS    & n/a       & no      & flag          & hand-curated  & partial \\
 PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS    & n/a       & no      & sub-task      & hand-curated  & partial \\
 VulnBot~\cite{vulnbot25}                & single-host & Web/OS    & n/a       & no      & task-graph    & AUTOPENBENCH  & yes     \\
 AutoPentester~\cite{autopentester25}    & single-host & Web/OS    & n/a       & no      & sub-task      & HTB + custom  & yes     \\
 PentestAgent~\cite{pentestagent25}      & single-host & Web/OS    & n/a       & no      & composite     & custom        & partial \\
+CAI~\cite{cai25}                        & single-host & Web/CTF   & n/a       & no      & CTF           & CAIBench      & yes     \\
 Pentest-R1~\cite{pentestr125}           & single-host & Web/OS    & n/a       & no      & sub-task      & AUTOPENBENCH  & partial \\
 xOffense~\cite{xoffense25}              & single-host & Web/CTF   & n/a       & no      & sub-task      & CTF           & partial \\
-CAI~\cite{cai25}                        & single-host & Web/CTF   & n/a       & no      & CTF           & CAIBench      & yes     \\
+EnIGMA~\cite{enigma25}                  & single-host & Web/CTF   & n/a       & no      & flag          & NYU~CTF       & yes     \\
+CheckMate~\cite{checkmate25}            & single-host & Web/OS    & n/a       & no      & sub-task      & custom        & partial \\
+\midrule
+AUTOPENBENCH~\cite{autopenbench24}      & single-host & Web/OS    & n/a       & no      & flag          & yes           & yes     \\
+NYU CTF Bench~\cite{nyuctfbench24}      & single-host & CTF       & n/a       & no      & flag          & yes           & yes     \\
+Cybench~\cite{cybench24}                & single-host & CTF       & n/a       & no      & flag          & yes           & yes     \\
+CyberSecEval~\cite{cybereval24}         & prompt-set  & mixed     & n/a       & no      & risk score    & yes           & yes     \\
 CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed     & n/a       & 27 CPS  & CTF           & yes           & yes     \\
 Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD / Win  & AD only   & no      & (training)    & no            & yes     \\
 \midrule
@@ -929,36 +947,76 @@ All code, scenarios, ground truth, and run logs are released at
 \texttt{ANONYMIZED\_URL} under an open license.
 
 % ── bibliography ──────────────────────────────────────────────────────────
-\bibliographystyle{IEEEtran}
-\bibliography{references}
+\begin{thebibliography}{00}
 
-% ══════════════════════════════════════════════════════════════════════════
-% §11 LLM Usage Statement (outside page quota per ACSAC CFP)
-% ══════════════════════════════════════════════════════════════════════════
-\section*{LLM Usage Statement}
-\label{sec:llm-usage}
+\bibitem{happe23} A.~Happe and J.~Cito, ``Getting pwn'd by AI: Penetration testing with large language models,'' in \textit{Proc. ACM ESEC/FSE}, 2023.
 
-This paper involves Large Language Models in two distinct roles.
+\bibitem{hackingbuddygpt} A.~Happe \textit{et al.}, ``HackingBuddyGPT: An LLM-driven pentest agent,'' 2024. [Online]. Available: https://github.com/ipa-lab/hackingBuddyGPT
 
-\paragraph{LLM as subject of study}
-The experimental work evaluates the penetration testing capabilities of LLM
-agents using \texttt{MiniMax-M2.7}~\cite{minimax27} as the shared model across
-\harnessname\ and all baselines (CAI, VulnBot, PentestGPT) to isolate the
-architectural contribution from the model variable (see \S\ref{sec:setup}).
-All inference calls were made through MiniMax's official API under standard
-terms of service. No model weights were fine-tuned; all systems were used
-out-of-the-box with identical tool schemas and prompt templates per system.
-Prompt templates, full conversation transcripts, and per-phase token counts
-are released as part of the artifact.
+\bibitem{pentestgpt24} G.~Deng \textit{et al.}, ``PentestGPT: Evaluating and harnessing large language models for automated penetration testing,'' in \textit{Proc. 33rd USENIX Security Symp.}, 2024.
 
-\paragraph{LLM as writing aid}
-During manuscript preparation, the authors used current frontier LLMs
-(Anthropic Claude Opus 4.7, OpenAI GPT-5.5) for: (i)~drafting candidate
-section outlines subsequently edited by the authors; (ii)~copy-editing for
-grammar, clarity, and concision; (iii)~consistency checks on terminology and
-notation. No section was written end-to-end by an LLM. All claims,
-experimental results, related-work positioning, and scientific interpretations
-are the authors' own. Every LLM-suggested citation was verified by retrieving
-the cited work.
+\bibitem{autoattacker24} J.~Xu \textit{et al.}, ``AutoAttacker: A large language model guided system to implement automatic cyber-attacks,'' \textit{arXiv:2403.01038}, 2024.
+
+\bibitem{nebula24} O.~V.~Aguinaga, ``Nebula: An LLM-powered penetration testing assistant,'' \textit{arXiv:2412.00006}, 2024.
+
+\bibitem{vulnbot25} H.~He \textit{et al.}, ``VulnBot: Autonomous penetration testing for a multi-agent collaborative framework,'' \textit{arXiv:2501.13411}, 2025.
+
+\bibitem{autopentester25} Y.~Ginige \textit{et al.}, ``AutoPentester: An LLM agent-based framework for automated pentesting,'' \textit{arXiv:2510.05605}, 2025.
+
+\bibitem{pentestagent25} X.~Shen \textit{et al.}, ``PentestAgent: Incorporating LLM agents to automated penetration testing,'' in \textit{Proc. 20th ACM Asia Conf. Computer and Communications Security (ASIA CCS)}, 2025. doi: 10.1145/3708821.3733882.
+
+\bibitem{cai25} V.~Mayoral-Vilches \textit{et al.}, ``CAI: An open, bug bounty-ready cybersecurity AI,'' \textit{arXiv:2504.06017}, 2025.
+
+\bibitem{pentestr125} Anonymous, ``Pentest-R1: Towards autonomous penetration testing reasoning optimized via two-stage reinforcement learning,'' \textit{arXiv:2508.07382}, 2025.
+
+\bibitem{xoffense25} Anonymous, ``xOffense: An AI-driven autonomous penetration testing framework with offensive knowledge-enhanced LLMs and multi-agent systems,'' \textit{arXiv:2509.13021}, 2025.
+
+\bibitem{enigma25} T.~Abramovich \textit{et al.}, ``EnIGMA: Interactive tools substantially assist LM agents in solving CTF challenges,'' in \textit{Proc. ICML}, 2025.
+
+\bibitem{iris25} Z.~Li, S.~Dutta, and M.~Naik, ``IRIS: LLM-assisted static analysis for detecting security vulnerabilities,'' in \textit{Proc. NDSS}, 2025.
+
+\bibitem{chap26} Anonymous, ``Context relay for long-running penetration-testing agents,'' in \textit{NDSS Workshop on LLM-Assisted Security and Trust Exploration (LAST-X)}, 2026.
+
+\bibitem{awe26} Anonymous, ``AWE: A memory-augmented multi-agent framework for autonomous web penetration testing,'' in \textit{NDSS Workshop on LLM-Assisted Security and Trust Exploration (LAST-X)}, 2026.
+
+\bibitem{checkmate25} Anonymous, ``Automated penetration testing with LLM agents and classical planning,'' \textit{arXiv:2512.11143}, 2025.
+
+\bibitem{autopenbench24} Anonymous, ``Towards automated penetration testing: Introducing LLM benchmark, analysis, and improvements,'' \textit{arXiv:2410.17141}, 2024.
+
+\bibitem{nyuctfbench24} M.~Shao \textit{et al.}, ``NYU CTF Bench: A scalable open-source benchmark dataset for evaluating LLMs in offensive security,'' in \textit{Proc. NeurIPS Datasets and Benchmarks Track}, 2024.
+
+\bibitem{cybench24} A.~K.~Zhang \textit{et al.}, ``Cybench: A framework for evaluating cybersecurity capabilities and risk of language models,'' \textit{arXiv:2408.08926}, 2024.
+
+\bibitem{cybereval24} M.~Bhatt \textit{et al.}, ``CyberSecEval~2: A wide-ranging cybersecurity evaluation suite for large language models,'' \textit{arXiv:2404.13161}, 2024.
+
+\bibitem{caibench25} V.~Mayoral-Vilches \textit{et al.}, ``CAIBench: A meta-benchmark for evaluating cybersecurity AI agents,'' \textit{arXiv:2510.24317}, 2025.
+
+\bibitem{ludus} Ludus Cloud, ``Ludus: Cyber range automation on Proxmox.'' [Online]. Available: https://ludus.cloud
+
+\bibitem{goad} M3, ``GOAD: Game of Active Directory.'' [Online]. Available: https://github.com/Orange-Cyberdefense/GOAD
+
+\bibitem{phillips98} C.~Phillips and L.~P.~Swiler, ``A graph-based system for network-vulnerability analysis,'' in \textit{Proc. New Security Paradigms Workshop}, 1998.
+
+\bibitem{sheyner02} O.~Sheyner, J.~Haines, S.~Jha, R.~Lippmann, and J.~M.~Wing, ``Automated generation and analysis of attack graphs,'' in \textit{Proc. IEEE Symp. Security and Privacy}, 2002.
+
+\bibitem{mulval05} X.~Ou, S.~Govindavajhala, and A.~W.~Appel, ``MulVAL: A logic-based network security analyzer,'' in \textit{Proc. USENIX Security Symp.}, 2005.
+
+\bibitem{owasp-iot} OWASP Foundation, ``OWASP Internet of Things Top~10,'' 2024. [Online]. Available: https://owasp.org/www-project-internet-of-things-top-10/
+
+\bibitem{mitre-ics} MITRE Corporation, ``MITRE ATT\&CK for ICS,'' 2024. [Online]. Available: https://attack.mitre.org/matrices/ics/
+
+\bibitem{nist80082} K.~Stouffer \textit{et al.}, ``Guide to operational technology security,'' National Institute of Standards and Technology, NIST SP\,800-82 Rev.\,3, 2023.
+
+\bibitem{costin14} A.~Costin, J.~Zaddach, A.~Francillon, and D.~Balzarotti, ``A large-scale analysis of the security of embedded firmwares,'' in \textit{Proc. USENIX Security Symp.}, 2014.
+
+\bibitem{firmadyne16} D.~D.~Chen, M.~Egele, M.~Woo, and D.~Brumley, ``Towards automated dynamic analysis for Linux-based embedded firmware,'' in \textit{Proc. NDSS}, 2016.
+
+\bibitem{firmae20} M.~Kim, D.~Kim, E.~Kim, S.~Kim, Y.~Jang, and Y.~Kim, ``FirmAE: Towards large-scale emulation of IoT firmware for dynamic analysis,'' in \textit{Proc. Annual Computer Security Applications Conf. (ACSAC)}, 2020.
+
+\bibitem{iotgoat} OWASP, ``IoTGoat: A deliberately insecure IoT firmware,'' 2024. [Online]. Available: https://github.com/OWASP/IoTGoat
+
+\bibitem{minimax27} MiniMax, ``MiniMax-M2.7: A general-purpose large language model,'' 2026. [Online]. Available: https://www.minimax.io/models/text/m27
+
+\end{thebibliography}
 
 \end{document}
