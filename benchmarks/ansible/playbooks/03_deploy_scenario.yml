@@ -162,8 +162,25 @@
         index_var: idx
       when: ct_checks.results[idx].rc != 0
 
+    - name: Laisser Proxmox finaliser les configs LXC fraîchement clonées
+      ansible.builtin.pause:
+        seconds: 3
+      when: ct_checks.results | selectattr('rc', 'ne', 0) | list | length > 0
+
     - name: Démarrer chaque CT service
-      ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
+      ansible.builtin.shell: |
+        set -e
+        vmid="{{ base_vmid | int + item.vmid_offset }}"
+        if pct status "$vmid" | grep -q "status: running"; then
+          echo "already running"
+          exit 0
+        fi
+        pct start "$vmid"
+        pct status "$vmid" | grep -q "status: running"
+      register: ct_start
+      until: ct_start.rc == 0
+      retries: 5
+      delay: 4
       loop: "{{ scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
