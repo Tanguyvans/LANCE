@@ -284,6 +284,50 @@ baseline with live remote status`.
 To run all three tools from the dashboard, choose `Run CAI + PentestGPT +
 VulnBot suite`.
 
+## External benchmark suites
+
+The external harness lets us run our agent on benchmarks used by the tools we
+compare against:
+
+- `xbow`: XBOW Validation Benchmarks used by PentestGPT.
+- `autopenbench`: AutoPenBench used by VulnBot and referenced by CAIBench.
+- `ai-pentest`: AI-Pentest-Benchmark metadata for VulnHub VM targets.
+
+Clone the upstream benchmark outside this repository, then inspect it:
+
+```bash
+python3 -m src.baselines external list \
+  --suite xbow \
+  --repo ../validation-benchmarks
+```
+
+Write a manifest for traceability:
+
+```bash
+python3 -m src.baselines external manifest \
+  --suite xbow \
+  --repo ../validation-benchmarks \
+  --output output/external_benchmarks/xbow_manifest.json
+```
+
+Dry-run a challenge to see the Docker and agent commands that will execute:
+
+```bash
+python3 -m src.baselines external run \
+  --suite xbow \
+  --repo ../validation-benchmarks \
+  --case XBEN-001-24 \
+  --agent-command 'python3 -m src.agent_external --target {target_url} --output-dir {output_dir} --provider minimax' \
+  --dry-run
+```
+
+The command template receives `{suite}`, `{case_id}`, `{target_url}`,
+`{output_dir}`, and `{flag}`. For XBOW and AutoPenBench, the harness builds and
+starts the benchmark with Docker Compose, runs the command, stores stdout/stderr,
+and marks success if the generated flag appears in the agent output. The
+AI-Pentest-Benchmark path is recorded as manual because those targets are
+VulnHub/VM based rather than Docker-compose challenges.
+
 ## Adapter scripts on the baseline VM
 
 The Ansible playbook creates placeholders:

@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.baselines import compare, deploy, install_tools, runner, ui, wizard
+from src.baselines import compare, deploy, external_benchmarks, install_tools, runner, ui, wizard
 from src.baselines.scenarios import load_scenario_targets
 
 
@@ -127,6 +127,27 @@ def main() -> None:
     ev = sub.add_parser("compare", help="Evaluate baseline run directories")
     ev.add_argument("run_dirs", nargs="+")
     ev.add_argument("--output", default=None)
+
+    external = sub.add_parser("external", help="Run our agent against third-party benchmark suites")
+    external_sub = external.add_subparsers(dest="external_command", required=True)
+    external_list = external_sub.add_parser("list", help="List cases from a local benchmark repo")
+    external_list.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
+    external_list.add_argument("--repo", required=True)
+    external_list.add_argument("--json", action="store_true")
+    external_manifest = external_sub.add_parser("manifest", help="Write a JSON manifest for a benchmark repo")
+    external_manifest.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
+    external_manifest.add_argument("--repo", required=True)
+    external_manifest.add_argument("--output", required=True)
+    external_run = external_sub.add_parser("run", help="Run one external benchmark case")
+    external_run.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
+    external_run.add_argument("--repo", required=True)
+    external_run.add_argument("--case", required=True)
+    external_run.add_argument("--agent-command", required=True)
+    external_run.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    external_run.add_argument("--flag", default=None)
+    external_run.add_argument("--timeout", default=1800, type=int)
+    external_run.add_argument("--dry-run", action="store_true")
+    external_run.add_argument("--keep-running", action="store_true")
 
     pilot = sub.add_parser("pilot-cai", help="Shortcut for the scenario_3 CAI pilot from the paper plan")
     pilot.add_argument("--baseline-host", required=True)
@@ -326,6 +347,41 @@ def main() -> None:
         if args.output:
             sys.argv.extend(["--output", args.output])
         compare.main()
+    elif args.command == "external":
+        if args.external_command == "list":
+            cases = external_benchmarks.discover_cases(args.suite, Path(args.repo))
+            if args.json:
+                import json
+
+                print(json.dumps([case.to_dict() for case in cases], indent=2, ensure_ascii=False))
+            else:
+                for case in cases:
+                    target = case.target_url or "-"
+                    level = f"L{case.level}" if case.level else "-"
+                    marker = "run" if case.runnable else "manual"
+                    print(f"{case.case_id}\t{level}\t{marker}\t{target}\t{case.description}")
+        elif args.external_command == "manifest":
+            print(
+                external_benchmarks.write_manifest(
+                    suite=args.suite,
+                    repo=Path(args.repo),
+                    output=Path(args.output),
+                )
+            )
+        elif args.external_command == "run":
+            print(
+                external_benchmarks.run_case(
+                    suite=args.suite,
+                    repo=Path(args.repo),
+                    case_id=args.case,
+                    agent_command=args.agent_command,
+                    output_dir=Path(args.output_dir),
+                    flag=args.flag,
+                    dry_run=args.dry_run,
+                    keep_running=args.keep_running,
+                    timeout_seconds=args.timeout,
+                )
+            )
     elif args.command == "pilot-cai":
         run_dir = runner.run_baseline(
             tool="cai",

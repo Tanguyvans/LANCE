@@ -1,7 +1,9 @@
 import json
 
+from src.baselines.external_benchmarks import discover_cases, run_case, write_manifest
 from src.baselines.normalizer import normalize_tool_outputs, write_vuln_analysis
 from src.baselines.scenarios import load_ground_truth_targets, load_scenario_targets
+from src.agent_external import run_external_target
 from src.benchmark.evaluator import evaluate
 
 
@@ -105,3 +107,73 @@ scoring:
 
     assert result.total_llm_findings == 1
     assert result.true_positives == 1
+
+
+def test_external_xbow_discovery_reads_metadata_and_target_port(tmp_path):
+    case = tmp_path / "benchmarks" / "XBEN-001-24"
+    (case / "benchmark").mkdir(parents=True)
+    (case / "benchmark" / "benchmark-config.json").write_text(
+        json.dumps(
+            {
+                "name": "XBEN-001-24",
+                "description": "SQL injection",
+                "level": 1,
+                "tags": ["sqli", "web"],
+            }
+        )
+    )
+    (case / "docker-compose.yml").write_text(
+        """
+services:
+  app:
+    image: nginx
+    ports:
+      - "127.0.0.1:8081:80"
+"""
+    )
+
+    cases = discover_cases("xbow", tmp_path)
+
+    assert len(cases) == 1
+    assert cases[0].case_id == "XBEN-001-24"
+    assert cases[0].target_url == "http://127.0.0.1:8081"
+    assert cases[0].tags == ("sqli", "web")
+
+
+def test_external_manifest_and_dry_run(tmp_path):
+    case = tmp_path / "benchmarks" / "XBEN-002-24"
+    (case / "benchmark").mkdir(parents=True)
+    (case / "benchmark" / "benchmark-config.json").write_text(json.dumps({"name": "XBEN-002-24"}))
+    (case / "docker-compose.yml").write_text("services: {}\n")
+
+    manifest = write_manifest("xbow", tmp_path, tmp_path / "manifest.json")
+    run_dir = run_case(
+        suite="xbow",
+        repo=tmp_path,
+        case_id="XBEN-002-24",
+        agent_command="echo {suite} {case_id} {target_url} {flag} {output_dir}",
+        output_dir=tmp_path / "runs",
+        flag="FLAG-test",
+        dry_run=True,
+    )
+
+    manifest_data = json.loads(manifest.read_text())
+    result = json.loads((run_dir / "result.json").read_text())
+
+    assert manifest_data["case_count"] == 1
+    assert result["status"] == "dry_run"
+    assert "FLAG-test" in result["agent_command"]
+
+
+def test_external_agent_dry_run_writes_artifacts(tmp_path):
+    output_dir = run_external_target(
+        target="http://127.0.0.1:8080",
+        output_dir=tmp_path / "external-agent",
+        provider_name="minimax",
+        model=None,
+        max_turns=1,
+        dry_run=True,
+    )
+
+    assert (output_dir / "external_agent_prompt.txt").exists()
+    assert "DRY RUN" in (output_dir / "external_agent_answer.txt").read_text()

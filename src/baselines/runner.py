@@ -106,6 +106,7 @@ def _fetch_remote_log(
     local_output: Path,
     local_logs_dir: Path,
     event_callback: EventCallback | None = None,
+    quiet: bool = False,
 ) -> Path | None:
     try:
         data = json.loads(local_output.read_text(encoding="utf-8"))
@@ -118,7 +119,12 @@ def _fetch_remote_log(
     local_logs_dir.mkdir(parents=True, exist_ok=True)
     local_log = local_logs_dir / f"{local_output.stem}{Path(raw_log).suffix or '.log'}"
     try:
-        subprocess.run(["scp", f"{baseline_host}:{raw_log}", str(local_log)], check=True)
+        subprocess.run(
+            ["scp", f"{baseline_host}:{raw_log}", str(local_log)],
+            check=True,
+            stdout=subprocess.DEVNULL if quiet else None,
+            stderr=subprocess.DEVNULL if quiet else None,
+        )
     except subprocess.CalledProcessError:
         _emit(event_callback, "remote_log_fetch_failed", output=str(local_output), remote_log=raw_log)
         return None
@@ -174,7 +180,11 @@ def _run_remote_target(
         remote_output=remote_output,
     )
     started = time.monotonic()
-    process = subprocess.Popen(["ssh", baseline_host, wrapped])
+    process = subprocess.Popen(
+        ["ssh", baseline_host, wrapped],
+        stdout=subprocess.DEVNULL if quiet else None,
+        stderr=subprocess.DEVNULL if quiet else None,
+    )
     last_heartbeat = started
     while True:
         rc = process.poll()
@@ -217,8 +227,13 @@ def _run_remote_target(
         _log(f"finished target {target.ip} in {elapsed}s; fetching result")
     _emit(event_callback, "target_finished", target=asdict(target), elapsed=elapsed)
     local_raw_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["scp", f"{baseline_host}:{remote_output}", str(local_output)], check=True)
-    _fetch_remote_log(baseline_host, local_output, local_logs_dir, event_callback)
+    subprocess.run(
+        ["scp", f"{baseline_host}:{remote_output}", str(local_output)],
+        check=True,
+        stdout=subprocess.DEVNULL if quiet else None,
+        stderr=subprocess.DEVNULL if quiet else None,
+    )
+    _fetch_remote_log(baseline_host, local_output, local_logs_dir, event_callback, quiet=quiet)
     if not quiet:
         _log(f"saved raw result: {local_output}")
     _emit(event_callback, "target_result_saved", target=asdict(target), output=str(local_output))
