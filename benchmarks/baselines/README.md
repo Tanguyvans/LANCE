@@ -226,12 +226,26 @@ python3 -m src.baselines run \
   --baseline-host root@192.168.88.36
 ```
 
+Run several targets in parallel when a tool is too slow:
+
+```bash
+python3 -m src.baselines run \
+  --tool cai \
+  --scenario 3 \
+  --baseline-host root@192.168.88.36 \
+  --jobs 2
+```
+
+Start with `--jobs 2` for CAI. Higher values can be faster, but they also
+increase API concurrency and load on the baseline VM.
+
 Run the three comparison baselines sequentially for the same scenario:
 
 ```bash
 python3 -m src.baselines suite \
   --scenario 3 \
-  --baseline-host root@192.168.88.36
+  --baseline-host root@192.168.88.36 \
+  --jobs 2
 ```
 
 Before the suite starts, the CLI refreshes the real adapter wrappers on the

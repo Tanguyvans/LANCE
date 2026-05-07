@@ -108,6 +108,7 @@ def main() -> None:
     run.add_argument("--output-dir", default=str(runner.DEFAULT_OUTPUT_DIR))
     run.add_argument("--no-router", action="store_true")
     run.add_argument("--dry-run", action="store_true")
+    run.add_argument("--jobs", default=1, type=int, help="Number of targets to run in parallel")
 
     suite = sub.add_parser("suite", help="Run CAI, PentestGPT and VulnBot sequentially for one scenario")
     suite.add_argument("--scenario", required=True)
@@ -123,6 +124,7 @@ def main() -> None:
     suite.add_argument("--no-router", action="store_true")
     suite.add_argument("--dry-run", action="store_true")
     suite.add_argument("--no-refresh-adapters", action="store_true")
+    suite.add_argument("--jobs", default=1, type=int, help="Number of targets to run in parallel per tool")
 
     ev = sub.add_parser("compare", help="Evaluate baseline run directories")
     ev.add_argument("run_dirs", nargs="+")
@@ -319,6 +321,7 @@ def main() -> None:
             "--target-source", args.target_source,
             "--config", args.config,
             "--output-dir", args.output_dir,
+            "--jobs", str(args.jobs),
         ]
         if args.no_router:
             sys.argv.append("--no-router")
@@ -340,6 +343,7 @@ def main() -> None:
             include_router=not args.no_router,
             dry_run=args.dry_run,
             refresh_adapters=not args.no_refresh_adapters,
+            jobs=args.jobs,
         )
         print(suite_dir)
     elif args.command == "compare":
@@ -392,6 +396,7 @@ def main() -> None:
             max_turns=int(args.max_turns),
             model=args.model,
             dry_run=args.dry_run,
+            jobs=1,
         )
         print(run_dir)
     elif args.command == "wizard":

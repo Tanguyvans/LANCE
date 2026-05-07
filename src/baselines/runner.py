@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -255,6 +256,7 @@ def run_baseline(
     dry_run: bool = False,
     event_callback: EventCallback | None = None,
     quiet: bool = False,
+    jobs: int = 1,
 ) -> Path:
     config = load_tool_config(tool, config_file)
     if not dry_run:
@@ -297,11 +299,13 @@ def run_baseline(
         target_count=len(targets),
         baseline_host=baseline_host,
         run_dir=str(run_dir),
+        jobs=max(1, jobs),
     )
 
     started_at = datetime.now()
     target_outputs: list[tuple[BaselineTarget, Path]] = []
-    for index, target in enumerate(targets, 1):
+
+    def run_one(index: int, target: BaselineTarget) -> tuple[BaselineTarget, Path]:
         if not quiet:
             _log(f"target {index}/{len(targets)}: {target.ip} ({target.name}, {target.source})")
         _emit(event_callback, "target_selected", index=index, total=len(targets), target=asdict(target))
@@ -320,7 +324,24 @@ def run_baseline(
             event_callback=event_callback,
             quiet=quiet,
         )
-        target_outputs.append((target, local_output))
+        return target, local_output
+
+    if jobs <= 1 or len(targets) <= 1:
+        for index, target in enumerate(targets, 1):
+            target_outputs.append(run_one(index, target))
+    else:
+        max_workers = min(max(1, jobs), len(targets))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(run_one, index, target): (index, target)
+                for index, target in enumerate(targets, 1)
+            }
+            completed: list[tuple[int, BaselineTarget, Path]] = []
+            for future in as_completed(futures):
+                index, target = futures[future]
+                completed_target, local_output = future.result()
+                completed.append((index, completed_target, local_output))
+            target_outputs = [(target, output) for _, target, output in sorted(completed, key=lambda item: item[0])]
 
     if not quiet:
         _log("normalizing findings")
@@ -346,6 +367,7 @@ def run_baseline(
                 "baseline_host": baseline_host,
                 "target_count": len(targets),
                 "finding_count": len(findings),
+                "jobs": max(1, jobs),
                 "dry_run": dry_run,
                 "started_at": started_at.isoformat(timespec="seconds"),
                 "finished_at": finished_at.isoformat(timespec="seconds"),
@@ -406,6 +428,7 @@ def run_suite(
     event_callback: EventCallback | None = None,
     quiet: bool = False,
     refresh_adapters: bool = True,
+    jobs: int = 1,
 ) -> Path:
     suite_name = f"scenario_{scenario_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     suite_dir = output_dir / "suites" / suite_name
@@ -447,6 +470,7 @@ def run_suite(
             dry_run=dry_run,
             event_callback=event_callback,
             quiet=quiet,
+            jobs=jobs,
         )
         run_dirs.append(run_dir)
         _emit(event_callback, "suite_tool_done", tool=tool, run_dir=str(run_dir), index=index, total=len(selected_tools))
@@ -481,6 +505,7 @@ def run_suite(
         "baseline_host": baseline_host,
         "tools": list(selected_tools),
         "dry_run": dry_run,
+        "jobs": max(1, jobs),
         "suite_dir": str(suite_dir),
         "run_dirs": [str(path) for path in run_dirs],
         "scores": scores,
@@ -507,6 +532,7 @@ def main() -> None:
     parser.add_argument("--suite", action="store_true", help="Run CAI, PentestGPT and VulnBot sequentially")
     parser.add_argument("--tools", default=",".join(DEFAULT_SUITE_TOOLS), help="Comma-separated tools for --suite")
     parser.add_argument("--no-refresh-adapters", action="store_true", help="Do not refresh remote adapters before --suite")
+    parser.add_argument("--jobs", default=1, type=int, help="Number of targets to run in parallel")
     args = parser.parse_args()
 
     if args.suite:
@@ -524,6 +550,7 @@ def main() -> None:
             include_router=not args.no_router,
             dry_run=args.dry_run,
             refresh_adapters=not args.no_refresh_adapters,
+            jobs=args.jobs,
         )
         print(suite_dir)
     else:
@@ -540,6 +567,7 @@ def main() -> None:
             output_dir=args.output_dir,
             include_router=not args.no_router,
             dry_run=args.dry_run,
+            jobs=args.jobs,
         )
         print(run_dir)
 

@@ -2,6 +2,7 @@ import json
 
 from src.baselines.external_benchmarks import discover_cases, run_case, write_manifest
 from src.baselines.normalizer import normalize_tool_outputs, write_vuln_analysis
+from src.baselines.runner import run_baseline
 from src.baselines.scenarios import load_ground_truth_targets, load_scenario_targets
 from src.agent_external import run_external_target
 from src.benchmark.evaluator import evaluate
@@ -177,3 +178,23 @@ def test_external_agent_dry_run_writes_artifacts(tmp_path):
 
     assert (output_dir / "external_agent_prompt.txt").exists()
     assert "DRY RUN" in (output_dir / "external_agent_answer.txt").read_text()
+
+
+def test_parallel_baseline_dry_run_writes_all_targets(tmp_path):
+    run_dir = run_baseline(
+        tool="cai",
+        scenario_id="1",
+        baseline_host="root@example",
+        max_turns=1,
+        output_dir=tmp_path,
+        dry_run=True,
+        quiet=True,
+        jobs=2,
+    )
+
+    metadata = json.loads((run_dir / "metadata.json").read_text())
+    raw_files = list((run_dir / "raw").glob("*.json"))
+
+    assert metadata["jobs"] == 2
+    assert metadata["target_count"] == len(raw_files)
+    assert metadata["target_count"] > 1

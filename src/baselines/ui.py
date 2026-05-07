@@ -57,6 +57,7 @@ class DashboardState:
     scope: str = DEFAULT_SCOPE
     model: str = DEFAULT_MODEL
     max_turns: int = 40
+    jobs: int = 1
     last_run_dir: Path | None = None
     last_suite_dir: Path | None = None
     status: str = "Idle"
@@ -91,6 +92,7 @@ def _render_header(state: DashboardState, compact: bool = False):
         line = (
             f"[bold]S{state.scenario_id}[/bold]  "
             f"[cyan]{state.tool}[/cyan]  "
+            f"jobs={state.jobs}  "
             f"{state.baseline_host}  "
             f"[dim]{state.model}[/dim]"
         )
@@ -106,6 +108,7 @@ def _render_header(state: DashboardState, compact: bool = False):
     table.add_row("[bold]Scope[/bold]", state.scope)
     table.add_row("[bold]Model[/bold]", state.model)
     table.add_row("[bold]Max turns[/bold]", str(state.max_turns))
+    table.add_row("[bold]Parallel jobs[/bold]", str(state.jobs))
     table.add_row("[bold]Last run[/bold]", str(state.last_run_dir or "-"))
     table.add_row("[bold]Last suite[/bold]", str(state.last_suite_dir or "-"))
     return Panel(table, title="NATO Smart City IoT Baseline", border_style="cyan")
@@ -361,6 +364,11 @@ def _configure(console: Console, state: DashboardState) -> None:
         state.max_turns = int(turns)
     except ValueError:
         console.print("[red]Invalid max turns; keeping previous value.[/red]")
+    jobs = _ask(console, "Parallel jobs", str(state.jobs))
+    try:
+        state.jobs = max(1, int(jobs))
+    except ValueError:
+        console.print("[red]Invalid parallel jobs; keeping previous value.[/red]")
 
 
 def _setup_baseline_tools(console: Console, state: DashboardState) -> None:
@@ -424,6 +432,8 @@ def _run_tool_live(console: Console, state: DashboardState) -> None:
         expand=True,
     )
     task_id = progress.add_task("Targets", total=1)
+    active_targets: set[str] = set()
+    completed_targets = 0
 
     def on_event(event: dict[str, Any]) -> None:
         name = event["event"]
@@ -431,24 +441,32 @@ def _run_tool_live(console: Console, state: DashboardState) -> None:
             state.status = "Running"
             state.target_count = int(event["target_count"])
             progress.update(task_id, total=state.target_count)
-            _push_log(state, f"Run started: {event['tool']} S{event['scenario_id']} -> {event['run_dir']}")
+            _push_log(
+                state,
+                f"Run started: {event['tool']} S{event['scenario_id']} jobs={event.get('jobs', 1)} -> {event['run_dir']}",
+            )
         elif name == "target_selected":
             target = event["target"]
-            state.current_index = int(event["index"])
-            state.current_target = f"{target['ip']} ({target['name']})"
-            _push_log(state, f"Target {state.current_index}/{event['total']}: {target['ip']}")
+            _push_log(state, f"Target {event['index']}/{event['total']}: {target['ip']}")
         elif name == "target_start":
             target = event["target"]
             tool = event.get("tool", state.tool)
             state.status = f"Remote {tool} running"
+            active_targets.add(target["ip"])
+            state.current_target = ", ".join(sorted(active_targets)) or "-"
             _push_log(state, f"Started remote {tool} on {target['ip']}")
         elif name == "target_heartbeat":
             target = event["target"]
             _push_log(state, f"{target['ip']} still running after {event['elapsed']}s")
         elif name == "target_finished":
             target = event["target"]
+            active_targets.discard(target["ip"])
+            state.current_target = ", ".join(sorted(active_targets)) or "-"
             _push_log(state, f"{target['ip']} finished in {event['elapsed']}s")
         elif name == "target_result_saved":
+            nonlocal completed_targets
+            completed_targets += 1
+            state.current_index = completed_targets
             progress.update(task_id, advance=1)
             _push_log(state, f"Saved {event['output']}")
         elif name == "remote_log_saved":
@@ -493,6 +511,7 @@ def _run_tool_live(console: Console, state: DashboardState) -> None:
             model=state.model,
             event_callback=wrapped_event,
             quiet=True,
+            jobs=state.jobs,
         )
         live.update(_render_live(state, progress))
 
@@ -515,6 +534,8 @@ def _run_suite_live(console: Console, state: DashboardState) -> None:
         expand=True,
     )
     task_id = progress.add_task("Suite targets", total=len(runner.DEFAULT_SUITE_TOOLS))
+    active_targets: set[str] = set()
+    completed_targets = 0
 
     def on_event(event: dict[str, Any]) -> None:
         name = event["event"]
@@ -536,24 +557,32 @@ def _run_suite_live(console: Console, state: DashboardState) -> None:
             state.status = f"Running {event['tool']}"
             state.target_count = int(event["target_count"])
             progress.update(task_id, total=state.target_count * len(runner.DEFAULT_SUITE_TOOLS))
-            _push_log(state, f"Run started: {event['tool']} S{event['scenario_id']} -> {event['run_dir']}")
+            _push_log(
+                state,
+                f"Run started: {event['tool']} S{event['scenario_id']} jobs={event.get('jobs', 1)} -> {event['run_dir']}",
+            )
         elif name == "target_selected":
             target = event["target"]
-            state.current_index = int(event["index"])
-            state.current_target = f"{target['ip']} ({target['name']})"
-            _push_log(state, f"{state.tool} target {state.current_index}/{event['total']}: {target['ip']}")
+            _push_log(state, f"{state.tool} target {event['index']}/{event['total']}: {target['ip']}")
         elif name == "target_start":
             target = event["target"]
             tool = event.get("tool", state.tool)
             state.status = f"Remote {tool} running"
+            active_targets.add(target["ip"])
+            state.current_target = ", ".join(sorted(active_targets)) or "-"
             _push_log(state, f"Started remote {tool} on {target['ip']}")
         elif name == "target_heartbeat":
             target = event["target"]
             _push_log(state, f"{state.tool} {target['ip']} still running after {event['elapsed']}s")
         elif name == "target_finished":
             target = event["target"]
+            active_targets.discard(target["ip"])
+            state.current_target = ", ".join(sorted(active_targets)) or "-"
             _push_log(state, f"{state.tool} {target['ip']} finished in {event['elapsed']}s")
         elif name == "target_result_saved":
+            nonlocal completed_targets
+            completed_targets += 1
+            state.current_index = completed_targets
             progress.update(task_id, advance=1)
             _push_log(state, f"Saved {event['output']}")
         elif name == "remote_log_saved":
@@ -602,6 +631,7 @@ def _run_suite_live(console: Console, state: DashboardState) -> None:
             model=state.model,
             event_callback=wrapped_event,
             quiet=True,
+            jobs=state.jobs,
         )
         state.tool = previous_tool
         live.update(_render_live(state, progress))

@@ -25,6 +25,7 @@ class WizardState:
     scope: str = DEFAULT_SCOPE
     model: str = DEFAULT_MODEL
     max_turns: int = 40
+    jobs: int = 1
     last_run_dir: Path | None = None
     last_suite_dir: Path | None = None
 
@@ -57,6 +58,7 @@ def _print_header(state: WizardState) -> None:
     print(f"Scope         : {state.scope}")
     print(f"Model         : {state.model}")
     print(f"Max turns     : {state.max_turns}")
+    print(f"Parallel jobs : {state.jobs}")
     print(f"Last run      : {state.last_run_dir or '-'}")
     print(f"Last suite    : {state.last_suite_dir or '-'}")
     print("-" * 72)
@@ -77,6 +79,11 @@ def _configure(state: WizardState) -> None:
         state.max_turns = int(raw_turns)
     except ValueError:
         print("Invalid max turns, keeping previous value.")
+    raw_jobs = _ask("Parallel jobs", str(state.jobs))
+    try:
+        state.jobs = max(1, int(raw_jobs))
+    except ValueError:
+        print("Invalid parallel jobs, keeping previous value.")
 
 
 def _change_scenario(state: WizardState) -> None:
@@ -185,6 +192,7 @@ def _run_selected_tool(state: WizardState) -> None:
         scope=state.scope,
         max_turns=state.max_turns,
         model=state.model,
+        jobs=state.jobs,
     )
     print(f"Run completed: {state.last_run_dir}")
 
@@ -197,6 +205,7 @@ def _run_suite(state: WizardState) -> None:
         scope=state.scope,
         max_turns=state.max_turns,
         model=state.model,
+        jobs=state.jobs,
     )
     print(f"Suite completed: {state.last_suite_dir}")
 
