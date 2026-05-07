@@ -86,7 +86,17 @@ def _push_log(state: DashboardState, message: str) -> None:
     state.logs = state.logs[-8:]
 
 
-def _render_header(state: DashboardState):
+def _render_header(state: DashboardState, compact: bool = False):
+    if compact:
+        line = (
+            f"[bold]S{state.scenario_id}[/bold]  "
+            f"[cyan]{state.tool}[/cyan]  "
+            f"{state.baseline_host}  "
+            f"[dim]{state.model}[/dim]"
+        )
+        last = f"Last run: {state.last_run_dir or '-'} | Last suite: {state.last_suite_dir or '-'}"
+        return Panel(f"{line}\n[dim]{last}[/dim]", title="NATO Smart City IoT Baseline", border_style="cyan")
+
     table = Table.grid(expand=True)
     table.add_column(ratio=1)
     table.add_column(ratio=1)
@@ -141,12 +151,17 @@ def _read_key() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def _render_dashboard_shell(state: DashboardState, selected: int) -> Group:
+def _render_dashboard_shell(state: DashboardState, selected: int, compact: bool = False) -> Group:
     return Group(
         Align.center("[bold cyan]NATO Smart City IoT[/bold cyan] [white]Baseline Terminal[/white]"),
-        _render_header(state),
+        _render_header(state, compact=compact),
         _render_menu(selected),
     )
+
+
+def _clear_console(console: Console) -> None:
+    console.file.write("\033[2J\033[H")
+    console.file.flush()
 
 
 def _select_action(console: Console, state: DashboardState, selected: int) -> tuple[str, int]:
@@ -158,31 +173,22 @@ def _select_action(console: Console, state: DashboardState, selected: int) -> tu
                 return key, index
         return choice, selected
 
-    with Live(
-        _render_dashboard_shell(state, selected),
-        console=console,
-        refresh_per_second=12,
-        screen=True,
-        redirect_stdout=True,
-        redirect_stderr=True,
-        vertical_overflow="crop",
-    ) as live:
-        while True:
-            key = _read_key()
-            if key in {"\x1b[A", "k"}:
-                selected = (selected - 1) % len(MENU_ACTIONS)
-                live.update(_render_dashboard_shell(state, selected), refresh=True)
-            elif key in {"\x1b[B", "j"}:
-                selected = (selected + 1) % len(MENU_ACTIONS)
-                live.update(_render_dashboard_shell(state, selected), refresh=True)
-            elif key in {"\r", "\n"}:
-                return MENU_ACTIONS[selected][0], selected
-            elif key.lower() == "q":
-                return "0", selected
-            else:
-                for index, (menu_key, _) in enumerate(MENU_ACTIONS):
-                    if key == menu_key:
-                        return menu_key, index
+    while True:
+        _clear_console(console)
+        console.print(_render_dashboard_shell(state, selected, compact=console.height < 34))
+        key = _read_key()
+        if key in {"\x1b[A", "k"}:
+            selected = (selected - 1) % len(MENU_ACTIONS)
+        elif key in {"\x1b[B", "j"}:
+            selected = (selected + 1) % len(MENU_ACTIONS)
+        elif key in {"\r", "\n"}:
+            return MENU_ACTIONS[selected][0], selected
+        elif key.lower() == "q":
+            return "0", selected
+        else:
+            for index, (menu_key, _) in enumerate(MENU_ACTIONS):
+                if key == menu_key:
+                    return menu_key, index
 
 
 def _select_choice(
@@ -205,27 +211,18 @@ def _select_choice(
     def render_choice() -> Panel:
         return _render_choice_menu(title, [(label, description) for label, description, _ in options], selected)
 
-    with Live(
-        render_choice(),
-        console=console,
-        refresh_per_second=12,
-        screen=True,
-        redirect_stdout=True,
-        redirect_stderr=True,
-        vertical_overflow="crop",
-    ) as live:
-        while True:
-            key = _read_key()
-            if key in {"\x1b[A", "k"}:
-                selected = (selected - 1) % len(options)
-                live.update(render_choice(), refresh=True)
-            elif key in {"\x1b[B", "j"}:
-                selected = (selected + 1) % len(options)
-                live.update(render_choice(), refresh=True)
-            elif key in {"\r", "\n"}:
-                return options[selected][2]
-            elif key.lower() == "q":
-                return current
+    while True:
+        _clear_console(console)
+        console.print(render_choice())
+        key = _read_key()
+        if key in {"\x1b[A", "k"}:
+            selected = (selected - 1) % len(options)
+        elif key in {"\x1b[B", "j"}:
+            selected = (selected + 1) % len(options)
+        elif key in {"\r", "\n"}:
+            return options[selected][2]
+        elif key.lower() == "q":
+            return current
 
 
 def _ask_yes_no(console: Console, prompt: str, default: bool = True) -> bool:
