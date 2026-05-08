@@ -55,6 +55,12 @@ Open the guided terminal interface:
 python3 -m src.baselines dashboard
 ```
 
+or, if you prefer a tiny launcher script:
+
+```bash
+./scripts/baselines-dashboard.sh
+```
+
 If `rich` is not installed, use the plain fallback:
 
 ```bash
@@ -152,13 +158,15 @@ python3 -m src.baselines targets --scenario 3
 Deploy and prepare a benchmark scenario:
 
 ```bash
-python3 -m src.baselines deploy-scenario --scenario 3
+python3 -m src.baselines deploy-scenario --scenario 3 --verify
 ```
 
-`deploy-scenario` already runs the full preparation chain:
+`deploy-scenario` already deploys, injects vulnerabilities, and populates the
+services by default. Add `--verify` when you want the command to block unless
+the critical vulnerabilities are really present:
 
 ```text
-03_deploy_scenario.yml -> 04_inject_vulns.yml -> 05_populate_services.yml
+03_deploy_scenario.yml -> 04_inject_vulns.yml -> 05_populate_services.yml -> 06_verify.yml
 ```
 
 If the scenario is already deployed and you only want to re-inject the
@@ -298,6 +306,15 @@ baseline with live remote status`.
 To run all three tools from the dashboard, choose `Run CAI + PentestGPT +
 VulnBot suite`.
 
+To run our agent on external suites from the same dashboard, choose
+`Run our agent on external benchmark suite`. The TUI lets you:
+
+1. choose `Vulhub`, `AutoPenBench`, `XBOW`, or `AI-Pentest`;
+2. clone Vulhub / AutoPenBench automatically if the repo is missing;
+3. filter cases by name/CVE/category;
+4. run in dry-run mode first, then real mode;
+5. open the saved result directory under `output/external_benchmarks/`.
+
 ## External benchmark suites
 
 The external harness lets us run our agent on benchmarks used by the tools we
@@ -305,41 +322,67 @@ compare against:
 
 - `xbow`: XBOW Validation Benchmarks used by PentestGPT.
 - `autopenbench`: AutoPenBench used by VulnBot and referenced by CAIBench.
+- `vulhub`: Docker Compose vulnerable labs used by many pentest agents.
 - `ai-pentest`: AI-Pentest-Benchmark metadata for VulnHub VM targets.
 
 Clone the upstream benchmark outside this repository, then inspect it:
 
 ```bash
+git clone https://github.com/vulhub/vulhub ../vulhub
+git clone https://github.com/lucagioacchini/auto-pen-bench ../auto-pen-bench
+
 python3 -m src.baselines external list \
-  --suite xbow \
-  --repo ../validation-benchmarks
+  --suite vulhub \
+  --repo ../vulhub
+
+python3 -m src.baselines external list \
+  --suite autopenbench \
+  --repo ../auto-pen-bench
 ```
+
+The dashboard can do the Vulhub / AutoPenBench clone step for you if those
+folders do not exist yet.
 
 Write a manifest for traceability:
 
 ```bash
 python3 -m src.baselines external manifest \
-  --suite xbow \
-  --repo ../validation-benchmarks \
-  --output output/external_benchmarks/xbow_manifest.json
+  --suite vulhub \
+  --repo ../vulhub \
+  --output output/external_benchmarks/vulhub_manifest.json
 ```
 
 Dry-run a challenge to see the Docker and agent commands that will execute:
 
 ```bash
 python3 -m src.baselines external run \
-  --suite xbow \
-  --repo ../validation-benchmarks \
-  --case XBEN-001-24 \
+  --suite vulhub \
+  --repo ../vulhub \
+  --case struts2/s2-045 \
   --agent-command 'python3 -m src.agent_external --target {target_url} --output-dir {output_dir} --provider minimax' \
   --dry-run
 ```
 
+Run an AutoPenBench task. The harness reads `data/games.json`, keeps the
+official expected flag, and exposes the task text to the agent command:
+
+```bash
+python3 -m src.baselines external run \
+  --suite autopenbench \
+  --repo ../auto-pen-bench \
+  --case in-vitro_recon_target1 \
+  --agent-command 'python3 -m src.agent_external --target {target_name} --hint "{task}" --output-dir {output_dir} --provider minimax'
+```
+
 The command template receives `{suite}`, `{case_id}`, `{target_url}`,
-`{output_dir}`, and `{flag}`. For XBOW and AutoPenBench, the harness builds and
-starts the benchmark with Docker Compose, runs the command, stores stdout/stderr,
-and marks success if the generated flag appears in the agent output. The
-AI-Pentest-Benchmark path is recorded as manual because those targets are
+`{target_name}`, `{task}`, `{vulnerability}`, `{output_dir}`, and `{flag}`.
+For XBOW and AutoPenBench, the harness builds the benchmark with Docker Compose.
+For Vulhub, it starts the compose stack directly because most cases use
+pre-built images. Each run stores `planned.json`, `agent_stdout.txt`,
+`agent_stderr.txt`, and `result.json`. Success is flag-based when a flag is
+known; Vulhub cases usually need either `--flag` or manual inspection of the
+saved output because upstream does not define one universal flag format.
+The AI-Pentest-Benchmark path is recorded as manual because those targets are
 VulnHub/VM based rather than Docker-compose challenges.
 
 ## Adapter scripts on the baseline VM

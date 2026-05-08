@@ -2,9 +2,10 @@
 
 ## Overview
 
-Cybersecurity platform for Smart City IoT infrastructures. Models an IoT network as a directed graph, runs a multi-phase LLM agent pipeline (inspired by Shannon / LLMDFA) that reconnoitres, exploits, and reports on detected vulnerabilities, and scores every run against a ground truth. The platform primarily operates on **disposable Proxmox scenarios** — never against production hardware — and ships three modes:
+Cybersecurity platform for Smart City IoT infrastructures. Models an IoT network as a directed graph, runs a multi-phase LLM agent pipeline (inspired by Shannon / LLMDFA) that reconnoitres, exploits, and reports on detected vulnerabilities, and scores every run against a ground truth. The platform primarily operates on **disposable Proxmox scenarios** — never against production hardware — and ships four modes:
 
-- **Benchmark mode** — runs 14 scripted scenarios on Proxmox (`192.168.100.0/24`, isolated `vmbr1` bridge) to score LLMs against ground-truth YAMLs (Recall / Precision / F1 / weighted Score).
+- **Benchmark mode** — runs scripted Proxmox scenarios on isolated benchmark bridges to score LLMs against ground-truth YAMLs (Recall / Precision / F1 / weighted Score).
+- **Baseline comparison mode** — runs CAI, PentestGPT, and VulnBot from an isolated baseline VM against our IoT scenarios, then runs our agent against external suites such as Vulhub and AutoPenBench.
 - **Discovery mode** (Docker) — starts with an empty graph, nmap-discovers any target network from a user-supplied CIDR, displays hosts live in the dashboard.
 - **Reference lab mode** — the `S3 · Réplique NATO Lab` scenario mirrors the real IoT lab topology (LoRaWAN / Zigbee / MQTT / cameras) inside Proxmox, so the same pipeline can be validated against an NATO-Lab-like environment without touching physical devices.
 
@@ -44,6 +45,7 @@ All offensive testing happens on disposable VMs on a **Proxmox** hypervisor, nev
 | `S10` | Flat avec variantes | Hardening A/B variants |
 | `S11` | Smart City 3 zones | Multi-zone smart-city |
 | `S12` | Smart City Large Scale | 35 devices — IT / IoT / OT / cameras / PLCs (shown in screenshot above) |
+| `S13` | VLAN Segmented Network | Real VLAN-aware IT / IoT / OT segmentation with intentional bypasses |
 
 Full scenario definitions, ground truth, and playbook reference: see [benchmarks/README.md](benchmarks/README.md) and [benchmarks/ansible/README.md](benchmarks/ansible/README.md).
 
@@ -52,6 +54,29 @@ Full scenario definitions, ground truth, and playbook reference: see [benchmarks
 Each run's `04_exploitation.json` (falling back to `03_vuln_analysis.json`) is matched against `benchmarks/ground_truth/scenario_N.yaml` and scored: Recall, Precision, F1, weighted Score (CRITICAL=4 / HIGH=3 / MEDIUM=2 / LOW=1), with penalties for severity mismatch (×0.75) and loose-category matches (×0.5). Runs can be filtered by scenario and model, and added to a comparison basket.
 
 ![Benchmark tab — one row per run with cost, recall, precision, F1, score, severity, hallucination rate](docs/images/dashboard-benchmark.png)
+
+## Baseline and external-suite comparison
+
+The project supports comparison in both directions:
+
+- **External tools on our scenarios**: CAI, PentestGPT, and VulnBot run on a separate baseline LXC so their dependencies cannot break the master VM. The terminal TUI can deploy/reset scenarios, inject vulnerabilities, run one tool, or run the three-tool suite sequentially with optional parallel target jobs.
+- **Our agent on their benchmarks**: the external harness discovers Docker Compose challenges from Vulhub and AutoPenBench, starts the target stack, runs `src.agent_external`, and stores the full command plan, stdout/stderr, and result JSON for paper traceability.
+
+```bash
+# Interactive terminal UI for our scenarios + baseline tools
+python3 -m src.baselines dashboard
+# same thing through a tiny launcher
+./scripts/baselines-dashboard.sh
+
+# Run CAI, PentestGPT, and VulnBot on one scenario
+python3 -m src.baselines suite --scenario 3 --baseline-host root@192.168.88.36 --jobs 2
+
+# Inspect external benchmark suites cloned next to the repo
+python3 -m src.baselines external list --suite vulhub --repo ../vulhub
+python3 -m src.baselines external list --suite autopenbench --repo ../auto-pen-bench
+```
+
+See [benchmarks/baselines/README.md](benchmarks/baselines/README.md) for the full CLI/TUI workflow and external-suite command templates.
 
 ## Pipeline Architecture
 
@@ -222,7 +247,7 @@ NATO-SmartCity-IoT/
 │       │   ├── tool_loader.py     # YAML → subprocess/handler/hardware tool engine
 │       │   ├── skill_tools.py     # list_skills / load_skill / search_knowledge / cve_search
 │       │   ├── deliverable.py     # save/read/list deliverables + aggregate_device_results
-│       │   └── definitions/       # 18 YAML tool definitions
+│       │   └── definitions/       # 21 YAML tool definitions
 │       │       ├── nmap.yaml, nmap_discovery.yaml, arp_scan.yaml
 │       │       ├── ssh_audit.yaml, ssh_login.yaml, telnet_connect.yaml
 │       │       ├── curl_headers.yaml, http_get.yaml, ftp_list.yaml
@@ -247,7 +272,7 @@ NATO-SmartCity-IoT/
 ├── benchmarks/                    # IoT Security Benchmark (Proxmox + Ansible)
 │   ├── README.md                  # Benchmark overview (scenarios, metrics, playbooks)
 │   ├── ansible/                   # Playbooks + roles (see benchmarks/ansible/README.md)
-│   ├── scenarios/                 # S1…S12 + S1h, S4h (hard variants)
+│   ├── scenarios/                 # S1…S13 + S1h, S4h (hard variants)
 │   ├── ground_truth/              # scenario_N.yaml — expected vulns, severities, CVEs
 │   ├── packs/                     # Reusable vuln + topology building blocks
 │   ├── topologies/                # Reference topologies
@@ -263,7 +288,7 @@ NATO-SmartCity-IoT/
 ├── docs/                          # Architecture notes (benchmark refactor, scalability)
 ├── report/                        # LaTeX progress reports / Beamer slides
 ├── paper/                         # Papers in progress
-├── tests/                         # 15 files, 276 tests
+├── tests/                         # 15 files, 280+ tests
 ├── data/knowledge.db/             # Persistent ChromaDB (generated)
 ├── output/
 │   ├── nato_lab.html              # Network visualization
@@ -390,12 +415,20 @@ Hardware tools are integrated as declarative YAML definitions (`type: hardware`)
 
 Reproducible benchmark to evaluate LLMs on IoT vulnerability detection:
 
-- **14 scenarios** (S1 … S12 + hard variants S1h, S4h) of increasing difficulty, from flat networks to ICS/SCADA segmentation and Edge ↔ Cloud pivots.
+- **15 scenarios** (S1 … S13 + hard variants S1h, S4h) of increasing difficulty, from flat networks to ICS/SCADA segmentation, Edge ↔ Cloud pivots, and real VLAN-aware IT/IoT/OT segmentation.
 - **Proxmox hypervisor** + **Ansible** playbooks for zero-touch deploy / inject / verify / teardown, running on an isolated `192.168.100.0/24` bridge.
 - **Ground truth** in `benchmarks/ground_truth/scenario_N.yaml` (expected vulns, CVEs, severities, `bonus_types` tolerated findings).
 - **Coverage**: OWASP IoT Top 10 (9/10), MITRE ATT&CK ICS (9/12).
 - **Evaluator** (`src/benchmark/evaluator.py`): TP/FP/FN matching via CVE ID → IP+type → IP+category, weighted F1 (CRITICAL=4, HIGH=3, MEDIUM=2, LOW=1), with severity-mismatch (×0.75) and loose-category (×0.5) penalties. Prefers `04_exploitation.json` over `03_vuln_analysis.json` when available and drops Phase 4 FAILED/ERROR statuses.
 - See [benchmarks/README.md](benchmarks/README.md) and [benchmarks/ansible/README.md](benchmarks/ansible/README.md).
+
+### Phase 6b — Baseline and External Benchmark Comparison ✅
+
+- **Baseline VM**: isolated LXC for CAI, PentestGPT, and VulnBot adapters, with per-target logs copied back to `output/baselines/...`.
+- **Terminal TUI**: scenario deploy/reset/inject/verify, live remote run status, interactive configuration, three-tool suite runner, and result comparison.
+- **Parallel baseline jobs**: `--jobs N` runs multiple device targets in parallel for tools that otherwise test one host at a time.
+- **External benchmark harness**: `src.baselines external` discovers and runs Vulhub, AutoPenBench, XBOW-style validation benchmarks, and manual AI-Pentest/VulnHub metadata.
+- **Paper traceability**: each external run records `planned.json`, `agent_stdout.txt`, `agent_stderr.txt`, and `result.json`.
 
 ### Phase 7 — FastAPI Dashboard & SPA ✅
 

@@ -15,7 +15,7 @@ Proxmox (192.168.88.100)
    │     ├── Pipeline LLM  (6 phases)
    │     └── Ansible controller → lance les playbooks 03–99
    │
-   ├── VM Baseline LXC 201  (CAI, PentGPT, autres outils comparés)
+   ├── VM Baseline LXC 201  (CAI, PentestGPT, VulnBot)
    │     ├── dépendances isolées
    │     ├── adapters /opt/baseline-tools/adapters/*.sh
    │     └── accès direct au réseau benchmark via eth1
@@ -62,7 +62,7 @@ SSH LAN   : ssh root@10.0.0.10
 ## Déployer la VM baseline isolée
 
 La VM baseline sert uniquement à installer et lancer des solutions existantes
-comme CAI ou PentGPT, sans risquer de casser l'environnement Python de la VM
+comme CAI, PentestGPT ou VulnBot, sans risquer de casser l'environnement Python de la VM
 maître.
 
 ```bash
@@ -76,21 +76,37 @@ Le playbook crée un LXC Debian 13 séparé :
 - management DHCP sur `vmbr0`
 - IP benchmark fixe `192.168.100.201/24` sur `vmbr1`
 - dossiers `/opt/baseline-tools/adapters` et `/opt/baseline-tools/results`
-- placeholders `cai_run.sh` et `pentgpt_run.sh` à remplacer par les vraies commandes
+- adapters `cai_run.sh`, `pentgpt_run.sh` et `vulnbot_run.sh`
 
-Depuis la VM maître, lancer un outil externe device par device :
+Depuis la VM maître ou ton PC, lancer un outil externe device par device :
 
 ```bash
 python3 -m src.baselines run \
   --tool cai \
   --scenario 3 \
-  --baseline-host root@<baseline-management-ip>
+  --baseline-host root@<baseline-management-ip> \
+  --jobs 2
 ```
 
-Puis scorer le résultat agrégé contre la ground truth :
+Lancer les trois outils à la suite :
 
 ```bash
-python3 -m src.baselines compare output/baselines/cai/S3_YYYY-mm-dd_HHMMSS
+python3 -m src.baselines suite \
+  --scenario 3 \
+  --baseline-host root@<baseline-management-ip> \
+  --jobs 2
+```
+
+Puis scorer un résultat agrégé contre la ground truth :
+
+```bash
+python3 -m src.baselines compare output/baselines/cai/scenario_3/A
+```
+
+Le workflow interactif équivalent est disponible avec:
+
+```bash
+python3 -m src.baselines dashboard
 ```
 
 ## CI/CD — Mise à jour automatique
@@ -232,7 +248,7 @@ ansible/
 ├── group_vars/vault_master.yml.example  # Template des secrets à renseigner
 └── playbooks/
     ├── deploy_master.yml          # Provisioning VM maître (LXC + Tailscale + nato-fastapi)
-    ├── deploy_baseline_vm.yml     # Provisioning VM baseline isolée pour CAI/PentGPT
+    ├── deploy_baseline_vm.yml     # Provisioning VM baseline isolée pour CAI/PentestGPT/VulnBot
     ├── 00_proxmox_init.yml        # Init Proxmox (bridge vmbr1, user, token API)
     ├── 01_create_templates.yml    # Templates LXC Debian (9000) + KVM OpenWrt (9001)
     ├── 02_config_openwrt.yml      # Configuration OpenWrt → template final (9010)
@@ -257,3 +273,5 @@ ansible/
 | S5 — Smart Building | 150–159 | 150 | 151–157 |
 | S6 — Domotique | 160–169 | 160 | 161–165 |
 | S7 — Edge-Cloud pivot | 170–179 | 170 | 171–175 |
+| S8–S12 — Variantes avancées | 180–269 | selon scénario | voir `group_vars/all/main.yml` |
+| S13 — VLAN Segmented Network | 270–286 | 270 | 271–286 |

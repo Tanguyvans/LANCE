@@ -10,14 +10,18 @@ flowchart LR
     subgraph PROX["Proxmox"]
         MASTER["VM maître<br/>Dashboard + Pipeline LLM"]
         SCN["Scénario N<br/>router + services vulnérables<br/>(192.168.100.0/24 isolé)"]
+        BASELINE["VM baseline<br/>CAI · PentestGPT · VulnBot"]
     end
-    LLM[OpenRouter]
+    EXT["Suites externes<br/>Vulhub · AutoPenBench"]
+    LLM[OpenRouter / MiniMax / Anthropic]
 
     USER -->|Tailscale :8501| MASTER
     MASTER -->|Ansible deploy/inject/teardown| SCN
     MASTER -->|nmap · ssh-audit · mqtt …| SCN
     MASTER -->|appels API| LLM
     MASTER -->|score vs ground_truth| USER
+    BASELINE -->|runs device-by-device| SCN
+    MASTER -->|harness Docker Compose| EXT
 ```
 
 | # | Playbook | Rôle |
@@ -26,7 +30,10 @@ flowchart LR
 | ② | `01_create_templates` + `02_config_openwrt` | Crée les templates Debian 13 (9000) et OpenWrt (9010) |
 | ③ | `03_deploy_scenario --extra-vars scenario_id=N` | Clone les templates → VMs du scénario sur `vmbr1` |
 | ④ | `04_inject_vulns` | Injecte les vulnérabilités par rôle dans chaque CT |
-| ⑤ | `99_teardown` | Supprime toutes les VMs du scénario |
+| ⑤ | `05_populate_services` + `06_verify` | Ajoute des données réalistes et vérifie que les failles critiques sont présentes |
+| ⑥ | `src.baselines` | Lance CAI / PentestGPT / VulnBot sur une VM baseline isolée |
+| ⑦ | `src.baselines external` | Lance notre agent sur Vulhub / AutoPenBench pour la comparaison inverse |
+| ⑧ | `99_teardown` | Supprime toutes les VMs du scénario |
 
 | Référentiel | Couverture |
 | --- | --- |
@@ -53,13 +60,22 @@ Résultat : VM maître (`10.0.0.10`) accessible via Tailscale avec le dashboard 
 
 ### 2. Lancer un benchmark
 
-Depuis le dashboard (`http://<tailscale-ip>:8501`) :
+Depuis le dashboard web (`http://<tailscale-ip>:8501`) :
 - Choisir le modèle LLM (OpenRouter / MiniMax / Anthropic)
-- Sélectionner le scénario (S1–S12)
+- Sélectionner le scénario (S1–S13)
 - Optionnel : cliquer "Déployer" pour rejouer l'injection Ansible sans relancer les agents
 - Cliquer "Lancer" — le pipeline exécute les 6 phases d'analyse (Graph → Recon → Vuln → Exploit → Intrusion → Report)
 
 Événements SSE streamés en direct : tool calls, tool results, phase transitions, edges d'intrusion sur la topologie Cytoscape.
+
+Depuis le TUI local/baseline :
+
+```bash
+python3 -m src.baselines dashboard
+```
+
+Le TUI permet de déployer un scénario, injecter/peupler/vérifier les failles,
+changer de scénario, lancer CAI/PentestGPT/VulnBot, ou lancer la suite complète.
 
 Ou depuis la VM maître en CLI :
 
@@ -102,6 +118,7 @@ Les scénarios `*h` sont des variantes **hard** (mêmes services, mais failles p
 | `6` | Domotique centralisée | hub + mqtt + db + cam + web | 160–169 | Moyen |
 | `7` | Edge-Cloud pivot | edge-gw + edge-mqtt + edge-compute + cloud-api + cloud-db | 170–179 | Difficile |
 | `8`–`12` | Variantes supplémentaires | voir `benchmarks/scenarios/S*.yaml` et `ground_truth/scenario_*.yaml` | — | Variable |
+| `13` | VLAN Segmented Network | VLAN10 IT + VLAN20 IoT + VLAN30 OT, routeur multihomé | 270–286 | Hard |
 
 ---
 
@@ -121,6 +138,7 @@ Les scénarios `*h` sont des variantes **hard** (mêmes services, mais failles p
 | OpenWrt S1 | Telnet activé (port 23) | — |
 | OpenWrt S2/S4/S5/S6/S7 | Telnet + interface web admin WAN (port 80) | — |
 | OpenWrt S3 | Telnet + FTP anonyme (vsftpd) | — |
+| OpenWrt S13 | SSH root faible (`root/password`) sur routeur VLAN | — |
 
 ---
 
@@ -142,7 +160,7 @@ ground_truth/
 ├── scenario_5.yaml       # Smart Building
 ├── scenario_6.yaml       # Domotique
 ├── scenario_7.yaml       # Edge-Cloud pivot
-├── scenario_8.yaml … scenario_12.yaml
+├── scenario_8.yaml … scenario_13.yaml
 ```
 
 Chaque entrée supporte un champ `bonus_types` listant les types de findings tolérés (ne comptent pas en FP lorsqu'ils ne figurent pas dans l'ensemble injecté). La taxonomie canonique est définie dans `src/agent/vuln_taxonomy.py` — toute nouvelle alias passe par `VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu'en duplication locale.
@@ -161,6 +179,70 @@ Chaque entrée supporte un champ `bonus_types` listant les types de findings tol
 | Path Coverage | Chemins d'attaque identifiés / chemins attendus |
 | Hallucination Rate | Failles inventées / total findings |
 | Coût | Tokens consommés par scénario (résumé par phase) |
+
+---
+
+## Comparaison avec les baselines externes
+
+Deux sens de comparaison sont supportés pour le papier.
+
+### 1. CAI / PentestGPT / VulnBot sur nos scénarios
+
+Les outils tiers tournent dans une VM baseline isolée, pas dans la VM maître.
+Le runner les appelle device par device, normalise leurs sorties JSON, puis
+score les résultats contre `ground_truth/scenario_N.yaml`.
+
+```bash
+python3 -m src.baselines setup-baselines --baseline-host root@192.168.88.36
+
+python3 -m src.baselines suite \
+  --scenario 3 \
+  --baseline-host root@192.168.88.36 \
+  --jobs 2
+```
+
+Les sorties sont sauvegardées dans:
+
+```text
+output/baselines/suites/scenario_N_YYYYmmdd_HHMMSS/
+  suite_summary.json
+  cai/scenario_N/A/{metadata.json,normalized.json,score.json,raw/,logs/}
+  pentgpt/scenario_N/A/{...}
+  vulnbot/scenario_N/A/{...}
+```
+
+### 2. Notre agent sur leurs benchmarks
+
+Le harness externe lance notre agent sur des suites Docker Compose utilisées ou
+référencées par les outils comparés:
+
+- `vulhub` — environnements vulnérables Docker Compose.
+- `autopenbench` — tâches avec `task`, `target`, `vulnerability`, `flag` dans `data/games.json`.
+- `xbow` — challenges de validation type flag.
+- `ai-pentest` — metadata de cibles VulnHub/VM, notées comme manuelles.
+
+```bash
+git clone https://github.com/vulhub/vulhub ../vulhub
+git clone https://github.com/lucagioacchini/auto-pen-bench ../auto-pen-bench
+
+python3 -m src.baselines external list --suite vulhub --repo ../vulhub
+python3 -m src.baselines external list --suite autopenbench --repo ../auto-pen-bench
+```
+
+Exécution dry-run Vulhub:
+
+```bash
+python3 -m src.baselines external run \
+  --suite vulhub \
+  --repo ../vulhub \
+  --case struts2/s2-045 \
+  --agent-command 'python3 -m src.agent_external --target {target_url} --output-dir {output_dir} --provider minimax' \
+  --dry-run
+```
+
+Chaque run externe écrit `planned.json`, `agent_stdout.txt`,
+`agent_stderr.txt`, et `result.json` dans `output/external_benchmarks/`.
+Voir [baselines/README.md](baselines/README.md) pour les templates de commande.
 
 ---
 
@@ -185,9 +267,10 @@ benchmarks/
 │       ├── 06_verify.yml             # Vérification OK/FAIL par vulnérabilité
 │       ├── 08_reset_scenario.yml     # Reset état sans supprimer les VMs
 │       └── 99_teardown.yml           # Suppression VMs du scénario
+├── baselines/                        # VM baseline, TUI, adapters, harness externe
 ├── ground_truth/                     # Vulnérabilités et chemins d'attaque attendus
-│   └── scenario_N.yaml (+ scenario_1h, scenario_4h, scenario_8…12)
-├── scenarios/                        # Scénarios agrégés S1…S12 + hard variants (S*h.yaml)
+│   └── scenario_N.yaml (+ scenario_1h, scenario_4h, scenario_8…13)
+├── scenarios/                        # Scénarios agrégés S1…S13 + hard variants (S*h.yaml)
 ├── topologies/                       # Topologies réutilisables (flat, gateway, ics_scada,
 │                                     #  building, edge_cloud, mesh_iot, multizone, star,
 │                                     #  smart_city_3zones, smart_city_large, nato_lab, …)

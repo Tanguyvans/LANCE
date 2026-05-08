@@ -324,6 +324,18 @@
       register: router_telnet_check
       changed_when: false
       failed_when: false
+      when: "'telnet' in scenarios[scenario_id].router_vulns"
+
+    - name: "[router] Vérifier SSH root faible (root avec mot de passe actif)"
+      ansible.builtin.shell: |
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 root@{{ benchmark_gateway }} '
+          netstat -tlnp 2>/dev/null | grep -q ":22" &&
+          awk -F: '\''$1 == "root" && $2 !~ /^(!|\*)/ { found=1 } END { exit found ? 0 : 1 }'\'' /etc/shadow
+        ' >/dev/null 2>&1 && echo OK || echo FAIL
+      register: router_ssh_weak_check
+      changed_when: false
+      failed_when: false
+      when: "'ssh_weak' in scenarios[scenario_id].router_vulns"
 
     - name: "[router] Vérifier port FTP (21) — scénario 3 uniquement"
       ansible.builtin.shell: >
@@ -533,7 +545,9 @@
 
     - name: Évaluer les résultats — consolider les checks OK/FAIL
       ansible.builtin.set_fact:
-        _check_router_ok: "{{ 'OK' in (router_telnet_check.stdout | default('')) }}"
+        _check_router_telnet_ok: "{{ ('telnet' not in scenarios[scenario_id].router_vulns) or ('OK' in (router_telnet_check.stdout | default(''))) }}"
+        _check_router_ssh_ok: "{{ ('ssh_weak' not in scenarios[scenario_id].router_vulns) or ('OK' in (router_ssh_weak_check.stdout | default(''))) }}"
+        _check_router_ok: "{{ (_check_router_telnet_ok | bool) and (_check_router_ssh_ok | bool) }}"
         _check_mqtt_ok:   "{{ 'FAIL' not in (mqtt_conn_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_db_ok:     "{{ 'FAIL' not in (db_nopass_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_ssh_ok:    "{{ 'FAIL' not in (ssh_creds_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
@@ -547,7 +561,8 @@
       ansible.builtin.fail:
         msg: |
           VERIFICATION FAILED sur S{{ scenario_id }} — au moins une vulnerabilite critique est absente.
-          Router Telnet: {{ 'OK' if _check_router_ok | bool else 'FAIL' }}
+          Router Telnet: {{ 'OK' if _check_router_telnet_ok | bool else 'FAIL' }}
+          Router SSH weak: {{ 'OK' if _check_router_ssh_ok | bool else 'FAIL' }}
           MQTT anon:     {{ 'OK' if _check_mqtt_ok | bool else 'FAIL' }}
           DB root:       {{ 'OK' if _check_db_ok | bool else 'FAIL' }}
           SSH creds:     {{ 'OK' if _check_ssh_ok | bool else 'FAIL' }}

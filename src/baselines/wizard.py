@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import getpass
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.baselines import compare, deploy, install_tools, runner
+from src.baselines import compare, deploy, external_benchmarks, install_tools, runner
 from src.baselines.scenarios import list_ground_truth_scenarios
 
 
@@ -15,6 +16,12 @@ DEFAULT_SCENARIO = "3"
 DEFAULT_SCOPE = "192.168.100.0/24"
 DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 SUPPORTED_TOOLS = ("cai", "pentgpt", "vulnbot")
+EXTERNAL_REPOS = {
+    "vulhub": ("https://github.com/vulhub/vulhub", "../vulhub"),
+    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "../auto-pen-bench"),
+    "xbow": ("", "../validation-benchmarks"),
+    "ai-pentest": ("", "../ai-pentest-benchmark"),
+}
 
 
 @dataclass
@@ -28,6 +35,11 @@ class WizardState:
     jobs: int = 1
     last_run_dir: Path | None = None
     last_suite_dir: Path | None = None
+    last_external_dir: Path | None = None
+    external_suite: str = "vulhub"
+    external_repo: str = "../vulhub"
+    external_case: str = ""
+    external_dry_run: bool = True
 
 
 def _ask(prompt: str, default: str | None = None) -> str:
@@ -61,6 +73,7 @@ def _print_header(state: WizardState) -> None:
     print(f"Parallel jobs : {state.jobs}")
     print(f"Last run      : {state.last_run_dir or '-'}")
     print(f"Last suite    : {state.last_suite_dir or '-'}")
+    print(f"Last external : {state.last_external_dir or '-'}")
     print("-" * 72)
 
 
@@ -232,6 +245,91 @@ def _full_pilot(state: WizardState) -> None:
     _compare(state)
 
 
+def _run_external_benchmark(state: WizardState) -> None:
+    print("External suites: vulhub, autopenbench, xbow, ai-pentest")
+    suite = _ask("External suite", state.external_suite).lower()
+    if suite not in external_benchmarks.SUPPORTED_SUITES:
+        print(f"Unknown suite {suite!r}.")
+        return
+    state.external_suite = suite
+    default_repo = EXTERNAL_REPOS.get(suite, ("", f"../{suite}"))[1]
+    if not state.external_repo or state.external_repo == EXTERNAL_REPOS["vulhub"][1]:
+        state.external_repo = default_repo
+    state.external_repo = _ask("External repo path", state.external_repo)
+    repo = Path(state.external_repo).expanduser()
+    if not repo.exists():
+        url = EXTERNAL_REPOS.get(suite, ("", ""))[0]
+        if not url:
+            print(f"Repository not found: {repo}")
+            return
+        if _ask_yes_no(f"{suite} repo not found at {repo}. Clone it now?", True):
+            repo.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "clone", url, str(repo)], check=True)
+        else:
+            return
+
+    cases = external_benchmarks.discover_cases(suite, repo)
+    if not cases:
+        print(f"No cases discovered for {suite}.")
+        return
+    print(f"{len(cases)} cases discovered.")
+    query = _ask("Filter cases", state.external_case)
+    filtered = cases
+    if query:
+        needle = query.lower()
+        filtered = [
+            case
+            for case in cases
+            if needle in case.case_id.lower()
+            or needle in case.name.lower()
+            or needle in case.description.lower()
+            or needle in " ".join(case.tags).lower()
+        ]
+    if not filtered:
+        print("No matching case.")
+        return
+    for index, case in enumerate(filtered[:20], start=1):
+        target = case.target_url or case.target or "-"
+        print(f"{index:2d}. {case.case_id}  target={target}  {case.description}")
+    raw_index = _ask("Case number", "1")
+    try:
+        case = filtered[max(0, int(raw_index) - 1)]
+    except (ValueError, IndexError):
+        print("Invalid case selection.")
+        return
+    state.external_case = case.case_id
+    state.external_dry_run = _ask_yes_no("Dry-run first?", state.external_dry_run)
+
+    hint = "Task: {task}. Target service: {target_name}. Vulnerability: {vulnerability}"
+    if suite == "vulhub":
+        hint = "Vulhub case {case_id}. Vulnerability: {vulnerability}"
+    command = (
+        "python3 -m src.agent_external "
+        "--target {target_url} "
+        f"--hint {hint!r} "
+        "--output-dir {output_dir} "
+        "--provider minimax "
+        f"--model {state.model} "
+        f"--max-turns {state.max_turns}"
+    )
+    print(f"Suite : {suite}")
+    print(f"Repo  : {repo}")
+    print(f"Case  : {case.case_id}")
+    print(f"Mode  : {'dry-run' if state.external_dry_run else 'real run'}")
+    if not _ask_yes_no("Start this external benchmark run?", True):
+        print("External run cancelled.")
+        return
+    state.last_external_dir = external_benchmarks.run_case(
+        suite=suite,
+        repo=repo,
+        case_id=case.case_id,
+        agent_command=command,
+        dry_run=state.external_dry_run,
+        timeout_seconds=state.max_turns * 90,
+    )
+    print(f"External run saved: {state.last_external_dir}")
+
+
 def run_wizard() -> None:
     state = WizardState()
     while True:
@@ -244,6 +342,7 @@ def run_wizard() -> None:
         print("4. Deploy full scenario (deploy + inject + populate + verify)")
         print("5. Run selected baseline")
         print("6. Run CAI + PentestGPT + VulnBot suite")
+        print("e. Run our agent on external benchmark suite")
         print("7. Compare last/run directory")
         print("i. Inject/populate/verify vulnerabilities")
         print("r. Reset scenario to vulnerable state")
@@ -268,6 +367,8 @@ def run_wizard() -> None:
                 _run_selected_tool(state)
             elif choice == "6":
                 _run_suite(state)
+            elif choice == "e":
+                _run_external_benchmark(state)
             elif choice == "7":
                 _compare(state)
             elif choice == "i":

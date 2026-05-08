@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import getpass
 import os
+import subprocess
 import sys
 import termios
 import time
@@ -11,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.baselines import compare, deploy, install_tools, runner
+from src.baselines import compare, deploy, external_benchmarks, install_tools, runner
 from src.baselines.scenarios import list_ground_truth_scenarios
 
 try:
@@ -31,6 +32,12 @@ DEFAULT_SCENARIO = "3"
 DEFAULT_SCOPE = "192.168.100.0/24"
 DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 SUPPORTED_TOOLS = ("cai", "pentgpt", "vulnbot")
+EXTERNAL_REPOS = {
+    "vulhub": ("https://github.com/vulhub/vulhub", "../vulhub"),
+    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "../auto-pen-bench"),
+    "xbow": ("", "../validation-benchmarks"),
+    "ai-pentest": ("", "../ai-pentest-benchmark"),
+}
 MENU_ACTIONS = [
     ("1", "Configure"),
     ("s", "Change scenario"),
@@ -40,6 +47,7 @@ MENU_ACTIONS = [
     ("4", "Deploy full scenario (deploy + inject + populate + verify)"),
     ("5", "Run selected baseline with live remote status"),
     ("6", "Run CAI + PentestGPT + VulnBot suite"),
+    ("e", "Run our agent on external benchmark suite"),
     ("7", "Compare last/run directory"),
     ("i", "Inject/populate/verify vulnerabilities"),
     ("r", "Reset scenario to vulnerable state"),
@@ -60,6 +68,11 @@ class DashboardState:
     jobs: int = 1
     last_run_dir: Path | None = None
     last_suite_dir: Path | None = None
+    last_external_dir: Path | None = None
+    external_suite: str = "vulhub"
+    external_repo: str = "../vulhub"
+    external_case: str = ""
+    external_dry_run: bool = True
     status: str = "Idle"
     current_target: str = "-"
     current_index: int = 0
@@ -96,7 +109,11 @@ def _render_header(state: DashboardState, compact: bool = False):
             f"{state.baseline_host}  "
             f"[dim]{state.model}[/dim]"
         )
-        last = f"Last run: {state.last_run_dir or '-'} | Last suite: {state.last_suite_dir or '-'}"
+        last = (
+            f"Last run: {state.last_run_dir or '-'} | "
+            f"Last suite: {state.last_suite_dir or '-'} | "
+            f"Last external: {state.last_external_dir or '-'}"
+        )
         return Panel(f"{line}\n[dim]{last}[/dim]", title="NATO Smart City IoT Baseline", border_style="cyan")
 
     table = Table.grid(expand=True)
@@ -111,6 +128,7 @@ def _render_header(state: DashboardState, compact: bool = False):
     table.add_row("[bold]Parallel jobs[/bold]", str(state.jobs))
     table.add_row("[bold]Last run[/bold]", str(state.last_run_dir or "-"))
     table.add_row("[bold]Last suite[/bold]", str(state.last_suite_dir or "-"))
+    table.add_row("[bold]Last external[/bold]", str(state.last_external_dir or "-"))
     return Panel(table, title="NATO Smart City IoT Baseline", border_style="cyan")
 
 
@@ -668,6 +686,149 @@ def _full_pilot(console: Console, state: DashboardState) -> None:
     _compare(console, state)
 
 
+def _default_external_repo(suite: str) -> str:
+    return EXTERNAL_REPOS.get(suite, ("", f"../{suite}"))[1]
+
+
+def _external_repo_url(suite: str) -> str:
+    return EXTERNAL_REPOS.get(suite, ("", ""))[0]
+
+
+def _ensure_external_repo(console: Console, suite: str, repo: Path) -> bool:
+    if repo.exists():
+        return True
+    url = _external_repo_url(suite)
+    if not url:
+        console.print(f"[red]Repository not found:[/red] {repo}")
+        return False
+    if not _ask_yes_no(console, f"{suite} repo not found at {repo}. Clone it now?", True):
+        return False
+    repo.parent.mkdir(parents=True, exist_ok=True)
+    with console.status(f"[cyan]Cloning {suite} into {repo}...[/cyan]"):
+        subprocess.run(["git", "clone", url, str(repo)], check=True)
+    return True
+
+
+def _select_external_case(
+    console: Console,
+    suite: str,
+    repo: Path,
+    current: str,
+) -> external_benchmarks.ExternalBenchmarkCase | None:
+    with console.status(f"[cyan]Discovering {suite} cases...[/cyan]"):
+        cases = external_benchmarks.discover_cases(suite, repo)
+    if not cases:
+        console.print(f"[red]No cases discovered for {suite} in {repo}.[/red]")
+        return None
+
+    console.print(f"[green]{len(cases)} cases discovered.[/green]")
+    query = _ask(console, "Filter cases (Enter = show first cases)", current)
+    filtered = cases
+    if query:
+        needle = query.lower()
+        filtered = [
+            case
+            for case in cases
+            if needle in case.case_id.lower()
+            or needle in case.name.lower()
+            or needle in case.description.lower()
+            or needle in " ".join(case.tags).lower()
+        ]
+    if not filtered:
+        console.print(f"[red]No case matched {query!r}.[/red]")
+        return None
+
+    visible = filtered[:80]
+    if len(filtered) > len(visible):
+        console.print(f"[yellow]Showing first {len(visible)} of {len(filtered)} matches. Add a filter to narrow it.[/yellow]")
+
+    selected = _select_choice(
+        console,
+        f"{suite} case",
+        [
+            (
+                case.case_id,
+                case.description or case.target_url or case.notes or "-",
+                case.case_id,
+            )
+            for case in visible
+        ],
+        current if any(case.case_id == current for case in visible) else visible[0].case_id,
+    )
+    for case in visible:
+        if case.case_id == selected:
+            return case
+    return None
+
+
+def _external_agent_command(state: DashboardState, case: external_benchmarks.ExternalBenchmarkCase) -> str:
+    hint = "{task}"
+    if case.suite == "vulhub":
+        hint = "Vulhub case {case_id}. Vulnerability: {vulnerability}"
+    elif case.suite == "autopenbench":
+        hint = "Task: {task}. Target service: {target_name}. Vulnerability: {vulnerability}"
+    return (
+        "python3 -m src.agent_external "
+        "--target {target_url} "
+        f"--hint {hint!r} "
+        "--output-dir {output_dir} "
+        "--provider minimax "
+        f"--model {state.model} "
+        f"--max-turns {state.max_turns}"
+    )
+
+
+def _run_external_benchmark(console: Console, state: DashboardState) -> None:
+    state.external_suite = _select_choice(
+        console,
+        "External benchmark suite",
+        [
+            ("Vulhub", "Docker Compose vulnerable environments", "vulhub"),
+            ("AutoPenBench", "Generative-agent pentest tasks with flags", "autopenbench"),
+            ("XBOW", "Flag-style validation benchmarks", "xbow"),
+            ("AI-Pentest", "Manual VulnHub/VM metadata", "ai-pentest"),
+        ],
+        state.external_suite,
+    )
+    if state.external_repo == _default_external_repo("vulhub") and state.external_suite != "vulhub":
+        state.external_repo = _default_external_repo(state.external_suite)
+    state.external_repo = _ask(console, "External repo path", state.external_repo or _default_external_repo(state.external_suite))
+    repo = Path(state.external_repo).expanduser()
+    if not _ensure_external_repo(console, state.external_suite, repo):
+        return
+
+    case = _select_external_case(console, state.external_suite, repo, state.external_case)
+    if not case:
+        return
+    state.external_case = case.case_id
+    state.external_dry_run = _ask_yes_no(console, "Dry-run first?", state.external_dry_run)
+    command = _external_agent_command(state, case)
+
+    details = Table.grid(expand=True)
+    details.add_column(ratio=1)
+    details.add_column(ratio=2)
+    details.add_row("[bold]Suite[/bold]", state.external_suite)
+    details.add_row("[bold]Repo[/bold]", str(repo))
+    details.add_row("[bold]Case[/bold]", case.case_id)
+    details.add_row("[bold]Target[/bold]", case.target_url or case.target or "-")
+    details.add_row("[bold]Mode[/bold]", "dry-run" if state.external_dry_run else "real run")
+    console.print(Panel(details, title="External Benchmark Run", border_style="cyan"))
+    if not _ask_yes_no(console, "Start this external benchmark run?", True):
+        console.print("[yellow]External run cancelled.[/yellow]")
+        return
+
+    with console.status(f"[cyan]Running {state.external_suite}/{case.case_id}...[/cyan]"):
+        state.last_external_dir = external_benchmarks.run_case(
+            suite=state.external_suite,
+            repo=repo,
+            case_id=case.case_id,
+            agent_command=command,
+            dry_run=state.external_dry_run,
+            timeout_seconds=state.max_turns * 90,
+        )
+    console.print(f"[green]External run saved:[/green] {state.last_external_dir}")
+
+
 def run_dashboard() -> None:
     if Console is None:
         _fallback()
@@ -696,6 +857,8 @@ def run_dashboard() -> None:
                 _run_tool_live(console, state)
             elif choice == "6":
                 _run_suite_live(console, state)
+            elif choice == "e":
+                _run_external_benchmark(console, state)
             elif choice == "7":
                 _compare(console, state)
             elif choice == "i":

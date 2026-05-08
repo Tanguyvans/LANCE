@@ -141,6 +141,71 @@ services:
     assert cases[0].tags == ("sqli", "web")
 
 
+def test_external_autopenbench_discovers_games_json_tasks(tmp_path):
+    (tmp_path / "data").mkdir()
+    machine = tmp_path / "benchmark" / "machines" / "in-vitro" / "recon"
+    machine.mkdir(parents=True)
+    (tmp_path / "data" / "games.json").write_text(
+        json.dumps(
+            {
+                "in-vitro": {
+                    "recon": [
+                        {
+                            "alias": "Recon easy",
+                            "target": "target1",
+                            "task": "Find the exposed service flag",
+                            "vulnerability": "weak credentials",
+                            "flag": "FLAG{autopenbench}",
+                        }
+                    ]
+                }
+            }
+        )
+    )
+    (machine / "docker-compose.yml").write_text(
+        """
+services:
+  target1:
+    image: nginx
+    ports:
+      - "8082:80"
+"""
+    )
+
+    cases = discover_cases("autopenbench", tmp_path)
+
+    assert len(cases) == 1
+    assert cases[0].case_id == "in-vitro_recon_target1"
+    assert cases[0].task == "Find the exposed service flag"
+    assert cases[0].target == "target1"
+    assert cases[0].expected_flag == "FLAG{autopenbench}"
+    assert cases[0].target_url == "http://127.0.0.1:8082"
+    assert cases[0].runnable is True
+
+
+def test_external_vulhub_discovery_uses_relative_case_id(tmp_path):
+    case = tmp_path / "struts2" / "s2-045"
+    case.mkdir(parents=True)
+    (case / "README.md").write_text("# Apache Struts2 S2-045 Remote Code Execution\n")
+    (case / "docker-compose.yml").write_text(
+        """
+services:
+  struts2:
+    image: vulhub/struts2
+    ports:
+      - "127.0.0.1:8083:8080"
+"""
+    )
+
+    cases = discover_cases("vulhub", tmp_path)
+
+    assert len(cases) == 1
+    assert cases[0].case_id == "struts2/s2-045"
+    assert cases[0].description == "Apache Struts2 S2-045 Remote Code Execution"
+    assert cases[0].target_url == "http://127.0.0.1:8083"
+    assert cases[0].tags == ("struts2",)
+
+
 def test_external_manifest_and_dry_run(tmp_path):
     case = tmp_path / "benchmarks" / "XBEN-002-24"
     (case / "benchmark").mkdir(parents=True)
@@ -164,6 +229,28 @@ def test_external_manifest_and_dry_run(tmp_path):
     assert manifest_data["case_count"] == 1
     assert result["status"] == "dry_run"
     assert "FLAG-test" in result["agent_command"]
+
+
+def test_external_vulhub_dry_run_has_no_build_step(tmp_path):
+    case = tmp_path / "redis" / "CVE-2022-0543"
+    case.mkdir(parents=True)
+    (case / "docker-compose.yml").write_text("services: {redis: {image: redis, ports: ['6379:6379']}}\n")
+
+    run_dir = run_case(
+        suite="vulhub",
+        repo=tmp_path,
+        case_id="redis/CVE-2022-0543",
+        agent_command="echo {suite} {case_id} {target_url} {flag}",
+        output_dir=tmp_path / "runs",
+        flag="FLAG-vulhub",
+        dry_run=True,
+    )
+
+    result = json.loads((run_dir / "result.json").read_text())
+
+    assert result["status"] == "dry_run"
+    assert result["build_command"] is None
+    assert "FLAG-vulhub" in result["agent_command"]
 
 
 def test_external_agent_dry_run_writes_artifacts(tmp_path):

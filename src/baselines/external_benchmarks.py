@@ -15,7 +15,7 @@ import yaml
 
 
 DEFAULT_OUTPUT_DIR = Path("output/external_benchmarks")
-SUPPORTED_SUITES = ("xbow", "autopenbench", "ai-pentest")
+SUPPORTED_SUITES = ("xbow", "autopenbench", "vulhub", "ai-pentest")
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,10 @@ class ExternalBenchmarkCase:
     description: str = ""
     level: str = ""
     tags: tuple[str, ...] = ()
+    task: str = ""
+    target: str = ""
+    vulnerability: str = ""
+    expected_flag: str = ""
     target_url: str | None = None
     compose_file: Path | None = None
     runnable: bool = True
@@ -107,6 +111,17 @@ def _metadata_for_case(case_dir: Path) -> dict[str, Any]:
     return {}
 
 
+def _read_first_heading(path: Path) -> str:
+    try:
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                return stripped.lstrip("#").strip()
+    except OSError:
+        pass
+    return ""
+
+
 def discover_xbow(repo: Path) -> list[ExternalBenchmarkCase]:
     """Discover XBOW validation benchmarks in a checked-out repository."""
     root = repo / "benchmarks" if (repo / "benchmarks").is_dir() else repo
@@ -134,6 +149,45 @@ def discover_xbow(repo: Path) -> list[ExternalBenchmarkCase]:
 
 def discover_autopenbench(repo: Path) -> list[ExternalBenchmarkCase]:
     """Discover AutoPenBench tasks in a checked-out repository."""
+    games_file = repo / "data" / "games.json"
+    if games_file.exists():
+        games = _read_json(games_file)
+        cases: list[ExternalBenchmarkCase] = []
+        for level, categories in games.items():
+            if not isinstance(categories, dict):
+                continue
+            for category, tasks in categories.items():
+                if not isinstance(tasks, list):
+                    continue
+                compose_file = repo / "benchmark" / "machines" / str(level) / str(category) / "docker-compose.yml"
+                for index, item in enumerate(tasks):
+                    if not isinstance(item, dict):
+                        continue
+                    target = str(item.get("target") or f"vm{index}")
+                    case_id = f"{level}_{category}_{target}"
+                    vulnerability = str(item.get("vulnerability", ""))
+                    alias = str(item.get("alias", ""))
+                    cases.append(
+                        ExternalBenchmarkCase(
+                            suite="autopenbench",
+                            case_id=case_id,
+                            path=compose_file.parent if compose_file.exists() else repo,
+                            name=alias or target,
+                            description=str(item.get("task", "")),
+                            level=str(level),
+                            tags=tuple(str(tag) for tag in [category, vulnerability] if tag),
+                            task=str(item.get("task", "")),
+                            target=target,
+                            vulnerability=vulnerability,
+                            expected_flag=str(item.get("flag", "")),
+                            target_url=_first_target_url(compose_file),
+                            compose_file=compose_file if compose_file.exists() else None,
+                            runnable=compose_file.exists(),
+                            notes="" if compose_file.exists() else f"Compose file not found for {level}/{category}.",
+                        )
+                    )
+        return cases
+
     roots = [path for path in [repo / "benchmark", repo / "benchmarks", repo / "data"] if path.is_dir()]
     search_root = roots[0] if roots else repo
     cases: list[ExternalBenchmarkCase] = []
@@ -153,8 +207,48 @@ def discover_autopenbench(repo: Path) -> list[ExternalBenchmarkCase]:
                 description=str(metadata.get("description", metadata.get("task", ""))),
                 level=str(metadata.get("level", metadata.get("difficulty", ""))),
                 tags=tuple(str(tag) for tag in tags if tag),
+                task=str(metadata.get("task", "")),
+                target=str(metadata.get("target", "")),
+                vulnerability=str(metadata.get("vulnerability", "")),
+                expected_flag=str(metadata.get("flag", "")),
                 target_url=_first_target_url(compose_file),
                 compose_file=compose_file,
+            )
+        )
+    return cases
+
+
+def discover_vulhub(repo: Path) -> list[ExternalBenchmarkCase]:
+    """Discover Vulhub Docker Compose environments."""
+    cases: list[ExternalBenchmarkCase] = []
+    for case_dir in _case_dirs(repo):
+        if ".git" in case_dir.parts or case_dir.name == "base":
+            continue
+        try:
+            rel = case_dir.relative_to(repo)
+        except ValueError:
+            rel = case_dir
+        parts = rel.parts
+        if not parts:
+            continue
+        case_id = "/".join(parts)
+        compose_file = case_dir / "docker-compose.yml"
+        cves = tuple(part for part in parts if part.upper().startswith("CVE-"))
+        tags = tuple(dict.fromkeys((parts[0], *cves)))
+        description = _read_first_heading(case_dir / "README.md") or _read_first_heading(case_dir / "README.zh-cn.md")
+        cases.append(
+            ExternalBenchmarkCase(
+                suite="vulhub",
+                case_id=case_id,
+                path=case_dir,
+                name=case_id,
+                description=description,
+                tags=tags,
+                target=case_id,
+                vulnerability=" ".join(cves),
+                target_url=_first_target_url(compose_file),
+                compose_file=compose_file,
+                notes="Vulhub has no universal flag; use --flag for flag-based scoring or inspect saved agent output.",
             )
         )
     return cases
@@ -214,6 +308,8 @@ def discover_cases(suite: str, repo: Path) -> list[ExternalBenchmarkCase]:
         return discover_xbow(repo)
     if suite == "autopenbench":
         return discover_autopenbench(repo)
+    if suite == "vulhub":
+        return discover_vulhub(repo)
     if suite == "ai-pentest":
         return discover_ai_pentest(repo)
     raise ValueError(f"Unsupported external benchmark suite: {suite}")
@@ -256,6 +352,9 @@ def _render_agent_command(template: str, case: ExternalBenchmarkCase, output_dir
         case=case.case_id,
         target=case.target_url or "",
         target_url=case.target_url or "",
+        target_name=case.target,
+        task=case.task,
+        vulnerability=case.vulnerability,
         output_dir=str(output_dir),
         flag=flag,
     )
@@ -266,6 +365,14 @@ def _compose_command(case: ExternalBenchmarkCase, *args: str) -> list[str]:
     if not case.compose_file:
         raise ValueError(f"{case.case_id} does not have a docker-compose.yml")
     return ["docker", "compose", "-f", str(case.compose_file), *args]
+
+
+def _build_command(case: ExternalBenchmarkCase, flag: str) -> list[str] | None:
+    if case.suite == "xbow":
+        return _compose_command(case, "build", "--build-arg", f"flag={flag}")
+    if case.suite == "autopenbench":
+        return _compose_command(case, "build")
+    return None
 
 
 def run_case(
@@ -283,7 +390,9 @@ def run_case(
     if not case.runnable:
         raise ValueError(f"{case.case_id} is not runnable by this harness: {case.notes}")
 
-    flag_value = flag or f"FLAG-{case.suite}-{case.case_id}-{int(time.time())}"
+    flag_value = flag or case.expected_flag
+    if not flag_value and case.suite == "xbow":
+        flag_value = f"FLAG-{case.suite}-{case.case_id}-{int(time.time())}"
     run_dir = output_dir / case.suite / case.case_id / datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     command = _render_agent_command(agent_command, case, run_dir, flag_value)
@@ -291,7 +400,7 @@ def run_case(
         "case": case.to_dict(),
         "flag": flag_value,
         "agent_command": command,
-        "build_command": _compose_command(case, "build", "--build-arg", f"flag={flag_value}"),
+        "build_command": _build_command(case, flag_value),
         "up_command": _compose_command(case, "up", "-d", "--wait"),
         "down_command": _compose_command(case, "down", "-v"),
         "dry_run": dry_run,
@@ -309,7 +418,8 @@ def run_case(
     stderr = ""
     returncode = 0
     try:
-        subprocess.run(planned["build_command"], cwd=case.path, check=True)
+        if planned["build_command"]:
+            subprocess.run(planned["build_command"], cwd=case.path, check=True)
         subprocess.run(planned["up_command"], cwd=case.path, check=True)
         result = subprocess.run(
             command,
@@ -327,7 +437,7 @@ def run_case(
 
     (run_dir / "agent_stdout.txt").write_text(stdout, encoding="utf-8")
     (run_dir / "agent_stderr.txt").write_text(stderr, encoding="utf-8")
-    success = flag_value in stdout or flag_value in stderr
+    success = bool(flag_value) and (flag_value in stdout or flag_value in stderr)
     finished = datetime.now()
     (run_dir / "result.json").write_text(
         json.dumps(
