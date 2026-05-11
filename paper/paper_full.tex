@@ -122,36 +122,28 @@ breach~\cite{verkada21}, the Stuxnet lineage in
 OT~\cite{langner11}) all materialised as multi-hop pivots across this
 surface, not as one-shot single-host compromises.
 
-The LLM-pentesting literature has matured rapidly:
-\textsc{PentestGPT}~\cite{pentestgpt24} introduced multi-module
-reasoning over a task tree, \textsc{VulnBot}~\cite{vulnbot25} pushed
-this into a directed task-graph of penetration phases,
-\textsc{AutoPentester}~\cite{autopentester25} added retrieval and
-verifier agents, \textsc{CAI}~\cite{cai25} productionised the
-multi-agent blueprint, and \textsc{xOffense}~\cite{xoffense25} and
-\textsc{Pentest-R1}~\cite{pentestr125} sharpened the underlying model
-via offensive fine-tuning. Each system reports gains on a public
-test corpus (Table~\ref{tab:reported}). Every one of these corpora
-— AutoPenBench~\cite{autopenbench24}, NYU CTF Bench~\cite{nyuctfbench24},
-Cybench~\cite{cybench24}, CAIBench~\cite{caibench25}, Vulhub~\cite{vulhub}
-— is a collection of \emph{isolated containers or VMs}.
-
-Three properties of network-scale IoT pentest fall outside this evaluation
-unit, regardless of how strong the underlying agent gets:
-(i)~\emph{hop depth}: a vulnerability behind a firewall-segmented zone is
-unreachable from the perimeter, so any agent given only the perimeter IP
-scores zero by construction;
-(ii)~\emph{IoT/OT protocols}: MQTT/Modbus/LoRaWAN/CoAP attack surfaces
-do not appear in HTB or VulnHub corpora and require protocol-specific
-probes (broker wildcard subscribe, Modbus register read);
-(iii)~\emph{evidence depth}: a binary flag check cannot distinguish
-detection (banner) from exploitation (authenticated action) from
-exfiltration (data retrieved), yet the three carry very different
-operational meanings on an IoT deployment. We argue these gaps are
-\emph{architectural} — properties of the evaluation surface, not of the
-agent — and we close them with a network-scale benchmark, evidence-level
-scoring, and a harness whose phases are designed around the gaps rather
-than retrofitted to them.
+The LLM-pentesting literature has matured rapidly, and recent systems
+report substantial gains on public test corpora
+(Table~\ref{tab:reported}) — but every one of those corpora
+(AutoPenBench~\cite{autopenbench24}, NYU CTF Bench~\cite{nyuctfbench24},
+Cybench~\cite{cybench24}, CAIBench~\cite{caibench25},
+Vulhub~\cite{vulhub}) is a collection of \emph{isolated containers or
+VMs}, and every agent above is scored on solving one such target at a
+time. The unit of evaluation is therefore the host, not the network,
+and the structural properties that distinguish a real IoT deployment
+from a single VM are invisible to the metric. Behind-pivot
+vulnerabilities cannot be reached from the perimeter at all, so an
+agent given only the perimeter IP scores zero on them by construction;
+IoT- and OT-specific protocols (MQTT, Modbus, LoRaWAN, CoAP) do not
+appear in HackTheBox or VulnHub corpora and require probes the agent
+never has to learn; and a binary flag check conflates merely detecting
+a banner with exploiting it and with exfiltrating the data behind
+it — three operationally very different outcomes. These gaps are
+\emph{architectural} (properties of the evaluation surface, not of the
+agent), so making the agent stronger does not close them. Our
+contribution closes them with a network-scale benchmark, an
+evidence-level scoring scheme, and a harness whose phases are designed
+around the gaps rather than retrofitted to them.
 
 \noindent\textbf{Contributions.} We bridge this gap with:
 \begin{itemize}
