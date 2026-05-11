@@ -349,87 +349,86 @@ produce vulnerable images; \systemname\ produces a deployed multi-device
 network with firewall-enforced reachability, the dimension along which we
 evaluate \harnessname.
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
 \caption{Comparison with prior LLM pentest systems and benchmarks.
 \emph{Scope}: unit of evaluation (single-host = one VM/container;
 network = multi-device IP range). \emph{Domain}: protocols / target type.
-\emph{Test corpus}: dataset on which results are reported.
-``--'' = not applicable for benchmark rows.}
+\emph{Test corpus}: dataset on which results are reported. Rows are
+grouped by role: LLM pentest agents (top) and evaluation corpora (bottom).}
 \label{tab:related}
 \setlength{\tabcolsep}{4pt}
-\footnotesize
-\begin{tabular}{@{}llllll@{}}
+\scriptsize
+\begin{tabular}{@{}llllcl@{}}
 \toprule
-System & Scope & Domain & Test corpus & IoT & Scoring \\
+System & Scope & Domain & Test corpus & IoT-specific & Scoring \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{LLM pentest agents}} \\
 \midrule
-Happe \& Cito~\cite{happe23}            & single-host & Web/OS  & curated Linux VMs        & --  & flag      \\
-PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS  & HTB + VulnHub (13 VMs)   & --  & sub-task  \\
-VulnBot~\cite{vulnbot25}                & single-host & Web/OS  & AutoPenBench             & --  & task-graph\\
-AutoPentester~\cite{autopentester25}    & single-host & Web/OS  & HackTheBox               & --  & sub-task  \\
-CAI~\cite{cai25}                        & single-host & Web/CTF & CAIBench                 & --  & CTF       \\
-Pentest-R1~\cite{pentestr125}           & single-host & Web/OS  & AutoPenBench             & --  & sub-task  \\
-xOffense~\cite{xoffense25}              & single-host & Web/CTF & AutoPenBench             & --  & sub-task  \\
-EnIGMA~\cite{enigma25}                  & single-host & CTF     & NYU CTF Bench            & --  & flag      \\
-CheckMate~\cite{checkmate25}            & single-host & Web/OS  & Vulhub                   & --  & sub-task  \\
+Happe \& Cito~\cite{happe23}            & single-host & Web/OS  & curated Linux VMs        & no  & flag       \\
+PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS  & HTB + VulnHub (13 VMs)   & no  & sub-task   \\
+VulnBot~\cite{vulnbot25}                & single-host & Web/OS  & AutoPenBench             & no  & task-graph \\
+AutoPentester~\cite{autopentester25}    & single-host & Web/OS  & HackTheBox               & no  & sub-task   \\
+CAI~\cite{cai25}                        & single-host & Web/CTF & CAIBench                 & no  & CTF        \\
+Pentest-R1~\cite{pentestr125}           & single-host & Web/OS  & AutoPenBench             & no  & sub-task   \\
+xOffense~\cite{xoffense25}              & single-host & Web/CTF & AutoPenBench             & no  & sub-task   \\
+EnIGMA~\cite{enigma25}                  & single-host & CTF     & NYU CTF Bench            & no  & flag       \\
+CheckMate~\cite{checkmate25}            & single-host & Web/OS  & Vulhub                   & no  & sub-task   \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{Evaluation corpora}} \\
 \midrule
-AutoPenBench~\cite{autopenbench24}      & single-host & Web/OS  & 24 in-vitro + 12 CVEs    & no  & flag      \\
-NYU CTF Bench~\cite{nyuctfbench24}      & single-host & CTF     & 200 Jeopardy challenges  & no  & flag      \\
-Cybench~\cite{cybench24}                & single-host & CTF     & curated CTF subset       & no  & flag      \\
-CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed   & meta-benchmark           & 27 robotics & CTF \\
-Vulhub~\cite{vulhub}                    & single-host & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom    \\
-Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)           & no  & --        \\
+AutoPenBench~\cite{autopenbench24}      & single-host & Web/OS  & 24 in-vitro + 12 CVEs    & no  & flag       \\
+NYU CTF Bench~\cite{nyuctfbench24}      & single-host & CTF     & 200 Jeopardy challenges  & no  & flag       \\
+Cybench~\cite{cybench24}                & single-host & CTF     & curated CTF subset       & no  & flag       \\
+CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed   & meta-benchmark           & 27 robotics & CTF  \\
+Vulhub~\cite{vulhub}                    & single-host & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom     \\
+Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)           & no  & --         \\
 \midrule
-\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/} & \textbf{7 IoT scenarios} & \textbf{yes} & \textbf{L1/L2/L3} \\
-                             &                  & \textbf{LoRa/CoAP/\ldots} & \textbf{per-vuln YAML}  &              & \textbf{+ MHR$_k$} \\
+\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/LoRa/CoAP/\ldots} & \textbf{7 IoT scenarios, per-vuln YAML} & \textbf{yes} & \textbf{L1/L2/L3 + MHR$_k$} \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
 \caption{Headline numbers reported by prior LLM pentest systems on their
-chosen corpus. \emph{Sub-task} = \% of predefined intermediate steps solved.
-\emph{E2E} = \% of full target / challenge solved end-to-end. Values are
-absolute except where prefixed with ``+'' (relative gain vs the stated
-baseline). Rows are not directly comparable: each system reports against a
-different corpus and scoring scheme — the table makes explicit \emph{where}
-each tool is tested and \emph{what} number it publishes. No prior result is
+chosen corpus. \emph{Sub-task \%} = fraction of predefined intermediate
+steps solved. \emph{E2E \%} = fraction of full target/challenge solved
+end-to-end. Values are absolute except where prefixed with ``+'' (relative
+gain vs the immediately preceding baseline row). Rows are not directly
+comparable across corpora — the table makes explicit \emph{where} each
+tool is tested and \emph{what} number it publishes. No prior result is
 reported on a multi-device IoT network with firewall-enforced reachability,
 which is the gap \systemname\ targets.}
 \label{tab:reported}
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{8pt}
 \footnotesize
-\begin{tabular}{@{}llrr@{}}
+\begin{tabular}{@{}lllrr@{}}
 \toprule
-System (Model) & Corpus & Sub-task & E2E \\
+System & Model & Corpus & Sub-task \% & E2E \% \\
 \midrule
-GPT-3.5 baseline~\cite{pentestgpt24}             & HTB+VulnHub (13)  & 23.1\%        & 7.7\%         \\
-GPT-4 baseline~\cite{pentestgpt24}               & HTB+VulnHub (13)  & 52.2\%        & 38.5\%        \\
-PentestGPT (GPT-4)~\cite{pentestgpt24}           & HTB+VulnHub (13)  & \textbf{66.5\%} & \textbf{46.2\%} \\
-AutoPentester (GPT-4o)~\cite{autopentester25}    & HackTheBox        & +27.0\%$^\dagger$ & n/r       \\
+GPT-3.5 baseline~\cite{pentestgpt24}             & GPT-3.5            & HTB+VulnHub (13 VMs) & 23.1 & 7.7  \\
+GPT-4 baseline~\cite{pentestgpt24}               & GPT-4              & HTB+VulnHub (13 VMs) & 52.2 & 38.5 \\
+\textbf{PentestGPT}~\cite{pentestgpt24}          & GPT-4              & HTB+VulnHub (13 VMs) & \textbf{66.5} & \textbf{46.2} \\
+\textbf{AutoPentester}~\cite{autopentester25}    & GPT-4o             & HackTheBox           & \textbf{+27.0$^\dagger$} & n/r  \\
 \midrule
-Llama 3.1-405B baseline~\cite{vulnbot25}         & AutoPenBench      & 49.1\%        & 9.1\%         \\
-GPT-4o baseline~\cite{vulnbot25}                 & AutoPenBench      & n/r           & 21.2\%        \\
-VulnBot (Llama 3.1-405B)~\cite{vulnbot25}        & AutoPenBench      & \textbf{69.1\%} & \textbf{30.3\%} \\
-xOffense (Qwen3-32B LoRA)~\cite{xoffense25}      & AutoPenBench      & \textbf{79.2\%} & n/r         \\
+Llama 3.1-405B baseline~\cite{vulnbot25}         & Llama 3.1-405B     & AutoPenBench         & 49.1 & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25}                 & GPT-4o             & AutoPenBench         & n/r  & 21.2 \\
+\textbf{VulnBot}~\cite{vulnbot25}                & Llama 3.1-405B     & AutoPenBench         & \textbf{69.1} & \textbf{30.3} \\
+\textbf{xOffense}~\cite{xoffense25}              & Qwen3-32B (LoRA)   & AutoPenBench         & \textbf{79.2} & n/r  \\
 \midrule
-Claude Sonnet 4.5~\cite{checkmate25}             & Vulhub            & n/r           & baseline      \\
-CheckMate (Sonnet 4.5 + Planning+)~\cite{checkmate25} & Vulhub       & n/r           & +20\%$^\dagger$ \\
-EnIGMA (GPT-4)~\cite{enigma25}                   & NYU CTF (200)     & n/r           & SOTA          \\
+Claude Code (baseline)~\cite{checkmate25}        & Sonnet 4.5         & Vulhub               & n/r  & baseline \\
+\textbf{CheckMate}~\cite{checkmate25}            & Sonnet 4.5 + Plan+ & Vulhub               & n/r  & \textbf{+20$^\dagger$} \\
+\textbf{EnIGMA}~\cite{enigma25}                  & GPT-4              & NYU CTF (200)        & n/r  & SOTA \\
 \midrule
-\textbf{\systemname\ (ours, MiniMax-M2.7)} & \textbf{7 IoT scenarios} &
+\textbf{\systemname\ (ours)} & \textbf{MiniMax-M2.7} & \textbf{7 IoT scenarios} &
 \multicolumn{2}{c}{\textbf{Recall / Prec / F1 / Score / MHR$_k$ / L1L2L3}} \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{$^\dagger$ relative gain over the immediately preceding
-baseline row. ``n/r'' = not reported in the paper at this metric.}
-\end{table}
+baseline row. ``n/r'' = metric not reported in the source paper.}
+\end{table*}
 
 % ══════════════════════════════════════════════════════════════════════════
 % §3 Threat Model
@@ -539,19 +538,19 @@ twice to study variance within an architectural family):
 
 \begin{table}[h]
 \centering
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}llll@{}}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llcl@{}}
 \toprule
-Scenario & Pattern & Devices & Theme \\
+Scenario & Pattern & Dev. & Theme \\
 \midrule
-\texttt{scenario\_1} & P1 Flat              & 4 & Minimal IoT subnet (MQTT/Web/SSH) \\
-\texttt{scenario\_2} & P1 Flat              & 6 & Flat IoT + IT mix \\
-\texttt{scenario\_3} & P2 Gateway-centric   & 8 & NATO lab replica (LoRaWAN GW) \\
-\texttt{scenario\_4} & P3 Segmented IT/OT   & 8 & Industrial (Modbus PLC + HMI) \\
-\texttt{scenario\_5} & P4 Hub-centric star  & 8 & Smart building (cameras / NVR) \\
-\texttt{scenario\_6} & P4 Hub-centric star  & 6 & Home automation (Node-RED hub) \\
-\texttt{scenario\_7} & P5 Edge-cloud pivot  & 6 & Edge gateway $\to$ cloud API \\
+\texttt{s\_1} & P1 Flat              & 4 & Minimal IoT (MQTT/Web/SSH) \\
+\texttt{s\_2} & P1 Flat              & 6 & Flat IoT + IT mix \\
+\texttt{s\_3} & P2 Gateway-centric   & 8 & NATO lab replica \\
+\texttt{s\_4} & P3 Segmented IT/OT   & 8 & Industrial (Modbus/HMI) \\
+\texttt{s\_5} & P4 Hub-centric star  & 8 & Smart building \\
+\texttt{s\_6} & P4 Hub-centric star  & 6 & Home automation hub \\
+\texttt{s\_7} & P5 Edge-cloud pivot  & 6 & Edge $\to$ cloud API \\
 \bottomrule
 \end{tabular}
 \end{table}
