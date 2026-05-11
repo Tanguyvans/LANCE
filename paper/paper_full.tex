@@ -176,11 +176,11 @@ AutoPenBench and surpassing \textsc{PentestGPT} and \textsc{VulnBot}.
 predefined attack actions, improving success rates by more than $20\%$
 over Claude Code + Sonnet 4.5 on the Vulhub benchmark.
 
-Despite the diversity of these designs, every system above is evaluated
-on a \emph{single host}: a HackTheBox machine, a VulnHub VM, or a CTF
-container. None of them models multi-device reachability as an explicit
-infrastructure graph or handles IoT-specific application protocols
-(MQTT, Modbus, LoRaWAN, CoAP).
+Despite the diversity of these designs, every system above is scored on
+a \emph{single host} (a HackTheBox machine, a VulnHub VM, or a CTF
+container), with no notion of multi-device reachability and no IoT- or
+OT-specific application protocols (MQTT, Modbus, LoRaWAN, CoAP) on the
+test surface.
 
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
