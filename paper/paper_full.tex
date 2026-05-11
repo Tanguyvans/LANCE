@@ -151,14 +151,6 @@ not of the agent: improving the agent alone does not close them.
   pipeline.
 \end{itemize}
 
-\noindent\textbf{Research questions.}
-\textbf{RQ1} How do current LLM-pentest architectures perform at the
-\emph{network} unit of evaluation, holding the model constant?
-\textbf{RQ2} How much of an agent's recall stops at detection rather
-than reaching exploitation or exfiltration?
-\textbf{RQ3} Which architectural patterns most degrade LLM performance?
-\textbf{RQ4} Does widening a single-host harness to a CIDR scope
-recover multi-hop reach, or does the gap persist?
 All artifacts (Ansible playbooks, ground truth, evaluator, run logs)
 are released at \texttt{ANONYMIZED\_URL}.
 
@@ -961,7 +953,7 @@ caps and the concurrency limit in Phase~4.
 \section{Evaluation}
 \label{sec:eval}
 
-\subsection{Overall performance (RQ1)}
+\subsection{Overall performance}
 \label{sec:eval:overall}
 
 \begin{table*}[t]
@@ -1014,7 +1006,7 @@ $XX\%, while all baselines collapse to near-zero on multi-hop vulnerabilities.
 F1 gap to nearest baseline (VulnBot) is ZZ percentage points. Variance across
 3 runs stays under YY\%.}
 
-\subsection{Network-scale vs baselines (RQ4)}
+\subsection{Network-scale gap vs baselines}
 \label{sec:eval:baselines}
 
 \begin{figure}[t]
@@ -1033,7 +1025,7 @@ F1 gap to nearest baseline (VulnBot) is ZZ percentage points. Variance across
 (ii) LLMs win on misconfig/default-creds, (iii) single-host LLMs adapted to
 network fall behind native harness on F1 by ZZ\%.}
 
-\subsection{Per-architecture analysis (RQ3)}
+\subsection{Per-architecture analysis}
 \label{sec:eval:arch}
 
 \begin{figure}[t]
@@ -1049,7 +1041,7 @@ network fall behind native harness on F1 by ZZ\%.}
 gateway-centric and hub-star degrade most, because they require pivot
 reasoning. Edge-cloud may also degrade on cloud-side service discovery.}
 
-\subsection{Evidence-level depth (RQ2)}
+\subsection{Evidence-level depth}
 \label{sec:eval:evidence}
 
 \begin{table}[t]
