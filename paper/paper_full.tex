@@ -70,10 +70,13 @@ LLM penetration-testing agents to date (AutoPenBench, NYU CTF Bench,
 Cybench, Vulhub, CAIBench) scores the agent on a \emph{single host} — one
 VM, one container, one flag. Multi-device reachability, behind-pivot
 findings, and IoT/OT protocols fall outside this unit of evaluation.
-We close this gap with \systemname, a reproducible benchmark of 7~IoT
-scenarios spanning 5~architectural patterns (flat, gateway-centric,
-segmented IT/OT, hub-star, edge-cloud), 9~application protocols, and
-106~vulnerabilities injected deterministically via Ansible with
+We close this gap with \systemname, a reproducible benchmark of 15
+IoT scenarios — 10 main scenarios spanning 5~architectural patterns
+(flat, gateway-centric, segmented IT/OT, hub-star, edge-cloud),
+3~scalability stressors (up to 35~devices in a single subnet), and
+2~hardened controls (zero injected vulnerabilities, measuring False
+Positive rate) — across 9~application protocols and
+229~vulnerabilities injected deterministically via Ansible with
 per-vulnerability machine-readable ground truth (OWASP IoT Top~10 and
 MITRE ATT\&CK for ICS mapped). We additionally release \harnessname,
 a network-native multi-agent harness whose six phases (topology prior,
@@ -153,10 +156,12 @@ than retrofitted to them.
 \noindent\textbf{Contributions.} We bridge this gap with:
 \begin{itemize}
   \item \textbf{\systemname} — the first reproducible benchmark for LLM pentest
-  agents at \emph{network scale}: 5 architectural patterns, 7~scenarios, 9~protocols
-  (MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, Telnet),
-  106~vulnerabilities deterministically injected via Ansible, with ground truth mapped
-  to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
+  agents at \emph{network scale}: 5 architectural patterns instantiated by
+  10~main scenarios, plus 3 scalability stressors (up to 35 devices) and
+  2 hardened controls (for False Positive rate); 15 scenarios total covering
+  9~protocols (MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, Telnet)
+  and 229~vulnerabilities deterministically injected via Ansible, with
+  ground truth mapped to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
   \item \textbf{\harnessname} — a network-native harness with six phases
   (\emph{topology prior $\to$ discovery $\to$ per-device parallel triage $\to$
   per-vulnerability verification $\to$ intrusion / lateral movement $\to$
@@ -384,7 +389,7 @@ CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed   & meta-benchmark
 Vulhub~\cite{vulhub}                    & single-host & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom     \\
 Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)           & no  & --         \\
 \midrule
-\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/LoRa/CoAP/\ldots} & \textbf{7 IoT scenarios, per-vuln YAML} & \textbf{yes} & \textbf{L1/L2/L3 + MHR$_k$} \\
+\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/LoRa/CoAP/\ldots} & \textbf{15 IoT scenarios (up to 35 dev.), per-vuln YAML} & \textbf{yes} & \textbf{L1/L2/L3 + MHR$_k$} \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -421,7 +426,7 @@ Claude Code (baseline)~\cite{checkmate25}        & Sonnet 4.5         & Vulhub  
 \textbf{CheckMate}~\cite{checkmate25}            & Sonnet 4.5 + Plan+ & Vulhub               & n/r  & \textbf{+20$^\dagger$} \\
 \textbf{EnIGMA}~\cite{enigma25}                  & GPT-4              & NYU CTF (200)        & n/r  & SOTA \\
 \midrule
-\textbf{\systemname\ (ours)} & \textbf{MiniMax-M2.7} & \textbf{7 IoT scenarios} &
+\textbf{\systemname\ (ours)} & \textbf{MiniMax-M2.7} & \textbf{15 IoT scenarios (up to /24, 35 dev.)} &
 \multicolumn{2}{c}{\textbf{Recall / Prec / F1 / Score / MHR$_k$ / L1L2L3}} \\
 \bottomrule
 \end{tabular}
@@ -498,6 +503,14 @@ Hardware-assisted attacks are left as future work (\cref{sec:conclusion}).
   \texttt{category}, \texttt{OWASP IoT} and \texttt{MITRE ICS} mappings,
   optional \texttt{CVE}, \texttt{indicators} (expected detection strings), and
   a \texttt{verification} command.
+  \item[Scalability axis.] Three scenarios (s\_11, s\_12, s\_13) stress
+  network size at 15, 17, and 35 devices respectively, while the
+  10 main scenarios stay in the 4--8 device range. This separates the
+  pattern-coverage axis from the size axis.
+  \item[Hardened controls.] Two scenarios (s\_1h, s\_4h) re-use the
+  topologies of s\_1 and s\_4 with all injected vulnerabilities removed.
+  They measure agent False Positive rate on a deployment that should
+  return ``no findings''.
 \end{description}
 
 \subsection{Five architectural patterns}
@@ -533,24 +546,53 @@ Concretely:
   unreachable without edge compromise.
 \end{enumerate}
 
-The 7 scenarios cover the 5 patterns as follows (two patterns are instantiated
-twice to study variance within an architectural family):
+\systemname{} ships 15 scenarios organised on two axes: 10 \emph{main}
+scenarios that instantiate the 5 architectural patterns above (with
+small-to-medium device counts, 4--8 devices each), 3 \emph{scalability}
+scenarios that stress network size (15, 17, and 35 devices) while
+re-using patterns P3/P5, and 2 \emph{hardened controls} that ship
+identical topologies to s\_1 and s\_4 \emph{without} any injected
+vulnerability — used to measure agent False Positive rate. The full
+mapping is given in Table~\ref{tab:scenarios}.
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
+\caption{The 15 scenarios of \systemname. \emph{Main} scenarios cover
+the 5 architectural patterns; \emph{Scalability} scenarios stress
+network size; \emph{Hardened} controls ship 0 vulnerabilities to
+measure False Positive rate.}
+\label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}llcl@{}}
+\begin{tabular}{@{}llcrl@{}}
 \toprule
-Scenario & Pattern & Dev. & Theme \\
+ID & Pattern / role & Dev. & Vulns & Theme \\
 \midrule
-\texttt{s\_1} & P1 Flat              & 4 & Minimal IoT (MQTT/Web/SSH) \\
-\texttt{s\_2} & P1 Flat              & 6 & Flat IoT + IT mix \\
-\texttt{s\_3} & P2 Gateway-centric   & 8 & NATO lab replica \\
-\texttt{s\_4} & P3 Segmented IT/OT   & 8 & Industrial (Modbus/HMI) \\
-\texttt{s\_5} & P4 Hub-centric star  & 8 & Smart building \\
-\texttt{s\_6} & P4 Hub-centric star  & 6 & Home automation hub \\
-\texttt{s\_7} & P5 Edge-cloud pivot  & 6 & Edge $\to$ cloud API \\
+\multicolumn{5}{@{}l}{\emph{Main scenarios (pattern coverage)}} \\
+\midrule
+\texttt{s\_1}  & P1 Flat              & 4  & 12 & Minimal IoT (MQTT/Web/SSH) \\
+\texttt{s\_2}  & P1 Flat              & 6  & 13 & Flat IoT + IT mix \\
+\texttt{s\_3}  & P2 Gateway-centric   & 8  & 18 & NATO lab replica \\
+\texttt{s\_4}  & P3 Segmented IT/OT   & 8  & 18 & Industrial (Modbus/HMI) \\
+\texttt{s\_5}  & P4 Hub-centric star  & 8  & 15 & Smart building (cameras/NVR) \\
+\texttt{s\_6}  & P4 Hub-centric star  & 6  & 16 & Home automation hub \\
+\texttt{s\_7}  & P5 Edge-cloud pivot  & 6  & 14 & Edge $\to$ cloud API \\
+\texttt{s\_8}  & P3 Segmented IT/OT   & 8  & 14 & IT/IoT/OT 3-zone industrial \\
+\texttt{s\_9}  & P1 Flat (mesh)       & 6  & 11 & Mesh IoT smart-city outdoor \\
+\texttt{s\_10} & P1 Flat (variants)   & 6  & 13 & Role-variant stress \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{Scalability stressors}} \\
+\midrule
+\texttt{s\_11} & Smart City (flat)    & 15 & 23 & 3 zones same /24 (no isolation) \\
+\texttt{s\_13} & VLAN-segmented       & 17 & 20 & Real Proxmox VLAN bridge (3 VLANs) \\
+\texttt{s\_12} & Smart City (large)   & 35 & 42 & Largest network (34 LXC services) \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{Hardened controls (FP rate)}} \\
+\midrule
+\texttt{s\_1h} & P1 Flat (hardened)   & 4  &  0 & s\_1 with vulns removed \\
+\texttt{s\_4h} & P3 ICS (hardened)    & 8  &  0 & s\_4 with vulns removed \\
+\midrule
+\textbf{Total} &                      &\textbf{145} & \textbf{229} & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -570,28 +612,29 @@ MariaDB with a passwordless \texttt{root}. Category distribution is shown in
 
 \begin{table}[t]
 \centering
-\caption{Vulnerability categories and severity distribution across \systemname
-(106~injected instances over 7 scenarios). Counts derived from the
-\texttt{ground\_truth/scenario\_*.yaml} files.}
+\caption{Vulnerability categories and severity distribution across all
+13 vulnerability-injected scenarios of \systemname (229~injected instances;
+the 2 hardened controls contribute 0 by design). Counts derived from
+\texttt{ground\_truth/scenario\_*.yaml}.}
 \label{tab:categories}
 \footnotesize
-\begin{tabular}{@{}lrrrr@{}}
+\begin{tabular}{@{}lrrrrr@{}}
 \toprule
-Category & Count & CRIT & HIGH & MED/LOW \\
+Category & Count & CRIT & HIGH & MED & LOW \\
 \midrule
-\texttt{misconfiguration}      & 35 & 4 & 15 & 16 \\
-\texttt{data\_exposure}        & 20 & 0 & 11 &  9 \\
-\texttt{info\_disclosure}      & 12 & 0 &  0 & 12 \\
-\texttt{default\_credentials}  & 11 & 3 &  8 &  0 \\
-\texttt{no\_authentication}    &  7 & 1 &  5 &  1 \\
-\texttt{cve}                   &  5 & 0 &  3 &  2 \\
-\texttt{insecure\_update}      &  5 & 0 &  0 &  5 \\
-\texttt{weak\_crypto}          &  3 & 0 &  0 &  3 \\
-\texttt{missing\_header}       &  3 & 0 &  0 &  3 \\
-\texttt{code\_injection}       &  3 & 2 &  1 &  0 \\
-\texttt{privilege\_escalation} &  2 & 0 &  2 &  0 \\
+\texttt{misconfiguration}      & 68  &  7 & 36 & 25 &  0 \\
+\texttt{no\_authentication}    & 41  & 17 & 21 &  3 &  0 \\
+\texttt{data\_exposure}        & 38  &  0 & 14 & 24 &  0 \\
+\texttt{default\_credentials}  & 29  &  3 & 26 &  0 &  0 \\
+\texttt{info\_disclosure}      & 13  &  0 &  0 &  0 & 13 \\
+\texttt{code\_injection}       & 11  & 10 &  1 &  0 &  0 \\
+\texttt{cve}                   &  9  &  0 &  3 &  6 &  0 \\
+\texttt{insecure\_update}      &  9  &  0 &  4 &  5 &  0 \\
+\texttt{weak\_crypto}          &  6  &  0 &  0 &  1 &  5 \\
+\texttt{missing\_header}       &  3  &  0 &  0 &  0 &  3 \\
+\texttt{privilege\_escalation} &  2  &  0 &  2 &  0 &  0 \\
 \midrule
-\textbf{Total}                 &\textbf{106} & 10 & 45 & 51 \\
+\textbf{Total}                 &\textbf{229} & 37 & 107 & 64 & 21 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -959,8 +1002,10 @@ caps and the concurrency limit in Phase~4.
 \begin{table*}[t]
 \centering
 \caption{Main results --- Task Completion (Recall), Precision, F1, weighted
-Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over 7
-scenarios $\times$ 3 runs. All LLM systems use \texttt{MiniMax-M2.7}
+Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over the
+10 main scenarios $\times$ 3 runs. The 3 scalability stressors and
+2 hardened controls are reported separately in
+\cref{sec:eval:arch,sec:eval:failures}. All LLM systems use \texttt{MiniMax-M2.7}
 (cf.~\cref{sec:setup}); Nmap NSE is the non-LLM lower bound.
 \emph{Task Completion} is the network-scale analogue of the sub-task
 completion rate reported by PentestGPT, VulnBot, AutoPentester, and
