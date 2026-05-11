@@ -62,42 +62,12 @@
 \maketitle
 
 \begin{abstract}
-Penetration tests of IoT deployments must reason at the scale of a
-\emph{network}: dozens of heterogeneous devices, firewall-enforced
-reachability, and protocol-specific application layers (MQTT, Modbus,
-LoRaWAN, CoAP). Yet every reproducible benchmark used to evaluate
-LLM penetration-testing agents to date (AutoPenBench, NYU CTF Bench,
-Cybench, Vulhub, CAIBench) scores the agent on a \emph{single host}:
-one VM, one container, one flag. Multi-device reachability,
-behind-pivot findings, and IoT/OT protocols fall outside this unit of
-evaluation.
-We close this gap with \systemname, a reproducible benchmark of 15
-IoT scenarios: 10 main scenarios spanning 5~architectural patterns
-(flat, gateway-centric, segmented IT/OT, hub-star, edge-cloud),
-3~scalability stressors (up to 35~devices in a single subnet), and
-2~hardened controls (zero injected vulnerabilities, measuring False
-Positive rate). The benchmark covers 9~application protocols and
-229~vulnerabilities injected deterministically via Ansible with
-per-vulnerability machine-readable ground truth (OWASP IoT Top~10 and
-MITRE ATT\&CK for ICS mapped). We additionally release \harnessname,
-a network-native multi-agent harness whose six phases (topology prior,
-discovery, per-device parallel triage, per-vulnerability verification,
-intrusion / lateral movement, network-level report) keep LLM context
-bounded at $O(1)$ per device. Beyond binary flag-capture, \systemname{}
-scores findings on a three-level evidence spectrum
-(L1 detect / L2 exploit / L3 exfiltrate) and on Multi-Hop Reach
-(MHR$_k$), the recall restricted to ground-truth findings at hop
-depth $\geq k$ from the entry point. Holding the LLM constant across
-systems to isolate architectural contributions, we compare
-\harnessname{} against a non-LLM scanner (Nmap NSE), a single-agent
-LLM (PentestGPT), a multi-agent LLM without infrastructure graph
-(CAI, two scope variants), and a multi-agent LLM with task-graph
-(VulnBot). The evaluation surfaces a structural gap invisible to
-single-host benchmarks: every baseline collapses to MHR$_k=0$ for
-$k\geq 2$ by construction, while the L1/L2/L3 spectrum makes precision
-and exploitation depth separable rather than conflated.
-All artifacts (Ansible playbooks, ground truth, evaluator, run logs)
-are released under an open license.
+\todo{Abstract — to write once the \harnessname{} evaluation runs are
+complete. Expected structure: (1) network-scale gap on IoT,
+(2) \systemname{} benchmark (15 scenarios, 229 vulns), (3) \harnessname{}
+six-phase harness + L1/L2/L3 evidence + MHR$_k$, (4) headline result
+vs baselines (Nmap NSE, PentestGPT, CAI A/B, VulnBot), (5) artifact
+release.}
 \end{abstract}
 
 \begin{IEEEkeywords}
