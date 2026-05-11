@@ -139,62 +139,45 @@ analysis and the security frameworks underlying our scenario taxonomy.
 \subsection{LLM Penetration-Testing Agents}
 \label{sec:related:llm}
 
-Happe and Cito~\cite{happe23} reported one of the first peer-reviewed
-studies of LLM-driven penetration testing, showing that a single LLM
-driving a shell could autonomously perform privilege-escalation tasks on
-Linux VMs; the \textsc{HackingBuddyGPT} project~\cite{hackingbuddygpt}
-extended this single-agent line into an open-source tool.
-\textsc{PentestGPT}~\cite{pentestgpt24} introduced the first multi-module
-design: three coordinated LLM sessions (Reasoning, Generation, Parsing)
-operate over a \emph{Pentesting Task Tree} (PTT) that encodes the testing
-state in natural language. Evaluated on $182$ hand-curated HackTheBox and
-VulnHub sub-tasks across 13 targets, it established the recurring failure
-mode that motivates all subsequent work --- loss of session context across
-long command sequences --- and reported a $228.6\%$ task-completion
-increase over a vanilla GPT-3.5 baseline. \textsc{AutoAttacker}
-\cite{autoattacker24} (offensive operations) and
-\textsc{Nebula}~\cite{nebula24} (operator assistant) are subsequent
-single-LLM variants in the same line as Happe~\&~Cito.
+Happe and Cito~\cite{happe23} were among the first to show that a single
+LLM driving a shell can autonomously perform privilege-escalation tasks
+on Linux VMs. \textsc{PentestGPT}~\cite{pentestgpt24} then introduced a
+multi-module design (three coordinated LLM sessions over a
+\emph{Pentesting Task Tree}), evaluated on 182 hand-curated HackTheBox
+and VulnHub sub-tasks across 13 targets, reaching $66.5\%$ subtask and
+$46.2\%$ end-to-end completion against $52.2\%$/$38.5\%$ for plain GPT-4
+and $23.1\%$/$7.7\%$ for GPT-3.5. \textsc{HackingBuddyGPT}%
+~\cite{hackingbuddygpt}, \textsc{AutoAttacker}~\cite{autoattacker24} and
+\textsc{Nebula}~\cite{nebula24} extend this single-agent line into
+open-source tools.
 
 Later systems push specialisation from cognitive roles to penetration
 phases. \textsc{VulnBot}~\cite{vulnbot25} decomposes the workflow into
-three specialised phases (reconnaissance, scanning, exploitation), each
-driven by five cooperating modules (planner, generator, executor,
-summariser, memory retriever) over a Penetration Task Graph (PTG) of task
-dependencies. It reports up to $30.3\%$ task completion on AutoPenBench
-for its Llama3.1-405B variant, a $21$-point gain over the same model used
-single-agent.
-\textsc{AutoPentester}~\cite{autopentester25} extends the PTT idea with
-Retrieval-Augmented Generation across five LLM agents (summariser,
-strategy analyser, generator, results verifier, report generator) plus an
-agent-computer interface, reporting a $+27\%$ subtask completion rate over
-\textsc{PentestGPT} on Hack-The-Box machines.
-\textsc{PentestAgent}~\cite{pentestagent25} (ASIA~CCS'25) and the
-production-grade \textsc{CAI}~\cite{cai25}, co-authored by the
-\textsc{PentestGPT} team, generalise this multi-agent blueprint with
+three phases (reconnaissance, scanning, exploitation) driven by five
+cooperating modules over a \emph{Penetration Task Graph}; it reports
+$69.1\%$ subtask and $30.3\%$ end-to-end completion on AutoPenBench
+with Llama 3.1-405B, a $21$-point end-to-end gain over the same model
+used single-agent. \textsc{AutoPentester}~\cite{autopentester25} adds
+retrieval-augmented generation across five LLM agents and reports a
+$+27\%$ subtask gain over \textsc{PentestGPT} on HackTheBox.
+\textsc{PentestAgent}~\cite{pentestagent25} and the production-grade
+\textsc{CAI}~\cite{cai25} generalise this multi-agent blueprint with
 modular tool use and a public leaderboard.
 
 A complementary thread improves the underlying agent rather than its
 orchestration. \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage
-reinforcement learning on reasoning traces, and \textsc{xOffense}
-\cite{xoffense25} LoRA-fine-tunes Qwen3-32B on offensive corpora
-(write-ups from TryHackMe / HackTheBox / VulnHub plus
-\textsc{WhiteRabbitNeo}), reaching $79.2\%$ subtask completion on
-AutoPenBench --- outperforming the larger Llama3.1-405B baseline.
-\textsc{EnIGMA}~\cite{enigma25} pairs an LLM with interactive shell tools
-on CTF challenges, and \textsc{IRIS}~\cite{iris25} couples an LLM with
-static analysis to surface code-level vulnerabilities. For long-running
-sessions, \textsc{CHAP}~\cite{chap26} relays distilled context across
-successive agent instances and \textsc{AWE}~\cite{awe26} adds persistent
-memory plus browser-backed verification. \textsc{CheckMate}~\cite{checkmate25} couples an LLM agent with a
-\emph{Classical Planning+} module that encodes preconditions and effects
-of predefined attack actions, providing explicit causal reasoning that
-the LLM otherwise lacks; it improves success rates over the strongest
-LLM-only baseline (Claude Code + Sonnet 4.5) by more than $20\%$ on the
-Vulhub benchmark.
+reinforcement learning on reasoning traces, and
+\textsc{xOffense}~\cite{xoffense25} LoRA-fine-tunes Qwen3-32B on
+offensive write-ups (TryHackMe, HackTheBox, VulnHub,
+\textsc{WhiteRabbitNeo}), reaching $79.17\%$ subtask completion on
+AutoPenBench and surpassing \textsc{PentestGPT} and \textsc{VulnBot}.
+\textsc{CheckMate}~\cite{checkmate25} couples an LLM agent with a
+\emph{Classical Planning+} module encoding preconditions and effects of
+predefined attack actions, improving success rates by more than $20\%$
+over Claude Code + Sonnet 4.5 on the Vulhub benchmark.
 
-Despite the diversity of these designs, every system above is evaluated on
-a \emph{single host}: a HackTheBox machine, a VulnHub VM, or a CTF
+Despite the diversity of these designs, every system above is evaluated
+on a \emph{single host}: a HackTheBox machine, a VulnHub VM, or a CTF
 container. None of them models multi-device reachability as an explicit
 infrastructure graph or handles IoT-specific application protocols
 (MQTT, Modbus, LoRaWAN, CoAP).
@@ -213,8 +196,8 @@ co-evaluates capability and risk on a curated CTF subset, and
 helpfulness across a large prompt corpus.
 \textsc{CAIBench}~\cite{caibench25} consolidates the field into a
 meta-benchmark spanning Jeopardy CTFs, attack-and-defense ranges, and
-knowledge tests; its RCTF2 subset adds $27$ robotics challenges --- the
-first cyber-physical inclusion in this benchmark family --- yet each
+knowledge tests; its RCTF2 subset adds $27$ robotics challenges, the
+first cyber-physical inclusion in this benchmark family, yet each
 challenge remains an isolated container.
 
 Two community resources are heavily reused as evaluation substrate by the
@@ -255,8 +238,8 @@ checking, and \textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog
 inference, becoming the de facto reference for attack-graph research. These
 systems compute reachable attacker states from a \emph{static} encoding of
 host configurations and exposed services. We borrow their reachability
-abstraction --- nodes are devices, edges are firewall-permitted protocol
-flows --- but \harnessname\ operates on a \emph{live} network: edges are
+abstraction (nodes are devices, edges are firewall-permitted protocol
+flows) but \harnessname\ operates on a \emph{live} network: edges are
 validated by actual probes, the LLM proposes the next action, and the graph
 is updated as new hosts are discovered. Classical attack-graph generation
 is therefore complementary rather than competing.
@@ -327,7 +310,7 @@ chosen corpus. \emph{Sub-task \%} = fraction of predefined intermediate
 steps solved. \emph{E2E \%} = fraction of full target/challenge solved
 end-to-end. Values are absolute except where prefixed with ``+'' (relative
 gain vs the immediately preceding baseline row). Rows are not directly
-comparable across corpora — the table makes explicit \emph{where} each
+comparable across corpora: the table makes explicit \emph{where} each
 tool is tested and \emph{what} number it publishes. No prior result is
 reported on a multi-device IoT network with firewall-enforced reachability,
 which is the gap \systemname\ targets.}
@@ -479,7 +462,7 @@ small-to-medium device counts, 4--8 devices each), 3 \emph{scalability}
 scenarios that stress network size (15, 17, and 35 devices) while
 re-using patterns P3/P5, and 2 \emph{hardened controls} that ship
 identical topologies to s\_1 and s\_4 \emph{without} any injected
-vulnerability — used to measure agent False Positive rate. The full
+vulnerability, used to measure agent False Positive rate. The full
 mapping is given in Table~\ref{tab:scenarios}.
 
 \begin{table}[t]
@@ -595,7 +578,7 @@ entry example (from \texttt{scenario\_1.yaml}):
 \end{figure}
 
 Each scenario YAML may additionally declare a top-level
-\texttt{bonus\_types} list — vulnerability types that are \emph{adjacent}
+\texttt{bonus\_types} list of vulnerability types that are \emph{adjacent}
 to the injected set (e.g., a hardening recommendation related to the same
 service) and which, if reported by an agent, are neither counted as True
 Positives nor as False Positives. This avoids penalising agents for
@@ -631,9 +614,9 @@ the majority of cases; we report the exact figure in
 
 \paragraph{Evidence levels}
 Beyond match accuracy, the evaluator tracks, per True Positive, the deepest
-\emph{evidence level} achieved by the harness: \textsf{L1}~(detection — banner
-or port), \textsf{L2}~(exploitation — authenticated action), \textsf{L3}~(data
-exfiltration — sensitive content retrieved). We report
+\emph{evidence level} achieved by the harness: \textsf{L1}~(detection, banner
+or port), \textsf{L2}~(exploitation, authenticated action), \textsf{L3}~(data
+exfiltration, sensitive content retrieved). We report
 $\text{L\textit{k}-coverage} = |\{t \in \text{TP} : \text{level}(t) \geq k\}| / |\text{TP}|$.
 This metric cannot be computed on single-host binary-flag benchmarks and
 captures a dimension of pentest quality that existing LLM-pentest evaluations
@@ -707,7 +690,7 @@ Phase~2 executes active reconnaissance across the target \texttt{/24}:
 \texttt{arp\_scan} (L2 + vendor), and protocol-specific probes
 (\texttt{mqtt\_listen} subscribing to \texttt{\#} on discovered brokers,
 \texttt{ssh\_audit} against SSH servers, \texttt{curl\_headers} on HTTP).
-Unlike single-host harnesses, the agent is not given a target IP — it must
+Unlike single-host harnesses, the agent is not given a target IP: it must
 derive one from the CIDR scope.
 
 \subsection{Phase~3: Per-device parallel triage}
@@ -830,41 +813,43 @@ All scenarios run on a single Proxmox VE host. Networks are Linux bridges
 Per-scenario deployment and teardown are automated via Ansible and complete
 in under 10~minutes per scenario.
 
-\paragraph{LLM model — fairness lock}
-To isolate \emph{architectural} contributions from model-specific advantages, all
-LLM-driven systems compared in this work --- our pipeline (and its ablations) and
-all LLM baselines --- run on the \emph{same} general-purpose model:
-\textbf{MiniMax-M2.7} \cite{minimax27}. We deliberately avoid a multi-model
-matrix: a fair comparison of architectures requires the model variable to be
-held constant. CAI's specialised \texttt{alias1} model (security-fine-tuned,
-paywalled) is intentionally not used --- this study addresses the architecture
-axis, not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps the
-combined API cost at zero under our research subscription, enabling the full
-$k{=}3$-run variance estimation across all systems and scenarios without budget
-trade-offs.
+\paragraph{LLM model: fairness lock}
+To isolate \emph{architectural} contributions from model-specific
+advantages, all LLM-driven systems compared in this work, including our
+pipeline (and its ablations) and all LLM baselines, run on the same
+general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. We
+deliberately avoid a multi-model matrix: a fair comparison of
+architectures requires the model variable to be held constant.
+CAI's specialised \texttt{alias1} model (security-fine-tuned, paywalled)
+is intentionally not used: this study addresses the architecture axis,
+not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps
+the combined API cost at zero under our research subscription, enabling
+the full $k{=}3$-run variance estimation across all systems and
+scenarios without budget trade-offs.
 
 \paragraph{Baselines}
-We compare our pipeline against four architectural slots — three LLM-based
-and one non-LLM:
+We compare our pipeline against four architectural slots (three
+LLM-based and one non-LLM):
 
 \begin{itemize}
-  \item \textbf{Single-agent LLM} --- \textsc{PentestGPT}~\cite{pentestgpt24}
+  \item \textbf{Single-agent LLM:} \textsc{PentestGPT}~\cite{pentestgpt24}
   in autonomous mode, the canonical USENIX'24 reference.
-  \item \textbf{Multi-agent LLM (no infrastructure graph)} ---
+  \item \textbf{Multi-agent LLM (no infrastructure graph):}
   \textsc{CAI}~\cite{cai25}. We test two variants: \emph{A1} per-IP
   (one independent CAI session per ground-truth IP, no shared state) and
-  \emph{B} CIDR-scope (a single CAI session given the full \texttt{/24}, allowed
-  to discover hosts and pivot via \texttt{LinuxCmd} primitives). Both variants
-  receive the same total turn budget as our pipeline.
-  \item \textbf{Multi-agent LLM with task-graph} ---
-  \textsc{VulnBot}~\cite{vulnbot25}, the most structurally similar competitor.
-  VulnBot's Penetration Task Graph (PTG) is a directed acyclic graph of
-  \emph{tasks} (action dependencies), to be contrasted with our infrastructure
-  graph of \emph{devices} (firewall-enforced reachability). Both are
-  ``graph-based'', but encode orthogonal abstractions.
-  \item \textbf{Non-LLM scanner} --- Nmap with all NSE scripts
-  (\texttt{--script=default,vuln,auth}) against the same target CIDR. Scanner
-  outputs are converted to the evaluator's JSON schema.
+  \emph{B} CIDR-scope (a single CAI session given the full \texttt{/24},
+  allowed to discover hosts and pivot via \texttt{LinuxCmd} primitives).
+  Both variants receive the same total turn budget as our pipeline.
+  \item \textbf{Multi-agent LLM with task-graph:}
+  \textsc{VulnBot}~\cite{vulnbot25}, the most structurally similar
+  competitor. VulnBot's Penetration Task Graph (PTG) is a DAG of
+  \emph{tasks} (action dependencies), to be contrasted with our
+  infrastructure graph of \emph{devices} (firewall-enforced
+  reachability). Both are ``graph-based'' but encode orthogonal
+  abstractions.
+  \item \textbf{Non-LLM scanner:} Nmap with all NSE scripts
+  (\texttt{--script=default,vuln,auth}) against the same target CIDR.
+  Scanner outputs are converted to the evaluator's JSON schema.
 \end{itemize}
 
 \paragraph{Internal ablations}
@@ -896,20 +881,24 @@ We report five families of metrics, chosen to (i)~align with prior work's
 expected vocabulary and (ii)~surface architectural differences invisible to
 host-level benchmarks:
 \begin{itemize}
-  \item \emph{Task completion} --- Recall against the ground-truth vulnerability
-  set, the network-scale analogue of the sub-task / task completion rate
-  reported by PentestGPT, VulnBot, AutoPentester, Pentest-R1, and xOffense.
-  \item \emph{Quality} --- Precision, F1, and weighted Score
-  (CVSS-severity-weighted Recall, \S\ref{sec:iotbench:eval}). Score plays the
-  role of AutoPentester's ``vulnerability coverage'' but with severity weights.
-  \item \emph{Multi-Hop Reach} --- MHR$_k$ for $k\in\{1,2,3\}$, the fraction of
-  ground-truth vulnerabilities at \texttt{hop\_depth}~$\geq k$ that are reached.
-  No prior LLM-pentest benchmark measures network depth explicitly.
-  \item \emph{Evidence depth} --- $L_1$ (detection), $L_2$ (exploitation), $L_3$
-  (exfiltration) coverage; absent from binary flag-capture benchmarks.
-  \item \emph{Cost envelope} --- prompt+completion tokens and monetary cost
-  (USD) from provider billing APIs, plus wall-clock time per scenario,
-  matching CAI~\cite{cai25}, AutoPentester, and Pentest-R1.
+  \item \emph{Task completion:} Recall against the ground-truth
+  vulnerability set, the network-scale analogue of the sub-task / task
+  completion rate reported by PentestGPT, VulnBot, AutoPentester,
+  Pentest-R1, and xOffense.
+  \item \emph{Quality:} Precision, F1, and weighted Score
+  (CVSS-severity-weighted Recall, \S\ref{sec:iotbench:eval}). Score
+  plays the role of AutoPentester's ``vulnerability coverage'' but with
+  severity weights.
+  \item \emph{Multi-Hop Reach:} MHR$_k$ for $k\in\{1,2,3\}$, the
+  fraction of ground-truth vulnerabilities at
+  \texttt{hop\_depth}~$\geq k$ that are reached. No prior LLM-pentest
+  benchmark measures network depth explicitly.
+  \item \emph{Evidence depth:} $L_1$ (detection), $L_2$ (exploitation),
+  $L_3$ (exfiltration) coverage; absent from binary flag-capture
+  benchmarks.
+  \item \emph{Cost envelope:} prompt+completion tokens and monetary
+  cost (USD) from provider billing APIs, plus wall-clock time per
+  scenario, matching CAI~\cite{cai25}, AutoPentester, and Pentest-R1.
 \end{itemize}
 
 \paragraph{Compute and budget}
@@ -928,7 +917,7 @@ caps and the concurrency limit in Phase~4.
 
 \begin{table*}[t]
 \centering
-\caption{Main results --- Task Completion (Recall), Precision, F1, weighted
+\caption{Main results: Task Completion (Recall), Precision, F1, weighted
 Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over the
 10 main scenarios $\times$ 3 runs. The 3 scalability stressors and
 2 hardened controls are reported separately in
@@ -1076,8 +1065,8 @@ quantitative table.}
 
 \paragraph{Where LLMs help, where they don't}
 \systemname{} surfaces an empirical pattern: LLM agents reach high recall on
-misconfigurations, default credentials, and information disclosure — findings
-that are textually expressible and well represented in their training corpora.
+misconfigurations, default credentials, and information disclosure, which
+are textually expressible and well represented in their training corpora.
 They consistently underperform on binary industrial protocols (Modbus, CoAP,
 LoRaWAN) and on cross-device inferences that require holding an aggregated
 network view. This suggests a hybrid deployment model: LLM agents for
@@ -1128,9 +1117,9 @@ The benchmark artifact (Ansible playbooks, ground truth, evaluator) does not
 embed exploitation payloads for unknown vulnerabilities, and the injected
 weaknesses are common misconfigurations documented in OWASP~IoT~Top~10.
 The harness uses only standard pentest tools already in widespread use.
-We judge the net societal benefit — reproducible evaluation of LLM pentest
-agents, and a concrete evaluation surface for future defenders — to exceed
-the incremental misuse risk.
+We judge the net societal benefit (reproducible evaluation of LLM
+pentest agents, and a concrete evaluation surface for future defenders)
+to exceed the incremental misuse risk.
 
 \paragraph{IRB / human subjects}
 No human subjects are involved. No personal data is collected or processed.
@@ -1161,12 +1150,12 @@ evidence spectrum exposes architectural differences that binary
 flag-capture benchmarks conflate.
 
 \paragraph{Future work}
-(i)~\emph{Multi-model robustness} — extending the architectural comparison to
+(i)~\emph{Multi-model robustness:} extending the architectural comparison to
 recent frontier models (Claude Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro, DeepSeek
 V4, Qwen 3.6) to confirm model-independence of the architectural advantage;
-(ii)~\emph{Real hardware} — extending to embedded Zigbee, LoRaWAN, and
+(ii)~\emph{Real hardware:} extending to embedded Zigbee, LoRaWAN, and
 sub-GHz attack surfaces via SDR tooling;
-(iii)~\emph{Defender's side} — using \systemname{} as a benchmark for
+(iii)~\emph{Defender's side:} using \systemname{} as a benchmark for
 LLM-assisted IoT defense (detection, patching recommendation).
 
 All code, scenarios, ground truth, and run logs are released at
