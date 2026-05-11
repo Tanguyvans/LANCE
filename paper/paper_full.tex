@@ -67,15 +67,16 @@ Penetration tests of IoT deployments must reason at the scale of a
 reachability, and protocol-specific application layers (MQTT, Modbus,
 LoRaWAN, CoAP). Yet every reproducible benchmark used to evaluate
 LLM penetration-testing agents to date (AutoPenBench, NYU CTF Bench,
-Cybench, Vulhub, CAIBench) scores the agent on a \emph{single host} — one
-VM, one container, one flag. Multi-device reachability, behind-pivot
-findings, and IoT/OT protocols fall outside this unit of evaluation.
+Cybench, Vulhub, CAIBench) scores the agent on a \emph{single host}:
+one VM, one container, one flag. Multi-device reachability,
+behind-pivot findings, and IoT/OT protocols fall outside this unit of
+evaluation.
 We close this gap with \systemname, a reproducible benchmark of 15
-IoT scenarios — 10 main scenarios spanning 5~architectural patterns
+IoT scenarios: 10 main scenarios spanning 5~architectural patterns
 (flat, gateway-centric, segmented IT/OT, hub-star, edge-cloud),
 3~scalability stressors (up to 35~devices in a single subnet), and
 2~hardened controls (zero injected vulnerabilities, measuring False
-Positive rate) — across 9~application protocols and
+Positive rate). The benchmark covers 9~application protocols and
 229~vulnerabilities injected deterministically via Ansible with
 per-vulnerability machine-readable ground truth (OWASP IoT Top~10 and
 MITRE ATT\&CK for ICS mapped). We additionally release \harnessname,
@@ -86,11 +87,11 @@ bounded at $O(1)$ per device. Beyond binary flag-capture, \systemname{}
 scores findings on a three-level evidence spectrum
 (L1 detect / L2 exploit / L3 exfiltrate) and on Multi-Hop Reach
 (MHR$_k$), the recall restricted to ground-truth findings at hop
-depth $\geq k$ from the entry point. Holding the LLM constant
-(\texttt{MiniMax-M2.7}) to isolate architectural contributions, we
-compare \harnessname{} against a non-LLM scanner (Nmap NSE), a
-single-agent LLM (PentestGPT), a multi-agent LLM without infrastructure
-graph (CAI, two scope variants), and a multi-agent LLM with task-graph
+depth $\geq k$ from the entry point. Holding the LLM constant across
+systems to isolate architectural contributions, we compare
+\harnessname{} against a non-LLM scanner (Nmap NSE), a single-agent
+LLM (PentestGPT), a multi-agent LLM without infrastructure graph
+(CAI, two scope variants), and a multi-agent LLM with task-graph
 (VulnBot). The evaluation surfaces a structural gap invisible to
 single-host benchmarks: every baseline collapses to MHR$_k=0$ for
 $k\geq 2$ by construction, while the L1/L2/L3 spectrum makes precision
@@ -122,30 +123,33 @@ LLM-pentesting agents have matured rapidly and report substantial gains
 on public test corpora (Table~\ref{tab:reported}), yet every such
 corpus is a collection of \emph{isolated containers or VMs} and every
 agent is scored one target at a time. Three properties of a real IoT
-deployment are invisible to that metric: \emph{hop depth}
+deployment remain invisible to that metric: \emph{hop depth}
 (behind-pivot vulnerabilities), \emph{IoT/OT protocols} (MQTT, Modbus,
-LoRaWAN, CoAP), and \emph{evidence depth} (detection vs exploitation vs
-exfiltration). No improvement to the agent alone closes these gaps —
-the evaluation surface itself must change.
+LoRaWAN, CoAP), and \emph{evidence depth} (detection vs exploitation
+vs exfiltration). These gaps are properties of the evaluation surface,
+not of the agent: improving the agent alone does not close them. The
+surface itself must change.
 
 \noindent\textbf{Contributions.}
 \begin{itemize}
-  \item \textbf{\systemname} — the first reproducible network-scale
-  benchmark for LLM pentest agents on IoT: 15 scenarios (10 main
-  covering 5 architectural patterns, 3 scalability stressors up to
-  35 devices, 2 hardened controls for False Positive rate),
-  229 vulnerabilities injected via Ansible, ground truth mapped to
+  \item \textbf{\systemname}: the first reproducible network-scale
+  benchmark for LLM pentest agents on IoT. It ships 15 scenarios
+  (10 main covering 5 architectural patterns, 3 scalability stressors
+  up to 35 devices, 2 hardened controls for False Positive rate),
+  229 vulnerabilities injected via Ansible, with ground truth mapped to
   OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
-  \item \textbf{\harnessname} — a network-native harness whose six
+  \item \textbf{\harnessname}: a network-native harness whose six
   phases (topology prior, discovery, per-device triage,
   per-vulnerability verification, intrusion, report) keep LLM context
   tractable at $/24$ scale.
-  \item \textbf{L1/L2/L3 evidence scoring + MHR$_k$} — metrics that
+  \item \textbf{L1/L2/L3 evidence scoring and MHR$_k$}: metrics that
   separate detection, exploitation, and exfiltration, and that measure
   recall as a function of firewall-hop distance.
-  \item \textbf{Empirical study} on a single shared model
-  (\texttt{MiniMax-M2.7}) against four baselines (Nmap NSE, PentestGPT,
-  CAI in two scope variants, VulnBot) plus two ablations.
+  \item \textbf{Empirical study} holding the LLM constant across
+  systems to isolate architectural contributions. We compare
+  \harnessname{} against four baselines (Nmap NSE, PentestGPT,
+  CAI in two scope variants, VulnBot) plus two ablations of our own
+  pipeline.
 \end{itemize}
 
 \noindent\textbf{Research questions.}
@@ -394,7 +398,7 @@ Claude Code (baseline)~\cite{checkmate25}        & Sonnet 4.5         & Vulhub  
 \textbf{CheckMate}~\cite{checkmate25}            & Sonnet 4.5 + Plan+ & Vulhub               & n/r  & \textbf{+20$^\dagger$} \\
 \textbf{EnIGMA}~\cite{enigma25}                  & GPT-4              & NYU CTF (200)        & n/r  & SOTA \\
 \midrule
-\textbf{\systemname\ (ours)} & \textbf{MiniMax-M2.7} & \textbf{15 IoT scenarios (up to /24, 35 dev.)} &
+\textbf{\systemname\ (ours)} & \textbf{shared (see \S\ref{sec:setup})} & \textbf{15 IoT scenarios (up to /24, 35 dev.)} &
 \multicolumn{2}{c}{\textbf{Recall / Prec / F1 / Score / MHR$_k$ / L1L2L3}} \\
 \bottomrule
 \end{tabular}
@@ -1191,10 +1195,11 @@ We presented \systemname, the first reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
 \harnessname, a network-native multi-agent harness whose infrastructure-graph
 guidance and dedicated lateral movement phase keep LLM context tractable while
-explicitly modelling firewall-enforced reachability. Holding the LLM constant
-(\texttt{MiniMax-M2.7}) across our pipeline, two ablations, and five
-external baselines (CAI~A1 per-IP, CAI~B CIDR-scope, VulnBot, PentestGPT,
-Nmap NSE), we isolate the \emph{architectural} contribution:
+explicitly modelling firewall-enforced reachability. Holding the LLM
+constant (\cref{sec:setup}) across our pipeline, two ablations, and
+five external baselines (CAI~A1 per-IP, CAI~B CIDR-scope, VulnBot,
+PentestGPT, Nmap NSE), we isolate the \emph{architectural}
+contribution:
 \harnessname\ outperforms the single-host LLM agents on multi-hop reach
 (MHR$_2$, MHR$_3$) by a margin that collapses near zero for every
 single-host baseline by construction, and demonstrates that the L1--L3
