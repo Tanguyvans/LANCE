@@ -110,76 +110,52 @@ benchmark, cyber-physical systems
 \section{Introduction}
 \label{sec:intro}
 
-Modern IoT deployments are inherently \emph{networks}: a smart building
-chains cameras, NVRs, MQTT brokers, access controllers, and HVAC
-controllers behind a single gateway; an industrial site couples Modbus
-PLCs and an HMI behind a jump host; a city-scale LoRaWAN deployment
-routes sensor traffic through edge gateways into cloud APIs. The attack
-surface that matters to a defender is the union of all reachability
-paths, not any single host. Real-world incidents
-(Mirai~\cite{antonakakis17}, the Verkada camera
-breach~\cite{verkada21}, the Stuxnet lineage in
-OT~\cite{langner11}) all materialised as multi-hop pivots across this
-surface, not as one-shot single-host compromises.
+Modern IoT deployments are \emph{networks}, not hosts: a smart building
+chains cameras, brokers, and controllers behind a gateway; an industrial
+site puts Modbus PLCs behind a jump host. The attack surface that
+matters is the union of reachability paths, and real-world incidents
+(Mirai~\cite{antonakakis17}, Verkada~\cite{verkada21},
+Stuxnet~\cite{langner11}) all materialised as multi-hop pivots across
+that surface.
 
-The LLM-pentesting literature has matured rapidly, and recent systems
-report substantial gains on public test corpora
-(Table~\ref{tab:reported}) — but every one of those corpora
-(AutoPenBench~\cite{autopenbench24}, NYU CTF Bench~\cite{nyuctfbench24},
-Cybench~\cite{cybench24}, CAIBench~\cite{caibench25},
-Vulhub~\cite{vulhub}) is a collection of \emph{isolated containers or
-VMs}, and every agent above is scored on solving one such target at a
-time. The unit of evaluation is therefore the host, not the network,
-and the structural properties that distinguish a real IoT deployment
-from a single VM are invisible to the metric. Behind-pivot
-vulnerabilities cannot be reached from the perimeter at all, so an
-agent given only the perimeter IP scores zero on them by construction;
-IoT- and OT-specific protocols (MQTT, Modbus, LoRaWAN, CoAP) do not
-appear in HackTheBox or VulnHub corpora and require probes the agent
-never has to learn; and a binary flag check conflates merely detecting
-a banner with exploiting it and with exfiltrating the data behind
-it — three operationally very different outcomes. These gaps are
-\emph{architectural} (properties of the evaluation surface, not of the
-agent), so making the agent stronger does not close them. Our
-contribution closes them with a network-scale benchmark, an
-evidence-level scoring scheme, and a harness whose phases are designed
-around the gaps rather than retrofitted to them.
+LLM-pentesting agents have matured rapidly and report substantial gains
+on public test corpora (Table~\ref{tab:reported}), yet every such
+corpus is a collection of \emph{isolated containers or VMs} and every
+agent is scored one target at a time. Three properties of a real IoT
+deployment are invisible to that metric: \emph{hop depth}
+(behind-pivot vulnerabilities), \emph{IoT/OT protocols} (MQTT, Modbus,
+LoRaWAN, CoAP), and \emph{evidence depth} (detection vs exploitation vs
+exfiltration). No improvement to the agent alone closes these gaps —
+the evaluation surface itself must change.
 
-\noindent\textbf{Contributions.} We bridge this gap with:
+\noindent\textbf{Contributions.}
 \begin{itemize}
-  \item \textbf{\systemname} — the first reproducible benchmark for LLM pentest
-  agents at \emph{network scale}: 5 architectural patterns instantiated by
-  10~main scenarios, plus 3 scalability stressors (up to 35 devices) and
-  2 hardened controls (for False Positive rate); 15 scenarios total covering
-  9~protocols (MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, Telnet)
-  and 229~vulnerabilities deterministically injected via Ansible, with
-  ground truth mapped to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
-  \item \textbf{\harnessname} — a network-native harness with six phases
-  (\emph{topology prior $\to$ discovery $\to$ per-device parallel triage $\to$
-  per-vulnerability verification $\to$ intrusion / lateral movement $\to$
-  network-level report}), designed to keep LLM context tractable at $/24$ scale.
-  \item \textbf{Evidence-level scoring (L1/L2/L3)} — a severity-weighted evaluator
-  that distinguishes detection, exploitation, and data exfiltration, beyond the
-  binary flag-capture of single-host benchmarks.
-  \item \textbf{Empirical study} — using a single shared LLM (\texttt{MiniMax-M2.7})
-  to isolate architectural contributions, we compare \harnessname\ against
-  three categories of baselines: a non-LLM scanner (Nmap NSE), single-agent
-  LLM (PentestGPT), and multi-agent LLM systems with and without graph guidance
-  (CAI in two scope variants, VulnBot with task-graph). We additionally report
-  two ablations of our pipeline that isolate the individual contributions of
-  the infrastructure-graph phase and the multi-hop intrusion phase.
+  \item \textbf{\systemname} — the first reproducible network-scale
+  benchmark for LLM pentest agents on IoT: 15 scenarios (10 main
+  covering 5 architectural patterns, 3 scalability stressors up to
+  35 devices, 2 hardened controls for False Positive rate),
+  229 vulnerabilities injected via Ansible, ground truth mapped to
+  OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
+  \item \textbf{\harnessname} — a network-native harness whose six
+  phases (topology prior, discovery, per-device triage,
+  per-vulnerability verification, intrusion, report) keep LLM context
+  tractable at $/24$ scale.
+  \item \textbf{L1/L2/L3 evidence scoring + MHR$_k$} — metrics that
+  separate detection, exploitation, and exfiltration, and that measure
+  recall as a function of firewall-hop distance.
+  \item \textbf{Empirical study} on a single shared model
+  (\texttt{MiniMax-M2.7}) against four baselines (Nmap NSE, PentestGPT,
+  CAI in two scope variants, VulnBot) plus two ablations.
 \end{itemize}
 
-\noindent\textbf{Research questions.} \textbf{RQ1} (overall performance):
-how well do current LLM-pentest architectures perform at the
+\noindent\textbf{Research questions.}
+\textbf{RQ1} How do current LLM-pentest architectures perform at the
 \emph{network} unit of evaluation, holding the model constant?
-\textbf{RQ2} (evidence depth): how much of an LLM agent's recall stops at
-mere detection versus reaching exploitation or exfiltration?
-\textbf{RQ3} (architectural sensitivity): which of the five network
-patterns most degrade LLM performance, and why?
-\textbf{RQ4} (network-scale gap): can existing single-host harnesses,
-when widened to a CIDR scope, recover the multi-hop reach that motivates
-this benchmark?
+\textbf{RQ2} How much of an agent's recall stops at detection rather
+than reaching exploitation or exfiltration?
+\textbf{RQ3} Which architectural patterns most degrade LLM performance?
+\textbf{RQ4} Does widening a single-host harness to a CIDR scope
+recover multi-hop reach, or does the gap persist?
 
 \noindent\textbf{Paper organization.}
 \Cref{sec:related} surveys LLM pentest agents and benchmarks.
