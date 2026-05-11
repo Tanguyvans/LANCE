@@ -477,33 +477,34 @@ Hardware-assisted attacks are left as future work (\cref{sec:conclusion}).
 \subsection{Design principles}
 \label{sec:iotbench:principles}
 
-\systemname{} is built around four principles derived from the gap analysis in
-\cref{sec:related}:
+\systemname{} is built around six design principles derived from the
+gap analysis in \cref{sec:related}:
 
-\begin{description}
-  \item[Reproducibility.] The entire infrastructure deploys from Ansible
-  playbooks against a Proxmox cluster; every vulnerability is injected
-  idempotently with no manual post-deployment steps.
-  \item[Architectural diversity.] Scenarios span five network patterns
-  (\cref{fig:patterns}) with distinct attacker reachability graphs enforced by
-  OpenWrt firewall rules, not just by service labels.
-  \item[Protocol coverage.] Each scenario mixes multiple IoT and OT protocols
-  (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus standard SSH/HTTP/FTP/Telnet)
-  to exercise protocol-specific reasoning.
-  \item[Ground-truth granularity.] Every injected vulnerability is documented in
-  YAML with \texttt{device}, \texttt{IP}, \texttt{role}, \texttt{severity},
-  \texttt{category}, \texttt{OWASP IoT} and \texttt{MITRE ICS} mappings,
-  optional \texttt{CVE}, \texttt{indicators} (expected detection strings), and
-  a \texttt{verification} command.
-  \item[Scalability axis.] Three scenarios (s\_11, s\_12, s\_13) stress
-  network size at 15, 17, and 35 devices respectively, while the
+\begin{itemize}
+  \item \textbf{Reproducibility.} The entire infrastructure deploys from
+  Ansible playbooks against a Proxmox cluster; every vulnerability is
+  injected idempotently with no manual post-deployment steps.
+  \item \textbf{Architectural diversity.} Scenarios span five network
+  patterns (\cref{fig:patterns}) with distinct attacker reachability
+  graphs enforced by OpenWrt firewall rules, not just by service labels.
+  \item \textbf{Protocol coverage.} Each scenario mixes multiple IoT and
+  OT protocols (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus
+  standard SSH/HTTP/FTP/Telnet) to exercise protocol-specific reasoning.
+  \item \textbf{Ground-truth granularity.} Every injected vulnerability
+  is documented in YAML with \texttt{device}, \texttt{IP}, \texttt{role},
+  \texttt{severity}, \texttt{category}, \texttt{OWASP IoT} and
+  \texttt{MITRE ICS} mappings, optional \texttt{CVE},
+  \texttt{indicators} (expected detection strings), and a
+  \texttt{verification} command.
+  \item \textbf{Scalability axis.} Three scenarios (s\_11, s\_12, s\_13)
+  stress network size at 15, 17, and 35 devices respectively, while the
   10 main scenarios stay in the 4--8 device range. This separates the
   pattern-coverage axis from the size axis.
-  \item[Hardened controls.] Two scenarios (s\_1h, s\_4h) re-use the
-  topologies of s\_1 and s\_4 with all injected vulnerabilities removed.
-  They measure agent False Positive rate on a deployment that should
-  return ``no findings''.
-\end{description}
+  \item \textbf{Hardened controls.} Two scenarios (s\_1h, s\_4h) re-use
+  the topologies of s\_1 and s\_4 with all injected vulnerabilities
+  removed. They measure agent False Positive rate on a deployment that
+  should return ``no findings''.
+\end{itemize}
 
 \subsection{Five architectural patterns}
 \label{sec:iotbench:patterns}
