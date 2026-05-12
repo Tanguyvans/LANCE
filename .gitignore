@@ -9,6 +9,7 @@ output/
 data/
 benchmarks/ansible/group_vars/vault.yml
 PLAN.md
+.DS_Store
 
 .gemini/
 gha-creds-*.json

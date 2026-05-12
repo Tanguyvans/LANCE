@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import getpass
+import json
 import os
-import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,10 +18,10 @@ DEFAULT_SCOPE = "192.168.100.0/24"
 DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 SUPPORTED_TOOLS = ("cai", "pentgpt", "vulnbot")
 EXTERNAL_REPOS = {
-    "vulhub": ("https://github.com/vulhub/vulhub", "../vulhub"),
-    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "../auto-pen-bench"),
-    "xbow": ("", "../validation-benchmarks"),
-    "ai-pentest": ("", "../ai-pentest-benchmark"),
+    "vulhub": ("https://github.com/vulhub/vulhub", "/opt/external-benchmarks/vulhub"),
+    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "/opt/external-benchmarks/auto-pen-bench"),
+    "xbow": ("", "/opt/external-benchmarks/validation-benchmarks"),
+    "ai-pentest": ("", "/opt/external-benchmarks/ai-pentest-benchmark"),
 }
 
 
@@ -37,7 +38,7 @@ class WizardState:
     last_suite_dir: Path | None = None
     last_external_dir: Path | None = None
     external_suite: str = "vulhub"
-    external_repo: str = "../vulhub"
+    external_repo: str = "/opt/external-benchmarks/vulhub"
     external_case: str = ""
     external_dry_run: bool = True
 
@@ -247,33 +248,30 @@ def _full_pilot(state: WizardState) -> None:
 
 def _run_external_benchmark(state: WizardState) -> None:
     print("External suites: vulhub, autopenbench, xbow, ai-pentest")
+    previous_suite = state.external_suite
     suite = _ask("External suite", state.external_suite).lower()
     if suite not in external_benchmarks.SUPPORTED_SUITES:
         print(f"Unknown suite {suite!r}.")
         return
     state.external_suite = suite
+    if suite != previous_suite:
+        state.external_case = ""
     default_repo = EXTERNAL_REPOS.get(suite, ("", f"../{suite}"))[1]
     if not state.external_repo or state.external_repo == EXTERNAL_REPOS["vulhub"][1]:
         state.external_repo = default_repo
     state.external_repo = _ask("External repo path", state.external_repo)
     repo = Path(state.external_repo).expanduser()
-    if not repo.exists():
-        url = EXTERNAL_REPOS.get(suite, ("", ""))[0]
-        if not url:
-            print(f"Repository not found: {repo}")
-            return
-        if _ask_yes_no(f"{suite} repo not found at {repo}. Clone it now?", True):
-            repo.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["git", "clone", url, str(repo)], check=True)
-        else:
-            return
-
-    cases = external_benchmarks.discover_cases(suite, repo)
+    print(f"Preparing {suite} on {state.baseline_host} and discovering cases...")
+    cases = external_benchmarks.discover_remote_cases(
+        baseline_host=state.baseline_host,
+        suite=suite,
+        repo=repo,
+    )
     if not cases:
         print(f"No cases discovered for {suite}.")
         return
     print(f"{len(cases)} cases discovered.")
-    query = _ask("Filter cases", state.external_case)
+    query = _ask("Filter cases", "")
     filtered = cases
     if query:
         needle = query.lower()
@@ -288,46 +286,92 @@ def _run_external_benchmark(state: WizardState) -> None:
     if not filtered:
         print("No matching case.")
         return
-    for index, case in enumerate(filtered[:20], start=1):
-        target = case.target_url or case.target or "-"
-        print(f"{index:2d}. {case.case_id}  target={target}  {case.description}")
-    raw_index = _ask("Case number", "1")
-    try:
-        case = filtered[max(0, int(raw_index) - 1)]
-    except (ValueError, IndexError):
-        print("Invalid case selection.")
-        return
-    state.external_case = case.case_id
+    run_all = _ask_yes_no(f"Run all {len(filtered)} filtered runnable cases?", False)
+    selected_cases = filtered
+    if run_all:
+        raw_limit = _ask("Max cases to run (empty = all)", "")
+        if raw_limit:
+            try:
+                selected_cases = filtered[: max(1, int(raw_limit))]
+            except ValueError:
+                print("Invalid limit; running all filtered cases.")
+    else:
+        selected_cases = filtered[:1]
+        for index, case in enumerate(filtered[:20], start=1):
+            target = case.target_url or case.target or "-"
+            print(f"{index:2d}. {case.case_id}  target={target}  {case.description}")
+        raw_index = _ask("Case number", "1")
+        try:
+            selected_cases = [filtered[max(0, int(raw_index) - 1)]]
+        except (ValueError, IndexError):
+            print("Invalid case selection.")
+            return
+    state.external_case = selected_cases[0].case_id
     state.external_dry_run = _ask_yes_no("Dry-run first?", state.external_dry_run)
 
-    hint = "Task: {task}. Target service: {target_name}. Vulnerability: {vulnerability}"
+    hint = (
+        "Benchmark context policy: {context_policy}. Task: {task}. Target service label: {target_name}. "
+        "Known vulnerability label: {vulnerability}. Primary exposed service: {service_context}. "
+        "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+    )
     if suite == "vulhub":
-        hint = "Vulhub case {case_id}. Vulnerability: {vulnerability}"
+        hint = (
+            "Benchmark context policy: {context_policy}. Vulhub case id: {case_id}. "
+            "Known CVE label from case path: {vulnerability}. Primary exposed service: {service_context}. "
+            "Vulhub has no universal flag; produce target-derived evidence when no flag exists. "
+            "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+        )
+    elif suite == "autopenbench":
+        hint = (
+            "Benchmark context policy: {context_policy}. Task: {task}. Target service label: {target_name}. "
+            "Known vulnerability label: {vulnerability}. Primary exposed service: {service_context}. "
+            "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+        )
+    model = state.model
+    if model.startswith("openai/"):
+        model = model.split("/", 1)[1]
     command = (
-        "python3 -m src.agent_external "
-        "--target {target_url} "
+        "python -m src.agent_external "
+        "--target {target_or_url} "
         f"--hint {hint!r} "
         "--output-dir {output_dir} "
         "--provider minimax "
-        f"--model {state.model} "
+        f"--model {model} "
         f"--max-turns {state.max_turns}"
     )
     print(f"Suite : {suite}")
+    print(f"VM    : {state.baseline_host}")
     print(f"Repo  : {repo}")
-    print(f"Case  : {case.case_id}")
+    print(f"Cases : {selected_cases[0].case_id if len(selected_cases) == 1 else str(len(selected_cases)) + ' filtered cases'}")
     print(f"Mode  : {'dry-run' if state.external_dry_run else 'real run'}")
     if not _ask_yes_no("Start this external benchmark run?", True):
         print("External run cancelled.")
         return
-    state.last_external_dir = external_benchmarks.run_case(
-        suite=suite,
-        repo=repo,
-        case_id=case.case_id,
-        agent_command=command,
-        dry_run=state.external_dry_run,
-        timeout_seconds=state.max_turns * 90,
-    )
-    print(f"External run saved: {state.last_external_dir}")
+    summary = []
+    for index, case in enumerate(selected_cases, start=1):
+        try:
+            state.last_external_dir = external_benchmarks.run_remote_case(
+                baseline_host=state.baseline_host,
+                suite=suite,
+                repo=repo,
+                case_id=case.case_id,
+                agent_command=command,
+                dry_run=state.external_dry_run,
+                timeout_seconds=state.max_turns * 90,
+                sync_project=False,
+                prepare_environment=False,
+            )
+            summary.append({"case_id": case.case_id, "status": "ok", "run_dir": str(state.last_external_dir)})
+            print(f"{index}/{len(selected_cases)} saved: {state.last_external_dir}")
+        except Exception as exc:
+            summary.append({"case_id": case.case_id, "status": "failed", "error": str(exc)})
+            print(f"{index}/{len(selected_cases)} failed: {case.case_id}: {exc}")
+    if len(selected_cases) > 1:
+        batch_dir = external_benchmarks.DEFAULT_OUTPUT_DIR / "batches"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = batch_dir / f"{suite}_{int(time.time())}_summary.json"
+        summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"Batch summary saved: {summary_path}")
 
 
 def run_wizard() -> None:

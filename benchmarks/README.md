@@ -213,8 +213,8 @@ output/baselines/suites/scenario_N_YYYYmmdd_HHMMSS/
 
 ### 2. Notre agent sur leurs benchmarks
 
-Le harness externe lance notre agent sur des suites Docker Compose utilisées ou
-référencées par les outils comparés:
+Le harness externe lance notre agent sur la VM baseline, contre des suites
+Docker Compose utilisées ou référencées par les outils comparés:
 
 - `vulhub` — environnements vulnérables Docker Compose.
 - `autopenbench` — tâches avec `task`, `target`, `vulnerability`, `flag` dans `data/games.json`.
@@ -222,11 +222,15 @@ référencées par les outils comparés:
 - `ai-pentest` — metadata de cibles VulnHub/VM, notées comme manuelles.
 
 ```bash
-git clone https://github.com/vulhub/vulhub ../vulhub
-git clone https://github.com/lucagioacchini/auto-pen-bench ../auto-pen-bench
+python3 -m src.baselines external list \
+  --suite vulhub \
+  --repo /opt/external-benchmarks/vulhub \
+  --remote-host root@192.168.88.36
 
-python3 -m src.baselines external list --suite vulhub --repo ../vulhub
-python3 -m src.baselines external list --suite autopenbench --repo ../auto-pen-bench
+python3 -m src.baselines external list \
+  --suite autopenbench \
+  --repo /opt/external-benchmarks/auto-pen-bench \
+  --remote-host root@192.168.88.36
 ```
 
 Exécution dry-run Vulhub:
@@ -234,9 +238,10 @@ Exécution dry-run Vulhub:
 ```bash
 python3 -m src.baselines external run \
   --suite vulhub \
-  --repo ../vulhub \
+  --repo /opt/external-benchmarks/vulhub \
   --case struts2/s2-045 \
-  --agent-command 'python3 -m src.agent_external --target {target_url} --output-dir {output_dir} --provider minimax' \
+  --remote-host root@192.168.88.36 \
+  --agent-command 'python -m src.agent_external --target {target_or_url} --output-dir {output_dir} --provider minimax' \
   --dry-run
 ```
 

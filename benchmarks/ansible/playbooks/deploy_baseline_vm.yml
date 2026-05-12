@@ -129,6 +129,7 @@
         name:
           - ca-certificates
           - curl
+          - docker.io
           - git
           - jq
           - nmap
@@ -224,6 +225,16 @@
         - /opt/baseline-tools/adapters
         - /opt/baseline-tools/results
         - /opt/baseline-tools/tools
+        - /opt/baseline-tools/external-results
+        - /opt/external-benchmarks
+        - /opt/nato-smartcity-iot
+
+    - name: Ensure Docker service is enabled for external benchmark suites
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+      failed_when: false
 
     - name: Install CAI adapter placeholder
       ansible.builtin.copy:

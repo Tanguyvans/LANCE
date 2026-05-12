@@ -60,7 +60,7 @@ Each run's `04_exploitation.json` (falling back to `03_vuln_analysis.json`) is m
 The project supports comparison in both directions:
 
 - **External tools on our scenarios**: CAI, PentestGPT, and VulnBot run on a separate baseline LXC so their dependencies cannot break the master VM. The terminal TUI can deploy/reset scenarios, inject vulnerabilities, run one tool, or run the three-tool suite sequentially with optional parallel target jobs.
-- **Our agent on their benchmarks**: the external harness discovers Docker Compose challenges from Vulhub and AutoPenBench, starts the target stack, runs `src.agent_external`, and stores the full command plan, stdout/stderr, and result JSON for paper traceability.
+- **Our agent on their benchmarks**: the external harness discovers Docker Compose challenges from Vulhub and AutoPenBench on the baseline VM, starts the target stack there, runs `src.agent_external` there, and copies the full command plan, stdout/stderr, and result JSON back for paper traceability.
 
 ```bash
 # Interactive terminal UI for our scenarios + baseline tools

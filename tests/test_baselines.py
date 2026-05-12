@@ -1,9 +1,24 @@
 import json
 
-from src.baselines.external_benchmarks import discover_cases, run_case, write_manifest
+from src.baselines.external_benchmarks import (
+    DEFAULT_REMOTE_JOB_DIR,
+    DEFAULT_REMOTE_OUTPUT_DIR,
+    DEFAULT_REMOTE_PROJECT_DIR,
+    build_detached_job_payload,
+    build_detached_shell_runner,
+    build_detached_job_runner,
+    default_external_agent_command,
+    discover_cases,
+    generate_report,
+    run_case,
+    summarize_run_dir,
+    write_manifest,
+    _render_agent_command,
+)
 from src.baselines.normalizer import normalize_tool_outputs, write_vuln_analysis
 from src.baselines.runner import run_baseline
 from src.baselines.scenarios import load_ground_truth_targets, load_scenario_targets
+from src.baselines.service_intel import service_intel_for_port
 from src.agent_external import run_external_target
 from src.benchmark.evaluator import evaluate
 
@@ -253,6 +268,131 @@ def test_external_vulhub_dry_run_has_no_build_step(tmp_path):
     assert "FLAG-vulhub" in result["agent_command"]
 
 
+def test_external_vulhub_non_http_port_keeps_protocol_context(tmp_path):
+    case = tmp_path / "activemq" / "CVE-2016-3088"
+    case.mkdir(parents=True)
+    (case / "docker-compose.yml").write_text("services: {mq: {image: activemq, ports: ['61616:61616']}}\n")
+
+    cases = discover_cases("vulhub", tmp_path)
+
+    assert cases[0].target_url is None
+    assert cases[0].target_endpoint == "127.0.0.1:61616"
+    assert cases[0].target_service == "activemq-openwire"
+    assert "not HTTP" in cases[0].service_context
+
+
+def test_external_vulhub_prefers_specific_broker_port_and_keeps_all_services(tmp_path):
+    case = tmp_path / "activemq" / "CVE-2016-3088"
+    case.mkdir(parents=True)
+    (case / "README.md").write_text(
+        "# ActiveMQ Arbitrary File Write\n\nUse the web console and OpenWire broker.\n"
+    )
+    (case / "docker-compose.yml").write_text(
+        """
+services:
+  activemq:
+    image: vulhub/activemq
+    ports:
+      - "8161:8161"
+      - "61616:61616"
+"""
+    )
+
+    cases = discover_cases("vulhub", tmp_path)
+
+    assert cases[0].target_endpoint == "127.0.0.1:61616"
+    assert cases[0].target_service == "activemq-openwire"
+    assert len(cases[0].exposed_services) == 2
+    assert any(item["service"] == "activemq-web" for item in cases[0].exposed_services)
+    assert cases[0].case_context == ""
+
+
+def test_external_fair_command_does_not_inject_repo_context(tmp_path):
+    case = tmp_path / "demo" / "CVE-2099-0002"
+    case.mkdir(parents=True)
+    (case / "README.md").write_text("# Secret Oracle Exploit Steps\n\nUse password leaked-in-readme.\n")
+    (case / "docker-compose.yml").write_text("services: {app: {image: nginx, ports: ['18080:80']}}\n")
+    benchmark = discover_cases("vulhub", tmp_path)[0]
+
+    command = _render_agent_command(
+        "python -m src.agent_external --target {target_or_url} --hint 'Policy {context_policy}. CVE {vulnerability}. {service_context}. Do not use repository README.' --output-dir {output_dir}",
+        benchmark,
+        tmp_path / "out",
+        "",
+    )
+    rendered = " ".join(command)
+
+    assert "fair_network_only" in rendered
+    assert "leaked-in-readme" not in rendered
+    assert "Secret Oracle Exploit Steps" not in rendered
+
+
+def test_external_compose_long_port_syntax_uses_target_service_port(tmp_path):
+    case = tmp_path / "webapp" / "CVE-2099-0001"
+    case.mkdir(parents=True)
+    (case / "docker-compose.yml").write_text(
+        """
+services:
+  app:
+    image: example/app
+    ports:
+      - target: 80
+        published: 18080
+        protocol: tcp
+"""
+    )
+
+    cases = discover_cases("vulhub", tmp_path)
+
+    assert cases[0].target_url == "http://127.0.0.1:18080"
+    assert cases[0].target_endpoint == "http://127.0.0.1:18080"
+    assert cases[0].target_service == "http"
+    assert "mapped to container port 80/tcp" in cases[0].service_context
+
+
+def test_service_intel_falls_back_to_system_registry_for_known_ports():
+    intel = service_intel_for_port(123)
+
+    assert intel.service in {"ntp", "unknown"}
+    if intel.service == "ntp":
+        assert intel.source in {"nmap-services", "system-services"}
+
+
+def test_detached_job_payload_is_remote_only_and_fair():
+    payload = build_detached_job_payload(
+        job_id="vulhub_20990101_000000",
+        suite="vulhub",
+        repo="/opt/external-benchmarks/vulhub",
+        cases=["1panel/CVE-2024-39907"],
+        agent_command=default_external_agent_command(),
+    )
+
+    assert payload["project_dir"] == str(DEFAULT_REMOTE_PROJECT_DIR)
+    assert payload["remote_output_dir"] == str(DEFAULT_REMOTE_OUTPUT_DIR)
+    assert payload["job_dir"].startswith(str(DEFAULT_REMOTE_JOB_DIR))
+    assert payload["context_policy"] == "fair_network_only"
+    assert payload["oracle_repo_context_injected"] is False
+    assert "/Users/" not in json.dumps(payload)
+
+
+def test_detached_shell_runner_uses_remote_project_and_tmux_runner_shape():
+    payload = build_detached_job_payload(
+        job_id="vulhub_20990101_000000",
+        suite="vulhub",
+        repo="/opt/external-benchmarks/vulhub",
+        cases=["activemq/CVE-2015-5254"],
+        agent_command=default_external_agent_command(),
+    )
+    shell = build_detached_shell_runner(payload)
+    runner = build_detached_job_runner()
+
+    assert "cd /opt/nato-smartcity-iot" in shell
+    assert "/opt/baseline-tools/.env" in shell
+    assert "src.baselines.external_benchmarks" in runner
+    assert "--remote-host" not in runner
+    assert "/Users/" not in shell + runner
+
+
 def test_external_agent_dry_run_writes_artifacts(tmp_path):
     output_dir = run_external_target(
         target="http://127.0.0.1:8080",
@@ -265,6 +405,70 @@ def test_external_agent_dry_run_writes_artifacts(tmp_path):
 
     assert (output_dir / "external_agent_prompt.txt").exists()
     assert "DRY RUN" in (output_dir / "external_agent_answer.txt").read_text()
+    proof = json.loads((output_dir / "proof.json").read_text())
+    cost = json.loads((output_dir / "cost_summary.json").read_text())
+    result = json.loads((output_dir / "external_agent_result.json").read_text())
+    assert proof["outcome"] == "dry_run"
+    assert proof["fair_policy"]["context_policy"] == "fair_network_only"
+    assert cost["total_input_tokens"] == 0
+    assert result["total_tokens"] == 0
+
+
+def test_external_proof_classifies_environment_and_report_aggregates(tmp_path):
+    run_dir = tmp_path / "output" / "external_benchmarks" / "vulhub" / "redis" / "CVE-2022-0543" / "20990101_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "planned.json").write_text(
+        json.dumps(
+            {
+                "context_policy": "fair_network_only",
+                "case": {
+                    "suite": "vulhub",
+                    "case_id": "redis/CVE-2022-0543",
+                    "target_endpoint": "127.0.0.1:6379",
+                    "target_service": "redis",
+                    "vulnerability": "CVE-2022-0543",
+                },
+            }
+        )
+    )
+    (run_dir / "result.json").write_text(
+        json.dumps({"status": "environment_failed", "success": False, "duration_seconds": 3.0})
+    )
+    (run_dir / "agent_stderr.txt").write_text("failed to register layer: no space left on device")
+
+    summary = summarize_run_dir(run_dir)
+    report = generate_report(tmp_path / "output" / "external_benchmarks")
+
+    assert summary["outcome"] == "environment_failed"
+    assert summary["blocked_by"] == "environment"
+    assert report["environment_failed"] == 1
+    assert "redis/CVE-2022-0543" in report["rerun_cases"]
+
+
+def test_external_proof_classifies_missing_tool(tmp_path):
+    run_dir = tmp_path / "output" / "external_benchmarks" / "vulhub" / "activemq" / "CVE-2015-5254" / "20990101_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "planned.json").write_text(
+        json.dumps(
+            {
+                "context_policy": "fair_network_only",
+                "case": {
+                    "suite": "vulhub",
+                    "case_id": "activemq/CVE-2015-5254",
+                    "target_endpoint": "127.0.0.1:61616",
+                    "target_service": "activemq-openwire",
+                    "vulnerability": "CVE-2015-5254",
+                },
+            }
+        )
+    )
+    (run_dir / "result.json").write_text(json.dumps({"status": "completed", "success": False}))
+    (run_dir / "external_agent_answer.txt").write_text("The service appears vulnerable, but exploitation needs a JMS client or ysoserial.")
+
+    summary = summarize_run_dir(run_dir)
+
+    assert summary["outcome"] == "blocked_missing_tool"
+    assert summary["blocked_by"] == "missing_tool"
 
 
 def test_parallel_baseline_dry_run_writes_all_targets(tmp_path):

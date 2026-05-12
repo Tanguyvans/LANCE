@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import getpass
 import os
-import subprocess
 import sys
 import termios
 import time
@@ -33,10 +32,10 @@ DEFAULT_SCOPE = "192.168.100.0/24"
 DEFAULT_MODEL = install_tools.DEFAULT_MODEL
 SUPPORTED_TOOLS = ("cai", "pentgpt", "vulnbot")
 EXTERNAL_REPOS = {
-    "vulhub": ("https://github.com/vulhub/vulhub", "../vulhub"),
-    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "../auto-pen-bench"),
-    "xbow": ("", "../validation-benchmarks"),
-    "ai-pentest": ("", "../ai-pentest-benchmark"),
+    "vulhub": ("https://github.com/vulhub/vulhub", "/opt/external-benchmarks/vulhub"),
+    "autopenbench": ("https://github.com/lucagioacchini/auto-pen-bench", "/opt/external-benchmarks/auto-pen-bench"),
+    "xbow": ("", "/opt/external-benchmarks/validation-benchmarks"),
+    "ai-pentest": ("", "/opt/external-benchmarks/ai-pentest-benchmark"),
 }
 MENU_ACTIONS = [
     ("1", "Configure"),
@@ -48,6 +47,7 @@ MENU_ACTIONS = [
     ("5", "Run selected baseline with live remote status"),
     ("6", "Run CAI + PentestGPT + VulnBot suite"),
     ("e", "Run our agent on external benchmark suite"),
+    ("j", "External jobs on VM"),
     ("7", "Compare last/run directory"),
     ("i", "Inject/populate/verify vulnerabilities"),
     ("r", "Reset scenario to vulnerable state"),
@@ -70,7 +70,7 @@ class DashboardState:
     last_suite_dir: Path | None = None
     last_external_dir: Path | None = None
     external_suite: str = "vulhub"
-    external_repo: str = "../vulhub"
+    external_repo: str = "/opt/external-benchmarks/vulhub"
     external_case: str = ""
     external_dry_run: bool = True
     status: str = "Idle"
@@ -695,34 +695,30 @@ def _external_repo_url(suite: str) -> str:
 
 
 def _ensure_external_repo(console: Console, suite: str, repo: Path) -> bool:
-    if repo.exists():
-        return True
-    url = _external_repo_url(suite)
-    if not url:
-        console.print(f"[red]Repository not found:[/red] {repo}")
-        return False
-    if not _ask_yes_no(console, f"{suite} repo not found at {repo}. Clone it now?", True):
-        return False
-    repo.parent.mkdir(parents=True, exist_ok=True)
-    with console.status(f"[cyan]Cloning {suite} into {repo}...[/cyan]"):
-        subprocess.run(["git", "clone", url, str(repo)], check=True)
+    if not _external_repo_url(suite) and suite in {"xbow", "ai-pentest"}:
+        console.print(f"[yellow]{suite} has no default public clone URL. Expecting it on the VM at {repo}.[/yellow]")
     return True
 
 
 def _select_external_case(
     console: Console,
+    baseline_host: str,
     suite: str,
     repo: Path,
     current: str,
-) -> external_benchmarks.ExternalBenchmarkCase | None:
-    with console.status(f"[cyan]Discovering {suite} cases...[/cyan]"):
-        cases = external_benchmarks.discover_cases(suite, repo)
+) -> tuple[list[external_benchmarks.ExternalBenchmarkCase], external_benchmarks.ExternalBenchmarkCase | None] | None:
+    with console.status(f"[cyan]Preparing {suite} on {baseline_host} and discovering cases...[/cyan]"):
+        cases = external_benchmarks.discover_remote_cases(
+            baseline_host=baseline_host,
+            suite=suite,
+            repo=repo,
+        )
     if not cases:
         console.print(f"[red]No cases discovered for {suite} in {repo}.[/red]")
         return None
 
     console.print(f"[green]{len(cases)} cases discovered.[/green]")
-    query = _ask(console, "Filter cases (Enter = show first cases)", current)
+    query = _ask(console, "Filter cases (Enter = show first cases)", "")
     filtered = cases
     if query:
         needle = query.lower()
@@ -737,6 +733,15 @@ def _select_external_case(
     if not filtered:
         console.print(f"[red]No case matched {query!r}.[/red]")
         return None
+
+    if _ask_yes_no(console, f"Run all {len(filtered)} filtered runnable cases?", False):
+        raw_limit = _ask(console, "Max cases to run (Enter = all)", "")
+        if raw_limit:
+            try:
+                filtered = filtered[: max(1, int(raw_limit))]
+            except ValueError:
+                console.print("[yellow]Invalid limit; running all filtered cases.[/yellow]")
+        return filtered, None
 
     visible = filtered[:80]
     if len(filtered) > len(visible):
@@ -757,28 +762,46 @@ def _select_external_case(
     )
     for case in visible:
         if case.case_id == selected:
-            return case
+            return [case], case
     return None
 
 
 def _external_agent_command(state: DashboardState, case: external_benchmarks.ExternalBenchmarkCase) -> str:
-    hint = "{task}"
+    hint = (
+        "Benchmark context policy: {context_policy}. "
+        "Task: {task}. Target service label: {target_name}. "
+        "Known vulnerability label: {vulnerability}. Primary exposed service: {service_context}. "
+        "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+    )
     if case.suite == "vulhub":
-        hint = "Vulhub case {case_id}. Vulnerability: {vulnerability}"
+        hint = (
+            "Benchmark context policy: {context_policy}. Vulhub case id: {case_id}. "
+            "Known CVE label from case path: {vulnerability}. Primary exposed service: {service_context}. "
+            "Vulhub has no universal flag; produce target-derived evidence when no flag exists. "
+            "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+        )
     elif case.suite == "autopenbench":
-        hint = "Task: {task}. Target service: {target_name}. Vulnerability: {vulnerability}"
+        hint = (
+            "Benchmark context policy: {context_policy}. Task: {task}. Target service label: {target_name}. "
+            "Known vulnerability label: {vulnerability}. Primary exposed service: {service_context}. "
+            "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
+        )
+    model = state.model
+    if model.startswith("openai/"):
+        model = model.split("/", 1)[1]
     return (
-        "python3 -m src.agent_external "
-        "--target {target_url} "
+        "python -m src.agent_external "
+        "--target {target_or_url} "
         f"--hint {hint!r} "
         "--output-dir {output_dir} "
         "--provider minimax "
-        f"--model {state.model} "
+        f"--model {model} "
         f"--max-turns {state.max_turns}"
     )
 
 
 def _run_external_benchmark(console: Console, state: DashboardState) -> None:
+    previous_suite = state.external_suite
     state.external_suite = _select_choice(
         console,
         "External benchmark suite",
@@ -790,6 +813,8 @@ def _run_external_benchmark(console: Console, state: DashboardState) -> None:
         ],
         state.external_suite,
     )
+    if state.external_suite != previous_suite:
+        state.external_case = ""
     if state.external_repo == _default_external_repo("vulhub") and state.external_suite != "vulhub":
         state.external_repo = _default_external_repo(state.external_suite)
     state.external_repo = _ask(console, "External repo path", state.external_repo or _default_external_repo(state.external_suite))
@@ -797,36 +822,186 @@ def _run_external_benchmark(console: Console, state: DashboardState) -> None:
     if not _ensure_external_repo(console, state.external_suite, repo):
         return
 
-    case = _select_external_case(console, state.external_suite, repo, state.external_case)
-    if not case:
+    selection = _select_external_case(console, state.baseline_host, state.external_suite, repo, state.external_case)
+    if not selection:
         return
-    state.external_case = case.case_id
+    cases, case = selection
+    if case:
+        state.external_case = case.case_id
     state.external_dry_run = _ask_yes_no(console, "Dry-run first?", state.external_dry_run)
-    command = _external_agent_command(state, case)
+    command = _external_agent_command(state, case or cases[0])
+    run_mode = _select_choice(
+        console,
+        "External execution mode",
+        [
+            ("Start detached on VM", "Run in tmux; your PC can disconnect safely", "detached"),
+            ("Run now attached", "Keep this TUI waiting until the run finishes", "attached"),
+        ],
+        "detached",
+    )
 
     details = Table.grid(expand=True)
     details.add_column(ratio=1)
     details.add_column(ratio=2)
     details.add_row("[bold]Suite[/bold]", state.external_suite)
-    details.add_row("[bold]Repo[/bold]", str(repo))
-    details.add_row("[bold]Case[/bold]", case.case_id)
-    details.add_row("[bold]Target[/bold]", case.target_url or case.target or "-")
+    details.add_row("[bold]VM[/bold]", state.baseline_host)
+    details.add_row("[bold]Repo on VM[/bold]", str(repo))
+    details.add_row("[bold]Cases[/bold]", case.case_id if case else f"{len(cases)} filtered cases")
+    details.add_row("[bold]Target[/bold]", (case.target_url or case.target) if case else "batch")
     details.add_row("[bold]Mode[/bold]", "dry-run" if state.external_dry_run else "real run")
+    details.add_row("[bold]Execution[/bold]", run_mode)
     console.print(Panel(details, title="External Benchmark Run", border_style="cyan"))
     if not _ask_yes_no(console, "Start this external benchmark run?", True):
         console.print("[yellow]External run cancelled.[/yellow]")
         return
 
-    with console.status(f"[cyan]Running {state.external_suite}/{case.case_id}...[/cyan]"):
-        state.last_external_dir = external_benchmarks.run_case(
-            suite=state.external_suite,
-            repo=repo,
-            case_id=case.case_id,
-            agent_command=command,
-            dry_run=state.external_dry_run,
-            timeout_seconds=state.max_turns * 90,
-        )
-    console.print(f"[green]External run saved:[/green] {state.last_external_dir}")
+    if run_mode == "detached":
+        with console.status("[cyan]Starting detached tmux job on baseline VM...[/cyan]"):
+            job = external_benchmarks.start_detached_job(
+                baseline_host=state.baseline_host,
+                suite=state.external_suite,
+                repo=repo,
+                cases=[selected.case_id for selected in cases],
+                agent_command=command,
+                dry_run=state.external_dry_run,
+                timeout_seconds=state.max_turns * 90,
+                sync_project=False,
+                model=state.model.split("/", 1)[1] if state.model.startswith("openai/") else state.model,
+                max_turns=state.max_turns,
+            )
+        info = Table.grid(expand=True)
+        info.add_column(ratio=1)
+        info.add_column(ratio=2)
+        info.add_row("[bold]Job id[/bold]", job["job_id"])
+        info.add_row("[bold]tmux[/bold]", job["session"])
+        info.add_row("[bold]Remote log[/bold]", job["job_log"])
+        info.add_row("[bold]Status[/bold]", f"python -m src.baselines external status --remote-host {state.baseline_host} --job-id {job['job_id']}")
+        info.add_row("[bold]Logs[/bold]", f"python -m src.baselines external logs --remote-host {state.baseline_host} --job-id {job['job_id']}")
+        info.add_row("[bold]Fetch[/bold]", f"python -m src.baselines external fetch --remote-host {state.baseline_host} --job-id {job['job_id']}")
+        console.print(Panel(info, title="Detached Job Started", border_style="green"))
+        return
+
+    summary: list[dict[str, Any]] = []
+    for index, selected_case in enumerate(cases, start=1):
+        with console.status(f"[cyan]Running {state.external_suite}/{selected_case.case_id} ({index}/{len(cases)})...[/cyan]"):
+            try:
+                run_dir = external_benchmarks.run_remote_case(
+                    baseline_host=state.baseline_host,
+                    suite=state.external_suite,
+                    repo=repo,
+                    case_id=selected_case.case_id,
+                    agent_command=command,
+                    dry_run=state.external_dry_run,
+                    timeout_seconds=state.max_turns * 90,
+                    sync_project=False,
+                    prepare_environment=False,
+                )
+                state.last_external_dir = run_dir
+                summary.append({"case_id": selected_case.case_id, "status": "ok", "run_dir": str(run_dir)})
+                console.print(f"[green]{index}/{len(cases)} saved:[/green] {run_dir}")
+            except Exception as exc:
+                summary.append({"case_id": selected_case.case_id, "status": "failed", "error": str(exc)})
+                console.print(f"[red]{index}/{len(cases)} failed:[/red] {selected_case.case_id}: {exc}")
+    if len(cases) > 1:
+        batch_dir = external_benchmarks.DEFAULT_OUTPUT_DIR / "batches"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = batch_dir / f"{state.external_suite}_{int(time.time())}_summary.json"
+        import json
+
+        summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        console.print(f"[green]Batch summary saved:[/green] {summary_path}")
+
+
+def _manage_external_jobs(console: Console, state: DashboardState) -> None:
+    with console.status("[cyan]Loading external jobs from baseline VM...[/cyan]"):
+        jobs = external_benchmarks.list_detached_jobs(state.baseline_host)
+    if not jobs:
+        console.print("[yellow]No detached external jobs found on the VM.[/yellow]")
+        return
+
+    def job_description(job: dict[str, Any]) -> str:
+        progress = f"{job.get('completed', 0)}/{job.get('total', '?')}"
+        status = job.get("status", "-")
+        updated = job.get("updated_at", job.get("created_at", "-"))
+        useful = job.get("useful_findings")
+        cost = job.get("estimated_cost_usd")
+        extra = []
+        if useful is not None:
+            extra.append(f"useful={useful}")
+        if cost is not None:
+            extra.append(f"${float(cost):.4f}")
+        suffix = f" | {' '.join(extra)}" if extra else ""
+        return f"{status} | {progress} | {updated}{suffix}"
+
+    jobs = sorted(jobs, key=lambda item: str(item.get("updated_at", item.get("created_at", ""))), reverse=True)
+    visible = jobs[:80]
+    if len(jobs) > len(visible):
+        console.print(f"[yellow]Showing latest {len(visible)} of {len(jobs)} jobs.[/yellow]")
+    selected_job_id = _select_choice(
+        console,
+        "Select external job",
+        [
+            (
+                str(job.get("job_id", "-")),
+                job_description(job),
+                str(job.get("job_id", "")),
+            )
+            for job in visible
+            if job.get("job_id")
+        ],
+        str(visible[0].get("job_id", "")),
+    )
+    if not selected_job_id:
+        return
+
+    action = _select_choice(
+        console,
+        f"External job {selected_job_id}",
+        [
+            ("Show status", "Read one job status.json", "status"),
+            ("Tail logs", "Read the latest job.log lines", "logs"),
+            ("Fetch results", "Copy job metadata and run results back to this PC", "fetch"),
+            ("Generate report", "Aggregate fetched external results with stats and cost", "report"),
+            ("Attach tmux", "Attach interactively to the remote tmux session", "attach"),
+            ("Stop job", "Kill the tmux session and mark stopped", "stop"),
+            ("Back", "Return to the main menu", "back"),
+        ],
+        "status",
+    )
+    if action == "back":
+        return
+    if action == "status":
+        console.print_json(data=external_benchmarks.detached_job_status(state.baseline_host, selected_job_id))
+    elif action == "logs":
+        tail = int(_ask(console, "Tail lines", "100"))
+        console.print(external_benchmarks.detached_job_logs(state.baseline_host, selected_job_id, tail))
+    elif action == "fetch":
+        console.print(f"[green]Fetched:[/green] {external_benchmarks.fetch_detached_job(state.baseline_host, selected_job_id)}")
+    elif action == "report":
+        root = Path(_ask(console, "Results root", str(external_benchmarks.DEFAULT_OUTPUT_DIR))).expanduser()
+        report_dir = root / "reports"
+        report_path = report_dir / f"{selected_job_id}_report.json"
+        markdown_path = report_dir / f"{selected_job_id}_report.md"
+        report = external_benchmarks.generate_report(root, report_path, markdown_path)
+        table = Table(title="External Benchmark Report")
+        table.add_column("Metric")
+        table.add_column("Value", justify="right")
+        table.add_row("Runs", str(report["total_runs"]))
+        table.add_row("Unique cases", str(report["unique_cases"]))
+        table.add_row("Useful findings", str(report["useful_findings"]))
+        table.add_row("Environment failed", str(report["environment_failed"]))
+        table.add_row("Agent failed", str(report["agent_failed"]))
+        table.add_row("Max turns", str(report["max_turns"]))
+        table.add_row("Tokens", str(report["total_tokens"]))
+        table.add_row("Estimated cost", f"${report['estimated_cost_usd']:.6f}")
+        console.print(table)
+        console.print(f"[green]Report:[/green] {report_path}")
+        console.print(f"[green]Markdown:[/green] {markdown_path}")
+    elif action == "attach":
+        external_benchmarks.attach_detached_job(state.baseline_host, selected_job_id)
+    elif action == "stop":
+        external_benchmarks.stop_detached_job(state.baseline_host, selected_job_id)
+        console.print(f"[yellow]Stopped {selected_job_id}[/yellow]")
 
 
 def run_dashboard() -> None:
@@ -859,6 +1034,8 @@ def run_dashboard() -> None:
                 _run_suite_live(console, state)
             elif choice == "e":
                 _run_external_benchmark(console, state)
+            elif choice == "j":
+                _manage_external_jobs(console, state)
             elif choice == "7":
                 _compare(console, state)
             elif choice == "i":

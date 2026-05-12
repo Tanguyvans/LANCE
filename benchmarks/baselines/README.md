@@ -310,10 +310,21 @@ To run our agent on external suites from the same dashboard, choose
 `Run our agent on external benchmark suite`. The TUI lets you:
 
 1. choose `Vulhub`, `AutoPenBench`, `XBOW`, or `AI-Pentest`;
-2. clone Vulhub / AutoPenBench automatically if the repo is missing;
-3. filter cases by name/CVE/category;
-4. run in dry-run mode first, then real mode;
-5. open the saved result directory under `output/external_benchmarks/`.
+2. sync this project to the baseline VM;
+3. install/check Docker and the Python venv on the baseline VM;
+4. clone Vulhub / AutoPenBench on the baseline VM if the repo is missing;
+5. filter cases by name/CVE/category;
+6. run one selected case or all filtered cases as a batch;
+7. run in dry-run mode first, then real mode;
+8. copy the saved result directory back under `output/external_benchmarks/`.
+
+For batch runs, start with a filter and a small limit first. Vulhub contains many
+Compose environments, so a full unfiltered real run can take hours and pull a
+large number of Docker images. Batch summaries are written to:
+
+```text
+output/external_benchmarks/batches/<suite>_<timestamp>_summary.json
+```
 
 ## External benchmark suites
 
@@ -325,23 +336,30 @@ compare against:
 - `vulhub`: Docker Compose vulnerable labs used by many pentest agents.
 - `ai-pentest`: AI-Pentest-Benchmark metadata for VulnHub VM targets.
 
-Clone the upstream benchmark outside this repository, then inspect it:
+The TUI can clone Vulhub / AutoPenBench on the baseline VM for you. The default
+remote paths are:
+
+```text
+/opt/nato-smartcity-iot                 # synced project copy used by src.agent_external
+/opt/external-benchmarks/vulhub         # remote Vulhub checkout
+/opt/external-benchmarks/auto-pen-bench # remote AutoPenBench checkout
+/opt/baseline-tools/external-results    # remote run artifacts before copy-back
+/opt/baseline-tools/external-jobs       # detached tmux job state/logs
+```
+
+Inspect a remote suite from CLI:
 
 ```bash
-git clone https://github.com/vulhub/vulhub ../vulhub
-git clone https://github.com/lucagioacchini/auto-pen-bench ../auto-pen-bench
-
 python3 -m src.baselines external list \
   --suite vulhub \
-  --repo ../vulhub
+  --repo /opt/external-benchmarks/vulhub \
+  --remote-host root@192.168.88.36
 
 python3 -m src.baselines external list \
   --suite autopenbench \
-  --repo ../auto-pen-bench
+  --repo /opt/external-benchmarks/auto-pen-bench \
+  --remote-host root@192.168.88.36
 ```
-
-The dashboard can do the Vulhub / AutoPenBench clone step for you if those
-folders do not exist yet.
 
 Write a manifest for traceability:
 
@@ -357,9 +375,10 @@ Dry-run a challenge to see the Docker and agent commands that will execute:
 ```bash
 python3 -m src.baselines external run \
   --suite vulhub \
-  --repo ../vulhub \
+  --repo /opt/external-benchmarks/vulhub \
   --case struts2/s2-045 \
-  --agent-command 'python3 -m src.agent_external --target {target_url} --output-dir {output_dir} --provider minimax' \
+  --remote-host root@192.168.88.36 \
+  --agent-command 'python -m src.agent_external --target {target_or_url} --output-dir {output_dir} --provider minimax' \
   --dry-run
 ```
 
@@ -369,13 +388,15 @@ official expected flag, and exposes the task text to the agent command:
 ```bash
 python3 -m src.baselines external run \
   --suite autopenbench \
-  --repo ../auto-pen-bench \
+  --repo /opt/external-benchmarks/auto-pen-bench \
   --case in-vitro_recon_target1 \
-  --agent-command 'python3 -m src.agent_external --target {target_name} --hint "{task}" --output-dir {output_dir} --provider minimax'
+  --remote-host root@192.168.88.36 \
+  --agent-command 'python -m src.agent_external --target {target_or_url} --hint "{task}" --output-dir {output_dir} --provider minimax'
 ```
 
 The command template receives `{suite}`, `{case_id}`, `{target_url}`,
-`{target_name}`, `{task}`, `{vulnerability}`, `{output_dir}`, and `{flag}`.
+`{target_or_url}`, `{target_name}`, `{task}`, `{vulnerability}`, `{output_dir}`,
+and `{flag}`.
 For XBOW and AutoPenBench, the harness builds the benchmark with Docker Compose.
 For Vulhub, it starts the compose stack directly because most cases use
 pre-built images. Each run stores `planned.json`, `agent_stdout.txt`,
@@ -384,6 +405,48 @@ known; Vulhub cases usually need either `--flag` or manual inspection of the
 saved output because upstream does not define one universal flag format.
 The AI-Pentest-Benchmark path is recorded as manual because those targets are
 VulnHub/VM based rather than Docker-compose challenges.
+
+### Detached long runs on the baseline VM
+
+For paper-scale batches, prefer detached jobs. Your local machine only starts
+the job; after that, the VM owns the process, logs, state, Docker containers,
+and outputs. You can close your terminal or disconnect SSH.
+
+Start one or more cases in a remote tmux session:
+
+```bash
+python3 -m src.baselines external start-detached \
+  --remote-host root@192.168.88.36 \
+  --suite vulhub \
+  --repo /opt/external-benchmarks/vulhub \
+  --case 1panel/CVE-2024-39907
+```
+
+You can pass `--case` multiple times for a batch. The default command uses
+`src.agent_external`, MiniMax, and the fair `context_policy=fair_network_only`
+prompt. Control the job from your PC without re-running anything locally:
+
+```bash
+python3 -m src.baselines external jobs --remote-host root@192.168.88.36
+python3 -m src.baselines external status --remote-host root@192.168.88.36 --job-id <job_id>
+python3 -m src.baselines external logs --remote-host root@192.168.88.36 --job-id <job_id> --tail 100
+python3 -m src.baselines external attach --remote-host root@192.168.88.36 --job-id <job_id>
+python3 -m src.baselines external stop --remote-host root@192.168.88.36 --job-id <job_id>
+python3 -m src.baselines external fetch --remote-host root@192.168.88.36 --job-id <job_id>
+```
+
+Remote files are written under:
+
+```text
+/opt/baseline-tools/external-jobs/<job_id>/job.json
+/opt/baseline-tools/external-jobs/<job_id>/status.json
+/opt/baseline-tools/external-jobs/<job_id>/summary.json
+/opt/baseline-tools/external-jobs/<job_id>/job.log
+```
+
+`fetch` copies the job folder under `output/external_benchmarks/jobs/<job_id>`
+and copies any completed run directories from
+`/opt/baseline-tools/external-results`.
 
 ## Adapter scripts on the baseline VM
 

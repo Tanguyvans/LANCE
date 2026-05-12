@@ -135,6 +135,8 @@ def main() -> None:
     external_list = external_sub.add_parser("list", help="List cases from a local benchmark repo")
     external_list.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
     external_list.add_argument("--repo", required=True)
+    external_list.add_argument("--remote-host", default=None)
+    external_list.add_argument("--no-sync", action="store_true")
     external_list.add_argument("--json", action="store_true")
     external_manifest = external_sub.add_parser("manifest", help="Write a JSON manifest for a benchmark repo")
     external_manifest.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
@@ -146,10 +148,56 @@ def main() -> None:
     external_run.add_argument("--case", required=True)
     external_run.add_argument("--agent-command", required=True)
     external_run.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    external_run.add_argument("--remote-host", default=None)
+    external_run.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
+    external_run.add_argument("--no-sync", action="store_true")
     external_run.add_argument("--flag", default=None)
     external_run.add_argument("--timeout", default=1800, type=int)
     external_run.add_argument("--dry-run", action="store_true")
     external_run.add_argument("--keep-running", action="store_true")
+    external_detached = external_sub.add_parser("start-detached", help="Start a long-running external benchmark job on the baseline VM")
+    external_detached.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
+    external_detached.add_argument("--repo", required=True)
+    external_detached.add_argument("--case", required=True, action="append", dest="cases")
+    external_detached.add_argument("--remote-host", required=True)
+    external_detached.add_argument("--agent-command", default=None)
+    external_detached.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
+    external_detached.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_detached.add_argument("--timeout", default=3600, type=int)
+    external_detached.add_argument("--model", default="MiniMax-M2.7")
+    external_detached.add_argument("--max-turns", default=40, type=int)
+    external_detached.add_argument("--dry-run", action="store_true")
+    external_detached.add_argument("--keep-running", action="store_true")
+    external_detached.add_argument("--no-sync", action="store_true")
+    external_jobs = external_sub.add_parser("jobs", help="List detached external jobs")
+    external_jobs.add_argument("--remote-host", required=True)
+    external_jobs.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_status = external_sub.add_parser("status", help="Show detached external job status")
+    external_status.add_argument("--remote-host", required=True)
+    external_status.add_argument("--job-id", required=True)
+    external_status.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_logs = external_sub.add_parser("logs", help="Show detached external job logs")
+    external_logs.add_argument("--remote-host", required=True)
+    external_logs.add_argument("--job-id", required=True)
+    external_logs.add_argument("--tail", default=100, type=int)
+    external_logs.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_stop = external_sub.add_parser("stop", help="Stop a detached external job")
+    external_stop.add_argument("--remote-host", required=True)
+    external_stop.add_argument("--job-id", required=True)
+    external_stop.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_attach = external_sub.add_parser("attach", help="Attach to a detached external job tmux session")
+    external_attach.add_argument("--remote-host", required=True)
+    external_attach.add_argument("--job-id", required=True)
+    external_fetch = external_sub.add_parser("fetch", help="Fetch detached external job results")
+    external_fetch.add_argument("--remote-host", required=True)
+    external_fetch.add_argument("--job-id", required=True)
+    external_fetch.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    external_fetch.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_fetch.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
+    external_report = external_sub.add_parser("report", help="Aggregate external benchmark result stats and costs")
+    external_report.add_argument("--root", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    external_report.add_argument("--output", default=None)
+    external_report.add_argument("--markdown", default=None)
 
     pilot = sub.add_parser("pilot-cai", help="Shortcut for the scenario_3 CAI pilot from the paper plan")
     pilot.add_argument("--baseline-host", required=True)
@@ -353,7 +401,15 @@ def main() -> None:
         compare.main()
     elif args.command == "external":
         if args.external_command == "list":
-            cases = external_benchmarks.discover_cases(args.suite, Path(args.repo))
+            if args.remote_host:
+                cases = external_benchmarks.discover_remote_cases(
+                    baseline_host=args.remote_host,
+                    suite=args.suite,
+                    repo=Path(args.repo),
+                    sync_project=not args.no_sync,
+                )
+            else:
+                cases = external_benchmarks.discover_cases(args.suite, Path(args.repo))
             if args.json:
                 import json
 
@@ -373,8 +429,23 @@ def main() -> None:
                 )
             )
         elif args.external_command == "run":
-            print(
-                external_benchmarks.run_case(
+            if args.remote_host:
+                run_dir = external_benchmarks.run_remote_case(
+                    baseline_host=args.remote_host,
+                    suite=args.suite,
+                    repo=Path(args.repo),
+                    case_id=args.case,
+                    agent_command=args.agent_command,
+                    output_dir=Path(args.output_dir),
+                    remote_output_dir=Path(args.remote_output_dir),
+                    flag=args.flag,
+                    dry_run=args.dry_run,
+                    keep_running=args.keep_running,
+                    timeout_seconds=args.timeout,
+                    sync_project=not args.no_sync,
+                )
+            else:
+                run_dir = external_benchmarks.run_case(
                     suite=args.suite,
                     repo=Path(args.repo),
                     case_id=args.case,
@@ -385,7 +456,70 @@ def main() -> None:
                     keep_running=args.keep_running,
                     timeout_seconds=args.timeout,
                 )
+            print(run_dir)
+        elif args.external_command == "start-detached":
+            import json
+            job = external_benchmarks.start_detached_job(
+                baseline_host=args.remote_host,
+                suite=args.suite,
+                cases=args.cases,
+                repo=Path(args.repo),
+                agent_command=args.agent_command,
+                remote_output_dir=Path(args.remote_output_dir),
+                remote_job_dir=Path(args.remote_job_dir),
+                timeout_seconds=args.timeout,
+                dry_run=args.dry_run,
+                keep_running=args.keep_running,
+                sync_project=not args.no_sync,
+                model=args.model,
+                max_turns=args.max_turns,
             )
+            print(json.dumps(job, indent=2, ensure_ascii=False))
+        elif args.external_command == "jobs":
+            import json
+            print(json.dumps(
+                external_benchmarks.list_detached_jobs(args.remote_host, Path(args.remote_job_dir)),
+                indent=2,
+                ensure_ascii=False,
+            ))
+        elif args.external_command == "status":
+            import json
+            print(json.dumps(
+                external_benchmarks.detached_job_status(args.remote_host, args.job_id, Path(args.remote_job_dir)),
+                indent=2,
+                ensure_ascii=False,
+            ))
+        elif args.external_command == "logs":
+            print(external_benchmarks.detached_job_logs(
+                args.remote_host,
+                args.job_id,
+                args.tail,
+                Path(args.remote_job_dir),
+            ), end="")
+        elif args.external_command == "stop":
+            external_benchmarks.stop_detached_job(args.remote_host, args.job_id, Path(args.remote_job_dir))
+            print(f"stopped {args.job_id}")
+        elif args.external_command == "attach":
+            external_benchmarks.attach_detached_job(args.remote_host, args.job_id)
+        elif args.external_command == "fetch":
+            print(external_benchmarks.fetch_detached_job(
+                args.remote_host,
+                args.job_id,
+                Path(args.output_dir),
+                Path(args.remote_job_dir),
+                Path(args.remote_output_dir),
+            ))
+        elif args.external_command == "report":
+            import json
+            print(json.dumps(
+                external_benchmarks.generate_report(
+                    Path(args.root),
+                    Path(args.output) if args.output else None,
+                    Path(args.markdown) if args.markdown else None,
+                ),
+                indent=2,
+                ensure_ascii=False,
+            ))
     elif args.command == "pilot-cai":
         run_dir = runner.run_baseline(
             tool="cai",
