@@ -1,0 +1,33 @@
+name: "sqlmap"
+command: "sqlmap"
+args: ["--batch", "--level", "1", "--risk", "1", "--random-agent", "--timeout", "10", "--retries", "1"]
+enabled: true
+timeout: 180
+max_output: 6000
+short_description: "SQL injection probe (bounded)"
+description: "Automated SQL injection detector against a target URL. Bounded to read-only level=1/risk=1 to avoid noisy or destructive payloads. Use when an HTTP endpoint takes a parameter that might be backed by a database (login forms, search, id=N URLs, REST endpoints). Returns sqlmap's stdout summary including which parameters are injectable, the DBMS, and any leaked banner. Do NOT use to dump entire databases — use `--dbs` or `--tables` only in follow-up calls if a vulnerability is first confirmed."
+parameters:
+  - name: "url"
+    type: "string"
+    description: "Target URL with the injection point (e.g. 'http://192.168.100.12/login.php?id=1'). Use 'PARAM' marker for POST data if needed."
+    required: true
+    flag: "-u"
+    format: "flag"
+  - name: "data"
+    type: "string"
+    description: "Optional POST body (e.g. 'username=admin&password=test'). Triggers POST testing."
+    required: false
+    flag: "--data"
+    format: "flag"
+  - name: "cookie"
+    type: "string"
+    description: "Optional Cookie header (e.g. 'PHPSESSID=abc123')."
+    required: false
+    flag: "--cookie"
+    format: "flag"
+  - name: "extra"
+    type: "string"
+    description: "Optional extra flag, e.g. '--dbs' to enumerate databases AFTER injection is confirmed. Avoid heavy options on first call."
+    required: false
+    flag: ""
+    format: "positional"

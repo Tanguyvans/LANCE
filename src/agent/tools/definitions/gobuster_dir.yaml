@@ -1,0 +1,34 @@
+name: "gobuster_dir"
+command: "gobuster"
+args: ["dir", "--no-error", "--no-color", "-q", "-t", "20", "--timeout", "10s"]
+enabled: true
+timeout: 180
+max_output: 5000
+short_description: "Web directory/path bruteforce"
+description: "Enumerate paths and files on a web server using a wordlist. Use to find hidden admin panels, backups, config files, API endpoints. Returns the list of paths that responded with status codes other than 404. Default wordlist is small (common.txt); switch to bigger lists only after the first quick pass."
+parameters:
+  - name: "url"
+    type: "string"
+    description: "Target base URL (e.g. 'http://192.168.100.12:8080')."
+    required: true
+    flag: "-u"
+    format: "flag"
+  - name: "wordlist"
+    type: "string"
+    description: "Path to wordlist file. Common choices: /usr/share/wordlists/dirb/common.txt (small, ~4.6k), /usr/share/seclists/Discovery/Web-Content/common.txt."
+    required: false
+    default: "/usr/share/wordlists/dirb/common.txt"
+    flag: "-w"
+    format: "flag"
+  - name: "extensions"
+    type: "string"
+    description: "Comma-separated file extensions to try (e.g. 'php,html,txt,bak,old')."
+    required: false
+    flag: "-x"
+    format: "flag"
+  - name: "status_codes"
+    type: "string"
+    description: "Status codes to consider as hits (e.g. '200,204,301,302,307,401,403')."
+    required: false
+    flag: "-s"
+    format: "flag"

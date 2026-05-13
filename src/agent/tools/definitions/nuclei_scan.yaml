@@ -1,0 +1,33 @@
+name: "nuclei_scan"
+command: "nuclei"
+args: ["-silent", "-no-color", "-stats=false", "-rate-limit", "30", "-timeout", "10"]
+enabled: true
+timeout: 600
+max_output: 8000
+short_description: "Template-based vulnerability scan"
+description: "Run nuclei templates against a target to detect known vulnerabilities, default credentials, and misconfigurations. Returns one finding per line in [template-id] [severity] [host] format. Best as a quick pass when fingerprint reveals a tech stack (e.g. wp, jenkins, gitlab). Use `-tags` to restrict to a CVE/family for focused scans."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target URL, IP, or comma-separated list (e.g. 'http://192.168.100.12' or '192.168.100.12,192.168.100.13')."
+    required: true
+    flag: "-u"
+    format: "flag"
+  - name: "tags"
+    type: "string"
+    description: "Comma-separated template tags or CVE ids to include (e.g. 'wordpress,cve2024' or 'CVE-2023-46604')."
+    required: false
+    flag: "-tags"
+    format: "flag"
+  - name: "severity"
+    type: "string"
+    description: "Comma-separated severities to keep (e.g. 'critical,high'). Default keeps all."
+    required: false
+    flag: "-severity"
+    format: "flag"
+  - name: "templates"
+    type: "string"
+    description: "Path to a specific template file or directory (e.g. 'http/cves/2023/CVE-2023-46604.yaml')."
+    required: false
+    flag: "-t"
+    format: "flag"

@@ -1,0 +1,21 @@
+name: "whatweb"
+command: "whatweb"
+args: ["--no-errors", "--quiet"]
+enabled: true
+timeout: 30
+max_output: 3000
+short_description: "Web stack fingerprint"
+description: "Identify the web technology stack of a target URL (CMS, framework, server, headers, javascript libs, cookies). Returns one summary line per detected plugin with its version and confidence. Useful first probe before deeper enumeration."
+parameters:
+  - name: "url"
+    type: "string"
+    description: "Target URL or IP (e.g. 'http://192.168.100.12' or '192.168.100.12:8080')."
+    required: true
+    format: "positional"
+  - name: "aggression"
+    type: "integer"
+    description: "Aggression level 1 (passive, default) to 4 (intrusive). Stick to 1-3 to avoid breaking the target."
+    required: false
+    default: 1
+    flag: "-a"
+    format: "flag"

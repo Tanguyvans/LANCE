@@ -1,0 +1,22 @@
+name: "python_exec"
+handler: "python"
+enabled: true
+timeout: 60
+short_description: "Run an ad-hoc Python script (sandboxed by subprocess + timeout)"
+description: >
+  Execute a Python script written by the agent against the target. Use for: custom HTTP exploit logic
+  the other tools cannot express (multi-step auth flows, complex header crafting, response parsing),
+  raw protocol primitives (CoAP, BACnet, etc.), data decoding/encoding chains, or running a small PoC
+  borrowed from searchsploit. The script runs via `python3 -I` in a tempfile with a hard timeout. Stdout,
+  stderr, and the return code are returned as JSON. Already-installed packages: requests, base64, hashlib,
+  socket, ssl, urllib, json, re. WARNING — the script runs with the same filesystem permissions as the agent
+  (no chroot/seccomp): only safe in isolated benchmark VMs.
+parameters:
+  - name: "script"
+    type: "string"
+    description: "Full Python source code to execute. Prefer print() for output. Keep under ~200 lines. Avoid endless loops; the wall-clock timeout will kill them but you waste budget."
+    required: true
+  - name: "timeout"
+    type: "integer"
+    description: "Wall-clock timeout in seconds (default 60, hard maximum 180)."
+    required: false

@@ -1,0 +1,32 @@
+name: "tcp_send"
+handler: "python"
+enabled: true
+timeout: 30
+short_description: "Raw TCP send/recv (hex-encoded payload)"
+description: >
+  Open a raw TCP socket to host:port, send a hex-encoded payload, read up to recv_bytes back, return
+  hex + ASCII preview. Use for: binary protocols (ActiveMQ OpenWire, JMS, Redis RESP, MQTT raw),
+  exploit delivery of serialized payloads from ysoserial_payload, or banner grabs on uncommon ports.
+  The payload MUST be hex-encoded (the tool decodes it before sending) — pipe ysoserial output through
+  `base64 -d | xxd -p -c 0` or use python_exec to assemble it.
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Target host (IP or hostname)."
+    required: true
+  - name: "port"
+    type: "integer"
+    description: "Target TCP port."
+    required: true
+  - name: "payload_hex"
+    type: "string"
+    description: "Hex-encoded bytes to send (e.g. '5052494e47207465737400' for 'PRING test\\0'). Empty string = recv-only banner grab."
+    required: true
+  - name: "recv_bytes"
+    type: "integer"
+    description: "Maximum bytes to read back (default 4096, max 65536)."
+    required: false
+  - name: "timeout"
+    type: "integer"
+    description: "Wall-clock timeout for the whole interaction in seconds (default 10, max 30)."
+    required: false
