@@ -1,0 +1,81 @@
+---
+# Deploy a fleet of N isolated baseline VMs.
+#
+# Usage:
+#   ansible-playbook benchmarks/ansible/playbooks/deploy_fleet.yml \
+#     --vault-password-file ~/.vault_pass -i benchmarks/ansible/inventory.yml
+#
+# Ad-hoc sizing without editing files:
+#   --extra-vars '{"baseline_fleet": [{"vmid": 1000, "hostname": "nato-baseline-1", "benchmark_ip": "192.168.100.240"}, ...]}'
+#
+# Each item in `baseline_fleet` (loaded from group_vars/all/fleet.yml by
+# default) must define: vmid, hostname, benchmark_ip. Optional: storage.
+
+- name: Provision baseline fleet on Proxmox
+  hosts: proxmox
+  gather_facts: false
+  tasks:
+    - name: Validate baseline_fleet variable
+      ansible.builtin.assert:
+        that:
+          - baseline_fleet is defined
+          - baseline_fleet | length > 0
+        fail_msg: >-
+          baseline_fleet is not defined. Set it in group_vars/all/fleet.yml or
+          pass --extra-vars '{"baseline_fleet": [...]}'.
+
+    - name: Provision each fleet LXC
+      ansible.builtin.include_tasks: ../tasks/provision_baseline_lxc.yml
+      vars:
+        baseline_vmid: "{{ item.vmid }}"
+        baseline_hostname: "{{ item.hostname }}"
+        baseline_storage_override: "{{ item.storage | default('') }}"
+        baseline_benchmark_ip: "{{ item.benchmark_ip }}"
+        baseline_inventory_name: "{{ item.hostname }}"
+        baseline_inventory_groups:
+          - baseline_fleet
+      loop: "{{ baseline_fleet }}"
+      loop_control:
+        label: "{{ item.hostname }} (vmid={{ item.vmid }})"
+
+    - name: Resolve mgmt IP per fleet item
+      ansible.builtin.set_fact:
+        resolved_fleet_hosts: "{{ resolved_fleet_hosts | default([]) + [item | combine({'mgmt_host': 'root@' + (hostvars[item.hostname].ansible_host | default('UNKNOWN'))})] }}"
+      loop: "{{ baseline_fleet }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+
+    - name: Ensure local output dir exists
+      ansible.builtin.file:
+        path: output/baselines
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Write fleet endpoints file on the controller
+      ansible.builtin.copy:
+        dest: output/baselines/fleet_hosts.json
+        mode: "0644"
+        content: "{{ {'generated_at': lookup('pipe', 'date -Iseconds'), 'hosts': resolved_fleet_hosts} | to_nice_json }}"
+      delegate_to: localhost
+
+    - name: Print fleet summary
+      ansible.builtin.debug:
+        msg: |
+          Fleet ready ({{ resolved_fleet_hosts | length }} VMs). Mgmt SSH:
+          {% for entry in resolved_fleet_hosts %}
+          - {{ entry.hostname }} (vmid={{ entry.vmid }}, bench_ip={{ entry.benchmark_ip }})  ->  {{ entry.mgmt_host }}
+          {% endfor %}
+
+          Saved to: output/baselines/fleet_hosts.json (on the controller)
+          The TUI 'Configure fleet SSH hosts' will pick these up automatically.
+      delegate_to: localhost
+
+- name: Configure baseline fleet
+  hosts: baseline_fleet
+  gather_facts: true
+  # Limit configuration concurrency to avoid saturating the master upload bandwidth.
+  serial: 2
+  tasks:
+    - name: Configure baseline
+      ansible.builtin.include_tasks: ../tasks/configure_baseline.yml

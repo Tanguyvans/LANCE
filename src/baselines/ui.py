@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.baselines import compare, deploy, external_benchmarks, install_tools, runner
+from src.baselines import compare, deploy, external_benchmarks, fleet, install_tools, runner, store
 from src.baselines.scenarios import list_ground_truth_scenarios
 
 try:
@@ -37,24 +37,56 @@ EXTERNAL_REPOS = {
     "xbow": ("", "/opt/external-benchmarks/validation-benchmarks"),
     "ai-pentest": ("", "/opt/external-benchmarks/ai-pentest-benchmark"),
 }
-MENU_ACTIONS = [
-    ("1", "Configure"),
-    ("s", "Change scenario"),
-    ("x", "Teardown current and deploy another scenario"),
-    ("2", "Deploy baseline VM"),
-    ("3", "Setup baseline tools on baseline VM"),
-    ("4", "Deploy full scenario (deploy + inject + populate + verify)"),
-    ("5", "Run selected baseline with live remote status"),
-    ("6", "Run CAI + PentestGPT + VulnBot suite"),
-    ("e", "Run our agent on external benchmark suite"),
-    ("j", "External jobs on VM"),
-    ("7", "Compare last/run directory"),
-    ("i", "Inject/populate/verify vulnerabilities"),
-    ("r", "Reset scenario to vulnerable state"),
-    ("8", "Full selected-tool pilot"),
-    ("9", "Teardown benchmark scenario"),
-    ("0", "Quit"),
+MENU_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
+    (
+        "Configuration",
+        [
+            ("1", "Configure tool / scope / model / hosts"),
+            ("s", "Change scenario"),
+        ],
+    ),
+    (
+        "Provisioning & scenarios",
+        [
+            ("2", "Deploy single baseline VM (Ansible)"),
+            ("3", "Setup baseline tools on baseline VM"),
+            ("4", "Deploy full scenario (deploy + inject + populate + verify)"),
+            ("x", "Teardown current scenario and deploy another"),
+        ],
+    ),
+    (
+        "Single-VM benchmark runs",
+        [
+            ("5", "Run selected baseline tool with live remote status"),
+            ("6", "Run CAI + PentestGPT + VulnBot suite"),
+            ("8", "Full selected-tool pilot (scenario_3 paper plan)"),
+            ("e", "Run our agent on external benchmark suite"),
+            ("j", "Manage external detached jobs on single VM"),
+        ],
+    ),
+    (
+        "Fleet (multi-VM distributed)",
+        [
+            ("f", "Fleet: configure / start / monitor / fetch"),
+        ],
+    ),
+    (
+        "Analysis & maintenance",
+        [
+            ("7", "Compare last run or other directories"),
+            ("h", "History (SQLite-backed: jobs, runs, breakdown)"),
+            ("i", "Inject / populate / verify vulnerabilities"),
+            ("r", "Reset scenario to vulnerable state"),
+            ("9", "Teardown benchmark scenario"),
+        ],
+    ),
+    (
+        "Exit",
+        [("0", "Quit")],
+    ),
 ]
+# Flat view for iteration and compatibility with existing _select_action loop.
+MENU_ACTIONS: list[tuple[str, str]] = [(key, label) for _section, items in MENU_SECTIONS for key, label in items]
 
 
 @dataclass
@@ -74,6 +106,8 @@ class DashboardState:
     external_case: str = ""
     external_dry_run: bool = True
     external_context_mode: str = "blind"
+    baseline_hosts: list[str] = field(default_factory=list)
+    active_distributed_job_id: str | None = None
     status: str = "Idle"
     current_target: str = "-"
     current_index: int = 0
@@ -81,6 +115,10 @@ class DashboardState:
     started_at: float = field(default_factory=time.monotonic)
     logs: list[str] = field(default_factory=list)
     score: dict[str, Any] | None = None
+
+    @property
+    def effective_hosts(self) -> list[str]:
+        return list(self.baseline_hosts) if self.baseline_hosts else [self.baseline_host]
 
 
 def _fallback() -> None:
@@ -101,13 +139,56 @@ def _push_log(state: DashboardState, message: str) -> None:
     state.logs = state.logs[-8:]
 
 
+def _render_single_vm_panel(state: DashboardState) -> Panel:
+    table = Table.grid(expand=True, padding=(0, 1))
+    table.add_column(style="bold cyan", no_wrap=True, ratio=1)
+    table.add_column(ratio=2)
+    table.add_row("Host", state.baseline_host)
+    table.add_row("Tool", f"[white]{state.tool}[/white]")
+    table.add_row("Scenario", f"S{state.scenario_id}")
+    table.add_row("Scope", state.scope)
+    table.add_row("Model", f"[dim]{state.model}[/dim]")
+    table.add_row("Max turns", str(state.max_turns))
+    table.add_row("Parallel jobs", str(state.jobs))
+    return Panel(table, title="Single VM", border_style="cyan")
+
+
+def _render_fleet_panel(state: DashboardState) -> Panel:
+    table = Table.grid(expand=True, padding=(0, 1))
+    table.add_column(style="bold magenta", no_wrap=True, ratio=1)
+    table.add_column(ratio=2)
+    hosts = state.baseline_hosts or list(fleet.DEFAULT_FLEET_HOSTS)
+    hosts_status = "[dim]not configured (using defaults)[/dim]" if not state.baseline_hosts else f"[white]{len(hosts)} host(s)[/white]"
+    table.add_row("Hosts", hosts_status)
+    table.add_row("Configured", "\n".join(hosts) if hosts else "-")
+    table.add_row(
+        "Active job",
+        f"[white]{state.active_distributed_job_id}[/white]" if state.active_distributed_job_id else "[dim]none[/dim]",
+    )
+    return Panel(table, title="Fleet", border_style="magenta")
+
+
+def _render_last_runs_panel(state: DashboardState) -> Panel:
+    table = Table.grid(expand=True, padding=(0, 1))
+    table.add_column(style="bold yellow", no_wrap=True, ratio=1)
+    table.add_column(ratio=3)
+    table.add_row("Last run", str(state.last_run_dir or "-"))
+    table.add_row("Last suite", str(state.last_suite_dir or "-"))
+    table.add_row("Last external", str(state.last_external_dir or "-"))
+    db_path = store.DEFAULT_DB_PATH
+    db_state = "[green]ready[/green]" if db_path.exists() else "[dim]not yet initialized[/dim]"
+    table.add_row("History DB", f"{db_path}  {db_state}")
+    return Panel(table, title="Last artifacts", border_style="yellow")
+
+
 def _render_header(state: DashboardState, compact: bool = False):
     if compact:
         line = (
             f"[bold]S{state.scenario_id}[/bold]  "
             f"[cyan]{state.tool}[/cyan]  "
             f"jobs={state.jobs}  "
-            f"{state.baseline_host}  "
+            f"[white]{state.baseline_host}[/white]  "
+            f"[magenta]fleet={len(state.baseline_hosts) or 0}[/magenta]  "
             f"[dim]{state.model}[/dim]"
         )
         last = (
@@ -115,35 +196,39 @@ def _render_header(state: DashboardState, compact: bool = False):
             f"Last suite: {state.last_suite_dir or '-'} | "
             f"Last external: {state.last_external_dir or '-'}"
         )
-        return Panel(f"{line}\n[dim]{last}[/dim]", title="NATO Smart City IoT Baseline", border_style="cyan")
+        active = (
+            f"\n[magenta]Active distributed job:[/magenta] {state.active_distributed_job_id}"
+            if state.active_distributed_job_id
+            else ""
+        )
+        return Panel(f"{line}\n[dim]{last}[/dim]{active}", title="NATO Smart City IoT Baseline", border_style="cyan")
 
-    table = Table.grid(expand=True)
-    table.add_column(ratio=1)
-    table.add_column(ratio=1)
-    table.add_row("[bold]Baseline[/bold]", state.baseline_host)
-    table.add_row("[bold]Tool[/bold]", state.tool)
-    table.add_row("[bold]Scenario[/bold]", state.scenario_id)
-    table.add_row("[bold]Scope[/bold]", state.scope)
-    table.add_row("[bold]Model[/bold]", state.model)
-    table.add_row("[bold]Max turns[/bold]", str(state.max_turns))
-    table.add_row("[bold]Parallel jobs[/bold]", str(state.jobs))
-    table.add_row("[bold]Last run[/bold]", str(state.last_run_dir or "-"))
-    table.add_row("[bold]Last suite[/bold]", str(state.last_suite_dir or "-"))
-    table.add_row("[bold]Last external[/bold]", str(state.last_external_dir or "-"))
-    return Panel(table, title="NATO Smart City IoT Baseline", border_style="cyan")
+    top = Table.grid(expand=True, padding=(0, 1))
+    top.add_column(ratio=1)
+    top.add_column(ratio=1)
+    top.add_row(_render_single_vm_panel(state), _render_fleet_panel(state))
+    return Group(top, _render_last_runs_panel(state))
 
 
 def _render_menu(selected: int = 0):
-    menu = Table(show_header=False, box=None, expand=True)
-    menu.add_column("cursor", width=2)
-    menu.add_column("key", width=4)
-    menu.add_column("action")
-    for index, (key, action) in enumerate(MENU_ACTIONS):
-        if index == selected:
-            menu.add_row("[bold cyan]>[/bold cyan]", f"[bold cyan]{key}[/bold cyan]", f"[bold reverse]{action}[/bold reverse]")
-        else:
-            menu.add_row("", f"[dim]{key}[/dim]", action)
-    return Panel(menu, title="Actions - use ↑/↓ then Enter, q to quit", border_style="magenta")
+    grid = Table(show_header=False, box=None, expand=True, padding=(0, 1))
+    grid.add_column("cursor", width=2)
+    grid.add_column("key", width=4)
+    grid.add_column("action")
+    flat_index = 0
+    for section_title, items in MENU_SECTIONS:
+        grid.add_row("", "", f"[bold magenta]── {section_title} ──[/bold magenta]")
+        for key, action in items:
+            if flat_index == selected:
+                grid.add_row(
+                    "[bold cyan]>[/bold cyan]",
+                    f"[bold cyan]{key}[/bold cyan]",
+                    f"[bold reverse]{action}[/bold reverse]",
+                )
+            else:
+                grid.add_row("", f"[dim]{key}[/dim]", action)
+            flat_index += 1
+    return Panel(grid, title="Actions  ↑/↓ + Enter   q to quit   shortcut keys also work", border_style="magenta")
 
 
 def _render_choice_menu(title: str, options: list[tuple[str, str]], selected: int):
@@ -1043,6 +1128,608 @@ def _manage_external_jobs(console: Console, state: DashboardState) -> None:
             console.print(external_benchmarks.prune_remote_docker(state.baseline_host))
 
 
+def _render_fleet_grid(status: fleet.FleetStatus) -> Panel:
+    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    table.add_column("Host")
+    table.add_column("Job")
+    table.add_column("State")
+    table.add_column("Done/Total", justify="right")
+    table.add_column("Useful", justify="right")
+    table.add_column("Current case")
+    for hj in status.hosts:
+        payload = hj.last_status_payload or {}
+        total = len(hj.cases)
+        done = int(payload.get("completed") or 0)
+        useful = int(payload.get("useful_findings") or 0)
+        current = str(payload.get("current_case") or "-")[:48]
+        state_style = {
+            "running": "[green]running[/green]",
+            "completed": "[bold green]completed[/bold green]",
+            "failed": "[red]failed[/red]",
+            "unreachable": "[red]unreachable[/red]",
+            "stopped": "[yellow]stopped[/yellow]",
+            "pending": "[dim]pending[/dim]",
+            "dry_run": "[blue]dry_run[/blue]",
+            "skipped": "[dim]skipped[/dim]",
+        }.get(hj.status, hj.status)
+        table.add_row(hj.baseline_host, hj.job_id[-24:] or "-", state_style, f"{done}/{total}", str(useful), current)
+    agg = status.aggregate
+    summary = (
+        f"[bold]Aggregate[/bold]  "
+        f"cases {agg.get('cases_completed', 0)}/{agg.get('cases_total', 0)}  "
+        f"useful {agg.get('useful_findings', 0)}  "
+        f"cost ${agg.get('estimated_cost_usd', 0):.4f}  "
+        f"tokens {agg.get('total_tokens', 0)}"
+    )
+    return Panel(Group(table, Text.from_markup(summary)), title=f"Fleet {status.distributed_job_id}", border_style="cyan")
+
+
+def _fleet_configure_hosts(console: Console, state: DashboardState) -> None:
+    persisted = fleet.load_provisioned_hosts()
+    if persisted and not state.baseline_hosts:
+        console.print(
+            f"[green]Loaded {len(persisted)} host(s) from {fleet.FLEET_HOSTS_FILE} "
+            "(written by deploy_fleet.yml).[/green]"
+        )
+        state.baseline_hosts = list(persisted)
+    base_default = state.baseline_hosts or persisted or list(fleet.DEFAULT_FLEET_HOSTS)
+    default = ",".join(base_default) if base_default else ""
+    raw = _ask(console, "Fleet hosts (comma-separated)", default)
+    parsed = fleet.parse_hosts_arg(raw)
+    if not parsed:
+        console.print("[red]No hosts parsed; keeping previous list.[/red]")
+        return
+    state.baseline_hosts = parsed
+    console.print(f"[green]Fleet configured with {len(parsed)} host(s).[/green]")
+
+
+def _fleet_pick_cases(console: Console, state: DashboardState, suite: str, repo: str) -> list[str]:
+    """Interactive helper: pick cases for a distributed run via auto-discover, file, or inline."""
+    cache_path = Path("output/baselines") / f"{suite}_all_cases.txt"
+    cache_count = 0
+    if cache_path.exists():
+        cache_count = sum(1 for line in cache_path.read_text(encoding="utf-8").splitlines() if line.strip() and not line.startswith("#"))
+
+    source = _select_choice(
+        console,
+        f"Cases source ({suite})",
+        [
+            ("all_remote", f"Auto-discover ALL cases from one fleet VM (recommended)", "all_remote"),
+            ("cached", f"Use cached file {cache_path} ({cache_count} cases)" if cache_count else "Use cached file (none yet)", "cached"),
+            ("file", "Custom file path (one case_id per line)", "file"),
+            ("inline", "Inline (comma-separated)", "inline"),
+        ],
+        "all_remote" if state.effective_hosts else "cached",
+    )
+
+    cases: list[str] = []
+    if source == "all_remote":
+        if not state.effective_hosts:
+            console.print("[red]Need at least one fleet SSH host configured.[/red]")
+            return []
+        host = state.effective_hosts[0]
+        with console.status(f"[cyan]Discovering {suite} cases from {host}...[/cyan]"):
+            try:
+                cases = fleet.discover_cases_remote(host=host, suite=suite, remote_repo=repo)
+            except Exception as exc:
+                console.print(f"[red]Discovery failed:[/red] {exc}")
+                return []
+        if cases:
+            fleet.write_cases_file(cases, cache_path)
+            console.print(f"[green]Discovered {len(cases)} case(s); cached to {cache_path}.[/green]")
+    elif source == "cached":
+        if not cache_path.exists():
+            console.print(f"[yellow]No cache at {cache_path}. Run 'Auto-discover' once first.[/yellow]")
+            return []
+        cases = fleet.load_cases_from_file(cache_path)
+    elif source == "file":
+        raw = _ask(console, "Path to cases file", "")
+        if not raw:
+            return []
+        cases = fleet.load_cases_from_file(Path(raw))
+    elif source == "inline":
+        raw = _ask(console, "Cases (comma-separated)", "")
+        cases = [c.strip() for c in raw.split(",") if c.strip()]
+
+    if not cases:
+        console.print("[yellow]Empty case list.[/yellow]")
+        return []
+
+    if _ask_yes_no(console, f"Apply a regex filter on {len(cases)} cases?", False):
+        import re
+        pattern = _ask(console, "Regex (matches case_id)", ".*")
+        try:
+            rx = re.compile(pattern)
+        except re.error as exc:
+            console.print(f"[red]Invalid regex:[/red] {exc}")
+            return cases
+        filtered = [c for c in cases if rx.search(c)]
+        console.print(f"[dim]Filter kept {len(filtered)} / {len(cases)} cases.[/dim]")
+        cases = filtered
+
+    if _ask_yes_no(console, f"Exclude families known to be slow (ofbiz, activemq)?", False):
+        cases = [c for c in cases if not any(c.startswith(prefix) for prefix in ("ofbiz/", "activemq/"))]
+        console.print(f"[dim]After exclusion: {len(cases)} case(s).[/dim]")
+
+    return cases
+
+
+def _fleet_start_distributed(console: Console, state: DashboardState) -> None:
+    hosts = state.effective_hosts
+    if len(hosts) < 1:
+        console.print("[red]Configure fleet hosts first (option Configure hosts).[/red]")
+        return
+    suite = _select_choice(
+        console,
+        "External suite",
+        [(name, f"Use {name}", name) for name in external_benchmarks.SUPPORTED_SUITES],
+        state.external_suite,
+    )
+    repo = _ask(console, "Remote repo path", EXTERNAL_REPOS.get(suite, ("", state.external_repo))[1])
+    cases = _fleet_pick_cases(console, state, suite, repo)
+    if not cases:
+        console.print("[red]No cases supplied. Aborting.[/red]")
+        return
+    console.print(f"[green]{len(cases)} case(s) selected -> {len(hosts)} fleet host(s) (~{len(cases) // max(1, len(hosts))} cases each).[/green]")
+    strategy = _select_choice(
+        console,
+        "Shard strategy",
+        [(s, f"Use {s}", s) for s in fleet.SHARD_STRATEGIES],
+        "round-robin",
+    )
+    dry_run = _ask_yes_no(console, "Dry-run (no SSH dispatch)?", False)
+    with console.status(f"[cyan]Sharding {len(cases)} cases across {len(hosts)} host(s)...[/cyan]"):
+        job = fleet.start_distributed_job(
+            hosts=hosts,
+            suite=suite,
+            cases=cases,
+            repo=Path(repo),
+            shard_strategy=strategy,
+            dry_run=dry_run,
+            model=state.model,
+            max_turns=state.max_turns,
+        )
+    state.active_distributed_job_id = job.distributed_job_id
+    state.external_suite = suite
+    state.external_repo = repo
+    console.print(f"[green]Distributed job started:[/green] {job.distributed_job_id}")
+    console.print(f"[dim]Shards:[/dim]")
+    for hj in job.host_jobs:
+        console.print(f"  {hj.baseline_host}: {len(hj.cases)} case(s) -> job_id={hj.job_id or '-'} status={hj.status}")
+
+
+def _fleet_monitor(console: Console, state: DashboardState) -> None:
+    if not state.active_distributed_job_id:
+        console.print("[red]No active distributed job. Start one first.[/red]")
+        return
+    job_id = state.active_distributed_job_id
+    console.print(f"[cyan]Monitoring {job_id} — press Ctrl+C to stop.[/cyan]")
+    try:
+        with Live(_render_fleet_grid(fleet.fleet_status(job_id)), console=console, refresh_per_second=2) as live:
+            while True:
+                time.sleep(5)
+                try:
+                    status = fleet.fleet_status(job_id)
+                except Exception as exc:
+                    _push_log(state, f"fleet_status error: {exc}")
+                    continue
+                live.update(_render_fleet_grid(status))
+                if all(hj.status in {"completed", "failed", "stopped", "skipped", "dry_run"} for hj in status.hosts):
+                    break
+    except KeyboardInterrupt:
+        pass
+
+
+def _fleet_stop_all(console: Console, state: DashboardState) -> None:
+    if not state.active_distributed_job_id:
+        console.print("[red]No active distributed job.[/red]")
+        return
+    if not _ask_yes_no(console, f"Stop all hosts of {state.active_distributed_job_id}?", False):
+        return
+    outcomes = fleet.fleet_stop(state.active_distributed_job_id)
+    console.print_json(data=outcomes)
+
+
+def _fleet_fetch_all(console: Console, state: DashboardState) -> None:
+    if not state.active_distributed_job_id:
+        console.print("[red]No active distributed job.[/red]")
+        return
+    with console.status("[cyan]Fetching per-host results and merging...[/cyan]"):
+        merged = fleet.fleet_fetch(state.active_distributed_job_id)
+    console.print(f"[green]Distributed summary:[/green] {merged}")
+
+
+def _fleet_select_existing(console: Console, state: DashboardState) -> None:
+    """List distributed jobs from BOTH the filesystem and the SQLite store.
+
+    The filesystem source is the authoritative one (has full host_jobs),
+    but the SQLite store is a robust fallback when the TUI was launched
+    with a stale cwd or a different copy of the project.
+    """
+    fs_jobs = fleet.list_distributed_jobs()
+    db_jobs = []
+    try:
+        db_jobs = store.list_distributed_jobs()
+    except Exception as exc:
+        console.print(f"[dim]DB lookup skipped: {exc}[/dim]")
+
+    by_id: dict[str, dict] = {}
+    for entry in fs_jobs:
+        by_id[entry["distributed_job_id"]] = {
+            "source": "fs",
+            "suite": entry.get("suite") or "",
+            "cases_total": entry.get("cases_total") or 0,
+            "hosts": entry.get("hosts") or [],
+            "status": "",
+        }
+    for entry in db_jobs:
+        jid = entry.get("distributed_job_id")
+        if not jid:
+            continue
+        merged = by_id.get(jid, {})
+        merged.setdefault("source", "db")
+        if merged.get("source") == "fs" and entry.get("source") != "fs":
+            merged["source"] = "fs+db"
+        merged["suite"] = merged.get("suite") or (entry.get("suite") or "")
+        merged["cases_total"] = merged.get("cases_total") or entry.get("cases_total") or 0
+        merged["status"] = entry.get("status") or merged.get("status", "")
+        merged["useful"] = int(entry.get("useful") or 0)
+        merged["run_count"] = int(entry.get("run_count") or 0)
+        by_id[jid] = merged
+
+    if not by_id:
+        console.print(f"[yellow]No distributed jobs found in {fleet.DEFAULT_FLEET_OUTPUT} or {store.DEFAULT_DB_PATH}.[/yellow]")
+        return
+
+    options = []
+    for jid, entry in sorted(by_id.items(), reverse=True):
+        suffix = []
+        if entry.get("status"):
+            suffix.append(f"status={entry['status']}")
+        if entry.get("run_count"):
+            suffix.append(f"runs={entry['run_count']}")
+        if entry.get("useful"):
+            suffix.append(f"useful={entry['useful']}")
+        suffix.append(f"src={entry['source']}")
+        desc = f"suite={entry['suite']} cases={entry['cases_total']}  " + "  ".join(suffix)
+        options.append((jid[-30:], desc, jid))
+    options.append(("[cancel]", "Keep current selection", None))
+    chosen = _select_choice(console, f"Pick a distributed job ({len(by_id)} found)", options, state.active_distributed_job_id)
+    if chosen:
+        state.active_distributed_job_id = chosen
+        console.print(f"[green]Active job set to {chosen}.[/green]")
+
+
+FLEET_ACTIONS = [
+    ("provision", "Provision the fleet via Ansible (choose size + storage)"),
+    ("configure", "Configure fleet SSH hosts (current: dynamic)"),
+    ("prepare", "Sync project + prepare environment on all fleet hosts"),
+    ("env", "Deploy API keys (.env) on all fleet hosts"),
+    ("start", "Start a distributed run on the fleet"),
+    ("monitor", "Live monitor the active distributed job"),
+    ("stop", "Stop all hosts of the active distributed job"),
+    ("fetch", "Fetch all results + merge into distributed_summary.json"),
+    ("select", "Select an existing distributed job"),
+    ("back", "Back to main menu"),
+]
+
+
+def _fleet_deploy_env(console: Console, state: DashboardState) -> None:
+    import os
+    hosts = state.effective_hosts
+    if not hosts:
+        console.print("[red]Configure fleet hosts first.[/red]")
+        return
+
+    source = _select_choice(
+        console,
+        "API key source",
+        [
+            ("env", "From shell env var (e.g. MINIMAX_API_KEY)", "env"),
+            ("prompt", "Type the key now (hidden input, not echoed)", "prompt"),
+            ("file", "Read from a local file path", "file"),
+        ],
+        "env",
+    )
+
+    api_key = None
+    if source == "env":
+        key_env_name = _ask(console, "Env var holding the API key", "MINIMAX_API_KEY")
+        api_key = os.environ.get(key_env_name)
+        if not api_key:
+            console.print(f"[red]{key_env_name} is not set in your shell.[/red]")
+            return
+    elif source == "prompt":
+        api_key = getpass.getpass("MiniMax API key (hidden): ").strip()
+        if not api_key:
+            console.print("[red]Empty key, aborting.[/red]")
+            return
+    elif source == "file":
+        raw = _ask(console, "Path to file containing only the key", "")
+        if not raw:
+            return
+        try:
+            api_key = Path(raw).expanduser().read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            console.print(f"[red]Cannot read file:[/red] {exc}")
+            return
+        if not api_key:
+            console.print("[red]File is empty, aborting.[/red]")
+            return
+
+    with console.status(f"[cyan]Pushing .env on {len(hosts)} host(s)...[/cyan]"):
+        outcomes = fleet.deploy_env_on_fleet(hosts, api_key=api_key)
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Host")
+    table.add_column("Status")
+    for host, status in outcomes.items():
+        style = "green" if status == "ok" else "red"
+        table.add_row(host, f"[{style}]{status}[/{style}]")
+    console.print(table)
+
+
+def _fleet_provision(console: Console, state: DashboardState) -> None:
+    """Build a custom fleet plan and run deploy_fleet.yml with --extra-vars."""
+    size_raw = _ask(console, "Number of fleet VMs", "4")
+    try:
+        size = max(1, int(size_raw))
+    except ValueError:
+        console.print("[red]Invalid number; aborting.[/red]")
+        return
+    base_vmid_raw = _ask(console, "Base VMID (will use base, base+1, ...)", "1000")
+    try:
+        base_vmid = int(base_vmid_raw)
+    except ValueError:
+        console.print("[red]Invalid base VMID; aborting.[/red]")
+        return
+    base_bench_ip_raw = _ask(console, "Base benchmark IPv4 (will increment last octet)", "192.168.100.240")
+    bench_parts = base_bench_ip_raw.split(".")
+    if len(bench_parts) != 4 or not bench_parts[-1].isdigit():
+        console.print("[red]Invalid IPv4; aborting.[/red]")
+        return
+    bench_prefix = ".".join(bench_parts[:3]) + "."
+    bench_start = int(bench_parts[-1])
+    hostname_prefix = _ask(console, "Hostname prefix", "nato-baseline-")
+    storage = _ask(console, "Default Proxmox storage pool (Enter = group_vars default)", "")
+    per_host_storage = _ask_yes_no(console, "Override storage per VM individually?", False)
+
+    fleet_list = []
+    for index in range(size):
+        item = {
+            "vmid": base_vmid + index,
+            "hostname": f"{hostname_prefix}{index + 1}",
+            "benchmark_ip": f"{bench_prefix}{bench_start + index}",
+        }
+        if per_host_storage:
+            override = _ask(console, f"Storage for VM {item['hostname']} (vmid={item['vmid']})", storage or "")
+            if override:
+                item["storage"] = override
+        elif storage:
+            item["storage"] = storage
+        fleet_list.append(item)
+
+    table = Table(show_header=True, header_style="bold magenta", expand=False)
+    table.add_column("VMID", justify="right")
+    table.add_column("Hostname")
+    table.add_column("Benchmark IP")
+    table.add_column("Storage")
+    for item in fleet_list:
+        table.add_row(str(item["vmid"]), item["hostname"], item["benchmark_ip"], item.get("storage", "[dim]default[/dim]"))
+    console.print(table)
+
+    if not _ask_yes_no(console, f"Provision these {size} VM(s) now? (runs ansible-playbook deploy_fleet.yml)", False):
+        console.print("[yellow]Cancelled.[/yellow]")
+        return
+
+    try:
+        deploy.deploy_fleet(fleet_list=fleet_list)
+    except Exception as exc:
+        console.print(f"[red]Ansible run failed:[/red] {exc}")
+        return
+    persisted = fleet.load_provisioned_hosts()
+    if persisted:
+        state.baseline_hosts = persisted
+        console.print(f"[green]Auto-loaded {len(persisted)} mgmt host(s) from {fleet.FLEET_HOSTS_FILE}:[/green]")
+        for host in persisted:
+            console.print(f"  {host}")
+    else:
+        console.print(
+            f"[yellow]No fleet_hosts.json found at {fleet.FLEET_HOSTS_FILE}. "
+            "Run 'Configure fleet SSH hosts' manually with the IPs printed by Ansible.[/yellow]"
+        )
+
+
+def _fleet_prepare(console: Console, state: DashboardState) -> None:
+    hosts = state.effective_hosts
+    if not hosts:
+        console.print("[red]Configure fleet hosts first.[/red]")
+        return
+    with console.status(f"[cyan]Syncing project + preparing env on {len(hosts)} host(s)...[/cyan]"):
+        outcomes = fleet.fleet_prepare(hosts)
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Host")
+    table.add_column("Status")
+    for host, status in outcomes.items():
+        style = "green" if status == "ok" else "red"
+        table.add_row(host, f"[{style}]{status}[/{style}]")
+    console.print(table)
+
+
+def _manage_fleet(console: Console, state: DashboardState) -> None:
+    while True:
+        selected = _select_choice(
+            console,
+            f"Fleet management (active: {state.active_distributed_job_id or '-'}, hosts: {len(state.effective_hosts)})",
+            [(key, desc, key) for key, desc in FLEET_ACTIONS],
+            "configure",
+        )
+        if selected == "back":
+            return
+        if selected == "provision":
+            _fleet_provision(console, state)
+        elif selected == "configure":
+            _fleet_configure_hosts(console, state)
+        elif selected == "prepare":
+            _fleet_prepare(console, state)
+        elif selected == "env":
+            _fleet_deploy_env(console, state)
+        elif selected == "start":
+            _fleet_start_distributed(console, state)
+        elif selected == "monitor":
+            _fleet_monitor(console, state)
+        elif selected == "stop":
+            _fleet_stop_all(console, state)
+        elif selected == "fetch":
+            _fleet_fetch_all(console, state)
+        elif selected == "select":
+            _fleet_select_existing(console, state)
+        console.input("\n[dim]Press Enter to continue...[/dim]")
+
+
+HISTORY_ACTIONS = [
+    ("list", "List distributed jobs"),
+    ("breakdown", "Outcome breakdown (counts, cost, tokens)"),
+    ("runs", "Runs of a selected job (last 50)"),
+    ("import", "Import existing output/external_benchmarks/ tree"),
+    ("query", "Run a custom SQL SELECT"),
+    ("back", "Back to main menu"),
+]
+
+
+def _history_list_jobs(console: Console) -> None:
+    jobs = store.list_distributed_jobs()
+    if not jobs:
+        console.print("[yellow]No distributed jobs recorded yet.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    table.add_column("distributed_job_id")
+    table.add_column("suite")
+    table.add_column("strategy")
+    table.add_column("cases", justify="right")
+    table.add_column("runs", justify="right")
+    table.add_column("useful", justify="right")
+    table.add_column("cost ($)", justify="right")
+    table.add_column("status")
+    for job in jobs:
+        table.add_row(
+            str(job.get("distributed_job_id"))[-32:],
+            str(job.get("suite") or ""),
+            str(job.get("shard_strategy") or ""),
+            str(job.get("cases_total") or 0),
+            str(int(job.get("run_count") or 0)),
+            str(int(job.get("useful") or 0)),
+            f"{float(job.get('total_cost') or 0):.4f}",
+            str(job.get("status") or "-"),
+        )
+    console.print(table)
+
+
+def _history_breakdown(console: Console) -> None:
+    rows = store.outcome_breakdown()
+    if not rows:
+        console.print("[yellow]No runs in the store.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    table.add_column("outcome")
+    table.add_column("count", justify="right")
+    table.add_column("cost ($)", justify="right")
+    table.add_column("tokens", justify="right")
+    table.add_column("avg duration (s)", justify="right")
+    for row in rows:
+        table.add_row(
+            str(row.get("outcome") or ""),
+            str(int(row.get("count") or 0)),
+            f"{float(row.get('cost_usd') or 0):.4f}",
+            str(int(row.get("tokens") or 0)),
+            f"{float(row.get('avg_duration_seconds') or 0):.1f}",
+        )
+    console.print(table)
+
+
+def _history_runs(console: Console) -> None:
+    job_id = _ask(console, "distributed_job_id (Enter = all)", "")
+    rows = store.list_runs(distributed_job_id=job_id or None, limit=50)
+    if not rows:
+        console.print("[yellow]No matching runs.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    table.add_column("case_id")
+    table.add_column("host")
+    table.add_column("outcome")
+    table.add_column("blocked_by")
+    table.add_column("cost ($)", justify="right")
+    table.add_column("tokens", justify="right")
+    table.add_column("duration", justify="right")
+    for row in rows:
+        table.add_row(
+            str(row.get("case_id") or "")[:60],
+            str(row.get("baseline_host") or "")[:24],
+            str(row.get("outcome") or ""),
+            str(row.get("blocked_by") or ""),
+            f"{float(row.get('estimated_cost_usd') or 0):.4f}",
+            str(int(row.get("total_tokens") or 0)),
+            f"{float(row.get('duration_seconds') or 0):.0f}s",
+        )
+    console.print(table)
+
+
+def _history_import(console: Console) -> None:
+    root = _ask(console, "Root directory to import", str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    label = _ask(console, "distributed_job_id label", "legacy-import")
+    if not _ask_yes_no(console, f"Import all result.json under {root} into the store?", False):
+        return
+    count = store.import_existing_external_runs(Path(root), distributed_job_id=label)
+    console.print(f"[green]Imported {count} run(s) under label {label}.[/green]")
+
+
+def _history_query(console: Console) -> None:
+    console.print("[dim]Tables: distributed_jobs, host_jobs, runs[/dim]")
+    sql = _ask(console, "SQL SELECT", "SELECT outcome, COUNT(*) c FROM runs GROUP BY outcome ORDER BY c DESC")
+    if not sql.strip().lower().startswith("select"):
+        console.print("[red]Only SELECT is allowed in this view.[/red]")
+        return
+    try:
+        rows = store.run_sql(sql)
+    except Exception as exc:
+        console.print(f"[red]SQL error:[/red] {exc}")
+        return
+    if not rows:
+        console.print("[yellow]No rows.[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold cyan", expand=True)
+    for col in rows[0].keys():
+        table.add_column(col)
+    for row in rows[:200]:
+        table.add_row(*[str(row.get(col, "")) for col in rows[0].keys()])
+    console.print(table)
+    if len(rows) > 200:
+        console.print(f"[dim]({len(rows) - 200} more rows truncated)[/dim]")
+
+
+def _manage_history(console: Console, state: DashboardState) -> None:
+    store.init_db()  # ensure schema exists before showing
+    while True:
+        choice = _select_choice(
+            console,
+            f"History (DB: {store.DEFAULT_DB_PATH})",
+            [(key, desc, key) for key, desc in HISTORY_ACTIONS],
+            "list",
+        )
+        if choice == "back":
+            return
+        if choice == "list":
+            _history_list_jobs(console)
+        elif choice == "breakdown":
+            _history_breakdown(console)
+        elif choice == "runs":
+            _history_runs(console)
+        elif choice == "import":
+            _history_import(console)
+        elif choice == "query":
+            _history_query(console)
+        console.input("\n[dim]Press Enter to continue...[/dim]")
+
+
 def run_dashboard() -> None:
     if Console is None:
         _fallback()
@@ -1075,6 +1762,10 @@ def run_dashboard() -> None:
                 _run_external_benchmark(console, state)
             elif choice == "j":
                 _manage_external_jobs(console, state)
+            elif choice == "f":
+                _manage_fleet(console, state)
+            elif choice == "h":
+                _manage_history(console, state)
             elif choice == "7":
                 _compare(console, state)
             elif choice == "i":

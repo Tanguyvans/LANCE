@@ -28,6 +28,21 @@ from src.agent_external import (
     classify_from_submission,
     run_external_target,
 )
+from src.baselines.fleet import (
+    DistributedJob,
+    HostJob,
+    fleet_fetch,
+    fleet_status,
+    fleet_stop,
+    load_cases_from_file,
+    load_distributed_job,
+    merge_distributed_results,
+    parse_hosts_arg,
+    save_distributed_job,
+    shard_cases,
+    start_distributed_job,
+)
+from src.baselines import store
 from src.benchmark.evaluator import evaluate
 
 
@@ -687,6 +702,500 @@ def test_classify_from_submission_maps_labels_to_outcomes():
 
     assert blocked["outcome"] == "blocked_missing_tool"
     assert blocked["blocked_by"] == "missing_tool"
+
+
+def test_shard_cases_round_robin_distributes_evenly():
+    cases = [f"c{i}" for i in range(10)]
+    hosts = ["h1", "h2", "h3"]
+
+    shards = shard_cases(cases, hosts, strategy="round-robin")
+
+    assert shards["h1"] == ["c0", "c3", "c6", "c9"]
+    assert shards["h2"] == ["c1", "c4", "c7"]
+    assert shards["h3"] == ["c2", "c5", "c8"]
+    assert sum(len(v) for v in shards.values()) == len(cases)
+
+
+def test_shard_cases_empty_hosts_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        shard_cases(["c1"], [], strategy="round-robin")
+
+
+def test_shard_cases_load_aware_balances_better_than_round_robin(tmp_path):
+    cases = ["slow1", "slow2", "fast1", "fast2", "fast3", "fast4"]
+    durations = {"slow1": 1000.0, "slow2": 1000.0, "fast1": 10.0, "fast2": 10.0, "fast3": 10.0, "fast4": 10.0}
+    path = tmp_path / "durations.json"
+    path.write_text(json.dumps(durations), encoding="utf-8")
+    hosts = ["h1", "h2"]
+
+    rr = shard_cases(cases, hosts, strategy="round-robin")
+    la = shard_cases(cases, hosts, strategy="load-aware", durations_path=path)
+
+    def max_load(shards):
+        return max(sum(durations[c] for c in shard) for shard in shards.values())
+
+    assert max_load(la) <= max_load(rr)
+    # Load-aware should split the two slow cases across hosts.
+    assert {"slow1", "slow2"} != set(la["h1"])
+    assert {"slow1", "slow2"} != set(la["h2"])
+
+
+def test_shard_cases_load_aware_falls_back_when_no_durations(tmp_path):
+    cases = ["c0", "c1", "c2", "c3"]
+    hosts = ["h1", "h2"]
+
+    la = shard_cases(cases, hosts, strategy="load-aware", durations_path=tmp_path / "missing.json")
+    rr = shard_cases(cases, hosts, strategy="round-robin")
+
+    assert la == rr
+
+
+def test_start_distributed_job_dispatches_per_host(tmp_path, monkeypatch):
+    cases = ["c0", "c1", "c2", "c3", "c4"]
+    hosts = ["root@h1", "root@h2"]
+    seen_calls: list[dict] = []
+
+    def fake_starter(*, baseline_host, suite, cases, **kwargs):
+        seen_calls.append({"host": baseline_host, "suite": suite, "cases": list(cases)})
+        return {
+            "job_id": f"{suite}-{baseline_host}",
+            "session": f"sess-{baseline_host}",
+            "job_dir": f"/tmp/{suite}-{baseline_host}",
+        }
+
+    job = start_distributed_job(
+        hosts=hosts,
+        suite="vulhub",
+        cases=cases,
+        repo=tmp_path / "repo",
+        output_dir=tmp_path / "distributed",
+        sync_project=False,
+        starter=fake_starter,
+    )
+
+    assert len(seen_calls) == 2
+    assert {c["host"] for c in seen_calls} == set(hosts)
+    by_host = {c["host"]: c["cases"] for c in seen_calls}
+    assert by_host["root@h1"] == ["c0", "c2", "c4"]
+    assert by_host["root@h2"] == ["c1", "c3"]
+    assert job.cases_total == 5
+    assert all(hj.job_id for hj in job.host_jobs)
+    persisted = json.loads((job.local_dir / "distributed_job.json").read_text())
+    assert persisted["distributed_job_id"] == job.distributed_job_id
+    assert len(persisted["host_jobs"]) == 2
+
+
+def test_start_distributed_job_dry_run_does_not_call_starter(tmp_path):
+    def boom(**kwargs):
+        raise AssertionError("dry_run must not invoke starter")
+
+    job = start_distributed_job(
+        hosts=["root@h1", "root@h2"],
+        suite="vulhub",
+        cases=["c0", "c1"],
+        repo=tmp_path / "repo",
+        output_dir=tmp_path / "distributed",
+        dry_run=True,
+        starter=boom,
+    )
+
+    assert all(hj.status == "dry_run" for hj in job.host_jobs)
+
+
+def test_start_distributed_job_records_starter_failure(tmp_path):
+    def fail_one(*, baseline_host, **kwargs):
+        if baseline_host == "root@h2":
+            raise RuntimeError("ssh refused")
+        return {"job_id": "ok", "session": "s", "job_dir": "/tmp/ok"}
+
+    job = start_distributed_job(
+        hosts=["root@h1", "root@h2"],
+        suite="vulhub",
+        cases=["c0", "c1"],
+        repo=tmp_path / "repo",
+        output_dir=tmp_path / "distributed",
+        starter=fail_one,
+    )
+
+    statuses = {hj.baseline_host: hj.status for hj in job.host_jobs}
+    assert statuses["root@h1"] == "running"
+    assert statuses["root@h2"] == "failed"
+
+
+def test_fleet_status_aggregates_outcomes(tmp_path):
+    job = DistributedJob(
+        distributed_job_id="dist-vulhub-test",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0", "c2"], job_id="j1", status="running"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="j2", status="running"),
+        ],
+        local_dir=tmp_path / "distributed" / "dist-vulhub-test",
+        cases_total=3,
+    )
+    save_distributed_job(job)
+
+    def fake_status(host, job_id):
+        if host == "root@h1":
+            return {
+                "status": "running",
+                "completed": 1,
+                "useful_findings": 1,
+                "outcome_counts": {"confirmed_exploit": 1, "max_turns": 1},
+                "estimated_cost_usd": 0.12,
+                "total_tokens": 1000,
+            }
+        return {
+            "status": "completed",
+            "completed": 1,
+            "useful_findings": 0,
+            "outcome_counts": {"no_finding": 1},
+            "estimated_cost_usd": 0.05,
+            "total_tokens": 500,
+        }
+
+    fleet = fleet_status(job.distributed_job_id, output_dir=tmp_path / "distributed", status_fn=fake_status)
+
+    assert fleet.aggregate["cases_total"] == 3
+    assert fleet.aggregate["cases_completed"] == 2
+    assert fleet.aggregate["outcome_counts"] == {"confirmed_exploit": 1, "max_turns": 1, "no_finding": 1}
+    assert fleet.aggregate["estimated_cost_usd"] == 0.17
+    assert fleet.aggregate["total_tokens"] == 1500
+
+
+def test_fleet_status_tolerates_unreachable_host(tmp_path):
+    job = DistributedJob(
+        distributed_job_id="dist-vulhub-unreachable",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0"], job_id="j1", status="running"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="j2", status="running"),
+        ],
+        local_dir=tmp_path / "distributed" / "dist-vulhub-unreachable",
+        cases_total=2,
+    )
+    save_distributed_job(job)
+
+    def flaky(host, job_id):
+        if host == "root@h2":
+            raise RuntimeError("ssh timeout")
+        return {"status": "running", "completed": 1, "outcome_counts": {"confirmed_exploit": 1}}
+
+    fleet = fleet_status(job.distributed_job_id, output_dir=tmp_path / "distributed", status_fn=flaky)
+
+    statuses = {hj.baseline_host: hj.status for hj in fleet.hosts}
+    assert statuses["root@h1"] == "running"
+    assert statuses["root@h2"] == "unreachable"
+    assert fleet.aggregate["cases_completed"] == 1
+    assert fleet.aggregate["outcome_counts"] == {"confirmed_exploit": 1}
+
+
+def test_fleet_stop_calls_stop_per_host(tmp_path):
+    job = DistributedJob(
+        distributed_job_id="dist-vulhub-stop",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0"], job_id="j1", status="running"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="j2", status="running"),
+        ],
+        local_dir=tmp_path / "distributed" / "dist-vulhub-stop",
+        cases_total=2,
+    )
+    save_distributed_job(job)
+    stopped: list[tuple[str, str]] = []
+
+    def fake_stop(host, job_id):
+        stopped.append((host, job_id))
+
+    outcomes = fleet_stop(job.distributed_job_id, output_dir=tmp_path / "distributed", stop_fn=fake_stop)
+
+    assert {h for h, _ in stopped} == {"root@h1", "root@h2"}
+    assert outcomes == {"root@h1": "stopped", "root@h2": "stopped"}
+    reloaded = load_distributed_job(job.distributed_job_id, output_dir=tmp_path / "distributed")
+    assert all(hj.status == "stopped" for hj in reloaded.host_jobs)
+
+
+def test_merge_distributed_results_aggregates_host_summaries(tmp_path):
+    output_dir = tmp_path / "distributed"
+    base_results = tmp_path / "results"
+    job = DistributedJob(
+        distributed_job_id="dist-vulhub-merge",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0", "c2"], job_id="job-h1", status="completed"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="job-h2", status="completed"),
+        ],
+        local_dir=output_dir / "dist-vulhub-merge",
+        cases_total=3,
+    )
+    save_distributed_job(job)
+
+    h1_summary = {
+        "items": [
+            {"case_id": "c0", "outcome": "confirmed_exploit"},
+            {"case_id": "c2", "outcome": "max_turns"},
+        ],
+        "status_counts": {"completed": 2},
+        "outcome_counts": {"confirmed_exploit": 1, "max_turns": 1},
+        "useful_findings": 1,
+        "estimated_cost_usd": 0.12,
+        "total_tokens": 1000,
+    }
+    h2_summary = {
+        "items": [{"case_id": "c1", "outcome": "no_finding"}],
+        "status_counts": {"completed": 1},
+        "outcome_counts": {"no_finding": 1},
+        "useful_findings": 0,
+        "estimated_cost_usd": 0.05,
+        "total_tokens": 500,
+    }
+    (base_results / "jobs" / "job-h1").mkdir(parents=True)
+    (base_results / "jobs" / "job-h1" / "summary.json").write_text(json.dumps(h1_summary), encoding="utf-8")
+    (base_results / "jobs" / "job-h2").mkdir(parents=True)
+    (base_results / "jobs" / "job-h2" / "summary.json").write_text(json.dumps(h2_summary), encoding="utf-8")
+
+    target = merge_distributed_results(
+        job.distributed_job_id,
+        output_dir=output_dir,
+        base_results_dir=base_results,
+    )
+
+    merged = json.loads(target.read_text())
+    assert merged["totals"]["cases_total"] == 3
+    assert merged["totals"]["cases_completed"] == 3
+    assert merged["totals"]["outcome_counts"] == {"confirmed_exploit": 1, "max_turns": 1, "no_finding": 1}
+    assert merged["totals"]["useful_findings"] == 1
+    assert merged["totals"]["estimated_cost_usd"] == 0.17
+    assert {item["source_host"] for item in merged["items"]} == {"root@h1", "root@h2"}
+    assert len(merged["items"]) == 3
+
+
+def test_fleet_fetch_partial_failure_writes_manifest_and_merges(tmp_path):
+    output_dir = tmp_path / "distributed"
+    base_results = tmp_path / "results"
+    job = DistributedJob(
+        distributed_job_id="dist-vulhub-partial",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0"], job_id="job-h1", status="completed"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="job-h2", status="completed"),
+        ],
+        local_dir=output_dir / "dist-vulhub-partial",
+        cases_total=2,
+    )
+    save_distributed_job(job)
+    (base_results / "jobs" / "job-h1").mkdir(parents=True)
+    (base_results / "jobs" / "job-h1" / "summary.json").write_text(
+        json.dumps(
+            {
+                "items": [{"case_id": "c0", "outcome": "confirmed_exploit"}],
+                "outcome_counts": {"confirmed_exploit": 1},
+                "useful_findings": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def flaky_fetch(host, job_id):
+        if host == "root@h2":
+            raise RuntimeError("scp failed")
+        return base_results / "jobs" / job_id
+
+    merged_path = fleet_fetch(
+        job.distributed_job_id,
+        output_dir=output_dir,
+        fetch_fn=flaky_fetch,
+        parallel=2,
+        base_results_dir=base_results,
+    )
+
+    manifest = json.loads((output_dir / "dist-vulhub-partial" / "distributed_fetch_manifest.json").read_text())
+    by_host = {entry["baseline_host"]: entry for entry in manifest["hosts"]}
+    assert by_host["root@h1"]["fetched"] is True
+    assert by_host["root@h2"]["fetched"] is False
+    assert "scp failed" in by_host["root@h2"]["error"]
+    merged = json.loads(merged_path.read_text())
+    assert merged["totals"]["cases_completed"] == 1
+    assert merged["totals"]["outcome_counts"] == {"confirmed_exploit": 1}
+
+
+def test_start_distributed_job_strips_openai_prefix(tmp_path):
+    """fleet jobs invoke src.agent_external which talks to MiniMax directly;
+    the LiteLLM `openai/` prefix that CAI uses must be stripped."""
+    seen_models: list[str] = []
+
+    def fake_starter(*, baseline_host, suite, cases, model, **kwargs):
+        seen_models.append(model)
+        return {"job_id": f"j-{baseline_host}", "session": "s", "job_dir": "/tmp"}
+
+    start_distributed_job(
+        hosts=["root@h1"],
+        suite="vulhub",
+        cases=["c0"],
+        repo=tmp_path / "repo",
+        output_dir=tmp_path / "distributed",
+        model="openai/MiniMax-M2.7",
+        starter=fake_starter,
+    )
+
+    assert seen_models == ["MiniMax-M2.7"]
+
+
+def test_store_records_distributed_job_and_runs(tmp_path):
+    db_path = tmp_path / "store.sqlite"
+    job = DistributedJob(
+        distributed_job_id="dist-store-test",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[
+            HostJob(baseline_host="root@h1", cases=["c0", "c2"], job_id="j1", session="s1", status="running"),
+            HostJob(baseline_host="root@h2", cases=["c1"], job_id="j2", session="s2", status="running"),
+        ],
+        local_dir=tmp_path / "dist-store-test",
+        cases_total=3,
+        repo="/tmp/vulhub",
+    )
+    store.record_distributed_job(job, path=db_path)
+
+    listed = store.list_distributed_jobs(path=db_path)
+    assert len(listed) == 1
+    assert listed[0]["distributed_job_id"] == "dist-store-test"
+    assert listed[0]["cases_total"] == 3
+
+    merged_payload = {
+        "suite": "vulhub",
+        "totals": {"cases_total": 3, "cases_completed": 3},
+        "items": [
+            {
+                "case_id": "c0",
+                "source_host": "root@h1",
+                "outcome": "confirmed_exploit",
+                "status": "completed",
+                "service": "redis",
+                "estimated_cost_usd": 0.12,
+                "total_tokens": 1000,
+                "duration_seconds": 120.5,
+                "submission_source": "structured",
+            },
+            {
+                "case_id": "c1",
+                "source_host": "root@h2",
+                "outcome": "max_turns",
+                "status": "completed",
+                "estimated_cost_usd": 0.20,
+                "total_tokens": 600000,
+                "duration_seconds": 480.0,
+            },
+            {
+                "case_id": "c2",
+                "source_host": "root@h1",
+                "outcome": "no_finding",
+                "status": "completed",
+                "estimated_cost_usd": 0.05,
+                "total_tokens": 200,
+                "duration_seconds": 60.0,
+            },
+        ],
+    }
+    inserted = store.record_runs_from_merge("dist-store-test", merged_payload, path=db_path)
+    assert inserted == 3
+
+    runs = store.list_runs(distributed_job_id="dist-store-test", path=db_path)
+    assert len(runs) == 3
+    by_case = {r["case_id"]: r for r in runs}
+    assert by_case["c0"]["outcome"] == "confirmed_exploit"
+    assert by_case["c0"]["baseline_host"] == "root@h1"
+    assert by_case["c1"]["estimated_cost_usd"] == 0.20
+
+    breakdown = {item["outcome"]: item for item in store.outcome_breakdown(path=db_path)}
+    assert breakdown["confirmed_exploit"]["count"] == 1
+    assert breakdown["max_turns"]["count"] == 1
+    assert breakdown["no_finding"]["count"] == 1
+
+    durations = store.case_durations(path=db_path)
+    assert durations["c1"] == 480.0
+    assert "c0" in durations
+
+
+def test_store_record_runs_is_idempotent_on_merge(tmp_path):
+    db_path = tmp_path / "store.sqlite"
+    job = DistributedJob(
+        distributed_job_id="dist-idem",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[HostJob(baseline_host="root@h1", cases=["c0"], job_id="j1", status="running")],
+        local_dir=tmp_path / "dist-idem",
+        cases_total=1,
+    )
+    store.record_distributed_job(job, path=db_path)
+
+    merged = {
+        "suite": "vulhub",
+        "totals": {"cases_total": 1, "cases_completed": 1},
+        "items": [{"case_id": "c0", "source_host": "root@h1", "outcome": "no_finding"}],
+    }
+    store.record_runs_from_merge("dist-idem", merged, path=db_path)
+    store.record_runs_from_merge("dist-idem", merged, path=db_path)
+
+    runs = store.list_runs(distributed_job_id="dist-idem", path=db_path)
+    assert len(runs) == 1
+
+
+def test_store_records_host_status_updates(tmp_path):
+    db_path = tmp_path / "store.sqlite"
+    hj = HostJob(baseline_host="root@h1", cases=["c0"], job_id="j1", session="s1", status="pending")
+    job = DistributedJob(
+        distributed_job_id="dist-status",
+        suite="vulhub",
+        created_at="2026-05-13T14:00:00",
+        shard_strategy="round-robin",
+        host_jobs=[hj],
+        local_dir=tmp_path / "dist-status",
+        cases_total=1,
+    )
+    store.record_distributed_job(job, path=db_path)
+
+    hj.status = "completed"
+    hj.last_status_payload = {"completed": 1, "outcome_counts": {"confirmed_exploit": 1}}
+    hj.last_seen_at = 1731500000.0
+    store.record_host_status("dist-status", [hj], path=db_path)
+
+    rows = store.run_sql("SELECT status, last_payload FROM host_jobs WHERE distributed_job_id = ?", ("dist-status",), path=db_path)
+    assert rows[0]["status"] == "completed"
+    assert "confirmed_exploit" in rows[0]["last_payload"]
+
+
+def test_dashboard_state_effective_hosts_backward_compat():
+    from src.baselines.ui import DashboardState
+
+    state = DashboardState()
+    assert state.effective_hosts == [state.baseline_host]
+
+    state.baseline_hosts = ["root@h1", "root@h2"]
+    assert state.effective_hosts == ["root@h1", "root@h2"]
+
+
+def test_parse_hosts_arg_and_load_cases_file(tmp_path):
+    assert parse_hosts_arg("root@a, root@b,,root@c") == ["root@a", "root@b", "root@c"]
+    assert parse_hosts_arg("") == []
+
+    cases_file = tmp_path / "cases.txt"
+    cases_file.write_text("# header\nvulhub/redis\n\nvulhub/activemq\n", encoding="utf-8")
+    assert load_cases_from_file(cases_file) == ["vulhub/redis", "vulhub/activemq"]
 
 
 def test_parallel_baseline_dry_run_writes_all_targets(tmp_path):

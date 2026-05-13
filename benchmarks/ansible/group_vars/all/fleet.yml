@@ -1,0 +1,21 @@
+---
+# Default baseline fleet definition. Loaded automatically by Ansible from
+# group_vars/all/ — but only consumed by `deploy_fleet.yml` (the single-VM
+# playbook ignores this list).
+#
+# Each entry must define vmid, hostname, benchmark_ip. The `storage` key is
+# optional and defaults to `baseline_storage` from main.yml.
+
+baseline_fleet:
+  - vmid: 1000
+    hostname: nato-baseline-1
+    benchmark_ip: 192.168.100.240
+  - vmid: 1001
+    hostname: nato-baseline-2
+    benchmark_ip: 192.168.100.241
+  - vmid: 1002
+    hostname: nato-baseline-3
+    benchmark_ip: 192.168.100.242
+  - vmid: 1003
+    hostname: nato-baseline-4
+    benchmark_ip: 192.168.100.243

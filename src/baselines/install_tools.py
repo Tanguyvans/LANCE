@@ -941,6 +941,30 @@ def setup_baseline_adapters(
     deploy_all_adapters(baseline_host, remote_dir)
 
 
+def deploy_minimax_env(
+    baseline_host: str,
+    api_key: str,
+    remote_dir: str = DEFAULT_REMOTE_DIR,
+    model: str = DEFAULT_MODEL,
+    openai_api_key: str | None = None,
+) -> None:
+    """Write `/opt/baseline-tools/.env` only (no CAI/PentGPT install).
+
+    Used by the fleet workflow: fleet VMs run our own `src.agent_external` and
+    just need MiniMax/OpenAI env vars sourced by the detached job runner.
+    """
+    qdir = shlex.quote(remote_dir)
+    env_content = (
+        f"MINIMAX_API_KEY={api_key}\n"
+        f"OPENAI_API_KEY={openai_api_key or api_key}\n"
+        f"OPENAI_BASE_URL={DEFAULT_OPENAI_BASE_URL}\n"
+        f"OPENAI_API_BASE={DEFAULT_OPENAI_BASE_URL}\n"
+        f"BASELINE_MODEL={model}\n"
+        f"CAI_MODEL={model}\n"
+    )
+    _ssh(baseline_host, f"mkdir -p {qdir} && cat > {qdir}/.env && chmod 600 {qdir}/.env", stdin=env_content)
+
+
 def setup_cai(
     baseline_host: str,
     api_key: str,

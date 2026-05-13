@@ -64,6 +64,28 @@ def run_playbook(
     subprocess.run(cmd, check=True)
 
 
+def deploy_fleet(
+    fleet_list: list[dict[str, Any]],
+    inventory: Path = DEFAULT_INVENTORY,
+    vault_password_file: Path = DEFAULT_VAULT_PASSWORD,
+    extra_vars: list[str] | None = None,
+    check: bool = False,
+) -> None:
+    """Run deploy_fleet.yml with a custom baseline_fleet list (overrides group_vars)."""
+    import json as _json
+
+    playbook = PLAYBOOK_DIR / "deploy_fleet.yml"
+    merged_extra = list(extra_vars or [])
+    merged_extra.append(_json.dumps({"baseline_fleet": fleet_list}))
+    run_playbook(
+        playbook=playbook,
+        inventory=inventory,
+        vault_password_file=vault_password_file,
+        extra_vars=merged_extra,
+        check=check,
+    )
+
+
 def deploy_scenario(
     scenario_id: str,
     inventory: Path = DEFAULT_INVENTORY,

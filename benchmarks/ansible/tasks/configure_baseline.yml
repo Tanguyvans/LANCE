@@ -1,0 +1,372 @@
+---
+# Configure a baseline VM: packages, firewall, tool directories, adapter
+# placeholders. Idempotent. The caller selects the target host via play-level
+# `hosts:` (e.g. `hosts: baseline` or `hosts: baseline_fleet`).
+#
+# Required host vars (set by provision_baseline_lxc.yml via add_host, or in
+# inventory): baseline_benchmark_ip, benchmark_bridge.
+
+- name: Set timezone to Europe/Paris
+  community.general.timezone:
+    name: Europe/Paris
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install baseline system packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - docker.io
+      - git
+      - jq
+      - nmap
+      - python3
+      - python3-pip
+      - python3-venv
+      - ssh-audit
+      - sshpass
+      - netcat-openbsd
+      - mosquitto-clients
+      - mariadb-client
+      - iptables-persistent
+      # Offensive/recon toolkit consumed by the agent (PR #3)
+      - sqlmap
+      - gobuster
+      - whatweb
+      - dnsutils
+      - smbclient
+      - openssl
+      - default-jre-headless
+      - perl
+      - wget
+      - unzip
+    state: present
+  failed_when: false
+
+- name: Install NetExec (nxc) and enum4linux-ng via pip
+  ansible.builtin.pip:
+    name:
+      - netexec
+      - enum4linux-ng
+    state: present
+    extra_args: "--break-system-packages"
+  failed_when: false
+
+- name: Clone Nikto (not in Debian main repos)
+  ansible.builtin.git:
+    repo: https://github.com/sullo/nikto
+    dest: /opt/nikto
+    depth: 1
+    update: false
+  failed_when: false
+
+- name: Symlink nikto.pl to /usr/local/bin/nikto
+  ansible.builtin.file:
+    src: /opt/nikto/program/nikto.pl
+    dest: /usr/local/bin/nikto
+    state: link
+    force: true
+  failed_when: false
+
+- name: Clone exploit-db (searchsploit, not in Debian main repos)
+  ansible.builtin.git:
+    repo: https://gitlab.com/exploit-database/exploitdb
+    dest: /opt/exploitdb
+    depth: 1
+    update: false
+  failed_when: false
+
+- name: Symlink searchsploit to /usr/local/bin/searchsploit
+  ansible.builtin.file:
+    src: /opt/exploitdb/searchsploit
+    dest: /usr/local/bin/searchsploit
+    state: link
+    force: true
+  failed_when: false
+
+- name: Download nuclei static binary (idempotent)
+  ansible.builtin.get_url:
+    url: "https://github.com/projectdiscovery/nuclei/releases/download/v3.3.5/nuclei_3.3.5_linux_amd64.zip"
+    dest: /tmp/nuclei.zip
+    mode: "0644"
+    force: false
+  register: nuclei_download
+  failed_when: false
+
+- name: Extract nuclei binary
+  ansible.builtin.unarchive:
+    src: /tmp/nuclei.zip
+    dest: /usr/local/bin/
+    remote_src: true
+    extra_opts: ["nuclei"]
+    creates: /usr/local/bin/nuclei
+  when: nuclei_download is succeeded
+  failed_when: false
+
+- name: Update nuclei templates (idempotent, errors tolerated)
+  ansible.builtin.command: nuclei -update-templates -silent
+  changed_when: false
+  failed_when: false
+
+- name: Download ysoserial JAR for Java deserialization payloads
+  ansible.builtin.get_url:
+    url: "https://github.com/frohoff/ysoserial/releases/download/v0.0.6/ysoserial-all.jar"
+    dest: /opt/baseline-tools/tools/ysoserial.jar
+    mode: "0644"
+    force: false
+  failed_when: false
+
+- name: Ensure eth1 is configured at boot
+  ansible.builtin.copy:
+    dest: /etc/network/interfaces.d/eth1
+    mode: "0644"
+    content: |
+      auto eth1
+      iface eth1 inet static
+        address {{ baseline_benchmark_ip }}
+        netmask 255.255.255.0
+        # No gateway: benchmark traffic remains local to {{ benchmark_bridge }}
+
+- name: Bring up eth1
+  ansible.builtin.command: ifup eth1
+  register: baseline_ifup
+  changed_when: baseline_ifup.rc == 0
+  failed_when: false
+
+- name: Flush existing OUTPUT rules
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    flush: true
+
+- name: Allow loopback output
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: lo
+    jump: ACCEPT
+
+- name: Allow established traffic on management interface
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: eth0
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+
+- name: Allow dependency downloads on management interface
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: eth0
+    protocol: tcp
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+  loop:
+    - "22"
+    - "80"
+    - "443"
+
+- name: Allow DNS on management interface
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: eth0
+    protocol: udp
+    destination_port: "53"
+    jump: ACCEPT
+
+- name: Block other outbound management traffic
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: eth0
+    jump: DROP
+
+- name: Allow all benchmark traffic on eth1
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    out_interface: eth1
+    jump: ACCEPT
+
+- name: Save iptables rules
+  ansible.builtin.command: netfilter-persistent save
+  changed_when: true
+
+- name: Create baseline tool directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/baseline-tools
+    - /opt/baseline-tools/adapters
+    - /opt/baseline-tools/results
+    - /opt/baseline-tools/tools
+    - /opt/baseline-tools/external-results
+    - /opt/baseline-tools/external-jobs
+    - /opt/external-benchmarks
+    - /opt/nato-smartcity-iot
+
+- name: Ensure Docker service is enabled for external benchmark suites
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  failed_when: false
+
+- name: Clone Vulhub benchmark suite (if absent)
+  ansible.builtin.git:
+    repo: https://github.com/vulhub/vulhub
+    dest: /opt/external-benchmarks/vulhub
+    update: false
+    depth: 1
+  register: vulhub_clone
+  failed_when: false
+
+- name: Clone AutoPenBench benchmark suite (if absent)
+  ansible.builtin.git:
+    repo: https://github.com/lucagioacchini/auto-pen-bench
+    dest: /opt/external-benchmarks/auto-pen-bench
+    update: false
+    depth: 1
+  register: autopenbench_clone
+  failed_when: false
+
+- name: Warn if benchmark clones failed
+  ansible.builtin.debug:
+    msg: >-
+      Vulhub or AutoPenBench clone failed (clone status:
+      vulhub={{ vulhub_clone.failed | default(false) }},
+      autopenbench={{ autopenbench_clone.failed | default(false) }}).
+      The TUI 'prepare' step can retry these clones on demand.
+  when: vulhub_clone.failed | default(false) or autopenbench_clone.failed | default(false)
+
+- name: Install CAI adapter placeholder
+  ansible.builtin.copy:
+    dest: /opt/baseline-tools/adapters/cai_run.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TARGET=""
+      SCENARIO=""
+      OUTPUT=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --variant) VARIANT="$2"; shift 2 ;;
+          --target) TARGET="$2"; shift 2 ;;
+          --scope) SCOPE="$2"; shift 2 ;;
+          --scenario) SCENARIO="$2"; shift 2 ;;
+          --max-turns) MAX_TURNS="$2"; shift 2 ;;
+          --model) MODEL="$2"; shift 2 ;;
+          --output) OUTPUT="$2"; shift 2 ;;
+          *) echo "Unknown argument: $1" >&2; exit 2 ;;
+        esac
+      done
+      mkdir -p "$(dirname "$OUTPUT")"
+      cat > "$OUTPUT" <<JSON
+      {"tool":"cai","scenario":"$SCENARIO","target":"$TARGET","findings":[],"adapter_status":"placeholder"}
+      JSON
+      echo "CAI placeholder wrote $OUTPUT. Replace this script with the real CAI invocation." >&2
+
+- name: Install PentGPT adapter placeholder
+  ansible.builtin.copy:
+    dest: /opt/baseline-tools/adapters/pentgpt_run.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TARGET=""
+      SCENARIO=""
+      OUTPUT=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --target) TARGET="$2"; shift 2 ;;
+          --scope) SCOPE="$2"; shift 2 ;;
+          --scenario) SCENARIO="$2"; shift 2 ;;
+          --max-turns) MAX_TURNS="$2"; shift 2 ;;
+          --model) MODEL="$2"; shift 2 ;;
+          --output) OUTPUT="$2"; shift 2 ;;
+          *) echo "Unknown argument: $1" >&2; exit 2 ;;
+        esac
+      done
+      mkdir -p "$(dirname "$OUTPUT")"
+      cat > "$OUTPUT" <<JSON
+      {"tool":"pentgpt","scenario":"$SCENARIO","target":"$TARGET","findings":[],"adapter_status":"placeholder"}
+      JSON
+      echo "PentGPT placeholder wrote $OUTPUT. Replace this script with the real PentGPT invocation." >&2
+
+- name: Install VulnBot adapter placeholder
+  ansible.builtin.copy:
+    dest: /opt/baseline-tools/adapters/vulnbot_run.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TARGET=""
+      SCENARIO=""
+      OUTPUT=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --target) TARGET="$2"; shift 2 ;;
+          --scope) SCOPE="$2"; shift 2 ;;
+          --scenario) SCENARIO="$2"; shift 2 ;;
+          --max-turns) MAX_TURNS="$2"; shift 2 ;;
+          --model) MODEL="$2"; shift 2 ;;
+          --output) OUTPUT="$2"; shift 2 ;;
+          *) echo "Unknown argument: $1" >&2; exit 2 ;;
+        esac
+      done
+      mkdir -p "$(dirname "$OUTPUT")"
+      cat > "$OUTPUT" <<JSON
+      {"tool":"vulnbot","scenario":"$SCENARIO","target":"$TARGET","findings":[],"adapter_status":"placeholder"}
+      JSON
+      echo "VulnBot placeholder wrote $OUTPUT. Replace this script with the real VulnBot invocation." >&2
+
+- name: Install Nmap NSE adapter
+  ansible.builtin.copy:
+    dest: /opt/baseline-tools/adapters/nmap_nse_run.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TARGET=""
+      SCENARIO=""
+      OUTPUT=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --target) TARGET="$2"; shift 2 ;;
+          --scope) SCOPE="$2"; shift 2 ;;
+          --scenario) SCENARIO="$2"; shift 2 ;;
+          --output) OUTPUT="$2"; shift 2 ;;
+          *) echo "Unknown argument: $1" >&2; exit 2 ;;
+        esac
+      done
+      mkdir -p "$(dirname "$OUTPUT")"
+      RAW="$(mktemp)"
+      nmap -sV --script vuln "$TARGET" -oN "$RAW" >/dev/null || true
+      python3 - "$TARGET" "$RAW" "$OUTPUT" <<'PY'
+      import json, re, sys
+      target, raw_path, output = sys.argv[1:]
+      text = open(raw_path, encoding="utf-8", errors="ignore").read()
+      cves = sorted(set(re.findall(r"CVE-\d{4}-\d{4,}", text, re.I)))
+      findings = [
+          {
+              "ip": target,
+              "type": "known_cve",
+              "severity": "MEDIUM",
+              "details": "Nmap NSE reported vulnerability references",
+              "evidence": text[:1000],
+              "evidence_level": 1,
+              "cve_ids": cves,
+          }
+      ] if cves else []
+      open(output, "w", encoding="utf-8").write(json.dumps({"tool": "nmap_nse", "scenario": "", "target": target, "findings": findings}, indent=2))
+      PY
+
+- name: Summary
+  ansible.builtin.debug:
+    msg:
+      - "Baseline VM management IP : {{ ansible_host }}"
+      - "Baseline benchmark IP  : {{ baseline_benchmark_ip }}"
+      - "Tools directory        : /opt/baseline-tools"
+      - "Run from master        : python3 -m src.baselines run --tool cai --scenario 1 --baseline-host root@{{ ansible_host }}"

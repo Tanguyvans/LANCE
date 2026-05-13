@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.baselines import compare, deploy, external_benchmarks, install_tools, runner, ui, wizard
+from src.baselines import compare, deploy, external_benchmarks, fleet, install_tools, runner, store, ui, wizard
 from src.baselines.scenarios import load_scenario_targets
 
 
@@ -216,6 +216,90 @@ def main() -> None:
     external_report.add_argument("--root", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
     external_report.add_argument("--output", default=None)
     external_report.add_argument("--markdown", default=None)
+
+    fleet_start = external_sub.add_parser("start-distributed", help="Launch a benchmark batch sharded across multiple baseline VMs")
+    fleet_start.add_argument("--remote-hosts", required=True, help="Comma-separated SSH hosts (e.g. root@h1,root@h2)")
+    fleet_start.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
+    fleet_start.add_argument("--repo", required=True)
+    fleet_start.add_argument("--cases-file", default=None, help="Newline-delimited cases file (one case_id per line)")
+    fleet_start.add_argument("--case", action="append", dest="cases", default=[], help="Repeat to add cases inline")
+    fleet_start.add_argument("--shard-strategy", default="round-robin", choices=list(fleet.SHARD_STRATEGIES))
+    fleet_start.add_argument("--durations-file", default=None)
+    fleet_start.add_argument("--stagger-seconds", default=0.0, type=float)
+    fleet_start.add_argument("--agent-command", default=None)
+    fleet_start.add_argument("--model", default="MiniMax-M2.7")
+    fleet_start.add_argument("--max-turns", default=40, type=int)
+    fleet_start.add_argument("--context-mode", default="informed", choices=external_benchmarks.CONTEXT_MODES)
+    fleet_start.add_argument("--timeout", default=3600, type=int)
+    fleet_start.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+    fleet_start.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
+    fleet_start.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    fleet_start.add_argument("--no-sync", action="store_true")
+    fleet_start.add_argument("--dry-run", action="store_true")
+    fleet_start.add_argument("--keep-running", action="store_true")
+    fleet_start.add_argument("--docker-cleanup", dest="docker_cleanup", action="store_true", default=True)
+    fleet_start.add_argument("--no-docker-cleanup", dest="docker_cleanup", action="store_false")
+    fleet_start.add_argument("--min-free-gb", default=external_benchmarks.DEFAULT_DOCKER_MIN_FREE_GB, type=float)
+
+    fleet_status_cmd = external_sub.add_parser("fleet-status", help="Aggregate live status across all fleet hosts")
+    fleet_status_cmd.add_argument("--distributed-job-id", required=True)
+    fleet_status_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+    fleet_status_cmd.add_argument("--watch", action="store_true", help="Poll every 5s until interrupted")
+
+    fleet_logs_cmd = external_sub.add_parser("fleet-logs", help="Show per-host detached job logs for a distributed job")
+    fleet_logs_cmd.add_argument("--distributed-job-id", required=True)
+    fleet_logs_cmd.add_argument("--host", required=True, help="Baseline host (must match one of the host_jobs)")
+    fleet_logs_cmd.add_argument("--tail", default=100, type=int)
+    fleet_logs_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+    fleet_logs_cmd.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+
+    fleet_stop_cmd = external_sub.add_parser("fleet-stop", help="Stop all detached jobs of a distributed job")
+    fleet_stop_cmd.add_argument("--distributed-job-id", required=True)
+    fleet_stop_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+
+    fleet_resume_cmd = external_sub.add_parser("fleet-resume", help="Resume remaining cases on each host of a distributed job")
+    fleet_resume_cmd.add_argument("--distributed-job-id", required=True)
+    fleet_resume_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+    fleet_resume_cmd.add_argument("--no-sync", action="store_true")
+
+    fleet_fetch_cmd = external_sub.add_parser("fetch-all", help="Fetch per-host results then write distributed_summary.json")
+    fleet_fetch_cmd.add_argument("--distributed-job-id", required=True)
+    fleet_fetch_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+    fleet_fetch_cmd.add_argument("--base-results-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    fleet_fetch_cmd.add_argument("--parallel", default=4, type=int)
+
+    fleet_list_cmd = external_sub.add_parser("fleet-list", help="List local distributed-job metadata")
+    fleet_list_cmd.add_argument("--output-dir", default=str(fleet.DEFAULT_FLEET_OUTPUT))
+
+    fleet_prepare_cmd = external_sub.add_parser("fleet-prepare", help="Sync project + prepare environment on multiple baseline VMs")
+    fleet_prepare_cmd.add_argument("--remote-hosts", required=True)
+    fleet_prepare_cmd.add_argument("--project-dir", default=str(external_benchmarks.DEFAULT_REMOTE_PROJECT_DIR))
+    fleet_prepare_cmd.add_argument("--no-install-deps", action="store_true")
+    fleet_prepare_cmd.add_argument("--max-workers", default=4, type=int)
+
+    db_init_cmd = external_sub.add_parser("db-init", help="Initialize the SQLite store (schema only)")
+    db_init_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_list_cmd = external_sub.add_parser("db-list", help="List distributed jobs from the SQLite store")
+    db_list_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_runs_cmd = external_sub.add_parser("db-runs", help="List runs (rows) from the SQLite store")
+    db_runs_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_runs_cmd.add_argument("--distributed-job-id", default=None)
+    db_runs_cmd.add_argument("--outcome", default=None)
+    db_runs_cmd.add_argument("--case-id", default=None)
+    db_runs_cmd.add_argument("--limit", type=int, default=200)
+    db_breakdown_cmd = external_sub.add_parser("db-breakdown", help="Outcome breakdown (counts, cost, tokens)")
+    db_breakdown_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_breakdown_cmd.add_argument("--distributed-job-id", default=None)
+    db_durations_cmd = external_sub.add_parser("db-case-durations", help="Per-case average duration (for load-aware sharding)")
+    db_durations_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_durations_cmd.add_argument("--output", default=None, help="Write JSON to this path (default: stdout)")
+    db_query_cmd = external_sub.add_parser("db-query", help="Run an ad-hoc SELECT against the SQLite store")
+    db_query_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_query_cmd.add_argument("--sql", required=True)
+    db_import_cmd = external_sub.add_parser("db-import-existing", help="One-shot import of an existing external_benchmarks/ tree")
+    db_import_cmd.add_argument("--root", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    db_import_cmd.add_argument("--db", default=str(store.DEFAULT_DB_PATH))
+    db_import_cmd.add_argument("--distributed-job-id", default="legacy-import")
 
     pilot = sub.add_parser("pilot-cai", help="Shortcut for the scenario_3 CAI pilot from the paper plan")
     pilot.add_argument("--baseline-host", required=True)
@@ -565,6 +649,163 @@ def main() -> None:
                 indent=2,
                 ensure_ascii=False,
             ))
+        elif args.external_command == "start-distributed":
+            import json
+            hosts = fleet.parse_hosts_arg(args.remote_hosts)
+            if not hosts:
+                raise SystemExit("--remote-hosts requires at least one host")
+            cases: list[str] = list(args.cases)
+            if args.cases_file:
+                cases.extend(fleet.load_cases_from_file(Path(args.cases_file)))
+            if not cases:
+                raise SystemExit("Provide cases via --case (repeatable) or --cases-file")
+            durations_path = Path(args.durations_file) if args.durations_file else None
+            job = fleet.start_distributed_job(
+                hosts=hosts,
+                suite=args.suite,
+                cases=cases,
+                repo=Path(args.repo),
+                shard_strategy=args.shard_strategy,
+                durations_path=durations_path,
+                stagger_seconds=args.stagger_seconds,
+                output_dir=Path(args.output_dir),
+                agent_command=args.agent_command,
+                model=args.model,
+                max_turns=args.max_turns,
+                context_mode=args.context_mode,
+                timeout_seconds=args.timeout,
+                sync_project=not args.no_sync,
+                dry_run=args.dry_run,
+                keep_running=args.keep_running,
+                docker_cleanup=args.docker_cleanup,
+                min_free_gb=args.min_free_gb,
+                remote_output_dir=Path(args.remote_output_dir),
+                remote_job_dir=Path(args.remote_job_dir),
+            )
+            print(json.dumps(job.to_dict(), indent=2, ensure_ascii=False, default=str))
+        elif args.external_command == "fleet-status":
+            import json
+            import time
+            output_dir = Path(args.output_dir)
+            while True:
+                status = fleet.fleet_status(args.distributed_job_id, output_dir=output_dir)
+                payload = {
+                    "distributed_job_id": status.distributed_job_id,
+                    "refreshed_at": status.refreshed_at,
+                    "aggregate": status.aggregate,
+                    "hosts": [
+                        {
+                            "baseline_host": h.baseline_host,
+                            "job_id": h.job_id,
+                            "status": h.status,
+                            "cases": len(h.cases),
+                            "completed": h.last_status_payload.get("completed"),
+                            "current_case": h.last_status_payload.get("current_case"),
+                            "error": h.error,
+                        }
+                        for h in status.hosts
+                    ],
+                }
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+                if not args.watch:
+                    break
+                print("---", flush=True)
+                try:
+                    time.sleep(5)
+                except KeyboardInterrupt:
+                    break
+        elif args.external_command == "fleet-logs":
+            job = fleet.load_distributed_job(args.distributed_job_id, output_dir=Path(args.output_dir))
+            host_jobs = {hj.baseline_host: hj for hj in job.host_jobs}
+            if args.host not in host_jobs:
+                raise SystemExit(f"Host {args.host!r} not in distributed job. Hosts: {list(host_jobs)}")
+            hj = host_jobs[args.host]
+            print(external_benchmarks.detached_job_logs(
+                hj.baseline_host,
+                hj.job_id,
+                args.tail,
+                Path(args.remote_job_dir),
+            ), end="")
+        elif args.external_command == "fleet-stop":
+            import json
+            outcomes = fleet.fleet_stop(args.distributed_job_id, output_dir=Path(args.output_dir))
+            print(json.dumps(outcomes, indent=2, ensure_ascii=False))
+        elif args.external_command == "fleet-resume":
+            import json
+            outcomes = fleet.fleet_resume(
+                args.distributed_job_id,
+                output_dir=Path(args.output_dir),
+                sync_project=not args.no_sync,
+            )
+            print(json.dumps(outcomes, indent=2, ensure_ascii=False, default=str))
+        elif args.external_command == "fetch-all":
+            merged = fleet.fleet_fetch(
+                args.distributed_job_id,
+                output_dir=Path(args.output_dir),
+                parallel=args.parallel,
+                base_results_dir=Path(args.base_results_dir),
+            )
+            print(merged)
+        elif args.external_command == "fleet-list":
+            import json
+            print(json.dumps(
+                fleet.list_distributed_jobs(output_dir=Path(args.output_dir)),
+                indent=2,
+                ensure_ascii=False,
+            ))
+        elif args.external_command == "fleet-prepare":
+            import json
+            hosts = fleet.parse_hosts_arg(args.remote_hosts)
+            if not hosts:
+                raise SystemExit("--remote-hosts requires at least one host")
+            outcomes = fleet.fleet_prepare(
+                hosts=hosts,
+                project_dir=Path(args.project_dir),
+                install_deps=not args.no_install_deps,
+                max_workers=args.max_workers,
+            )
+            print(json.dumps(outcomes, indent=2, ensure_ascii=False))
+        elif args.external_command == "db-init":
+            print(store.init_db(Path(args.db)))
+        elif args.external_command == "db-list":
+            import json
+            print(json.dumps(store.list_distributed_jobs(Path(args.db)), indent=2, ensure_ascii=False, default=str))
+        elif args.external_command == "db-runs":
+            import json
+            rows = store.list_runs(
+                distributed_job_id=args.distributed_job_id,
+                outcome=args.outcome,
+                case_id=args.case_id,
+                limit=args.limit,
+                path=Path(args.db),
+            )
+            print(json.dumps(rows, indent=2, ensure_ascii=False, default=str))
+        elif args.external_command == "db-breakdown":
+            import json
+            print(json.dumps(
+                store.outcome_breakdown(args.distributed_job_id, path=Path(args.db)),
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            ))
+        elif args.external_command == "db-case-durations":
+            import json
+            data = store.case_durations(path=Path(args.db))
+            if args.output:
+                Path(args.output).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+                print(args.output)
+            else:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+        elif args.external_command == "db-query":
+            import json
+            print(json.dumps(store.run_sql(args.sql, path=Path(args.db)), indent=2, ensure_ascii=False, default=str))
+        elif args.external_command == "db-import-existing":
+            count = store.import_existing_external_runs(
+                Path(args.root),
+                distributed_job_id=args.distributed_job_id,
+                path=Path(args.db),
+            )
+            print(f"imported {count} runs into {args.db}")
     elif args.command == "pilot-cai":
         run_dir = runner.run_baseline(
             tool="cai",

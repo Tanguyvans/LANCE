@@ -18,10 +18,11 @@ from typing import Any
 
 import yaml
 
+from src.baselines.paths import under_root
 from src.baselines.service_intel import service_intel_for_port
 
 
-DEFAULT_OUTPUT_DIR = Path("output/external_benchmarks")
+DEFAULT_OUTPUT_DIR = under_root("output", "external_benchmarks")
 DEFAULT_REMOTE_PROJECT_DIR = Path("/opt/nato-smartcity-iot")
 DEFAULT_REMOTE_BENCHMARK_DIR = Path("/opt/external-benchmarks")
 DEFAULT_REMOTE_OUTPUT_DIR = Path("/opt/baseline-tools/external-results")
