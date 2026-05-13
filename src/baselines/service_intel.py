@@ -122,6 +122,47 @@ CURATED_PORTS: dict[int, dict[str, str]] = {
 }
 
 
+SERVICE_PLAYBOOKS: dict[str, tuple[str, ...]] = {
+    "activemq-openwire": (
+        "Fingerprint OpenWire/JMS first; do not curl this port.",
+        "Check companion web console ports such as 8161 when exposed.",
+        "If exploitation requires a JMS/OpenWire client or ysoserial-style payload, report blocked_missing_tool instead of looping.",
+    ),
+    "activemq-web": (
+        "Check /admin, /fileserver, default credentials, version leakage, and upload/file-write paths.",
+        "Treat broker transports and web console separately; evidence must come from the target response.",
+    ),
+    "adminer": (
+        "Identify Adminer version, login state, and whether database credentials are required.",
+        "For file-read/SSRF-style CVEs, record the exact parameter, response, and blocked credential/tool requirement.",
+    ),
+    "redis": (
+        "Use Redis protocol checks: PING, INFO, DBSIZE, keys, config; do not use HTTP checks.",
+        "If unauthenticated access is present, collect key names/types and safe evidence only.",
+    ),
+    "couchdb": (
+        "Use CouchDB HTTP API checks: /, /_all_dbs, /_users, /_config, admin party state.",
+        "Confirm whether writes or config changes are actually allowed before claiming exploitability.",
+    ),
+    "elasticsearch": (
+        "Use Elasticsearch HTTP API checks: /, /_cat/indices, cluster info, and index readability.",
+        "Avoid declaring success from version alone; require exposed data, unsafe API access, or CVE-specific behavior.",
+    ),
+    "mysql": (
+        "Fingerprint MySQL and test only bounded default credentials.",
+        "If auth blocks enumeration, report blocked_missing_credentials with attempted accounts.",
+    ),
+    "postgres": (
+        "Fingerprint PostgreSQL and test only bounded default credentials.",
+        "If auth blocks enumeration, report blocked_missing_credentials with attempted accounts.",
+    ),
+    "http": (
+        "Enumerate headers, title, status map, common paths, forms, auth state, and CVE-specific endpoints.",
+        "Do not count a vulnerable version alone as confirmed; require endpoint behavior or target-derived data.",
+    ),
+}
+
+
 def infer_target_port(target: str) -> int | None:
     parsed = urlparse(target if "://" in target else f"//{target}")
     if parsed.port:
@@ -216,12 +257,20 @@ def service_intel_for_port(port: int, service_port: int | None = None, transport
 def service_intelligence_for_target(target: str, hint: str = "") -> str:
     port = infer_target_port(target)
     lines = []
+    service_name = ""
     if port:
         intel = service_intel_for_port(port)
+        service_name = intel.service
         lines.append(f"Port intelligence: {port}/tcp is likely {intel.service} ({intel.protocol}); source={intel.source}.")
         lines.append(f"Recommended strategy: {intel.guidance}")
     else:
         lines.append("Port intelligence: unknown target; fingerprint the service first.")
+    hint_lower = hint.lower()
+    for candidate in SERVICE_PLAYBOOKS:
+        if candidate == service_name or candidate in hint_lower:
+            lines.append("Service playbook:")
+            lines.extend(f"- {step}" for step in SERVICE_PLAYBOOKS[candidate])
+            break
     if "not HTTP" in hint or "Protocol: openwire" in hint or "Protocol: redis" in hint:
         lines.append("Do not assume the target is HTTP just because it is exposed on localhost; choose checks based on the protocol.")
     return "\n".join(lines)

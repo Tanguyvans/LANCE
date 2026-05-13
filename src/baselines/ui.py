@@ -73,6 +73,7 @@ class DashboardState:
     external_repo: str = "/opt/external-benchmarks/vulhub"
     external_case: str = ""
     external_dry_run: bool = True
+    external_context_mode: str = "blind"
     status: str = "Idle"
     current_target: str = "-"
     current_index: int = 0
@@ -767,6 +768,16 @@ def _select_external_case(
 
 
 def _external_agent_command(state: DashboardState, case: external_benchmarks.ExternalBenchmarkCase) -> str:
+    model = state.model
+    if model.startswith("openai/"):
+        model = model.split("/", 1)[1]
+    if state.external_context_mode == "blind":
+        return external_benchmarks.external_agent_command(
+            provider="minimax",
+            model=model,
+            max_turns=state.max_turns,
+            context_mode="blind",
+        )
     hint = (
         "Benchmark context policy: {context_policy}. "
         "Task: {task}. Target service label: {target_name}. "
@@ -786,9 +797,6 @@ def _external_agent_command(state: DashboardState, case: external_benchmarks.Ext
             "Known vulnerability label: {vulnerability}. Primary exposed service: {service_context}. "
             "Do not use repository README, docker-compose, scripts, or challenge source; rely only on target interaction."
         )
-    model = state.model
-    if model.startswith("openai/"):
-        model = model.split("/", 1)[1]
     return (
         "python -m src.agent_external "
         "--target {target_or_url} "
@@ -828,6 +836,15 @@ def _run_external_benchmark(console: Console, state: DashboardState) -> None:
     cases, case = selection
     if case:
         state.external_case = case.case_id
+    state.external_context_mode = _select_choice(
+        console,
+        "External context mode",
+        [
+            ("Blind network only", "Target and exposed service only; no case id or CVE label", "blind"),
+            ("Benchmark-informed", "Include benchmark case id and vulnerability/CVE label, but no repo oracle", "informed"),
+        ],
+        state.external_context_mode,
+    )
     state.external_dry_run = _ask_yes_no(console, "Dry-run first?", state.external_dry_run)
     command = _external_agent_command(state, case or cases[0])
     run_mode = _select_choice(
@@ -848,6 +865,7 @@ def _run_external_benchmark(console: Console, state: DashboardState) -> None:
     details.add_row("[bold]Repo on VM[/bold]", str(repo))
     details.add_row("[bold]Cases[/bold]", case.case_id if case else f"{len(cases)} filtered cases")
     details.add_row("[bold]Target[/bold]", (case.target_url or case.target) if case else "batch")
+    details.add_row("[bold]Context[/bold]", state.external_context_mode)
     details.add_row("[bold]Mode[/bold]", "dry-run" if state.external_dry_run else "real run")
     details.add_row("[bold]Execution[/bold]", run_mode)
     console.print(Panel(details, title="External Benchmark Run", border_style="cyan"))
@@ -868,6 +886,7 @@ def _run_external_benchmark(console: Console, state: DashboardState) -> None:
                 sync_project=False,
                 model=state.model.split("/", 1)[1] if state.model.startswith("openai/") else state.model,
                 max_turns=state.max_turns,
+                context_mode=state.external_context_mode,
             )
         info = Table.grid(expand=True)
         info.add_column(ratio=1)
@@ -961,9 +980,12 @@ def _manage_external_jobs(console: Console, state: DashboardState) -> None:
             ("Show status", "Read one job status.json", "status"),
             ("Tail logs", "Read the latest job.log lines", "logs"),
             ("Fetch results", "Copy job metadata and run results back to this PC", "fetch"),
+            ("Organize batch", "Create one local folder containing this job's fetched runs", "organize"),
             ("Generate report", "Aggregate fetched external results with stats and cost", "report"),
+            ("Resume missing", "Start a new tmux job for missing/failed cases from this job", "resume"),
             ("Attach tmux", "Attach interactively to the remote tmux session", "attach"),
             ("Stop job", "Kill the tmux session and mark stopped", "stop"),
+            ("Prune Docker", "Free unused Docker images on the VM", "prune"),
             ("Back", "Return to the main menu", "back"),
         ],
         "status",
@@ -976,7 +998,13 @@ def _manage_external_jobs(console: Console, state: DashboardState) -> None:
         tail = int(_ask(console, "Tail lines", "100"))
         console.print(external_benchmarks.detached_job_logs(state.baseline_host, selected_job_id, tail))
     elif action == "fetch":
-        console.print(f"[green]Fetched:[/green] {external_benchmarks.fetch_detached_job(state.baseline_host, selected_job_id)}")
+        fetched = external_benchmarks.fetch_detached_job(state.baseline_host, selected_job_id)
+        console.print(f"[green]Fetched job metadata:[/green] {fetched}")
+        console.print(f"[green]Fetched run results root:[/green] {external_benchmarks.DEFAULT_OUTPUT_DIR}")
+        console.print(f"[green]Batch view:[/green] {external_benchmarks.DEFAULT_OUTPUT_DIR / 'batches' / selected_job_id}")
+    elif action == "organize":
+        batch = external_benchmarks.organize_fetched_job(selected_job_id)
+        console.print(f"[green]Batch view:[/green] {batch}")
     elif action == "report":
         root = Path(_ask(console, "Results root", str(external_benchmarks.DEFAULT_OUTPUT_DIR))).expanduser()
         report_dir = root / "reports"
@@ -997,11 +1025,22 @@ def _manage_external_jobs(console: Console, state: DashboardState) -> None:
         console.print(table)
         console.print(f"[green]Report:[/green] {report_path}")
         console.print(f"[green]Markdown:[/green] {markdown_path}")
+    elif action == "resume":
+        with console.status("[cyan]Starting resume job for missing cases...[/cyan]"):
+            job = external_benchmarks.resume_detached_job(
+                baseline_host=state.baseline_host,
+                job_id=selected_job_id,
+                sync_project=False,
+            )
+        console.print_json(data=job)
     elif action == "attach":
         external_benchmarks.attach_detached_job(state.baseline_host, selected_job_id)
     elif action == "stop":
         external_benchmarks.stop_detached_job(state.baseline_host, selected_job_id)
         console.print(f"[yellow]Stopped {selected_job_id}[/yellow]")
+    elif action == "prune":
+        if _ask_yes_no(console, "Prune unused Docker images/volumes on the VM?", True):
+            console.print(external_benchmarks.prune_remote_docker(state.baseline_host))
 
 
 def run_dashboard() -> None:

@@ -155,6 +155,9 @@ def main() -> None:
     external_run.add_argument("--timeout", default=1800, type=int)
     external_run.add_argument("--dry-run", action="store_true")
     external_run.add_argument("--keep-running", action="store_true")
+    external_run.add_argument("--docker-cleanup", dest="docker_cleanup", action="store_true", default=False)
+    external_run.add_argument("--no-docker-cleanup", dest="docker_cleanup", action="store_false")
+    external_run.add_argument("--min-free-gb", default=external_benchmarks.DEFAULT_DOCKER_MIN_FREE_GB, type=float)
     external_detached = external_sub.add_parser("start-detached", help="Start a long-running external benchmark job on the baseline VM")
     external_detached.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
     external_detached.add_argument("--repo", required=True)
@@ -166,9 +169,20 @@ def main() -> None:
     external_detached.add_argument("--timeout", default=3600, type=int)
     external_detached.add_argument("--model", default="MiniMax-M2.7")
     external_detached.add_argument("--max-turns", default=40, type=int)
+    external_detached.add_argument("--context-mode", default="informed", choices=external_benchmarks.CONTEXT_MODES)
     external_detached.add_argument("--dry-run", action="store_true")
     external_detached.add_argument("--keep-running", action="store_true")
+    external_detached.add_argument("--docker-cleanup", dest="docker_cleanup", action="store_true", default=True)
+    external_detached.add_argument("--no-docker-cleanup", dest="docker_cleanup", action="store_false")
+    external_detached.add_argument("--min-free-gb", default=external_benchmarks.DEFAULT_DOCKER_MIN_FREE_GB, type=float)
     external_detached.add_argument("--no-sync", action="store_true")
+    external_resume = external_sub.add_parser("resume-detached", help="Start a new detached job for cases missing from a previous job")
+    external_resume.add_argument("--remote-host", required=True)
+    external_resume.add_argument("--job-id", required=True)
+    external_resume.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
+    external_resume.add_argument("--no-sync", action="store_true")
+    external_prune = external_sub.add_parser("docker-prune", help="Prune unused Docker data on the baseline VM")
+    external_prune.add_argument("--remote-host", required=True)
     external_jobs = external_sub.add_parser("jobs", help="List detached external jobs")
     external_jobs.add_argument("--remote-host", required=True)
     external_jobs.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
@@ -194,6 +208,10 @@ def main() -> None:
     external_fetch.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
     external_fetch.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
     external_fetch.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
+    external_organize = external_sub.add_parser("organize-job", help="Create a single local batch folder for a fetched detached job")
+    external_organize.add_argument("--job-id", required=True)
+    external_organize.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
+    external_organize.add_argument("--move", action="store_true")
     external_report = external_sub.add_parser("report", help="Aggregate external benchmark result stats and costs")
     external_report.add_argument("--root", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
     external_report.add_argument("--output", default=None)
@@ -443,6 +461,8 @@ def main() -> None:
                     keep_running=args.keep_running,
                     timeout_seconds=args.timeout,
                     sync_project=not args.no_sync,
+                    docker_cleanup=args.docker_cleanup,
+                    min_free_gb=args.min_free_gb,
                 )
             else:
                 run_dir = external_benchmarks.run_case(
@@ -455,6 +475,8 @@ def main() -> None:
                     dry_run=args.dry_run,
                     keep_running=args.keep_running,
                     timeout_seconds=args.timeout,
+                    docker_cleanup=args.docker_cleanup,
+                    min_free_gb=args.min_free_gb,
                 )
             print(run_dir)
         elif args.external_command == "start-detached":
@@ -473,8 +495,25 @@ def main() -> None:
                 sync_project=not args.no_sync,
                 model=args.model,
                 max_turns=args.max_turns,
+                context_mode=args.context_mode,
+                docker_cleanup=args.docker_cleanup,
+                min_free_gb=args.min_free_gb,
             )
             print(json.dumps(job, indent=2, ensure_ascii=False))
+        elif args.external_command == "resume-detached":
+            import json
+            print(json.dumps(
+                external_benchmarks.resume_detached_job(
+                    baseline_host=args.remote_host,
+                    job_id=args.job_id,
+                    remote_job_dir=Path(args.remote_job_dir),
+                    sync_project=not args.no_sync,
+                ),
+                indent=2,
+                ensure_ascii=False,
+            ))
+        elif args.external_command == "docker-prune":
+            print(external_benchmarks.prune_remote_docker(args.remote_host))
         elif args.external_command == "jobs":
             import json
             print(json.dumps(
@@ -508,6 +547,12 @@ def main() -> None:
                 Path(args.output_dir),
                 Path(args.remote_job_dir),
                 Path(args.remote_output_dir),
+            ))
+        elif args.external_command == "organize-job":
+            print(external_benchmarks.organize_fetched_job(
+                args.job_id,
+                Path(args.output_dir),
+                move=args.move,
             ))
         elif args.external_command == "report":
             import json
