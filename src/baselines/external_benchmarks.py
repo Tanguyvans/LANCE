@@ -387,13 +387,30 @@ def _classify_text(answer: str, *, status: str, dry_run: bool = False) -> tuple[
     return "no_finding", "low", ""
 
 
+_LABEL_TO_OUTCOME = {
+    "CONFIRMED": ("confirmed_exploit", "high"),
+    "PROBABLE": ("probable_vulnerability", "medium"),
+    "BLOCKED_MISSING_TOOL": ("blocked_missing_tool", "medium"),
+    "BLOCKED_MISSING_CREDENTIALS": ("blocked_missing_credentials", "medium"),
+    "NO_FINDING": ("no_finding", "high"),
+}
+
+
 def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Create or refresh proof.json from result, agent output, and cost artifacts."""
+    """Create or refresh proof.json from result, agent output, and cost artifacts.
+
+    If the agent wrote a structured `submission.json` (via the
+    `submit_final_assessment` tool), its label is the authoritative
+    classification — we trust the agent's own verdict over a regex on the
+    raw evidence text. Falls back to text classification only when no
+    submission exists (legacy/aborted runs).
+    """
     result = result or _read_json(run_dir / "result.json")
     planned = _read_json(run_dir / "planned.json")
     agent_result = _read_json(run_dir / "external_agent_result.json")
     existing = _read_json(run_dir / "proof.json")
     cost = _read_json(run_dir / "cost_summary.json")
+    submission = _read_json(run_dir / "submission.json")
     case = result.get("case") or planned.get("case") or {}
     answer_parts = []
     for filename in ("external_agent_answer.txt", "partial_evidence.txt", "agent_stdout.txt", "agent_stderr.txt"):
@@ -404,9 +421,33 @@ def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict
             pass
     answer = "\n".join(answer_parts)
     status = str(result.get("status") or existing.get("status") or "")
-    outcome, confidence, blocked_by = _classify_text(answer, status=status, dry_run=bool(result.get("dry_run")))
+
+    submission_source = "text_classifier"
+    structured_evidence = ""
+    if submission and isinstance(submission, dict) and submission.get("label"):
+        label = str(submission.get("label") or "").upper()
+        mapped = _LABEL_TO_OUTCOME.get(label)
+        if mapped and status not in {"environment_failed", "agent_failed"}:
+            # Trust the agent's structured verdict over the text regex.
+            outcome, confidence = mapped
+            raw_blocked = str(submission.get("blocked_by") or "").lower()
+            blocked_by = "" if raw_blocked in {"", "none"} else raw_blocked
+            structured_evidence = str(submission.get("evidence") or "")
+            submission_source = "structured"
+        else:
+            outcome, confidence, blocked_by = _classify_text(
+                answer, status=status, dry_run=bool(result.get("dry_run"))
+            )
+    else:
+        outcome, confidence, blocked_by = _classify_text(
+            answer, status=status, dry_run=bool(result.get("dry_run"))
+        )
     input_tokens = int(agent_result.get("input_tokens") or cost.get("total_input_tokens") or existing.get("input_tokens") or 0)
     output_tokens = int(agent_result.get("output_tokens") or cost.get("total_output_tokens") or existing.get("output_tokens") or 0)
+    if structured_evidence:
+        evidence_summary = structured_evidence[:900]
+    else:
+        evidence_summary = " ".join(line.strip() for line in answer.splitlines() if line.strip())[:900]
     proof = {
         "suite": case.get("suite") or result.get("suite") or planned.get("suite"),
         "case_id": case.get("case_id"),
@@ -414,8 +455,9 @@ def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict
         "success": bool(result.get("success", False)),
         "outcome": outcome,
         "confidence": confidence,
-        "evidence_summary": " ".join(line.strip() for line in answer.splitlines() if line.strip())[:900],
+        "evidence_summary": evidence_summary,
         "blocked_by": blocked_by,
+        "submission_source": submission_source,
         "service": case.get("target_service") or "",
         "target": case.get("target_url") or case.get("target_endpoint") or case.get("target") or "",
         "cve": _extract_cve(str(case.get("vulnerability", "")), str(case.get("case_id", "")), answer),
