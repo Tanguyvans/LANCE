@@ -1,0 +1,26 @@
+name: "enum4linux"
+command: "enum4linux-ng"
+args: ["-A", "-q"]
+enabled: true
+timeout: 180
+max_output: 8000
+short_description: "SMB/NetBIOS enumeration"
+description: "Comprehensive SMB/NetBIOS enumeration: shares, users, groups, password policy, RID cycling, OS info, and sessions. Slower than smbclient_list but reveals user accounts and Domain info that enable downstream auth attacks. Use after smbclient_list confirms SMB is reachable."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target host IP (e.g. '192.168.100.12')."
+    required: true
+    format: "positional"
+  - name: "username"
+    type: "string"
+    description: "Optional username for authenticated enumeration (avoid lockouts; use ONLY when you have valid creds)."
+    required: false
+    flag: "-u"
+    format: "flag"
+  - name: "password"
+    type: "string"
+    description: "Optional password matching username."
+    required: false
+    flag: "-p"
+    format: "flag"

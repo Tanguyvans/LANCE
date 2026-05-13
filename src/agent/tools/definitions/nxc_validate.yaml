@@ -1,0 +1,37 @@
+name: "nxc_validate"
+command: "nxc"
+args: []
+enabled: true
+timeout: 60
+max_output: 4000
+short_description: "Credential validation across protocols (NetExec)"
+description: "Validate a single (username, password) pair against a target using NetExec (successor of crackmapexec). Supports protocols: smb, ssh, ftp, rdp, winrm, mssql, ldap, vnc. Returns one [PASS]/[FAIL] line per try. Use this for VALIDATION only, not bruteforce — feed exactly one cred pair per call. The agent should NOT enumerate password lists here."
+parameters:
+  - name: "protocol"
+    type: "string"
+    description: "Protocol: smb, ssh, ftp, rdp, winrm, mssql, ldap, vnc."
+    required: true
+    format: "positional"
+  - name: "target"
+    type: "string"
+    description: "Target host (e.g. '192.168.100.12')."
+    required: true
+    format: "positional"
+  - name: "username"
+    type: "string"
+    description: "Username to test."
+    required: true
+    flag: "-u"
+    format: "flag"
+  - name: "password"
+    type: "string"
+    description: "Password to test."
+    required: true
+    flag: "-p"
+    format: "flag"
+  - name: "shares"
+    type: "boolean"
+    description: "(SMB only) After successful auth, list shares + permissions."
+    required: false
+    flag: "--shares"
+    format: "boolean_flag"

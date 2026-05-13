@@ -1,0 +1,19 @@
+name: "decode_value"
+handler: "python"
+enabled: true
+timeout: 5
+short_description: "Decode base64/url/jwt/hex"
+description: >
+  Decode an encoded string. Supported kinds: 'base64' (standard b64 and urlsafe), 'url' (percent-encoded),
+  'jwt' (split header.payload.signature, base64-decode header+payload, parse JSON — does NOT verify the
+  signature), 'hex' (hex bytes → utf-8). Returns the decoded value as a JSON-quoted string. Use for
+  inspecting tokens, cookies, parameter values, or output from the target.
+parameters:
+  - name: "value"
+    type: "string"
+    description: "The encoded value (string). For jwt, the full xxx.yyy.zzz token."
+    required: true
+  - name: "kind"
+    type: "string"
+    description: "One of: 'base64', 'url', 'jwt', 'hex'."
+    required: true

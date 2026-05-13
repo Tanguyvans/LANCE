@@ -176,6 +176,205 @@ class TestReconTools:
 
 
 # ------------------------------------------------------------------
+# New offensive/recon tools (agent-tools-expansion PR)
+# ------------------------------------------------------------------
+
+class TestNewToolsLoaded:
+    """Each new tool YAML must load and produce a callable function entry."""
+
+    NEW_TOOL_NAMES = (
+        "sqlmap", "gobuster_dir", "whatweb", "nuclei_scan",
+        "nikto_scan", "wpscan", "searchsploit", "dig_query",
+        "smbclient_list", "enum4linux", "nxc_validate",
+        "openssl_inspect", "ysoserial_payload",
+        "python_exec", "http_request", "tcp_send",
+        "tls_inspect", "decode_value",
+    )
+
+    @pytest.mark.parametrize("name", NEW_TOOL_NAMES)
+    def test_tool_is_registered(self, name):
+        from src.agent.tools.recon_tools import RECON_TOOLS
+        tool = next((t for t in RECON_TOOLS if t["name"] == name), None)
+        assert tool is not None, f"{name} not registered in RECON_TOOLS"
+        assert tool["function"] is not None, f"{name} has no callable function"
+        assert callable(tool["function"])
+        # JSON schema sanity
+        schema = tool["input_schema"]
+        assert schema["type"] == "object"
+        assert "properties" in schema
+
+
+class TestPythonExec:
+    def test_runs_simple_script_and_returns_stdout(self):
+        from src.agent.tools.recon_tools import python_exec
+        out = json.loads(python_exec("print('hello-world')"))
+        assert out["return_code"] == 0
+        assert "hello-world" in out["stdout"]
+        assert out["timed_out"] is False
+
+    def test_times_out_on_long_running_script(self):
+        from src.agent.tools.recon_tools import python_exec
+        out = json.loads(python_exec("import time\ntime.sleep(5)", timeout=1))
+        assert out["timed_out"] is True
+        assert out["return_code"] == -1
+
+    def test_captures_stderr_and_nonzero_rc(self):
+        from src.agent.tools.recon_tools import python_exec
+        out = json.loads(python_exec("import sys; sys.stderr.write('boom\\n'); sys.exit(2)"))
+        assert out["return_code"] == 2
+        assert "boom" in out["stderr"]
+
+
+class TestHttpRequest:
+    def test_returns_json_with_status_and_body_on_local_listener(self):
+        import http.server
+        import socketserver
+        import threading
+        from src.agent.tools.recon_tools import http_request
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("X-Test", "yes")
+                self.end_headers()
+                self.wfile.write(b"hello-http")
+
+            def log_message(self, *args, **kwargs):
+                pass
+
+        with socketserver.TCPServer(("127.0.0.1", 0), Handler) as server:
+            port = server.server_address[1]
+            t = threading.Thread(target=server.handle_request, daemon=True)
+            t.start()
+            out = json.loads(http_request(f"http://127.0.0.1:{port}/", timeout=5))
+            t.join(timeout=5)
+        assert out["status_code"] == 200
+        assert "hello-http" in out["body"]
+        assert out["headers"].get("X-Test") == "yes"
+
+
+class TestTcpSend:
+    def test_round_trips_against_local_listener(self):
+        import socket as _s
+        import threading
+        from src.agent.tools.recon_tools import tcp_send
+
+        server = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        host, port = server.getsockname()
+
+        received_payload = {}
+
+        def serve():
+            conn, _ = server.accept()
+            received_payload["bytes"] = conn.recv(64)
+            conn.sendall(b"ACK")
+            conn.close()
+
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        result = json.loads(tcp_send(host=host, port=port, payload_hex="68656c6c6f", recv_bytes=16, timeout=5))
+        t.join(timeout=5)
+        server.close()
+        assert received_payload.get("bytes") == b"hello"
+        assert "ACK" in result["received_ascii"]
+        assert result["received_hex"].startswith("41434b")  # "ACK"
+
+    def test_rejects_invalid_hex(self):
+        from src.agent.tools.recon_tools import tcp_send
+        out = json.loads(tcp_send(host="127.0.0.1", port=1, payload_hex="zzzz"))
+        assert "error" in out
+        assert "invalid payload_hex" in out["error"]
+
+
+class TestDecodeValue:
+    def test_base64(self):
+        from src.agent.tools.recon_tools import decode_value
+        out = json.loads(decode_value("aGVsbG8=", "base64"))
+        assert out["decoded"] == "hello"
+
+    def test_url(self):
+        from src.agent.tools.recon_tools import decode_value
+        out = json.loads(decode_value("hello%20world%21", "url"))
+        assert out["decoded"] == "hello world!"
+
+    def test_hex(self):
+        from src.agent.tools.recon_tools import decode_value
+        out = json.loads(decode_value("68656c6c6f", "hex"))
+        assert out["decoded"] == "hello"
+
+    def test_jwt_unsigned_payload(self):
+        from src.agent.tools.recon_tools import decode_value
+        # JWT header {"alg":"none","typ":"JWT"} + payload {"sub":"42","admin":true}
+        token = (
+            "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0."
+            "eyJzdWIiOiI0MiIsImFkbWluIjp0cnVlfQ."
+        )
+        out = json.loads(decode_value(token, "jwt"))
+        assert out["header"]["alg"] == "none"
+        assert out["payload"]["sub"] == "42"
+        assert out["payload"]["admin"] is True
+        assert out["signature_verified"] is False
+
+    def test_unknown_kind_returns_error(self):
+        from src.agent.tools.recon_tools import decode_value
+        out = json.loads(decode_value("xxx", "rot13"))
+        assert "error" in out
+
+
+class TestTlsInspect:
+    def test_inspect_self_signed_local_listener(self, tmp_path):
+        import ssl as _ssl
+        import socket as _s
+        import threading
+        from src.agent.tools.recon_tools import tls_inspect
+
+        # Generate a temporary self-signed cert via openssl
+        import subprocess
+        cert_path = tmp_path / "test.pem"
+        key_path = tmp_path / "test.key"
+        rc = subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", str(key_path), "-out", str(cert_path),
+                "-days", "1", "-nodes",
+                "-subj", "/CN=localhost",
+            ],
+            capture_output=True,
+        ).returncode
+        if rc != 0:
+            pytest.skip("openssl not available to generate test cert")
+
+        context = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(str(cert_path), str(key_path))
+        server = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        host, port = server.getsockname()
+
+        def serve():
+            conn, _ = server.accept()
+            try:
+                with context.wrap_socket(conn, server_side=True) as tls:
+                    tls.recv(16)
+            except Exception:
+                pass
+            conn.close()
+
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+        out = json.loads(tls_inspect(host=host, port=port, sni="localhost"))
+        t.join(timeout=5)
+        server.close()
+        # subject is parsed via openssl x509 subprocess; the format is
+        # "CN=localhost" (or "CN = localhost" depending on openssl version)
+        assert "localhost" in str(out["subject"])
+        assert out["cipher"]["name"]
+        assert out["fingerprint_sha256"]
+
+
+# ------------------------------------------------------------------
 # Graph tools (mocked backend)
 # ------------------------------------------------------------------
 

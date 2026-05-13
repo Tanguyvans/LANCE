@@ -1,0 +1,20 @@
+name: "dig_query"
+command: "dig"
+args: ["+short", "+time=3", "+tries=1"]
+enabled: true
+timeout: 10
+max_output: 2000
+short_description: "DNS query (A/MX/TXT/AXFR/...)"
+description: "Resolve DNS records of a domain. Useful for: subdomain discovery (try common subdomains), DNSSEC inspection, zone transfer attempts (AXFR), SPF/DMARC/CAA inspection. Returns the raw record values (one per line)."
+parameters:
+  - name: "name"
+    type: "string"
+    description: "Domain to query (e.g. 'example.com', 'admin.example.com')."
+    required: true
+    format: "positional"
+  - name: "record_type"
+    type: "string"
+    description: "Record type: A, AAAA, MX, TXT, NS, SOA, CNAME, AXFR (zone transfer attempt), CAA, etc."
+    required: false
+    default: "A"
+    format: "positional"

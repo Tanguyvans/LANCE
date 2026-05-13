@@ -1,0 +1,27 @@
+name: "nikto_scan"
+command: "nikto"
+args: ["-ask", "no", "-nointeractive", "-maxtime", "120", "-Tuning", "x4567890b"]
+enabled: true
+timeout: 180
+max_output: 6000
+short_description: "Web server misconfiguration scanner"
+description: "Scan a web server for ~7000 known bad signatures: outdated versions, default files, dangerous endpoints, info disclosure. Returns one '+ ...' line per finding. Slower than whatweb/nuclei but catches things they miss. Tuning option keeps it bounded (no DoS, no slow tests)."
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Target host or URL (e.g. 'http://192.168.100.12' or '192.168.100.12'). Can include scheme + port."
+    required: true
+    flag: "-h"
+    format: "flag"
+  - name: "port"
+    type: "integer"
+    description: "Explicit port to scan if not in host URL (e.g. 8080)."
+    required: false
+    flag: "-port"
+    format: "flag"
+  - name: "ssl"
+    type: "boolean"
+    description: "Force SSL/TLS connection (use for https:// even on non-443 ports)."
+    required: false
+    flag: "-ssl"
+    format: "boolean_flag"

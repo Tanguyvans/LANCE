@@ -1,0 +1,40 @@
+name: "http_request"
+handler: "python"
+enabled: true
+timeout: 30
+short_description: "Full HTTP request (methods, headers, body, redirects)"
+description: >
+  Make an arbitrary HTTP request with full control over method, headers, body, redirect-following, and
+  TLS verification. Use when curl_headers/http_get are too rigid — e.g. PUT/PATCH/DELETE, custom headers,
+  raw JSON body, JWT in Authorization, Cookie chains, manual redirect control. Returns JSON with
+  status_code, response headers, body (truncated to ~8 KB), final URL, and elapsed seconds. Verifies
+  TLS by default but you can pass verify_tls=false for self-signed lab targets.
+parameters:
+  - name: "url"
+    type: "string"
+    description: "Target URL (must include scheme http/https)."
+    required: true
+  - name: "method"
+    type: "string"
+    description: "HTTP method: GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD."
+    required: false
+  - name: "headers"
+    type: "object"
+    description: "Optional dict of request headers, e.g. {\"Authorization\": \"Bearer ...\", \"Content-Type\": \"application/json\"}."
+    required: false
+  - name: "body"
+    type: "string"
+    description: "Optional raw request body (string). For JSON, set Content-Type header and pass the JSON-stringified body."
+    required: false
+  - name: "follow_redirects"
+    type: "boolean"
+    description: "Follow 3xx redirects (default true)."
+    required: false
+  - name: "verify_tls"
+    type: "boolean"
+    description: "Verify TLS certificate (default false for lab targets)."
+    required: false
+  - name: "timeout"
+    type: "integer"
+    description: "Per-request timeout in seconds (default 10, max 30)."
+    required: false

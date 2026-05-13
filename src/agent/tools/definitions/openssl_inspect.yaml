@@ -1,0 +1,19 @@
+name: "openssl_inspect"
+command: "bash"
+args: ["-c", "echo | openssl s_client -connect $0 -servername ${1:-${0%%:*}} -showcerts 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName 2>&1 | head -40"]
+enabled: true
+timeout: 15
+max_output: 3000
+short_description: "TLS certificate + chain inspection"
+description: "Connect to a TLS server and dump the leaf certificate's subject, issuer, validity dates, and Subject Alternative Names. Useful for: identifying internal hostnames behind a service, spotting self-signed/expired certs (info disclosure / weak crypto), pivoting via SAN entries."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target host:port (e.g. '192.168.100.12:443')."
+    required: true
+    format: "positional"
+  - name: "sni"
+    type: "string"
+    description: "Optional SNI hostname for vhost-aware TLS (e.g. 'admin.internal.example')."
+    required: false
+    format: "positional"

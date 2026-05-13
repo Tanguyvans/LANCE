@@ -107,14 +107,15 @@ class LLMProvider:
         cost_tracker=None,
         stream_callback: Callable[[dict], None] | None = None,
         required_tool: str | None = None,
+        terminate_after_tool: str | None = None,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool)
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -168,6 +169,7 @@ class LLMProvider:
 
             if stream_callback:
                 for tc in tool_calls: stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
+            terminate_now = False
             with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
                 futures = {pool.submit(_maybe_execute_anthropic, tc): tc for tc in tool_calls}
                 tool_results = []
@@ -176,12 +178,17 @@ class LLMProvider:
                     # Only mark required_tool as called if it succeeded (no error)
                     if required_tool and tc.name == required_tool and not res.startswith("Error"):
                         required_tool_called = True
+                    if terminate_after_tool and tc.name == terminate_after_tool and not res.startswith("Error"):
+                        terminate_now = True
                     if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
                     tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
             messages.append({"role": "user", "content": tool_results})
+            if terminate_now:
+                if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
+                return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -285,6 +292,7 @@ class LLMProvider:
 
             messages.append(message)
 
+            terminate_now = False
             for tc in message.tool_calls:
                 try: args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except: args = {}
@@ -300,8 +308,13 @@ class LLMProvider:
                 # Only mark required_tool as called if it succeeded (no error)
                 if required_tool and tc.function.name == required_tool and not res.startswith("Error"):
                     required_tool_called = True
+                if terminate_after_tool and tc.function.name == terminate_after_tool and not res.startswith("Error"):
+                    terminate_now = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+            if terminate_now:
+                if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
+                return last_nonempty_text or f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
     @staticmethod

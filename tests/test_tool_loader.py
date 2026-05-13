@@ -207,14 +207,36 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 18
+        assert len(tools) == 39
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
-        expected_sw = {"nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit", "curl_headers", "mqtt_listen", "nvd_lookup", "modbus_scan"}
-        expected_exploit = {"ssh_login", "mysql_query", "telnet_connect", "ftp_list", "http_get", "redis_cmd"}
+        expected_sw = {
+            "nmap_scan", "nmap_discovery", "arp_scan", "ssh_audit",
+            "curl_headers", "mqtt_listen", "nvd_lookup", "modbus_scan",
+            "traceroute",
+        }
+        expected_exploit = {
+            "ssh_login", "ssh_exec", "mysql_query", "telnet_connect",
+            "ftp_list", "http_get", "redis_cmd", "try_credential",
+        }
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
-        assert names == expected_sw | expected_exploit | expected_hw
+        # New offensive/recon tools added by the agent-tools-expansion PR.
+        expected_new_offensive = {
+            "sqlmap", "gobuster_dir", "whatweb", "nuclei_scan",
+            "nikto_scan", "wpscan", "searchsploit", "dig_query",
+            "smbclient_list", "enum4linux", "nxc_validate",
+            "openssl_inspect", "ysoserial_payload",
+        }
+        expected_new_python = {
+            "python_exec", "http_request", "tcp_send",
+            "tls_inspect", "decode_value",
+        }
+        expected = (
+            expected_sw | expected_exploit | expected_hw
+            | expected_new_offensive | expected_new_python
+        )
+        assert names == expected
 
     def test_hardware_tools_flagged(self):
         tools = load_all_tools()

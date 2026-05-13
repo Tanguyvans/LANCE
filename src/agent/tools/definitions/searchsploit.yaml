@@ -1,0 +1,20 @@
+name: "searchsploit"
+command: "searchsploit"
+args: ["--colour", "0", "--id"]
+enabled: true
+timeout: 20
+max_output: 4000
+short_description: "Local exploit-db lookup"
+description: "Search the local exploit-db database (offline) for public PoC exploits by CVE id, software name, or version. Returns rows of [EDB-ID] [Title] [Path]. Use to discover existing PoCs that the agent can adapt (combined with python_exec for ad-hoc runs). Much faster than online queries."
+parameters:
+  - name: "query"
+    type: "string"
+    description: "Search query: a CVE id (e.g. 'CVE-2023-46604'), software+version (e.g. 'apache 2.4.49'), or feature keyword (e.g. 'ssti jinja')."
+    required: true
+    format: "positional"
+  - name: "exact"
+    type: "boolean"
+    description: "Match keywords exactly (no partial). Use for narrow queries; default is partial."
+    required: false
+    flag: "--exact"
+    format: "boolean_flag"

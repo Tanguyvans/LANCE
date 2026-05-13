@@ -9,11 +9,17 @@ All subprocess tools return {stdout, stderr, return_code} as JSON.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import shlex
+import socket
+import ssl
 import subprocess
+import tempfile
+import urllib.parse
+from datetime import datetime, timezone
 
 from src.cve_lookup import query_nvd
 
@@ -336,6 +342,258 @@ def traceroute(target: str, max_hops: int = 10) -> str:
     })
 
 
+# ── Python handlers for newly-added YAML tools ────────────────────
+
+
+_PYTHON_EXEC_HARD_MAX = 180
+
+
+def python_exec(script: str, timeout: int = 60) -> str:
+    """Run ad-hoc Python via subprocess + tempfile + wall-clock timeout.
+
+    Returns JSON with stdout, stderr, return_code, and timed_out flag. Uses
+    `python3 -I` (isolated mode) so the parent virtualenv is not inherited
+    automatically. Already-installed system packages remain available.
+    """
+    effective_timeout = max(1, min(int(timeout or 60), _PYTHON_EXEC_HARD_MAX))
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(script)
+            tmp_path = tmp.name
+        result = subprocess.run(
+            ["python3", "-I", tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=effective_timeout,
+        )
+        return json.dumps({
+            "stdout": _ANSI_ESC.sub("", result.stdout)[:8000],
+            "stderr": _ANSI_ESC.sub("", result.stderr)[:4000],
+            "return_code": result.returncode,
+            "timed_out": False,
+            "timeout_seconds": effective_timeout,
+        })
+    except subprocess.TimeoutExpired as exc:
+        return json.dumps({
+            "stdout": (exc.stdout or "")[:8000] if isinstance(exc.stdout, str) else "",
+            "stderr": (exc.stderr or "")[:4000] if isinstance(exc.stderr, str) else "",
+            "return_code": -1,
+            "timed_out": True,
+            "timeout_seconds": effective_timeout,
+        })
+    except Exception as exc:
+        return json.dumps({"error": str(exc), "return_code": -1})
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+def http_request(
+    url: str,
+    method: str = "GET",
+    headers: dict | None = None,
+    body: str | None = None,
+    follow_redirects: bool = True,
+    verify_tls: bool = False,
+    timeout: int = 10,
+) -> str:
+    """Full HTTP request via the `requests` library."""
+    try:
+        import requests
+    except ImportError:
+        return json.dumps({"error": "requests library not installed"})
+    effective_timeout = max(1, min(int(timeout or 10), 30))
+    method_norm = (method or "GET").upper()
+    try:
+        response = requests.request(
+            method=method_norm,
+            url=url,
+            headers=headers or None,
+            data=body if body is not None else None,
+            allow_redirects=bool(follow_redirects),
+            verify=bool(verify_tls),
+            timeout=effective_timeout,
+        )
+    except requests.exceptions.RequestException as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+    body_text = response.text
+    if len(body_text) > 8000:
+        body_text = body_text[:8000] + "\n[truncated]"
+    return json.dumps({
+        "status_code": response.status_code,
+        "method": method_norm,
+        "final_url": response.url,
+        "headers": dict(response.headers),
+        "body": body_text,
+        "elapsed_seconds": response.elapsed.total_seconds(),
+        "redirect_chain": [r.url for r in response.history],
+    })
+
+
+def tcp_send(
+    host: str,
+    port: int,
+    payload_hex: str,
+    recv_bytes: int = 4096,
+    timeout: int = 10,
+) -> str:
+    """Open raw TCP, send hex-decoded bytes, return hex + ASCII preview."""
+    effective_timeout = max(1, min(int(timeout or 10), 30))
+    effective_recv = max(0, min(int(recv_bytes or 4096), 65536))
+    try:
+        payload = bytes.fromhex((payload_hex or "").strip().replace(" ", ""))
+    except ValueError as exc:
+        return json.dumps({"error": f"invalid payload_hex: {exc}"})
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(effective_timeout)
+    received = b""
+    try:
+        sock.connect((host, int(port)))
+        if payload:
+            sock.sendall(payload)
+        if effective_recv > 0:
+            try:
+                received = sock.recv(effective_recv)
+            except socket.timeout:
+                received = b""
+    except OSError as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    ascii_preview = "".join(
+        chr(b) if 32 <= b < 127 else "." for b in received[:512]
+    )
+    return json.dumps({
+        "host": host,
+        "port": int(port),
+        "sent_bytes": len(payload),
+        "received_bytes": len(received),
+        "received_hex": received.hex()[:4096],
+        "received_ascii": ascii_preview,
+    })
+
+
+def tls_inspect(host: str, port: int = 443, sni: str | None = None) -> str:
+    """Fetch leaf cert + cipher info.
+
+    Uses stdlib ssl for the handshake (cipher info + DER bytes), then shells
+    out to `openssl x509` to parse the certificate fields. `openssl` is part
+    of base apt installs on every fleet/master VM.
+    """
+    effective_port = int(port or 443)
+    server_hostname = sni or host
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        with socket.create_connection((host, effective_port), timeout=10) as raw:
+            with context.wrap_socket(raw, server_hostname=server_hostname) as tls:
+                cipher = tls.cipher() or ("", "", 0)
+                der = tls.getpeercert(binary_form=True)
+    except OSError as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+
+    import hashlib as _h
+    fingerprint = _h.sha256(der).hexdigest() if der else ""
+
+    parsed: dict[str, str | list[str]] = {
+        "subject": "",
+        "issuer": "",
+        "not_before": "",
+        "not_after": "",
+        "serial_number": "",
+        "subject_alt_names": [],
+    }
+    if der:
+        try:
+            cp = subprocess.run(
+                ["openssl", "x509", "-inform", "DER", "-noout",
+                 "-subject", "-issuer", "-dates", "-serial",
+                 "-ext", "subjectAltName"],
+                input=der,
+                capture_output=True,
+                timeout=5,
+            )
+            text = cp.stdout.decode("utf-8", errors="replace")
+            for line in text.splitlines():
+                if line.startswith("subject="):
+                    parsed["subject"] = line.split("=", 1)[1].strip()
+                elif line.startswith("issuer="):
+                    parsed["issuer"] = line.split("=", 1)[1].strip()
+                elif line.startswith("notBefore="):
+                    parsed["not_before"] = line.split("=", 1)[1].strip()
+                elif line.startswith("notAfter="):
+                    parsed["not_after"] = line.split("=", 1)[1].strip()
+                elif line.startswith("serial="):
+                    parsed["serial_number"] = line.split("=", 1)[1].strip()
+                elif "DNS:" in line:
+                    sans = re.findall(r"DNS:([^,\s]+)", line)
+                    if sans:
+                        parsed["subject_alt_names"] = sans
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    return json.dumps({
+        "host": host,
+        "port": effective_port,
+        "sni": server_hostname,
+        **parsed,
+        "cipher": {"name": cipher[0], "tls_version": cipher[1], "bits": cipher[2]},
+        "fingerprint_sha256": fingerprint,
+        "checked_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
+
+
+def decode_value(value: str, kind: str) -> str:
+    """Decode base64/url/jwt/hex strings."""
+    kind_norm = (kind or "").lower().strip()
+    raw = value or ""
+    try:
+        if kind_norm == "base64":
+            padded = raw + "=" * (-len(raw) % 4)
+            try:
+                decoded = base64.b64decode(padded, validate=False).decode("utf-8", errors="replace")
+            except Exception:
+                decoded = base64.urlsafe_b64decode(padded).decode("utf-8", errors="replace")
+            return json.dumps({"kind": "base64", "decoded": decoded})
+        if kind_norm == "url":
+            return json.dumps({"kind": "url", "decoded": urllib.parse.unquote_plus(raw)})
+        if kind_norm == "hex":
+            decoded = bytes.fromhex(raw.replace(" ", "").replace(":", "")).decode("utf-8", errors="replace")
+            return json.dumps({"kind": "hex", "decoded": decoded})
+        if kind_norm == "jwt":
+            parts = raw.split(".")
+            if len(parts) < 2:
+                return json.dumps({"error": "JWT must have at least 2 dot-separated parts"})
+            header_b64, payload_b64 = parts[0], parts[1]
+            def _pad_b64(s: str) -> str:
+                return s + "=" * (-len(s) % 4)
+            try:
+                header = json.loads(base64.urlsafe_b64decode(_pad_b64(header_b64)).decode("utf-8"))
+                payload = json.loads(base64.urlsafe_b64decode(_pad_b64(payload_b64)).decode("utf-8"))
+            except Exception as exc:
+                return json.dumps({"error": f"jwt parse failed: {exc}"})
+            return json.dumps({
+                "kind": "jwt",
+                "header": header,
+                "payload": payload,
+                "signature_present": len(parts) >= 3 and bool(parts[2]),
+                "signature_verified": False,
+            })
+        return json.dumps({"error": f"unsupported kind: {kind!r} (use base64|url|jwt|hex)"})
+    except Exception as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+
+
 # ── Tool definitions (generated from YAML) ───────────────────────
 
 def _load_recon_tools() -> list[dict]:
@@ -348,6 +606,11 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "ssh_exec", ssh_exec)
     register_python_handler(tools, "try_credential", try_credential)
     register_python_handler(tools, "traceroute", traceroute)
+    register_python_handler(tools, "python_exec", python_exec)
+    register_python_handler(tools, "http_request", http_request)
+    register_python_handler(tools, "tcp_send", tcp_send)
+    register_python_handler(tools, "tls_inspect", tls_inspect)
+    register_python_handler(tools, "decode_value", decode_value)
     return tools
 
 

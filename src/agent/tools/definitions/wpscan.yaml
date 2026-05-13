@@ -1,0 +1,22 @@
+name: "wpscan"
+command: "wpscan"
+args: ["--no-banner", "--random-user-agent", "--disable-tls-checks", "--request-timeout", "15", "--connect-timeout", "10", "--no-update", "--force"]
+enabled: true
+timeout: 300
+max_output: 7000
+short_description: "WordPress version + plugin/theme vulnerability scanner"
+description: "Enumerate WordPress installation: core version, active plugins, themes, users, and known CVEs against each. Use ONLY when whatweb or fingerprint confirms a WordPress site. Without an API token (WPSCAN_API_TOKEN env var), vuln data is limited; still surfaces version + enumerated plugins which the agent can cross-check via nvd_lookup."
+parameters:
+  - name: "url"
+    type: "string"
+    description: "WordPress site root URL (e.g. 'http://192.168.100.12/' or 'http://blog.example/wp/')."
+    required: true
+    flag: "--url"
+    format: "flag"
+  - name: "enumerate"
+    type: "string"
+    description: "What to enumerate: 'vp' (vulnerable plugins), 'ap' (all plugins), 'vt', 'at', 'u' (users), 'tt' (timthumbs). Comma-separated. Default 'vp,vt,u'."
+    required: false
+    default: "vp,vt,u"
+    flag: "--enumerate"
+    format: "flag"

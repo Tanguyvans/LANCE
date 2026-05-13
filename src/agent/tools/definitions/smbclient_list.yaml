@@ -1,0 +1,20 @@
+name: "smbclient_list"
+command: "smbclient"
+args: ["-N", "--list"]
+enabled: true
+timeout: 30
+max_output: 3000
+short_description: "List SMB shares (anonymous)"
+description: "Enumerate shares on a Windows/Samba SMB server using anonymous (NULL) credentials. Returns share names, types, and comments. Use as first probe on port 139/445. Authenticated listing not supported here — use ssh_exec or try_credential for credential validation."
+parameters:
+  - name: "target"
+    type: "string"
+    description: "Target host in //HOST/ form (e.g. '//192.168.100.12/' or '//fileserver/')."
+    required: true
+    format: "positional"
+  - name: "workgroup"
+    type: "string"
+    description: "Optional Windows workgroup/domain name (e.g. 'WORKGROUP' or 'CORP')."
+    required: false
+    flag: "-W"
+    format: "flag"
