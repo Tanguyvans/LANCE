@@ -17,6 +17,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # System recon and offensive tools used by the agent pipeline
+# (Packages available in Debian 12 main. nikto/wpscan/exploitdb/enum4linux-ng
+# are NOT in Debian main and are installed below via pip/git.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     mosquitto-clients \
@@ -27,20 +29,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mariadb-client \
     dnsutils \
     smbclient \
-    enum4linux-ng \
     openssl \
     sqlmap \
     gobuster \
     whatweb \
-    nikto \
-    wpscan \
-    exploitdb \
     default-jre-headless \
-    wget curl ca-certificates unzip \
+    perl \
+    wget curl ca-certificates unzip git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install netexec (nxc) via pip (apt's crackmapexec is unmaintained on slim)
-RUN pip install --no-cache-dir netexec || true
+# enum4linux-ng + netexec (nxc) via pip (not in Debian main repos)
+RUN pip install --no-cache-dir --break-system-packages enum4linux-ng netexec 2>/dev/null \
+    || pip install --no-cache-dir enum4linux-ng netexec \
+    || true
+
+# Nikto (Perl script) — clone from upstream, not packaged on Debian main
+RUN git clone --depth 1 https://github.com/sullo/nikto /opt/nikto \
+    && ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto
+
+# Exploit-DB (searchsploit) — clone from upstream, not packaged on Debian main
+RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb /opt/exploitdb \
+    && ln -sf /opt/exploitdb/searchsploit /usr/local/bin/searchsploit
 
 # Nuclei: download the official static binary (apt's nuclei lags upstream)
 RUN ARCH=$(dpkg --print-architecture) && \
