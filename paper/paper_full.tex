@@ -1059,9 +1059,40 @@ The reported rate is manual proof-oracle success on 13 deployable cases
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart: bar chart,
-  F1 and MHR$_2$ for \harnessname, ablations, and Nmap~NSE.}}}
-  \caption{Baseline comparison on \systemname. Scanners capture known CVEs but
+  \resizebox{0.98\linewidth}{!}{%
+  \begin{tikzpicture}[
+    font=\scriptsize,
+    bar/.style={draw=black!55, line width=0.25pt},
+    fbar/.style={bar, fill=blue!35},
+    mbar/.style={bar, fill=green!35},
+    grid/.style={draw=black!15, line width=0.2pt},
+    axis/.style={draw=black!70, line width=0.35pt}
+  ]
+    \draw[axis] (0,0) -- (7.2,0);
+    \draw[axis] (0,0) -- (0,2.8);
+    \foreach \y/\lab in {0/0,.7/25,1.4/50,2.1/75,2.8/100} {
+      \draw[grid] (0,\y) -- (7.2,\y);
+      \node[anchor=east] at (-0.08,\y) {\lab};
+    }
+
+    \foreach \x/\f/\m/\lab in {
+      .7/2.25/1.75/{full},
+      2.25/1.80/1.15/{no P1},
+      3.8/1.95/.35/{no P5},
+      5.35/1.15/.15/{NSE}
+    } {
+      \draw[fbar] (\x,0) rectangle +(0.35,\f);
+      \draw[mbar] (\x+0.38,0) rectangle +(0.35,\m);
+      \node[anchor=north, align=center] at (\x+0.35,-0.12) {\lab};
+    }
+    \node[anchor=west] at (4.9,2.55) {\tikz{\draw[fbar] (0,0) rectangle (.22,.12);} F1};
+    \node[anchor=west] at (5.9,2.55) {\tikz{\draw[mbar] (0,0) rectangle (.22,.12);} MHR$_2$};
+    \node[align=center, text=black!55] at (3.65,1.38)
+      {mockup layout\\placeholder values};
+  \end{tikzpicture}
+  }
+  \caption{Baseline comparison on \systemname. Mockup only: values and confidence
+  intervals will be replaced by final runs. Scanners capture known CVEs but
   miss configuration vulnerabilities and do not establish new vantage points.
   The Phase~5 ablation isolates the value of explicit lateral movement on
   multi-hop reach (MHR$_1$--MHR$_3$).}
@@ -1092,10 +1123,40 @@ full-run oracle result once all 191 cases have completed.
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart:
-  heatmap scenario $\times$ model, cell = weighted Score.}}}
-  \caption{Per-scenario Score heatmap. \todo{Note which pattern consistently
-  breaks LLMs.}}
+  \resizebox{0.98\linewidth}{!}{%
+  \begin{tikzpicture}[font=\scriptsize]
+    \def\cellw{0.45}
+    \def\cellh{0.38}
+    \foreach \c/\sid in {0/s1,1/s2,2/s3,3/s4,4/s5,5/s6,6/s7,7/s8,8/s9,9/s10} {
+      \node[rotate=45, anchor=west] at (\c*\cellw+0.12,0.25) {\sid};
+    }
+    \foreach \r/\sys in {0/full,1/no P1,2/no P5,3/NSE} {
+      \node[anchor=east] at (-0.12,-\r*\cellh-.18) {\sys};
+    }
+    \foreach \r in {0,1,2,3} {
+      \foreach \c in {0,1,2,3,4,5,6,7,8,9} {
+        \pgfmathtruncatemacro{\shade}{20 + mod(11*\c + 17*\r, 55)}
+        \ifnum\r=0
+          \draw[fill=blue!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
+        \else\ifnum\r=3
+          \draw[fill=gray!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
+        \else
+          \draw[fill=orange!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
+        \fi\fi
+      }
+    }
+    \draw[black!60] (0,0) rectangle (10*\cellw,-4*\cellh);
+    \node[anchor=west] at (4.75,-.25) {low};
+    \shade[left color=gray!15,right color=blue!70,draw=black!30]
+      (4.75,-.55) rectangle (6.55,-.35);
+    \node[anchor=west] at (6.65,-.25) {high};
+    \node[text=black!55, align=center] at (2.25,-1.9)
+      {mockup layout\\placeholder scores};
+  \end{tikzpicture}
+  }
+  \caption{Per-scenario Score heatmap. Mockup only: cells will contain measured
+  weighted Score for each system and main scenario. \todo{Note which pattern
+  consistently breaks LLMs.}}
   \label{fig:heatmap}
 \end{figure}
 
@@ -1140,11 +1201,34 @@ context.}
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart:
-  Pareto plot, USD cost vs weighted Score, one point per system (all on
-  MiniMax-M2.7).}}}
+  \resizebox{0.98\linewidth}{!}{%
+  \begin{tikzpicture}[font=\scriptsize]
+    \draw[->, draw=black!70] (0,0) -- (5.8,0) node[anchor=west] {USD / run};
+    \draw[->, draw=black!70] (0,0) -- (0,3.0) node[anchor=south] {Score};
+    \foreach \x/\lab in {1/low,3/,5/high} {
+      \draw[draw=black!15] (\x,0) -- (\x,2.8);
+      \node[anchor=north] at (\x,-.08) {\lab};
+    }
+    \foreach \y/\lab in {1/low,2/high} {
+      \draw[draw=black!15] (0,\y) -- (5.6,\y);
+      \node[anchor=east] at (-.08,\y) {\lab};
+    }
+    \draw[dashed, draw=black!40] (.55,.45) -- (2.2,1.55) -- (4.55,2.35);
+    \fill[gray!70] (.65,.55) circle (2.4pt);
+    \node[anchor=west] at (.75,.55) {NSE};
+    \fill[orange!75] (2.25,1.25) circle (2.8pt);
+    \node[anchor=west] at (2.35,1.25) {no P5};
+    \fill[blue!70] (3.35,1.85) circle (3pt);
+    \node[anchor=west] at (3.45,1.85) {no P1};
+    \fill[green!65!black] (4.55,2.35) circle (3.2pt);
+    \node[anchor=west] at (4.65,2.35) {full};
+    \node[text=black!55, align=center] at (2.8,.72)
+      {mockup layout\\placeholder positions};
+  \end{tikzpicture}
+  }
   \caption{Cost--performance Pareto across systems on MiniMax-M2.7; the
   multi-model frontier is deferred to future work (\cref{sec:conclusion}).
+  Mockup only: point positions will be replaced by final cost and Score.
   \todo{Annotate which system dominates on each axis and the efficient
   frontier.}}
   \label{fig:pareto}
