@@ -416,39 +416,64 @@ Ludus + GOAD~\cite{ludus,goad}       & network & \xmark & none      & \xmark \\
 \label{sec:threat}
 
 \paragraph{Network-scale pentest}
-We define \emph{network-scale penetration testing} as the task of: (i)~discovering
-all live hosts in a target IP range, (ii)~enumerating services and identifying
-vulnerabilities on each host, (iii)~producing evidence of exploitability where
-feasible, and (iv)~aggregating findings at the network level. The \emph{unit of
-evaluation} is the network, not an individual host.
+We define \emph{network-scale penetration testing} as the task of:
+(i)~discovering all live hosts in a target IP range,
+(ii)~enumerating services and identifying vulnerabilities on each host,
+(iii)~producing evidence of exploitability where feasible, and
+(iv)~aggregating findings at the network level.
+The \emph{unit of evaluation} is the \emph{network}, not an individual host.
+This distinction is non-trivial: IoT risk is dominated by pivot-enabled paths
+(e.g., Internet-facing gateway $\to$ MQTT broker $\to$ OT controller), so
+single-host metrics miss the attack surface that matters.
 
 \paragraph{Attacker model}
-The attacker holds network-layer access to the target subnet (post-ingress,
-pre-compromise). They hold no prior credentials, no privileged vantage, and no
-knowledge of deployed software beyond what is observable through scans. The
-attacker has access to standard offensive tooling (Nmap, MQTT clients, SSH, \ldots)
-and an LLM with tool-calling. Time and budget are bounded.
+The attacker is a post-ingress external adversary: they hold a Layer-3
+foothold on the target \texttt{/24} subnet (e.g., after exploiting a
+perimeter service or obtaining physical network access) but have \emph{no}
+prior credentials, no out-of-band knowledge of deployed software, and no
+privileged vantage point beyond what active scans reveal. Their objective is
+data exfiltration and/or OT disruption: stealing sensor readings, harvesting
+credentials for lateral movement, or reaching industrial-control services
+behind a segmentation boundary. They have access to standard offensive
+tooling (Nmap, MQTT clients, SSH, HTTP) and an LLM with tool-calling;
+turn budget and API cost are bounded (\S\ref{sec:harness:cost}).
+
+\paragraph{Evidence levels}
+For each identified vulnerability we distinguish three levels of evidence that
+the agent may produce:
+\textsf{L1}~\emph{detection} — the finding is inferred from a port scan,
+banner, or configuration file without active interaction (e.g., an open
+unauthenticated MQTT port);
+\textsf{L2}~\emph{exploitation} — the agent establishes an authenticated
+session or completes a protocol handshake that demonstrates exploitability
+(e.g., anonymous MQTT subscribe on a production topic, SSH login with default
+credentials);
+\textsf{L3}~\emph{exfiltration} — the agent retrieves sensitive content such
+as configuration files, credentials, or sensor data from the target.
+This three-level taxonomy is used both to prompt the agent
+(\S\ref{sec:harness:phase4}) and to score its output
+(\S\ref{sec:iotbench:eval}).
 
 \paragraph{Goals}
 \begin{enumerate}
-  \item Enumerate all devices reachable from the entry point.
-  \item For each device, identify vulnerabilities from misconfiguration, weak
-  credentials, information disclosure, insecure protocols, and known CVEs.
-  \item For each finding, attempt to produce \emph{evidence} at one of three
-  levels: \textsf{L1}~detection (port open, banner leak), \textsf{L2}~exploitation
-  (authenticated session, protocol handshake), \textsf{L3}~data exfiltration
-  (configuration files, credentials, sensor data).
-  \item Report findings at the network level (severity-ranked, deduplicated).
+  \item Enumerate all devices reachable from the subnet entry point $e$.
+  \item For each device, identify vulnerabilities spanning misconfiguration,
+  weak credentials, information disclosure, insecure protocols, and known CVEs.
+  \item For each finding, produce the deepest evidence level achievable
+  (\textsf{L1}--\textsf{L3}) within the turn budget.
+  \item Aggregate and report findings network-wide (severity-ranked,
+  deduplicated, with multi-hop attribution).
 \end{enumerate}
 
 \paragraph{Scope and non-goals}
-We evaluate at the \emph{IP/application layer} on deployed IoT networks. We
-do \emph{not} evaluate: (a)~physical/side-channel attacks on hardware,
-(b)~RF-layer attacks requiring SDR captures,
+We evaluate at the \emph{IP/application layer} on deployed virtual IoT networks.
+We do \emph{not} evaluate:
+(a)~physical or side-channel attacks on embedded hardware,
+(b)~RF-layer attacks requiring SDR captures (sub-GHz, LoRaWAN PHY),
 (c)~firmware extraction from physical devices,
-(d)~post-exploitation persistence or impact,
+(d)~post-exploitation persistence or long-term impact modelling,
 (e)~insider threats or supply-chain compromise.
-Hardware-assisted attacks are left as future work (\cref{sec:conclusion}).
+These are natural extensions and are discussed as future work (\cref{sec:conclusion}).
 
 % ══════════════════════════════════════════════════════════════════════════
 % §4 IoTBench
