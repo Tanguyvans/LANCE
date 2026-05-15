@@ -185,16 +185,18 @@ AutoPenBench and surpassing \textsc{PentestGPT} and \textsc{VulnBot}.
 predefined attack actions, improving success rates by more than $20\%$
 over Claude Code + Sonnet 4.5 on the Vulhub benchmark.
 
-Despite the diversity of these designs, every system above is scored on
-a \emph{single host} (a HackTheBox machine, a VulnHub VM, or a CTF
-container), with no notion of multi-device reachability and no IoT- or
-OT-specific application protocols (MQTT, Modbus, LoRaWAN, CoAP) on the
-test surface.
+Despite the diversity of these designs, published scores are usually
+reported at the level of a single target or challenge (a HackTheBox
+machine, a VulnHub VM, an AutoPenBench task, or a CTF environment).
+Some environments require multi-step exploitation, but the reported
+metrics do not expose subnet-level reachability, hop depth, or
+per-vulnerability progress across an IoT/OT topology with protocols such
+as MQTT, Modbus, LoRaWAN, and CoAP.
 
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
 
-\noindent\textbf{Single-host corpora.}
+\noindent\textbf{Challenge-level corpora.}
 \textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation
 substrate — 24 in-vitro tasks plus 12 real-world CVE-based exploits with
 scripted flag checkers — and is the corpus behind \textsc{VulnBot},
@@ -203,22 +205,26 @@ fills the same role for \textsc{CheckMate} with $\sim$100 Docker images
 (one container per CVE). \textsc{CAIBench}~\cite{caibench25} is the
 broadest academic effort, spanning CTFs, attack-and-defense ranges, and
 knowledge tests; its RCTF2 subset adds $27$ robotics challenges — the
-first cyber-physical inclusion in this family — yet each challenge
-remains an isolated container. Across all these corpora the unit of
-evaluation is one host: there is no notion of lateral movement across a
-subnet, and no IoT/OT application layer (MQTT, Modbus, LoRaWAN).
-Table~\ref{tab:reported} reports headline results for each system.
+first cyber-physical inclusion in this family. These corpora can require
+multi-step reasoning, and some challenge environments are richer than a
+single shell. However, their public scoring is challenge- or flag-level:
+they do not provide a per-vulnerability ground truth tied to explicit
+network reachability, hop depth, or IoT/OT application protocols (MQTT,
+Modbus, LoRaWAN). Table~\ref{tab:reported} reports headline results for
+each system.
 
 \noindent\textbf{Multi-host labs.}
 \textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
 Active-Directory scenario deliver Proxmox+Ansible deployments of
 representative enterprise networks, the closest methodological precedent
-to our infrastructure. Neither provides a ground-truth vulnerability
-schema or a scoring procedure, and neither has been used to evaluate LLM
-agents in the published literature. No prior benchmark therefore offers
-network-scale evaluation, IoT/OT protocols, per-vulnerability
-machine-readable ground truth, and evidence-level scoring beyond binary
-flag capture (Table~\ref{tab:related}).
+to our infrastructure. They do model multi-host compromise and lateral
+movement, so the gap is not the existence of multi-host cyber ranges.
+Rather, these labs are not packaged as LLM-agent benchmarks: they do not
+ship a per-vulnerability ground-truth schema, hop-depth annotations, or a
+scoring procedure, and they target enterprise AD rather than IoT/OT
+protocols. No prior benchmark therefore combines multi-host reachability,
+IoT/OT protocols, per-vulnerability machine-readable ground truth, and
+evidence-level scoring beyond binary flag capture (Table~\ref{tab:related}).
 
 \subsection{Attack Graphs and Network Reachability}
 \label{sec:related:graph}
@@ -259,8 +265,9 @@ evaluate \harnessname.
 \begin{table*}[t]
 \centering
 \caption{Comparison with prior LLM pentest systems and benchmarks.
-\emph{Scope}: unit of evaluation (single-host = one VM/container;
-network = multi-device IP range). \emph{Domain}: protocols / target type.
+\emph{Scope}: published unit of evaluation (target/challenge = one
+target, task, or flag environment; network = multi-device IP range with
+explicit reachability). \emph{Domain}: protocols / target type.
 \emph{Test corpus}: dataset on which results are reported. Rows are
 grouped by role: LLM pentest agents (top) and evaluation corpora (bottom).}
 \label{tab:related}
@@ -272,23 +279,23 @@ System & Scope & Domain & Test corpus & IoT-specific & Scoring \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{LLM pentest agents}} \\
 \midrule
-Happe \& Cito~\cite{happe23}            & single-host & Web/OS  & curated Linux VMs        & no  & flag       \\
-PentestGPT~\cite{pentestgpt24}          & single-host & Web/OS  & HTB + VulnHub (13 VMs)   & no  & sub-task   \\
-VulnBot~\cite{vulnbot25}                & single-host & Web/OS  & AutoPenBench             & no  & task-graph \\
-AutoPentester~\cite{autopentester25}    & single-host & Web/OS  & HackTheBox               & no  & sub-task   \\
-CAI~\cite{cai25}                        & single-host & Web/CTF & CAIBench                 & no  & CTF        \\
-Pentest-R1~\cite{pentestr125}           & single-host & Web/OS  & AutoPenBench             & no  & sub-task   \\
-xOffense~\cite{xoffense25}              & single-host & Web/CTF & AutoPenBench             & no  & sub-task   \\
-EnIGMA~\cite{enigma25}                  & single-host & CTF     & NYU CTF Bench            & no  & flag       \\
-CheckMate~\cite{checkmate25}            & single-host & Web/OS  & Vulhub                   & no  & sub-task   \\
+Happe \& Cito~\cite{happe23}            & target/challenge & Web/OS  & curated Linux VMs        & no  & flag       \\
+PentestGPT~\cite{pentestgpt24}          & target/challenge & Web/OS  & HTB + VulnHub (13 VMs)   & no  & sub-task   \\
+VulnBot~\cite{vulnbot25}                & target/challenge & Web/OS  & AutoPenBench             & no  & task-graph \\
+AutoPentester~\cite{autopentester25}    & target/challenge & Web/OS  & HackTheBox               & no  & sub-task   \\
+CAI~\cite{cai25}                        & target/challenge & Web/CTF & CAIBench                 & no  & CTF        \\
+Pentest-R1~\cite{pentestr125}           & target/challenge & Web/OS  & AutoPenBench             & no  & sub-task   \\
+xOffense~\cite{xoffense25}              & target/challenge & Web/CTF & AutoPenBench             & no  & sub-task   \\
+EnIGMA~\cite{enigma25}                  & target/challenge & CTF     & NYU CTF Bench            & no  & flag       \\
+CheckMate~\cite{checkmate25}            & target/challenge & Web/OS  & Vulhub                   & no  & sub-task   \\
 \midrule
 \multicolumn{6}{@{}l}{\emph{Evaluation corpora}} \\
 \midrule
-AutoPenBench~\cite{autopenbench24}      & single-host & Web/OS  & 24 in-vitro + 12 CVEs    & no  & flag       \\
-NYU CTF Bench~\cite{nyuctfbench24}      & single-host & CTF     & 200 Jeopardy challenges  & no  & flag       \\
-Cybench~\cite{cybench24}                & single-host & CTF     & curated CTF subset       & no  & flag       \\
-CAIBench / RCTF2~\cite{caibench25}      & single-host & mixed   & meta-benchmark           & 27 robotics & CTF  \\
-Vulhub~\cite{vulhub}                    & single-host & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom     \\
+AutoPenBench~\cite{autopenbench24}      & target/challenge & Web/OS  & 24 in-vitro + 12 CVEs    & no  & flag       \\
+NYU CTF Bench~\cite{nyuctfbench24}      & target/challenge & CTF     & 200 Jeopardy challenges  & no  & flag       \\
+Cybench~\cite{cybench24}                & target/challenge & CTF     & curated CTF subset       & no  & flag       \\
+CAIBench / RCTF2~\cite{caibench25}      & target/challenge & mixed   & meta-benchmark           & 27 robotics & CTF  \\
+Vulhub~\cite{vulhub}                    & target/challenge & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom     \\
 Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)           & no  & --         \\
 \midrule
 \textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/LoRa/CoAP/\ldots} & \textbf{15 IoT scenarios (up to 35 dev.), per-vuln YAML} & \textbf{yes} & \textbf{L1/L2/L3 + MHR$_k$} \\
