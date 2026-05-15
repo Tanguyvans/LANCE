@@ -244,9 +244,9 @@ validated by actual probes, the LLM proposes the next action, and the graph
 is updated as new hosts are discovered. Classical attack-graph generation
 is therefore complementary rather than competing.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\resizebox{0.94\textwidth}{!}{%
+\resizebox{0.95\linewidth}{!}{%
 \begin{tikzpicture}[
   font=\scriptsize,
   >=Latex,
@@ -262,8 +262,8 @@ is therefore complementary rather than competing.
                     fill=white, inner sep=1pt}
 ]
 
-% Static attack-graph side.
-\node[zlabel] at (1.9,1.05) {(a) Classical attack graph};
+% Static attack-graph.
+\node[zlabel] at (1.9,1.05) {Classical attack graph};
 \node[box] (cfg) at (0,0) {host\\configs};
 \node[box] (cve) at (1.9,0) {CVEs};
 \node[box] (fw) at (3.8,0) {firewall\\rules};
@@ -275,21 +275,44 @@ is therefore complementary rather than competing.
 \draw[edge] (ag) -- (states);
 \node[draw=black!20, rounded corners=2pt, fit=(cfg)(fw)(states),
       inner sep=5pt] {};
+\end{tikzpicture}
+}
+\caption{Classical attack-graph analysis computes reachable attacker states
+from a static model of hosts, vulnerabilities, and firewall rules.}
+\label{fig:static-attack-graph}
+\end{figure}
 
-% Live reachability side.
-\node[zlabel] at (8.45,1.05) {(b) \harnessname{} live reachability};
-\draw[blue!35, rounded corners=2pt] (5.85,0.65) rectangle (11.05,-1.45);
-\draw[green!45, rounded corners=2pt] (6.05,-1.65) rectangle (10.85,-2.85);
-\node[zonelabel] at (8.45,0.65) {IT / IoT services};
-\node[zonelabel] at (8.45,-1.65) {OT zone};
+\begin{figure}[t]
+\centering
+\resizebox{0.98\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\scriptsize,
+  >=Latex,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=7mm, fill=gray!6, text width=21mm},
+  dev/.style={circle, draw=black!60, very thick, align=center,
+              minimum size=10mm, inner sep=1pt, fill=white},
+  liveedge/.style={->, thick, draw=blue!65},
+  pivotedge/.style={->, very thick, draw=red!70},
+  zlabel/.style={font=\scriptsize\bfseries, text=black!70},
+  zonelabel/.style={font=\scriptsize\bfseries, text=black!70,
+                    fill=white, inner sep=1pt}
+]
 
-\node[dev, fill=red!18] (router) at (8.45,-0.55) {router};
-\node[dev, fill=blue!15] (admin) at (6.8,0.02) {admin};
-\node[dev, fill=blue!15] (web) at (6.8,-1.05) {web};
-\node[dev, fill=orange!20] (mqtt) at (10.1,0.02) {mqtt};
-\node[dev, fill=orange!20] (gw) at (10.1,-1.05) {gw};
-\node[dev, fill=green!20] (hmi) at (7.35,-2.35) {HMI};
-\node[dev, fill=green!20] (plc) at (9.55,-2.35) {PLC};
+% Live reachability.
+\node[zlabel] at (2.6,1.05) {\harnessname{} live reachability};
+\draw[blue!35, rounded corners=2pt] (-0.15,0.65) rectangle (5.35,-1.45);
+\draw[green!45, rounded corners=2pt] (0.1,-1.65) rectangle (5.1,-2.85);
+\node[zonelabel] at (2.6,0.65) {IT / IoT services};
+\node[zonelabel] at (2.6,-1.65) {OT zone};
+
+\node[dev, fill=red!18] (router) at (2.6,-0.55) {router};
+\node[dev, fill=blue!15] (admin) at (0.9,0.02) {admin};
+\node[dev, fill=blue!15] (web) at (0.9,-1.05) {web};
+\node[dev, fill=orange!20] (mqtt) at (4.3,0.02) {mqtt};
+\node[dev, fill=orange!20] (gw) at (4.3,-1.05) {gw};
+\node[dev, fill=green!20] (hmi) at (1.45,-2.35) {HMI};
+\node[dev, fill=green!20] (plc) at (3.75,-2.35) {PLC};
 
 \draw[liveedge] (router) -- (admin);
 \draw[liveedge] (router) -- (web);
@@ -298,8 +321,8 @@ is therefore complementary rather than competing.
 \draw[pivotedge] (gw) -- (plc);
 \draw[pivotedge] (router) -- (hmi);
 
-\node[box, fill=blue!5, text width=21mm] (probe) at (6.9,-3.45) {live probe\\confirms edge};
-\node[box, fill=red!5, text width=21mm] (llm) at (9.8,-3.45) {LLM action\\selects pivot};
+\node[box, fill=blue!5] (probe) at (1.0,-3.45) {live probe\\confirms edge};
+\node[box, fill=red!5] (llm) at (4.0,-3.45) {LLM action\\selects pivot};
 \draw[liveedge] (probe) -- (llm);
 \draw[liveedge] (llm) -- (plc);
 \node[draw=black!20, rounded corners=2pt, fit=(admin)(web)(mqtt)(gw)(plc)(hmi)(probe)(llm),
@@ -307,14 +330,12 @@ is therefore complementary rather than competing.
 
 \end{tikzpicture}
 }
-\caption{Static attack graphs versus live reachability. Classical analysis
-computes reachable attacker states from a model of hosts, vulnerabilities,
-and firewall rules. \harnessname{} keeps the reachability abstraction but
-updates the graph during execution from live probes and LLM-selected
-actions. Blue edges denote validated reachability; red edges denote
-pivot-dependent paths into deeper IoT/OT zones.}
+\caption{\harnessname{} keeps the reachability abstraction but updates the
+graph during execution from live probes and LLM-selected actions. Blue
+edges denote validated reachability; red edges denote pivot-dependent
+paths into deeper IoT/OT zones.}
 \label{fig:live-reachability}
-\end{figure*}
+\end{figure}
 
 \subsection{IoT Security Context}
 \label{sec:related:iot}
