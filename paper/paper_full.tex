@@ -25,7 +25,7 @@
 % ── macros ────────────────────────────────────────────────────────────────
 \newcommand{\systemname}{IoTPentBench\xspace}
 \newcommand{\harnessname}{\textsc{MeshScout}\xspace}
-\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\todo}[1]{\textcolor{gray}{\textit{[TBD]}}}
 \newcommand{\note}[1]{\textcolor{blue}{\textit{[note: #1]}}}
 
 \providecommand{\Cref}[1]{Section~\ref{#1}}
@@ -71,17 +71,18 @@ Autonomous LLM penetration-testing agents are typically evaluated on
 single hosts, yet IoT deployments expose risk through network reachability:
 gateways, brokers, cameras, and OT services form attack paths whose security
 depends on pivots across devices. We present \systemname, a reproducible
-network-scale IoT benchmark with 15 Proxmox/Ansible scenarios, 145 devices,
-and 229 injected vulnerabilities mapped to OWASP IoT Top 10 and MITRE
-ATT\&CK for ICS. We also introduce \harnessname, a six-phase network-native
+network-scale IoT benchmark with 15 Proxmox/Ansible scenarios, 145 devices
+in total (133 in vulnerability-injected scenarios), and 229 injected
+vulnerabilities mapped to OWASP IoT Top 10 and MITRE ATT\&CK for ICS.
+We also introduce \harnessname, a six-phase network-native
 harness that combines topology priors, active discovery, per-device triage,
 per-vulnerability verification, intrusion attempts, and report generation.
 The benchmark adds two metrics absent from single-host evaluations:
 evidence-level coverage (L1 detection, L2 exploitation, L3 exfiltration) and
 Multi-Hop Reach (MHR$_k$), which measures recall on vulnerabilities that
 require at least $k$ pivots or zone transitions. We describe the benchmark,
-evaluator, and experimental protocol, and use them to isolate architectural
-effects independently from model choice.
+evaluator, and experimental protocol for isolating architectural effects
+independently from model choice.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -119,8 +120,8 @@ not of the agent: improving the agent alone does not close them.
   benchmark for LLM pentest agents on IoT. It ships 15 scenarios
   (10 main covering 5 architectural patterns, 3 scalability stressors
   up to 35 devices, 2 hardened controls for False Positive rate),
-  229 vulnerabilities injected via Ansible, with ground truth mapped to
-  OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
+  145 devices in total, and 229 vulnerabilities injected via Ansible,
+  with ground truth mapped to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
   \item \textbf{\harnessname}: a network-native harness whose six
   phases (topology prior, discovery, per-device triage,
   per-vulnerability verification, intrusion, report) keep LLM context
@@ -503,7 +504,7 @@ gap analysis in \cref{sec:related}:
 \begin{figure*}[t]
   \centering
   \fbox{\parbox{0.95\linewidth}{\centering\textit{
-    Fig.~1 placeholder: five topology diagrams side-by-side.\\
+    Draft schematic: five topology diagrams side-by-side.\\
     (Flat)~— (Gateway-centric)~— (Segmented IT/OT)~— (Hub-star)~— (Edge-cloud)
   }}}
   \caption{The five architectural patterns in \systemname. Reachability is
@@ -541,9 +542,11 @@ mapping is given in Table~\ref{tab:scenarios}.
 
 \begin{table}[t]
 \centering
-\caption{The 13 vulnerability-injected scenarios of \systemname\ (2 hardened
-controls with 0 vulns excluded). \emph{Main} scenarios cover the 5
-architectural patterns; \emph{Scalability} scenarios stress network size.}
+\caption{The 13 vulnerability-injected scenarios of \systemname\ (133 devices,
+229 injected vulnerabilities). The 2 hardened controls add 12 devices and
+0 vulnerabilities, for 15 scenarios and 145 devices in total. \emph{Main}
+scenarios cover the 5 architectural patterns; \emph{Scalability} scenarios
+stress network size.}
 \label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -696,7 +699,11 @@ ground-truth vulnerability $g$ attached to device $d_g \in V$, we define its
 \emph{hop depth} as the number of required pivots or zone transitions from
 the entry point. Directly reachable vulnerabilities have
 $\text{hop\_depth}=0$:
-$$\text{hop\_depth}(g) \;=\; \min_{p \,\in\, \text{paths}(e \rightarrow d_g)} \max(0, |p|-1).$$
+$$\text{hop\_depth}(g) \;=\; \min_{p \,\in\, \text{paths}(e \rightarrow d_g)}
+\max(0, |p|_E-1),$$
+where $|p|_E$ is the number of edges in the path. Thus a device one firewall
+edge away from the entry point has depth~0, and each additional required
+pivot or zone transition increments the depth.
 A flat scenario has $\text{hop\_depth}(g) = 0$ for every directly reachable
 device; a gateway-centric scenario places back-end services at
 $\text{hop\_depth} \geq 1$; an IT/OT-segmented scenario places OT services
@@ -720,7 +727,7 @@ for $k\geq 1$ unless it can establish and use a new vantage point.
 \begin{figure*}[t]
   \centering
   \fbox{\parbox{0.9\linewidth}{\centering\textit{
-    Fig.~2 placeholder: 6-phase pipeline diagram.\\
+    Draft schematic: 6-phase pipeline diagram.\\
     Phase 1 (topology prior) $\to$ Phase 2 (discovery) $\to$ Phase 3 (per-device triage)
     $\to$ Phase 4 (per-vuln verification) $\to$ Phase 5 (intrusion) $\to$ Phase 6 (network report).
   }}}
@@ -767,7 +774,7 @@ derive one from the CIDR scope.
 \begin{figure}[t]
   \centering
   \fbox{\parbox{0.95\linewidth}{\centering\textit{
-    Fig.~3 placeholder: Phase 3 parallelization — $n$ devices $\to$ $n$ LLM agents
+    Draft schematic: Phase 3 parallelization — $n$ devices $\to$ $n$ LLM agents
     in parallel $\to$ deterministic merge.
   }}}
   \caption{Per-device parallelization. Each micro-agent receives only its
@@ -1052,7 +1059,7 @@ The reported rate is manual proof-oracle success on 13 deployable cases
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~4 placeholder: bar chart,
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart: bar chart,
   F1 and MHR$_2$ for \harnessname, ablations, and Nmap~NSE.}}}
   \caption{Baseline comparison on \systemname. Scanners capture known CVEs but
   miss configuration vulnerabilities and do not establish new vantage points.
@@ -1085,7 +1092,7 @@ full-run oracle result once all 191 cases have completed.
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~5 placeholder:
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart:
   heatmap scenario $\times$ model, cell = weighted Score.}}}
   \caption{Per-scenario Score heatmap. \todo{Note which pattern consistently
   breaks LLMs.}}
@@ -1133,7 +1140,7 @@ context.}
 
 \begin{figure}[t]
   \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~6 placeholder:
+  \fbox{\parbox{0.95\linewidth}{\centering\textit{Draft chart:
   Pareto plot, USD cost vs weighted Score, one point per system (all on
   MiniMax-M2.7).}}}
   \caption{Cost--performance Pareto across systems on MiniMax-M2.7; the
@@ -1155,14 +1162,15 @@ brief quantitative table.}
 \label{sec:discussion}
 
 \paragraph{Where LLMs help, where they don't}
-\systemname{} surfaces an empirical pattern: LLM agents reach high recall on
-misconfigurations, default credentials, and information disclosure, which
-are textually expressible and well represented in their training corpora.
-They consistently underperform on binary industrial protocols (Modbus, CoAP,
-LoRaWAN) and on cross-device inferences that require holding an aggregated
-network view. This suggests a hybrid deployment model: LLM agents for
-configuration auditing, traditional scanners for CVE coverage, and human
-operators for the OT/ICS layer.
+\systemname{} is designed to separate several failure modes that are usually
+collapsed into one binary success signal. In the final analysis we expect this
+separation to show where LLM agents help most (text-rich misconfigurations,
+default credentials, and information disclosure) and where they require
+additional support (binary industrial protocols and cross-device inferences
+that require a persistent network view). The intended deployment model is
+therefore hybrid: LLM agents for configuration auditing, traditional scanners
+for CVE coverage, and human operators or specialised tooling for the OT/ICS
+layer.
 
 \paragraph{Implications for agentic systems}
 The harness's per-device and per-vulnerability micro-agent structure is one
@@ -1232,10 +1240,10 @@ penetration testing agents at \emph{network scale} on IoT infrastructure, and
 guidance and dedicated lateral movement phase keep LLM context tractable while
 explicitly modelling reachability. Holding the LLM constant
 (\cref{sec:setup}) across our pipeline and two ablations, and comparing
-against Nmap NSE as a non-LLM baseline, we isolate the \emph{architectural}
-contribution: topology guidance and a dedicated lateral-movement phase can
-be measured directly through MHR$_k$ and L1--L3 evidence coverage, dimensions
-that binary flag-capture benchmarks conflate.
+against Nmap NSE as a non-LLM baseline, the protocol isolates the
+\emph{architectural} contribution: topology guidance and a dedicated
+lateral-movement phase can be measured directly through MHR$_k$ and L1--L3
+evidence coverage, dimensions that binary flag-capture benchmarks conflate.
 
 \paragraph{Future work}
 (i)~\emph{Multi-model robustness:} extending the architectural comparison to
