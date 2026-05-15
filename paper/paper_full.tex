@@ -248,18 +248,27 @@ is therefore complementary rather than competing.
 Scenario design and ground-truth taxonomy follow three references: the
 OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE
 ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST
-SP\,800-82~Rev.\,3~\cite{nist80082} for segmentation conventions, notably
-the IT/OT split underpinning pattern~P3 (\cref{sec:iotbench:patterns}). On
-the empirical side, the closest IoT security work targets firmware rather
-than deployed networks: Costin~\emph{et al.}~\cite{costin14} performed the
-first large-scale firmware study, \textsc{Firmadyne}~\cite{firmadyne16}
+SP\,800-82~Rev.\,3~\cite{nist80082} for OT security and segmentation
+conventions, notably the IT/OT split underpinning pattern~P3
+(\cref{sec:iotbench:patterns}).
+
+Empirical IoT-security artefacts fall into two adjacent families. First,
+network-traffic datasets such as IoT-23~\cite{iot23},
+TON\_IoT~\cite{toniot20}, and Edge-IIoTset~\cite{edgeiiotset22} provide
+labeled traces for intrusion-detection and anomaly-detection research.
+They are valuable for defensive classifiers, but they are not deployable
+pentest targets with per-vulnerability ground truth, exploit evidence, or
+controllable reachability. Second, firmware-focused work studies
+vulnerable device images: Costin~\emph{et al.}~\cite{costin14} performed a
+large public firmware study, \textsc{Firmadyne}~\cite{firmadyne16}
 introduced dynamic firmware emulation for vulnerability discovery, and
 \textsc{FirmAE}~\cite{firmae20} substantially improved emulation success
 rates. OWASP \textsc{IoTGoat}~\cite{iotgoat} provides a deliberately
-insecure firmware image used as a teaching artefact. These projects
-produce vulnerable images; \systemname\ produces a deployed multi-device
-network with firewall-enforced reachability, the dimension along which we
-evaluate \harnessname.
+insecure OpenWrt-based firmware image used as a teaching artefact. These
+datasets and firmware images are complementary to \systemname: they
+exercise traffic classification or single-device firmware analysis, while
+\systemname\ evaluates LLM agents on deployed multi-device networks with
+firewall-enforced reachability.
 
 \begin{table*}[t]
 \centering
@@ -1207,6 +1216,12 @@ All code, scenarios, ground truth, and run logs are released at
 \bibitem{mitre-ics} MITRE Corporation, ``MITRE ATT\&CK for ICS,'' 2024. [Online]. Available: https://attack.mitre.org/matrices/ics/
 
 \bibitem{nist80082} K.~Stouffer \textit{et al.}, ``Guide to operational technology security,'' National Institute of Standards and Technology, NIST SP\,800-82 Rev.\,3, 2023.
+
+\bibitem{iot23} S.~Garcia, A.~Parmisano, and M.~J.~Erquiaga, ``IoT-23: A labeled dataset with malicious and benign IoT network traffic,'' Stratosphere Laboratory, 2020. [Online]. Available: https://www.stratosphereips.org/datasets-iot23
+
+\bibitem{toniot20} A.~Alsaedi, N.~Moustafa, Z.~Tari, A.~Mahmood, and A.~Anwar, ``TON\_IoT telemetry dataset: A new generation dataset of IoT and IIoT for data-driven intrusion detection systems,'' \textit{IEEE Access}, vol.~8, pp.~165130--165150, 2020.
+
+\bibitem{edgeiiotset22} M.~A.~Ferrag, O.~Friha, D.~Hamouda, L.~Maglaras, and H.~Janicke, ``Edge-IIoTset: A new comprehensive realistic cyber security dataset of IoT and IIoT applications for centralized and federated learning,'' \textit{IEEE Access}, vol.~10, pp.~40281--40306, 2022.
 
 \bibitem{costin14} A.~Costin, J.~Zaddach, A.~Francillon, and D.~Balzarotti, ``A large-scale analysis of the security of embedded firmwares,'' in \textit{Proc. USENIX Security Symp.}, 2014.
 
