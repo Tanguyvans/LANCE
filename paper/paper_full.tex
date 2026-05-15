@@ -533,10 +533,9 @@ mapping is given in Table~\ref{tab:scenarios}.
 
 \begin{table}[t]
 \centering
-\caption{The 15 scenarios of \systemname. \emph{Main} scenarios cover
-the 5 architectural patterns; \emph{Scalability} scenarios stress
-network size; \emph{Hardened} controls ship 0 vulnerabilities to
-measure False Positive rate.}
+\caption{The 13 vulnerability-injected scenarios of \systemname\ (2 hardened
+controls with 0 vulns excluded). \emph{Main} scenarios cover the 5
+architectural patterns; \emph{Scalability} scenarios stress network size.}
 \label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -563,12 +562,7 @@ ID & Pattern / role & Dev. & Vulns & Theme \\
 \texttt{s\_13} & VLAN-segmented       & 17 & 20 & Real Proxmox VLAN bridge (3 VLANs) \\
 \texttt{s\_12} & Smart City (large)   & 35 & 42 & Largest network (34 LXC services) \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Hardened controls (FP rate)}} \\
-\midrule
-\texttt{s\_1h} & P1 Flat (hardened)   & 4  &  0 & s\_1 with vulns removed \\
-\texttt{s\_4h} & P3 ICS (hardened)    & 8  &  0 & s\_4 with vulns removed \\
-\midrule
-\textbf{Total} &                      &\textbf{145} & \textbf{229} & \\
+\textbf{Total} &                      &\textbf{133} & \textbf{229} & \\
 \bottomrule
 \end{tabular}
 \end{table}
