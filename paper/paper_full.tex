@@ -110,7 +110,7 @@ not of the agent: improving the agent alone does not close them.
 
 \noindent\textbf{Contributions.}
 \begin{itemize}
-  \item \textbf{\systemname}: the first reproducible network-scale
+  \item \textbf{\systemname}: a reproducible network-scale
   benchmark for LLM pentest agents on IoT. It ships 15 scenarios
   (10 main covering 5 architectural patterns, 3 scalability stressors
   up to 35 devices, 2 hardened controls for False Positive rate),
@@ -197,15 +197,18 @@ as MQTT, Modbus, LoRaWAN, and CoAP.
 \label{sec:related:bench}
 
 \noindent\textbf{Challenge-level corpora.}
-\textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation
-substrate — 24 in-vitro tasks plus 12 real-world CVE-based exploits with
-scripted flag checkers — and is the corpus behind \textsc{VulnBot},
-\textsc{Pentest-R1}, and \textsc{xOffense}; \textsc{Vulhub}~\cite{vulhub}
-fills the same role for \textsc{CheckMate} with $\sim$100 Docker images
-(one container per CVE). \textsc{CAIBench}~\cite{caibench25} is the
+\textsc{AutoPenBench}~\cite{autopenbench24} is a common evaluation
+substrate — 33 vulnerable Docker-container tasks, split into 22 in-vitro
+tasks and 11 real-world CVE-based tasks, with milestone and flag-based
+scoring — and is used by later systems such as \textsc{Pentest-R1} and
+\textsc{xOffense}; \textsc{VulnBot} also reports against AutoPenBench and
+AI-Pentest-Benchmark. \textsc{Vulhub}~\cite{vulhub} fills a related role
+as a large Docker-Compose collection of reproducible vulnerable
+environments and is used by systems such as \textsc{CheckMate}.
+\textsc{CAIBench}~\cite{caibench25} is the
 broadest academic effort, spanning CTFs, attack-and-defense ranges, and
 knowledge tests; its RCTF2 subset adds $27$ robotics challenges — the
-first cyber-physical inclusion in this family. These corpora can require
+most explicit cyber-physical/robotics inclusion in this family. These corpora can require
 multi-step reasoning, and some challenge environments are richer than a
 single shell. However, their public scoring is challenge- or flag-level:
 they do not provide a per-vulnerability ground truth tied to explicit
@@ -222,7 +225,7 @@ movement, so the gap is not the existence of multi-host cyber ranges.
 Rather, these labs are not packaged as LLM-agent benchmarks: they do not
 ship a per-vulnerability ground-truth schema, hop-depth annotations, or a
 scoring procedure, and they target enterprise AD rather than IoT/OT
-protocols. No prior benchmark therefore combines multi-host reachability,
+protocols. We found no prior benchmark that combines multi-host reachability,
 IoT/OT protocols, per-vulnerability machine-readable ground truth, and
 evidence-level scoring beyond binary flag capture (Table~\ref{tab:related}).
 
@@ -291,7 +294,7 @@ CheckMate~\cite{checkmate25}            & target/challenge & Web/OS  & Vulhub   
 \midrule
 \multicolumn{6}{@{}l}{\emph{Evaluation corpora}} \\
 \midrule
-AutoPenBench~\cite{autopenbench24}      & target/challenge & Web/OS  & 24 in-vitro + 12 CVEs    & no  & flag       \\
+AutoPenBench~\cite{autopenbench24}      & target/challenge & Web/OS  & 22 in-vitro + 11 CVEs    & no  & milestones + flag \\
 NYU CTF Bench~\cite{nyuctfbench24}      & target/challenge & CTF     & 200 Jeopardy challenges  & no  & flag       \\
 Cybench~\cite{cybench24}                & target/challenge & CTF     & curated CTF subset       & no  & flag       \\
 CAIBench / RCTF2~\cite{caibench25}      & target/challenge & mixed   & meta-benchmark           & 27 robotics & CTF  \\
@@ -311,8 +314,8 @@ steps solved. \emph{E2E \%} = fraction of full target/challenge solved
 end-to-end. Values are absolute except where prefixed with ``+'' (relative
 gain vs the immediately preceding baseline row). Rows are not directly
 comparable across corpora: the table makes explicit \emph{where} each
-tool is tested and \emph{what} number it publishes. No prior result is
-reported on a multi-device IoT network with firewall-enforced reachability,
+tool is tested and \emph{what} number it publishes. None of these reported
+results is on a multi-device IoT network with firewall-enforced reachability,
 which is the gap \systemname\ targets.}
 \label{tab:reported}
 \setlength{\tabcolsep}{8pt}
@@ -884,8 +887,9 @@ host-level benchmarks:
   severity weights.
   \item \emph{Multi-Hop Reach:} MHR$_k$ for $k\in\{1,2,3\}$, the
   fraction of ground-truth vulnerabilities at
-  \texttt{hop\_depth}~$\geq k$ that are reached. No prior LLM-pentest
-  benchmark measures network depth explicitly.
+  \texttt{hop\_depth}~$\geq k$ that are reached. Existing LLM-pentest
+  benchmarks generally report target, sub-task, or flag completion rather
+  than recall as a function of network depth.
   \item \emph{Evidence depth:} $L_1$ (detection), $L_2$ (exploitation),
   $L_3$ (exfiltration) coverage; absent from binary flag-capture
   benchmarks.
@@ -1116,7 +1120,7 @@ provider- or host-side telemetry.
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented \systemname, the first reproducible benchmark for evaluating LLM
+We presented \systemname, a reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
 \harnessname, a network-native multi-agent harness whose infrastructure-graph
 guidance and dedicated lateral movement phase keep LLM context tractable while
