@@ -13,6 +13,8 @@
 \usepackage{multirow}
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit}
 \usepackage{xspace}
 \usepackage{verbatim}
 \usepackage[hidelinks,breaklinks=true]{hyperref}
@@ -241,6 +243,70 @@ flows) but \harnessname\ operates on a \emph{live} network: edges are
 validated by actual probes, the LLM proposes the next action, and the graph
 is updated as new hosts are discovered. Classical attack-graph generation
 is therefore complementary rather than competing.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\scriptsize,
+  >=Latex,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
+              minimum height=7mm, fill=gray!6},
+  dev/.style={circle, draw=black!60, very thick, align=center,
+              minimum size=9mm, inner sep=1pt, fill=white},
+  edge/.style={->, thick, draw=black!55},
+  liveedge/.style={->, thick, draw=blue!65},
+  pivotedge/.style={->, very thick, draw=red!70},
+  zlabel/.style={font=\scriptsize\bfseries, text=black!70}
+]
+
+% Static attack-graph side.
+\node[box, minimum width=18mm] (cfg) at (0,0) {host\\configs};
+\node[box, minimum width=15mm, right=3mm of cfg] (cve) {CVEs};
+\node[box, minimum width=17mm, right=3mm of cve] (fw) {firewall\\rules};
+\node[box, minimum width=19mm, below=7mm of cve] (ag) {static\\attack graph};
+\node[box, minimum width=18mm, below=7mm of ag] (states) {reachable\\states};
+\draw[edge] (cfg) |- (ag);
+\draw[edge] (cve) -- (ag);
+\draw[edge] (fw) |- (ag);
+\draw[edge] (ag) -- (states);
+\node[zlabel, above=2mm of cve] {classical};
+
+% Live reachability side.
+\node[dev, fill=red!18] (router) at (4.9,-0.55) {router};
+\node[dev, fill=blue!15] (admin) at (4.25,0.65) {admin};
+\node[dev, fill=blue!15] (web) at (4.1,-1.85) {web};
+\node[dev, fill=orange!20] (mqtt) at (5.75,0.45) {mqtt};
+\node[dev, fill=orange!20] (gw) at (5.95,-0.85) {gw};
+\node[dev, fill=green!20] (plc) at (5.55,-2.05) {PLC};
+\node[dev, fill=green!20] (hmi) at (3.35,-0.95) {HMI};
+
+\node[draw=blue!35, rounded corners=2pt, fit=(admin)(web)(mqtt),
+      inner sep=2.5pt, label={[zlabel]above:IT / services}] {};
+\node[draw=green!45, rounded corners=2pt, fit=(plc)(hmi),
+      inner sep=2.5pt, label={[zlabel]below:OT}] {};
+
+\draw[liveedge] (router) -- (admin);
+\draw[liveedge] (router) -- (web);
+\draw[liveedge] (router) -- (mqtt);
+\draw[pivotedge] (router) -- (gw);
+\draw[pivotedge] (gw) -- (plc);
+\draw[edge] (router) -- (hmi);
+
+\node[box, fill=blue!5, minimum width=20mm] (probe) at (4.15,-3.05) {live probe\\confirms edge};
+\node[box, fill=red!5, minimum width=20mm, right=4mm of probe] (llm) {LLM action\\selects pivot};
+\draw[liveedge] (probe) -- (llm);
+\draw[liveedge] (llm) |- (plc);
+\node[zlabel, above=2mm of router] {MeshScout};
+
+\end{tikzpicture}
+\caption{Static attack graphs versus live reachability. Classical analysis
+computes reachable attacker states from a model of hosts, vulnerabilities,
+and firewall rules. \harnessname{} keeps the reachability abstraction but
+updates the graph during execution from live probes and LLM-selected
+actions; the S4-style segmented topology illustrates how pivots expose
+deeper IoT/OT paths.}
+\label{fig:live-reachability}
+\end{figure}
 
 \subsection{IoT Security Context}
 \label{sec:related:iot}
