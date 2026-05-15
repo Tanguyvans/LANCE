@@ -94,6 +94,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp ouvert sur 192.168.10.1 depuis IoT et OT", "LuCI sans restriction de zone"]
     verification: "curl http://192.168.10.1/"
+    hop_depth: 0
 
   - id: V2
     device: s13-router
@@ -107,6 +108,7 @@ vulnerabilities:
     cve: null
     indicators: ["iptables DROP IoT->OT ne couvre pas UDP", "CoAP UDP 5683 IoT->OT passe"]
     verification: "iptables -L FORWARD -n -v | grep DROP"
+    hop_depth: 0
 
   - id: V3
     device: s13-router
@@ -120,6 +122,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 22/tcp ouvert", "SSH root:password accepté"]
     verification: "ssh root@192.168.10.1"
+    hop_depth: 0
 
   # VLAN10 — Zone IT
   - id: V4
@@ -134,6 +137,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 22/tcp", "SSH admin:admin accepté"]
     verification: "ssh admin@192.168.10.11"
+    hop_depth: 0
 
   - id: V5
     device: s13-admin
@@ -147,6 +151,7 @@ vulnerabilities:
     cve: null
     indicators: ["/home/iot-admin/.ssh/id_ed25519 mode 644"]
     verification: "ls -la /home/iot-admin/.ssh/"
+    hop_depth: 0
 
   - id: V6
     device: s13-ldap
@@ -160,6 +165,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 389/tcp ouvert sans STARTTLS", "Bind anonyme retourne entrées annuaire"]
     verification: "ldapsearch -H ldap://192.168.10.12 -x -b dc=iot,dc=local"
+    hop_depth: 0
 
   - id: V7
     device: s13-monitor
@@ -173,6 +179,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/devices retourne IPs VLAN", "POST /api/exec retourne uid=0(root)"]
     verification: "curl -X POST http://192.168.10.13/api/exec -d '{\"cmd\":\"id\"}'"
+    hop_depth: 0
 
   - id: V8
     device: s13-vpn
@@ -186,6 +193,7 @@ vulnerabilities:
     cve: null
     indicators: ["AllowTcpForwarding yes sans restriction", "Tunnel 192.168.30.x possible depuis IT"]
     verification: "ssh -L 3306:192.168.30.13:3306 admin@192.168.10.14"
+    hop_depth: 0
 
   # VLAN20 — Zone IoT
   - id: V9
@@ -200,6 +208,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1883/tcp sans auth", "Topic vlan/ot/credentials expose db_pass, api_key"]
     verification: "mosquitto_sub -h 192.168.20.11 -t '#' -v -C 5"
+    hop_depth: 1
 
   - id: V10
     device: s13-mqtt
@@ -213,6 +222,7 @@ vulnerabilities:
     cve: null
     indicators: ["Topic vlan/ot/credentials expose {db_pass, redis_pass, hmi_api_key}"]
     verification: "mosquitto_sub -h 192.168.20.11 -t 'vlan/ot/credentials' -C 1"
+    hop_depth: 1
 
   - id: V11
     device: s13-gw1
@@ -226,6 +236,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/devices retourne IPs VLAN30 OT", "GET /admin sans authentification"]
     verification: "curl http://192.168.20.12/api/devices"
+    hop_depth: 1
 
   - id: V12
     device: s13-nodered
@@ -239,6 +250,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1880/tcp sans auth sur 192.168.20.16", "Flow MQTT bridge envoie commandes vers OT .30.x"]
     verification: "curl http://192.168.20.16:1880/admin"
+    hop_depth: 1
 
   - id: V13
     device: s13-cam
@@ -252,6 +264,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp sur 192.168.20.15", "GET /admin sans auth", "Flux vidéo /snapshot/"]
     verification: "curl http://192.168.20.15/admin"
+    hop_depth: 1
 
   # VLAN30 — Zone OT
   - id: V14
@@ -266,6 +279,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 502/tcp sur 192.168.30.11", "Lecture/écriture registres Modbus sans auth"]
     verification: "nmap -p 502 --script modbus-discover 192.168.30.11"
+    hop_depth: 2
 
   - id: V15
     device: s13-hmi
@@ -279,6 +293,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/status retourne état PLC sur 192.168.30.12", "POST /api/exec retourne uid=0"]
     verification: "curl http://192.168.30.12/api/status"
+    hop_depth: 2
 
   - id: V16
     device: s13-db-ot
@@ -292,6 +307,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 3306/tcp sur 192.168.30.13", "MySQL root sans mdp"]
     verification: "mysql -h 192.168.30.13 -u root -e 'SHOW DATABASES'"
+    hop_depth: 2
 
   - id: V17
     device: s13-redis
@@ -305,6 +321,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 6379/tcp sur 192.168.30.14", "Accessible depuis VLAN10 IT (port non filtré)"]
     verification: "redis-cli -h 192.168.30.14 KEYS '*'"
+    hop_depth: 2
 
   - id: V18
     device: s13-redis
@@ -318,6 +335,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET plc:admin_pass retourne AdminOT!2024", "GET hmi:api_token retourne JWT"]
     verification: "redis-cli -h 192.168.30.14 GET plc:admin_pass"
+    hop_depth: 2
 
   - id: V19
     device: s13-ftp-ot
@@ -331,6 +349,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 21/tcp sur 192.168.30.15", "FTP anonyme", "/config/plc.conf expose adresses Modbus"]
     verification: "ftp -n 192.168.30.15"
+    hop_depth: 2
 
   - id: V20
     device: s13-coap
@@ -344,6 +363,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 5683/udp ouvert sur 192.168.20.14", "UDP non filtré sur FORWARD IoT->OT"]
     verification: "coap-client -m get coap://192.168.20.14/.well-known/core"
+    hop_depth: 1
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

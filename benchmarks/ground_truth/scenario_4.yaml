@@ -57,6 +57,7 @@ vulnerabilities:
       - "/etc/iot/config.json contient des credentials réseau"
     verification: "ssh admin@192.168.100.11 (password: admin)"
     confidence_required: high
+    hop_depth: 0
 
   - id: V2
     device: s4-webapp
@@ -81,6 +82,7 @@ vulnerabilities:
       - "/uploads/config_backup.json expose credentials PLC et DB"
     verification: "curl http://192.168.100.12/uploads/shell.php"
     confidence_required: high
+    hop_depth: 0
 
   - id: V3
     device: s4-mqtt
@@ -102,6 +104,7 @@ vulnerabilities:
       - "Topics process exposés (température, alarmes, commandes)"
     verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v"
     confidence_required: high
+    hop_depth: 0
 
   - id: V4
     device: s4-lora-gw
@@ -122,6 +125,7 @@ vulnerabilities:
       - "Dropbear version < 2024.84 (Terrapin)"
     verification: "curl http://192.168.100.14/admin"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V5
     device: s4-plc
@@ -146,6 +150,7 @@ vulnerabilities:
       - "/opt/plc/config/plc_config.json accessible — credentials SCADA exposés"
     verification: "python3 -c \"from pymodbus.client import ModbusTcpClient; c=ModbusTcpClient('192.168.100.15'); c.connect(); print(c.read_holding_registers(0,10))\""
     confidence_required: high
+    hop_depth: 2
 
   - id: V6
     device: s4-hmi
@@ -166,6 +171,7 @@ vulnerabilities:
       - "Directory listing exposant /config/ et /backup/"
     verification: "curl http://192.168.100.16/"
     confidence_required: medium
+    hop_depth: 2
 
   - id: V7
     device: s4-historian
@@ -188,6 +194,7 @@ vulnerabilities:
       - "bind-address = 0.0.0.0 dans la config MariaDB"
     verification: "mysql -h 192.168.100.17 -u root -e 'SELECT * FROM smartcity.users'"
     confidence_required: high
+    hop_depth: 2
 
   - id: V8
     device: s4-router
@@ -207,6 +214,7 @@ vulnerabilities:
       - "Port 80/tcp ouvert sur WAN (interface LuCI)"
     verification: "nmap -p 23,80 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V9
     device: s4-router
@@ -229,6 +237,7 @@ vulnerabilities:
       - "nmap -sn 192.168.100.0/24 découvre IT et OT dans la même plage"
     verification: "nmap -sn 192.168.100.0/24 | grep -E '100\\.1[0-9]'"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V10
     device: s4-admin
@@ -250,6 +259,7 @@ vulnerabilities:
       - "KexAlgorithms inclut diffie-hellman-group1-sha1"
     verification: "ssh-audit 192.168.100.11"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V11
     device: s4-lora-gw
@@ -271,6 +281,7 @@ vulnerabilities:
       - "POST /update retourne 200 sans authentification"
     verification: "curl http://192.168.100.14/firmware/ && curl -X POST http://192.168.100.14/update"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V12
     device: s4-webapp
@@ -291,6 +302,7 @@ vulnerabilities:
       - "GET /check.php?url=http://192.168.100.17:3306/ retourne le banner MariaDB"
     verification: "curl 'http://192.168.100.12/check.php?url=http://192.168.100.17:3306/'"
     confidence_required: high
+    hop_depth: 0
 
   - id: V13
     device: s4-webapp
@@ -309,6 +321,7 @@ vulnerabilities:
       - "GET /robots.txt retourne Disallow pour /admin/, /backup/, /config/, /.env"
     verification: "curl http://192.168.100.12/robots.txt"
     confidence_required: low
+    hop_depth: 0
 
   - id: V14
     device: s4-admin
@@ -326,6 +339,7 @@ vulnerabilities:
       - "Connexion TCP port 22 retourne SSH-2.0-OpenSSH_X.Xp1 Debian-..."
     verification: "nc -w2 192.168.100.11 22"
     confidence_required: low
+    hop_depth: 0
 
   - id: V15
     device: s4-lora-gw
@@ -344,6 +358,7 @@ vulnerabilities:
       - "GET /robots.txt retourne Disallow pour /admin/, /backup/, /config/, /.env"
     verification: "curl http://192.168.100.14/robots.txt"
     confidence_required: low
+    hop_depth: 1
 
   - id: V16
     device: s4-hmi
@@ -363,6 +378,7 @@ vulnerabilities:
       - "GET /config/app.config retourne db_password, api_key"
     verification: "curl http://192.168.100.16/config/app.config"
     confidence_required: medium
+    hop_depth: 2
 
   - id: V17
     device: s4-mqtt
@@ -380,6 +396,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V18
     device: s4-lora-gw
@@ -398,6 +415,7 @@ vulnerabilities:
       - "ssh-audit détecte Terrapin"
     verification: "ssh-audit 192.168.100.14"
     confidence_required: high
+    hop_depth: 1
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

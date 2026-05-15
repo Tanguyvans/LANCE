@@ -50,6 +50,7 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V2
     device: s9-mqtt-1
@@ -70,6 +71,7 @@ vulnerabilities:
       - "Topics smartcity/admin/credentials accessibles"
     verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v -C 3"
     confidence_required: high
+    hop_depth: 0
 
   - id: V3
     device: s9-mqtt-1
@@ -88,6 +90,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.11 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V4
     device: s9-mqtt-2
@@ -108,6 +111,7 @@ vulnerabilities:
       - "Connexion réussie avec test:test"
     verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t '#' -v -C 3"
     confidence_required: high
+    hop_depth: 0
 
   - id: V5
     device: s9-mqtt-2
@@ -127,6 +131,7 @@ vulnerabilities:
       - "Topic smartcity/config/network expose la config réseau"
     verification: "mosquitto_sub -h 192.168.100.12 -u test -P test -t 'smartcity/admin/#' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V6
     device: s9-mqtt-3
@@ -146,6 +151,7 @@ vulnerabilities:
       - "Connexion possible sans username/password"
     verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v -C 3"
     confidence_required: high
+    hop_depth: 0
 
   - id: V7
     device: s9-mqtt-3
@@ -163,6 +169,7 @@ vulnerabilities:
       - "Topics smartcity/admin/credentials accessibles anonymement"
     verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V8
     device: s9-coap
@@ -185,6 +192,7 @@ vulnerabilities:
       - "POST coap://192.168.100.14/actuator/valve contrôle un actionneur"
     verification: "coap-client -m get coap://192.168.100.14/config"
     confidence_required: high
+    hop_depth: 0
 
   - id: V9
     device: s9-coap
@@ -203,6 +211,7 @@ vulnerabilities:
       - "POST coap://192.168.100.14/actuator/valve accepté sans auth"
     verification: "coap-client -m post coap://192.168.100.14/actuator/valve"
     confidence_required: high
+    hop_depth: 0
 
   - id: V10
     device: s9-snmp
@@ -224,6 +233,7 @@ vulnerabilities:
       - "Community 'private' permet l'écriture (rwcommunity)"
     verification: "snmpwalk -v2c -c public 192.168.100.15"
     confidence_required: high
+    hop_depth: 0
 
   - id: V11
     device: s9-snmp
@@ -243,6 +253,7 @@ vulnerabilities:
       - "sysContact = admin@smartcity.local"
     verification: "snmpget -v2c -c public 192.168.100.15 sysLocation.0"
     confidence_required: low
+    hop_depth: 0
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

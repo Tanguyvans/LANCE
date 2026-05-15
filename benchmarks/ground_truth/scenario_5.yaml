@@ -59,6 +59,7 @@ vulnerabilities:
       - "GET /config/camera.conf expose credentials NVR (ubnt/ubnt)"
     verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/info"
     confidence_required: high
+    hop_depth: 0
 
   - id: V2
     device: s5-cam2
@@ -79,6 +80,7 @@ vulnerabilities:
       - "GET /api/info expose credentials"
     verification: "curl http://192.168.100.12/api/info"
     confidence_required: high
+    hop_depth: 0
 
   - id: V3
     device: s5-nvr
@@ -102,6 +104,7 @@ vulnerabilities:
       - "/opt/nvr/logs/nvr.log — historique des accès"
     verification: "ssh ubnt@192.168.100.13 (password: ubnt)"
     confidence_required: high
+    hop_depth: 1
 
   - id: V4
     device: s5-access-ctrl
@@ -123,6 +126,7 @@ vulnerabilities:
       - "Directory listing activé sur /backup/ et /config/"
     verification: "curl http://192.168.100.14/"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V5
     device: s5-hvac
@@ -144,6 +148,7 @@ vulnerabilities:
       - "Directory listing activé"
     verification: "curl http://192.168.100.15/"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V6
     device: s5-mqtt
@@ -166,6 +171,7 @@ vulnerabilities:
       - "Topic smartcity/admin/credentials expose db_pass et api_key"
     verification: "mosquitto_sub -h 192.168.100.16 -t '#' -v"
     confidence_required: high
+    hop_depth: 0
 
   - id: V7
     device: s5-router
@@ -185,6 +191,7 @@ vulnerabilities:
       - "Port 80/tcp ouvert sur WAN (interface LuCI)"
     verification: "nmap -p 23,80 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V8
     device: s5-hvac
@@ -207,6 +214,7 @@ vulnerabilities:
       - "Lecture/écriture des objets BACnet sans authentification"
     verification: "nmap -sU -p 47808 192.168.100.15"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V9
     device: s5-cam1
@@ -224,6 +232,7 @@ vulnerabilities:
       - "Header Server contient nginx/ suivi d'un numéro de version"
     verification: "curl -sI http://192.168.100.11/ | grep Server"
     confidence_required: low
+    hop_depth: 0
 
   - id: V10
     device: s5-web
@@ -241,6 +250,7 @@ vulnerabilities:
       - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
     verification: "curl -sI http://192.168.100.17/ | grep -iE 'X-Frame|Strict-Transport'"
     confidence_required: low
+    hop_depth: 0
 
   - id: V11
     device: s5-access-ctrl
@@ -260,6 +270,7 @@ vulnerabilities:
       - "GET /config/app.config retourne db_password, api_key"
     verification: "curl http://192.168.100.14/config/app.config"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V12
     device: s5-hvac
@@ -279,6 +290,7 @@ vulnerabilities:
       - "GET /config/app.config retourne db_password, api_key"
     verification: "curl http://192.168.100.15/config/app.config"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V13
     device: s5-web
@@ -298,6 +310,7 @@ vulnerabilities:
       - "GET /config/app.config retourne db_password, api_key"
     verification: "curl http://192.168.100.17/config/app.config"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V14
     device: s5-mqtt
@@ -315,6 +328,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.16 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V15
     device: s5-web
@@ -333,6 +347,7 @@ vulnerabilities:
       - "GET /backup/ retourne un listing de fichiers"
     verification: "curl http://192.168.100.17/backup/"
     confidence_required: medium
+    hop_depth: 0
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

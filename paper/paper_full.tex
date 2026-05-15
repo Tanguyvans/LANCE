@@ -62,12 +62,21 @@
 \maketitle
 
 \begin{abstract}
-\todo{Abstract — to write once the \harnessname{} evaluation runs are
-complete. Expected structure: (1) network-scale gap on IoT,
-(2) \systemname{} benchmark (15 scenarios, 229 vulns), (3) \harnessname{}
-six-phase harness + L1/L2/L3 evidence + MHR$_k$, (4) headline result
-vs baselines (Nmap NSE, PentestGPT, CAI A/B, VulnBot), (5) artifact
-release.}
+Autonomous LLM penetration-testing agents are typically evaluated on
+single hosts, yet IoT deployments expose risk through network reachability:
+gateways, brokers, cameras, and OT services form attack paths whose security
+depends on pivots across devices. We present \systemname, a reproducible
+network-scale IoT benchmark with 15 Proxmox/Ansible scenarios, 145 devices,
+and 229 injected vulnerabilities mapped to OWASP IoT Top 10 and MITRE
+ATT\&CK for ICS. We also introduce \harnessname, a six-phase network-native
+harness that combines topology priors, active discovery, per-device triage,
+per-vulnerability verification, intrusion attempts, and report generation.
+The benchmark adds two metrics absent from single-host evaluations:
+evidence-level coverage (L1 detection, L2 exploitation, L3 exfiltration) and
+Multi-Hop Reach (MHR$_k$), which measures recall on vulnerabilities that
+require at least $k$ pivots or zone transitions. We describe the benchmark,
+evaluator, and experimental protocol, and use them to isolate architectural
+effects independently from model choice.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -114,11 +123,11 @@ not of the agent: improving the agent alone does not close them.
   \item \textbf{L1/L2/L3 evidence scoring and MHR$_k$}: metrics that
   separate detection, exploitation, and exfiltration, and that measure
   recall as a function of firewall-hop distance.
-  \item \textbf{Empirical study} holding the LLM constant across
-  systems to isolate architectural contributions. We compare
-  \harnessname{} against four baselines (Nmap NSE, PentestGPT,
-  CAI in two scope variants, VulnBot) plus two ablations of our own
-  pipeline.
+  \item \textbf{Evaluation protocol} holding the LLM constant across
+  systems to isolate architectural contributions. The primary comparison
+  uses \harnessname{}, two internal ablations, and Nmap NSE; optional
+  LLM-agent baselines are treated as adapters when their tool interfaces
+  can be reproduced under the same model and budget.
 \end{itemize}
 
 All artifacts (Ansible playbooks, ground truth, evaluator, run logs)
@@ -387,7 +396,8 @@ gap analysis in \cref{sec:related}:
   injected idempotently with no manual post-deployment steps.
   \item \textbf{Architectural diversity.} Scenarios span five network
   patterns (\cref{fig:patterns}) with distinct attacker reachability
-  graphs enforced by OpenWrt firewall rules, not just by service labels.
+  graphs encoded in the topology metadata and, for segmented/VLAN cases,
+  enforced by OpenWrt firewall rules rather than service labels alone.
   \item \textbf{Protocol coverage.} Each scenario mixes multiple IoT and
   OT protocols (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus
   standard SSH/HTTP/FTP/Telnet) to exercise protocol-specific reasoning.
@@ -416,9 +426,9 @@ gap analysis in \cref{sec:related}:
     Fig.~1 placeholder: five topology diagrams side-by-side.\\
     (Flat)~— (Gateway-centric)~— (Segmented IT/OT)~— (Hub-star)~— (Edge-cloud)
   }}}
-  \caption{The five architectural patterns in \systemname. Each pattern is enforced
-  by OpenWrt firewall rules that constrain the attacker's reachability from the
-  entry point, not by service labels alone.}
+  \caption{The five architectural patterns in \systemname. Reachability is
+  encoded in the scenario topology and enforced by OpenWrt firewall rules in
+  the segmented/VLAN cases.}
   \label{fig:patterns}
 \end{figure*}
 
@@ -440,11 +450,11 @@ Concretely:
   unreachable without edge compromise.
 \end{enumerate}
 
-\systemname{} ships 15 scenarios organised on two axes: 10 \emph{main}
+\systemname{} ships 15 scenarios organised on three axes: 10 \emph{main}
 scenarios that instantiate the 5 architectural patterns above (with
 small-to-medium device counts, 4--8 devices each), 3 \emph{scalability}
-scenarios that stress network size (15, 17, and 35 devices) while
-re-using patterns P3/P5, and 2 \emph{hardened controls} that ship
+scenarios that stress network size (15, 17, and 35 devices) using logical
+multi-zone and real-VLAN variants, and 2 \emph{hardened controls} that ship
 identical topologies to s\_1 and s\_4 \emph{without} any injected
 vulnerability, used to measure agent False Positive rate. The full
 mapping is given in Table~\ref{tab:scenarios}.
@@ -577,24 +587,22 @@ The evaluator (\S\,\ref{sec:harness:report} integrates results into Phase~6)
 matches each LLM finding against ground truth in three ordered passes, with
 each pass consumed at most once per GT entry: (1)~exact CVE match;
 (2)~\texttt{(ip, vuln\_type)} with type canonicalised through the taxonomy
-(\S\ref{sec:harness:taxonomy}); (3)~\texttt{(ip, category)}. Findings that
-match none of the three passes are counted as False Positives (no
-severity-only fallback, to avoid spurious matches). Severity weights are
+(\S\ref{sec:harness:taxonomy}); (3)~a last-resort \texttt{(ip, severity)}
+fallback for findings whose type string is unknown but whose affected host
+and impact match a GT entry. Findings that match none of the three passes are
+counted as False Positives. Severity weights are
 $w = \{\text{critical}{=}4,\text{high}{=}3,\text{medium}{=}2,\text{low}{=}1\}$;
-loose category matches (pass~3) apply $0.5\times$, severity mismatches
+loose fallback matches (pass~3) apply $0.5\times$, severity mismatches
 within an otherwise valid match apply $0.75\times$.
 The composite score is the weighted True-Positive sum normalized by
 $\sum_{g \in \text{GT}} w(g)$.
 
 \paragraph{Severity-aware dedup}
-When two LLM findings collide on \texttt{(ip, type, port)}, the evaluator
-retains the entry with the \emph{lower} reported severity. This
-counter-intuitive rule corrects for an empirical bias of LLM agents
-toward severity inflation (see \cref{sec:eval:failures}): in our
-pilot calibration runs (3 scenarios, 3 models, $\sim$N=120 colliding
-pairs), the lower-severity entry agreed with the injected severity in
-the majority of cases; we report the exact figure in
-\cref{sec:eval:failures}.
+Before evaluation, the Phase~3 aggregation step canonicalises vulnerability
+types, removes known noise classes, and deduplicates collisions on
+\texttt{(ip, type, port)} by retaining the \emph{lower} reported severity.
+This conservative rule counteracts the severity inflation we observed in
+pilot runs and prevents duplicate findings from increasing match scores.
 
 \paragraph{Evidence levels}
 Beyond match accuracy, the evaluator tracks, per True Positive, the deepest
@@ -611,18 +619,20 @@ Let $G=(V,E)$ be the firewall-permitted reachability graph (edges are
 firewall-allowed protocol flows from \cref{sec:harness:phase1}) and let
 $e \in V$ be the attacker entry point (the subnet ingress). For each
 ground-truth vulnerability $g$ attached to device $d_g \in V$, we define its
-\emph{hop depth} as the length of the shortest firewall-permitted path:
-$$\text{hop\_depth}(g) \;=\; \min_{p \,\in\, \text{paths}(e \rightarrow d_g)} |p|.$$
-A flat scenario has $\text{hop\_depth}(g) = 1$ for every device; a
-gateway-centric scenario has back-end services at $\text{hop\_depth} = 2$
-(entry $\to$ gateway $\to$ service); an IT/OT-segmented scenario has the OT
-zone at $\text{hop\_depth} \geq 3$. We then define the Multi-Hop Reach at
-depth $k$ as the recall restricted to deep ground-truth findings:
+\emph{hop depth} as the number of required pivots or zone transitions from
+the entry point. Directly reachable vulnerabilities have
+$\text{hop\_depth}=0$:
+$$\text{hop\_depth}(g) \;=\; \min_{p \,\in\, \text{paths}(e \rightarrow d_g)} \max(0, |p|-1).$$
+A flat scenario has $\text{hop\_depth}(g) = 0$ for every directly reachable
+device; a gateway-centric scenario places back-end services at
+$\text{hop\_depth} \geq 1$; an IT/OT-segmented scenario places OT services
+at $\text{hop\_depth} \geq 2$. We then define the Multi-Hop Reach at depth
+$k$ as the recall restricted to deep ground-truth findings:
 $$\text{MHR}_k \;=\; \frac{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k \,\wedge\, g \in \text{TP}\}|}{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k\}|}.$$
-MHR$_1$ is the raw recall; MHR$_2$ and MHR$_3$ are the recall on
-behind-pivot findings. A single-host agent run on the perimeter IP can only
-reach hop-depth $1$ vulnerabilities, so its MHR$_k$ for $k\geq 2$ is $0$ by
-construction.
+Raw recall is reported separately as Task Completion; MHR$_1$, MHR$_2$, and
+MHR$_3$ measure progressively deeper behind-pivot findings. A single-host
+agent run on only directly exposed hosts is expected to collapse on MHR$_k$
+for $k\geq 1$ unless it can establish and use a new vantage point.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §5 Harness
@@ -807,43 +817,35 @@ architectures requires the model variable to be held constant.
 CAI's specialised \texttt{alias1} model (security-fine-tuned, paywalled)
 is intentionally not used: this study addresses the architecture axis,
 not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps
-the combined API cost at zero under our research subscription, enabling
-the full $k{=}3$-run variance estimation across all systems and
-scenarios without budget trade-offs.
+out-of-pocket cost bounded under our research subscription, enabling
+the full $k{=}3$-run variance estimation across systems and scenarios
+without budget trade-offs.
 
 \paragraph{Baselines}
-We compare our pipeline against four architectural slots (three
-LLM-based and one non-LLM):
+The core evaluation compares \harnessname{} against two internal ablations
+and one non-LLM scanner baseline. External LLM pentest frameworks are
+discussed as related work; we only include them in quantitative tables when
+their tool interface can be adapted to the same model, scenario scope, and
+turn budget without changing their architecture.
 
 \begin{itemize}
-  \item \textbf{Single-agent LLM:} \textsc{PentestGPT}~\cite{pentestgpt24}
-  in autonomous mode, the canonical USENIX'24 reference.
-  \item \textbf{Multi-agent LLM (no infrastructure graph):}
-  \textsc{CAI}~\cite{cai25}. We test two variants: \emph{A1} per-IP
-  (one independent CAI session per ground-truth IP, no shared state) and
-  \emph{B} CIDR-scope (a single CAI session given the full \texttt{/24},
-  allowed to discover hosts and pivot via \texttt{LinuxCmd} primitives).
-  Both variants receive the same total turn budget as our pipeline.
-  \item \textbf{Multi-agent LLM with task-graph:}
-  \textsc{VulnBot}~\cite{vulnbot25}, the most structurally similar
-  competitor. VulnBot's Penetration Task Graph (PTG) is a DAG of
-  \emph{tasks} (action dependencies), to be contrasted with our
-  infrastructure graph of \emph{devices} (firewall-enforced
-  reachability). Both are ``graph-based'' but encode orthogonal
-  abstractions.
-  \item \textbf{Non-LLM scanner:} Nmap with all NSE scripts
+  \item \textbf{\harnessname{}--w/o-Phase~1} disables the topology prior
+  (\texttt{--phases 2 3 4 5 6}), testing the value of infrastructure-graph
+  guidance.
+  \item \textbf{\harnessname{}--w/o-Phase~5} disables the intrusion phase
+  (\texttt{--phases 1 2 3 4 6}), testing the value of structured multi-hop
+  lateral movement.
+  \item \textbf{Nmap NSE} runs Nmap with all NSE scripts
   (\texttt{--script=default,vuln,auth}) against the same target CIDR.
   Scanner outputs are converted to the evaluator's JSON schema.
 \end{itemize}
 
 \paragraph{Internal ablations}
-Two ablations isolate the contribution of our two key design choices:
-(i)~\harnessname--w/o-Phase~1 disables the topology prior
-(\texttt{--phases 2 3 4 5 6}), testing the value of infrastructure-graph
-guidance; (ii)~\harnessname--w/o-Phase~5 disables the intrusion phase
-(\texttt{--phases 1 2 3 4 6}), testing the value of structured multi-hop
-lateral movement (the only producer of $L_3$ evidence and of MHR$_k$
-findings for $k\geq 2$, \cref{sec:harness:phase5}).
+The two ablations above isolate our key design choices: topology-guided
+planning and a dedicated lateral-movement phase. Phase~5 is the only phase
+that intentionally establishes new vantage points, so removing it should
+primarily affect $L_3$ evidence and MHR$_k$ for $k\geq 1$
+(\cref{sec:harness:phase5}).
 
 \paragraph{Variance}
 Each (system, scenario) cell is run $k{=}3$ times. We report mean, standard
@@ -852,8 +854,8 @@ deviation, and 95\% bootstrap confidence intervals. Pairwise differences
 weighted Score per scenario. \emph{Power caveat:} with $n_1=n_2=3$, the
 two-sided Mann--Whitney $U$ test has a minimum reachable $p$-value of
 $0.10$, so individual per-scenario comparisons are indicative rather than
-conclusive. We mitigate this by aggregating across the seven scenarios
-(combined $n=21$ per system) for the headline cross-system tests, where
+conclusive. We mitigate this by aggregating across the ten main scenarios
+(combined $n=30$ per system) for the headline cross-system tests, where
 power is sufficient. This protocol still exceeds the single-run reporting
 of PentestGPT~\cite{pentestgpt24}, AutoPentester~\cite{autopentester25},
 AutoPenBench~\cite{autopenbench24}, and CAI~\cite{cai25}, and matches the
@@ -886,9 +888,10 @@ host-level benchmarks:
 \end{itemize}
 
 \paragraph{Compute and budget}
-All runs consume a combined API budget under \$NNN, bounded by per-phase turn
-caps and the concurrency limit in Phase~4.
-\todo{Insert exact budget after all runs complete (freeze 2 May).}
+All runs are bounded by per-phase turn caps and the concurrency limit in
+Phase~4. We report prompt/completion tokens, token-estimated USD cost, and
+actual out-of-pocket cost separately, because subscription-backed providers
+can make the latter lower than per-token estimates.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
@@ -905,15 +908,15 @@ caps and the concurrency limit in Phase~4.
 Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over the
 10 main scenarios $\times$ 3 runs. The 3 scalability stressors and
 2 hardened controls are reported separately in
-\cref{sec:eval:arch,sec:eval:failures}. All LLM systems use \texttt{MiniMax-M2.7}
+\cref{sec:eval:arch} and \cref{sec:eval:failures}. All LLM systems use \texttt{MiniMax-M2.7}
 (cf.~\cref{sec:setup}); Nmap NSE is the non-LLM lower bound.
 \emph{Task Completion} is the network-scale analogue of the sub-task
 completion rate reported by PentestGPT, VulnBot, AutoPentester, and
 xOffense (\S\ref{sec:eval:overall}). MHR$_k$ measures the fraction of
 ground-truth vulnerabilities at \texttt{hop\_depth}~$\geq k$ that were
 reached; ``--'' indicates no GT entries at that depth. Cells pre-filled with
-\texttt{0.00} are architecturally impossible: single-host LLMs and scanners
-cannot pivot across firewall boundaries by construction.}
+\texttt{0.00} indicate configurations that do not establish new vantage
+points and therefore cannot reach deeper zones by construction.}
 \label{tab:main}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -925,14 +928,9 @@ System & TC & Prec. & F1 & Score & MHR$_1$ & MHR$_2$ & MHR$_3$ & Tokens (M) & US
 \midrule
 \textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
 \harnessname\ w/o Phase~1 (no infra graph)      & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
-\harnessname\ w/o Phase~5 (no intrusion)        & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
+\harnessname\ w/o Phase~5 (no intrusion)        & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & 0.00    & \todo{} & \todo{} \\
 \midrule
-CAI~\cite{cai25} (Variant A1, per-IP)           & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
-CAI~\cite{cai25} (Variant B, CIDR scope)        & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
-VulnBot~\cite{vulnbot25} (multi-agent + PTG)    & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
-PentestGPT~\cite{pentestgpt24} (single-agent)   & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & \todo{} & \todo{} \\
-\midrule
-Nmap NSE (non-LLM scanner)                      & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & --      & --     \\
+Nmap NSE (non-LLM scanner)                      & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & 0.00    & --      & --     \\
 \bottomrule
 \end{tabular}
 
@@ -944,10 +942,8 @@ PentestGPT, AutoPentester, AutoPenBench, and CAI, and matches the multi-run
 averaging of VulnBot and Pentest-R1.}
 \end{table*}
 
-\todo{Write §7.1 prose — headline finding: \harnessname\ achieves MHR$_2 \approx
-$XX\%, while all baselines collapse to near-zero on multi-hop vulnerabilities.
-F1 gap to nearest baseline (VulnBot) is ZZ percentage points. Variance across
-3 runs stays under YY\%.}
+\todo{Write §7.1 prose after final runs. Report headline F1/Score, MHR$_1$--MHR$_3$,
+and whether Phase~1/Phase~5 ablations explain the gap.}
 
 \subsection{Network-scale gap vs baselines}
 \label{sec:eval:baselines}
@@ -955,18 +951,17 @@ F1 gap to nearest baseline (VulnBot) is ZZ percentage points. Variance across
 \begin{figure}[t]
   \centering
   \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~4 placeholder: bar chart,
-  F1 and MHR$_2$ for \harnessname\ vs CAI (A/B), VulnBot, PentestGPT, Nmap~NSE.}}}
+  F1 and MHR$_2$ for \harnessname, ablations, and Nmap~NSE.}}}
   \caption{Baseline comparison. Scanners capture known CVEs but miss
-  configuration vulnerabilities. Single-host LLM agents (PentestGPT, CAI~A1)
-  cannot pivot across firewall boundaries. CAI~B (given the full CIDR) and
-  VulnBot (multi-agent + task-graph) approach our pipeline on direct findings
-  but collapse on multi-hop reach (MHR$_2$, MHR$_3$).}
+  configuration vulnerabilities and do not establish new vantage points.
+  The Phase~5 ablation isolates the value of explicit lateral movement on
+  multi-hop reach (MHR$_1$--MHR$_3$).}
   \label{fig:baselines}
 \end{figure}
 
-\todo{Write §7.2 — explicit narrative: (i) scanners win on CVE category,
-(ii) LLMs win on misconfig/default-creds, (iii) single-host LLMs adapted to
-network fall behind native harness on F1 by ZZ\%.}
+\todo{Write §7.2 — explicit narrative: (i) scanners win on CVE/category
+coverage where scripts exist, (ii) LLM agents win on misconfig/default-creds,
+(iii) Phase~5 determines how much recall survives beyond direct reachability.}
 
 \subsection{Per-architecture analysis}
 \label{sec:eval:arch}
@@ -1000,11 +995,6 @@ System & $L_1$ (detect) & $L_2$ (exploit) & $L_3$ (exfiltrate) \\
 \textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} \\
 \harnessname\ w/o Phase~5                       & \todo{} & \todo{} & 0.00 \\
 \midrule
-CAI (Variant A1)~\cite{cai25}                   & \todo{} & \todo{} & 0.00 \\
-CAI (Variant B)~\cite{cai25}                    & \todo{} & \todo{} & \todo{} \\
-VulnBot~\cite{vulnbot25}                        & \todo{} & \todo{} & \todo{} \\
-PentestGPT~\cite{pentestgpt24}                  & \todo{} & \todo{} & 0.00 \\
-\midrule
 Nmap NSE                                        & --      & --      & --   \\
 \bottomrule
 \end{tabular}
@@ -1037,9 +1027,9 @@ context.}
 \end{figure}
 
 \todo{Write §7.6 — categorize failure modes: (a) hallucinated findings on
-devices with no services, (b) missed vulnerabilities on binary protocols,
-(c) over-reporting info-disclosure without severity calibration. Brief
-quantitative table.}
+hardened controls, (b) missed vulnerabilities on binary protocols,
+(c) over-reporting info-disclosure without severity calibration. Include a
+brief quantitative table.}
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
@@ -1109,8 +1099,9 @@ to exceed the incremental misuse risk.
 No human subjects are involved. No personal data is collected or processed.
 
 \paragraph{LLM costs and environmental footprint}
-All reported experiments together consume an estimated \todo{X} kWh and
-cost under \todo{USD Y} in API billing.
+We report token-estimated cost, actual API billing, and wall-clock time with
+the experimental results. Energy usage is not claimed unless measured from
+provider- or host-side telemetry.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §10 Conclusion
@@ -1122,21 +1113,17 @@ We presented \systemname, the first reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
 \harnessname, a network-native multi-agent harness whose infrastructure-graph
 guidance and dedicated lateral movement phase keep LLM context tractable while
-explicitly modelling firewall-enforced reachability. Holding the LLM
-constant (\cref{sec:setup}) across our pipeline, two ablations, and
-five external baselines (CAI~A1 per-IP, CAI~B CIDR-scope, VulnBot,
-PentestGPT, Nmap NSE), we isolate the \emph{architectural}
-contribution:
-\harnessname\ outperforms the single-host LLM agents on multi-hop reach
-(MHR$_2$, MHR$_3$) by a margin that collapses near zero for every
-single-host baseline by construction, and demonstrates that the L1--L3
-evidence spectrum exposes architectural differences that binary
-flag-capture benchmarks conflate.
+explicitly modelling reachability. Holding the LLM constant
+(\cref{sec:setup}) across our pipeline and two ablations, and comparing
+against Nmap NSE as a non-LLM baseline, we isolate the \emph{architectural}
+contribution: topology guidance and a dedicated lateral-movement phase can
+be measured directly through MHR$_k$ and L1--L3 evidence coverage, dimensions
+that binary flag-capture benchmarks conflate.
 
 \paragraph{Future work}
 (i)~\emph{Multi-model robustness:} extending the architectural comparison to
-recent frontier models (Claude Sonnet 4.6, GPT-5.5, Gemini 3.1 Pro, DeepSeek
-V4, Qwen 3.6) to confirm model-independence of the architectural advantage;
+recent frontier and open-weight models to confirm model-independence of the
+architectural advantage;
 (ii)~\emph{Real hardware:} extending to embedded Zigbee, LoRaWAN, and
 sub-GHz attack surfaces via SDR tooling;
 (iii)~\emph{Defender's side:} using \systemname{} as a benchmark for

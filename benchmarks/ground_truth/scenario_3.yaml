@@ -45,6 +45,7 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V2
     device: s3-router
@@ -64,6 +65,7 @@ vulnerabilities:
       - "Connexion FTP anonyme acceptée"
     verification: "ftp 192.168.100.1 (user: anonymous)"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V3
     device: s3-wisgate
@@ -86,6 +88,7 @@ vulnerabilities:
       - "Support chacha20-poly1305 et CBC-ETM (vulnérable Terrapin)"
     verification: "ssh-audit 192.168.100.11"
     confidence_required: high
+    hop_depth: 0
 
   - id: V4
     device: s3-wisgate
@@ -108,6 +111,7 @@ vulnerabilities:
       - "GET /api/status → forwarding vers DB (100.14:3306) exposé"
     verification: "curl http://192.168.100.11/api/devices"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V5
     device: s3-rpi5
@@ -130,6 +134,7 @@ vulnerabilities:
       - "Topic smartcity/admin/credentials expose des secrets"
     verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
     confidence_required: high
+    hop_depth: 0
 
   - id: V6
     device: s3-iot-hub
@@ -149,6 +154,7 @@ vulnerabilities:
       - "Connexion anonyme acceptée"
     verification: "mosquitto_sub -h 192.168.100.13 -t '#' -v"
     confidence_required: high
+    hop_depth: 0
 
   - id: V7
     device: s3-jetson
@@ -170,6 +176,7 @@ vulnerabilities:
       - "/etc/iot/config.json expose mqtt.broker, database.host/user/password, api_key"
     verification: "ssh admin@192.168.100.14 && cat /etc/iot/config.json"
     confidence_required: high
+    hop_depth: 0
 
   - id: V8
     device: s3-ap
@@ -190,6 +197,7 @@ vulnerabilities:
       - "GET /config/app.config expose credentials"
     verification: "curl http://192.168.100.15/backup/"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V9
     device: s3-cam
@@ -209,6 +217,7 @@ vulnerabilities:
       - "GET /backup/db_backup_2024-01-15.sql accessible"
     verification: "curl http://192.168.100.16/backup/"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V10
     device: s3-nvr
@@ -230,6 +239,7 @@ vulnerabilities:
       - "/opt/nvr/config/system.json expose admin_password et la liste des caméras"
     verification: "ssh ubnt@192.168.100.17 (password: ubnt)"
     confidence_required: high
+    hop_depth: 0
 
   - id: V11
     device: s3-jetson
@@ -252,6 +262,7 @@ vulnerabilities:
       - "crontab -l root → exécute /opt/iot/maintenance.sh"
     verification: "/usr/local/bin/iot-diag /etc/shadow"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V12
     device: s3-rpi5
@@ -269,6 +280,7 @@ vulnerabilities:
       - "mosquitto_sub -t '$SYS/#' retourne des métriques broker"
     verification: "mosquitto_sub -h 192.168.100.12 -t '$SYS/#' -v -C 5"
     confidence_required: low
+    hop_depth: 0
 
   - id: V13
     device: s3-ap
@@ -286,6 +298,7 @@ vulnerabilities:
       - "Header Server contient nginx/ suivi d'un numéro de version"
     verification: "curl -sI http://192.168.100.15/ | grep Server"
     confidence_required: low
+    hop_depth: 0
 
   - id: V14
     device: s3-wisgate
@@ -305,6 +318,7 @@ vulnerabilities:
       - "POST /update accepté sans vérification"
     verification: "curl http://192.168.100.11/firmware/"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V15
     device: s3-rpi5
@@ -323,6 +337,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V16
     device: s3-iot-hub
@@ -341,6 +356,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.13 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V17
     device: s3-ap
@@ -360,6 +376,7 @@ vulnerabilities:
       - "GET /backup/ retourne un listing"
     verification: "curl http://192.168.100.15/backup/"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V18
     device: s3-cam
@@ -379,6 +396,7 @@ vulnerabilities:
       - "GET /backup/ retourne un listing"
     verification: "curl http://192.168.100.16/backup/"
     confidence_required: medium
+    hop_depth: 0
 
 attack_paths:
 
