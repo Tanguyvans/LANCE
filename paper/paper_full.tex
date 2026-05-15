@@ -17,6 +17,9 @@
 \usetikzlibrary{arrows.meta,positioning,fit}
 \usepackage{xspace}
 \usepackage{verbatim}
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
 \usepackage[hidelinks,breaklinks=true]{hyperref}
 
 % ── macros ────────────────────────────────────────────────────────────────
@@ -366,46 +369,42 @@ exercise traffic classification or single-device firmware analysis, while
 \systemname\ evaluates LLM agents on deployed multi-device networks with
 firewall-enforced reachability.
 
-\begin{table*}[t]
+\begin{table}[t]
 \centering
-\caption{Comparison with prior LLM pentest systems and benchmarks.
-\emph{Scope}: published unit of evaluation (target/challenge = one
-target, task, or flag environment; network = multi-device IP range with
-explicit reachability). \emph{Domain}: protocols / target type.
-\emph{Test corpus}: dataset on which results are reported. Rows are
-grouped by role: LLM pentest agents (top) and evaluation corpora (bottom).}
+\caption{Gap analysis. \emph{Scale}: single host vs.\ multi-device network.
+\emph{IoT/OT}: application-layer IoT/OT protocols on the test surface.
+\emph{GT}: ground-truth granularity (flag, task-step, per-vulnerability, none).
+\emph{MH}: multi-hop scoring.}
 \label{tab:related}
 \setlength{\tabcolsep}{4pt}
 \scriptsize
-\begin{tabular}{@{}llllcl@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-System & Scope & Domain & Test corpus & IoT-specific & Scoring \\
+System & Scale & IoT/OT & GT & MH \\
 \midrule
-\multicolumn{6}{@{}l}{\emph{LLM pentest agents}} \\
+\multicolumn{5}{@{}l}{\emph{LLM pentest agents}} \\
 \midrule
-Happe \& Cito~\cite{happe23}            & target/challenge & Web/OS  & curated Linux VMs        & no  & flag       \\
-PentestGPT~\cite{pentestgpt24}          & target/challenge & Web/OS  & HTB + VulnHub (13 VMs)   & no  & sub-task   \\
-VulnBot~\cite{vulnbot25}                & target/challenge & Web/OS  & AutoPenBench             & no  & task-graph \\
-AutoPentester~\cite{autopentester25}    & target/challenge & Web/OS  & HackTheBox               & no  & sub-task   \\
-CAI~\cite{cai25}                        & target/challenge & Web/CTF & CAIBench                 & no  & CTF        \\
-Pentest-R1~\cite{pentestr125}           & target/challenge & Web/OS  & AutoPenBench             & no  & sub-task   \\
-xOffense~\cite{xoffense25}              & target/challenge & Web/CTF & AutoPenBench             & no  & sub-task   \\
-EnIGMA~\cite{enigma25}                  & target/challenge & CTF     & NYU CTF Bench            & no  & flag       \\
-CheckMate~\cite{checkmate25}            & target/challenge & Web/OS  & Vulhub                   & no  & sub-task   \\
+Happe \& Cito~\cite{happe23}         & 1 host  & \xmark & flag      & \xmark \\
+PentestGPT~\cite{pentestgpt24}       & 1 host  & \xmark & task-step & \xmark \\
+VulnBot~\cite{vulnbot25}             & 1 host  & \xmark & task-step & \xmark \\
+AutoPentester~\cite{autopentester25} & 1 host  & \xmark & task-step & \xmark \\
+CAI~\cite{cai25}                     & 1 host  & \xmark & flag      & \xmark \\
+Pentest-R1~\cite{pentestr125}        & 1 host  & \xmark & task-step & \xmark \\
+xOffense~\cite{xoffense25}           & 1 host  & \xmark & task-step & \xmark \\
+EnIGMA~\cite{enigma25}               & 1 host  & \xmark & flag      & \xmark \\
+CheckMate~\cite{checkmate25}         & 1 host  & \xmark & task-step & \xmark \\
 \midrule
-\multicolumn{6}{@{}l}{\emph{Evaluation corpora}} \\
+\multicolumn{5}{@{}l}{\emph{Evaluation corpora}} \\
 \midrule
-AutoPenBench~\cite{autopenbench24}      & target/challenge & Web/OS  & 22 in-vitro + 11 CVEs    & no  & milestones + flag \\
-NYU CTF Bench~\cite{nyuctfbench24}      & target/challenge & CTF     & 200 Jeopardy challenges  & no  & flag       \\
-Cybench~\cite{cybench24}                & target/challenge & CTF     & curated CTF subset       & no  & flag       \\
-CAIBench / RCTF2~\cite{caibench25}      & target/challenge & mixed   & meta-benchmark           & 27 robotics & CTF  \\
-Vulhub~\cite{vulhub}                    & target/challenge & Web/OS  & $\sim$100+ Docker CVEs   & no  & custom     \\
-Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)           & no  & --         \\
+AutoPenBench~\cite{autopenbench24}   & 1 host  & \xmark & flag      & \xmark \\
+CAIBench / RCTF2~\cite{caibench25}   & 1 host  & partial & flag     & \xmark \\
+Vulhub~\cite{vulhub}                 & 1 host  & \xmark & flag      & \xmark \\
+Ludus + GOAD~\cite{ludus,goad}       & network & \xmark & none      & \xmark \\
 \midrule
-\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{MQTT/Modbus/LoRa/CoAP/\ldots} & \textbf{15 IoT scenarios (up to 35 dev.), per-vuln YAML} & \textbf{yes} & \textbf{L1/L2/L3 + MHR$_k$} \\
+\textbf{\systemname\ (ours)} & \textbf{network} & \textbf{\cmark} & \textbf{per-vuln} & \textbf{\cmark} \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 % tab:reported removed — headline numbers from prior work are discussed
 % in §2.1 prose; cross-benchmark comparison is Table~\ref{tab:cross} in §7.
