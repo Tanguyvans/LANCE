@@ -1031,7 +1031,7 @@ comparison but verifies that \harnessname{} is competitive on established
 single-host corpora while adding the network-scale dimension.
 \emph{E2E \%}: fraction of tasks fully solved. CheckMate reports only a
 relative gain over its baseline (absolute not published). ``n/r'' = not
-reported. $^\star$ = partial run (see text).}
+reported. $^\star$ = preliminary partial run (see text).}
 \label{tab:cross}
 \setlength{\tabcolsep}{6pt}
 \footnotesize
@@ -1057,8 +1057,10 @@ Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n
 \smallskip\\
 \footnotesize\emph{%
 \textsuperscript{rel} Relative gain over Claude Code baseline; absolute not published by CheckMate.
-$^\star$ Partial snapshot: 13 valid cases out of 191; exploit-confirmed by manual oracle on \texttt{proof.json};
-full run in progress.}
+$^\star$ Partial snapshot: 20/191 Vulhub cases extracted while the distributed
+run was still in progress; 15 reached the agent, 5 failed before invocation.
+The reported rate is manual proof-oracle success on 13 deployable cases
+(3 confirmed exploits); the automatic verdict gives 2/15 = 13\%.}
 \end{table*}
 
 \begin{figure}[t]
@@ -1072,11 +1074,24 @@ full run in progress.}
   \label{fig:baselines}
 \end{figure}
 
-\todo{Write §7.2 prose after final runs: (i) Table~\ref{tab:cross} Vulhub
-column confirms \harnessname{} is competitive on single-host corpora despite
-being designed for network-scale; (ii) the IoTPentBench column
-(Table~\ref{tab:main}) shows where single-host harnesses collapse on
-MHR$_k$.}
+The Vulhub run in Table~\ref{tab:cross} is deliberately marked as
+preliminary. The current snapshot covers only the first 20 cases completed or
+failed across six workers, of which 15 reached the agent and 5 failed during
+environment setup before any model call. Because execution order follows each
+worker shard rather than a random permutation, this sample is not
+representative of the 191-case corpus.
+The 15 completed agent runs consumed 16.66M tokens and \$5.24 in token-priced
+costs, or about 1.11M tokens and \$0.35 per case.
+
+The snapshot is nevertheless useful for calibrating the evaluation protocol.
+Vulhub does not provide a uniform flag oracle, so an agent can demonstrate
+code execution or file disclosure and still self-report failure while searching
+for a nonexistent flag. Re-reading the generated \texttt{proof.json} files
+changes the observed success rate from the automatic 2/15 (13\%) to 3/13
+(23\%) confirmed exploits after excluding two non-deployable targets; four
+additional cases show partial exploitation without a final flag. We therefore
+use this row only as a single-host sanity check and will replace it with the
+full-run oracle result once all 191 cases have completed.
 
 \subsection{Per-architecture analysis}
 \label{sec:eval:arch}
