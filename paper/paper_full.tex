@@ -197,24 +197,20 @@ as MQTT, Modbus, LoRaWAN, and CoAP.
 \label{sec:related:bench}
 
 \noindent\textbf{Challenge-level corpora.}
-\textsc{AutoPenBench}~\cite{autopenbench24} is a common evaluation
-substrate — 33 vulnerable Docker-container tasks, split into 22 in-vitro
-tasks and 11 real-world CVE-based tasks, with milestone and flag-based
-scoring — and is used by later systems such as \textsc{Pentest-R1} and
-\textsc{xOffense}; \textsc{VulnBot} also reports against AutoPenBench and
-AI-Pentest-Benchmark. \textsc{Vulhub}~\cite{vulhub} fills a related role
-as a large Docker-Compose collection of reproducible vulnerable
-environments and is used by systems such as \textsc{CheckMate}.
-\textsc{CAIBench}~\cite{caibench25} is the
-broadest academic effort, spanning CTFs, attack-and-defense ranges, and
-knowledge tests; its RCTF2 subset adds $27$ robotics challenges — the
-most explicit cyber-physical/robotics inclusion in this family. These corpora can require
-multi-step reasoning, and some challenge environments are richer than a
-single shell. However, their public scoring is challenge- or flag-level:
-they do not provide a per-vulnerability ground truth tied to explicit
-network reachability, hop depth, or IoT/OT application protocols (MQTT,
-Modbus, LoRaWAN). Table~\ref{tab:reported} reports headline results for
-each system.
+\textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation
+substrate — 33 Docker-container tasks (22 in-vitro, 11 real-world CVEs)
+with milestone and flag-based scoring — used by \textsc{VulnBot},
+\textsc{Pentest-R1}, and \textsc{xOffense}. \textsc{Vulhub}~\cite{vulhub}
+fills a related role as a large Docker-Compose collection of reproducible
+vulnerable environments, used by \textsc{CheckMate}.
+\textsc{CAIBench}~\cite{caibench25} is the broadest academic effort,
+spanning CTFs, attack-and-defense ranges, and knowledge tests; its RCTF2
+subset adds $27$ robotics challenges — the most explicit
+cyber-physical inclusion in this family. Their public scoring is
+challenge- or flag-level: they do not provide a per-vulnerability ground
+truth tied to network reachability, hop depth, or IoT/OT application
+protocols (MQTT, Modbus, LoRaWAN). Table~\ref{tab:reported} reports
+headline results for each system.
 
 \noindent\textbf{Multi-host labs.}
 \textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
