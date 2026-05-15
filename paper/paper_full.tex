@@ -185,47 +185,31 @@ test surface.
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
 
-The dominant academic corpus is AutoPenBench~\cite{autopenbench24},
-consisting of VulnHub-derived single-VM challenges with scripted flag
-checkers; it is used by \textsc{VulnBot} and \textsc{Pentest-R1}. Recent
-benchmarks broaden the scope without changing the unit of evaluation:
-\textsc{NYU CTF Bench}~\cite{nyuctfbench24} contributes $200$ Jeopardy
-challenges with reproducible containers, \textsc{Cybench}~\cite{cybench24}
-co-evaluates capability and risk on a curated CTF subset, and
-\textsc{CyberSecEval}~\cite{cybereval24} measures cybersecurity risk and
-helpfulness across a large prompt corpus.
-\textsc{CAIBench}~\cite{caibench25} consolidates the field into a
-meta-benchmark spanning Jeopardy CTFs, attack-and-defense ranges, and
-knowledge tests; its RCTF2 subset adds $27$ robotics challenges, the
-first cyber-physical inclusion in this benchmark family, yet each
-challenge remains an isolated container.
+\noindent\textbf{Single-host corpora.}
+\textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation
+substrate — 24 in-vitro tasks plus 12 real-world CVE-based exploits with
+scripted flag checkers — and is the corpus behind \textsc{VulnBot},
+\textsc{Pentest-R1}, and \textsc{xOffense}; \textsc{Vulhub}~\cite{vulhub}
+fills the same role for \textsc{CheckMate} with $\sim$100 Docker images
+(one container per CVE). \textsc{CAIBench}~\cite{caibench25} is the
+broadest academic effort, spanning CTFs, attack-and-defense ranges, and
+knowledge tests; its RCTF2 subset adds $27$ robotics challenges — the
+first cyber-physical inclusion in this family — yet each challenge
+remains an isolated container. Across all these corpora the unit of
+evaluation is one host: there is no notion of lateral movement across a
+subnet, and no IoT/OT application layer (MQTT, Modbus, LoRaWAN).
+Table~\ref{tab:reported} reports headline results for each system.
 
-Two community resources are heavily reused as evaluation substrate by the
-agents discussed in \cref{sec:related:llm} but are not themselves benchmarks
-in the academic sense. \textsc{Vulhub}~\cite{vulhub} ships $\sim$100+ pre-built
-Docker images of vulnerable applications and CVE reproductions (one container
-per CVE); \textsc{CheckMate}~\cite{checkmate25} uses it as its target corpus.
-\textsc{AutoPenBench}~\cite{autopenbench24} packages 24 in-vitro tasks
-(access control, web, network, cryptography) plus 12 real-world CVE-based
-exploits (CVSS 7.5--10.0) with scripted flag checkers, and is the corpus
-behind \textsc{VulnBot}, \textsc{Pentest-R1}, and \textsc{xOffense}. Both
-resources remain single-container in nature: the unit of evaluation is one
-image, not a multi-device subnet.
-Table~\ref{tab:reported} consolidates the headline numbers each of these
-systems publishes on its chosen corpus, making explicit that no prior
-LLM-pentest result is reported on a multi-device IoT network.
-
-A separate community ships reproducible multi-host labs.
+\noindent\textbf{Multi-host labs.}
 \textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
 Active-Directory scenario deliver Proxmox+Ansible deployments of
-representative enterprise networks, methodologically the closest precedent
-to our infrastructure. They ship no ground-truth schema and no scoring
-procedure, and have not been used to evaluate LLM agents in the published
-literature. No prior benchmark therefore offers the combination on which
-\systemname\ is built: network-scale evaluation, IoT/OT application
-protocols (MQTT, Modbus, LoRaWAN, CoAP), per-vulnerability
-machine-readable ground truth, and evidence-level granularity beyond
-binary flag capture (Table~\ref{tab:related}).
+representative enterprise networks, the closest methodological precedent
+to our infrastructure. Neither provides a ground-truth vulnerability
+schema or a scoring procedure, and neither has been used to evaluate LLM
+agents in the published literature. No prior benchmark therefore offers
+network-scale evaluation, IoT/OT protocols, per-vulnerability
+machine-readable ground truth, and evidence-level scoring beyond binary
+flag capture (Table~\ref{tab:related}).
 
 \subsection{Attack Graphs and Network Reachability}
 \label{sec:related:graph}
