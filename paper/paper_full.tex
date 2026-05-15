@@ -978,19 +978,9 @@ can make the latter lower than per-token estimates.
 
 \begin{table*}[t]
 \centering
-\caption{Main results: Task Completion (Recall), Precision, F1, weighted
-Score, Multi-Hop Reach (MHR$_k$), tokens, and USD cost; averaged over the
-10 main scenarios $\times$ 3 runs. The 3 scalability stressors and
-2 hardened controls are reported separately in
-\cref{sec:eval:arch} and \cref{sec:eval:failures}. All LLM systems use \texttt{MiniMax-M2.7}
-(cf.~\cref{sec:setup}); Nmap NSE is the non-LLM lower bound.
-\emph{Task Completion} is the network-scale analogue of the sub-task
-completion rate reported by PentestGPT, VulnBot, AutoPentester, and
-xOffense (\S\ref{sec:eval:overall}). MHR$_k$ measures the fraction of
-ground-truth vulnerabilities at \texttt{hop\_depth}~$\geq k$ that were
-reached; ``--'' indicates no GT entries at that depth. Cells pre-filled with
-\texttt{0.00} indicate configurations that do not establish new vantage
-points and therefore cannot reach deeper zones by construction.}
+\caption{Results on \systemname\ (10 main scenarios $\times$ 3 runs, MiniMax-M2.7).
+TC = Recall; Score = CVSS-weighted Recall; MHR$_k$ = recall at hop depth $\geq k$;
+\texttt{0.00} = zero by construction (no lateral movement); ``--'' = metric not applicable.}
 \label{tab:main}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -1009,11 +999,7 @@ Nmap NSE (non-LLM scanner)                      & \todo{} & \todo{} & \todo{} & 
 \end{tabular}
 
 \smallskip
-\footnotesize\emph{TC = Task Completion (Recall against GT vuln set).
-Reported across $k{=}3$ runs with 95\% bootstrap CI and pairwise Mann--Whitney
-$U$ vs each baseline; this protocol exceeds the single-run reporting of
-PentestGPT, AutoPentester, AutoPenBench, and CAI, and matches the multi-run
-averaging of VulnBot and Pentest-R1.}
+\footnotesize\emph{Mean over $k{=}3$ runs; 95\% bootstrap CI; pairwise Mann--Whitney $U$ vs each baseline.}
 \end{table*}
 
 \todo{Write §7.1 prose after final runs. Report headline F1/Score, MHR$_1$--MHR$_3$,
