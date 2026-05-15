@@ -101,7 +101,7 @@ Stuxnet~\cite{langner11}) all materialised as multi-hop pivots across
 that surface.
 
 LLM-pentesting agents have matured rapidly and report substantial gains
-on public test corpora (Table~\ref{tab:reported}), yet every such
+on public test corpora (Table~\ref{tab:related}), yet every such
 corpus is a collection of \emph{isolated containers or VMs} and every
 agent is scored one target at a time. Three properties of a real IoT
 deployment remain invisible to that metric: \emph{hop depth}
@@ -211,8 +211,8 @@ subset adds $27$ robotics challenges — the most explicit
 cyber-physical inclusion in this family. Their public scoring is
 challenge- or flag-level: they do not provide a per-vulnerability ground
 truth tied to network reachability, hop depth, or IoT/OT application
-protocols (MQTT, Modbus, LoRaWAN). Table~\ref{tab:reported} reports
-headline results for each system.
+protocols (MQTT, Modbus, LoRaWAN). Table~\ref{tab:related} summarises
+each system's scope and scoring scheme.
 
 \noindent\textbf{Multi-host labs.}
 \textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
@@ -407,46 +407,8 @@ Ludus + GOAD~\cite{ludus,goad}          & multi-host  & AD/Win  & AD lab (no GT)
 \end{tabular}
 \end{table*}
 
-\begin{table*}[t]
-\centering
-\caption{Headline numbers reported by prior LLM pentest systems on their
-chosen corpus. \emph{Sub-task \%} = fraction of predefined intermediate
-steps solved. \emph{E2E \%} = fraction of full target/challenge solved
-end-to-end. Values are absolute except where prefixed with ``+'' (relative
-gain vs the immediately preceding baseline row). Rows are not directly
-comparable across corpora: the table makes explicit \emph{where} each
-tool is tested and \emph{what} number it publishes. None of these reported
-results is on a multi-device IoT network with firewall-enforced reachability,
-which is the gap \systemname\ targets.}
-\label{tab:reported}
-\setlength{\tabcolsep}{8pt}
-\footnotesize
-\begin{tabular}{@{}lllrr@{}}
-\toprule
-System & Model & Corpus & Sub-task \% & E2E \% \\
-\midrule
-GPT-3.5 baseline~\cite{pentestgpt24}             & GPT-3.5            & HTB+VulnHub (13 VMs) & 23.1 & 7.7  \\
-GPT-4 baseline~\cite{pentestgpt24}               & GPT-4              & HTB+VulnHub (13 VMs) & 52.2 & 38.5 \\
-\textbf{PentestGPT}~\cite{pentestgpt24}          & GPT-4              & HTB+VulnHub (13 VMs) & \textbf{66.5} & \textbf{46.2} \\
-\textbf{AutoPentester}~\cite{autopentester25}    & GPT-4o             & HackTheBox           & \textbf{+27.0$^\dagger$} & n/r  \\
-\midrule
-Llama 3.1-405B baseline~\cite{vulnbot25}         & Llama 3.1-405B     & AutoPenBench         & 49.1 & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25}                 & GPT-4o             & AutoPenBench         & n/r  & 21.2 \\
-\textbf{VulnBot}~\cite{vulnbot25}                & Llama 3.1-405B     & AutoPenBench         & \textbf{69.1} & \textbf{30.3} \\
-\textbf{xOffense}~\cite{xoffense25}              & Qwen3-32B (LoRA)   & AutoPenBench         & \textbf{79.2} & n/r  \\
-\midrule
-Claude Code (baseline)~\cite{checkmate25}        & Sonnet 4.5         & Vulhub               & n/r  & baseline \\
-\textbf{CheckMate}~\cite{checkmate25}            & Sonnet 4.5 + Plan+ & Vulhub               & n/r  & \textbf{+20$^\dagger$} \\
-\textbf{EnIGMA}~\cite{enigma25}                  & GPT-4              & NYU CTF (200)        & n/r  & SOTA \\
-\midrule
-\textbf{\systemname\ (ours)} & \textbf{shared (see \S\ref{sec:setup})} & \textbf{15 IoT scenarios (up to /24, 35 dev.)} &
-\multicolumn{2}{c}{\textbf{Recall / Prec / F1 / Score / MHR$_k$ / L1L2L3}} \\
-\bottomrule
-\end{tabular}
-\smallskip\\
-\footnotesize\emph{$^\dagger$ relative gain over the immediately preceding
-baseline row. ``n/r'' = metric not reported in the source paper.}
-\end{table*}
+% tab:reported removed — headline numbers from prior work are discussed
+% in §2.1 prose; cross-benchmark comparison is Table~\ref{tab:cross} in §7.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §3 Threat Model
@@ -1057,23 +1019,57 @@ averaging of VulnBot and Pentest-R1.}
 \todo{Write §7.1 prose after final runs. Report headline F1/Score, MHR$_1$--MHR$_3$,
 and whether Phase~1/Phase~5 ablations explain the gap.}
 
-\subsection{Network-scale gap vs baselines}
+\subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
+
+\begin{table*}[t]
+\centering
+\caption{Cross-benchmark comparison. \harnessname{} (MiniMax-M2.7) is run on
+the single-host corpora used by prior work; their published numbers are shown
+for reference. Models differ across rows — this table is not a fair model
+comparison but rather a sanity check that \harnessname{} is competitive on
+established corpora while adding the network-scale dimension.
+\emph{E2E \%} = fraction of tasks solved end-to-end; ``n/r'' = not reported.}
+\label{tab:cross}
+\setlength{\tabcolsep}{6pt}
+\footnotesize
+\begin{tabular}{@{}llllrr@{}}
+\toprule
+System & Model & Corpus & Metric & Sub-task \% & E2E \% \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{AutoPenBench}} \\
+\midrule
+Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & sub-task / E2E & 49.1 & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & sub-task / E2E & n/r  & 21.2 \\
+\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & sub-task / E2E & \textbf{69.1} & \textbf{30.3} \\
+\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & sub-task / E2E & \textbf{79.2} & n/r  \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & sub-task / E2E & \todo{} & \todo{} \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{Vulhub}} \\
+\midrule
+Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub (191) & exploit-confirmed & n/r & baseline \\
+\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Plan+ & Vulhub (191) & exploit-confirmed & n/r & \textbf{+20\%} \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub (191) & exploit-confirmed & n/r & \todo{} \\
+\bottomrule
+\end{tabular}
+\end{table*}
 
 \begin{figure}[t]
   \centering
   \fbox{\parbox{0.95\linewidth}{\centering\textit{Fig.~4 placeholder: bar chart,
   F1 and MHR$_2$ for \harnessname, ablations, and Nmap~NSE.}}}
-  \caption{Baseline comparison. Scanners capture known CVEs but miss
-  configuration vulnerabilities and do not establish new vantage points.
+  \caption{Baseline comparison on \systemname. Scanners capture known CVEs but
+  miss configuration vulnerabilities and do not establish new vantage points.
   The Phase~5 ablation isolates the value of explicit lateral movement on
   multi-hop reach (MHR$_1$--MHR$_3$).}
   \label{fig:baselines}
 \end{figure}
 
-\todo{Write §7.2 — explicit narrative: (i) scanners win on CVE/category
-coverage where scripts exist, (ii) LLM agents win on misconfig/default-creds,
-(iii) Phase~5 determines how much recall survives beyond direct reachability.}
+\todo{Write §7.2 prose after final runs: (i) Table~\ref{tab:cross} Vulhub
+column confirms \harnessname{} is competitive on single-host corpora despite
+being designed for network-scale; (ii) the IoTPentBench column
+(Table~\ref{tab:main}) shows where single-host harnesses collapse on
+MHR$_k$.}
 
 \subsection{Per-architecture analysis}
 \label{sec:eval:arch}
