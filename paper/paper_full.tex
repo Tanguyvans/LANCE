@@ -1027,31 +1027,38 @@ and whether Phase~1/Phase~5 ablations explain the gap.}
 \caption{Cross-benchmark comparison. \harnessname{} (MiniMax-M2.7) is run on
 the single-host corpora used by prior work; their published numbers are shown
 for reference. Models differ across rows — this table is not a fair model
-comparison but rather a sanity check that \harnessname{} is competitive on
-established corpora while adding the network-scale dimension.
-\emph{E2E \%} = fraction of tasks solved end-to-end; ``n/r'' = not reported.}
+comparison but verifies that \harnessname{} is competitive on established
+single-host corpora while adding the network-scale dimension.
+\emph{E2E \%}: fraction of tasks fully solved. CheckMate reports only a
+relative gain over its baseline (absolute not published). ``n/r'' = not
+reported. $^\star$ = partial run (see text).}
 \label{tab:cross}
 \setlength{\tabcolsep}{6pt}
 \footnotesize
-\begin{tabular}{@{}llllrr@{}}
+\begin{tabular}{@{}lllrr@{}}
 \toprule
-System & Model & Corpus & Metric & Sub-task \% & E2E \% \\
+System & Model & Corpus & Sub-task \% & E2E \% \\
 \midrule
-\multicolumn{6}{@{}l}{\emph{AutoPenBench}} \\
+\multicolumn{5}{@{}l}{\emph{AutoPenBench (33 tasks)}} \\
 \midrule
-Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & sub-task / E2E & 49.1 & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & sub-task / E2E & n/r  & 21.2 \\
-\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & sub-task / E2E & \textbf{69.1} & \textbf{30.3} \\
-\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & sub-task / E2E & \textbf{79.2} & n/r  \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & sub-task / E2E & \todo{} & \todo{} \\
+Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 49.1 & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
+\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
+\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & \todo{} & \todo{} \\
 \midrule
-\multicolumn{6}{@{}l}{\emph{Vulhub}} \\
+\multicolumn{5}{@{}l}{\emph{Vulhub (191 CVE tasks)}} \\
 \midrule
-Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub (191) & exploit-confirmed & n/r & baseline \\
-\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Plan+ & Vulhub (191) & exploit-confirmed & n/r & \textbf{+20\%} \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub (191) & exploit-confirmed & n/r & \todo{} \\
+Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
+\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Plan+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{23\%}$^\star$ \\
 \bottomrule
 \end{tabular}
+\smallskip\\
+\footnotesize\emph{%
+\textsuperscript{rel} Relative gain over Claude Code baseline; absolute not published by CheckMate.
+$^\star$ Partial snapshot: 13 valid cases out of 191; exploit-confirmed by manual oracle on \texttt{proof.json};
+full run in progress.}
 \end{table*}
 
 \begin{figure}[t]
