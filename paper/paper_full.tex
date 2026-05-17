@@ -986,46 +986,56 @@ can make the latter lower than per-token estimates.
 
 \begin{table*}[t]
 \centering
-\caption{Results on \systemname\ (10 main scenarios $\times$ 3 runs, MiniMax-M2.7).
-TC = Recall; Score = CVSS-weighted Recall; MHR$_k$ = recall at hop depth $\geq k$;
-\texttt{0.00} = zero by construction (no lateral movement); ``--'' = metric not applicable.}
+\caption{Results on \systemname\ (10 main scenarios, MiniMax-M2.7). TC = Recall;
+Score = CVSS-weighted Recall. Baseline rows report the F1 values available in
+the scenario comparison export; the remaining columns are not reported by those
+adapters.}
 \label{tab:main}
 \footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lrrrrrrrrr@{}}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}lrrrrrl@{}}
 \toprule
- & \multicolumn{4}{c}{Quality} & \multicolumn{3}{c}{Multi-Hop Reach} & \multicolumn{2}{c}{Cost} \\
-\cmidrule(lr){2-5}\cmidrule(lr){6-8}\cmidrule(lr){9-10}
-System & TC & Prec. & F1 & Score & MHR$_1$ & MHR$_2$ & MHR$_3$ & Tokens (M) & USD \\
+System & TC & Prec. & F1 & Score & Wins & Notes \\
 \midrule
-\textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
-\harnessname\ w/o Phase~1 (no infra graph)      & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} & \todo{} \\
-\harnessname\ w/o Phase~5 (no intrusion)        & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & 0.00    & \todo{} & \todo{} \\
+\textbf{\harnessname (full)} & \textbf{0.962} & \textbf{0.922} & \textbf{0.940} & \textbf{86.1\%} & \textbf{10/10} & full pipeline \\
 \midrule
-Nmap NSE (non-LLM scanner)                      & \todo{} & \todo{} & \todo{} & \todo{} & 0.00    & 0.00    & 0.00    & --      & --     \\
+CAI-style adapter      & -- & -- & 0.312 & -- & 0/10 & same scenario export \\
+PentGPT-style adapter  & -- & -- & 0.321 & -- & 0/10 & same scenario export \\
+VulnBot-style adapter  & -- & -- & 0.316 & -- & 0/10 & same scenario export \\
+Best baseline per scenario & -- & -- & 0.393 & -- & 0/10 & oracle best of the three \\
 \bottomrule
 \end{tabular}
 
 \smallskip
-\footnotesize\emph{Mean over $k{=}3$ runs; 95\% bootstrap CI; pairwise Mann--Whitney $U$ vs each baseline.}
+\footnotesize\emph{Means over scenarios \texttt{s\_1}--\texttt{s\_10}. Wins count
+per-scenario F1 wins over \harnessname{} for baseline rows, and
+\harnessname{} wins over the best baseline for the first row.}
 \end{table*}
 
-\todo{Write §7.1 prose after final runs. Report headline F1/Score, MHR$_1$--MHR$_3$,
-and whether Phase~1/Phase~5 ablations explain the gap.}
+Across the 10 main scenarios, \harnessname{} reaches 0.962 recall, 0.922
+precision, and 0.940 F1, with an 86.1\% CVSS-weighted score
+(Table~\ref{tab:main}). The result is not driven by a single easy topology:
+\harnessname{} outperforms the strongest baseline row in every main scenario,
+with a mean absolute F1 gap of 0.547 over the per-scenario best baseline.
+The two scalability scenarios included in the latest export remain consistent
+with this trend: mean F1 is 0.909 and mean weighted score is 87.7\% on
+\texttt{s\_11}--\texttt{s\_12}. The current export does not include the
+per-finding evidence-level fields required to recompute MHR$_k$, so we report
+those as a planned evaluator extraction rather than as headline numbers.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
 
 \begin{table*}[t]
 \centering
-\caption{Cross-benchmark comparison. \harnessname{} (MiniMax-M2.7) is run on
-the single-host corpora used by prior work; their published numbers are shown
-for reference. Models differ across rows — this table is not a fair model
-comparison but verifies that \harnessname{} is competitive on established
-single-host corpora while adding the network-scale dimension.
+\caption{Cross-benchmark comparison. Published single-host numbers are shown
+for reference, and \harnessname{} (MiniMax-M2.7) is evaluated on Vulhub in the
+latest result bundle. Models differ across rows — this table is not a fair
+model comparison but checks whether \harnessname{} remains plausible on an
+established single-host corpus while adding the network-scale dimension.
 \emph{E2E \%}: fraction of tasks fully solved. CheckMate reports only a
 relative gain over its baseline (absolute not published). ``n/r'' = not
-reported. $^\star$ = preliminary partial run (see text).}
+reported. $^\star$ = lower-bound proof-oracle estimate (see text).}
 \label{tab:cross}
 \setlength{\tabcolsep}{6pt}
 \footnotesize
@@ -1039,22 +1049,22 @@ Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 4
 GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
 \textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
 \textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & \todo{} & \todo{} \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & -- & -- \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Vulhub (191 CVE tasks)}} \\
 \midrule
 Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
 \textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Plan+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{23\%}$^\star$ \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
 \textsuperscript{rel} Relative gain over Claude Code baseline; absolute not published by CheckMate.
-$^\star$ Partial snapshot: 20/191 Vulhub cases extracted while the distributed
-run was still in progress; 15 reached the agent, 5 failed before invocation.
-The reported rate is manual proof-oracle success on 13 deployable cases
-(3 confirmed exploits); the automatic verdict gives 2/15 = 13\%.}
+$^\star$ Full 191-case distributed run. The automatic useful-finding lower
+bound is 69/175 completed agent runs (39\%); manual inspection identifies 15
+additional self-reported \textsc{no finding} cases with exploit evidence,
+raising the conservative lower bound to 84/175 (48\%).}
 \end{table*}
 
 \begin{figure}[t]
@@ -1062,9 +1072,7 @@ The reported rate is manual proof-oracle success on 13 deployable cases
   \resizebox{0.98\linewidth}{!}{%
   \begin{tikzpicture}[
     font=\scriptsize,
-    bar/.style={draw=black!55, line width=0.25pt},
-    fbar/.style={bar, fill=blue!35},
-    mbar/.style={bar, fill=green!35},
+    bar/.style={draw=black!55, line width=0.25pt, fill=blue!35},
     grid/.style={draw=black!15, line width=0.2pt},
     axis/.style={draw=black!70, line width=0.35pt}
   ]
@@ -1075,48 +1083,45 @@ The reported rate is manual proof-oracle success on 13 deployable cases
       \node[anchor=east] at (-0.08,\y) {\lab};
     }
 
-    \foreach \x/\f/\m/\lab in {
-      .7/2.25/1.75/{full},
-      2.25/1.80/1.15/{no P1},
-      3.8/1.95/.35/{no P5},
-      5.35/1.15/.15/{NSE}
+    \foreach \x/\h/\val/\lab in {
+      .35/2.63/{94.0}/{MeshScout},
+      1.75/.88/{31.2}/{CAI},
+      3.15/.90/{32.1}/{PentGPT},
+      4.55/.88/{31.6}/{VulnBot},
+      5.95/1.10/{39.3}/{best}
     } {
-      \draw[fbar] (\x,0) rectangle +(0.35,\f);
-      \draw[mbar] (\x+0.38,0) rectangle +(0.35,\m);
-      \node[anchor=north, align=center] at (\x+0.35,-0.12) {\lab};
+      \draw[bar] (\x,0) rectangle +(0.46,\h);
+      \node[anchor=south] at (\x+0.23,\h+0.04) {\val};
+      \node[anchor=north, align=center] at (\x+0.23,-0.12) {\lab};
     }
-    \node[anchor=west] at (4.9,2.55) {\tikz{\draw[fbar] (0,0) rectangle (.22,.12);} F1};
-    \node[anchor=west] at (5.9,2.55) {\tikz{\draw[mbar] (0,0) rectangle (.22,.12);} MHR$_2$};
-    \node[align=center, text=black!55] at (3.65,1.38)
-      {mockup layout\\placeholder values};
+    \node[anchor=west] at (5.0,2.55) {mean F1 (\%)};
   \end{tikzpicture}
   }
-  \caption{Baseline comparison on \systemname. Mockup only: values and confidence
-  intervals will be replaced by final runs. Scanners capture known CVEs but
-  miss configuration vulnerabilities and do not establish new vantage points.
-  The Phase~5 ablation isolates the value of explicit lateral movement on
-  multi-hop reach (MHR$_1$--MHR$_3$).}
+  \caption{Mean F1 on the 10 main \systemname{} scenarios. \harnessname{}
+  outperforms each adapted LLM-pentest baseline and the per-scenario best
+  baseline row.}
   \label{fig:baselines}
 \end{figure}
 
-The Vulhub run in Table~\ref{tab:cross} is deliberately marked as
-preliminary. The current snapshot covers only the first 20 cases completed or
-failed across six workers, of which 15 reached the agent and 5 failed during
-environment setup before any model call. Because execution order follows each
-worker shard rather than a random permutation, this sample is not
-representative of the 191-case corpus.
-The 15 completed agent runs consumed 16.66M tokens and \$5.24 in token-priced
-costs, or about 1.11M tokens and \$0.35 per case.
+The Vulhub run in Table~\ref{tab:cross} is useful but should be read as a
+lower-bound single-host sanity check, not as the main network-scale result.
+The distributed run processed all 191 Vulhub cases on six workers. Of these,
+175 reached a completed agent run, 11 failed during environment setup, 3 failed
+because of provider rate limits, and 2 were skipped after the rate-limit breaker
+tripped. The completed runs consumed 194.5M tokens for an estimated \$60.96,
+or roughly \$0.33 per executed case.
 
-The snapshot is nevertheless useful for calibrating the evaluation protocol.
-Vulhub does not provide a uniform flag oracle, so an agent can demonstrate
-code execution or file disclosure and still self-report failure while searching
-for a nonexistent flag. Re-reading the generated \texttt{proof.json} files
-changes the observed success rate from the automatic 2/15 (13\%) to 3/13
-(23\%) confirmed exploits after excluding two non-deployable targets; four
-additional cases show partial exploitation without a final flag. We therefore
-use this row only as a single-host sanity check and will replace it with the
-full-run oracle result once all 191 cases have completed.
+The automatic verdict gives 69 useful findings among the 175 completed cases
+(39\%). This undercounts success because Vulhub does not provide a uniform flag
+oracle: an agent can demonstrate command execution or file disclosure and still
+self-report failure while searching for a nonexistent flag. Re-reading the
+\texttt{proof.json} files identifies 15 such hidden successes, which raises the
+conservative lower bound to 84/175 (48\%). The six strictly confirmed exploit
+cases are \texttt{struts2/s2-053}, \texttt{phpunit/CVE-2017-9841},
+\texttt{redis/CVE-2022-0543}, \texttt{jenkins/CVE-2018-1000861},
+\texttt{php/CVE-2024-2961}, and \texttt{spring/CVE-2022-22947}; the remaining
+useful cases are probable vulnerabilities or tool/credential-blocked findings
+with actionable evidence.
 
 \subsection{Per-architecture analysis}
 \label{sec:eval:arch}
@@ -1124,120 +1129,149 @@ full-run oracle result once all 191 cases have completed.
 \begin{figure}[t]
   \centering
   \resizebox{0.98\linewidth}{!}{%
-  \begin{tikzpicture}[font=\scriptsize]
-    \def\cellw{0.45}
-    \def\cellh{0.38}
+  \begin{tikzpicture}[font=\tiny]
+    \def\cellw{0.53}
+    \def\cellh{0.34}
     \foreach \c/\sid in {0/s1,1/s2,2/s3,3/s4,4/s5,5/s6,6/s7,7/s8,8/s9,9/s10} {
       \node[rotate=45, anchor=west] at (\c*\cellw+0.12,0.25) {\sid};
     }
-    \foreach \r/\sys in {0/full,1/no P1,2/no P5,3/NSE} {
+    \foreach \r/\sys in {0/MeshScout,1/CAI,2/PentGPT,3/VulnBot} {
       \node[anchor=east] at (-0.12,-\r*\cellh-.18) {\sys};
     }
-    \foreach \r in {0,1,2,3} {
-      \foreach \c in {0,1,2,3,4,5,6,7,8,9} {
-        \pgfmathtruncatemacro{\shade}{20 + mod(11*\c + 17*\r, 55)}
-        \ifnum\r=0
-          \draw[fill=blue!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
-        \else\ifnum\r=3
-          \draw[fill=gray!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
-        \else
-          \draw[fill=orange!\shade, draw=white] (\c*\cellw,-\r*\cellh) rectangle ++(\cellw,\cellh);
-        \fi\fi
-      }
+    \foreach \c/\v in {0/92,1/92,2/95,3/94,4/100,5/100,6/97,7/93,8/95,9/82} {
+      \draw[fill=blue!\v, draw=white] (\c*\cellw,0) rectangle ++(\cellw,\cellh);
+      \node[text=white] at (\c*\cellw+.265,-.17) {\v};
+    }
+    \foreach \c/\v in {0/15,1/35,2/0,3/36,4/50,5/40,6/50,7/55,8/17,9/14} {
+      \draw[fill=orange!\v, draw=white] (\c*\cellw,-1*\cellh) rectangle ++(\cellw,\cellh);
+      \node[text=black] at (\c*\cellw+.265,-1*\cellh-.17) {\v};
+    }
+    \foreach \c/\v in {0/0,1/14,2/0,3/42,4/64,5/52,6/45,7/35,8/43,9/27} {
+      \draw[fill=orange!\v, draw=white] (\c*\cellw,-2*\cellh) rectangle ++(\cellw,\cellh);
+      \node[text=black] at (\c*\cellw+.265,-2*\cellh-.17) {\v};
+    }
+    \foreach \c/\v in {0/15,1/45,2/0,3/44,4/50,5/40,6/45,7/35,8/29,9/14} {
+      \draw[fill=orange!\v, draw=white] (\c*\cellw,-3*\cellh) rectangle ++(\cellw,\cellh);
+      \node[text=black] at (\c*\cellw+.265,-3*\cellh-.17) {\v};
     }
     \draw[black!60] (0,0) rectangle (10*\cellw,-4*\cellh);
-    \node[anchor=west] at (4.75,-.25) {low};
+    \node[anchor=west] at (5.55,-.25) {0};
     \shade[left color=gray!15,right color=blue!70,draw=black!30]
-      (4.75,-.55) rectangle (6.55,-.35);
-    \node[anchor=west] at (6.65,-.25) {high};
-    \node[text=black!55, align=center] at (2.25,-1.9)
-      {mockup layout\\placeholder scores};
+      (5.55,-.55) rectangle (7.15,-.35);
+    \node[anchor=west] at (7.25,-.25) {100};
   \end{tikzpicture}
   }
-  \caption{Per-scenario Score heatmap. Mockup only: cells will contain measured
-  weighted Score for each system and main scenario. \todo{Note which pattern
-  consistently breaks LLMs.}}
+  \caption{Per-scenario F1 heatmap on the 10 main scenarios (cell values are
+  percentages). The hardest case for \harnessname{} is \texttt{s\_10}, a flat
+  role-variant stress scenario, while the hub-centric \texttt{s\_5}--\texttt{s\_6}
+  cases are solved perfectly.}
   \label{fig:heatmap}
 \end{figure}
 
-\todo{Write §7.3 — pattern-by-pattern commentary. Expected finding:
-gateway-centric and hub-star degrade most, because they require pivot
-reasoning. Edge-cloud may also degrade on cloud-side service discovery.}
+The per-scenario profile in Figure~\ref{fig:heatmap} changes our initial
+expectation. The hub-centric star scenarios are not the weak point: both
+\texttt{s\_5} and \texttt{s\_6} reach 1.000 F1, suggesting that explicit graph
+context and deterministic probing make gateway-mediated dependencies tractable.
+Segmented IT/OT scenarios remain strong but not perfect (\texttt{s\_4}: 0.944
+F1, \texttt{s\_8}: 0.933), mostly because deeper pivots increase the chance of
+duplicate or slightly misclassified findings.
+
+The most difficult main scenario is \texttt{s\_10}: recall drops to 0.846,
+precision to 0.786, F1 to 0.815, and weighted score to 71.3\%. This scenario is
+flat rather than multi-hop, so the failure is not lateral-movement reasoning.
+Instead, role variants make service semantics less predictable and increase
+near-duplicate reports. The edge-cloud pivot (\texttt{s\_7}) remains high at
+0.965 F1, and the mesh smart-city case (\texttt{s\_9}) reaches 0.952 F1 with
+perfect precision.
 
 \subsection{Evidence-level depth}
 \label{sec:eval:evidence}
 
 \begin{table}[t]
 \centering
-\caption{Evidence-level coverage. $L_k$ is the fraction of true positives
-reaching level~$k$ or deeper. Absent from binary-flag benchmarks.}
+\caption{Evidence-level coverage. The latest scenario export reports aggregate
+TP/FP/FN scores but not the per-finding \texttt{evidence\_level} fields needed
+to compute $L_k$; the table records the evaluator state rather than inventing
+coverage values.}
 \label{tab:evidence}
-\footnotesize
-\begin{tabular}{@{}lrrr@{}}
+\scriptsize
+\begin{tabular}{@{}p{0.34\linewidth}ccc@{}}
 \toprule
 System & $L_1$ (detect) & $L_2$ (exploit) & $L_3$ (exfiltrate) \\
 \midrule
-\textbf{\harnessname (full)}                    & \todo{} & \todo{} & \todo{} \\
-\harnessname\ w/o Phase~5                       & \todo{} & \todo{} & 0.00 \\
+\textbf{\harnessname (full)}                    & n/e & n/e & n/e \\
+\harnessname\ w/o Phase~5                       & n/e & n/e & 0.00 \\
 \midrule
 Nmap NSE                                        & --      & --      & --   \\
 \bottomrule
 \end{tabular}
+\smallskip\\
+\footnotesize\emph{n/e = not exported in the result bundle used for this draft.}
 \end{table}
 
-\todo{Write §7.4 — expected: detection (L1) near-parity with scanners, but
-L2/L3 is LLM-only. This is the strongest argument for LLM agents in this
-context.}
+The distinction still matters methodologically. The scenario-level F1 and
+weighted score confirm that \harnessname{} identifies the injected
+vulnerabilities with high accuracy, but they do not distinguish banner-level
+detection from exploit proof or exfiltration. This is exactly why the
+benchmark stores \texttt{evidence\_level} in Phase~4 deliverables: once the
+per-finding export is enabled, $L_1$--$L_3$ can be recomputed without rerunning
+the agents. Until then, we avoid using the evidence-depth argument as a
+quantitative claim in the results section.
 
 \subsection{Per-protocol analysis}
 \label{sec:eval:protocol}
 
-\todo{Write §7.5 — 2 paragraphs. Expected: LLMs excel on MQTT/SSH/HTTP
-(text-rich, well-represented in training), fall short on Modbus/LoRaWAN
-(binary, sparse training data). Report numbers per protocol.}
+The current result bundle does not contain a protocol-keyed confusion matrix,
+so we do not report per-protocol recall values. The scenario pattern results
+nevertheless provide two useful signals. First, text-rich service mixes
+(HTTP/SSH/MQTT/Redis-style probes) are handled consistently: the flat,
+hub-centric, mesh, and edge-cloud cases all stay above 0.923 F1 except for the
+role-variant stress case. Second, the two segmented IT/OT scenarios remain
+high but below the easiest hub cases, which is consistent with the added
+uncertainty introduced by OT-side pivots and protocol-specific access paths.
+
+For the final submission, the protocol breakdown should be computed directly
+from ground-truth categories and matched true positives, not inferred from
+scenario names. That export should separate at least HTTP, SSH, MQTT,
+database/key-value services, and OT/fieldbus-facing findings; otherwise the
+paper risks overstating a protocol claim that the present CSV does not support.
 
 \subsection{Failure modes and cost/time envelope}
 \label{sec:eval:failures}
 
-\begin{figure}[t]
+\begin{table}[t]
   \centering
-  \resizebox{0.98\linewidth}{!}{%
-  \begin{tikzpicture}[font=\scriptsize]
-    \draw[->, draw=black!70] (0,0) -- (5.8,0) node[anchor=west] {USD / run};
-    \draw[->, draw=black!70] (0,0) -- (0,3.0) node[anchor=south] {Score};
-    \foreach \x/\lab in {1/low,3/,5/high} {
-      \draw[draw=black!15] (\x,0) -- (\x,2.8);
-      \node[anchor=north] at (\x,-.08) {\lab};
-    }
-    \foreach \y/\lab in {1/low,2/high} {
-      \draw[draw=black!15] (0,\y) -- (5.6,\y);
-      \node[anchor=east] at (-.08,\y) {\lab};
-    }
-    \draw[dashed, draw=black!40] (.55,.45) -- (2.2,1.55) -- (4.55,2.35);
-    \fill[gray!70] (.65,.55) circle (2.4pt);
-    \node[anchor=west] at (.75,.55) {NSE};
-    \fill[orange!75] (2.25,1.25) circle (2.8pt);
-    \node[anchor=west] at (2.35,1.25) {no P5};
-    \fill[blue!70] (3.35,1.85) circle (3pt);
-    \node[anchor=west] at (3.45,1.85) {no P1};
-    \fill[green!65!black] (4.55,2.35) circle (3.2pt);
-    \node[anchor=west] at (4.65,2.35) {full};
-    \node[text=black!55, align=center] at (2.8,.72)
-      {mockup layout\\placeholder positions};
-  \end{tikzpicture}
-  }
-  \caption{Cost--performance Pareto across systems on MiniMax-M2.7; the
-  multi-model frontier is deferred to future work (\cref{sec:conclusion}).
-  Mockup only: point positions will be replaced by final cost and Score.
-  \todo{Annotate which system dominates on each axis and the efficient
-  frontier.}}
-  \label{fig:pareto}
-\end{figure}
+\caption{Vulhub full-run outcome distribution. Percentages are over the 175
+completed agent runs unless marked as pre-agent failures.}
+\label{tab:vulhub-failures}
+\scriptsize
+\begin{tabular}{@{}p{0.30\linewidth}rrp{0.42\linewidth}@{}}
+\toprule
+Outcome & Cases & Share & Interpretation \\
+\midrule
+Max turns & 83 & 47\% & mixed: loops plus exploited-but-no-flag cases \\
+No finding & 23 & 13\% & includes 15 hidden proof-level successes \\
+Blocked: credentials & 23 & 13\% & exploit path needed unavailable secret \\
+Probable vulnerability & 21 & 12\% & actionable but not fully confirmed \\
+Blocked: tool & 19 & 11\% & missing exploit/runtime support \\
+Confirmed exploit & 6 & 3\% & strict automatic success \\
+\midrule
+Environment failed & 11 & -- & target did not reach the agent \\
+Rate-limited / skipped & 5 & -- & provider-side interruption \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\todo{Write §7.6 — categorize failure modes: (a) hallucinated findings on
-hardened controls, (b) missed vulnerabilities on binary protocols,
-(c) over-reporting info-disclosure without severity calibration. Include a
-brief quantitative table.}
+The main scenario failures are accuracy failures rather than cost failures:
+\texttt{s\_10} dominates the error profile, with both missed findings and
+near-duplicate false positives caused by role variants. On Vulhub, the dominant
+failure mode is different. The largest bucket is \textsc{max turns}, and manual
+inspection shows that it conflates two behaviors: genuinely unproductive loops
+and successful exploitation followed by continued searching for a flag that the
+environment does not standardize. The next largest useful engineering fixes are
+tool coverage and credential handling: 19 completed cases were blocked by
+missing tools, while 23 required credentials or setup assumptions the agent did
+not have.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
