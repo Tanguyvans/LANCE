@@ -82,7 +82,10 @@ evidence-level coverage (L1 detection, L2 exploitation, L3 exfiltration) and
 Multi-Hop Reach (MHR$_k$), which measures recall on vulnerabilities that
 require at least $k$ pivots or zone transitions. We describe the benchmark,
 evaluator, and experimental protocol for isolating architectural effects
-independently from model choice.
+independently from model choice. On the 10 main scenarios, \harnessname{}
+achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
+CVSS-weighted score; a full 191-case Vulhub run gives a conservative
+39--48\% useful-finding lower bound.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -130,10 +133,10 @@ not of the agent: improving the agent alone does not close them.
   separate detection, exploitation, and exfiltration, and that measure
   recall as a function of firewall-hop distance.
   \item \textbf{Evaluation protocol} holding the LLM constant across
-  systems to isolate architectural contributions. The primary comparison
-  uses \harnessname{}, two internal ablations, and Nmap NSE; optional
-  LLM-agent baselines are treated as adapters when their tool interfaces
-  can be reproduced under the same model and budget.
+  systems to isolate architectural contributions. The current comparison
+  reports \harnessname{}, adapted LLM-agent baselines, and a full Vulhub
+  sanity check; the benchmark additionally defines ablations and Nmap NSE
+  as next export targets under the same model and budget.
 \end{itemize}
 
 All artifacts (Ansible playbooks, ground truth, evaluator, run logs)
@@ -890,24 +893,27 @@ in under 10~minutes per scenario.
 
 \paragraph{LLM model: fairness lock}
 To isolate \emph{architectural} contributions from model-specific
-advantages, all LLM-driven systems compared in this work, including our
-pipeline (and its ablations) and all LLM baselines, run on the same
+advantages, all LLM-driven systems in the current quantitative comparison run
+on the same
 general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. We
 deliberately avoid a multi-model matrix: a fair comparison of
 architectures requires the model variable to be held constant.
 CAI's specialised \texttt{alias1} model (security-fine-tuned, paywalled)
 is intentionally not used: this study addresses the architecture axis,
 not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps
-out-of-pocket cost bounded under our research subscription, enabling
-the full $k{=}3$-run variance estimation across systems and scenarios
-without budget trade-offs.
+out-of-pocket cost bounded under our research subscription.
 
 \paragraph{Baselines}
-The core evaluation compares \harnessname{} against two internal ablations
-and one non-LLM scanner baseline. External LLM pentest frameworks are
-discussed as related work; we only include them in quantitative tables when
-their tool interface can be adapted to the same model, scenario scope, and
-turn budget without changing their architecture.
+The intended core evaluation compares \harnessname{} against two internal
+ablations and one non-LLM scanner baseline. The latest result bundle used in
+this draft contains the full \harnessname{} runs, adapted LLM-agent baseline
+F1 scores, and the full Vulhub run; it does not yet contain ablation, Nmap NSE,
+MHR$_k$, or per-evidence-level exports. We therefore report those missing
+columns explicitly as not exported rather than estimating them from aggregates.
+External LLM pentest frameworks are discussed as related work; we only include
+them in quantitative tables when their tool interface can be adapted to the
+same model, scenario scope, and turn budget without changing their
+architecture.
 
 \begin{itemize}
   \item \textbf{\harnessname{}--w/o-Phase~1} disables the topology prior
@@ -929,19 +935,13 @@ primarily affect $L_3$ evidence and MHR$_k$ for $k\geq 1$
 (\cref{sec:harness:phase5}).
 
 \paragraph{Variance}
-Each (system, scenario) cell is run $k{=}3$ times. We report mean, standard
-deviation, and 95\% bootstrap confidence intervals. Pairwise differences
-(our pipeline vs each baseline) are tested with Mann--Whitney $U$ on F1 and
-weighted Score per scenario. \emph{Power caveat:} with $n_1=n_2=3$, the
-two-sided Mann--Whitney $U$ test has a minimum reachable $p$-value of
-$0.10$, so individual per-scenario comparisons are indicative rather than
-conclusive. We mitigate this by aggregating across the ten main scenarios
-(combined $n=30$ per system) for the headline cross-system tests, where
-power is sufficient. This protocol still exceeds the single-run reporting
-of PentestGPT~\cite{pentestgpt24}, AutoPentester~\cite{autopentester25},
-AutoPenBench~\cite{autopenbench24}, and CAI~\cite{cai25}, and matches the
-multi-run averaging of VulnBot~\cite{vulnbot25} (5-experiment) and
-Pentest-R1~\cite{pentestr125} (pass@3).
+The evaluator supports repeated runs per (system, scenario) cell, including
+mean, standard deviation, bootstrap confidence intervals, and pairwise
+Mann--Whitney $U$ tests on F1 and weighted Score. The result bundle available
+for this draft reports one aggregate row per scenario and system adapter, so
+we use scenario-level means rather than confidence intervals or significance
+tests in \cref{sec:eval}. The full variance analysis remains a measurement
+step, not a claim made from the present export.
 
 \paragraph{Metrics}
 We report five families of metrics, chosen to (i)~align with prior work's
@@ -1281,14 +1281,13 @@ not have.
 
 \paragraph{Where LLMs help, where they don't}
 \systemname{} is designed to separate several failure modes that are usually
-collapsed into one binary success signal. In the final analysis we expect this
-separation to show where LLM agents help most (text-rich misconfigurations,
-default credentials, and information disclosure) and where they require
-additional support (binary industrial protocols and cross-device inferences
-that require a persistent network view). The intended deployment model is
-therefore hybrid: LLM agents for configuration auditing, traditional scanners
-for CVE coverage, and human operators or specialised tooling for the OT/ICS
-layer.
+collapsed into one binary success signal. The current results show strong
+aggregate vulnerability matching across the main scenarios, while the missing
+evidence/protocol export prevents us from attributing that gain to specific
+protocol families. The intended deployment model is therefore hybrid: LLM
+agents for configuration auditing and multi-step reasoning, traditional
+scanners for broad CVE coverage, and human operators or specialised tooling
+for the OT/ICS layer.
 
 \paragraph{Implications for agentic systems}
 The harness's per-device and per-vulnerability micro-agent structure is one
@@ -1302,8 +1301,9 @@ devices on Linux VMs; real constrained hardware introduces embedded-specific
 attack surfaces (bootloaders, RTOS, firmware) we do not cover.
 (ii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP even
 without ground-truth matches, which inflates precision.
-(iii)~\emph{Model variance.} With $k{=}3$ runs per configuration, confidence
-intervals on F1 remain wide for some scenarios.
+(iii)~\emph{Model variance.} The evaluator supports repeated runs, but the
+current result bundle reports one aggregate row per scenario and therefore
+does not support confidence intervals.
 (iv)~\emph{Prompt sensitivity.} We fix a single prompt family across models;
 per-model prompt tuning would likely raise scores.
 (v)~\emph{Static architectures.} The five patterns are fixed; real deployments
@@ -1356,12 +1356,13 @@ We presented \systemname, a reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
 \harnessname, a network-native multi-agent harness whose infrastructure-graph
 guidance and dedicated lateral movement phase keep LLM context tractable while
-explicitly modelling reachability. Holding the LLM constant
-(\cref{sec:setup}) across our pipeline and two ablations, and comparing
-against Nmap NSE as a non-LLM baseline, the protocol isolates the
-\emph{architectural} contribution: topology guidance and a dedicated
-lateral-movement phase can be measured directly through MHR$_k$ and L1--L3
-evidence coverage, dimensions that binary flag-capture benchmarks conflate.
+explicitly modelling reachability. On the current result bundle, \harnessname{}
+achieves 0.940 mean F1 and 86.1\% weighted score on the 10 main scenarios,
+outperforming each adapted LLM-agent baseline in every scenario. The same run
+bundle also shows that the remaining evaluator work is not more model output
+but richer exports: MHR$_k$, per-protocol recall, and L1--L3 evidence coverage
+are already defined by the benchmark and should be emitted from matched
+per-finding records.
 
 \paragraph{Future work}
 (i)~\emph{Multi-model robustness:} extending the architectural comparison to
