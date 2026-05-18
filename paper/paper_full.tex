@@ -34,7 +34,7 @@
 \newenvironment{yamlquote}{\par\vspace{.3em}\footnotesize\verbatim}{\endverbatim\normalsize\par\vspace{.3em}}
 
 % ── title & anonymous authors (ACSAC double-blind) ────────────────────────
-\title{\systemname: A Network-Scale Benchmark for LLM-Based IoT Penetration Testing}
+\title{LANCE, a Network-Native LLM Agent and Benchmark for Multi-Hop IoT Penetration Testing}
 
 % ── DOUBLE-BLIND: anonymized for submission ──────────────────────────────
 % Camera-ready author block (uncomment for final version):
@@ -62,7 +62,6 @@
 \author{\IEEEauthorblockN{Anonymous Authors}
 \IEEEauthorblockA{Paper~\#XXXX, Anonymized for Double-Blind Review}}
 
-% ──────────────────────────────────────────────────────────────────────────
 \begin{document}
 \maketitle
 
@@ -101,54 +100,41 @@ benchmark, cyber-physical systems
 \section{Introduction}
 \label{sec:intro}
 
-The security of an IoT deployment is shaped not only by its devices, but by
-the paths that connect them. Smart buildings expose cameras, dashboards,
-brokers, and controllers through gateways; industrial sites place PLCs,
-historians, and engineering workstations behind segmented access paths. For an
-attacker, the relevant surface is therefore a graph of reachability,
-credentials, services, and protocol bridges. Real incidents, from
-Mirai~\cite{antonakakis17} and Verkada~\cite{verkada21} to
-Stuxnet~\cite{langner11}, show that impact often comes from chained access
-rather than from a single vulnerable endpoint.
+IoT deployments are compromised through paths, not just devices.
+Mirai~\cite{antonakakis17}, Verkada~\cite{verkada21}, and
+Stuxnet~\cite{langner11} each demonstrate this: impact came from
+chained access across cameras, brokers, PLCs, and segmented boundaries.
 
-Recent LLM pentesting agents report strong results on public corpora
-(Table~\ref{tab:related}), but the corpora themselves remain largely
-single-host: isolated containers, VMs, or CTF-style services scored one target
-at a time. As a result, current evaluations do not measure three capabilities
-that are central to IoT/OT security: discovering vulnerabilities behind
-pivots, operating over domain protocols such as MQTT, Modbus, LoRaWAN, and
-CoAP, and distinguishing weak evidence from confirmed exploitation or
-exfiltration. The limitation is therefore not only architectural; it is
-methodological. Without a network-scale benchmark, progress on single-host
-tasks can overstate readiness for real IoT deployments.
+Yet LLM penetration-testing agents are evaluated on a single host at a
+time: isolated containers, VMs, or CTF services scored independently.
+This gap is methodological, not merely architectural. Single-host corpora
+cannot measure three capabilities central to IoT/OT security: finding
+vulnerabilities behind pivots, reasoning over domain protocols (MQTT,
+Modbus, CoAP, LoRaWAN), and distinguishing banner-level detection from
+confirmed exploitation or exfiltration. Without a network-scale benchmark,
+strong single-host scores overstate readiness for real deployments.
 
-\noindent\textbf{Contributions.}
-This paper makes four contributions.
-
+\noindent\textbf{Contributions.} This paper makes four contributions.
 \begin{itemize}
-  \item We introduce \textbf{\systemname}, a reproducible benchmark for
-  evaluating LLM pentest agents beyond single-host challenges. The benchmark
-  contains 15 IoT/OT network scenarios, 145 devices, and 229 injected
-  vulnerabilities deployed with Ansible, with machine-readable ground truth
-  mapped to OWASP~IoT~Top~10 and MITRE ATT\&CK for ICS.
-  \item We design \textbf{\harnessname}, a network-native evaluation harness
-  that decomposes pentesting into six stages: topology reasoning, discovery,
-  device-level triage, vulnerability verification, intrusion, and reporting.
-  This structure keeps LLM context tractable while preserving multi-hop attack
-  paths and lateral movement.
-  \item We propose evidence-aware metrics for network-scale pentesting:
-  L1/L2/L3 scoring distinguishes detection, exploitability evidence, and
-  post-exploitation impact, while MHR$_k$ measures how recall degrades with
-  firewall-hop distance from the entry point.
-  \item We provide an empirical evaluation protocol that separates benchmark
-  difficulty from agent architecture. We compare \harnessname{} against adapted
-  LLM-agent baselines, validate transfer on AutoPenBench and Vulhub, and define
-  ablations and Nmap NSE baselines for controlled follow-up experiments under
-  the same model and budget.
-\end{itemize}
+  \item \textbf{IoTChainBench}: a reproducible network-scale benchmark with
+  15 IoT/OT scenarios, 145 devices, and 229 injected vulnerabilities mapped
+  to OWASP IoT Top~10 and MITRE ATT\&CK for ICS, deployed via Ansible with
+  per-vulnerability ground truth.
 
-All artifacts, including Ansible playbooks, ground truth, evaluator, and run
-logs, are released at \texttt{ANONYMIZED\_URL}.
+  \item \textbf{LANCE}: a six-phase network-native harness
+  (topology $\to$ discovery $\to$ triage $\to$ verification $\to$
+  intrusion $\to$ report) achieving 0.940 F1 and 86.1\% CVSS-weighted
+  score on the 10 main scenarios.
+
+  \item \textbf{Evidence-aware metrics}: L1/L2/L3 scoring (detection,
+  exploitation, exfiltration) and MHR$_k$ (recall as a function of
+  firewall-hop depth), both absent from existing flag-capture benchmarks.
+
+  \item \textbf{Controlled evaluation}: architectural comparison against
+  adapted LLM-agent baselines under a fixed model and budget, with
+  transfer validation on AutoPenBench and Vulhub.
+\end{itemize}
+All artifacts are released at \texttt{ANONYMIZED\_URL}.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §2 Background and Related Work
