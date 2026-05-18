@@ -142,59 +142,18 @@ All artifacts are released at \texttt{ANONYMIZED\_URL}.
 \section{Related Work}
 \label{sec:related}
 
-This section reviews prior work relevant to our approach. We first survey
-LLM-driven penetration-testing agents and the benchmarks used to evaluate
-them, then discuss the classical attack-graph literature that informs
-\harnessname's topology-aware design, and finally review IoT firmware
-analysis and the security frameworks underlying our scenario taxonomy.
+This section reviews prior work relevant to our approach. We first survey LLM-driven penetration-testing agents and the benchmarks used to evaluate them, then discuss the classical attack-graph literature that informs \harnessname's topology-aware design, and finally review IoT firmware analysis and the security frameworks underlying our scenario taxonomy.
 
 \subsection{LLM Penetration-Testing Agents}
 \label{sec:related:llm}
 
-Happe and Cito~\cite{happe23} were among the first to show that a single
-LLM driving a shell can autonomously perform privilege-escalation tasks
-on Linux VMs. \textsc{PentestGPT}~\cite{pentestgpt24} then introduced a
-multi-module design (three coordinated LLM sessions over a
-\emph{Pentesting Task Tree}), evaluated on 182 hand-curated HackTheBox
-and VulnHub sub-tasks across 13 targets, reaching $66.5\%$ subtask and
-$46.2\%$ end-to-end completion against $52.2\%$/$38.5\%$ for plain GPT-4
-and $23.1\%$/$7.7\%$ for GPT-3.5. \textsc{HackingBuddyGPT}%
-~\cite{hackingbuddygpt}, \textsc{AutoAttacker}~\cite{autoattacker24} and
-\textsc{Nebula}~\cite{nebula24} extend this single-agent line into
-open-source tools.
+\noindent\textbf{Single-agent systems.} Happe and Cito~\cite{happe23} were among the first to show that a single LLM driving a shell can autonomously perform privilege escalation on Linux VMs. \textsc{PentestGPT}~\cite{pentestgpt24} improved this with a three-module design over a \emph{Pentesting Task Tree}, outperforming direct GPT-3.5 and GPT-4 usage on HackTheBox and VulnHub targets. \textsc{HackingBuddyGPT}~\cite{hackingbuddygpt}, \textsc{AutoAttacker}~\cite{autoattacker24}, and \textsc{Nebula}~\cite{nebula24} extend this line as open-source tools.
 
-Later systems push specialisation from cognitive roles to penetration
-phases. \textsc{VulnBot}~\cite{vulnbot25} decomposes the workflow into
-three phases (reconnaissance, scanning, exploitation) driven by five
-cooperating modules over a \emph{Penetration Testing Task Graph}; it reports
-$69.1\%$ subtask and $30.3\%$ end-to-end completion on AutoPenBench
-with Llama 3.1-405B, a $21$-point end-to-end gain over the same model
-used single-agent. \textsc{AutoPentester}~\cite{autopentester25} adds
-retrieval-augmented generation across five LLM agents and reports a
-$+27\%$ subtask gain over \textsc{PentestGPT} on HackTheBox.
-\textsc{PentestAgent}~\cite{pentestagent25} and the production-grade
-\textsc{CAI}~\cite{cai25} generalise this multi-agent blueprint with
-modular tool use and a public leaderboard.
+\noindent\textbf{Multi-agent pipelines.} \textsc{VulnBot}~\cite{vulnbot25} decomposes pentesting into reconnaissance, scanning, and exploitation over a \emph{Penetration Task Graph}, gaining 21 points end-to-end over its single-agent baseline ($30.3\%$ on AutoPenBench with Llama~3.1-405B). \textsc{AutoPentester}~\cite{autopentester25} adds RAG across five agents for a $+27\%$ subtask gain over \textsc{PentestGPT} on HackTheBox. \textsc{PentestAgent}~\cite{pentestagent25} and \textsc{CAI}~\cite{cai25} generalise this blueprint with modular tool use and a public leaderboard.
 
-A complementary thread improves the underlying agent rather than its
-orchestration. \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage
-reinforcement learning on reasoning traces, and
-\textsc{xOffense}~\cite{xoffense25} LoRA-fine-tunes Qwen3-32B on
-offensive write-ups (TryHackMe, HackTheBox, VulnHub,
-\textsc{WhiteRabbitNeo}), reaching $79.17\%$ subtask completion on
-AutoPenBench and surpassing \textsc{PentestGPT} and \textsc{VulnBot}.
-\textsc{CheckMate}~\cite{checkmate25} couples an LLM agent with a
-\emph{Classical Planning+} module encoding preconditions and effects of
-predefined attack actions, improving success rates by more than $20\%$
-over Claude Code + Sonnet 4.5 on the Vulhub benchmark.
+\noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $79.17\%$ subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, gaining more than $20\%$ on Vulhub over a Claude Code + Sonnet~4.5 baseline.
 
-Despite the diversity of these designs, published scores are usually
-reported at the level of a single target or challenge (a HackTheBox
-machine, a VulnHub VM, an AutoPenBench task, or a CTF environment).
-Some environments require multi-step exploitation, but the reported
-metrics do not expose subnet-level reachability, hop depth, or
-per-vulnerability progress across an IoT/OT topology with protocols such
-as MQTT, Modbus, LoRaWAN, and CoAP.
+\noindent\textbf{Common limitation.} Despite this diversity, all systems are evaluated one host at a time. None expose subnet reachability, pivot depth, or per-vulnerability progress across IoT/OT protocols (MQTT, Modbus, LoRaWAN, CoAP), which is the gap \textsc{IoTChainBench} and \textsc{LANCE} address.
 
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
