@@ -1,4 +1,4 @@
-% IoTPentBench / MeshScout — ACSAC 2026 submission
+% IoTChainBench / LANCE — ACSAC 2026 submission
 % Target format: 11 pages double-column IEEEtran conference compsoc
 % Double-blind review — NO author info before camera-ready.
 % Single-file version (sections inlined from sections/*.tex)
@@ -23,8 +23,8 @@
 \usepackage[hidelinks,breaklinks=true]{hyperref}
 
 % ── macros ────────────────────────────────────────────────────────────────
-\newcommand{\systemname}{IoTPentBench\xspace}
-\newcommand{\harnessname}{\textsc{MeshScout}\xspace}
+\newcommand{\systemname}{IoTChainBench\xspace}
+\newcommand{\harnessname}{\textsc{LANCE}\xspace}
 \newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
 \newcommand{\note}[1]{\textcolor{blue}{\textit{[note: #1]}}}
 
@@ -894,7 +894,7 @@ raising the conservative lower bound to 84/175 (48\%).}
     }
 
     \foreach \x/\h/\val/\lab in {
-      .35/2.63/{94.0}/{MeshScout},
+      .35/2.63/{94.0}/{LANCE},
       1.75/.88/{31.2}/{CAI},
       3.15/.90/{32.1}/{PentGPT},
       4.55/.88/{31.6}/{VulnBot},
@@ -958,7 +958,7 @@ CVE cases fail before agent invocation due to upstream environment issues
     \foreach \c/\sid in {0/s1,1/s2,2/s3,3/s4,4/s5,5/s6,6/s7,7/s8,8/s9,9/s10} {
       \node[rotate=45, anchor=west] at (\c*\cellw+0.12,0.25) {\sid};
     }
-    \foreach \r/\sys in {0/MeshScout,1/CAI,2/PentGPT,3/VulnBot} {
+    \foreach \r/\sys in {0/LANCE,1/CAI,2/PentGPT,3/VulnBot} {
       \node[anchor=east] at (-0.12,-\r*\cellh-.18) {\sys};
     }
     \foreach \c/\v in {0/92,1/92,2/95,3/94,4/100,5/100,6/97,7/93,8/95,9/82} {
