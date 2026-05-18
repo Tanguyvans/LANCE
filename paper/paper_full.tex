@@ -1035,8 +1035,9 @@ for reference, and \harnessname{} (MiniMax-M2.7) is evaluated on Vulhub in the
 latest result bundle. Models differ across rows — this table is not a fair
 model comparison but checks whether \harnessname{} remains plausible on an
 established single-host corpus while adding the network-scale dimension.
-\emph{E2E \%}: fraction of tasks fully solved. CheckMate reports only a
-relative gain over its baseline (absolute not published). ``n/r'' = not
+\emph{E2E \%}: fraction of tasks fully solved. CheckMate uses milestone-based
+progress on a 120-container Vulhub sample and reports only a relative benchmark
+success-rate gain over its baseline, not an absolute E2E rate. ``n/r'' = not
 reported. $^\star$ = lower-bound proof-oracle estimate (see text).}
 \label{tab:cross}
 \setlength{\tabcolsep}{6pt}
@@ -1054,16 +1055,17 @@ GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n
 \textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
 \textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Vulhub (191 CVE tasks)}} \\
+\multicolumn{5}{@{}l}{\emph{Vulhub / Vulhub-derived single-host tasks}} \\
 \midrule
 Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
-\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Plan+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
+\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Classical Planning+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
 \textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-\textsuperscript{rel} Relative gain over Claude Code baseline; absolute not published by CheckMate.
+\textsuperscript{rel} Relative benchmark success-rate gain over Claude Code
+baseline; absolute E2E rate not published by CheckMate.
 $^\dagger$ We report useful findings as the closest sub-task analogue because
 our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
 Informed mode receives the benchmark case id and vulnerability label; blind
