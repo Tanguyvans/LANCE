@@ -153,27 +153,66 @@ This section reviews prior work relevant to our approach. We first survey LLM-dr
 
 \noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $79.17\%$ subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, gaining more than $20\%$ on Vulhub over a Claude Code + Sonnet~4.5 baseline.
 
-\noindent\textbf{Common limitation.} Despite this diversity, all systems are evaluated one host at a time. None expose subnet reachability, pivot depth, or per-vulnerability progress across IoT/OT protocols (MQTT, Modbus, LoRaWAN, CoAP), which is the gap \textsc{IoTChainBench} and \textsc{LANCE} address.
+\noindent\textbf{Common limitation.} Despite this diversity, reported
+evaluations remain single-target or challenge-level. They do not score subnet
+reachability, pivot depth, or per-vulnerability progress across IoT/OT
+protocols (MQTT, Modbus, LoRaWAN, CoAP), which is the gap
+\textsc{IoTChainBench} and \textsc{LANCE} address.
 
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
 
-\noindent\textbf{Challenge-level corpora.} \textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation substrate: 33 Docker-container tasks with milestone and flag-based scoring, used by \textsc{VulnBot}, \textsc{Pentest-R1}, and \textsc{xOffense}. \textsc{Vulhub}~\cite{vulhub} provides a large collection of reproducible vulnerable environments used by \textsc{CheckMate}. \textsc{CAIBench}~\cite{caibench25}, \textsc{NYU CTF Bench}~\cite{nyuctfbench24}, and \textsc{Cybench}~\cite{cybench24} extend coverage to CTFs, attack-and-defense ranges, and knowledge tests. All score at challenge or flag level: none provides per-vulnerability ground truth tied to network reachability, hop depth, or IoT/OT protocols.
+\noindent\textbf{Challenge-level corpora.} \textsc{AutoPenBench}~\cite{autopenbench24}
+is the dominant evaluation substrate: 33 Docker-container tasks with milestone
+and flag-based scoring, used by \textsc{VulnBot}, \textsc{Pentest-R1}, and
+\textsc{xOffense}. \textsc{Vulhub}~\cite{vulhub} provides reproducible
+vulnerable environments used by \textsc{CheckMate}. \textsc{CAIBench}~\cite{caibench25},
+\textsc{NYU CTF Bench}~\cite{nyuctfbench24}, and \textsc{Cybench}~\cite{cybench24}
+extend coverage to CTFs, attack-and-defense ranges, and knowledge tests. These
+corpora score at challenge or flag level. They do not provide per-vulnerability
+ground truth tied to reachability, hop depth, or IoT/OT protocols.
 
-\noindent\textbf{Multi-host labs.} \textsc{Ludus}~\cite{ludus} and \textsc{GOAD}~\cite{goad} deliver Proxmox+Ansible deployments of enterprise Active Directory networks, the closest methodological precedent to our infrastructure. Both model multi-host compromise and lateral movement, but neither ships a per-vulnerability ground-truth schema, hop-depth annotations, or a scoring procedure, and both target enterprise AD rather than IoT/OT protocols. To our knowledge, no prior benchmark combines multi-host reachability, IoT/OT protocol coverage, per-vulnerability ground truth, and evidence-level scoring beyond binary flag capture (Table~\ref{tab:related}).
+\noindent\textbf{Multi-host labs.} \textsc{Ludus}~\cite{ludus} and
+\textsc{GOAD}~\cite{goad} deliver Proxmox+Ansible deployments of enterprise
+Active Directory networks. They are labs and training ranges, not scored LLM
+benchmarks. Both model multi-host compromise and lateral movement, but neither
+ships a per-vulnerability ground-truth schema, hop-depth annotations, or an
+evaluator. Both also target enterprise AD rather than IoT/OT protocols. To our
+knowledge, no prior benchmark combines multi-host reachability, IoT/OT protocol
+coverage, per-vulnerability ground truth, and evidence-level scoring beyond
+binary flag capture (Table~\ref{tab:related}).
 
 \subsection{Attack Graphs and Network Reachability}
 \label{sec:related:graph}
 
-Representing a network as a graph for security analysis predates deep learning by decades. Phillips and Swiler~\cite{phillips98} introduced graph-based network-vulnerability analysis, Sheyner~\emph{et al.} \cite{sheyner02} developed automated attack-graph generation via model checking, and \textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog inference, becoming the de facto reference for attack-graph research. These systems compute reachable attacker states from a \emph{static} encoding of host configurations and exposed services. \textsc{LANCE} borrows this reachability abstraction but operates on a \emph{live} network: edges are validated by actual probes, the LLM proposes the next action, and the graph is updated as new hosts are discovered. Classical attack-graph generation is therefore complementary
-rather than competing.
+Representing a network as a graph for security analysis predates deep learning
+by decades. Phillips and Swiler~\cite{phillips98} introduced graph-based
+network-vulnerability analysis. Sheyner~\emph{et al.}~\cite{sheyner02}
+developed automated attack-graph generation via model checking, and
+\textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog inference. These
+systems compute reachable attacker states from a \emph{static} encoding of
+host configurations and exposed services. \textsc{LANCE} borrows this
+reachability abstraction but operates on a \emph{live} network: edges are
+validated by probes, the LLM proposes the next action, and the graph is updated
+as hosts are discovered. Classical attack-graph generation is therefore
+complementary rather than competing.
 
 \subsection{IoT Security Context}
 \label{sec:related:iot}
 
 Scenario design and ground-truth taxonomy follow three references: OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST SP\,800-82~Rev.\,3~\cite{nist80082} for OT security and segmentation conventions.
 
-Empirical IoT-security artefacts fall into two families. \textbf{Network-traffic datasets} (IoT-23~\cite{iot23}, TON\_IoT~\cite{toniot20}, Edge-IIoTset~\cite{edgeiiotset22}) provide labeled traces for intrusion detection but are not deployable pentest targets with per-vulnerability ground truth or controllable reachability. \textbf{Firmware-focused work} (Costin~\emph{et al.}~\cite{costin14}, \textsc{Firmadyne}~\cite{firmadyne16}, \textsc{FirmAE}~\cite{firmae20}, \textsc{IoTGoat}~\cite{iotgoat}) exercises single-device firmware analysis. Both families are complementary to \textsc{IoTChainBench}, which evaluates LLM agents on deployed multi-device networks with firewall-enforced reachability.
+Empirical IoT-security artefacts fall into two families. \textbf{Network-traffic
+datasets} (IoT-23~\cite{iot23}, TON\_IoT~\cite{toniot20},
+Edge-IIoTset~\cite{edgeiiotset22}) provide labeled traces for intrusion
+detection. They are not deployable pentest targets with per-vulnerability
+ground truth or controllable reachability. \textbf{Firmware-focused work}
+(Costin~\emph{et al.}~\cite{costin14}, \textsc{Firmadyne}~\cite{firmadyne16},
+\textsc{FirmAE}~\cite{firmae20}, \textsc{IoTGoat}~\cite{iotgoat}) exercises
+single-device firmware analysis. These datasets measure detection or
+firmware-analysis capability. \textsc{IoTChainBench} instead measures active
+security assessment on deployed multi-device networks with firewall-enforced
+reachability.
 
 \begin{table}[h!]
 \centering
