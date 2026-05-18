@@ -165,143 +165,17 @@ This section reviews prior work relevant to our approach. We first survey LLM-dr
 \subsection{Attack Graphs and Network Reachability}
 \label{sec:related:graph}
 
-Representing a network as a graph for security analysis predates deep
-learning by decades. Phillips and Swiler~\cite{phillips98} introduced
-graph-based network-vulnerability analysis, Sheyner~\emph{et al.}
-\cite{sheyner02} developed automated attack-graph generation via model
-checking, and \textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog
-inference, becoming the de facto reference for attack-graph research. These
-systems compute reachable attacker states from a \emph{static} encoding of
-host configurations and exposed services. We borrow their reachability
-abstraction (nodes are devices, edges are firewall-permitted protocol
-flows) but \harnessname\ operates on a \emph{live} network: edges are
-validated by actual probes, the LLM proposes the next action, and the graph
-is updated as new hosts are discovered. Classical attack-graph generation
-is therefore complementary rather than competing. Figures~\ref{fig:static-attack-graph}
-and~\ref{fig:live-reachability} summarize this distinction.
-
-\begin{figure}[t]
-\centering
-\resizebox{0.95\linewidth}{!}{%
-\begin{tikzpicture}[
-  font=\scriptsize,
-  >=Latex,
-  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
-              minimum height=7mm, fill=gray!6, text width=17mm},
-  dev/.style={circle, draw=black!60, very thick, align=center,
-              minimum size=10mm, inner sep=1pt, fill=white},
-  edge/.style={->, thick, draw=black!55},
-  liveedge/.style={->, thick, draw=blue!65},
-  pivotedge/.style={->, very thick, draw=red!70},
-  zlabel/.style={font=\scriptsize\bfseries, text=black!70},
-  zonelabel/.style={font=\scriptsize\bfseries, text=black!70,
-                    fill=white, inner sep=1pt}
-]
-
-% Static attack-graph.
-\node[zlabel] at (1.9,1.05) {Classical attack graph};
-\node[box] (cfg) at (0,0) {host\\configs};
-\node[box] (cve) at (1.9,0) {CVEs};
-\node[box] (fw) at (3.8,0) {firewall\\rules};
-\node[box, text width=23mm] (ag) at (1.9,-1.1) {static\\attack graph};
-\node[box] (states) at (1.9,-2.2) {reachable\\states};
-\draw[edge] (cfg) |- (ag.west);
-\draw[edge] (cve) -- (ag);
-\draw[edge] (fw) |- (ag.east);
-\draw[edge] (ag) -- (states);
-\node[draw=black!20, rounded corners=2pt, fit=(cfg)(fw)(states),
-      inner sep=5pt] {};
-\end{tikzpicture}
-}
-\caption{Classical attack-graph analysis computes reachable attacker states
-from a static model of hosts, vulnerabilities, and firewall rules.}
-\label{fig:static-attack-graph}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\resizebox{0.98\linewidth}{!}{%
-\begin{tikzpicture}[
-  font=\scriptsize,
-  >=Latex,
-  box/.style={draw, rounded corners=2pt, align=center, inner sep=3pt,
-              minimum height=7mm, fill=gray!6, text width=21mm},
-  dev/.style={circle, draw=black!60, very thick, align=center,
-              minimum size=10mm, inner sep=1pt, fill=white},
-  liveedge/.style={->, thick, draw=blue!65},
-  pivotedge/.style={->, very thick, draw=red!70},
-  zlabel/.style={font=\scriptsize\bfseries, text=black!70},
-  zonelabel/.style={font=\scriptsize\bfseries, text=black!70,
-                    fill=white, inner sep=1pt}
-]
-
-% Live reachability.
-\node[zlabel] at (2.6,1.05) {\harnessname{} live reachability};
-\draw[blue!35, rounded corners=2pt] (-0.15,0.65) rectangle (5.35,-1.45);
-\draw[green!45, rounded corners=2pt] (0.1,-1.65) rectangle (5.1,-2.85);
-\node[zonelabel] at (2.6,0.65) {IT / IoT services};
-\node[zonelabel] at (2.6,-1.65) {OT zone};
-
-\node[dev, fill=red!18] (router) at (2.6,-0.55) {router};
-\node[dev, fill=blue!15] (admin) at (0.9,0.02) {admin};
-\node[dev, fill=blue!15] (web) at (0.9,-1.05) {web};
-\node[dev, fill=orange!20] (mqtt) at (4.3,0.02) {mqtt};
-\node[dev, fill=orange!20] (gw) at (4.3,-1.05) {gw};
-\node[dev, fill=green!20] (hmi) at (1.45,-2.35) {HMI};
-\node[dev, fill=green!20] (plc) at (3.75,-2.35) {PLC};
-
-\draw[liveedge] (router) -- (admin);
-\draw[liveedge] (router) -- (web);
-\draw[liveedge] (router) -- (mqtt);
-\draw[pivotedge] (router) -- (gw);
-\draw[pivotedge] (gw) -- (plc);
-\draw[pivotedge] (router) -- (hmi);
-
-\node[box, fill=blue!5] (probe) at (1.0,-3.45) {live probe\\confirms edge};
-\node[box, fill=red!5] (llm) at (4.0,-3.45) {LLM action\\selects pivot};
-\draw[liveedge] (probe) -- (llm);
-\draw[liveedge] (llm) -- (plc);
-\node[draw=black!20, rounded corners=2pt, fit=(admin)(web)(mqtt)(gw)(plc)(hmi)(probe)(llm),
-      inner sep=7pt] {};
-
-\end{tikzpicture}
-}
-\caption{\harnessname{} keeps the reachability abstraction but updates the
-graph during execution from live probes and LLM-selected actions. Blue
-edges denote validated reachability; red edges denote pivot-dependent
-paths into deeper IoT/OT zones.}
-\label{fig:live-reachability}
-\end{figure}
+Representing a network as a graph for security analysis predates deep learning by decades. Phillips and Swiler~\cite{phillips98} introduced graph-based network-vulnerability analysis, Sheyner~\emph{et al.} \cite{sheyner02} developed automated attack-graph generation via model checking, and \textsc{MulVAL}~\cite{mulval05} cast the problem as Datalog inference, becoming the de facto reference for attack-graph research. These systems compute reachable attacker states from a \emph{static} encoding of host configurations and exposed services. \textsc{LANCE} borrows this reachability abstraction but operates on a \emph{live} network: edges are validated by actual probes, the LLM proposes the next action, and the graph is updated as new hosts are discovered. Classical attack-graph generation is therefore complementary
+rather than competing.
 
 \subsection{IoT Security Context}
 \label{sec:related:iot}
 
-Scenario design and ground-truth taxonomy follow three references: the
-OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE
-ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST
-SP\,800-82~Rev.\,3~\cite{nist80082} for OT security and segmentation
-conventions, notably the IT/OT split underpinning pattern~P3
-(\cref{sec:iotbench:patterns}).
+Scenario design and ground-truth taxonomy follow three references: OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST SP\,800-82~Rev.\,3~\cite{nist80082} for OT security and segmentation conventions.
 
-Empirical IoT-security artefacts fall into two adjacent families. First,
-network-traffic datasets such as IoT-23~\cite{iot23},
-TON\_IoT~\cite{toniot20}, and Edge-IIoTset~\cite{edgeiiotset22} provide
-labeled traces for intrusion-detection and anomaly-detection research.
-They are valuable for defensive classifiers, but they are not deployable
-pentest targets with per-vulnerability ground truth, exploit evidence, or
-controllable reachability. Second, firmware-focused work studies
-vulnerable device images: Costin~\emph{et al.}~\cite{costin14} performed a
-large public firmware study, \textsc{Firmadyne}~\cite{firmadyne16}
-introduced dynamic firmware emulation for vulnerability discovery, and
-\textsc{FirmAE}~\cite{firmae20} substantially improved emulation success
-rates. OWASP \textsc{IoTGoat}~\cite{iotgoat} provides a deliberately
-insecure OpenWrt-based firmware image used as a teaching artefact. These
-datasets and firmware images are complementary to \systemname: they
-exercise traffic classification or single-device firmware analysis, while
-\systemname\ evaluates LLM agents on deployed multi-device networks with
-firewall-enforced reachability.
+Empirical IoT-security artefacts fall into two families. \textbf{Network-traffic datasets} (IoT-23~\cite{iot23}, TON\_IoT~\cite{toniot20}, Edge-IIoTset~\cite{edgeiiotset22}) provide labeled traces for intrusion detection but are not deployable pentest targets with per-vulnerability ground truth or controllable reachability. \textbf{Firmware-focused work} (Costin~\emph{et al.}~\cite{costin14}, \textsc{Firmadyne}~\cite{firmadyne16}, \textsc{FirmAE}~\cite{firmae20}, \textsc{IoTGoat}~\cite{iotgoat}) exercises single-device firmware analysis. Both families are complementary to \textsc{IoTChainBench}, which evaluates LLM agents on deployed multi-device networks with firewall-enforced reachability.
 
-\begin{table}[t]
+\begin{table}[h!]
 \centering
 \caption{Gap analysis. \emph{Scale}: single host vs.\ multi-device network.
 \emph{IoT/OT}: application-layer IoT/OT protocols on the test surface.
