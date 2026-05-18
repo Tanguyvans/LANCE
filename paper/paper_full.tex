@@ -84,8 +84,10 @@ require at least $k$ pivots or zone transitions. We describe the benchmark,
 evaluator, and experimental protocol for isolating architectural effects
 independently from model choice. On the 10 main scenarios, \harnessname{}
 achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
-CVSS-weighted score; a full 191-case Vulhub run gives a conservative
-39--48\% useful-finding lower bound.
+CVSS-weighted score. On external single-host corpora, a blind AutoPenBench
+run captures 7/33 flags (21.2\%), while an informed run captures 9/33
+(27.3\%); a full 191-case Vulhub run gives a conservative 39--48\%
+useful-finding lower bound.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -134,9 +136,9 @@ not of the agent: improving the agent alone does not close them.
   recall as a function of firewall-hop distance.
   \item \textbf{Evaluation protocol} holding the LLM constant across
   systems to isolate architectural contributions. The current comparison
-  reports \harnessname{}, adapted LLM-agent baselines, and a full Vulhub
-  sanity check; the benchmark additionally defines ablations and Nmap NSE
-  as next export targets under the same model and budget.
+reports \harnessname{}, adapted LLM-agent baselines, AutoPenBench sanity
+checks, and a full Vulhub sanity check; the benchmark additionally defines
+ablations and Nmap NSE as next export targets under the same model and budget.
 \end{itemize}
 
 All artifacts (Ansible playbooks, ground truth, evaluator, run logs)
@@ -907,8 +909,8 @@ out-of-pocket cost bounded under our research subscription.
 The intended core evaluation compares \harnessname{} against two internal
 ablations and one non-LLM scanner baseline. The latest result bundle used in
 this draft contains the full \harnessname{} runs, adapted LLM-agent baseline
-F1 scores, and the full Vulhub run; it does not yet contain ablation, Nmap NSE,
-MHR$_k$, or per-evidence-level exports. We therefore report those missing
+F1 scores, AutoPenBench runs, and the full Vulhub run; it does not yet contain
+ablation, Nmap NSE, MHR$_k$, or per-evidence-level exports. We therefore report those missing
 columns explicitly as not exported rather than estimating them from aggregates.
 External LLM pentest frameworks are discussed as related work; we only include
 them in quantitative tables when their tool interface can be adapted to the
@@ -1049,7 +1051,8 @@ Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 4
 GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
 \textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
 \textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & AutoPenBench & -- & -- \\
+\textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
+\textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Vulhub (191 CVE tasks)}} \\
 \midrule
@@ -1061,6 +1064,10 @@ Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n
 \smallskip\\
 \footnotesize\emph{%
 \textsuperscript{rel} Relative gain over Claude Code baseline; absolute not published by CheckMate.
+$^\dagger$ We report useful findings as the closest sub-task analogue because
+our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
+Informed mode receives the benchmark case id and vulnerability label; blind
+mode is the fair no-hint setting.
 $^\star$ Full 191-case distributed run. The automatic useful-finding lower
 bound is 69/175 completed agent runs (39\%); manual inspection identifies 15
 additional self-reported \textsc{no finding} cases with exploit evidence,
@@ -1122,6 +1129,19 @@ cases are \texttt{struts2/s2-053}, \texttt{phpunit/CVE-2017-9841},
 \texttt{php/CVE-2024-2961}, and \texttt{spring/CVE-2022-22947}; the remaining
 useful cases are probable vulnerabilities or tool/credential-blocked findings
 with actionable evidence.
+
+The AutoPenBench rows in Table~\ref{tab:cross} use the same MiniMax-M2.7 model
+and the same project harness, but differ in context policy. In \emph{blind}
+mode, the agent receives only the target endpoint and exposed service
+information; it captures 7/33 flags (21.2\%) and produces useful findings on
+13/33 tasks (39.4\%) for \$4.88 and 15.5M tokens. In \emph{informed} mode, the
+agent additionally receives the benchmark case id and vulnerability label; it
+captures 9/33 flags (27.3\%) and produces useful findings on 17/33 tasks
+(51.5\%) for \$7.43 and 23.6M tokens. We therefore treat the blind row as the
+fair external sanity check and the informed row as an upper-bound diagnostic
+showing the value of vulnerability-label hints. In both modes, two real-world
+CVE cases fail before agent invocation due to upstream environment issues
+(a removed Docker base image and an unresolved restarting container).
 
 \subsection{Per-architecture analysis}
 \label{sec:eval:arch}
