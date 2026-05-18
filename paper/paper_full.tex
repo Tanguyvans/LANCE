@@ -158,34 +158,9 @@ This section reviews prior work relevant to our approach. We first survey LLM-dr
 \subsection{LLM Cybersecurity Benchmarks}
 \label{sec:related:bench}
 
-\noindent\textbf{Challenge-level corpora.}
-\textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation
-substrate — 33 Docker-container tasks (22 in-vitro, 11 real-world CVEs)
-with milestone and flag-based scoring — used by \textsc{VulnBot},
-\textsc{Pentest-R1}, and \textsc{xOffense}. \textsc{Vulhub}~\cite{vulhub}
-fills a related role as a large Docker-Compose collection of reproducible
-vulnerable environments, used by \textsc{CheckMate}.
-\textsc{CAIBench}~\cite{caibench25} is the broadest academic effort,
-spanning CTFs, attack-and-defense ranges, and knowledge tests; its RCTF2
-subset adds $27$ robotics challenges — the most explicit
-cyber-physical inclusion in this family. Their public scoring is
-challenge- or flag-level: they do not provide a per-vulnerability ground
-truth tied to network reachability, hop depth, or IoT/OT application
-protocols (MQTT, Modbus, LoRaWAN). Table~\ref{tab:related} summarises
-each system's scope and scoring scheme.
+\noindent\textbf{Challenge-level corpora.} \textsc{AutoPenBench}~\cite{autopenbench24} is the dominant evaluation substrate: 33 Docker-container tasks with milestone and flag-based scoring, used by \textsc{VulnBot}, \textsc{Pentest-R1}, and \textsc{xOffense}. \textsc{Vulhub}~\cite{vulhub} provides a large collection of reproducible vulnerable environments used by \textsc{CheckMate}. \textsc{CAIBench}~\cite{caibench25}, \textsc{NYU CTF Bench}~\cite{nyuctf24}, and \textsc{Cybench}~\cite{cybench24} extend coverage to CTFs, attack-and-defense ranges, and knowledge tests. All score at challenge or flag level: none provides per-vulnerability ground truth tied to network reachability, hop depth, or IoT/OT protocols.
 
-\noindent\textbf{Multi-host labs.}
-\textsc{Ludus}~\cite{ludus} and the \textsc{GOAD}~\cite{goad}
-Active-Directory scenario deliver Proxmox+Ansible deployments of
-representative enterprise networks, the closest methodological precedent
-to our infrastructure. They do model multi-host compromise and lateral
-movement, so the gap is not the existence of multi-host cyber ranges.
-Rather, these labs are not packaged as LLM-agent benchmarks: they do not
-ship a per-vulnerability ground-truth schema, hop-depth annotations, or a
-scoring procedure, and they target enterprise AD rather than IoT/OT
-protocols. We found no prior benchmark that combines multi-host reachability,
-IoT/OT protocols, per-vulnerability machine-readable ground truth, and
-evidence-level scoring beyond binary flag capture (Table~\ref{tab:related}).
+\noindent\textbf{Multi-host labs.} \textsc{Ludus}~\cite{ludus} and \textsc{GOAD}~\cite{goad} deliver Proxmox+Ansible deployments of enterprise Active Directory networks, the closest methodological precedent to our infrastructure. Both model multi-host compromise and lateral movement, but neither ships a per-vulnerability ground-truth schema, hop-depth annotations, or a scoring procedure, and both target enterprise AD rather than IoT/OT protocols. To our knowledge, no prior benchmark combines multi-host reachability, IoT/OT protocol coverage, per-vulnerability ground truth, and evidence-level scoring beyond binary flag capture (Table~\ref{tab:related}).
 
 \subsection{Attack Graphs and Network Reachability}
 \label{sec:related:graph}
