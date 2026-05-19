@@ -310,46 +310,26 @@ We evaluate at the IP/application layer on virtual IoT networks. Out of scope: p
 \end{itemize}
 
 
-\subsection{Five Architectural Patterns}
+\subsection{Network Topologies and Scenario Catalogue}
 \label{sec:iotbench:patterns}
 
-The five patterns differ in how many pivots an attacker must perform to reach the deepest vulnerable service, directly determining the MHR$_k$ difficulty axis of the benchmark.
+\systemname{} defines five topological patterns that vary the number of pivots required to reach the deepest vulnerable service, directly setting the MHR$_k$ difficulty axis:
 
-
-Concretely:
-\begin{enumerate}
-  \item \textbf{P1 — Flat.} All devices are directly reachable from the entry
-  point; no pivot is required.
-  \item \textbf{P2 — Gateway-centric.} A single IoT gateway mediates all access
-  to back-end services; inter-service traffic is blocked without gateway
-  compromise.
-  \item \textbf{P3 — Segmented IT/OT.} Three zones (admin/IT/OT) with
-  access-control lists; the OT zone (Modbus PLCs, HMI) is reachable only via a
-  jump host.
-  \item \textbf{P4 — Hub-centric star.} A central home-automation hub is the
-  only device that can reach MQTT broker, DB, and camera; peripherals cannot
-  talk to each other directly.
-  \item \textbf{P5 — Edge-cloud pivot.} Edge subnet and cloud subnet are
-  separated; only the edge gateway bridges them, making cloud-side services
-  unreachable without edge compromise.
+\begin{enumerate}[nosep]
+  \item \textbf{P1 — Flat.} Single subnet; all devices directly reachable from the entry point.
+  \item \textbf{P2 — Gateway-centric.} One IoT gateway mediates all back-end access; back-end services unreachable without gateway compromise.
+  \item \textbf{P3 — Segmented IT/OT.} Admin/IT/OT zones with ACLs; the OT zone (Modbus PLCs, HMI) requires a jump-host pivot.
+  \item \textbf{P4 — Hub-centric star.} A central hub is the sole path to the MQTT broker, DB, and camera; peripherals are mutually isolated.
+  \item \textbf{P5 — Edge-cloud pivot.} Edge and cloud subnets are separated; only the edge gateway bridges them.
 \end{enumerate}
 
-\systemname{} ships 15 scenarios organised on three axes: 10 \emph{main}
-scenarios that instantiate the 5 architectural patterns above (with
-small-to-medium device counts, 4--8 devices each), 3 \emph{scalability}
-scenarios that stress network size (15, 17, and 35 devices) using logical
-multi-zone and real-VLAN variants, and 2 \emph{hardened controls} that ship
-identical topologies to s\_1 and s\_4 \emph{without} any injected
-vulnerability, used to measure agent False Positive rate. The full
-mapping is given in Table~\ref{tab:scenarios}.
+The 15 scenarios (Table~\ref{tab:scenarios}) are organised along three axes: 10~\emph{main} scenarios instantiate the patterns above at 4--8 devices; 3~\emph{scalability} stressors push to 15, 17, and 35 devices using logical multi-zone and real-VLAN variants; and 2~\emph{hardened controls} replicate the topologies of s\_1 and s\_4 with no injected vulnerability, used to measure agent false-positive rate.
 
-\begin{table}[t]
+\begin{table}[h!]
 \centering
-\caption{The 13 vulnerability-injected scenarios of \systemname\ (133 devices,
-229 injected vulnerabilities). The 2 hardened controls add 12 devices and
-0 vulnerabilities, for 15 scenarios and 145 devices in total. \emph{Main}
-scenarios cover the 5 architectural patterns; \emph{Scalability} scenarios
-stress network size.}
+\caption{The 15 \systemname\ scenarios: 13 vulnerability-injected
+(133 devices, 229 vulnerabilities), plus 2 hardened controls
+(12 devices, 0 vulnerabilities).}
 \label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -380,6 +360,7 @@ ID & Pattern / role & Dev. & Vulns & Theme \\
 \bottomrule
 \end{tabular}
 \end{table}
+
 
 \subsection{Deterministic vulnerability injection}
 \label{sec:iotbench:inject}
