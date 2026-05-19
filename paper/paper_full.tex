@@ -361,26 +361,17 @@ ID & Pattern / role & Dev. & Vulns & Theme \\
 \end{tabular}
 \end{table}
 
-
 \subsection{Deterministic Vulnerability Injection}
 \label{sec:iotbench:inject}
 
-Vulnerabilities are injected by a single Ansible role (\texttt{04\_inject\_vulns.yml})
-parameterized by \texttt{scenario\_id}. Each scenario YAML lists \texttt{router\_vulns}
-(OpenWrt-level: Telnet, WAN admin, FTP) and per-service \texttt{role} definitions
-that trigger role-specific injections: \emph{e.g.}, the \texttt{mqtt\_broker} role
-sets \texttt{allow\_anonymous true} and binds on \texttt{0.0.0.0:1883}; the
-\texttt{ssh\_server} role installs weak credentials (\texttt{admin:admin}) and
-enables \texttt{PasswordAuthentication}; the \texttt{db\_server} role starts
-MariaDB with a passwordless \texttt{root}. Category distribution is shown in
-\cref{tab:categories}.
+All vulnerabilities are injected by a dedicated Ansible role parameterized by \texttt{scenario\_id}, ensuring fully reproducible and idempotent deployments. Each scenario YAML declares router-level weaknesses (Telnet, WAN admin, FTP) and per-service role definitions that trigger targeted injections, covering the most common real-world IoT misconfigurations: anonymous MQTT access, weak SSH credentials, and passwordless database roots. Every injected vulnerability is mapped to OWASP IoT Top~10 and MITRE ATT\&CK for ICS, providing a structured taxonomy for evaluation.
 
-\begin{table}[t]
+The 229 injected vulnerabilities span 11 categories (Table~\ref{tab:categories}), dominated by misconfigurations (68), missing authentication (41), and data exposure (38). Severity skews high: 107 HIGH and 37 CRITICAL instances, reflecting realistic IoT deployment weaknesses rather than theoretical edge cases.
+
+\begin{table}[h!]
 \centering
-\caption{Vulnerability categories and severity distribution across all
-13 vulnerability-injected scenarios of \systemname (229~injected instances;
-the 2 hardened controls contribute 0 by design). Counts derived from
-\texttt{ground\_truth/scenario\_*.yaml}.}
+\caption{Vulnerability category and severity distribution
+(229 instances across 13 scenarios).}
 \label{tab:categories}
 \footnotesize
 \begin{tabular}{@{}lrrrrr@{}}
@@ -399,7 +390,7 @@ Category & Count & CRIT & HIGH & MED & LOW \\
 \texttt{missing\_header}       &  3  &  0 &  0 &  0 &  3 \\
 \texttt{privilege\_escalation} &  2  &  0 &  2 &  0 &  0 \\
 \midrule
-\textbf{Total}                 &\textbf{229} & 37 & 107 & 64 & 21 \\
+\textbf{Total} & \textbf{229} & 37 & 107 & 64 & 21 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -407,97 +398,41 @@ Category & Count & CRIT & HIGH & MED & LOW \\
 \subsection{Ground-Truth Schema}
 \label{sec:iotbench:gt}
 
-Each scenario ships a YAML file describing every injected vulnerability;
-Figure~\ref{lst:gt} shows a representative entry.
+Each scenario ships a YAML file with one entry per injected vulnerability. Each entry records the affected device, IP, role, severity, category, OWASP IoT Top~10 and MITRE ATT\&CK for ICS mappings, an optional CVE, expected detection indicators, and a verification command that confirms exploitability. This per-vulnerability granularity, absent from flag-capture benchmarks, enables the evidence-level and MHR$_k$ metrics defined in \S\ref{sec:iotbench:eval}.
 
-\begin{figure}[t]
+\begin{figure}[h!]
 \footnotesize
 \begin{verbatim}
 - id: V1
-  device: s1-mqtt
-  ip: "192.168.100.11"
-  role: mqtt_broker
   title: "MQTT without authentication"
   severity: high
   category: misconfiguration
   owasp_iot: "I1 / I9"
   mitre_ics: "Initial Access, Collection"
-  cve: null
   indicators:
     - "allow_anonymous true"
-    - "Anonymous clients connected"
   verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v"
 \end{verbatim}
-\caption{Ground-truth entry example.}
+\caption{Ground-truth entry example (fields trimmed for brevity).}
 \label{lst:gt}
 \end{figure}
 
-Each scenario YAML may additionally declare a top-level
-\texttt{bonus\_types} list of vulnerability types that are \emph{adjacent}
-to the injected set (e.g., a hardening recommendation related to the same
-service) and which, if reported by an agent, are neither counted as True
-Positives nor as False Positives. This avoids penalising agents for
-legitimate adjacent findings while keeping the recall denominator fixed.
-The evaluator leniency this introduces is discussed in
-\cref{sec:discussion} (Limitations).
+Scenarios may additionally declare a \texttt{bonus\_types} list of vulnerability types adjacent to the injected set. Agent findings that match these types are counted as neither True Positives nor False Positives, avoiding penalties for legitimate hardening recommendations while keeping the recall denominator fixed.
 
 \subsection{Scoring and Evaluation Metrics}
 \label{sec:iotbench:eval}
 
-The evaluator (\S\,\ref{sec:harness:report}) integrates results into Phase~6 and
-matches each LLM finding against ground truth in three ordered passes, with
-each pass consumed at most once per GT entry: (1)~exact CVE match;
-(2)~\texttt{(ip, vuln\_type)} with type canonicalised through the taxonomy
-(\S\ref{sec:harness:taxonomy}); (3)~a last-resort \texttt{(ip, severity)}
-fallback for findings whose type string is unknown but whose affected host
-and impact match a GT entry. Findings that match none of the three passes are
-counted as False Positives. Severity weights are
-$w = \{\text{critical}{=}4,\text{high}{=}3,\text{medium}{=}2,\text{low}{=}1\}$;
-loose fallback matches (pass~3) apply $0.5\times$, severity mismatches
-within an otherwise valid match apply $0.75\times$.
-The composite score is the weighted True-Positive sum normalized by
-$\sum_{g \in \text{GT}} w(g)$.
+\paragraph{Finding matcher}
+Each LLM finding is matched against ground truth in three ordered passes: (1)~exact CVE match; (2)~\texttt{(ip, vuln\_type)} with canonicalised type; (3)~\texttt{(ip, severity)} fallback. Unmatched findings are False Positives. Duplicate findings on \texttt{(ip, type, port)} are resolved by retaining the lower severity to counteract inflation observed in pilot runs.
 
-\paragraph{Severity-aware dedup}
-Before evaluation, the Phase~3 aggregation step canonicalises vulnerability
-types, removes known noise classes, and deduplicates collisions on
-\texttt{(ip, type, port)} by retaining the \emph{lower} reported severity.
-This conservative rule counteracts the severity inflation we observed in
-pilot runs and prevents duplicate findings from increasing match scores.
+\paragraph{Weighted score}
+The composite score is a severity-weighted True-Positive sum ($w$: critical~4, high~3, medium~2, low~1) normalized by $\sum_{g \in \text{GT}} w(g)$, with $0.5\times$ and $0.75\times$ penalties for fallback and severity-mismatch matches respectively.
 
 \paragraph{Evidence levels}
-Beyond match accuracy, the evaluator tracks, per True Positive, the deepest
-\emph{evidence level} achieved by the harness: \textsf{L1}~(detection, banner
-or port), \textsf{L2}~(exploitation, authenticated action), \textsf{L3}~(data
-exfiltration, sensitive content retrieved). We report
-$\text{L\textit{k}-coverage} = |\{t \in \text{TP} : \text{level}(t) \geq k\}| / |\text{TP}|$.
-This metric cannot be computed on single-host binary-flag benchmarks and
-captures a dimension of pentest quality that existing LLM-pentest evaluations
-conflate.
+Per True Positive, the evaluator tracks the deepest level achieved: \textsf{L1}~detection, \textsf{L2}~exploitation, \textsf{L3}~exfiltration. $$\text{L}k\text{-coverage} = \frac{|\{t \in \text{TP} : \text{level}(t) \geq k\}|}{|\text{TP}|}$$ This metric is absent from binary flag-capture benchmarks.
 
-\paragraph{Hop depth and Multi-Hop Reach}
-Let $G=(V,E)$ be the firewall-permitted reachability graph (edges are
-firewall-allowed protocol flows from \cref{sec:harness:phase1}) and let
-$e \in V$ be the attacker entry point (the subnet ingress). For each
-ground-truth vulnerability $g$ attached to device $d_g \in V$, we define its
-\emph{hop depth} as the number of required pivots or zone transitions from
-the entry point. Directly reachable vulnerabilities have
-$\text{hop\_depth}=0$:
-$$\text{hop\_depth}(g) \;=\; \min_{p \,\in\, \text{paths}(e \rightarrow d_g)}
-\max(0, |p|_E-1),$$
-where $|p|_E$ is the number of edges in the path. Thus a device one firewall
-edge away from the entry point has depth~0, and each additional required
-pivot or zone transition increments the depth.
-A flat scenario has $\text{hop\_depth}(g) = 0$ for every directly reachable
-device; a gateway-centric scenario places back-end services at
-$\text{hop\_depth} \geq 1$; an IT/OT-segmented scenario places OT services
-at $\text{hop\_depth} \geq 2$. We then define the Multi-Hop Reach at depth
-$k$ as the recall restricted to deep ground-truth findings:
-$$\text{MHR}_k \;=\; \frac{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k \,\wedge\, g \in \text{TP}\}|}{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k\}|}.$$
-Raw recall is reported separately as Task Completion; MHR$_1$, MHR$_2$, and
-MHR$_3$ measure progressively deeper behind-pivot findings. A single-host
-agent run on only directly exposed hosts is expected to collapse on MHR$_k$
-for $k\geq 1$ unless it can establish and use a new vantage point.
+\paragraph{Multi-Hop Reach}
+For each ground-truth vulnerability $g$, hop depth counts the minimum number of pivots from entry point $e$: $$\text{hop\_depth}(g) = \min_{p \,\in\, \text{paths}(e \rightarrow d_g)} \max(0,\,|p|_E - 1)$$ Multi-Hop Reach at depth $k$ restricts recall to deep findings: $$\text{MHR}_k = \frac{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k \,\wedge\, g \in \text{TP}\}|}{|\{g \in \text{GT} : \text{hop\_depth}(g) \geq k\}|}$$ MHR$_1$, MHR$_2$, MHR$_3$ measure recall at increasing pivot depth. Agents limited to directly exposed hosts score zero for $k \geq 1$.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §5 Harness
