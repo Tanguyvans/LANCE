@@ -425,10 +425,10 @@ Scenarios may additionally declare a \texttt{bonus\_types} list of vulnerability
 \vspace{0.5\baselineskip}\noindent\textbf{Finding matcher.}
 Each LLM finding is matched against ground truth in three ordered passes: (1)~exact CVE match; (2)~\texttt{(ip, vuln\_type)} with canonicalised type; (3)~\texttt{(ip, severity)} fallback. Unmatched findings are False Positives. Duplicate findings on \texttt{(ip, type, port)} are resolved by retaining the lower severity to counteract inflation observed in pilot runs.
 
-\vspace{0.5\baselineskip}\noindent\textbf{Weighted score.}
+\medskip\noindent\textbf{Weighted score.}
 The composite score is a severity-weighted True-Positive sum ($w$: critical~4, high~3, medium~2, low~1) normalized by $\sum_{g \in \text{GT}} w(g)$, with $0.5\times$ and $0.75\times$ penalties for fallback and severity-mismatch matches respectively.
 
-\vspace{0.5\baselineskip}\noindent\textbf{Evidence levels.}
+\medskip\noindent\textbf{Evidence levels.}
 Per True Positive, the evaluator tracks the deepest level achieved: \textsf{L1}~detection, \textsf{L2}~exploitation, \textsf{L3}~exfiltration. $$\text{L}k\text{-coverage} = \frac{|\{t \in \text{TP} : \text{level}(t) \geq k\}|}{|\text{TP}|}$$ This metric is absent from binary flag-capture benchmarks.
 
 \vspace{0.5\baselineskip}\noindent\textbf{Multi-Hop Reach.}
