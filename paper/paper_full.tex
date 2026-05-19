@@ -21,6 +21,7 @@
 \newcommand{\cmark}{\ding{51}}
 \newcommand{\xmark}{\ding{55}}
 \usepackage[hidelinks,breaklinks=true]{hyperref}
+\usetikzlibrary{arrows.meta,fit,backgrounds}
 
 % ── macros ────────────────────────────────────────────────────────────────
 \newcommand{\systemname}{IoTChainBench\xspace}
@@ -261,47 +262,27 @@ Ludus + GOAD~\cite{ludus,goad}       & network & \xmark & none      & \xmark \\
 \label{sec:threat}
 
 \paragraph{Problem statement}
-Given a target subnet with a designated \emph{entry point}~$e$ (the
-attacker's initial foothold, declared in each scenario's topology YAML,
-\S\ref{sec:iotbench:gt}), \emph{network-scale penetration testing} is the
-task of discovering all hosts reachable from~$e$, identifying their
-vulnerabilities, producing evidence of exploitability, and reporting
-findings aggregated across the full network. The \emph{unit of evaluation}
-is the network, not an individual host: IoT risk is driven by pivot chains
-(e.g., entry point $\to$ gateway $\to$ MQTT broker $\to$ OT controller), and
-single-host metrics are blind to vulnerabilities that only become reachable
-after one or more pivots.
+Given a target subnet with a designated entry point~$e$ declared in each scenario's topology metadata, \emph{network-scale penetration testing} is the task of discovering all hosts reachable from~$e$, identifying their vulnerabilities, producing evidence of exploitability, and reporting findings across the full network. The unit of evaluation is the network, not an individual host: IoT risk is driven by pivot chains (e.g., entry point $\to$ gateway $\to$ MQTT broker $\to$ OT controller), and single-host metrics are blind to vulnerabilities that only become reachable after one or more pivots.
 
 \paragraph{Attacker model}
-The attacker is an external adversary who has gained Layer-3 access to the
-target subnet (for example, by exploiting a perimeter service or via
-physical LAN access) but holds \emph{no} prior credentials, no out-of-band
-knowledge of deployed software, and no privileged vantage beyond what active
-scanning reveals. Their objective is data exfiltration (sensor readings,
-credentials) or OT disruption (reaching industrial-control services behind a
-segmentation boundary). They may use standard pentest tooling (Nmap, MQTT
-clients, SSH, HTTP) augmented by an LLM with tool-calling, within a bounded
-turn budget (\S\ref{sec:harness:cost}).
+The attacker is an external adversary with Layer-3 access to the target subnet but no prior credentials, no out-of-band knowledge of deployed software, and no privileged vantage beyond active scanning. Their objective is data exfiltration (sensor readings, credentials) or OT disruption (reaching industrial-control services behind a segmentation boundary). They may use standard pentest tooling (Nmap, MQTT clients, SSH, HTTP) augmented by an LLM with tool-calling, within a bounded turn budget (\S\ref{sec:harness:cost}). This adversarial setting requires multi-step reasoning across heterogeneous protocols, which motivates the use of an LLM-driven agent rather than a static scanner.
 
-\paragraph{Success criterion and evidence levels}
-A finding is \emph{solved} at the deepest evidence level the agent can
-demonstrate within its turn budget. We distinguish three levels:
-\textsf{L1}~\emph{detection}: a port scan or banner confirms the issue
-(e.g., unauthenticated MQTT port \texttt{1883} open);
-\textsf{L2}~\emph{exploitation}: an active interaction demonstrates it
-(e.g., anonymous MQTT subscribe on \texttt{\#}, SSH login with default
-credentials);
-\textsf{L3}~\emph{exfiltration}: sensitive content is retrieved
-(e.g., MariaDB \texttt{root} dump, camera RTSP stream).
-This ordering defines both what Phase~4 of \harnessname{} is prompted to
-achieve (\S\ref{sec:harness:phase4}) and how findings are scored
-(\S\ref{sec:iotbench:eval}).
+\paragraph{Evidence levels}
+A finding is solved at the deepest level the agent can demonstrate 
+within its turn budget:
+\begin{itemize}
+  \item \textsf{L1}~\emph{detection}: a port scan or banner confirms 
+  the issue (e.g., unauthenticated MQTT port \texttt{1883} open).
+  \item \textsf{L2}~\emph{exploitation}: an active interaction 
+  demonstrates it (e.g., anonymous MQTT subscribe on \texttt{\#}, 
+  SSH login with default credentials).
+  \item \textsf{L3}~\emph{exfiltration}: sensitive content is retrieved
+  (e.g., MariaDB \texttt{root} dump, camera RTSP stream).
+\end{itemize}
+This ordering governs both \textsc{LANCE} Phase~4 prompting (\S\ref{sec:harness:phase4}) and evaluator scoring (\S\ref{sec:iotbench:eval}).
 
 \paragraph{Scope}
-We evaluate at the IP/application layer on virtual IoT networks. Out of
-scope: physical and side-channel attacks, RF-layer exploitation requiring SDR
-hardware, firmware extraction, post-exploitation persistence, and insider
-threats. These remain future work (\cref{sec:conclusion}).
+We evaluate at the IP/application layer on virtual IoT networks. Out of scope: physical and side-channel attacks, RF-layer exploitation, firmware extraction, post-exploitation persistence, and insider threats.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §4 IoTBench
@@ -312,50 +293,28 @@ threats. These remain future work (\cref{sec:conclusion}).
 \subsection{Design principles}
 \label{sec:iotbench:principles}
 
-\systemname{} is built around six design principles derived from the
-gap analysis in \cref{sec:related}:
+\textsc{IoTChainBench} is built around six principles:
 
 \begin{itemize}
-  \item \textbf{Reproducibility.} The entire infrastructure deploys from
-  Ansible playbooks against a Proxmox cluster; every vulnerability is
-  injected idempotently with no manual post-deployment steps.
-  \item \textbf{Architectural diversity.} Scenarios span five network
-  patterns (\cref{fig:patterns}) with distinct attacker reachability
-  graphs encoded in the topology metadata and, for segmented/VLAN cases,
-  enforced by OpenWrt firewall rules rather than service labels alone.
-  \item \textbf{Protocol coverage.} Each scenario mixes multiple IoT and
-  OT protocols (MQTT, Modbus, LoRaWAN gateways, CoAP, SNMP, plus
-  standard SSH/HTTP/FTP/Telnet) to exercise protocol-specific reasoning.
-  \item \textbf{Ground-truth granularity.} Every injected vulnerability
-  is documented in YAML with \texttt{device}, \texttt{IP}, \texttt{role},
-  \texttt{severity}, \texttt{category}, \texttt{OWASP IoT} and
-  \texttt{MITRE ICS} mappings, optional \texttt{CVE},
-  \texttt{indicators} (expected detection strings), and a
-  \texttt{verification} command.
-  \item \textbf{Scalability axis.} Three scenarios (s\_11, s\_12, s\_13)
-  stress network size at 15, 17, and 35 devices respectively, while the
-  10 main scenarios stay in the 4--8 device range. This separates the
-  pattern-coverage axis from the size axis.
-  \item \textbf{Hardened controls.} Two scenarios (s\_1h, s\_4h) re-use
-  the topologies of s\_1 and s\_4 with all injected vulnerabilities
-  removed. They measure agent False Positive rate on a deployment that
-  should return ``no findings''.
+  \item \textbf{Reproducibility.} Full infrastructure deploys from Ansible playbooks against a Proxmox cluster; vulnerabilities are injected idempotently with no manual steps.
+
+  \item \textbf{Architectural diversity.} Scenarios span five network patterns (\cref{fig:patterns}) with reachability enforced by OpenWrt firewall rules in segmented/VLAN cases.
+
+  \item \textbf{Protocol coverage.} Each scenario mixes IoT and OT protocols (MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, Telnet) to exercise protocol-specific reasoning.
+
+  \item \textbf{Ground-truth granularity.} Every vulnerability is documented in YAML with device, IP, severity, OWASP IoT and MITRE ICS mappings, optional CVE, indicators, and a verification command.
+
+  \item \textbf{Scalability axis.} Ten main scenarios (4--8 devices) and three scalability scenarios (15--35 devices) separate pattern coverage from network size.
+
+  \item \textbf{Hardened controls.} Two vulnerability-free topologies reusing \texttt{s\_1} and \texttt{s\_4} measure agent False Positive rate.
 \end{itemize}
 
-\subsection{Five architectural patterns}
+
+\subsection{Five Architectural Patterns}
 \label{sec:iotbench:patterns}
 
-\begin{figure*}[t]
-  \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{
-    Draft schematic: five topology diagrams side-by-side.\\
-    (Flat)~— (Gateway-centric)~— (Segmented IT/OT)~— (Hub-star)~— (Edge-cloud)
-  }}}
-  \caption{The five architectural patterns in \systemname. Reachability is
-  encoded in the scenario topology and enforced by OpenWrt firewall rules in
-  the segmented/VLAN cases.}
-  \label{fig:patterns}
-\end{figure*}
+The five patterns differ in how many pivots an attacker must perform to reach the deepest vulnerable service, directly determining the MHR$_k$ difficulty axis of the benchmark.
+
 
 Concretely:
 \begin{enumerate}
