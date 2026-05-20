@@ -738,28 +738,28 @@ reasoning rather than single-host exploit chaining.
     \draw[black!40, line width=0.6pt] (0,-\cellh) -- (10*\cellw,-\cellh);
     % LANCE row (blue scale, white text)
     \foreach \c/\v in {0/92,1/92,2/95,3/94,4/100,5/100,6/97,7/93,8/95,9/82} {
-      \draw[fill=blue!\v!20!white, draw=black!20, line width=0.2pt]
+      \draw[fill=blue!\v!white, draw=black!20, line width=0.2pt]
         (\c*\cellw,0) rectangle ++(\cellw,-\cellh);
       \node[text=white, font=\bfseries\tiny] at (\c*\cellw+\cellw/2,-\cellh/2) {\v};
     }
     % CAI row (orange scale, floor at 8 for visibility)
     \foreach \c/\v/\cv in
       {0/15/15,1/35/35,2/0/8,3/36/36,4/50/50,5/40/40,6/50/50,7/55/55,8/17/17,9/14/14} {
-      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
         (\c*\cellw,-\cellh) rectangle ++(\cellw,-\cellh);
       \node[font=\tiny] at (\c*\cellw+\cellw/2,-\cellh-\cellh/2) {\v};
     }
     % PentGPT row
     \foreach \c/\v/\cv in
       {0/0/8,1/14/14,2/0/8,3/42/42,4/64/64,5/52/52,6/45/45,7/35/35,8/43/43,9/27/27} {
-      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
         (\c*\cellw,-2*\cellh) rectangle ++(\cellw,-\cellh);
       \node[font=\tiny] at (\c*\cellw+\cellw/2,-2*\cellh-\cellh/2) {\v};
     }
     % VulnBot row
     \foreach \c/\v/\cv in
       {0/15/15,1/45/45,2/0/8,3/44/44,4/50/50,5/40/40,6/45/45,7/35/35,8/29/29,9/14/14} {
-      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
         (\c*\cellw,-3*\cellh) rectangle ++(\cellw,-\cellh);
       \node[font=\tiny] at (\c*\cellw+\cellw/2,-3*\cellh-\cellh/2) {\v};
     }
