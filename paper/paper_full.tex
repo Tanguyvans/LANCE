@@ -217,10 +217,7 @@ reachability.
 
 \begin{table}[h!]
 \centering
-\caption{Gap analysis. \emph{Scale}: single host vs.\ multi-device network.
-\emph{IoT/OT}: application-layer IoT/OT protocols on the test surface.
-\emph{GT}: ground-truth granularity (flag, task-step, per-vulnerability, none).
-\emph{MH}: multi-hop scoring.}
+\caption{Gap analysis across LLM pentest agents and corpora.}
 \label{tab:related}
 \setlength{\tabcolsep}{4pt}
 \scriptsize
@@ -327,9 +324,7 @@ The 15 scenarios (Table~\ref{tab:scenarios}) are organised along three axes: 10~
 
 \begin{table}[h!]
 \centering
-\caption{The 15 \systemname\ scenarios: 13 vulnerability-injected
-(133 devices, 229 vulnerabilities), plus 2 hardened controls
-(12 devices, 0 vulnerabilities).}
+\caption{\systemname{} scenario catalogue.}
 \label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
@@ -370,8 +365,7 @@ The 229 injected vulnerabilities span 11 categories (Table~\ref{tab:categories})
 
 \begin{table}[h!]
 \centering
-\caption{Vulnerability category and severity distribution
-(229 instances across 13 scenarios).}
+\caption{Vulnerability category and severity distribution.}
 \label{tab:categories}
 \footnotesize
 \begin{tabular}{@{}lrrrrr@{}}
@@ -413,7 +407,7 @@ Each scenario ships a YAML file with one entry per injected vulnerability. Each 
     - "allow_anonymous true"
   verification: "mosquitto_sub -h 192.168.100.11 -t '#' -v"
 \end{verbatim}
-\caption{Ground-truth entry example (fields trimmed for brevity).}
+\caption{Example ground-truth entry.}
 \label{lst:gt}
 \end{figure}
 
@@ -498,7 +492,12 @@ level, and score the merged output with the same evaluator as \harnessname{}.
 All three baselines use the same MiniMax-M2.7 model.
 
 \medskip\noindent\textbf{Metrics.}
-We report recall (task completion), precision, F1, and CVSS-weighted score, formally defined in \S\ref{sec:iotbench:eval}, together with cost (tokens, USD, wall-clock time). MHR$_k$ and evidence-depth (L1/L2/L3), also defined in \S\ref{sec:iotbench:eval}, are architectural contributions of the benchmark; their systematic measurement across all scenarios is left for future work as per-hop topology annotation tooling matures.
+We report recall (task completion), precision, F1, and CVSS-weighted score,
+formally defined in \S\ref{sec:iotbench:eval}. MHR$_k$ and evidence-depth
+(L1/L2/L3), also defined in \S\ref{sec:iotbench:eval}, are architectural
+contributions of the benchmark; their systematic measurement across all
+scenarios is left for future work as per-hop topology annotation tooling
+matures.
 
 \medskip\noindent\textbf{Variance.}
 All reported results are single-run estimates per (system, scenario) cell. The evaluator infrastructure supports repeated runs with bootstrap confidence intervals and Mann--Whitney $U$ tests; multi-run evaluation is deferred to future work.
@@ -532,8 +531,7 @@ scenarios, \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
 
 \begin{table}[h!]
 \centering
-\caption{Per-scenario F1 on the 10 \systemname{} comparison scenarios
-(MiniMax-M2.7).}
+\caption{Per-scenario F1 on the 10 comparison scenarios.}
 \label{tab:scenario-scores}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -600,8 +598,7 @@ a single favorable topology.
     \node[anchor=north,font=\scriptsize] at (5.625,-0.14) {VulnBot};
   \end{tikzpicture}
   }%
-  \caption{Macro-average F1 over the 10 comparison scenarios for all tested
-  architectures.}
+  \caption{Macro-average F1 over the 10 comparison scenarios.}
   \label{fig:overall-f1}
 \end{figure}
 
@@ -627,7 +624,7 @@ these runs alongside published systems.
 
 \begin{table}[h!]
 \centering
-\caption{AutoPenBench transfer results on 33 tasks.}
+\caption{AutoPenBench transfer results.}
 \label{tab:autopenbench}
 \setlength{\tabcolsep}{3pt}
 \scriptsize
@@ -745,60 +742,6 @@ reduce the predictability of service semantics and increase the proportion of
 near-duplicate reports. The two scalability extensions show similar behavior:
 \texttt{s\_11} achieves F1 = 0.875 and Score = 84.8\%, and \texttt{s\_12}
 achieves F1 = 0.942 and Score = 90.6\%.
-
-\subsection{Failure modes and cost}
-\label{sec:eval:failures}
-
-\begin{table}[h!]
-  \centering
-\caption{Vulhub informed-run outcome distribution. Percentages are over the 175
-completed agent runs unless marked as pre-agent failures.}
-\label{tab:vulhub-failures}
-\scriptsize
-\begin{tabular}{@{}p{0.30\linewidth}rrp{0.42\linewidth}@{}}
-\toprule
-Outcome & Cases & Share & Interpretation \\
-\midrule
-Max turns & 83 & 47\% & loops and exploited-but-no-flag cases \\
-No finding & 23 & 13\% & includes 15 hidden proof-level successes \\
-Blocked: credentials & 23 & 13\% & exploit path required unavailable secret \\
-Probable vulnerability & 21 & 12\% & actionable but unconfirmed \\
-Blocked: tool & 19 & 11\% & missing exploit or runtime support \\
-Confirmed exploit & 6 & 3\% & strict automatic success \\
-\midrule
-Environment failed & 11 & -- & target did not reach the agent \\
-Rate-limited / skipped & 5 & -- & provider-side interruption \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\medskip\noindent\textbf{Failure modes.}
-On the \systemname{} comparison scenarios, failures are accuracy failures rather
-than resource failures. The \texttt{s\_10} scenario dominates the error profile,
-contributing both missed findings and near-duplicate false positives that arise
-from role variants. The remaining nine comparison scenarios each stay above F1 = 0.923,
-suggesting that the pipeline generalises well across varied topologies.
-
-On the Vulhub informed run (Table~\ref{tab:vulhub-failures}), the dominant outcome is
-\textsc{max turns} (47\%), which conflates two behaviours: genuinely
-unproductive search loops and successful exploitation followed by continued
-searching for a flag that the Vulhub environment does not standardise. The next
-most actionable failure categories are tool coverage (19 cases blocked by
-missing exploit support) and credential handling (23 cases requiring secrets
-the agent did not possess). The blind run shows the same broad pattern at a
-larger scale: among 306 completed cases, 131 end at the turn budget, 85 report
-\textsc{no finding}, 41 block on credentials, and 25 block on missing tools.
-
-\medskip\noindent\textbf{Computational cost.}
-The 10 main \systemname{} scenarios run at a cost that scales with network size.
-On the AutoPenBench single-host corpus, blind-mode evaluation costs \$4.88 and
-consumes 15.5M tokens for 33 tasks (\$0.15 per task); informed mode costs
-\$7.43 and 23.6M tokens (\$0.23 per task). The Vulhub informed run
-(191 cases, six workers) consumed 194.5M tokens at a total cost of \$60.96
-(\$0.33 per completed case). The larger blind run consumed 311.9M tokens at
-\$97.29, or approximately \$0.32 per completed case. These figures suggest that
-\harnessname{} remains within a practical per-run budget for research
-deployments.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
