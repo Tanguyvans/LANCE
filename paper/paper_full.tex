@@ -152,7 +152,7 @@ This section reviews prior work relevant to our approach. We first survey LLM-dr
 
 \medskip\noindent\textbf{Multi-agent pipelines.} \textsc{VulnBot}~\cite{vulnbot25} decomposes pentesting into reconnaissance, scanning, and exploitation over a \emph{Penetration Task Graph}, gaining 21 points end-to-end over its single-agent baseline ($30.3\%$ on AutoPenBench with Llama~3.1-405B). \textsc{AutoPentester}~\cite{autopentester25} adds RAG across five agents for a $+27\%$ subtask gain over \textsc{PentestGPT} on HackTheBox. \textsc{PentestAgent}~\cite{pentestagent25} and \textsc{CAI}~\cite{cai25} generalise this blueprint with modular tool use and a public leaderboard.
 
-\medskip\noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $79.17\%$ subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, gaining more than $20\%$ on Vulhub over a Claude Code + Sonnet~4.5 baseline.
+\medskip\noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $72.72\%$ task completion and $79.17\%$ best-of-five subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, gaining more than $20\%$ on Vulhub over a Claude Code + Sonnet~4.5 baseline.
 
 \medskip\noindent\textbf{Common limitation.} Despite this diversity, reported
 evaluations remain single-target or challenge-level. They do not score subnet
@@ -504,6 +504,13 @@ All reported results are single-run estimates per (system, scenario) cell. The e
 \section{Evaluation}
 \label{sec:eval}
 
+The evaluation answers three questions: whether \harnessname{} improves
+per-vulnerability scoring on network-scale IoT scenarios, whether that gain is
+consistent across topology types, and how the same harness behaves on
+established single-host corpora. Cross-corpus numbers are reported only to
+contextualize transfer: models, scoring oracles, and task definitions differ
+across papers.
+
 \subsection{Overall performance}
 \label{sec:eval:overall}
 
@@ -511,35 +518,36 @@ All reported results are single-run estimates per (system, scenario) cell. The e
 \centering
 \caption{Results on \systemname\ (10 main scenarios, MiniMax-M2.7). TC = Recall;
 Score = CVSS-weighted Recall. Baseline rows show F1 only; TC, Prec., and Score
-are not independently measured for the adapted baselines.}
+are not independently measured for the adapted baselines. ``Found'' counts
+scenarios where a method finds at least one ground-truth vulnerability.}
 \label{tab:main}
 \footnotesize
 \setlength{\tabcolsep}{6pt}
 \begin{tabular}{@{}lrrrrrl@{}}
 \toprule
-System & TC & Prec. & F1 & Score & Wins & Notes \\
+System & TC & Prec. & F1 & Score & Found & Notes \\
 \midrule
 \textbf{\harnessname (full)} & \textbf{0.962} & \textbf{0.922} & \textbf{0.940} & \textbf{86.1\%} & \textbf{10/10} & full pipeline \\
 \midrule
-CAI-style adapter      & -- & -- & 0.312 & -- & 0/10 & adapted baseline \\
-PentGPT-style adapter  & -- & -- & 0.321 & -- & 0/10 & adapted baseline \\
-VulnBot-style adapter  & -- & -- & 0.316 & -- & 0/10 & adapted baseline \\
-Best baseline per scenario & -- & -- & 0.393 & -- & 0/10 & oracle best of the three \\
+CAI-style adapter      & n/r & n/r & 0.312 & n/r & 9/10 & adapted baseline \\
+PentGPT-style adapter  & n/r & n/r & 0.321 & n/r & 8/10 & adapted baseline \\
+VulnBot-style adapter  & n/r & n/r & 0.316 & n/r & 9/10 & adapted baseline \\
+Best baseline per scenario & n/r & n/r & 0.393 & n/r & 9/10 & oracle best of the three \\
 \midrule
 \multicolumn{7}{@{}l}{\emph{Scalability extensions (not included in means above)}} \\
 \midrule
-\harnessname{} (\texttt{s\_11}, 15 dev.) & 0.913 & 0.840 & 0.875 & 84.8\% & -- & scalability \\
-Best baseline (\texttt{s\_11})           & --    & --    & 0.414 & --     & -- & oracle best \\
-\harnessname{} (\texttt{s\_12}, 35 dev.) & 0.976 & 0.911 & 0.942 & 90.6\% & -- & scalability \\
-Best baseline (\texttt{s\_12})           & --    & --    & 0.517 & --     & -- & oracle best \\
+\harnessname{} (\texttt{s\_11}, 15 dev.) & 0.913 & 0.840 & 0.875 & 84.8\% & yes & scalability \\
+Best baseline (\texttt{s\_11})           & n/r   & n/r   & 0.414 & n/r    & yes & oracle best \\
+\harnessname{} (\texttt{s\_12}, 35 dev.) & 0.976 & 0.911 & 0.942 & 90.6\% & yes & scalability \\
+Best baseline (\texttt{s\_12})           & n/r   & n/r   & 0.517 & n/r    & yes & oracle best \\
 \bottomrule
 \end{tabular}
 
 \smallskip
-\footnotesize\emph{Means over scenarios \texttt{s\_1}--\texttt{s\_10}. Wins count
-per-scenario F1 wins over \harnessname{} for baseline rows, and
-\harnessname{} wins over the best baseline for the first row.
-Scalability rows are single-scenario values; Wins column not applicable.}
+\footnotesize\emph{Means over scenarios \texttt{s\_1}--\texttt{s\_10}. Found is
+not a win count: adapted baselines detect vulnerabilities in most scenarios,
+but none exceeds \harnessname{} on per-scenario F1.
+Scalability rows are single-scenario values.}
 \end{table*}
 
 Across the 10 main scenarios of \systemname{}, \harnessname{} achieves a recall
@@ -547,12 +555,17 @@ of 0.962, precision of 0.922, and F1 of 0.940, with a CVSS-weighted score of
 86.1\% (Table~\ref{tab:main}). The result is not driven by a single easy topology:
 \harnessname{} outperforms the strongest baseline in every individual scenario,
 with a mean absolute F1 gap of 0.547 over the per-scenario oracle best baseline.
+The adapted baselines are not empty: CAI-style and VulnBot-style adapters find
+at least one ground-truth vulnerability in 9/10 scenarios, and PentGPT-style in
+8/10. Their lower aggregate F1 therefore reflects partial and shallow coverage,
+not complete failure to detect vulnerabilities.
 Two of the three scalability extensions (\texttt{s\_11}, \texttt{s\_12}) are
 consistent with this trend, reaching a mean F1 of 0.909 and a mean weighted
 score of 87.7\%.
 
 \begin{figure}[h!]
   \centering
+  \resizebox{\columnwidth}{!}{%
   \begin{tikzpicture}[
     font=\scriptsize,
     ours/.style={draw=blue!80!black, line width=0.4pt, fill=blue!60},
@@ -589,6 +602,7 @@ score of 87.7\%.
     \node[anchor=south,font=\scriptsize] at (7.70,1.41) {39.3};
     \node[anchor=north,font=\scriptsize,align=center] at (7.70,-0.14) {Best\\baseline};
   \end{tikzpicture}
+  }%
   \caption{Mean F1 on the 10 main \systemname{} scenarios (MiniMax-M2.7).
   \harnessname{} (blue) outperforms each adapted LLM-pentest baseline and the
   per-scenario oracle best (dashed). The gap of 0.547 F1 points is consistent
@@ -599,8 +613,8 @@ score of 87.7\%.
 Figure~\ref{fig:baselines} summarises the comparison graphically. The three adapted
 baselines (CAI-style, PentGPT-style, VulnBot-style) each score below 0.322 F1
 on average, and their per-scenario best reaches only 0.393. The gap of 0.547
-F1 points reflects a structural advantage rather than a single difficult
-scenario: baselines succeed only on those scenarios where the vulnerability set
+F1 points suggests a benefit from topology-aware decomposition rather than a
+single difficult scenario: baselines succeed mainly where the vulnerability set
 overlaps with patterns they probe by default, while \harnessname{}'s
 topology-aware pipeline and deterministic scanner cover the full injected set.
 
@@ -609,14 +623,13 @@ topology-aware pipeline and deterministic scanner cover the full injected set.
 
 \begin{table*}[t]
 \centering
-\caption{Cross-benchmark comparison. Published single-host numbers are shown
-for reference; \harnessname{} (MiniMax-M2.7) is evaluated on both AutoPenBench
-and Vulhub. Models differ across rows: this table is not a fair model
-comparison but checks whether \harnessname{} remains competitive on established
-single-host corpora while adding the network-scale dimension.
-\emph{E2E \%}: fraction of tasks fully solved. CheckMate uses milestone-based
-progress on a 120-container Vulhub sample and reports only a relative
-success-rate gain over its baseline. ``n/r'' = not reported.
+\caption{Cross-benchmark context on single-host corpora. Published rows are
+shown for reference, not as a controlled comparison: models, run counts, and
+success oracles differ across papers. \harnessname{} (MiniMax-M2.7) is evaluated
+on AutoPenBench and Vulhub with our harness.
+\emph{E2E \%}: fraction of tasks fully solved when reported. CheckMate reports
+milestone progress on Vulhub and a relative success-rate gain over Claude Code,
+not an absolute E2E rate. ``n/r'' = not reported.
 $^\star$ = lower-bound proof-oracle estimate (see text).
 $^\S$ = blind 328-case run on a distinct superset of Vulhub CVEs; not a
 controlled comparison with the 191-case informed run.}
@@ -625,14 +638,14 @@ controlled comparison with the 191-case informed run.}
 \footnotesize
 \begin{tabular}{@{}lllrr@{}}
 \toprule
-System & Model & Corpus & Sub-task \% & E2E \% \\
+System & Model & Corpus & Sub-task \% & E2E / gain \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{AutoPenBench (33 tasks)}} \\
 \midrule
-Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 49.1 & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
-\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
-\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
+Llama 3.1-405B baseline~\cite{vulnbot25,xoffense25} & Llama 3.1-405B & AutoPenBench & 49.1 & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25,xoffense25}         & GPT-4o         & AutoPenBench & n/r  & 21.2 \\
+\textbf{VulnBot}~\cite{vulnbot25,xoffense25}        & Llama 3.1-405B & AutoPenBench & 69.1 & 30.3 \\
+\textbf{xOffense}~\cite{xoffense25}                 & Qwen3-32B (LoRA) & AutoPenBench & \textbf{79.2}$^\P$ & \textbf{72.7} \\
 \textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
 \textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
 \midrule
@@ -653,6 +666,8 @@ $^\dagger$ We report useful findings as the closest sub-task analogue because
 our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
 Informed mode receives the benchmark case id and vulnerability label; blind
 mode is the fair no-hint setting.
+$^\P$ xOffense's 79.2\% sub-task metric counts a sub-task as solved if any one
+of five runs solves it; its 72.7\% E2E metric is strict task completion.
 $^\star$ Full 191-case distributed run. The automatic useful-finding lower
 bound is 69/175 completed agent runs (39\%); manual inspection identifies 15
 additional self-reported \textsc{no finding} cases with exploit evidence,
@@ -710,76 +725,60 @@ invocation due to upstream environment issues: one involves a removed Docker
 base image and one involves a container that enters a crash loop before the
 agent can connect.
 
-Compared with published baselines on AutoPenBench, \harnessname{} in blind mode
-matches the GPT-4o single-agent baseline at 21.2\% E2E, despite using a
-different model and a multi-agent architecture not tuned for single-host tasks.
-The gap relative to VulnBot (30.3\%) and xOffense (79.2\% sub-task) is
-consistent with \harnessname{} being designed and evaluated primarily for
-network-scale scenarios: its tool set and phase structure target multi-hop
-reasoning rather than single-host exploit chaining.
+Compared with published AutoPenBench results, \harnessname{} in blind mode
+matches the GPT-4o baseline's 21.2\% E2E rate, while trailing systems specialized
+for single-host exploit chaining: VulnBot reports 30.3\% E2E, and xOffense
+reports 72.7\% E2E with a fine-tuned Qwen3-32B model. We therefore treat these
+rows as transfer context, not evidence of superiority on AutoPenBench.
 
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
 
 \begin{figure}[h!]
   \centering
-  \begin{tikzpicture}[font=\tiny]
-    \def\cellw{0.60}
-    \def\cellh{0.42}
-    % column headers
-    \foreach \c/\sid in {0/S1,1/S2,2/S3,3/S4,4/S5,5/S6,6/S7,7/S8,8/S9,9/S10} {
-      \node[rotate=40, anchor=west, font=\scriptsize] at (\c*\cellw+0.08,0.32) {\sid};
+  \begin{tikzpicture}[
+    font=\tiny,
+    lance/.style={draw=blue!80!black, line width=0.25pt, fill=blue!65},
+    base/.style={draw=black!45, line width=0.25pt, fill=black!25},
+    grid/.style={draw=black!12, line width=0.2pt},
+    axis/.style={draw=black!55, line width=0.4pt}
+  ]
+    \def\xstep{0.72}
+    \def\barw{0.20}
+    \def\yscale{0.035}
+    \draw[axis] (0,0) -- (7.30,0);
+    \draw[axis] (0,0) -- (0,3.65);
+    \foreach \y/\lab in {0/0,0.875/25,1.75/50,2.625/75,3.5/100} {
+      \draw[grid] (0,\y) -- (7.30,\y);
+      \node[anchor=east,font=\tiny] at (-0.08,\y) {\lab};
     }
-    % row labels
-    \foreach \r/\sys in {0/\textbf{LANCE},1/CAI,2/PentGPT,3/VulnBot} {
-      \node[anchor=east, font=\scriptsize] at (-0.08,-\r*\cellh-\cellh/2) {\sys};
+    \node[rotate=90,anchor=south,font=\tiny] at (-0.48,1.75) {F1 (\%)};
+    \foreach \c/\sid/\ours/\best in {
+      0/S1/92/15,1/S2/92/45,2/S3/95/0,3/S4/94/44,4/S5/100/64,
+      5/S6/100/52,6/S7/97/50,7/S8/93/55,8/S9/95/43,9/S10/82/27
+    } {
+      \pgfmathsetmacro{\x}{0.32+\c*\xstep}
+      \pgfmathsetmacro{\oh}{\ours*\yscale}
+      \pgfmathsetmacro{\bh}{\best*\yscale}
+      \draw[lance] (\x-\barw,0) rectangle ++(\barw,\oh);
+      \draw[base]  (\x+0.02,0) rectangle ++(\barw,\bh);
+      \node[anchor=north,font=\tiny] at (\x+0.01,-0.10) {\sid};
     }
-    % separator line between LANCE and baselines
-    \draw[black!40, line width=0.6pt] (0,-\cellh) -- (10*\cellw,-\cellh);
-    % LANCE row (blue scale, white text)
-    \foreach \c/\v in {0/92,1/92,2/95,3/94,4/100,5/100,6/97,7/93,8/95,9/82} {
-      \draw[fill=blue!\v!white, draw=black!20, line width=0.2pt]
-        (\c*\cellw,0) rectangle ++(\cellw,-\cellh);
-      \node[text=white, font=\bfseries\tiny] at (\c*\cellw+\cellw/2,-\cellh/2) {\v};
-    }
-    % CAI row (orange scale, floor at 8 for visibility)
-    \foreach \c/\v/\cv in
-      {0/15/15,1/35/35,2/0/8,3/36/36,4/50/50,5/40/40,6/50/50,7/55/55,8/17/17,9/14/14} {
-      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
-        (\c*\cellw,-\cellh) rectangle ++(\cellw,-\cellh);
-      \node[font=\tiny] at (\c*\cellw+\cellw/2,-\cellh-\cellh/2) {\v};
-    }
-    % PentGPT row
-    \foreach \c/\v/\cv in
-      {0/0/8,1/14/14,2/0/8,3/42/42,4/64/64,5/52/52,6/45/45,7/35/35,8/43/43,9/27/27} {
-      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
-        (\c*\cellw,-2*\cellh) rectangle ++(\cellw,-\cellh);
-      \node[font=\tiny] at (\c*\cellw+\cellw/2,-2*\cellh-\cellh/2) {\v};
-    }
-    % VulnBot row
-    \foreach \c/\v/\cv in
-      {0/15/15,1/45/45,2/0/8,3/44/44,4/50/50,5/40/40,6/45/45,7/35/35,8/29/29,9/14/14} {
-      \draw[fill=orange!\cv!white, draw=black!20, line width=0.2pt]
-        (\c*\cellw,-3*\cellh) rectangle ++(\cellw,-\cellh);
-      \node[font=\tiny] at (\c*\cellw+\cellw/2,-3*\cellh-\cellh/2) {\v};
-    }
-    % outer border
-    \draw[black!50, line width=0.5pt] (0,0) rectangle (10*\cellw,-4*\cellh);
-    % legend
-    \node[font=\tiny, anchor=east] at (10*\cellw+0.05,-4*\cellh-0.30) {F1 (\%):};
-    \node[font=\tiny, anchor=west] at (10*\cellw+0.05,-4*\cellh-0.30) {0};
-    \shade[left color=white, right color=blue!80, draw=black!30, line width=0.2pt]
-      (10*\cellw+0.45,-4*\cellh-0.42) rectangle +(1.2,0.22);
-    \node[font=\tiny, anchor=west] at (10*\cellw+1.70,-4*\cellh-0.30) {100};
+    \draw[lance] (4.85,3.38) rectangle +(0.18,0.12);
+    \node[anchor=west,font=\tiny] at (5.08,3.44) {\harnessname{}};
+    \draw[base] (6.05,3.38) rectangle +(0.18,0.12);
+    \node[anchor=west,font=\tiny] at (6.28,3.44) {best baseline};
   \end{tikzpicture}
-  \caption{Per-scenario F1 heatmap on the 10 main \systemname{} scenarios (values
-  in \%). \harnessname{} (blue, top row) achieves perfect F1 on hub-centric
-  topologies (\texttt{S5}, \texttt{S6}) and is weakest on the flat role-variant
-  scenario \texttt{S10}. Baselines (orange) are uniformly lower.}
-  \label{fig:heatmap}
+  \caption{Per-scenario F1 on the 10 main \systemname{} scenarios. Each pair
+  compares \harnessname{} with the best adapted baseline for that scenario.
+  Baselines often detect some vulnerabilities, but remain below \harnessname{}
+  on every topology.}
+  \label{fig:per-scenario}
 \end{figure}
 
-The per-scenario breakdown in Figure~\ref{fig:heatmap} reveals a clear pattern. The
+The per-scenario breakdown in Figure~\ref{fig:per-scenario} reveals a clear pattern:
+adapted baselines produce non-zero findings on 9/10 scenarios, but their best
+per-scenario F1 remains below \harnessname{} in every case. The
 hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult:
 both reach F1 = 1.000, which indicates that explicit graph context combined with
 deterministic probing makes gateway-mediated dependencies tractable. Segmented
@@ -971,7 +970,7 @@ All code, scenarios, ground truth, and run logs are released at
 
 \bibitem{pentestr125} Anonymous, ``Pentest-R1: Towards autonomous penetration testing reasoning optimized via two-stage reinforcement learning,'' \textit{arXiv:2508.07382}, 2025.
 
-\bibitem{xoffense25} Anonymous, ``xOffense: An AI-driven autonomous penetration testing framework with offensive knowledge-enhanced LLMs and multi-agent systems,'' \textit{arXiv:2509.13021}, 2025.
+\bibitem{xoffense25} P.~D.~Luong \textit{et al.}, ``xOffense: An autonomous multi-agent framework for penetration testing with domain-adapted large language models,'' \textit{arXiv:2509.13021}, 2025.
 
 \bibitem{enigma25} T.~Abramovich \textit{et al.}, ``EnIGMA: Interactive tools substantially assist LM agents in solving CTF challenges,'' in \textit{Proc. ICML}, 2025.
 
@@ -983,7 +982,7 @@ All code, scenarios, ground truth, and run logs are released at
 
 \bibitem{checkmate25} L.~Wang, X.~Shi, Z.~Li, Y.~Jiang, S.~Tan, Y.~Jiang, J.~Cheng, W.~Chen, X.~Shen, Z.~Li, and Y.~Chen, ``Automated penetration testing with LLM agents and classical planning,'' \textit{arXiv:2512.11143}, 2025.
 
-\bibitem{autopenbench24} Anonymous, ``Towards automated penetration testing: Introducing LLM benchmark, analysis, and improvements,'' \textit{arXiv:2410.17141}, 2024.
+\bibitem{autopenbench24} L.~Gioacchini, M.~Mellia, I.~Drago, A.~Delsanto, G.~Siracusano, and R.~Bifulco, ``AutoPenBench: Benchmarking generative agents for penetration testing,'' \textit{arXiv:2410.03225}, 2024.
 
 \bibitem{nyuctfbench24} M.~Shao \textit{et al.}, ``NYU CTF Bench: A scalable open-source benchmark dataset for evaluating LLMs in offensive security,'' in \textit{Proc. NeurIPS Datasets and Benchmarks Track}, 2024.
 
