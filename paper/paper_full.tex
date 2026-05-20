@@ -613,7 +613,9 @@ run it on two single-host corpora used by prior work. Comparisons are
 contextual rather than head-to-head: published results differ in model, run
 count, and success oracle. We therefore separate the two cases: AutoPenBench has
 a flag-based E2E metric that supports a compact comparison table, whereas Vulhub
-is better reported as run-level useful-finding evidence.
+is better reported as run-level useful-finding evidence. These corpora do not
+measure the full network-native architecture: they mainly stress the
+single-target exploitation component used inside the harness.
 
 \medskip\noindent\textbf{AutoPenBench.}
 AutoPenBench defines 33 flag-based tasks with published E2E rates, making it
@@ -664,31 +666,44 @@ was designed for multi-hop IoT networks, not single-host exploit chaining.
 \medskip\noindent\textbf{Vulhub.}
 Vulhub provides reproducible vulnerable environments but no uniform flag oracle,
 so we report useful-finding lower bounds rather than E2E task completion.
-CheckMate~\cite{checkmate25}, the only prior work on this corpus, reports a
-$+20\%$ relative gain over a Claude~Code + Sonnet~4.5 baseline without
-publishing an absolute rate, making direct numeric comparison impossible.
-Table~\ref{tab:vulhub-transfer} summarizes our two Vulhub runs. They cover
-\emph{different} case sets and are complementary in scope, not a blind/informed
-ablation.
+Because each Vulhub case is a single Docker Compose target, it removes the
+topology prior, per-device decomposition, and lateral-movement phases that
+distinguish \harnessname{} on \systemname{}. The Vulhub results therefore
+evaluate the harness's single-target exploitation component, not the full
+multi-device architecture.
+Prior Vulhub evaluations use different target sets and oracles, so we treat
+them as architecture context rather than a controlled leaderboard. PentestAgent
+reports 74.2\% full-process success on 67 VulHub targets using a multi-agent
+RAG pipeline~\cite{pentestagent25}. CurriculumPT reports exploit success rates
+of 24.0\% for AutoPT, 36.0\% for VulnBot, 42.0\% for PentestAgent, and 60.0\%
+for its curriculum-guided multi-agent system on a 15-task Vulhub hold-out
+with GPT-4o-mini~\cite{curriculumpt25}. CheckMate samples 120 anonymized
+Vulhub containers and reports a $+20\%$ relative gain over Claude~Code +
+Sonnet~4.5~\cite{checkmate25}.
+Table~\ref{tab:vulhub-transfer} summarizes the two final Vulhub runs available
+for this study. They cover \emph{different} case sets and are complementary in
+scope, not a blind/informed ablation.
 
 \begin{table}[h!]
 \centering
 \caption{Vulhub transfer runs.}
 \label{tab:vulhub-transfer}
-\setlength{\tabcolsep}{4pt}
-\footnotesize
-\begin{tabular}{@{}llll@{}}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{@{}lrrlr@{}}
 \toprule
-Setting & Cases & Completed & Useful findings \\
+Setting & Cases & Completed & Useful findings & Strict \\
 \midrule
-Informed & 191 & 175 & 69/175 auto; 84/175 reviewed \\
-Blind & 328 & 306 & 90/306 reported \\
+Informed & 191 & 175 & 69 auto; 84 reviewed & 6 \\
+Blind & 328 & 306 & 90 reported & 6 \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
 Informed mode receives the case identifier and vulnerability label. The blind
-run is a distinct larger CVE superset, not the same cases without hints.}
+run is a distinct larger CVE superset, not the same cases without hints.
+``Strict'' counts automatically labelled confirmed exploits. Costs/tokens are
+\$60.96/194.5M for informed and \$97.29/311.9M for blind.}
 \end{table}
 
 In the 191-case informed run, 175 cases completed (11 failed during environment
@@ -697,11 +712,16 @@ automatic verdict marks 69/175 as useful findings (39\%); manual review of
 \texttt{proof.json} identifies 15 additional cases where the agent held exploit
 evidence but self-reported \textsc{no finding}, raising the conservative lower
 bound to 84/175 (48\%). In the 328-case blind run on a distinct superset of CVE
-environments, 306 cases completed; the agent reports useful findings on 90/306
-(29\%), including strictly confirmed exploits for \texttt{spring/CVE-2022-22965},
-\texttt{struts2/s2-005}, and \texttt{supervisor/CVE-2017-11610}. The gap between
-automatic verdicts and manual review in both runs underscores the difficulty of
-oracle design for heterogeneous Vulhub tasks.
+environments, 306 cases completed, 18 failed during agent execution, and 4
+failed during environment setup. This blind run was executed in two batches:
+124 cases skipped after the first rate-limit breaker were replayed once the API
+quota recovered. The final aggregate reports useful findings on 90/306 cases
+(29\%) and six strictly confirmed exploits. The gap between automatic verdicts
+and manual review underscores the difficulty of oracle design for heterogeneous
+Vulhub tasks. We therefore use Vulhub as evidence that the exploitation
+component transfers to established vulnerable services, while the architectural
+advantage of \harnessname{} is evaluated on the multi-device \systemname{}
+scenarios.
 
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
@@ -731,7 +751,7 @@ achieves F1 = 0.942 and Score = 90.6\%.
 
 \begin{table}[h!]
   \centering
-\caption{Vulhub full-run outcome distribution. Percentages are over the 175
+\caption{Vulhub informed-run outcome distribution. Percentages are over the 175
 completed agent runs unless marked as pre-agent failures.}
 \label{tab:vulhub-failures}
 \scriptsize
@@ -759,22 +779,26 @@ contributing both missed findings and near-duplicate false positives that arise
 from role variants. The remaining nine comparison scenarios each stay above F1 = 0.923,
 suggesting that the pipeline generalises well across varied topologies.
 
-On Vulhub (Table~\ref{tab:vulhub-failures}), the dominant outcome is
+On the Vulhub informed run (Table~\ref{tab:vulhub-failures}), the dominant outcome is
 \textsc{max turns} (47\%), which conflates two behaviours: genuinely
 unproductive search loops and successful exploitation followed by continued
 searching for a flag that the Vulhub environment does not standardise. The next
 most actionable failure categories are tool coverage (19 cases blocked by
 missing exploit support) and credential handling (23 cases requiring secrets
-the agent did not possess).
+the agent did not possess). The blind run shows the same broad pattern at a
+larger scale: among 306 completed cases, 131 end at the turn budget, 85 report
+\textsc{no finding}, 41 block on credentials, and 25 block on missing tools.
 
 \medskip\noindent\textbf{Computational cost.}
 The 10 main \systemname{} scenarios run at a cost that scales with network size.
 On the AutoPenBench single-host corpus, blind-mode evaluation costs \$4.88 and
 consumes 15.5M tokens for 33 tasks (\$0.15 per task); informed mode costs
-\$7.43 and 23.6M tokens (\$0.23 per task). The Vulhub distributed run
-(191 cases, six workers) consumed 194.5M tokens at a total cost of \$60.96,
-approximately \$0.33 per executed case. These figures suggest that \harnessname{} remains within a practical per-run
-budget for research deployments.
+\$7.43 and 23.6M tokens (\$0.23 per task). The Vulhub informed run
+(191 cases, six workers) consumed 194.5M tokens at a total cost of \$60.96
+(\$0.33 per completed case). The larger blind run consumed 311.9M tokens at
+\$97.29, or approximately \$0.32 per completed case. These figures suggest that
+\harnessname{} remains within a practical per-run budget for research
+deployments.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
@@ -911,6 +935,8 @@ All code, scenarios, ground truth, and run logs are released at
 \bibitem{awe26} Anonymous, ``AWE: A memory-augmented multi-agent framework for autonomous web penetration testing,'' in \textit{NDSS Workshop on LLM-Assisted Security and Trust Exploration (LAST-X)}, 2026.
 
 \bibitem{checkmate25} L.~Wang, X.~Shi, Z.~Li, Y.~Jiang, S.~Tan, Y.~Jiang, J.~Cheng, W.~Chen, X.~Shen, Z.~Li, and Y.~Chen, ``Automated penetration testing with LLM agents and classical planning,'' \textit{arXiv:2512.11143}, 2025.
+
+\bibitem{curriculumpt25} X.~Wu, Y.~Tian, Y.~Chen, P.~Ye, X.~Cui, J.~Jia, S.~Li, J.~Liu, and W.~Niu, ``CurriculumPT: LLM-based multi-agent autonomous penetration testing with curriculum-guided task scheduling,'' \textit{Applied Sciences}, vol.~15, no.~16, Art.~9096, 2025.
 
 \bibitem{autopenbench24} L.~Gioacchini, M.~Mellia, I.~Drago, A.~Delsanto, G.~Siracusano, and R.~Bifulco, ``AutoPenBench: Benchmarking generative agents for penetration testing,'' \textit{arXiv:2410.03225}, 2024.
 
