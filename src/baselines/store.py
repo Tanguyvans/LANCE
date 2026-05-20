@@ -85,19 +85,34 @@ def _utc_now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+_INITIALIZED: set[str] = set()
+
+
 def init_db(path: Path = DEFAULT_DB_PATH) -> Path:
-    """Create the SQLite store (and schema) if missing. Idempotent."""
+    """Create the SQLite store (and schema) if missing. Idempotent.
+
+    NB: `with sqlite3.connect(...)` only commits/rolls back the transaction —
+    it does NOT close the connection. The connection must be closed explicitly
+    or it leaks (every leaked connection holds the DB + WAL files open, and
+    enough leaks make new connections fail with "unable to open database file").
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    conn = sqlite3.connect(path)
+    try:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.executescript(SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+    _INITIALIZED.add(str(path))
     return path
 
 
 @contextmanager
 def _connect(path: Path = DEFAULT_DB_PATH):
-    init_db(path)
+    if str(path) not in _INITIALIZED:
+        init_db(path)
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:

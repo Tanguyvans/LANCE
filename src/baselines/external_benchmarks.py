@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 from collections import Counter
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,12 @@ DEFAULT_REMOTE_JOB_DIR = Path("/opt/baseline-tools/external-jobs")
 SUPPORTED_SUITES = ("xbow", "autopenbench", "vulhub", "ai-pentest")
 CONTEXT_MODES = ("blind", "informed")
 DEFAULT_DOCKER_MIN_FREE_GB = 15.0
+# AutoPenBench compose files put every VM on a hard-coded 192.168.0.0/16
+# network, which overlaps the fleet management (192.168.88.x) and benchmark
+# (192.168.100.x) networks. We rehome the targeted VM onto a network with no
+# pinned subnet, letting Docker auto-allocate from its default pool (172.x) —
+# this avoids both the 192.168 collision and per-run "pool overlaps" errors.
+AUTOPENBENCH_NETWORK = "nato_apb_net"
 REMOTE_REPO_URLS = {
     "vulhub": "https://github.com/vulhub/vulhub",
     "autopenbench": "https://github.com/lucagioacchini/auto-pen-bench",
@@ -611,6 +618,18 @@ def discover_xbow(repo: Path) -> list[ExternalBenchmarkCase]:
     return cases
 
 
+def autopenbench_case_id(level: str, category: str, target: str) -> str:
+    """Build a stable AutoPenBench case_id from games.json fields.
+
+    The `target` field in upstream `games.json` is already fully qualified
+    (e.g. `in-vitro_access_control_vm0`), so blindly prefixing it with
+    `{level}_{category}_` doubles the prefix. Only add the prefix when the
+    target is a bare name (the `vm{index}` fallback or a customized file).
+    """
+    prefix = f"{level}_{category}_"
+    return target if target.startswith(prefix) else f"{prefix}{target}"
+
+
 def discover_autopenbench(repo: Path) -> list[ExternalBenchmarkCase]:
     """Discover AutoPenBench tasks in a checked-out repository."""
     games_file = repo / "data" / "games.json"
@@ -628,7 +647,7 @@ def discover_autopenbench(repo: Path) -> list[ExternalBenchmarkCase]:
                     if not isinstance(item, dict):
                         continue
                     target = str(item.get("target") or f"vm{index}")
-                    case_id = f"{level}_{category}_{target}"
+                    case_id = autopenbench_case_id(str(level), str(category), target)
                     vulnerability = str(item.get("vulnerability", ""))
                     alias = str(item.get("alias", ""))
                     cases.append(
@@ -811,16 +830,27 @@ def _select_case(suite: str, repo: Path, case_id: str) -> ExternalBenchmarkCase:
     raise ValueError(f"Unknown {suite} case {case_id!r}. Available: {available}{suffix}")
 
 
-def _render_agent_command(template: str, case: ExternalBenchmarkCase, output_dir: Path, flag: str) -> list[str]:
+def _render_agent_command(
+    template: str,
+    case: ExternalBenchmarkCase,
+    output_dir: Path,
+    flag: str,
+    target_override: str | None = None,
+) -> list[str]:
     exposed_services = _format_exposed_services(case)
+    # `target_override` carries a runtime-resolved address (e.g. the Docker IP
+    # of an autopenbench container, only known after `up`). When set it wins
+    # over the discovery-time fields.
+    target = target_override or case.target_url or ""
+    target_or_url = target_override or case.target_url or case.target_endpoint or case.target
     rendered = template.format(
         suite=case.suite,
         case_id=case.case_id,
         case=case.case_id,
-        target=case.target_url or "",
-        target_url=case.target_url or "",
+        target=target,
+        target_url=target,
         target_endpoint=case.target_endpoint or "",
-        target_or_url=case.target_url or case.target_endpoint or case.target,
+        target_or_url=target_or_url,
         target_name=case.target,
         target_service=case.target_service,
         target_protocol=case.target_protocol,
@@ -888,10 +918,190 @@ def default_external_agent_command(
     return external_agent_command(provider=provider, model=model, max_turns=max_turns, context_mode="informed")
 
 
-def _compose_command(case: ExternalBenchmarkCase, *args: str) -> list[str]:
-    if not case.compose_file:
+def _compose_abs_path(value: str, base: Path) -> str:
+    """Resolve a compose-relative path (e.g. `./vm0`) to an absolute string."""
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str((base / path).resolve())
+
+
+def _depends_on_ids(service: dict[str, Any]) -> list[str]:
+    """Return the service ids a compose service depends on (dict or list form)."""
+    deps = service.get("depends_on")
+    if isinstance(deps, dict):
+        return [str(d) for d in deps]
+    if isinstance(deps, list):
+        return [str(d) for d in deps]
+    return []
+
+
+def _autopenbench_standalone_compose(case: ExternalBenchmarkCase, run_dir: Path) -> Path:
+    """Generate a collision-free, self-contained compose for an autopenbench case.
+
+    AutoPenBench category compose files bundle several VMs on a 192.168.0.0/16
+    network. We extract only the VM this case targets — plus any services it
+    pulls in via `depends_on` (some machines ship a paired database/auxiliary
+    container) — onto a subnet that does not clash with the fleet management /
+    benchmark networks. Service definitions are copied verbatim from the
+    upstream file and only minimally mutated (network attachment, container
+    name, relative build/volume paths made absolute so the generated file can
+    live outside the repo).
+    """
+    if not case.compose_file or not case.compose_file.exists():
+        raise ValueError(f"{case.case_id}: compose file not found ({case.compose_file})")
+    data = _read_yaml(case.compose_file)
+    services = data.get("services", {})
+    if not isinstance(services, dict) or case.case_id not in services:
+        available = ", ".join(services) if isinstance(services, dict) else ""
+        raise ValueError(
+            f"{case.case_id}: service not found in {case.compose_file} (services: {available})"
+        )
+    # AutoPenBench category composes are always loaded together with the base
+    # `benchmark/machines/docker-compose.yml` (first `-f`), so docker-compose
+    # anchors their relative `build:`/`volumes:` paths at the `machines/`
+    # directory — not at the category compose's own directory.
+    parents = case.compose_file.parents
+    base = parents[2] if len(parents) > 2 else case.compose_file.parent
+
+    # Collect the target plus its transitive depends_on closure.
+    wanted: list[str] = []
+    stack = [case.case_id]
+    while stack:
+        sid = stack.pop()
+        if sid in wanted or not isinstance(services.get(sid), dict):
+            continue
+        wanted.append(sid)
+        stack.extend(_depends_on_ids(services[sid]))
+
+    def _mutate(sid: str) -> dict[str, Any]:
+        service = deepcopy(services[sid])
+        build = service.get("build")
+        if isinstance(build, str):
+            service["build"] = _compose_abs_path(build, base)
+        elif isinstance(build, dict) and isinstance(build.get("context"), str):
+            build["context"] = _compose_abs_path(build["context"], base)
+        volumes = service.get("volumes")
+        if isinstance(volumes, list):
+            rewritten: list[Any] = []
+            for vol in volumes:
+                if isinstance(vol, str) and vol.startswith("."):
+                    host, sep, rest = vol.partition(":")
+                    rewritten.append(f"{_compose_abs_path(host, base)}{sep}{rest}" if sep else vol)
+                else:
+                    rewritten.append(vol)
+            service["volumes"] = rewritten
+        # Drop the static 192.168.x attachment; attach to a safe network.
+        service["networks"] = [AUTOPENBENCH_NETWORK]
+        # Prune depends_on to services we actually ship in this file.
+        deps = [d for d in _depends_on_ids(service) if d in wanted]
+        if deps:
+            service["depends_on"] = deps
+        else:
+            service.pop("depends_on", None)
+        if sid == case.case_id:
+            # The target keeps a stable name so the IP can be resolved later.
+            service["container_name"] = f"nato-apb-{case.case_id}"
+        else:
+            # Auxiliary services: let compose auto-name to avoid clashes; the
+            # target reaches them by service name on the shared network.
+            service.pop("container_name", None)
+        return service
+
+    # No pinned subnet: Docker auto-allocates a free 172.x /16 per network,
+    # which sidesteps both the 192.168 collision and cross-run pool overlaps.
+    compose = {
+        "services": {sid: _mutate(sid) for sid in wanted},
+        "networks": {AUTOPENBENCH_NETWORK: {}},
+    }
+    out = run_dir / "autopenbench-compose.yml"
+    out.write_text(yaml.safe_dump(compose, sort_keys=False), encoding="utf-8")
+    return out
+
+
+def _container_ip(container_name: str, attempts: int = 4, delay: float = 2.0) -> str:
+    """Return the first Docker network IP of a container, or '' on failure.
+
+    Retries a few times: a freshly `up`'d container — especially one with
+    `restart: unless-stopped` — can briefly report no IP while it settles or
+    cycles through a restart, so a single inspect can race and miss it.
+    """
+    for attempt in range(attempts):
+        try:
+            result = subprocess.run(
+                [
+                    "docker", "inspect", "-f",
+                    "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+                    container_name,
+                ],
+                text=True,
+                capture_output=True,
+                timeout=15,
+            )
+        except Exception:
+            result = None
+        if result is not None and result.returncode == 0:
+            parts = result.stdout.split()
+            if parts:
+                return parts[0]
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    return ""
+
+
+def _cleanup_autopenbench_networks() -> None:
+    """Remove leftover `*nato_apb_net` Docker networks from crashed/stopped runs.
+
+    Each run gets its own compose project, so a job killed before `down -v`
+    leaves a dangling network behind. Runs are sequential per host, so any
+    such network is safe to remove before the next `up` (in-use ones fail
+    gracefully and are skipped).
+    """
+    try:
+        ls = subprocess.run(
+            ["docker", "network", "ls", "--filter", f"name={AUTOPENBENCH_NETWORK}", "--format", "{{.ID}}"],
+            text=True,
+            capture_output=True,
+            timeout=15,
+        )
+    except Exception:
+        return
+    ids = [x for x in ls.stdout.split() if x]
+    if ids:
+        subprocess.run(["docker", "network", "rm", *ids], text=True, capture_output=True, check=False)
+
+
+def _compose_command(
+    case: ExternalBenchmarkCase, *args: str, compose_file: Path | None = None
+) -> list[str]:
+    target = compose_file or case.compose_file
+    if not target:
         raise ValueError(f"{case.case_id} does not have a docker-compose.yml")
-    return ["docker", "compose", "-f", str(case.compose_file), *args]
+    return ["docker", "compose", "-f", str(target), *args]
+
+
+def _compose_running_count(
+    case: ExternalBenchmarkCase,
+    compose_file: Path | None = None,
+    cwd: Path | None = None,
+) -> int:
+    """Return how many of the case's compose containers are currently running.
+
+    Used to salvage runs where `up --wait` fails because an auxiliary
+    container (a scheduler, worker, etc.) is unhealthy even though the
+    target service itself is up and reachable.
+    """
+    try:
+        ps = subprocess.run(
+            _compose_command(case, "ps", "--status", "running", "-q", compose_file=compose_file),
+            cwd=cwd or case.path,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return 0
+    return sum(1 for line in ps.stdout.splitlines() if line.strip())
 
 
 def _existing_disk_path(path: Path) -> Path:
@@ -941,11 +1151,15 @@ def _maybe_docker_prune(output_dir: Path, min_free_gb: float) -> dict[str, Any]:
     return payload
 
 
-def _build_command(case: ExternalBenchmarkCase, flag: str) -> list[str] | None:
+def _build_command(
+    case: ExternalBenchmarkCase, flag: str, compose_file: Path | None = None
+) -> list[str] | None:
     if case.suite == "xbow":
-        return _compose_command(case, "build", "--build-arg", f"flag={flag}")
+        return _compose_command(case, "build", "--build-arg", f"flag={flag}", compose_file=compose_file)
     if case.suite == "autopenbench":
-        return _compose_command(case, "build")
+        # The generated compose already holds only the target + its deps,
+        # so build everything in it (deps need building too).
+        return _compose_command(case, "build", compose_file=compose_file)
     return None
 
 
@@ -1004,10 +1218,14 @@ def sync_project_to_remote(
                 "--no-fflags",
                 "--exclude=.git",
                 "--exclude=venv",
+                "--exclude=.venv",
                 "--exclude=output",
                 "--exclude=data/knowledge.db",
                 "--exclude=.pytest_cache",
                 "--exclude=__pycache__",
+                "--exclude=node_modules",
+                "--exclude=.mypy_cache",
+                "--exclude=.ruff_cache",
                 ".",
             ],
             cwd=source,
@@ -1261,6 +1479,8 @@ def build_detached_job_payload(
     context_mode: str = "informed",
     docker_cleanup: bool = True,
     min_free_gb: float = DEFAULT_DOCKER_MIN_FREE_GB,
+    rate_limit_breaker_enabled: bool = True,
+    rate_limit_breaker_threshold: int = 3,
 ) -> dict[str, Any]:
     job_dir = remote_job_dir / job_id
     return {
@@ -1285,6 +1505,10 @@ def build_detached_job_payload(
         "keep_running": keep_running,
         "docker_cleanup": docker_cleanup,
         "min_free_gb": min_free_gb,
+        "rate_limit_breaker": {
+            "enabled": rate_limit_breaker_enabled,
+            "threshold": rate_limit_breaker_threshold,
+        },
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -1323,6 +1547,28 @@ def write_status(status: str, **extra: object) -> None:
     status_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+_RATE_LIMIT_MARKERS = ("rate_limit_error", "Too Many Requests", "usage limit exceeded", "429")
+
+
+def _detect_rate_limit(run_dir: str, stdout_text: str) -> bool:
+    if stdout_text and any(m in stdout_text for m in _RATE_LIMIT_MARKERS):
+        return True
+    if not run_dir:
+        return False
+    err_file = Path(run_dir) / "agent_stderr.txt"
+    if not err_file.exists():
+        return False
+    try:
+        with err_file.open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 8192))
+            tail = f.read().decode("utf-8", errors="replace")
+    except Exception:
+        return False
+    return any(m in tail for m in _RATE_LIMIT_MARKERS)
+
+
 def main() -> int:
     cases = list(job["cases"])
     summary: list[dict[str, object]] = []
@@ -1330,9 +1576,42 @@ def main() -> int:
     outcome_totals: Counter[str] = Counter()
     cost_total = 0.0
     token_total = 0
+    breaker_cfg = job.get("rate_limit_breaker") or {}
+    breaker_enabled = bool(breaker_cfg.get("enabled", True))
+    breaker_threshold = int(breaker_cfg.get("threshold", 3))
+    consecutive_rl_failures = 0
+    breaker_tripped = False
     write_status("running", total=len(cases), completed=0, current_case=None)
     print(f"[job] started {job['job_id']} with {len(cases)} case(s)", flush=True)
     for index, case_id in enumerate(cases, start=1):
+        if breaker_tripped:
+            item = {
+                "case_id": case_id,
+                "status": "skipped_rate_limited",
+                "outcome": "skipped_rate_limited",
+                "returncode": None,
+                "run_dir": "",
+                "useful": False,
+                "estimated_cost_usd": 0.0,
+                "total_tokens": 0,
+            }
+            print(f"[job] {index}/{len(cases)} SKIPPED {job['suite']}/{case_id} (rate limit breaker tripped)", flush=True)
+            summary.append(item)
+            totals["skipped_rate_limited"] += 1
+            outcome_totals["skipped_rate_limited"] += 1
+            rollup = {
+                "job_id": job["job_id"],
+                "items": summary,
+                "status_counts": dict(totals),
+                "outcome_counts": dict(outcome_totals),
+                "useful_findings": sum(1 for entry in summary if entry.get("useful")),
+                "estimated_cost_usd": round(cost_total, 6),
+                "total_tokens": token_total,
+                "rate_limit_breaker_tripped": True,
+            }
+            summary_file.write_text(json.dumps(rollup, indent=2, ensure_ascii=False), encoding="utf-8")
+            write_status("running", total=len(cases), completed=index, current_case=case_id, rate_limit_breaker_tripped=True, **{k: rollup[k] for k in ("status_counts", "outcome_counts", "useful_findings", "estimated_cost_usd", "total_tokens")})
+            continue
         write_status("running", total=len(cases), completed=index - 1, current_case=case_id)
         cmd = [
             "python",
@@ -1385,15 +1664,33 @@ def main() -> int:
                 "estimated_cost_usd": run_summary.get("estimated_cost_usd", 0.0),
                 "total_tokens": run_summary.get("total_tokens", 0),
             }
+            item_stdout = result.stdout or ""
         except Exception as exc:
             print(f"[job] {case_id} failed: {exc}", flush=True)
             item = {"case_id": case_id, "status": "failed", "error": str(exc)}
+            item_stdout = str(exc)
         summary.append(item)
         totals[str(item.get("status") or "unknown")] += 1
         if item.get("outcome"):
             outcome_totals[str(item["outcome"])] += 1
         cost_total += float(item.get("estimated_cost_usd") or 0.0)
         token_total += int(item.get("total_tokens") or 0)
+        status_str = str(item.get("status") or "")
+        tokens_int = int(item.get("total_tokens") or 0)
+        looks_like_rate_limit = (
+            status_str in {"agent_failed", "command_failed", "failed"}
+            and tokens_int == 0
+            and _detect_rate_limit(str(item.get("run_dir") or ""), item_stdout)
+        )
+        if looks_like_rate_limit:
+            consecutive_rl_failures += 1
+            item["rate_limited"] = True
+            print(f"[job] rate-limit signature detected ({consecutive_rl_failures}/{breaker_threshold})", flush=True)
+        else:
+            consecutive_rl_failures = 0
+        if breaker_enabled and consecutive_rl_failures >= breaker_threshold:
+            breaker_tripped = True
+            print(f"[job] rate-limit circuit breaker TRIPPED after {consecutive_rl_failures} consecutive failures — skipping remaining cases", flush=True)
         rollup = {
             "job_id": job["job_id"],
             "items": summary,
@@ -1402,13 +1699,14 @@ def main() -> int:
             "useful_findings": sum(1 for entry in summary if entry.get("useful")),
             "estimated_cost_usd": round(cost_total, 6),
             "total_tokens": token_total,
+            "rate_limit_breaker_tripped": breaker_tripped,
         }
         summary_file.write_text(json.dumps(rollup, indent=2, ensure_ascii=False), encoding="utf-8")
-        write_status("running", total=len(cases), completed=index, current_case=case_id, **{k: rollup[k] for k in ("status_counts", "outcome_counts", "useful_findings", "estimated_cost_usd", "total_tokens")})
-    failed = sum(1 for item in summary if item.get("status") in {"failed", "agent_failed", "environment_failed", "command_failed"})
+        write_status("running", total=len(cases), completed=index, current_case=case_id, rate_limit_breaker_tripped=breaker_tripped, **{k: rollup[k] for k in ("status_counts", "outcome_counts", "useful_findings", "estimated_cost_usd", "total_tokens")})
+    failed = sum(1 for item in summary if item.get("status") in {"failed", "agent_failed", "environment_failed", "command_failed", "skipped_rate_limited"})
     final_status = "completed" if failed == 0 else "failed"
-    write_status(final_status, total=len(cases), completed=len(cases), failed=failed, current_case=None, status_counts=dict(totals), outcome_counts=dict(outcome_totals), useful_findings=sum(1 for entry in summary if entry.get("useful")), estimated_cost_usd=round(cost_total, 6), total_tokens=token_total)
-    print(f"[job] {final_status} failed={failed} useful={sum(1 for entry in summary if entry.get('useful'))} cost=${cost_total:.6f} tokens={token_total}", flush=True)
+    write_status(final_status, total=len(cases), completed=len(cases), failed=failed, current_case=None, status_counts=dict(totals), outcome_counts=dict(outcome_totals), useful_findings=sum(1 for entry in summary if entry.get("useful")), estimated_cost_usd=round(cost_total, 6), total_tokens=token_total, rate_limit_breaker_tripped=breaker_tripped)
+    print(f"[job] {final_status} failed={failed} useful={sum(1 for entry in summary if entry.get('useful'))} cost=${cost_total:.6f} tokens={token_total} breaker_tripped={breaker_tripped}", flush=True)
     return 0 if failed == 0 else 1
 
 
@@ -1466,6 +1764,8 @@ def start_detached_job(
     context_mode: str = "informed",
     docker_cleanup: bool = True,
     min_free_gb: float = DEFAULT_DOCKER_MIN_FREE_GB,
+    rate_limit_breaker_enabled: bool = True,
+    rate_limit_breaker_threshold: int = 3,
 ) -> dict[str, Any]:
     repo_path = prepare_remote_external_environment(
         baseline_host=baseline_host,
@@ -1493,6 +1793,8 @@ def start_detached_job(
         context_mode=context_mode,
         docker_cleanup=docker_cleanup,
         min_free_gb=min_free_gb,
+        rate_limit_breaker_enabled=rate_limit_breaker_enabled,
+        rate_limit_breaker_threshold=rate_limit_breaker_threshold,
     )
     job_dir = Path(job["job_dir"])
     job_json = json.dumps(job, indent=2, ensure_ascii=False)
@@ -1527,7 +1829,7 @@ df -h / /var/lib/docker /opt 2>/dev/null || df -h
 
 
 def _failure_statuses_for_resume() -> set[str]:
-    return {"failed", "agent_failed", "environment_failed", "command_failed"}
+    return {"failed", "agent_failed", "environment_failed", "command_failed", "skipped_rate_limited"}
 
 
 def resume_detached_job(
@@ -1585,6 +1887,8 @@ cat {shlex.quote(str(remote_job_dir / job_id / "summary.json"))} 2>/dev/null || 
         context_mode=str(previous_job.get("context_mode", "informed")),
         docker_cleanup=bool(previous_job.get("docker_cleanup", True)),
         min_free_gb=float(previous_job.get("min_free_gb", DEFAULT_DOCKER_MIN_FREE_GB)),
+        rate_limit_breaker_enabled=bool((previous_job.get("rate_limit_breaker") or {}).get("enabled", True)),
+        rate_limit_breaker_threshold=int((previous_job.get("rate_limit_breaker") or {}).get("threshold", 3)),
     )
 
 
@@ -1670,15 +1974,26 @@ def attach_detached_job(baseline_host: str, job_id: str) -> None:
     subprocess.run(["ssh", "-t", baseline_host, "tmux", "attach", "-t", f"nato-ext-{job_id}"], check=True)
 
 
+def _safe_host_dir(baseline_host: str) -> str:
+    """Sanitize an SSH target (e.g. `root@192.168.88.184`) into a path component."""
+    return re.sub(r"[^A-Za-z0-9.-]+", "_", baseline_host).strip("_") or "host"
+
+
 def fetch_detached_job(
     baseline_host: str,
     job_id: str,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     remote_job_dir: Path = DEFAULT_REMOTE_JOB_DIR,
     remote_output_dir: Path = DEFAULT_REMOTE_OUTPUT_DIR,
+    host_subdir: bool = False,
 ) -> Path:
     local_jobs = output_dir / "jobs"
+    if host_subdir:
+        local_jobs = local_jobs / _safe_host_dir(baseline_host)
     local_jobs.mkdir(parents=True, exist_ok=True)
+    local_job_dir = local_jobs / job_id
+    if local_job_dir.exists():
+        shutil.rmtree(local_job_dir)
     remote_job = remote_job_dir / job_id
     subprocess.run(
         ["scp", "-o", "ConnectTimeout=10", "-r", f"{baseline_host}:{remote_job}", str(local_jobs)],
@@ -1697,13 +2012,15 @@ def fetch_detached_job(
                 rel = remote_run.relative_to(remote_output_dir)
             except ValueError:
                 continue
-            local_parent = output_dir / rel.parent
+            if host_subdir:
+                local_parent = output_dir / "results_by_host" / _safe_host_dir(baseline_host) / rel.parent
+            else:
+                local_parent = output_dir / rel.parent
             local_parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(
                 ["scp", "-o", "ConnectTimeout=10", "-r", f"{baseline_host}:{remote_run}", str(local_parent)],
                 check=False,
             )
-    local_job_dir = local_jobs / job_id
     fetch_manifest = {
         "job_id": job_id,
         "fetched_at": datetime.now().isoformat(timespec="seconds"),
@@ -1712,13 +2029,15 @@ def fetch_detached_job(
         "remote_output_dir": str(remote_output_dir),
         "local_job_dir": str(local_job_dir),
         "local_results_root": str(output_dir),
+        "host_subdir": host_subdir,
         "layout": {
             "job_metadata": str(local_job_dir),
             "run_results": str(output_dir / "<suite>/<case_id>/<timestamp>"),
         },
     }
     _write_json(local_job_dir / "fetch_manifest.json", fetch_manifest)
-    organize_fetched_job(job_id, output_dir=output_dir)
+    if not host_subdir:
+        organize_fetched_job(job_id, output_dir=output_dir)
     return local_job_dir
 
 
@@ -1814,6 +2133,18 @@ def run_case(
         flag_value = f"FLAG-{case.suite}-{case.case_id}-{int(time.time())}"
     run_dir = output_dir / case.suite / case.case_id / datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # AutoPenBench: run a generated single-service compose on a safe subnet
+    # instead of the upstream multi-VM / 192.168.0.0/16 file.
+    active_compose = case.compose_file
+    compose_cwd = case.path
+    if case.suite == "autopenbench":
+        active_compose = _autopenbench_standalone_compose(case, run_dir)
+        compose_cwd = run_dir
+    # The generated autopenbench compose only holds the target + its deps, so
+    # an unscoped `up` brings up exactly what the case needs.
+    up_args = ["up", "-d", "--wait"]
+
     command = _render_agent_command(agent_command, case, run_dir, flag_value)
     context_mode = infer_context_mode_from_command(agent_command)
     planned = {
@@ -1830,9 +2161,10 @@ def run_case(
         },
         "flag": flag_value,
         "agent_command": command,
-        "build_command": _build_command(case, flag_value),
-        "up_command": _compose_command(case, "up", "-d", "--wait"),
-        "down_command": _compose_command(case, "down", "-v"),
+        "build_command": _build_command(case, flag_value, compose_file=active_compose),
+        "up_command": _compose_command(case, *up_args, compose_file=active_compose),
+        "down_command": _compose_command(case, "down", "-v", compose_file=active_compose),
+        "compose_file": str(active_compose) if active_compose else None,
         "dry_run": dry_run,
         "docker_cleanup": {
             "enabled": docker_cleanup,
@@ -1854,9 +2186,18 @@ def run_case(
     status = "completed"
     should_run_agent = True
     try:
-        subprocess.run(planned["down_command"], cwd=case.path, text=True, capture_output=True, check=False)
+        if case.suite == "autopenbench":
+            # The per-run `down -v` only knows this run's compose project; a
+            # crashed prior run could leave the fixed-name container or a
+            # dangling network behind.
+            subprocess.run(
+                ["docker", "rm", "-f", f"nato-apb-{case.case_id}"],
+                text=True, capture_output=True, check=False,
+            )
+            _cleanup_autopenbench_networks()
+        subprocess.run(planned["down_command"], cwd=compose_cwd, text=True, capture_output=True, check=False)
         if planned["build_command"]:
-            build = subprocess.run(planned["build_command"], cwd=case.path, text=True, capture_output=True)
+            build = subprocess.run(planned["build_command"], cwd=compose_cwd, text=True, capture_output=True)
             if build.returncode != 0:
                 status = "environment_failed"
                 returncode = build.returncode
@@ -1864,13 +2205,45 @@ def run_case(
                 stderr = build.stderr
                 should_run_agent = False
         if should_run_agent:
-            up = subprocess.run(planned["up_command"], cwd=case.path, text=True, capture_output=True)
+            up = subprocess.run(planned["up_command"], cwd=compose_cwd, text=True, capture_output=True)
             if up.returncode != 0:
+                # `up --wait` fails if ANY container is unhealthy/exited, even
+                # an auxiliary one (scheduler, worker). For a security
+                # benchmark we only need the target service reachable, so
+                # salvage the run when at least one container is still up.
+                running = _compose_running_count(case, compose_file=active_compose, cwd=compose_cwd)
+                if running > 0:
+                    planned["environment_degraded"] = {
+                        "up_returncode": up.returncode,
+                        "running_containers": running,
+                    }
+                    stdout = up.stdout
+                    stderr = (
+                        f"{up.stderr}\n\n[env degraded] up --wait rc={up.returncode} "
+                        f"but {running} container(s) running — proceeding with agent"
+                    ).strip()
+                else:
+                    status = "environment_failed"
+                    returncode = up.returncode
+                    stdout = up.stdout
+                    stderr = up.stderr
+                    should_run_agent = False
+        if should_run_agent and case.suite == "autopenbench":
+            # The target IP only exists once the container is up. Resolve it
+            # and re-render the agent command so the agent gets a reachable
+            # address instead of the bare service name.
+            target_ip = _container_ip(f"nato-apb-{case.case_id}")
+            if not target_ip:
                 status = "environment_failed"
-                returncode = up.returncode
-                stdout = up.stdout
-                stderr = up.stderr
+                stderr = f"{stderr}\n\n[autopenbench] could not resolve target container IP".strip()
                 should_run_agent = False
+            else:
+                planned["target_ip"] = target_ip
+                planned["agent_context_inputs"]["target"] = target_ip
+                command = _render_agent_command(
+                    agent_command, case, run_dir, flag_value, target_override=target_ip
+                )
+                planned["agent_command"] = command
         if should_run_agent:
             result = subprocess.run(
                 command,
@@ -1886,7 +2259,7 @@ def run_case(
                 status = "agent_failed"
     finally:
         if not keep_running:
-            down = subprocess.run(planned["down_command"], cwd=case.path, text=True, capture_output=True, check=False)
+            down = subprocess.run(planned["down_command"], cwd=compose_cwd, text=True, capture_output=True, check=False)
             if down.stderr:
                 stderr = f"{stderr}\n\n[compose down stderr]\n{down.stderr}".strip()
             if docker_cleanup:
@@ -1962,6 +2335,9 @@ def main(argv: list[str] | None = None) -> None:
     detached_parser.add_argument("--no-docker-cleanup", dest="docker_cleanup", action="store_false")
     detached_parser.add_argument("--min-free-gb", default=DEFAULT_DOCKER_MIN_FREE_GB, type=float)
     detached_parser.add_argument("--no-sync", action="store_true")
+    detached_parser.add_argument("--rate-limit-breaker", dest="rate_limit_breaker_enabled", action="store_true", default=True, help="Stop the batch after N consecutive rate-limited failures (default: enabled)")
+    detached_parser.add_argument("--no-rate-limit-breaker", dest="rate_limit_breaker_enabled", action="store_false")
+    detached_parser.add_argument("--rate-limit-breaker-threshold", default=3, type=int, help="Number of consecutive rate-limited failures before tripping the breaker (default: 3)")
 
     resume_parser = sub.add_parser("resume-detached", help="Start a new detached job for cases missing from a previous job")
     resume_parser.add_argument("--remote-host", required=True)
@@ -2085,6 +2461,8 @@ def main(argv: list[str] | None = None) -> None:
             context_mode=args.context_mode,
             docker_cleanup=args.docker_cleanup,
             min_free_gb=args.min_free_gb,
+            rate_limit_breaker_enabled=args.rate_limit_breaker_enabled,
+            rate_limit_breaker_threshold=args.rate_limit_breaker_threshold,
         )
         print(json.dumps(job, indent=2, ensure_ascii=False))
     elif args.command == "resume-detached":

@@ -1271,6 +1271,15 @@ def _fleet_start_distributed(console: Console, state: DashboardState) -> None:
         console.print("[red]No cases supplied. Aborting.[/red]")
         return
     console.print(f"[green]{len(cases)} case(s) selected -> {len(hosts)} fleet host(s) (~{len(cases) // max(1, len(hosts))} cases each).[/green]")
+    state.external_context_mode = _select_choice(
+        console,
+        "External context mode",
+        [
+            ("Blind network only", "Target and exposed service only; no case id or CVE label", "blind"),
+            ("Benchmark-informed", "Include benchmark case id and vulnerability/CVE label, but no repo oracle", "informed"),
+        ],
+        state.external_context_mode,
+    )
     strategy = _select_choice(
         console,
         "Shard strategy",
@@ -1288,6 +1297,7 @@ def _fleet_start_distributed(console: Console, state: DashboardState) -> None:
             dry_run=dry_run,
             model=state.model,
             max_turns=state.max_turns,
+            context_mode=state.external_context_mode,
         )
     state.active_distributed_job_id = job.distributed_job_id
     state.external_suite = suite
@@ -1544,8 +1554,11 @@ def _fleet_prepare(console: Console, state: DashboardState) -> None:
     if not hosts:
         console.print("[red]Configure fleet hosts first.[/red]")
         return
+    # Clone every suite that has a known upstream URL (vulhub + autopenbench);
+    # the default would only clone vulhub, leaving autopenbench discovery broken.
+    suites = tuple(external_benchmarks.REMOTE_REPO_URLS)
     with console.status(f"[cyan]Syncing project + preparing env on {len(hosts)} host(s)...[/cyan]"):
-        outcomes = fleet.fleet_prepare(hosts)
+        outcomes = fleet.fleet_prepare(hosts, suites=suites)
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Host")
     table.add_column("Status")

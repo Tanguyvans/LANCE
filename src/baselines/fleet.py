@@ -6,6 +6,7 @@ detached job lifecycle in `src.baselines.external_benchmarks`.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -22,6 +23,7 @@ from src.baselines.external_benchmarks import (
     DEFAULT_REMOTE_JOB_DIR,
     DEFAULT_REMOTE_OUTPUT_DIR,
     DEFAULT_REMOTE_PROJECT_DIR,
+    autopenbench_case_id,
     detached_job_status,
     ensure_remote_benchmark_repo,
     ensure_remote_docker,
@@ -633,7 +635,7 @@ def fleet_fetch(
     host_artifacts: list[dict[str, Any]] = []
 
     def _fetch(hj: HostJob) -> Path:
-        return fetch_fn(hj.baseline_host, hj.job_id)
+        return fetch_fn(hj.baseline_host, hj.job_id, host_subdir=True)
 
     for host, fetched_path, exc in _parallel_ssh(job.host_jobs, _fetch, max_workers=parallel):
         host_artifacts.append(
@@ -750,12 +752,15 @@ def merge_distributed_results(
 def _load_host_summary(hj: HostJob, base_results_dir: Path) -> dict[str, Any]:
     """Find the per-host summary.json after `fetch_detached_job` copied it locally.
 
-    `fetch_detached_job` writes to `output/external_benchmarks/jobs/<job_id>/summary.json`
-    by default (see `DEFAULT_OUTPUT_DIR / "jobs" / job_id / "summary.json"`).
+    Prefer the host-isolated layout (`jobs/<host_safe>/<job_id>/summary.json`)
+    written by the patched fetcher; fall back to the legacy shared path for
+    backwards compatibility with old fetches.
     """
     if not hj.job_id:
         return {}
+    host_safe = re.sub(r"[^A-Za-z0-9.-]+", "_", hj.baseline_host).strip("_") or "host"
     candidates = [
+        base_results_dir / "jobs" / host_safe / hj.job_id / "summary.json",
         base_results_dir / "jobs" / hj.job_id / "summary.json",
         base_results_dir / "batches" / hj.job_id / "summary.json",
     ]
@@ -768,6 +773,49 @@ def _load_host_summary(hj: HostJob, base_results_dir: Path) -> dict[str, Any]:
     return {}
 
 
+def _discover_autopenbench_remote(host: str, remote_repo: str) -> list[str]:
+    """SSH to `host`, read `data/games.json`, return AutoPenBench case_id strings.
+
+    Case ids mirror `discover_autopenbench` via the shared
+    `autopenbench_case_id` helper; target falls back to `vm{index}` when absent.
+    """
+    games_path = f"{remote_repo}/data/games.json"
+    script = (
+        f"if [ ! -f {games_path} ]; then echo __MISSING_REPO__ 1>&2; exit 2; fi; "
+        f"cat {games_path}"
+    )
+    result = subprocess.run(
+        ["ssh", "-o", "ConnectTimeout=10", host, script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 2 or "__MISSING_REPO__" in result.stderr:
+        raise RuntimeError(
+            f"autopenbench repo not present at {host}:{remote_repo} (no data/games.json). "
+            "Run 'Sync project + prepare environment on all fleet hosts' first to clone it."
+        )
+    if result.returncode != 0:
+        raise RuntimeError(f"Remote discovery failed on {host}: {result.stderr.strip() or 'no output'}")
+    try:
+        games = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Could not parse {games_path} from {host}: {exc}")
+    cases: list[str] = []
+    for level, categories in (games.items() if isinstance(games, dict) else []):
+        if not isinstance(categories, dict):
+            continue
+        for category, tasks in categories.items():
+            if not isinstance(tasks, list):
+                continue
+            for index, item in enumerate(tasks):
+                if not isinstance(item, dict):
+                    continue
+                target = str(item.get("target") or f"vm{index}")
+                cases.append(autopenbench_case_id(str(level), str(category), target))
+    return list(dict.fromkeys(cases))
+
+
 def discover_cases_remote(
     host: str,
     suite: str = "vulhub",
@@ -776,8 +824,11 @@ def discover_cases_remote(
     """SSH to `host`, walk the suite repo, return the list of case_id strings.
 
     Vulhub: each subdir with a docker-compose.yml is a case. We exclude `.git`
-    and `base`. Other suites can be added when needed.
+    and `base`. AutoPenBench: enumerated from `data/games.json`. Other suites
+    can be added when needed.
     """
+    if suite == "autopenbench":
+        return _discover_autopenbench_remote(host, remote_repo)
     if suite != "vulhub":
         raise NotImplementedError(f"Remote discovery for suite {suite!r} not implemented yet")
     script = (

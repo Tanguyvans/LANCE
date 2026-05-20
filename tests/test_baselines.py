@@ -16,6 +16,9 @@ from src.baselines.external_benchmarks import (
     summarize_run_dir,
     write_run_proof,
     write_manifest,
+    AUTOPENBENCH_NETWORK,
+    _autopenbench_standalone_compose,
+    _build_command,
     _render_agent_command,
 )
 from src.baselines.normalizer import normalize_tool_outputs, write_vuln_analysis
@@ -289,6 +292,213 @@ def test_external_vulhub_dry_run_has_no_build_step(tmp_path):
     assert result["status"] == "dry_run"
     assert result["build_command"] is None
     assert "FLAG-vulhub" in result["agent_command"]
+
+
+def _make_autopenbench_repo(tmp_path):
+    """Build a minimal autopenbench repo where the compose service name matches
+    the case_id (as in the real upstream `games.json`)."""
+    (tmp_path / "data").mkdir()
+    machines = tmp_path / "benchmark" / "machines" / "in-vitro" / "access_control"
+    machines.mkdir(parents=True)
+    (tmp_path / "data" / "games.json").write_text(
+        json.dumps(
+            {
+                "in-vitro": {
+                    "access_control": [
+                        {
+                            "target": "in-vitro_access_control_vm0",
+                            "task": "Escalate to root",
+                            "vulnerability": "sudoers",
+                            "flag": "FLAG{apb}",
+                        },
+                        {
+                            "target": "in-vitro_access_control_vm1",
+                            "task": "Other VM",
+                            "vulnerability": "setuid",
+                            "flag": "FLAG{other}",
+                        },
+                    ]
+                }
+            }
+        )
+    )
+    # build/volume paths are anchored at benchmark/machines/ (upstream layout).
+    (machines / "docker-compose.yml").write_text(
+        """
+services:
+  in-vitro_access_control_vm0:
+    build: ./in-vitro/access_control/vm0
+    image: in-vitro_access_control_vm0
+    container_name: in-vitro_access_control_vm0
+    cap_add:
+      - NET_ADMIN
+    networks:
+      net-main_network:
+        ipv4_address: 192.168.1.0
+    volumes:
+      - ./in-vitro/access_control/vm0/flag:/root/flag
+  in-vitro_access_control_vm1:
+    build: ./in-vitro/access_control/vm1
+    networks:
+      net-main_network:
+        ipv4_address: 192.168.1.1
+networks:
+  net-main_network:
+    ipam:
+      config:
+        - subnet: 192.168.0.0/16
+"""
+    )
+    return tmp_path
+
+
+def test_autopenbench_standalone_compose_single_service(tmp_path):
+    import yaml
+    from pathlib import Path
+
+    repo = _make_autopenbench_repo(tmp_path)
+    cases = {c.case_id: c for c in discover_cases("autopenbench", repo)}
+    case = cases["in-vitro_access_control_vm0"]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    compose_path = _autopenbench_standalone_compose(case, run_dir)
+    data = yaml.safe_load(compose_path.read_text())
+
+    # only the targeted VM, none of its siblings
+    assert list(data["services"]) == ["in-vitro_access_control_vm0"]
+    svc = data["services"]["in-vitro_access_control_vm0"]
+    # rehomed onto a dedicated network, static 192.168.x IP dropped
+    assert svc["networks"] == [AUTOPENBENCH_NETWORK]
+    # no pinned subnet -> Docker auto-allocates (172.x), avoids pool overlaps
+    assert "ipam" not in (data["networks"][AUTOPENBENCH_NETWORK] or {})
+    assert "192.168" not in compose_path.read_text()
+    # service definition copied verbatim otherwise (cap_add preserved)
+    assert svc["cap_add"] == ["NET_ADMIN"]
+    assert svc["container_name"] == "nato-apb-in-vitro_access_control_vm0"
+    # relative build context / volumes made absolute, anchored at machines/
+    assert Path(svc["build"]).is_absolute()
+    assert svc["build"].endswith("/benchmark/machines/in-vitro/access_control/vm0")
+    assert svc["volumes"][0].startswith(str(repo))
+    assert svc["volumes"][0].endswith("/benchmark/machines/in-vitro/access_control/vm0/flag:/root/flag")
+
+
+def test_autopenbench_build_command_targets_generated_compose(tmp_path):
+    repo = _make_autopenbench_repo(tmp_path)
+    case = {c.case_id: c for c in discover_cases("autopenbench", repo)}["in-vitro_access_control_vm0"]
+    generated = tmp_path / "autopenbench-compose.yml"
+
+    cmd = _build_command(case, "", compose_file=generated)
+
+    # The generated compose already holds only the target + deps, so build is
+    # unscoped (builds everything in that minimal file).
+    assert cmd is not None
+    assert cmd[-1] == "build"
+    assert str(generated) in cmd
+
+
+def test_autopenbench_standalone_compose_includes_depends_on(tmp_path):
+    """A machine with a paired database must keep its depends_on service."""
+    import yaml
+
+    (tmp_path / "data").mkdir()
+    machines = tmp_path / "benchmark" / "machines" / "in-vitro" / "web_security"
+    machines.mkdir(parents=True)
+    (tmp_path / "data" / "games.json").write_text(
+        json.dumps(
+            {
+                "in-vitro": {
+                    "web_security": [
+                        {"target": "in-vitro_web_security_vm3", "task": "t", "vulnerability": "sqli", "flag": "F"}
+                    ]
+                }
+            }
+        )
+    )
+    (machines / "docker-compose.yml").write_text(
+        """
+services:
+  in-vitro_web_security_vm3:
+    build: ./in-vitro/web_security/vm3
+    depends_on:
+      - in-vitro_web_security_vm3_database
+    networks:
+      net-main_network:
+        ipv4_address: 192.168.2.3
+  in-vitro_web_security_vm3_database:
+    build: ./in-vitro/web_security/vm3_database
+    networks:
+      net-main_network:
+        ipv4_address: 192.168.2.4
+networks:
+  net-main_network:
+    ipam:
+      config:
+        - subnet: 192.168.0.0/16
+"""
+    )
+    case = {c.case_id: c for c in discover_cases("autopenbench", tmp_path)}["in-vitro_web_security_vm3"]
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    compose_path = _autopenbench_standalone_compose(case, run_dir)
+    data = yaml.safe_load(compose_path.read_text())
+
+    # both the target and its database service are present
+    assert set(data["services"]) == {
+        "in-vitro_web_security_vm3",
+        "in-vitro_web_security_vm3_database",
+    }
+    target = data["services"]["in-vitro_web_security_vm3"]
+    db = data["services"]["in-vitro_web_security_vm3_database"]
+    # depends_on preserved, both on the safe network
+    assert target["depends_on"] == ["in-vitro_web_security_vm3_database"]
+    assert target["networks"] == ["nato_apb_net"]
+    assert db["networks"] == ["nato_apb_net"]
+    # only the target keeps the stable container name used for IP resolution
+    assert target["container_name"] == "nato-apb-in-vitro_web_security_vm3"
+    assert "container_name" not in db
+    assert "192.168" not in compose_path.read_text()
+
+
+def test_autopenbench_run_case_dry_run_uses_generated_compose(tmp_path):
+    repo = _make_autopenbench_repo(tmp_path)
+
+    run_dir = run_case(
+        suite="autopenbench",
+        repo=repo,
+        case_id="in-vitro_access_control_vm0",
+        agent_command="echo {suite} {case_id} {target_or_url} {flag}",
+        output_dir=tmp_path / "runs",
+        dry_run=True,
+    )
+
+    result = json.loads((run_dir / "result.json").read_text())
+    assert result["status"] == "dry_run"
+    compose_file = result["compose_file"]
+    assert compose_file.endswith("autopenbench-compose.yml")
+    assert (run_dir / "autopenbench-compose.yml").exists()
+    # commands point at the generated compose, not the upstream multi-VM file
+    assert compose_file in result["build_command"]
+    assert compose_file in result["up_command"]
+    assert compose_file in result["down_command"]
+    assert result["up_command"][-1] == "--wait"
+
+
+def test_render_agent_command_target_override(tmp_path):
+    repo = _make_autopenbench_repo(tmp_path)
+    case = {c.case_id: c for c in discover_cases("autopenbench", repo)}["in-vitro_access_control_vm0"]
+
+    overridden = _render_agent_command(
+        "run --target {target_or_url} --alt {target}", case, tmp_path, "FLAG{apb}",
+        target_override="10.210.0.5",
+    )
+    assert "10.210.0.5" in overridden
+    assert "in-vitro_access_control_vm0" not in overridden
+
+    # without an override the autopenbench case has no port -> service name fallback
+    plain = _render_agent_command("run --target {target_or_url}", case, tmp_path, "FLAG{apb}")
+    assert "in-vitro_access_control_vm0" in plain
 
 
 def test_external_vulhub_non_http_port_keeps_protocol_context(tmp_path):
@@ -1008,7 +1218,7 @@ def test_fleet_fetch_partial_failure_writes_manifest_and_merges(tmp_path):
         encoding="utf-8",
     )
 
-    def flaky_fetch(host, job_id):
+    def flaky_fetch(host, job_id, host_subdir=False):
         if host == "root@h2":
             raise RuntimeError("scp failed")
         return base_results / "jobs" / job_id
