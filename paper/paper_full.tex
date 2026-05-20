@@ -131,9 +131,9 @@ strong single-host scores overstate readiness for real deployments.
   exploitation, exfiltration) and MHR$_k$ (recall as a function of
   firewall-hop depth), both absent from existing flag-capture benchmarks.
 
-  \item \textbf{Controlled evaluation}: architectural comparison against
-  adapted LLM-agent baselines under a fixed model and budget, with
-  transfer validation on AutoPenBench and Vulhub.
+  \item \textbf{Controlled evaluation}: comparison against adapted
+  LLM-agent baselines (CAI, PentestGPT, VulnBot) under a fixed model
+  and budget, with transfer validation on AutoPenBench and Vulhub.
 \end{itemize}
 All artifacts are released at \texttt{ANONYMIZED\_URL}.
 
@@ -457,7 +457,7 @@ Phase~3 runs a deterministic scanner pass per device, then spawns one LLM micro-
 Phase~4 spawns one micro-agent per Phase~3 finding with full operational tool access (\texttt{ssh\_login}, \texttt{mysql\_query}, \texttt{mqtt\_listen}, \texttt{modbus\_scan}, \texttt{telnet\_connect}). Each agent attempts the deepest evidence level achievable (\textsf{L1}--\textsf{L3}, \cref{sec:threat}) within a bounded turn budget. Phase~3 confirmed findings override Phase~4 errors to avoid erasing directly-observed indicators.
 
 \medskip\noindent\textbf{Phase 5: Intrusion and lateral movement.}
-Phase~5 turns the per-device vulnerability inventory into a network-scoped infiltration campaign. The intrusion agent attempts credential spraying, lateral movement along edges present in the topology graph from Phase~1 (reflecting observed or asserted reachability), and crown-jewel access on back-end services unreachable from the entry point. Every hop is recorded with source, destination, protocol, and credentials used. This phase is the sole producer of \textsf{L3} evidence and MHR$_k$ findings at $k \geq 2$; ablating it forces those columns to zero by construction.
+Phase~5 turns the per-device vulnerability inventory into a network-scoped infiltration campaign. The intrusion agent attempts credential spraying, lateral movement along edges present in the topology graph from Phase~1 (reflecting observed or asserted reachability), and crown-jewel access on back-end services unreachable from the entry point. Every hop is recorded with source, destination, protocol, and credentials used. This phase is the sole producer of \textsf{L3} evidence and MHR$_k$ findings at $k \geq 2$ by construction.
 
 \medskip\noindent\textbf{Phase 6: Network report.}
 Phase~6 produces a network-scoped report with device inventory, per-device vulnerabilities, attack surface summary, multi-hop intrusion narrative, and recommendations ordered by severity $\times$ exposure. Cross-device aggregation is deliberately deferred to this phase to avoid bloating earlier agents, and the consolidated output enables a human analyst to prioritize remediation across the full network rather than per-host.
@@ -469,7 +469,7 @@ For a network with $n$ devices and $v$ findings per device on average, the harne
 $$\underbrace{1}_{P1} + \underbrace{1}_{P2} + \underbrace{n}_{P3} + \underbrace{nv}_{P4} + \underbrace{1}_{P5} + \underbrace{1}_{P6}$$
 Each invocation is bounded by a fixed turn budget (50 for P1--P2, 10 per device for P3, 10 per finding for P4, 30 for P5, 20 for P6). Cost scales linearly with network size, not combinatorially.
 
-The three structural choices above, topology prior (P1), per-device parallelism (P3--P4), and the dedicated intrusion phase (P5), each correspond to an ablation evaluated in \cref{sec:eval}.
+The three structural choices above (topology prior P1, per-device parallelism P3--P4, and the dedicated intrusion phase P5) each define a distinct architectural contribution evaluated in \S\ref{sec:eval}.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §6 Experimental Setup
@@ -484,18 +484,19 @@ All 15 scenarios (145 devices total) run on a single Proxmox VE host, deployed a
 To isolate architectural contributions from model-specific advantages, all LLM-driven systems run on the same general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. Security-fine-tuned models are intentionally excluded; this study addresses the architecture axis, not the model fine-tuning axis.
 
 \medskip\noindent\textbf{Baselines.}
-We compare \harnessname{} against two ablations isolating its key design choices, and one non-LLM scanner baseline:
+We compare \harnessname{} against three adapted LLM-agent baselines, each reimplementing a published pipeline architecture on the same scenarios and model:
 \begin{itemize}
-  \item \textbf{\harnessname{}--w/o-P1} disables the topology prior, testing the contribution of infrastructure-graph guidance.
-  \item \textbf{\harnessname{}--w/o-P5} disables the intrusion phase, testing the contribution of lateral movement to \textsf{L3} evidence and MHR$_k$. Ablating P5 forces \textsf{L3}-coverage and MHR$_k \geq 2$ to zero by construction.
-  \item \textbf{Nmap NSE} runs Nmap with all NSE scripts against the same target CIDR, converted to the evaluator's JSON schema.
+  \item \textbf{CAI-style adapter}: single-agent tool-calling loop, adapted from the CAI~\cite{cai25} architecture.
+  \item \textbf{PentGPT-style adapter}: three-phase decomposition (recon, scanning, exploitation), adapted from PentestGPT~\cite{pentestgpt24}.
+  \item \textbf{VulnBot-style adapter}: multi-agent with a Penetration Task Graph, adapted from VulnBot~\cite{vulnbot25}.
 \end{itemize}
+All three baselines use the same MiniMax-M2.7 model and are scored by the same evaluator as \harnessname{}.
 
 \medskip\noindent\textbf{Metrics.}
-We report five families: task completion (recall), quality (precision, F1, CVSS-weighted score), Multi-Hop Reach (MHR$_k$ for $k \in \{1,2,3\}$), evidence depth (\textsf{L1}/\textsf{L2}/\textsf{L3} coverage), and cost (tokens, USD, wall-clock time); the first four are formally defined in \cref{sec:iotbench:eval}. The last three are absent from existing single-host benchmarks and directly measure the network-scale capabilities \harnessname{} is designed to exercise.
+We report recall (task completion), precision, F1, and CVSS-weighted score, formally defined in \S\ref{sec:iotbench:eval}, together with cost (tokens, USD, wall-clock time). MHR$_k$ and evidence-depth (L1/L2/L3), also defined in \S\ref{sec:iotbench:eval}, are architectural contributions of the benchmark; their systematic measurement across all scenarios is left for future work as per-hop topology annotation tooling matures.
 
 \medskip\noindent\textbf{Variance.}
-The evaluator supports repeated runs per (system, scenario) cell with mean, standard deviation, bootstrap confidence intervals, and pairwise Mann--Whitney $U$ tests on F1 and weighted score. We report scenario-level means; confidence intervals are included where multiple runs per cell are available.
+All reported results are single-run estimates per (system, scenario) cell. The evaluator infrastructure supports repeated runs with bootstrap confidence intervals and Mann--Whitney $U$ tests; multi-run evaluation is deferred to future work.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
