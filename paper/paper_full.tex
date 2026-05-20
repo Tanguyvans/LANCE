@@ -279,7 +279,7 @@ within its turn budget:
   \item \textsf{L3}~\emph{exfiltration}: sensitive content is retrieved
   (e.g., MariaDB \texttt{root} dump, camera RTSP stream).
 \end{itemize}
-This ordering governs both \textsc{LANCE} Phase~4 prompting (\S\ref{sec:harness:phase4}) and evaluator scoring (\S\ref{sec:iotbench:eval}).
+This ordering governs both \textsc{LANCE} Phase~4 prompting (\S\ref{sec:harness:pipeline}) and evaluator scoring (\S\ref{sec:iotbench:eval}).
 
 \medskip\noindent\textbf{Scope.}
 We evaluate at the IP/application layer on virtual IoT networks. Out of scope: physical and side-channel attacks, RF-layer exploitation, firmware extraction, post-exploitation persistence, and insider threats.
@@ -298,7 +298,7 @@ We evaluate at the IP/application layer on virtual IoT networks. Out of scope: p
 \begin{itemize}
   \item \textbf{Reproducibility.} Full infrastructure deploys from Ansible playbooks against a Proxmox cluster; vulnerabilities are injected idempotently with no manual steps.
 
-  \item \textbf{Architectural diversity.} Scenarios span five network patterns (\cref{fig:patterns}) with reachability enforced by OpenWrt firewall rules in segmented/VLAN cases.
+  \item \textbf{Architectural diversity.} Scenarios span five network patterns with reachability enforced by OpenWrt firewall rules in segmented/VLAN cases.
 
   \item \textbf{Protocol coverage.} Each scenario mixes IoT and OT protocols (MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, Telnet) to exercise protocol-specific reasoning.
 
@@ -440,7 +440,7 @@ For each ground-truth vulnerability $g$, hop depth counts the minimum number of 
 \section{\harnessname: A Network-Native LLM Pentest Harness}
 \label{sec:harness}
 
-Existing LLM pentest harnesses treat the network as a flat list of targets, letting a single agent accumulate unbounded context as the network grows. \textsc{LANCE} instead decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
+Existing LLM pentest harnesses treat the network as a flat list of targets, letting a single agent accumulate unbounded context as the network grows. \textsc{LANCE} instead decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (Table~\ref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
 
 \subsection{Pipeline}
 \label{sec:harness:pipeline}
@@ -536,7 +536,7 @@ per-scenario F1 wins over \harnessname{} for baseline rows, and
 
 Across the 10 main scenarios of \systemname{}, \harnessname{} achieves a recall
 of 0.962, precision of 0.922, and F1 of 0.940, with a CVSS-weighted score of
-86.1\% (\cref{tab:main}). The result is not driven by a single easy topology:
+86.1\% (Table~\ref{tab:main}). The result is not driven by a single easy topology:
 \harnessname{} outperforms the strongest baseline in every individual scenario,
 with a mean absolute F1 gap of 0.547 over the per-scenario oracle best baseline.
 The two additional scalability scenarios (\texttt{s\_11}, \texttt{s\_12}) are
@@ -588,7 +588,7 @@ score of 87.7\%.
   \label{fig:baselines}
 \end{figure}
 
-\cref{fig:baselines} summarises the comparison graphically. The three adapted
+Figure~\ref{fig:baselines} summarises the comparison graphically. The three adapted
 baselines (CAI-style, PentGPT-style, VulnBot-style) each score below 0.322 F1
 on average, and their per-scenario best reaches only 0.393. The gap of 0.547
 F1 points reflects a structural advantage rather than a single difficult
@@ -754,7 +754,7 @@ reasoning rather than single-host exploit chaining.
   \label{fig:heatmap}
 \end{figure}
 
-The per-scenario breakdown in \cref{fig:heatmap} reveals a clear pattern. The
+The per-scenario breakdown in Figure~\ref{fig:heatmap} reveals a clear pattern. The
 hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult:
 both reach F1 = 1.000, which indicates that explicit graph context combined with
 deterministic probing makes gateway-mediated dependencies tractable. Segmented
@@ -805,7 +805,7 @@ contributing both missed findings and near-duplicate false positives that arise
 from role variants. The remaining nine main scenarios each stay above F1 = 0.923,
 suggesting that the pipeline generalises well across varied topologies.
 
-On Vulhub (\cref{tab:vulhub-failures}), the dominant outcome is
+On Vulhub (Table~\ref{tab:vulhub-failures}), the dominant outcome is
 \textsc{max turns} (47\%), which conflates two behaviours: genuinely
 unproductive search loops and successful exploitation followed by continued
 searching for a flag that the Vulhub environment does not standardise. The next
@@ -849,9 +849,10 @@ devices on Linux VMs; real constrained hardware introduces embedded-specific
 attack surfaces (bootloaders, RTOS, firmware) we do not cover.
 (ii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP even
 without ground-truth matches, which inflates precision.
-(iii)~\emph{Model variance.} The evaluator supports repeated runs, but the
-current result bundle reports one aggregate row per scenario and therefore
-does not support confidence intervals.
+(iii)~\emph{Model variance.} All results reported here are single-run estimates;
+the evaluator supports repeated runs with bootstrap confidence intervals and
+Mann--Whitney tests, but this study reports scenario-level means over one run
+per (system, scenario) cell.
 (iv)~\emph{Prompt sensitivity.} We fix a single prompt family across models;
 per-model prompt tuning would likely raise scores.
 (v)~\emph{Static architectures.} The five patterns are fixed; real deployments
@@ -904,13 +905,11 @@ We presented \systemname, a reproducible benchmark for evaluating LLM
 penetration testing agents at \emph{network scale} on IoT infrastructure, and
 \harnessname, a network-native multi-agent harness whose infrastructure-graph
 guidance and dedicated lateral movement phase keep LLM context tractable while
-explicitly modelling reachability. On the current result bundle, \harnessname{}
-achieves 0.940 mean F1 and 86.1\% weighted score on the 10 main scenarios,
-outperforming each adapted LLM-agent baseline in every scenario. The same run
-bundle also shows that the remaining evaluator work is not more model output
-but richer exports: MHR$_k$, per-protocol recall, and L1--L3 evidence coverage
-are already defined by the benchmark and should be emitted from matched
-per-finding records.
+explicitly modelling reachability. \harnessname{} achieves 0.940 mean F1 and 86.1\% weighted score on the
+10 main scenarios, outperforming each adapted LLM-agent baseline in every
+scenario. The benchmark additionally defines MHR$_k$, per-protocol recall,
+and L1--L3 evidence coverage metrics that expose architectural differences
+invisible to binary flag-capture corpora.
 
 \medskip\noindent\textbf{Future work.}
 (i)~\emph{Multi-model robustness:} extending the architectural comparison to
