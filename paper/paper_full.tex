@@ -86,8 +86,8 @@ independently from model choice. On the 10 main scenarios, \harnessname{}
 achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
 CVSS-weighted score. On external single-host corpora, a blind AutoPenBench
 run captures 7/33 flags (21.2\%), while an informed run captures 9/33
-(27.3\%); a full 191-case Vulhub run gives a conservative 39--48\%
-useful-finding lower bound.
+(27.3\%); a 191-case informed Vulhub run gives a conservative 39--48\%
+useful-finding lower bound, and a separate 328-case blind run yields 29\%.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -525,13 +525,21 @@ CAI-style adapter      & -- & -- & 0.312 & -- & 0/10 & adapted baseline \\
 PentGPT-style adapter  & -- & -- & 0.321 & -- & 0/10 & adapted baseline \\
 VulnBot-style adapter  & -- & -- & 0.316 & -- & 0/10 & adapted baseline \\
 Best baseline per scenario & -- & -- & 0.393 & -- & 0/10 & oracle best of the three \\
+\midrule
+\multicolumn{7}{@{}l}{\emph{Scalability extensions (not included in means above)}} \\
+\midrule
+\harnessname{} (\texttt{s\_11}, 15 dev.) & 0.913 & 0.840 & 0.875 & 84.8\% & -- & scalability \\
+Best baseline (\texttt{s\_11})           & --    & --    & 0.414 & --     & -- & oracle best \\
+\harnessname{} (\texttt{s\_12}, 35 dev.) & 0.976 & 0.911 & 0.942 & 90.6\% & -- & scalability \\
+Best baseline (\texttt{s\_12})           & --    & --    & 0.517 & --     & -- & oracle best \\
 \bottomrule
 \end{tabular}
 
 \smallskip
 \footnotesize\emph{Means over scenarios \texttt{s\_1}--\texttt{s\_10}. Wins count
 per-scenario F1 wins over \harnessname{} for baseline rows, and
-\harnessname{} wins over the best baseline for the first row.}
+\harnessname{} wins over the best baseline for the first row.
+Scalability rows are single-scenario values; Wins column not applicable.}
 \end{table*}
 
 Across the 10 main scenarios of \systemname{}, \harnessname{} achieves a recall
@@ -609,7 +617,9 @@ single-host corpora while adding the network-scale dimension.
 \emph{E2E \%}: fraction of tasks fully solved. CheckMate uses milestone-based
 progress on a 120-container Vulhub sample and reports only a relative
 success-rate gain over its baseline. ``n/r'' = not reported.
-$^\star$ = lower-bound proof-oracle estimate (see text).}
+$^\star$ = lower-bound proof-oracle estimate (see text).
+$^\S$ = blind 328-case run on a distinct superset of Vulhub CVEs; not a
+controlled comparison with the 191-case informed run.}
 \label{tab:cross}
 \setlength{\tabcolsep}{6pt}
 \footnotesize
@@ -630,7 +640,8 @@ GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n
 \midrule
 Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
 \textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Classical Planning & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
+\textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & Vulhub (191) & n/r & \textbf{39--48\%}$^\star$ \\
+\textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & Vulhub (328) & n/r & \textbf{29\%}$^\S$ \\
 
 \bottomrule
 \end{tabular}
@@ -648,9 +659,9 @@ additional self-reported \textsc{no finding} cases with exploit evidence,
 raising the conservative lower bound to 84/175 (48\%).}
 \end{table*}
 
-\medskip\noindent\textbf{Vulhub.}
+\medskip\noindent\textbf{Vulhub (informed).}
 To assess transfer beyond IoT network scenarios, we evaluate \harnessname{} on
-the Vulhub single-host corpus. The distributed run processed all 191 cases
+the Vulhub single-host corpus. The 191-case informed run processed all cases
 across six workers. Of these, 175 reached a completed agent run; 11 failed
 during environment setup; 3 were interrupted by provider rate limits; and 2 were
 skipped after the rate-limit breaker tripped. The 175 completed runs consumed
@@ -669,6 +680,20 @@ cases with strictly confirmed exploitation are \texttt{struts2/s2-053},
 \texttt{spring/CVE-2022-22947}; the remaining useful cases are either probable
 vulnerabilities or tool-blocked and credential-blocked findings with actionable
 evidence.
+
+\medskip\noindent\textbf{Vulhub (blind).}
+A complementary blind run evaluated a larger 328-case Vulhub corpus (distinct
+superset of CVE environments) across six workers in two batches, with a
+rate-limit circuit breaker replaying 124 skipped cases the following day. Of
+the 328 cases, 306 reached a completed agent run, 18 failed during agent
+execution, and 4 failed during environment setup. The 306 completed runs
+consumed 311.9M tokens at \$97.29 (\$0.32 per executed case). Useful findings
+were reported on 90 of the 306 completed cases (29\%), with 6 strictly
+confirmed exploits including \texttt{spring/CVE-2022-22965},
+\texttt{struts2/s2-005}, and \texttt{supervisor/CVE-2017-11610}. Since the two
+Vulhub runs cover different case sets, the 29\% and 39--48\% figures are not a
+controlled blind/informed comparison; they bound the useful-finding rate on
+Vulhub environments of varying difficulty and coverage.
 
 \medskip\noindent\textbf{AutoPenBench.}
 The AutoPenBench rows use the same MiniMax-M2.7 model and the same \harnessname{}
