@@ -478,7 +478,7 @@ The three structural choices above (topology prior P1, per-device parallelism P3
 \label{sec:setup}
 
 \medskip\noindent\textbf{Infrastructure.}
-All 15 scenarios (145 devices total) run on a single Proxmox VE host, deployed as LXC containers on a dedicated Linux bridge with an OpenWrt router as gateway. Per-scenario deployment and teardown are fully automated via Ansible.
+All 15 scenarios are deployed on a single Proxmox VE host as LXC containers on a dedicated Linux bridge with an OpenWrt router as gateway; per-scenario deployment and teardown are fully automated via Ansible. This study evaluates 12 of the 13 vulnerability-injected scenarios (\texttt{s\_1}--\texttt{s\_12}); \texttt{s\_13} (real-VLAN Proxmox bridge) is defined in the benchmark but not included in the reported runs.
 
 \medskip\noindent\textbf{Model.}
 To isolate architectural contributions from model-specific advantages, all LLM-driven systems run on the same general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. Security-fine-tuned models are intentionally excluded; this study addresses the architecture axis, not the model fine-tuning axis.
@@ -510,9 +510,8 @@ All reported results are single-run estimates per (system, scenario) cell. The e
 \begin{table*}[t]
 \centering
 \caption{Results on \systemname\ (10 main scenarios, MiniMax-M2.7). TC = Recall;
-Score = CVSS-weighted Recall. Baseline rows report the F1 values available in
-the scenario comparison export; the remaining columns are not reported by those
-adapters.}
+Score = CVSS-weighted Recall. Baseline rows show F1 only; TC, Prec., and Score
+are not independently measured for the adapted baselines.}
 \label{tab:main}
 \footnotesize
 \setlength{\tabcolsep}{6pt}
@@ -540,7 +539,7 @@ of 0.962, precision of 0.922, and F1 of 0.940, with a CVSS-weighted score of
 86.1\% (Table~\ref{tab:main}). The result is not driven by a single easy topology:
 \harnessname{} outperforms the strongest baseline in every individual scenario,
 with a mean absolute F1 gap of 0.547 over the per-scenario oracle best baseline.
-The two additional scalability scenarios (\texttt{s\_11}, \texttt{s\_12}) are
+Two of the three scalability extensions (\texttt{s\_11}, \texttt{s\_12}) are
 consistent with this trend, reaching a mean F1 of 0.909 and a mean weighted
 score of 87.7\%.
 
