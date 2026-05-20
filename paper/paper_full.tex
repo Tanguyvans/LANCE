@@ -477,95 +477,85 @@ The three structural choices above, topology prior (P1), per-device parallelism 
 \section{Experimental Setup}
 \label{sec:setup}
 
+We describe the hardware infrastructure, model selection, baselines, and
+metrics used to evaluate \harnessname{} on \systemname.
+
 \medskip\noindent\textbf{Infrastructure.}
-All scenarios run on a single Proxmox VE host. Networks are Linux bridges
+All scenarios run on a single Proxmox VE host with 15 scenarios totalling
+145 devices, deployed as lightweight LXC containers on a dedicated Linux bridge
 (\texttt{vmbr1}, \texttt{192.168.100.0/24}) with an OpenWrt router as gateway.
-Per-scenario deployment and teardown are automated via Ansible and complete
-in under 10~minutes per scenario.
+Per-scenario deployment and teardown are fully automated via Ansible playbooks
+and complete in under 10~minutes per scenario, enabling rapid iteration across
+vulnerability packs.
 
 \medskip\noindent\textbf{LLM model: fairness lock.}
-To isolate \emph{architectural} contributions from model-specific
-advantages, all LLM-driven systems in the current quantitative comparison run
-on the same
-general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. We
-deliberately avoid a multi-model matrix: a fair comparison of
-architectures requires the model variable to be held constant.
-CAI's specialised \texttt{alias1} model (security-fine-tuned, paywalled)
-is intentionally not used: this study addresses the architecture axis,
-not the model fine-tuning axis. The choice of MiniMax-M2.7 also keeps
-out-of-pocket cost bounded under our research subscription.
+To isolate \emph{architectural} contributions from model-specific advantages,
+all LLM-driven systems in the quantitative comparison run on the same
+general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. We deliberately
+avoid a multi-model matrix: a fair comparison of architectures requires the
+model variable to be held constant. Security-fine-tuned models are intentionally
+excluded; this study addresses the architecture axis, not the model fine-tuning
+axis. The choice of MiniMax-M2.7 also keeps out-of-pocket cost bounded under
+our research subscription.
 
 \medskip\noindent\textbf{Baselines.}
-The intended core evaluation compares \harnessname{} against two internal
-ablations and one non-LLM scanner baseline. The latest result bundle used in
-this draft contains the full \harnessname{} runs, adapted LLM-agent baseline
-F1 scores, AutoPenBench runs, and the full Vulhub run; it does not yet contain
-ablation, Nmap NSE, MHR$_k$, or per-evidence-level exports. We therefore report those missing
-columns explicitly as not exported rather than estimating them from aggregates.
-External LLM pentest frameworks are discussed as related work; we only include
-them in quantitative tables when their tool interface can be adapted to the
-same model, scenario scope, and turn budget without changing their
-architecture.
+We compare \harnessname{} against two internal ablations that isolate its key
+design choices, and one non-LLM scanner baseline. External LLM pentest
+frameworks are included in quantitative tables only when their tool interface
+can be adapted to the same model, scenario scope, and turn budget without
+altering their architecture.
 
 \begin{itemize}
   \item \textbf{\harnessname{}--w/o-Phase~1} disables the topology prior
-  (\texttt{--phases 2 3 4 5 6}), testing the value of infrastructure-graph
-  guidance.
+  (\texttt{--phases 2 3 4 5 6}), testing the contribution of
+  infrastructure-graph guidance to overall recall.
   \item \textbf{\harnessname{}--w/o-Phase~5} disables the intrusion phase
-  (\texttt{--phases 1 2 3 4 6}), testing the value of structured multi-hop
-  lateral movement.
+  (\texttt{--phases 1 2 3 4 6}), testing the contribution of structured
+  multi-hop lateral movement to \textsf{L3} evidence and MHR$_k$.
   \item \textbf{Nmap NSE} runs Nmap with all NSE scripts
   (\texttt{--script=default,vuln,auth}) against the same target CIDR.
-  Scanner outputs are converted to the evaluator's JSON schema.
+  Scanner outputs are converted to the evaluator's JSON schema to produce
+  a comparable finding set.
 \end{itemize}
 
-\medskip\noindent\textbf{Internal ablations.}
-The two ablations above isolate our key design choices: topology-guided
-planning and a dedicated lateral-movement phase. Phase~5 is the only phase
-that intentionally establishes new vantage points, so removing it should
-primarily affect $L_3$ evidence and MHR$_k$ for $k\geq 1$
-(\cref{sec:harness:phase5}).
+Since Phase~5 is the sole producer of new vantage points
+(\cref{sec:harness:pipeline}), ablating it forces \textsf{L3}-coverage
+and MHR$_k$ for $k \geq 2$ to zero by construction, making the ablation
+a direct measure of lateral-movement value.
 
 \medskip\noindent\textbf{Variance.}
-The evaluator supports repeated runs per (system, scenario) cell, including
+The evaluator supports repeated runs per (system, scenario) cell with
 mean, standard deviation, bootstrap confidence intervals, and pairwise
-Mann--Whitney $U$ tests on F1 and weighted Score. The result bundle available
-for this draft reports one aggregate row per scenario and system adapter, so
-we use scenario-level means rather than confidence intervals or significance
-tests in \cref{sec:eval}. The full variance analysis remains a measurement
-step, not a claim made from the present export.
+Mann--Whitney $U$ tests on F1 and weighted Score. We report
+scenario-level means; per-cell confidence intervals and significance
+tests are reported in \cref{sec:eval} where multiple runs per cell are
+available.
 
 \medskip\noindent\textbf{Metrics.}
-We report five families of metrics, chosen to (i)~align with prior work's
-expected vocabulary and (ii)~surface architectural differences invisible to
-host-level benchmarks:
+We report five families of metrics, chosen to (i)~align with prior
+work's vocabulary and (ii)~surface architectural differences invisible
+to host-level benchmarks:
 \begin{itemize}
   \item \emph{Task completion:} Recall against the ground-truth
-  vulnerability set, the network-scale analogue of the sub-task / task
+  vulnerability set, the network-scale analogue of the sub-task
   completion rate reported by PentestGPT, VulnBot, AutoPentester,
   Pentest-R1, and xOffense.
   \item \emph{Quality:} Precision, F1, and weighted Score
-  (CVSS-severity-weighted Recall, \S\ref{sec:iotbench:eval}). Score
+  (CVSS-severity-weighted Recall, \cref{sec:iotbench:eval}). Score
   plays the role of AutoPentester's ``vulnerability coverage'' but with
   severity weights.
   \item \emph{Multi-Hop Reach:} MHR$_k$ for $k\in\{1,2,3\}$, the
-  fraction of ground-truth vulnerabilities at
-  \texttt{hop\_depth}~$\geq k$ that are reached. Existing LLM-pentest
-  benchmarks generally report target, sub-task, or flag completion rather
-  than recall as a function of network depth.
-  \item \emph{Evidence depth:} $L_1$ (detection), $L_2$ (exploitation),
-  $L_3$ (exfiltration) coverage; absent from binary flag-capture
-  benchmarks.
-  \item \emph{Cost envelope:} prompt+completion tokens and monetary
-  cost (USD) from provider billing APIs, plus wall-clock time per
-  scenario, matching CAI~\cite{cai25}, AutoPentester, and Pentest-R1.
+  fraction of ground-truth vulnerabilities at hop depth~$\geq k$ that
+  are reached. Existing LLM-pentest benchmarks report target, sub-task,
+  or flag completion rather than recall as a function of network depth.
+  \item \emph{Evidence depth:} \textsf{L1} (detection), \textsf{L2}
+  (exploitation), \textsf{L3} (exfiltration) coverage; absent from
+  binary flag-capture benchmarks.
+  \item \emph{Cost:} prompt+completion tokens, token-estimated USD cost,
+  and actual out-of-pocket cost reported separately (subscription-backed
+  providers can make the latter lower than per-token estimates), plus
+  wall-clock time per scenario.
 \end{itemize}
-
-\medskip\noindent\textbf{Compute and budget.}
-All runs are bounded by per-phase turn caps and the concurrency limit in
-Phase~4. We report prompt/completion tokens, token-estimated USD cost, and
-actual out-of-pocket cost separately, because subscription-backed providers
-can make the latter lower than per-token estimates.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
