@@ -490,7 +490,12 @@ We compare \harnessname{} against three adapted LLM-agent baselines, each reimpl
   \item \textbf{PentGPT-style adapter}: three-phase decomposition (recon, scanning, exploitation), adapted from PentestGPT~\cite{pentestgpt24}.
   \item \textbf{VulnBot-style adapter}: multi-agent with a Penetration Task Graph, adapted from VulnBot~\cite{vulnbot25}.
 \end{itemize}
-All three baselines use the same MiniMax-M2.7 model and are scored by the same evaluator as \harnessname{}.
+These systems are designed primarily for single-host or single-target
+workflows, not for full-network graph reasoning. We therefore run each adapted
+baseline once per ground-truth target device in a scenario, normalize the
+per-device outputs into the common finding schema, merge them at scenario
+level, and score the merged output with the same evaluator as \harnessname{}.
+All three baselines use the same MiniMax-M2.7 model.
 
 \medskip\noindent\textbf{Metrics.}
 We report recall (task completion), precision, F1, and CVSS-weighted score, formally defined in \S\ref{sec:iotbench:eval}, together with cost (tokens, USD, wall-clock time). MHR$_k$ and evidence-depth (L1/L2/L3), also defined in \S\ref{sec:iotbench:eval}, are architectural contributions of the benchmark; their systematic measurement across all scenarios is left for future work as per-hop topology annotation tooling matures.
@@ -504,119 +509,101 @@ All reported results are single-run estimates per (system, scenario) cell. The e
 \section{Evaluation}
 \label{sec:eval}
 
-The evaluation answers three questions: whether \harnessname{} improves
-per-vulnerability scoring on network-scale IoT scenarios, whether that gain is
-consistent across topology types, and how the same harness behaves on
-established single-host corpora. Cross-corpus numbers are reported only to
-contextualize transfer: models, scoring oracles, and task definitions differ
-across papers.
+The evaluation is organized around three questions. First, does \harnessname{}
+improve per-vulnerability scoring on the 10 network-scale IoT comparison
+scenarios?
+Second, is the gain consistent across topology types, rather than concentrated
+in one easy scenario? Third, how does the same harness transfer to established
+single-host corpora? Cross-corpus results are used only for context: models,
+success oracles, and task definitions differ across papers.
 
 \subsection{Overall performance}
 \label{sec:eval:overall}
 
-\begin{table*}[t]
+Table~\ref{tab:scenario-scores} is the controlled comparison on the 10
+\systemname{} scenarios for which all adapted baselines were run. It reports
+per-scenario F1 for \harnessname{} and for each baseline architecture, all using
+the same MiniMax-M2.7 model and the same evaluator. Since the comparison
+systems are single-target agents rather than multi-device network harnesses, we
+run each baseline once per target device, merge its per-device findings at
+scenario level, and then compute the F1 shown in the table. Over the same
+scenarios, \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
+86.1\% CVSS-weighted score.
+
+\begin{table}[h!]
 \centering
-\caption{Results on \systemname\ (10 main scenarios, MiniMax-M2.7). TC = Recall;
-Score = CVSS-weighted Recall. Baseline rows show F1 only; TC, Prec., and Score
-are not independently measured for the adapted baselines. ``Found'' counts
-scenarios where a method finds at least one ground-truth vulnerability.}
-\label{tab:main}
+\caption{Per-scenario F1 on the 10 \systemname{} comparison scenarios
+(MiniMax-M2.7).}
+\label{tab:scenario-scores}
 \footnotesize
-\setlength{\tabcolsep}{6pt}
-\begin{tabular}{@{}lrrrrrl@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
 \toprule
-System & TC & Prec. & F1 & Score & Found & Notes \\
+Scenario & \harnessname{} & CAI & PentGPT & VulnBot \\
 \midrule
-\textbf{\harnessname (full)} & \textbf{0.962} & \textbf{0.922} & \textbf{0.940} & \textbf{86.1\%} & \textbf{10/10} & full pipeline \\
+\texttt{S1}  & 0.923 & 0.150 & 0.000 & 0.150 \\
+\texttt{S2}  & 0.923 & 0.350 & 0.140 & 0.450 \\
+\texttt{S3}  & 0.952 & 0.000 & 0.000 & 0.000 \\
+\texttt{S4}  & 0.944 & 0.360 & 0.420 & 0.440 \\
+\texttt{S5}  & 1.000 & 0.500 & 0.640 & 0.500 \\
+\texttt{S6}  & 1.000 & 0.400 & 0.520 & 0.400 \\
+\texttt{S7}  & 0.965 & 0.500 & 0.450 & 0.450 \\
+\texttt{S8}  & 0.933 & 0.550 & 0.350 & 0.350 \\
+\texttt{S9}  & 0.952 & 0.170 & 0.430 & 0.290 \\
+\texttt{S10} & 0.815 & 0.140 & 0.270 & 0.140 \\
 \midrule
-CAI-style adapter      & n/r & n/r & 0.312 & n/r & 9/10 & adapted baseline \\
-PentGPT-style adapter  & n/r & n/r & 0.321 & n/r & 8/10 & adapted baseline \\
-VulnBot-style adapter  & n/r & n/r & 0.316 & n/r & 9/10 & adapted baseline \\
-Best baseline per scenario & n/r & n/r & 0.393 & n/r & 9/10 & oracle best of the three \\
-\midrule
-\multicolumn{7}{@{}l}{\emph{Scalability extensions (not included in means above)}} \\
-\midrule
-\harnessname{} (\texttt{s\_11}, 15 dev.) & 0.913 & 0.840 & 0.875 & 84.8\% & yes & scalability \\
-Best baseline (\texttt{s\_11})           & n/r   & n/r   & 0.414 & n/r    & yes & oracle best \\
-\harnessname{} (\texttt{s\_12}, 35 dev.) & 0.976 & 0.911 & 0.942 & 90.6\% & yes & scalability \\
-Best baseline (\texttt{s\_12})           & n/r   & n/r   & 0.517 & n/r    & yes & oracle best \\
+Mean & 0.940 & 0.312 & 0.321 & 0.316 \\
 \bottomrule
 \end{tabular}
+\end{table}
 
-\smallskip
-\footnotesize\emph{Means over scenarios \texttt{s\_1}--\texttt{s\_10}. Found is
-not a win count: adapted baselines detect vulnerabilities in most scenarios,
-but none exceeds \harnessname{} on per-scenario F1.
-Scalability rows are single-scenario values.}
-\end{table*}
+Two points stand out. First, the gap is consistent: \harnessname{} exceeds all
+three adapted baselines in every comparison scenario, including both the easier star
+topologies and the harder segmented or role-variant cases. Second, the baselines
+are not empty detectors. They sometimes recover part of the injected ground
+truth, but their coverage is shallow enough to keep F1 low.
 
-Across the 10 main scenarios of \systemname{}, \harnessname{} achieves a recall
-of 0.962, precision of 0.922, and F1 of 0.940, with a CVSS-weighted score of
-86.1\% (Table~\ref{tab:main}). The result is not driven by a single easy topology:
-\harnessname{} outperforms the strongest baseline in every individual scenario,
-with a mean absolute F1 gap of 0.547 over the per-scenario oracle best baseline.
-The adapted baselines are not empty: CAI-style and VulnBot-style adapters find
-at least one ground-truth vulnerability in 9/10 scenarios, and PentGPT-style in
-8/10. Their lower aggregate F1 therefore reflects partial and shallow coverage,
-not complete failure to detect vulnerabilities.
-Two of the three scalability extensions (\texttt{s\_11}, \texttt{s\_12}) are
-consistent with this trend, reaching a mean F1 of 0.909 and a mean weighted
-score of 87.7\%.
+Figure~\ref{fig:overall-f1} collapses the table into the headline
+macro-average. \harnessname{} reaches 0.940 mean F1, while CAI, PentGPT, and
+VulnBot reach 0.312, 0.321, and 0.316 respectively. This suggests that the gain
+comes from combining topology context with deterministic scanner outputs before
+aggregating findings, rather than from a single favorable scenario.
 
 \begin{figure}[h!]
   \centering
   \resizebox{\columnwidth}{!}{%
   \begin{tikzpicture}[
     font=\scriptsize,
-    ours/.style={draw=blue!80!black, line width=0.4pt, fill=blue!60},
-    base/.style={draw=gray!60,       line width=0.4pt, fill=gray!35},
-    best/.style={draw=gray!60,       line width=0.4pt, fill=gray!35, dashed},
+    ours/.style={draw=blue!80!black, line width=0.4pt, fill=blue!65},
+    base/.style={draw=black!45, line width=0.4pt, fill=black!25},
     grid/.style={draw=black!12, line width=0.2pt},
     axis/.style={draw=black!55, line width=0.4pt}
   ]
-    \draw[axis] (0,0) -- (9.0,0);
+    \draw[axis] (0,0) -- (7.2,0);
     \draw[axis] (0,0) -- (0,3.85);
     \foreach \y/\lab in {0/0, 0.875/25, 1.75/50, 2.625/75, 3.5/100} {
-      \draw[grid] (0,\y) -- (9.0,\y);
+      \draw[grid] (0,\y) -- (7.2,\y);
       \node[anchor=east,font=\tiny] at (-0.1,\y) {\lab};
     }
     \node[rotate=90,anchor=south,font=\tiny] at (-0.55,1.75) {Mean F1 (\%)};
-    % LANCE
-    \draw[ours] (0.25,0) rectangle +(0.9,3.290);
-    \node[anchor=south,font=\scriptsize\bfseries,text=blue!70!black] at (0.70,3.33) {94.0};
-    \node[anchor=north,font=\scriptsize] at (0.70,-0.14) {\harnessname{}};
-    % CAI
-    \draw[base] (2.0,0) rectangle +(0.9,1.092);
-    \node[anchor=south,font=\scriptsize] at (2.45,1.13) {31.2};
-    \node[anchor=north,font=\scriptsize] at (2.45,-0.14) {CAI};
-    % PentGPT
-    \draw[base] (3.75,0) rectangle +(0.9,1.124);
-    \node[anchor=south,font=\scriptsize] at (4.20,1.16) {32.1};
-    \node[anchor=north,font=\scriptsize] at (4.20,-0.14) {PentGPT};
-    % VulnBot
-    \draw[base] (5.5,0) rectangle +(0.9,1.106);
-    \node[anchor=south,font=\scriptsize] at (5.95,1.14) {31.6};
-    \node[anchor=north,font=\scriptsize] at (5.95,-0.14) {VulnBot};
-    % Best baseline (oracle)
-    \draw[best] (7.25,0) rectangle +(0.9,1.376);
-    \node[anchor=south,font=\scriptsize] at (7.70,1.41) {39.3};
-    \node[anchor=north,font=\scriptsize,align=center] at (7.70,-0.14) {Best\\baseline};
+    \draw[ours] (0.45,0) rectangle +(0.75,3.290);
+    \node[anchor=south,font=\scriptsize\bfseries,text=blue!70!black] at (0.825,3.33) {94.0};
+    \node[anchor=north,font=\scriptsize] at (0.825,-0.14) {\harnessname{}};
+    \draw[base] (2.05,0) rectangle +(0.75,1.092);
+    \node[anchor=south,font=\scriptsize] at (2.425,1.13) {31.2};
+    \node[anchor=north,font=\scriptsize] at (2.425,-0.14) {CAI};
+    \draw[base] (3.65,0) rectangle +(0.75,1.124);
+    \node[anchor=south,font=\scriptsize] at (4.025,1.16) {32.1};
+    \node[anchor=north,font=\scriptsize] at (4.025,-0.14) {PentGPT};
+    \draw[base] (5.25,0) rectangle +(0.75,1.106);
+    \node[anchor=south,font=\scriptsize] at (5.625,1.14) {31.6};
+    \node[anchor=north,font=\scriptsize] at (5.625,-0.14) {VulnBot};
   \end{tikzpicture}
   }%
-  \caption{Mean F1 on the 10 main \systemname{} scenarios (MiniMax-M2.7).
-  \harnessname{} (blue) outperforms each adapted LLM-pentest baseline and the
-  per-scenario oracle best (dashed). The gap of 0.547 F1 points is consistent
-  across all 10 scenarios.}
-  \label{fig:baselines}
+  \caption{Macro-average F1 over the 10 comparison scenarios for all tested
+  architectures.}
+  \label{fig:overall-f1}
 \end{figure}
-
-Figure~\ref{fig:baselines} summarises the comparison graphically. The three adapted
-baselines (CAI-style, PentGPT-style, VulnBot-style) each score below 0.322 F1
-on average, and their per-scenario best reaches only 0.393. The gap of 0.547
-F1 points suggests a benefit from topology-aware decomposition rather than a
-single difficult scenario: baselines succeed mainly where the vulnerability set
-overlaps with patterns they probe by default, while \harnessname{}'s
-topology-aware pipeline and deterministic scanner cover the full injected set.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
@@ -734,61 +721,19 @@ rows as transfer context, not evidence of superiority on AutoPenBench.
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
 
-\begin{figure}[h!]
-  \centering
-  \begin{tikzpicture}[
-    font=\tiny,
-    lance/.style={draw=blue!80!black, line width=0.25pt, fill=blue!65},
-    base/.style={draw=black!45, line width=0.25pt, fill=black!25},
-    grid/.style={draw=black!12, line width=0.2pt},
-    axis/.style={draw=black!55, line width=0.4pt}
-  ]
-    \def\xstep{0.72}
-    \def\barw{0.20}
-    \def\yscale{0.035}
-    \draw[axis] (0,0) -- (7.30,0);
-    \draw[axis] (0,0) -- (0,3.65);
-    \foreach \y/\lab in {0/0,0.875/25,1.75/50,2.625/75,3.5/100} {
-      \draw[grid] (0,\y) -- (7.30,\y);
-      \node[anchor=east,font=\tiny] at (-0.08,\y) {\lab};
-    }
-    \node[rotate=90,anchor=south,font=\tiny] at (-0.48,1.75) {F1 (\%)};
-    \foreach \c/\sid/\ours/\best in {
-      0/S1/92/15,1/S2/92/45,2/S3/95/0,3/S4/94/44,4/S5/100/64,
-      5/S6/100/52,6/S7/97/50,7/S8/93/55,8/S9/95/43,9/S10/82/27
-    } {
-      \pgfmathsetmacro{\x}{0.32+\c*\xstep}
-      \pgfmathsetmacro{\oh}{\ours*\yscale}
-      \pgfmathsetmacro{\bh}{\best*\yscale}
-      \draw[lance] (\x-\barw,0) rectangle ++(\barw,\oh);
-      \draw[base]  (\x+0.02,0) rectangle ++(\barw,\bh);
-      \node[anchor=north,font=\tiny] at (\x+0.01,-0.10) {\sid};
-    }
-    \draw[lance] (4.85,3.38) rectangle +(0.18,0.12);
-    \node[anchor=west,font=\tiny] at (5.08,3.44) {\harnessname{}};
-    \draw[base] (6.05,3.38) rectangle +(0.18,0.12);
-    \node[anchor=west,font=\tiny] at (6.28,3.44) {best baseline};
-  \end{tikzpicture}
-  \caption{Per-scenario F1 on the 10 main \systemname{} scenarios. Each pair
-  compares \harnessname{} with the best adapted baseline for that scenario.
-  Baselines often detect some vulnerabilities, but remain below \harnessname{}
-  on every topology.}
-  \label{fig:per-scenario}
-\end{figure}
+The per-scenario breakdown in Table~\ref{tab:scenario-scores} reveals a clear
+pattern: \harnessname{} remains high across heterogeneous topology types, while
+the adapted baselines only partially cover the injected vulnerability sets. The
+hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult for
+\harnessname{}: both reach F1 = 1.000, whereas the strongest adapted baseline
+on these scenarios reaches 0.640 and 0.520. Segmented IT/OT scenarios remain
+strong but not perfect (\texttt{s\_4}: F1 = 0.944, \texttt{s\_8}: F1 = 0.933),
+with residual errors caused by deeper pivots that increase the chance of
+duplicate or slightly misclassified findings. The edge-cloud pivot
+(\texttt{s\_7}) stays high at F1 = 0.965, and the mesh smart-city case
+(\texttt{s\_9}) reaches F1 = 0.952 with no false positives.
 
-The per-scenario breakdown in Figure~\ref{fig:per-scenario} reveals a clear pattern:
-adapted baselines produce non-zero findings on 9/10 scenarios, but their best
-per-scenario F1 remains below \harnessname{} in every case. The
-hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult:
-both reach F1 = 1.000, which indicates that explicit graph context combined with
-deterministic probing makes gateway-mediated dependencies tractable. Segmented
-IT/OT scenarios remain strong but not perfect (\texttt{s\_4}: F1 = 0.944,
-\texttt{s\_8}: F1 = 0.933), with residual errors caused by deeper pivots that
-increase the chance of duplicate or slightly misclassified findings. The
-edge-cloud pivot (\texttt{s\_7}) stays high at F1 = 0.965, and the mesh
-smart-city case (\texttt{s\_9}) reaches F1 = 0.952 with no false positives.
-
-The most difficult main scenario is \texttt{s\_10} (F1 = 0.815, Score = 71.3\%).
+The most difficult comparison scenario is \texttt{s\_10} (F1 = 0.815, Score = 71.3\%).
 This topology is intentionally flat rather than multi-hop, so the degradation
 is not caused by lateral-movement reasoning. Instead, service role variants
 reduce the predictability of service semantics and increase the proportion of
