@@ -253,7 +253,7 @@ Ludus + GOAD~\cite{ludus,goad}       & network & \xmark & none      & \xmark \\
 \end{table}
 
 % tab:reported removed — headline numbers from prior work are discussed
-% in §2.1 prose; cross-benchmark comparison is Table~\ref{tab:cross} in §7.
+% in §2.1 prose; cross-benchmark comparison is Table~\ref{tab:autopenbench} in §7.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §3 Threat Model
@@ -611,39 +611,41 @@ a single favorable topology.
 To assess whether \harnessname{} generalises beyond IoT multi-hop scenarios, we
 run it on two single-host corpora used by prior work. Comparisons are
 contextual rather than head-to-head: published results differ in model, run
-count, and success oracle.
+count, and success oracle. We therefore separate the two cases: AutoPenBench has
+a flag-based E2E metric that supports a compact comparison table, whereas Vulhub
+is better reported as run-level useful-finding evidence.
 
 \medskip\noindent\textbf{AutoPenBench.}
 AutoPenBench defines 33 flag-based tasks with published E2E rates, making it
-the cleanest transfer check. We run two context policies: \emph{blind} mode
-(agent sees only target endpoint and exposed service metadata) and \emph{informed}
-mode (agent additionally receives the case identifier and vulnerability label,
-serving as a diagnostic upper bound). Table~\ref{tab:cross} places our results
-alongside prior systems.
+the most directly comparable transfer check. We run two context policies:
+\emph{blind} mode, where the agent sees only the target endpoint and exposed
+service metadata, and \emph{informed} mode, where the agent also receives the
+case identifier and vulnerability label. Table~\ref{tab:autopenbench} places
+these runs alongside published systems.
 
 \begin{table}[t]
 \centering
-\caption{AutoPenBench results. Sub-task and E2E completion (\%) across systems.
-``---'' indicates a metric not reported by the original paper. Models and run
-protocols differ; this is not a controlled leaderboard.}
-\label{tab:cross}
-\setlength{\tabcolsep}{5pt}
-\footnotesize
+\caption{AutoPenBench transfer results on 33 tasks.}
+\label{tab:autopenbench}
+\setlength{\tabcolsep}{3pt}
+\scriptsize
 \begin{tabular}{@{}llrr@{}}
 \toprule
-System & Model & Sub-task (\%) & E2E (\%) \\
+System & Model & Sub-task & E2E \\
 \midrule
 Llama baseline~\cite{vulnbot25,xoffense25}  & Llama 3.1-405B  & 49.1          & 9.1  \\
 GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & ---           & 21.2 \\
 VulnBot~\cite{vulnbot25}                    & Llama 3.1-405B  & 69.1          & 30.3 \\
 xOffense~\cite{xoffense25}                  & Qwen3-32B LoRA  & 79.2$^\P$     & 72.7 \\
 \midrule
-\textbf{\harnessname{} blind (ours)}        & MiniMax-M2.7    & 39.4$^\dagger$ & 21.2 \\
-\textbf{\harnessname{} informed (ours)}     & MiniMax-M2.7    & 51.5$^\dagger$ & 27.3 \\
+\textbf{\harnessname{} blind}               & MiniMax-M2.7    & 39.4$^\dagger$ & 21.2 \\
+\textbf{\harnessname{} informed}            & MiniMax-M2.7    & 51.5$^\dagger$ & 27.3 \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
+Models and run protocols differ, so this is not a controlled ranking.
+``---'' indicates a metric not reported by the original paper.
 $^\dagger$ Our sub-task analogue is \emph{useful findings}: tasks where the
 agent produced actionable exploit evidence, regardless of flag capture. Our
 harness does not use the upstream AutoPenBench orchestrator.
@@ -654,19 +656,40 @@ completion.}
 Blind mode captures 7/33 flags (21.2\%) and produces useful findings on 13/33
 tasks (39.4\%); informed mode reaches 9/33 flags (27.3\%) and 17/33 useful
 findings (51.5\%). The blind E2E rate matches the published GPT-4o baseline
-(21.2\%), confirming transfer to single-host exploitation without task-specific
-tuning. The gap with purpose-built systems---VulnBot at 30.3\%, xOffense at
-72.7\% with a fine-tuned model---is expected: our harness was designed for
-multi-hop IoT networks, not single-host exploit chaining.
+(21.2\%), indicating that the harness transfers to single-host exploitation
+without task-specific tuning. The gap with purpose-built systems---VulnBot at
+30.3\%, xOffense at 72.7\% with a fine-tuned model---is expected: our harness
+was designed for multi-hop IoT networks, not single-host exploit chaining.
 
 \medskip\noindent\textbf{Vulhub.}
 Vulhub provides reproducible vulnerable environments but no uniform flag oracle,
 so we report useful-finding lower bounds rather than E2E task completion.
 CheckMate~\cite{checkmate25}, the only prior work on this corpus, reports a
 $+20\%$ relative gain over a Claude~Code + Sonnet~4.5 baseline without
-publishing an absolute rate, making direct numeric comparison impossible. The
-two runs below cover \emph{different} case sets and are complementary in scope,
-not a blind/informed ablation.
+publishing an absolute rate, making direct numeric comparison impossible.
+Table~\ref{tab:vulhub-transfer} summarizes our two Vulhub runs. They cover
+\emph{different} case sets and are complementary in scope, not a blind/informed
+ablation.
+
+\begin{table}[h!]
+\centering
+\caption{Vulhub transfer runs.}
+\label{tab:vulhub-transfer}
+\setlength{\tabcolsep}{4pt}
+\footnotesize
+\begin{tabular}{@{}llll@{}}
+\toprule
+Setting & Cases & Completed & Useful findings \\
+\midrule
+Informed & 191 & 175 & 69/175 auto; 84/175 reviewed \\
+Blind & 328 & 306 & 90/306 reported \\
+\bottomrule
+\end{tabular}
+\smallskip\\
+\footnotesize\emph{%
+Informed mode receives the case identifier and vulnerability label. The blind
+run is a distinct larger CVE superset, not the same cases without hints.}
+\end{table}
 
 In the 191-case informed run, 175 cases completed (11 failed during environment
 setup, 3 hit provider rate limits, 2 tripped the rate-limit breaker). The
@@ -686,12 +709,12 @@ oracle design for heterogeneous Vulhub tasks.
 The per-scenario breakdown in Table~\ref{tab:scenario-scores} reveals a clear
 pattern: \harnessname{} remains high across heterogeneous topology types, while
 the adapted baselines only partially cover the injected vulnerability sets. The
-hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult for
-\harnessname{}: both reach F1 = 1.000, whereas the strongest adapted baseline
-on these scenarios reaches 0.640 and 0.520. Segmented IT/OT scenarios remain
-strong but not perfect (\texttt{s\_4}: F1 = 0.944, \texttt{s\_8}: F1 = 0.933),
-with residual errors caused by deeper pivots that increase the chance of
-duplicate or slightly misclassified findings. The edge-cloud pivot
+hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are solved cleanly
+by \harnessname{}: both reach F1 = 1.000, whereas the strongest adapted
+baseline on these scenarios reaches 0.640 and 0.520. Segmented IT/OT scenarios
+remain strong but not perfect (\texttt{s\_4}: F1 = 0.944, \texttt{s\_8}: F1 =
+0.933), with residual errors caused by deeper pivots that increase the chance
+of duplicate or slightly misclassified findings. The edge-cloud pivot
 (\texttt{s\_7}) stays high at F1 = 0.965, and the mesh smart-city case
 (\texttt{s\_9}) reaches F1 = 0.952 with no false positives.
 
@@ -699,7 +722,7 @@ The most difficult comparison scenario is \texttt{s\_10} (F1 = 0.815, Score = 71
 This topology is intentionally flat rather than multi-hop, so the degradation
 is not caused by lateral-movement reasoning. Instead, service role variants
 reduce the predictability of service semantics and increase the proportion of
-near-duplicate reports. The two scalability extensions confirm stability:
+near-duplicate reports. The two scalability extensions show similar behavior:
 \texttt{s\_11} achieves F1 = 0.875 and Score = 84.8\%, and \texttt{s\_12}
 achieves F1 = 0.942 and Score = 90.6\%.
 
@@ -730,10 +753,10 @@ Rate-limited / skipped & 5 & -- & provider-side interruption \\
 \end{table}
 
 \medskip\noindent\textbf{Failure modes.}
-On \systemname{} main scenarios, failures are accuracy failures rather than
-resource failures. The \texttt{s\_10} scenario dominates the error profile,
+On the \systemname{} comparison scenarios, failures are accuracy failures rather
+than resource failures. The \texttt{s\_10} scenario dominates the error profile,
 contributing both missed findings and near-duplicate false positives that arise
-from role variants. The remaining nine main scenarios each stay above F1 = 0.923,
+from role variants. The remaining nine comparison scenarios each stay above F1 = 0.923,
 suggesting that the pipeline generalises well across varied topologies.
 
 On Vulhub (Table~\ref{tab:vulhub-failures}), the dominant outcome is
@@ -750,7 +773,7 @@ On the AutoPenBench single-host corpus, blind-mode evaluation costs \$4.88 and
 consumes 15.5M tokens for 33 tasks (\$0.15 per task); informed mode costs
 \$7.43 and 23.6M tokens (\$0.23 per task). The Vulhub distributed run
 (191 cases, six workers) consumed 194.5M tokens at a total cost of \$60.96,
-approximately \$0.33 per executed case. These figures confirm that \harnessname{} remains within a practical per-run
+approximately \$0.33 per executed case. These figures suggest that \harnessname{} remains within a practical per-run
 budget for research deployments.
 
 % ══════════════════════════════════════════════════════════════════════════
