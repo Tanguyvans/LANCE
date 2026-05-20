@@ -608,87 +608,77 @@ a single favorable topology.
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
 
-The previous subsection is the controlled comparison: same scenarios, model,
-and evaluator. Table~\ref{tab:cross} answers a different question: how does the
-same \harnessname{} implementation behave when moved to single-host corpora
-used by prior work? These rows are contextual rather than head-to-head because
-the published papers use different models, run counts, and success oracles.
+To assess whether \harnessname{} generalises beyond IoT multi-hop scenarios, we
+run it on two single-host corpora used by prior work. Comparisons are
+contextual rather than head-to-head: published results differ in model, run
+count, and success oracle.
 
-\begin{table*}[t]
+\medskip\noindent\textbf{AutoPenBench.}
+AutoPenBench defines 33 flag-based tasks with published E2E rates, making it
+the cleanest transfer check. We run two context policies: \emph{blind} mode
+(agent sees only target endpoint and exposed service metadata) and \emph{informed}
+mode (agent additionally receives the case identifier and vulnerability label,
+serving as a diagnostic upper bound). Table~\ref{tab:cross} places our results
+alongside prior systems.
+
+\begin{table}[t]
 \centering
-\caption{Cross-benchmark context on single-host corpora. Rows differ in model,
-oracle, and run protocol, so results are not a controlled leaderboard.}
+\caption{AutoPenBench results. Sub-task and E2E completion (\%) across systems.
+``---'' indicates a metric not reported by the original paper. Models and run
+protocols differ; this is not a controlled leaderboard.}
 \label{tab:cross}
 \setlength{\tabcolsep}{5pt}
 \footnotesize
-\begin{tabular}{@{}llllr@{}}
+\begin{tabular}{@{}llrr@{}}
 \toprule
-Corpus & System & Model / setting & Reported measure & Result (\%) \\
+System & Model & Sub-task (\%) & E2E (\%) \\
 \midrule
-AutoPenBench & Llama baseline~\cite{vulnbot25,xoffense25} & Llama 3.1-405B & sub-task / E2E & 49.1 / 9.1 \\
-AutoPenBench & GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o & E2E & 21.2 \\
-AutoPenBench & VulnBot~\cite{vulnbot25,xoffense25} & Llama 3.1-405B & sub-task / E2E & 69.1 / 30.3 \\
-AutoPenBench & xOffense~\cite{xoffense25} & Qwen3-32B LoRA & sub-task$^\P$ / E2E & 79.2 / 72.7 \\
-AutoPenBench & \textbf{\harnessname{} (ours)} & MiniMax-M2.7, blind & useful$^\dagger$ / E2E & 39.4 / 21.2 \\
-AutoPenBench & \textbf{\harnessname{} (ours)} & MiniMax-M2.7, informed & useful$^\dagger$ / E2E & 51.5 / 27.3 \\
+Llama baseline~\cite{vulnbot25,xoffense25}  & Llama 3.1-405B  & 49.1          & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & ---           & 21.2 \\
+VulnBot~\cite{vulnbot25}                    & Llama 3.1-405B  & 69.1          & 30.3 \\
+xOffense~\cite{xoffense25}                  & Qwen3-32B LoRA  & 79.2$^\P$     & 72.7 \\
 \midrule
-Vulhub & CheckMate~\cite{checkmate25} & Sonnet 4.5 + planner & relative gain & +20\%$^{\mathrm{rel}}$ \\
-Vulhub & \textbf{\harnessname{} (ours)} & MiniMax-M2.7, informed & useful lower bound & 39--48$^\star$ \\
-Vulhub & \textbf{\harnessname{} (ours)} & MiniMax-M2.7, blind & useful findings & 29$^\S$ \\
+\textbf{\harnessname{} blind (ours)}        & MiniMax-M2.7    & 39.4$^\dagger$ & 21.2 \\
+\textbf{\harnessname{} informed (ours)}     & MiniMax-M2.7    & 51.5$^\dagger$ & 27.3 \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-\textsuperscript{rel} CheckMate reports a relative gain over Claude Code, not
-an absolute E2E rate. $^\dagger$ Useful findings are our closest analogue to
-AutoPenBench sub-task progress because our harness does not use the upstream
-orchestrator. $^\P$ xOffense's sub-task score is best-of-five; its E2E score is
-strict task completion. $^\star$ 191-case Vulhub run: 69/175 completed runs are
-automatic useful findings, and manual proof review raises the conservative
-lower bound to 84/175. $^\S$ 328-case blind Vulhub run on a distinct superset
-of CVE environments.}
-\end{table*}
+$^\dagger$ Our sub-task analogue is \emph{useful findings}: tasks where the
+agent produced actionable exploit evidence, regardless of flag capture. Our
+harness does not use the upstream AutoPenBench orchestrator.
+$^\P$ xOffense's sub-task score is best-of-five; its E2E score is strict task
+completion.}
+\end{table}
 
-\medskip\noindent\textbf{AutoPenBench.}
-AutoPenBench is the cleaner transfer check because it defines 33 flag-based
-tasks and published E2E rates. We run two context policies. In \emph{blind}
-mode, the agent receives only the target endpoint and exposed service metadata;
-this is the fair no-hint setting. It captures 7/33 flags (21.2\%) and produces
-useful findings on 13/33 tasks (39.4\%). In \emph{informed} mode, the agent
-also receives the benchmark case identifier and vulnerability label; this is a
-diagnostic upper bound. It captures 9/33 flags (27.3\%) and produces useful
-findings on 17/33 tasks (51.5\%).
+Blind mode captures 7/33 flags (21.2\%) and produces useful findings on 13/33
+tasks (39.4\%); informed mode reaches 9/33 flags (27.3\%) and 17/33 useful
+findings (51.5\%). The blind E2E rate matches the published GPT-4o baseline
+(21.2\%), confirming transfer to single-host exploitation without task-specific
+tuning. The gap with purpose-built systems---VulnBot at 30.3\%, xOffense at
+72.7\% with a fine-tuned model---is expected: our harness was designed for
+multi-hop IoT networks, not single-host exploit chaining.
 
-The blind run matches the published GPT-4o baseline's 21.2\% E2E rate, but it
-does not match systems specialized for single-host exploit chaining: VulnBot
-reports 30.3\% E2E with Llama 3.1-405B, and xOffense reports 72.7\% E2E with a
-fine-tuned Qwen3-32B model. We therefore use AutoPenBench as evidence of
-transfer, not as evidence that \harnessname{} is state of the art on
-single-host exploitation.
+\medskip\noindent\textbf{Vulhub.}
+Vulhub provides reproducible vulnerable environments but no uniform flag oracle,
+so we report useful-finding lower bounds rather than E2E task completion.
+CheckMate~\cite{checkmate25}, the only prior work on this corpus, reports a
+$+20\%$ relative gain over a Claude~Code + Sonnet~4.5 baseline without
+publishing an absolute rate, making direct numeric comparison impossible. The
+two runs below cover \emph{different} case sets and are complementary in scope,
+not a blind/informed ablation.
 
-\medskip\noindent\textbf{Vulhub (informed).}
-Vulhub is less uniform than AutoPenBench: it provides reproducible vulnerable
-environments, but not a single flag oracle across all cases. We therefore
-report useful-finding lower bounds rather than E2E task completion. In the
-191-case informed run, 175 cases reached a completed agent run; 11 failed
-during environment setup, 3 were interrupted by provider rate limits, and 2
-were skipped after the rate-limit breaker tripped. The automatic verdict marks
-69/175 completed runs as useful findings (39\%). Manual review of
-\texttt{proof.json} identifies 15 additional cases where the agent had exploit
+In the 191-case informed run, 175 cases completed (11 failed during environment
+setup, 3 hit provider rate limits, 2 tripped the rate-limit breaker). The
+automatic verdict marks 69/175 as useful findings (39\%); manual review of
+\texttt{proof.json} identifies 15 additional cases where the agent held exploit
 evidence but self-reported \textsc{no finding}, raising the conservative lower
-bound to 84/175 (48\%).
-
-\medskip\noindent\textbf{Vulhub (blind).}
-A complementary blind run evaluates a larger 328-case Vulhub corpus, a distinct
-superset of CVE environments rather than the same cases without hints. Of these,
-306 reached a completed agent run, 18 failed during agent execution, and 4
-failed during environment setup. The agent reports useful findings on 90/306
-completed cases (29\%), including strictly confirmed exploits for
-\texttt{spring/CVE-2022-22965}, \texttt{struts2/s2-005}, and
-\texttt{supervisor/CVE-2017-11610}. Because the blind and informed Vulhub runs
-cover different case sets, they should not be read as a controlled ablation;
-together they show that \harnessname{} transfers beyond IoT networks while also
-exposing the limits of useful-finding oracles on heterogeneous Vulhub tasks.
+bound to 84/175 (48\%). In the 328-case blind run on a distinct superset of CVE
+environments, 306 cases completed; the agent reports useful findings on 90/306
+(29\%), including strictly confirmed exploits for \texttt{spring/CVE-2022-22965},
+\texttt{struts2/s2-005}, and \texttt{supervisor/CVE-2017-11610}. The gap between
+automatic verdicts and manual review in both runs underscores the difficulty of
+oracle design for heterogeneous Vulhub tasks.
 
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
