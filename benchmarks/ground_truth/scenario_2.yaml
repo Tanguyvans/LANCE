@@ -42,6 +42,7 @@ vulnerabilities:
       - "Interface LuCI accessible sans restriction réseau"
     verification: "curl http://<WAN_IP>:80 → LuCI login page"
     confidence_required: high
+    hop_depth: 0
 
   - id: V2
     device: s2-router
@@ -60,6 +61,7 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V3
     device: s2-mqtt
@@ -80,6 +82,7 @@ vulnerabilities:
       - "Topic smartcity/admin/credentials expose des secrets"
     verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
     confidence_required: high
+    hop_depth: 0
 
   - id: V4
     device: s2-iot-gw
@@ -102,6 +105,7 @@ vulnerabilities:
       - "Algorithmes chacha20-poly1305 et CBC avec ETM disponibles"
     verification: "ssh-audit 192.168.100.13 | grep -i terrapin"
     confidence_required: high
+    hop_depth: 0
 
   - id: V5
     device: s2-iot-gw
@@ -123,6 +127,7 @@ vulnerabilities:
       - "GET /api/status expose les connexions internes"
     verification: "curl http://192.168.100.13/admin"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V6
     device: s2-db
@@ -144,6 +149,7 @@ vulnerabilities:
       - "Table users contient passwords en clair (P@ssw0rd123, operator123)"
     verification: "mysql -h 192.168.100.14 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: high
+    hop_depth: 0
 
   - id: V7
     device: s2-jump
@@ -164,6 +170,7 @@ vulnerabilities:
       - "PasswordAuthentication yes"
     verification: "ssh admin@192.168.100.15 (password: admin)"
     confidence_required: high
+    hop_depth: 0
 
   - id: V8
     device: s2-web
@@ -184,6 +191,7 @@ vulnerabilities:
       - "GET /logs/access.log expose l'historique des accès"
     verification: "curl http://192.168.100.11/backup/"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V9
     device: s2-mqtt
@@ -202,6 +210,7 @@ vulnerabilities:
       - "mosquitto_sub -t 'smartcity/admin/credentials' retourne des credentials JSON"
     verification: "mosquitto_sub -h 192.168.100.12 -t 'smartcity/admin/credentials' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V10
     device: s2-iot-gw
@@ -224,6 +233,7 @@ vulnerabilities:
       - "Aucune vérification d'intégrité du firmware uploadé"
     verification: "curl http://192.168.100.13/firmware/ && curl -X POST http://192.168.100.13/update"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V11
     device: s2-web
@@ -241,6 +251,7 @@ vulnerabilities:
       - "Réponse HTTP sans X-Frame-Options, Strict-Transport-Security, Content-Security-Policy"
     verification: "curl -sI http://192.168.100.11/ | grep -iE 'X-Frame|Strict-Transport|Content-Security'"
     confidence_required: low
+    hop_depth: 0
 
   - id: V12
     device: s2-web
@@ -258,6 +269,7 @@ vulnerabilities:
       - "Header Server contient nginx/ suivi d'un numéro de version"
     verification: "curl -sI http://192.168.100.11/ | grep Server"
     confidence_required: low
+    hop_depth: 0
 
   - id: V13
     device: s2-web
@@ -277,6 +289,7 @@ vulnerabilities:
       - "GET /backup/ retourne un listing de fichiers"
     verification: "curl http://192.168.100.11/backup/"
     confidence_required: medium
+    hop_depth: 0
 
 attack_paths:
 

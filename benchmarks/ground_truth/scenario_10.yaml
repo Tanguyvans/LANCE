@@ -44,6 +44,7 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V2
     device: s10-router
@@ -63,6 +64,7 @@ vulnerabilities:
       - "Connexion FTP anonyme acceptée"
     verification: "ftp 192.168.100.1 (user: anonymous)"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V3
     device: s10-mqtt
@@ -85,6 +87,7 @@ vulnerabilities:
       - "Topics sensibles accessibles après authentification"
     verification: "mosquitto_sub -h 192.168.100.11 -u test -P test -t '#' -v -C 3"
     confidence_required: high
+    hop_depth: 0
 
   - id: V4
     device: s10-mqtt
@@ -104,6 +107,7 @@ vulnerabilities:
       - "Topic smartcity/config/network expose la config réseau"
     verification: "mosquitto_sub -h 192.168.100.11 -u test -P test -t 'smartcity/admin/#' -C 1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V5
     device: s10-web
@@ -126,6 +130,7 @@ vulnerabilities:
       - "POST /api/exec permet l'exécution de commandes"
     verification: "curl http://192.168.100.12/api/users"
     confidence_required: high
+    hop_depth: 0
 
   - id: V6
     device: s10-web
@@ -144,6 +149,7 @@ vulnerabilities:
       - "POST /api/exec avec {\"cmd\":\"id\"} retourne uid=0(root)"
     verification: "curl -X POST http://192.168.100.12/api/exec -H 'Content-Type: application/json' -d '{\"cmd\":\"id\"}'"
     confidence_required: high
+    hop_depth: 0
 
   - id: V7
     device: s10-web
@@ -162,6 +168,7 @@ vulnerabilities:
       - "GET /api/users retourne [{username:admin,password:P@ssw0rd123,role:admin},...]"
     verification: "curl http://192.168.100.12/api/users"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V8
     device: s10-ftp
@@ -185,6 +192,7 @@ vulnerabilities:
       - "/firmware/latest.bin sans signature"
     verification: "ftp 192.168.100.13 (user: anonymous, no password)"
     confidence_required: high
+    hop_depth: 0
 
   - id: V9
     device: s10-ftp
@@ -204,6 +212,7 @@ vulnerabilities:
       - "Contient mqtt password et db password en clair"
     verification: "ftp> get config/network.conf"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V10
     device: s10-nodered
@@ -225,6 +234,7 @@ vulnerabilities:
       - "Flows contiennent des nœuds exec (exécution de commandes)"
     verification: "curl http://192.168.100.14:1880/admin"
     confidence_required: high
+    hop_depth: 0
 
   - id: V11
     device: s10-nodered
@@ -246,6 +256,7 @@ vulnerabilities:
       - "Possibilité d'ajouter de nouveaux nœuds exec"
     verification: "curl http://192.168.100.14:1880/flows"
     confidence_required: high
+    hop_depth: 0
 
   - id: V12
     device: s10-ssh
@@ -266,6 +277,7 @@ vulnerabilities:
       - "PasswordAuthentication no"
     verification: "ls -la /home/iot-admin/.ssh/"
     confidence_required: high
+    hop_depth: 0
 
   - id: V13
     device: s10-ssh
@@ -284,6 +296,7 @@ vulnerabilities:
       - "Contient mqtt_pass, db_pass, api_key"
     verification: "cat /etc/iot/config.json"
     confidence_required: medium
+    hop_depth: 0
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:

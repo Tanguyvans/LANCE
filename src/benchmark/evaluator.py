@@ -189,6 +189,8 @@ class EvaluationResult:
     tp_detected_only: int = 0           # TP findings with evidence_level < 2
 
     # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
+    # Convention: hop_depth=0 means directly reachable from the entry point;
+    # hop_depth>=1 means at least one pivot / zone transition is required.
     # None when no GT entry exists at that depth (metric undefined for that scenario,
     # e.g. a flat topology has MHR_1 = MHR_2 = MHR_3 = None).
     mhr_1: float | None = None
@@ -369,8 +371,13 @@ def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | Non
 
 
 def _match_by_ip_and_service(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Loose match: same IP + exact severity (last resort). Exact severity required to avoid
-    cross-vuln collisions when multiple findings share the same IP."""
+    """Loose match: same IP + exact severity (last resort).
+
+    This compatibility fallback is intentionally half-weighted by the scorer. It
+    catches tool outputs that identify the affected host and impact but use an
+    unknown type string. Exact severity is required to reduce cross-vulnerability
+    collisions when multiple findings share the same IP.
+    """
     gt_ip = gt_vuln.get("ip", "")
     gt_sev = gt_vuln.get("severity", "low").lower()
     for f in llm_findings:
@@ -406,14 +413,18 @@ def compute_mhr(matches: list[dict], k: int) -> float | None:
     Returns None when no GT entry has hop_depth >= k (the metric is undefined for
     that scenario — e.g. a flat topology has MHR_1 = MHR_2 = MHR_3 = None).
 
+    Convention: hop_depth=0 is directly reachable from the entry point. MHR_1 is
+    therefore not raw recall; raw recall is reported separately. MHR_1+ measures
+    findings that require at least one pivot or zone transition.
+
     `matches` is the result.matches list (asdict'd MatchResult), each entry has
     keys 'matched' (bool) and 'gt_hop_depth' (int).
 
     The interpretation: how good is the system at finding vulnerabilities that
     require crossing at least k network segments from the attacker's entry point?
-    Mono-host LLM agents (PentestGPT, CAI per-IP, etc.) are expected to score
-    near zero on MHR_2 and MHR_3 by construction — they cannot pivot. Network-
-    native pipelines should score significantly higher.
+    Systems that do not establish new vantage points are expected to score near
+    zero on MHR_1+ by construction. Network-native pipelines with a lateral
+    movement phase should score significantly higher.
     """
     gt_at_k = [m for m in matches if int(m.get("gt_hop_depth", 0)) >= k]
     if not gt_at_k:
@@ -442,13 +453,13 @@ def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
 
 # Phase 4 statuses that mean "test ran but vuln not exploitable" or "tool error"
 # — they are excluded from the LLM findings so they don't count as false positives.
-_SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED"})
+_SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "ERROR"})
 
 
 def _load_llm_findings(run_dir: Path) -> list[dict]:
     """Return LLM findings from a run dir.
 
-    Prefers `04_exploitation.json` (post-exploitation), drops Phase 4 FAILED statuses,
+    Prefers `04_exploitation.json` (post-exploitation), drops Phase 4 FAILED/ERROR statuses,
     but rescues Phase 3 CONFIRMED findings that were FAILed in Phase 4.
     Falls back entirely to `03_vuln_analysis.json` when no Phase 4 file exists.
     Raises FileNotFoundError if neither exists.

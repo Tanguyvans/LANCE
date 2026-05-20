@@ -44,6 +44,7 @@ vulnerabilities:
       - "Interface LuCI accessible sans restriction réseau"
     verification: "curl http://192.168.100.1:80 → LuCI login page"
     confidence_required: high
+    hop_depth: 0
 
   - id: V2
     device: s6-router
@@ -62,6 +63,7 @@ vulnerabilities:
       - "Port 23/tcp ouvert sur 192.168.100.1"
     verification: "nmap -p 23 192.168.100.1"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V3
     device: s6-hub
@@ -84,6 +86,7 @@ vulnerabilities:
       - "GET /api/status expose les connexions MQTT et DB internes"
     verification: "curl http://192.168.100.11/admin && curl http://192.168.100.11/api/devices"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V4
     device: s6-hub
@@ -105,6 +108,7 @@ vulnerabilities:
       - "GET /api/status retourne les connexions internes actives"
     verification: "curl http://192.168.100.11/api/devices"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V5
     device: s6-mqtt
@@ -125,6 +129,7 @@ vulnerabilities:
       - "Subscribe # retourne tous les messages"
     verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
     confidence_required: high
+    hop_depth: 1
 
   - id: V6
     device: s6-mqtt
@@ -146,6 +151,7 @@ vulnerabilities:
       - "home/camera/stream → URL RTSP avec credentials caméra"
     verification: "mosquitto_sub -h 192.168.100.12 -t '#' -v"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V7
     device: s6-db
@@ -166,6 +172,7 @@ vulnerabilities:
       - "Base smartcity avec table users (passwords en clair, tokens API)"
     verification: "mysql -h 192.168.100.13 -u root -e 'SELECT * FROM smartcity.users;'"
     confidence_required: high
+    hop_depth: 1
 
   - id: V8
     device: s6-cam
@@ -187,6 +194,7 @@ vulnerabilities:
       - "GET http://192.168.100.14/admin retourne 200 sans authentification"
     verification: "curl -o /dev/null -s -w '%{http_code}' http://192.168.100.14/admin"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V9
     device: s6-web
@@ -208,6 +216,7 @@ vulnerabilities:
       - "Le dump SQL contient INSERT INTO users avec passwords en clair"
     verification: "curl http://192.168.100.15/backup/ && curl http://192.168.100.15/config/app.config"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V10
     device: s6-hub
@@ -228,6 +237,7 @@ vulnerabilities:
       - "POST /update retourne 200 sans authentification"
     verification: "curl http://192.168.100.11/firmware/ && curl -X POST http://192.168.100.11/update"
     confidence_required: medium
+    hop_depth: 0
 
   - id: V11
     device: s6-web
@@ -248,6 +258,7 @@ vulnerabilities:
       - "Fichier accessible sans authentification"
     verification: "curl http://192.168.100.15/.env"
     confidence_required: high
+    hop_depth: 1
 
   - id: V12
     device: s6-mqtt
@@ -267,6 +278,7 @@ vulnerabilities:
       - "Upgrade WebSocket accepté sans authentification"
     verification: "curl -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' http://192.168.100.12:9001/"
     confidence_required: medium
+    hop_depth: 1
 
   - id: V13
     device: s6-hub
@@ -284,6 +296,7 @@ vulnerabilities:
       - "GET /robots.txt retourne Disallow pour /admin/, /api/internal/, /backup/, /.env"
     verification: "curl http://192.168.100.11/robots.txt"
     confidence_required: low
+    hop_depth: 0
 
   - id: V14
     device: s6-web
@@ -302,6 +315,7 @@ vulnerabilities:
       - "GET /robots.txt retourne Disallow pour /admin/, /backup/, /config/, /.env"
     verification: "curl http://192.168.100.15/robots.txt"
     confidence_required: low
+    hop_depth: 1
 
   - id: V15
     device: s6-hub
@@ -320,6 +334,7 @@ vulnerabilities:
       - "ssh-audit détecte Terrapin"
     verification: "ssh-audit 192.168.100.11"
     confidence_required: high
+    hop_depth: 0
 
   - id: V16
     device: s6-web
@@ -338,6 +353,7 @@ vulnerabilities:
       - "GET /backup/ retourne un listing"
     verification: "curl http://192.168.100.15/backup/"
     confidence_required: medium
+    hop_depth: 1
 
 attack_paths:
 

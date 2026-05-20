@@ -115,6 +115,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 23/tcp ouvert"]
     verification: "nmap -p 23 192.168.100.1"
+    hop_depth: 0
 
   - id: V2
     device: s12-router
@@ -128,6 +129,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp ouvert sur WAN"]
     verification: "curl http://192.168.100.1/"
+    hop_depth: 0
 
   # Zone IT
   - id: V3
@@ -142,6 +144,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 22/tcp", "Login SSH admin:admin réussi"]
     verification: "ssh admin@192.168.100.11"
+    hop_depth: 0
 
   - id: V4
     device: s12-admin1
@@ -155,6 +158,7 @@ vulnerabilities:
     cve: null
     indicators: ["ssh-audit détecte aes128-cbc, hmac-sha1"]
     verification: "ssh-audit 192.168.100.11"
+    hop_depth: 0
 
   - id: V5
     device: s12-admin2
@@ -168,6 +172,7 @@ vulnerabilities:
     cve: null
     indicators: ["/home/iot-admin/.ssh/id_ed25519 en mode 644"]
     verification: "ls -la /home/iot-admin/.ssh/"
+    hop_depth: 0
 
   - id: V6
     device: s12-admin2
@@ -181,6 +186,7 @@ vulnerabilities:
     cve: null
     indicators: ["/etc/iot/config.json mode 644 contient mqtt_pass, db_pass"]
     verification: "cat /etc/iot/config.json"
+    hop_depth: 0
 
   - id: V7
     device: s12-jump
@@ -194,6 +200,7 @@ vulnerabilities:
     cve: null
     indicators: ["/home/iot-admin/.ssh/id_ed25519 mode 644"]
     verification: "ls -la /home/iot-admin/.ssh/"
+    hop_depth: 0
 
   - id: V8
     device: s12-monitor
@@ -207,6 +214,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/users retourne credentials", "GET /api/config retourne IPs réseau"]
     verification: "curl http://192.168.100.14/api/users"
+    hop_depth: 0
 
   - id: V9
     device: s12-monitor
@@ -220,6 +228,7 @@ vulnerabilities:
     cve: null
     indicators: ["POST /api/exec retourne uid=0(root)"]
     verification: "curl -X POST http://192.168.100.14/api/exec -d '{\"cmd\":\"id\"}'"
+    hop_depth: 0
 
   - id: V10
     device: s12-nodered1
@@ -233,6 +242,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1880/tcp", "GET /admin retourne interface Node-RED sans auth"]
     verification: "curl http://192.168.100.15:1880/admin"
+    hop_depth: 0
 
   - id: V11
     device: s12-ftp-it
@@ -246,6 +256,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 21/tcp", "FTP anonyme accepté", "/config/network.conf expose credentials"]
     verification: "ftp -n 192.168.100.16"
+    hop_depth: 0
 
   - id: V12
     device: s12-web-it
@@ -259,6 +270,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp", "GET /backup/ retourne listing", "GET /config/app.config expose credentials"]
     verification: "curl http://192.168.100.17/backup/"
+    hop_depth: 0
 
   - id: V13
     device: s12-nvr
@@ -272,6 +284,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 22/tcp", "SSH réussi avec ubnt:ubnt"]
     verification: "ssh ubnt@192.168.100.18"
+    hop_depth: 0
 
   # Zone IoT
   - id: V14
@@ -286,6 +299,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1883/tcp sans auth", "Topic smartcity/admin/credentials expose secrets"]
     verification: "mosquitto_sub -h 192.168.100.21 -t '#' -v -C 3"
+    hop_depth: 1
 
   - id: V15
     device: s12-mqtt1
@@ -299,6 +313,7 @@ vulnerabilities:
     cve: null
     indicators: ["Topic smartcity/admin/credentials expose db_pass et api_key"]
     verification: "mosquitto_sub -h 192.168.100.21 -t 'smartcity/admin/credentials' -C 1"
+    hop_depth: 1
 
   - id: V16
     device: s12-mqtt2
@@ -312,6 +327,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1883/tcp", "Connexion réussie avec test:test"]
     verification: "mosquitto_sub -h 192.168.100.22 -u test -P test -t '#' -v -C 3"
+    hop_depth: 1
 
   - id: V17
     device: s12-mqtt3
@@ -325,6 +341,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1883/tcp sans auth"]
     verification: "mosquitto_sub -h 192.168.100.23 -t '#' -v -C 3"
+    hop_depth: 1
 
   - id: V18
     device: s12-gw1
@@ -338,6 +355,7 @@ vulnerabilities:
     cve: "CVE-2023-48795"
     indicators: ["Port 22/tcp Dropbear 2020.81", "ssh-audit détecte Terrapin"]
     verification: "ssh-audit 192.168.100.24"
+    hop_depth: 1
 
   - id: V19
     device: s12-gw1
@@ -351,6 +369,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /firmware/ liste firmware.bin sans .sha256", "POST /update accepté sans vérification"]
     verification: "curl http://192.168.100.24/firmware/"
+    hop_depth: 1
 
   - id: V20
     device: s12-gw2
@@ -364,6 +383,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/devices retourne IPs internes", "GET /admin sans auth"]
     verification: "curl http://192.168.100.25/api/devices"
+    hop_depth: 1
 
   - id: V21
     device: s12-gw3
@@ -377,6 +397,7 @@ vulnerabilities:
     cve: "CVE-2023-48795"
     indicators: ["Port 22/tcp Dropbear 2020.81"]
     verification: "ssh-audit 192.168.100.26"
+    hop_depth: 1
 
   - id: V22
     device: s12-gw4
@@ -390,6 +411,7 @@ vulnerabilities:
     cve: null
     indicators: ["POST /update sans signature"]
     verification: "curl http://192.168.100.27/firmware/"
+    hop_depth: 1
 
   - id: V23
     device: s12-nodered2
@@ -403,6 +425,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 1880/tcp sans auth", "Flows exec node accessibles"]
     verification: "curl http://192.168.100.28:1880/admin"
+    hop_depth: 1
 
   - id: V24
     device: s12-cam1
@@ -416,6 +439,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp", "GET /admin sans auth", "GET /snapshot/latest.jpg accessible"]
     verification: "curl http://192.168.100.29/admin"
+    hop_depth: 1
 
   - id: V25
     device: s12-cam2
@@ -429,6 +453,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp sans auth"]
     verification: "curl http://192.168.100.30/admin"
+    hop_depth: 1
 
   - id: V26
     device: s12-cam3
@@ -442,6 +467,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 80/tcp sans auth"]
     verification: "curl http://192.168.100.31/admin"
+    hop_depth: 1
 
   - id: V27
     device: s12-coap
@@ -455,6 +481,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 5683/udp ouvert", "Requête CoAP GET sans authentification"]
     verification: "coap-client -m get coap://192.168.100.32/.well-known/core"
+    hop_depth: 1
 
   - id: V28
     device: s12-snmp
@@ -468,6 +495,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 161/udp ouvert", "snmpwalk avec community 'public' retourne MIB complète"]
     verification: "snmpwalk -v2c -c public 192.168.100.33 system"
+    hop_depth: 1
 
   - id: V29
     device: s12-upload
@@ -481,6 +509,7 @@ vulnerabilities:
     cve: null
     indicators: ["POST /upload accepte n'importe quel fichier", "Fichiers uploadés accessibles via /uploads/"]
     verification: "curl -F 'file=@/etc/passwd' http://192.168.100.34/"
+    hop_depth: 1
 
   # Zone OT
   - id: V30
@@ -495,6 +524,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 502/tcp", "Lecture/écriture registres Modbus sans auth"]
     verification: "nmap -p 502 --script modbus-discover 192.168.100.41"
+    hop_depth: 2
 
   - id: V31
     device: s12-plc2
@@ -508,6 +538,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 502/tcp sans auth"]
     verification: "nmap -p 502 --script modbus-discover 192.168.100.42"
+    hop_depth: 2
 
   - id: V32
     device: s12-plc3
@@ -521,6 +552,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 502/tcp sans auth"]
     verification: "nmap -p 502 --script modbus-discover 192.168.100.43"
+    hop_depth: 2
 
   - id: V33
     device: s12-plc4
@@ -534,6 +566,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 502/tcp sans auth"]
     verification: "nmap -p 502 --script modbus-discover 192.168.100.44"
+    hop_depth: 2
 
   - id: V34
     device: s12-hmi1
@@ -547,6 +580,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /backup/ retourne listing", "GET /config/app.config expose credentials"]
     verification: "curl http://192.168.100.45/backup/"
+    hop_depth: 2
 
   - id: V35
     device: s12-hmi2
@@ -560,6 +594,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET /api/users sans auth", "POST /api/exec retourne uid=0"]
     verification: "curl http://192.168.100.46/api/users"
+    hop_depth: 2
 
   - id: V36
     device: s12-db-ot1
@@ -573,6 +608,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 3306/tcp", "MySQL root sans mdp depuis n'importe quelle IP"]
     verification: "mysql -h 192.168.100.47 -u root -e 'SHOW DATABASES'"
+    hop_depth: 2
 
   - id: V37
     device: s12-db-ot2
@@ -586,6 +622,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 3306/tcp sans mdp"]
     verification: "mysql -h 192.168.100.48 -u root -e 'SHOW DATABASES'"
+    hop_depth: 2
 
   - id: V38
     device: s12-redis
@@ -599,6 +636,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 6379/tcp", "redis-cli sans auth retourne PONG", "KEYS * expose secrets"]
     verification: "redis-cli -h 192.168.100.49 KEYS '*'"
+    hop_depth: 2
 
   - id: V39
     device: s12-redis
@@ -612,6 +650,7 @@ vulnerabilities:
     cve: null
     indicators: ["GET config:db_password retourne P@ssw0rd123", "GET session:admin retourne JWT"]
     verification: "redis-cli -h 192.168.100.49 GET config:db_password"
+    hop_depth: 2
 
   - id: V40
     device: s12-historian
@@ -625,6 +664,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 3306/tcp sans mdp", "Données historiques industrielles accessibles"]
     verification: "mysql -h 192.168.100.50 -u root -e 'SHOW DATABASES'"
+    hop_depth: 2
 
   - id: V41
     device: s12-scada
@@ -638,6 +678,7 @@ vulnerabilities:
     cve: null
     indicators: ["POST /upload sans validation", "Fichiers accessibles via /uploads/"]
     verification: "curl -F 'file=@malware.bin' http://192.168.100.51/"
+    hop_depth: 2
 
   - id: V42
     device: s12-ftp-ot
@@ -651,6 +692,7 @@ vulnerabilities:
     cve: null
     indicators: ["Port 21/tcp", "FTP anonyme", "/config/network.conf expose credentials PLC"]
     verification: "ftp -n 192.168.100.52"
+    hop_depth: 2
 
 # ── Chemins d'attaque attendus ────────────────────────────────────────────────
 attack_paths:
