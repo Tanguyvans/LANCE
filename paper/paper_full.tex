@@ -443,12 +443,12 @@ For each ground-truth vulnerability $g$, hop depth counts the minimum number of 
 \subsection{Overview}
 \label{sec:harness:overview}
 
-\textsc{LANCE} decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
+Existing LLM pentest harnesses treat the network as a flat list of targets, letting a single agent accumulate unbounded context as the network grows. \textsc{LANCE} instead decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
 
 \subsection{Pipeline}
 \label{sec:harness:pipeline}
 
-\noindent\textbf{Phase 1: Topology prior.} Phase~1 loads a directed graph $G=(V,E)$ of the target network, where $V$ are devices and $E$ are protocol-labeled links. In \emph{scenario mode}, the topology is loaded from the benchmark YAML; in \emph{discovery mode}, the graph starts empty and is populated by Phase~2. The output enumerates the attack surface and ranks pivot candidates by betweenness centrality.
+\noindent\textbf{Phase 1: Topology prior.} Phase~1 loads a directed graph $G=(V,E)$ of the target network, where $V$ are devices and $E$ are protocol-labeled links. In \emph{scenario mode}, the topology is loaded from the benchmark YAML; in \emph{discovery mode}, the graph starts empty and is populated by Phase~2. The output enumerates the attack surface and ranks pivot candidates by betweenness centrality (identifying devices whose compromise enables the most lateral paths).
 
 \medskip\noindent\textbf{Phase 2: Network discovery.}
 Phase~2 executes active reconnaissance across the target \texttt{/24}
@@ -463,37 +463,46 @@ LLM micro-agent per device with only that device's scan output and a
 minimal tool set (\texttt{http\_get}, \texttt{cve\_search}). Per-device
 outputs are merged and deduplicated via severity-aware rules. This
 decomposition keeps each agent's context constant regardless of network
-size, at the cost of cross-device inference recovered in Phase~5.
+size, at the cost of cross-device correlation, which Phase~5 partially
+recovers through lateral movement.
 
 \medskip\noindent\textbf{Phase 4: Per-vulnerability verification.}
 Phase~4 spawns one micro-agent per Phase~3 finding with full operational
 tool access (\texttt{ssh\_login}, \texttt{mysql\_query},
 \texttt{mqtt\_listen}, \texttt{modbus\_scan}, \texttt{telnet\_connect}).
-Each agent attempts the deepest evidence level achievable (L1--L3)
+Each agent attempts the deepest evidence level achievable
+(\textsf{L1}--\textsf{L3}, \cref{sec:threat})
 within a bounded turn budget. Phase~3 confirmed findings override
 Phase~4 errors to avoid erasing directly-observed indicators.
 
 \medskip\noindent\textbf{Phase 5: Intrusion and lateral movement.}
 Phase~5 turns the per-device vulnerability inventory into a
 network-scoped infiltration campaign. The intrusion agent attempts
-credential spraying, lateral movement along firewall-permitted edges,
-and crown-jewel access on back-end services unreachable from the entry
-point. Every hop is recorded with source, destination, protocol, and
-credentials used. This phase is the sole producer of L3 evidence and
-MHR$_k$ findings at $k \geq 2$; ablating it forces those columns to
-zero by construction.
+credential spraying, lateral movement along edges present in the
+topology graph from Phase~1 (reflecting observed or asserted
+reachability), and crown-jewel access on back-end services unreachable
+from the entry point. Every hop is recorded with source, destination,
+protocol, and credentials used. This phase is the sole producer of
+\textsf{L3} evidence and MHR$_k$ findings at $k \geq 2$; ablating it
+forces those columns to zero by construction.
 
 \medskip\noindent\textbf{Phase 6: Network report.}
 Phase~6 produces a network-scoped report with device inventory,
 per-device vulnerabilities, attack surface summary, multi-hop intrusion
 narrative, and recommendations ordered by severity $\times$ exposure.
 Cross-device aggregation is deliberately deferred to this phase to avoid
-bloating earlier agents.
+bloating earlier agents, and the consolidated output enables a human
+analyst to prioritize remediation across the full network rather than
+per-host.
 
 \subsection{Cost Envelope}
 \label{sec:harness:cost}
 
-For a network with $n$ devices and $v$ findings per device on average, the harness issues $O(nv)$ LLM invocations: $$1 + 1 + n + nv + 1 + 1 \text{ for Phases 1--6 respectively}$$ Each invocation is bounded by a fixed turn budget (50 for P1--P2, 10 per device for P3, 10 per finding for P4, 30 for P5, 20 for P6). Cost scales linearly with network size, not combinatorially.
+For a network with $n$ devices and $v$ findings per device on average, the harness issues $O(nv)$ LLM invocations:
+$$\underbrace{1}_{P1} + \underbrace{1}_{P2} + \underbrace{n}_{P3} + \underbrace{nv}_{P4} + \underbrace{1}_{P5} + \underbrace{1}_{P6}$$
+Each invocation is bounded by a fixed turn budget (50 for P1--P2, 10 per device for P3, 10 per finding for P4, 30 for P5, 20 for P6). Cost scales linearly with network size, not combinatorially.
+
+The three structural choices above --- topology prior (P1), per-device parallelism (P3--P4), and the dedicated intrusion phase (P5) --- each correspond to an ablation evaluated in \cref{sec:eval}.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §6 Experimental Setup
