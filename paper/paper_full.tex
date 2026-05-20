@@ -478,46 +478,24 @@ The three structural choices above, topology prior (P1), per-device parallelism 
 \label{sec:setup}
 
 \medskip\noindent\textbf{Infrastructure.}
-All 15 scenarios (145 devices total) run on a single Proxmox VE host, deployed
-as LXC containers on a dedicated Linux bridge with an OpenWrt router as gateway. Per-scenario deployment and teardown
-are fully automated via Ansible and complete in under 10~minutes.
+All 15 scenarios (145 devices total) run on a single Proxmox VE host, deployed as LXC containers on a dedicated Linux bridge with an OpenWrt router as gateway. Per-scenario deployment and teardown are fully automated via Ansible.
 
 \medskip\noindent\textbf{Model.}
-To isolate architectural contributions from model-specific advantages,
-all LLM-driven systems run on the same general-purpose model:
-\textbf{MiniMax-M2.7}~\cite{minimax27}. Security-fine-tuned models are
-intentionally excluded; this study addresses the architecture axis, not
-the model fine-tuning axis.
+To isolate architectural contributions from model-specific advantages, all LLM-driven systems run on the same general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. Security-fine-tuned models are intentionally excluded; this study addresses the architecture axis, not the model fine-tuning axis.
 
 \medskip\noindent\textbf{Baselines.}
-We compare \harnessname{} against two ablations isolating its key
-design choices, and one non-LLM scanner baseline:
+We compare \harnessname{} against two ablations isolating its key design choices, and one non-LLM scanner baseline:
 \begin{itemize}
-  \item \textbf{\harnessname{}--w/o-P1} disables the topology prior, testing
-  the contribution of infrastructure-graph guidance.
-  \item \textbf{\harnessname{}--w/o-P5} disables the intrusion phase, testing
-  the contribution of lateral movement to \textsf{L3} evidence and
-  MHR$_k$. Ablating P5 forces \textsf{L3}-coverage and MHR$_k \geq 2$
-  to zero by construction.
-  \item \textbf{Nmap NSE} runs Nmap with all NSE scripts against the
-  same target CIDR, converted to the evaluator's JSON schema.
+  \item \textbf{\harnessname{}--w/o-P1} disables the topology prior, testing the contribution of infrastructure-graph guidance.
+  \item \textbf{\harnessname{}--w/o-P5} disables the intrusion phase, testing the contribution of lateral movement to \textsf{L3} evidence and MHR$_k$. Ablating P5 forces \textsf{L3}-coverage and MHR$_k \geq 2$ to zero by construction.
+  \item \textbf{Nmap NSE} runs Nmap with all NSE scripts against the same target CIDR, converted to the evaluator's JSON schema.
 \end{itemize}
 
 \medskip\noindent\textbf{Metrics.}
-We report five families: task completion (recall), quality (precision,
-F1, CVSS-weighted score), Multi-Hop Reach (MHR$_k$ for
-$k \in \{1,2,3\}$), evidence depth (\textsf{L1}/\textsf{L2}/\textsf{L3}
-coverage), and cost (tokens, USD, wall-clock time); the first four are
-formally defined in \cref{sec:iotbench:eval}. The last three are absent from existing
-single-host benchmarks and directly measure the network-scale
-capabilities \harnessname{} is designed to exercise.
+We report five families: task completion (recall), quality (precision, F1, CVSS-weighted score), Multi-Hop Reach (MHR$_k$ for $k \in \{1,2,3\}$), evidence depth (\textsf{L1}/\textsf{L2}/\textsf{L3} coverage), and cost (tokens, USD, wall-clock time); the first four are formally defined in \cref{sec:iotbench:eval}. The last three are absent from existing single-host benchmarks and directly measure the network-scale capabilities \harnessname{} is designed to exercise.
 
 \medskip\noindent\textbf{Variance.}
-The evaluator supports repeated runs per (system, scenario) cell with
-mean, standard deviation, bootstrap confidence intervals, and pairwise
-Mann--Whitney $U$ tests on F1 and weighted score. We report
-scenario-level means; confidence intervals are included where multiple
-runs per cell are available.
+The evaluator supports repeated runs per (system, scenario) cell with mean, standard deviation, bootstrap confidence intervals, and pairwise Mann--Whitney $U$ tests on F1 and weighted score. We report scenario-level means; confidence intervals are included where multiple runs per cell are available.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
