@@ -443,157 +443,57 @@ For each ground-truth vulnerability $g$, hop depth counts the minimum number of 
 \subsection{Overview}
 \label{sec:harness:overview}
 
-\begin{figure*}[t]
-  \centering
-  \fbox{\parbox{0.9\linewidth}{\centering\textit{
-    Draft schematic: 6-phase pipeline diagram.\\
-    Phase 1 (topology prior) $\to$ Phase 2 (discovery) $\to$ Phase 3 (per-device triage)
-    $\to$ Phase 4 (per-vuln verification) $\to$ Phase 5 (intrusion) $\to$ Phase 6 (network report).
-  }}}
-  \caption{\harnessname{} pipeline. Solid arrows are deliverables; dashed boxes
-  indicate LLM agent calls; Phase~3 and Phase~4 spawn micro-agents in parallel
-  (§\ref{sec:harness:phase3}--§\ref{sec:harness:phase4}).}
-  \label{fig:pipeline}
-\end{figure*}
+\textsc{LANCE} decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
 
-The harness decomposes network pentest into six phases with typed deliverables.
-The key design decision is \emph{parallelization at the device and
-vulnerability granularity}: rather than a single monolithic agent that must hold
-the full network state, we spawn dedicated micro-agents per target with
-constrained tool sets, then aggregate deterministically. This keeps each
-micro-agent's context bounded \emph{per device} at $O(1)$ in the number of
-network devices, with cross-device state only re-introduced in Phase~5
-(intrusion) and Phase~6 (report).
+\subsection{Pipeline}
+\label{sec:harness:pipeline}
 
-\subsection{Phase~1: Topology prior}
-\label{sec:harness:phase1}
+\noindent\textbf{Phase 1: Topology prior.} Phase~1 loads a directed graph $G=(V,E)$ of the target network, where $V$ are devices and $E$ are protocol-labeled links. In \emph{scenario mode}, the topology is loaded from the benchmark YAML; in \emph{discovery mode}, the graph starts empty and is populated by Phase~2. The output enumerates the attack surface and ranks pivot candidates by betweenness centrality.
 
-Phase~1 loads a graph model of the target network as a directed graph
-$G=(V,E)$ where $V$ are devices and $E$ are links labeled by protocol. Two
-modes are supported: (i)~\emph{scenario mode} loads the predefined topology
-from the benchmark YAML; (ii)~\emph{discovery mode} starts from an empty graph
-and instructs Phase~2 to populate $V$ via network scans. The output is a
-markdown deliverable enumerating attack surface and preliminary pivot candidates
-(betweenness-centrality ranked).
+\medskip\noindent\textbf{Phase 2: Network discovery.}
+Phase~2 executes active reconnaissance across the target \texttt{/24}
+using host discovery, service/version scanning, L2 vendor probing, and
+protocol-specific probes (MQTT, SSH, HTTP). Unlike single-host
+harnesses, the agent derives the target IP from the CIDR scope rather
+than receiving it directly.
 
-\subsection{Phase~2: Full-network discovery}
-\label{sec:harness:phase2}
+\medskip\noindent\textbf{Phase 3: Per-device parallel triage.}
+Phase~3 runs a deterministic scanner pass per device, then spawns one
+LLM micro-agent per device with only that device's scan output and a
+minimal tool set (\texttt{http\_get}, \texttt{cve\_search}). Per-device
+outputs are merged and deduplicated via severity-aware rules. This
+decomposition keeps each agent's context constant regardless of network
+size, at the cost of cross-device inference recovered in Phase~5.
 
-Phase~2 executes active reconnaissance across the target \texttt{/24}:
-\texttt{nmap\_discovery} (host discovery), \texttt{nmap} (service/version),
-\texttt{arp\_scan} (L2 + vendor), and protocol-specific probes
-(\texttt{mqtt\_listen} subscribing to \texttt{\#} on discovered brokers,
-\texttt{ssh\_audit} against SSH servers, \texttt{curl\_headers} on HTTP).
-Unlike single-host harnesses, the agent is not given a target IP: it must
-derive one from the CIDR scope.
+\medskip\noindent\textbf{Phase 4: Per-vulnerability verification.}
+Phase~4 spawns one micro-agent per Phase~3 finding with full operational
+tool access (\texttt{ssh\_login}, \texttt{mysql\_query},
+\texttt{mqtt\_listen}, \texttt{modbus\_scan}, \texttt{telnet\_connect}).
+Each agent attempts the deepest evidence level achievable (L1--L3)
+within a bounded turn budget. Phase~3 confirmed findings override
+Phase~4 errors to avoid erasing directly-observed indicators.
 
-\subsection{Phase~3: Per-device parallel triage}
-\label{sec:harness:phase3}
+\medskip\noindent\textbf{Phase 5: Intrusion and lateral movement.}
+Phase~5 turns the per-device vulnerability inventory into a
+network-scoped infiltration campaign. The intrusion agent attempts
+credential spraying, lateral movement along firewall-permitted edges,
+and crown-jewel access on back-end services unreachable from the entry
+point. Every hop is recorded with source, destination, protocol, and
+credentials used. This phase is the sole producer of L3 evidence and
+MHR$_k$ findings at $k \geq 2$; ablating it forces those columns to
+zero by construction.
 
-\begin{figure}[t]
-  \centering
-  \fbox{\parbox{0.95\linewidth}{\centering\textit{
-    Draft schematic: Phase 3 parallelization — $n$ devices $\to$ $n$ LLM agents
-    in parallel $\to$ deterministic merge.
-  }}}
-  \caption{Per-device parallelization. Each micro-agent receives only its
-  device's scan output, avoiding the context explosion of a monolithic
-  network-level agent.}
-  \label{fig:parallel}
-\end{figure}
+\medskip\noindent\textbf{Phase 6: Network report.}
+Phase~6 produces a network-scoped report with device inventory,
+per-device vulnerabilities, attack surface summary, multi-hop intrusion
+narrative, and recommendations ordered by severity $\times$ exposure.
+Cross-device aggregation is deliberately deferred to this phase to avoid
+bloating earlier agents.
 
-Phase~3 runs in three sub-phases:
-\begin{enumerate}
-  \item \textbf{Deterministic scanner pass.} Ansible-driven subprocess
-  wrappers (\texttt{ssh\_audit}, \texttt{curl\_headers}, \texttt{mqtt\_listen},
-  \texttt{modbus\_scan}, \ldots) run in parallel per discovered device and
-  dump structured scan results to disk.
-  \item \textbf{Per-device LLM triage.} For each device, a dedicated LLM agent
-  receives only that device's Phase~2+3a outputs and has access to a minimal
-  tool set: \texttt{http\_get} (follow-up file retrieval) and
-  \texttt{cve\_search} (CPE-to-CVE lookup via NVD). The agent produces a JSON
-  vuln list scoped to that device.
-  \item \textbf{Deterministic merge.} Per-device outputs are concatenated,
-  canonicalized through the taxonomy (\S\ref{sec:harness:taxonomy}), and
-  deduplicated via severity-aware rules.
-\end{enumerate}
-
-This decomposition is essential for network scale: a monolithic agent on an
-8-device scenario already needs to fit $\sim$15--40k tokens of scan output
-into a single context and reason about cross-device relationships
-simultaneously, and the cost grows linearly with $n$. Per-device micro-agents flatten this to a constant size, at
-the cost of losing some cross-device inference capability, which is recovered
-in Phase~5.
-
-\subsection{Phase~4: Per-vulnerability verification with evidence levels}
-\label{sec:harness:phase4}
-
-Phase~4 spawns one micro-agent per Phase~3 finding (in parallel, with a
-concurrency cap). Each micro-agent receives the finding (IP, type, port,
-details) and full operational tool access: \texttt{ssh\_login},
-\texttt{mysql\_query}, \texttt{mqtt\_listen}, \texttt{http\_get},
-\texttt{ftp\_list}, \texttt{modbus\_scan}, \texttt{telnet\_connect}. The agent
-is prompted to produce the deepest evidence level it can (L1--L3,
-\S\ref{sec:iotbench:eval}) within a bounded turn budget.
-Outputs include: \texttt{status} (\textsc{confirmed}, \textsc{not\_exploitable},
-\textsc{error}), \texttt{evidence\_level}, \texttt{command} executed,
-\texttt{stdout} excerpts, and \texttt{data\_extracted} (when L3).
-
-Findings in \textsc{confirmed} state from Phase~3 override Phase~4
-\textsc{error}/\textsc{failed} statuses (rationale:
-Phase~3 is hypothesis generation with directly-observed indicators; Phase~4
-crashes should not erase directly-observed findings).
-
-\subsection{Phase~5: Intrusion and lateral movement}
-\label{sec:harness:phase5}
-
-Phase~5 turns the per-device vulnerability inventory from Phases~3--4 into a
-network-scoped infiltration campaign. Given the infrastructure graph (Phase~1)
-and the confirmed credentials/exposed services collected so far, an
-intrusion agent attempts: (i)~\emph{credential spraying} across discovered
-hosts (reusing harvested SSH/HTTP/MQTT/DB credentials), (ii)~\emph{lateral
-movement} along firewall-permitted edges, with each successful hop adding
-a new vantage point to the graph, and (iii)~\emph{crown-jewel access} on
-back-end services (databases, NVRs, historian, cloud APIs) that are unreachable
-from the entry point in segmented patterns (\cref{sec:iotbench:patterns}).
-The agent records, for every hop, the source node, destination node, edge
-protocol, and credentials/exploit used. This phase is the sole producer of
-$L_3$ evidence and of MHR$_k$ findings at $k\geq 2$; ablating it (Tab.~\ref{tab:main},
-\ref{tab:evidence}) forces those columns to zero by construction.
-
-\subsection{Phase~6: Network-level report}
-\label{sec:harness:report}
-
-Phase~6 consumes all prior deliverables and produces a network-scoped report
-with: device inventory, per-device vulnerabilities with severity, attack
-surface summary, multi-hop intrusion narrative (from Phase~5), and actionable
-recommendations ordered by severity $\times$ exposure. This is the only phase
-with cross-device aggregation reasoning, deliberately placed at the end to avoid
-bloating earlier phases.
-
-\subsection{Taxonomy and tool abstraction}
-\label{sec:harness:taxonomy}
-
-A single module resolves LLM-produced vulnerability type strings into a
-canonical taxonomy of 11~categories (\cref{tab:categories}), filtering noise
-(e.g., meta-observations) and CONFIG-only findings. Tools are defined
-declaratively as YAML (schema: name, description, JSON-schema parameters,
-subprocess command template), so adding a new protocol probe requires no
-Python code.
-
-\subsection{Complexity and cost envelope}
+\subsection{Cost Envelope}
 \label{sec:harness:cost}
 
-For a network with $n$ devices and an average of $v$ findings per device, the
-harness issues
-$1\,(\text{P1}) + 1\,(\text{P2}) + n\,(\text{P3b}) + nv\,(\text{P4}) +
-1\,(\text{P5}) + 1\,(\text{P6}) = O(nv)$
-LLM agent invocations, each bounded by a fixed turn budget ($50$ for
-Phase~1, $50$ for Phase~2, $10$ per device for Phase~3b, $10$ per finding
-for Phase~4, $30$ for Phase~5, $20$ for Phase~6). One \emph{call} is one
-round of (\emph{prompt} $\to$ \emph{tool calls} $\to$ \emph{response});
-one \emph{turn} is one such round inside the budget. Total cost scales
-linearly with network size, not combinatorially.
+For a network with $n$ devices and $v$ findings per device on average, the harness issues $O(nv)$ LLM invocations: $$1 + 1 + n + nv + 1 + 1 \text{ for Phases 1--6 respectively}$$ Each invocation is bounded by a fixed turn budget (50 for P1--P2, 10 per device for P3, 10 per finding for P4, 30 for P5, 20 for P6). Cost scales linearly with network size, not combinatorially.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §6 Experimental Setup
