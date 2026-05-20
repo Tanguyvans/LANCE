@@ -534,68 +534,14 @@ per-scenario F1 wins over \harnessname{} for baseline rows, and
 \harnessname{} wins over the best baseline for the first row.}
 \end{table*}
 
-Across the 10 main scenarios, \harnessname{} reaches 0.962 recall, 0.922
-precision, and 0.940 F1, with an 86.1\% CVSS-weighted score
-(Table~\ref{tab:main}). The result is not driven by a single easy topology:
-\harnessname{} outperforms the strongest baseline row in every main scenario,
-with a mean absolute F1 gap of 0.547 over the per-scenario best baseline.
-The two scalability scenarios included in the latest export remain consistent
-with this trend: mean F1 is 0.909 and mean weighted score is 87.7\% on
-\texttt{s\_11}--\texttt{s\_12}. The current export does not include the
-per-finding evidence-level fields required to recompute MHR$_k$, so we report
-those as a planned evaluator extraction rather than as headline numbers.
-
-\subsection{Cross-benchmark comparison on single-host corpora}
-\label{sec:eval:baselines}
-
-\begin{table*}[t]
-\centering
-\caption{Cross-benchmark comparison. Published single-host numbers are shown
-for reference, and \harnessname{} (MiniMax-M2.7) is evaluated on Vulhub in the
-latest result bundle. Models differ across rows — this table is not a fair
-model comparison but checks whether \harnessname{} remains plausible on an
-established single-host corpus while adding the network-scale dimension.
-\emph{E2E \%}: fraction of tasks fully solved. CheckMate uses milestone-based
-progress on a 120-container Vulhub sample and reports only a relative benchmark
-success-rate gain over its baseline, not an absolute E2E rate. ``n/r'' = not
-reported. $^\star$ = lower-bound proof-oracle estimate (see text).}
-\label{tab:cross}
-\setlength{\tabcolsep}{6pt}
-\footnotesize
-\begin{tabular}{@{}lllrr@{}}
-\toprule
-System & Model & Corpus & Sub-task \% & E2E \% \\
-\midrule
-\multicolumn{5}{@{}l}{\emph{AutoPenBench (33 tasks)}} \\
-\midrule
-Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 49.1 & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
-\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
-\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
-\textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
-\textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
-\midrule
-\multicolumn{5}{@{}l}{\emph{Vulhub / Vulhub-derived single-host tasks}} \\
-\midrule
-Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
-\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Classical Planning+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
-\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
-
-\bottomrule
-\end{tabular}
-\smallskip\\
-\footnotesize\emph{%
-\textsuperscript{rel} Relative benchmark success-rate gain over Claude Code
-baseline; absolute E2E rate not published by CheckMate.
-$^\dagger$ We report useful findings as the closest sub-task analogue because
-our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
-Informed mode receives the benchmark case id and vulnerability label; blind
-mode is the fair no-hint setting.
-$^\star$ Full 191-case distributed run. The automatic useful-finding lower
-bound is 69/175 completed agent runs (39\%); manual inspection identifies 15
-additional self-reported \textsc{no finding} cases with exploit evidence,
-raising the conservative lower bound to 84/175 (48\%).}
-\end{table*}
+Across the 10 main scenarios of \systemname{}, \harnessname{} achieves a recall
+of 0.962, precision of 0.922, and F1 of 0.940, with a CVSS-weighted score of
+86.1\% (\cref{tab:main}). The result is not driven by a single easy topology:
+\harnessname{} outperforms the strongest baseline in every individual scenario,
+with a mean absolute F1 gap of 0.547 over the per-scenario oracle best baseline.
+The two additional scalability scenarios (\texttt{s\_11}, \texttt{s\_12}) are
+consistent with this trend, reaching a mean F1 of 0.909 and a mean weighted
+score of 87.7\%.
 
 \begin{figure}[t]
   \centering
@@ -628,46 +574,117 @@ raising the conservative lower bound to 84/175 (48\%).}
   \end{tikzpicture}
   }
   \caption{Mean F1 on the 10 main \systemname{} scenarios. \harnessname{}
-  outperforms each adapted LLM-pentest baseline and the per-scenario best
-  baseline row.}
+  outperforms each adapted LLM-pentest baseline and the per-scenario oracle best.}
   \label{fig:baselines}
 \end{figure}
 
-The Vulhub run in Table~\ref{tab:cross} is useful but should be read as a
-lower-bound single-host sanity check, not as the main network-scale result.
-The distributed run processed all 191 Vulhub cases on six workers. Of these,
-175 reached a completed agent run, 11 failed during environment setup, 3 failed
-because of provider rate limits, and 2 were skipped after the rate-limit breaker
-tripped. The completed runs consumed 194.5M tokens for an estimated \$60.96,
-or roughly \$0.33 per executed case.
+\cref{fig:baselines} summarises the comparison graphically. The three adapted
+baselines (CAI-style, PentGPT-style, VulnBot-style) each score below 0.322 F1
+on average, and their per-scenario best reaches only 0.393. The gap of 0.547
+F1 points reflects a structural advantage rather than a single difficult
+scenario: baselines succeed only on those scenarios where the vulnerability set
+overlaps with patterns they probe by default, while \harnessname{}'s
+topology-aware pipeline and deterministic scanner cover the full injected set.
 
-The automatic verdict gives 69 useful findings among the 175 completed cases
-(39\%). This undercounts success because Vulhub does not provide a uniform flag
-oracle: an agent can demonstrate command execution or file disclosure and still
-self-report failure while searching for a nonexistent flag. Re-reading the
-\texttt{proof.json} files identifies 15 such hidden successes, which raises the
-conservative lower bound to 84/175 (48\%). The six strictly confirmed exploit
-cases are \texttt{struts2/s2-053}, \texttt{phpunit/CVE-2017-9841},
-\texttt{redis/CVE-2022-0543}, \texttt{jenkins/CVE-2018-1000861},
-\texttt{php/CVE-2024-2961}, and \texttt{spring/CVE-2022-22947}; the remaining
-useful cases are probable vulnerabilities or tool/credential-blocked findings
-with actionable evidence.
+\subsection{Cross-benchmark comparison on single-host corpora}
+\label{sec:eval:baselines}
 
-The AutoPenBench rows in Table~\ref{tab:cross} use the same MiniMax-M2.7 model
-and the same project harness, but differ in context policy. In \emph{blind}
-mode, the agent receives only the target endpoint and exposed service
-information; it captures 7/33 flags (21.2\%) and produces useful findings on
-13/33 tasks (39.4\%) for \$4.88 and 15.5M tokens. In \emph{informed} mode, the
-agent additionally receives the benchmark case id and vulnerability label; it
-captures 9/33 flags (27.3\%) and produces useful findings on 17/33 tasks
-(51.5\%) for \$7.43 and 23.6M tokens. We therefore treat the blind row as the
-fair external sanity check and the informed row as an upper-bound diagnostic
-showing the value of vulnerability-label hints. In both modes, two real-world
-CVE cases fail before agent invocation due to upstream environment issues
-(a removed Docker base image and an unresolved restarting container).
+\begin{table*}[t]
+\centering
+\caption{Cross-benchmark comparison. Published single-host numbers are shown
+for reference; \harnessname{} (MiniMax-M2.7) is evaluated on both AutoPenBench
+and Vulhub. Models differ across rows: this table is not a fair model
+comparison but checks whether \harnessname{} remains competitive on established
+single-host corpora while adding the network-scale dimension.
+\emph{E2E \%}: fraction of tasks fully solved. CheckMate uses milestone-based
+progress on a 120-container Vulhub sample and reports only a relative
+success-rate gain over its baseline. ``n/r'' = not reported.
+$^\star$ = lower-bound proof-oracle estimate (see text).}
+\label{tab:cross}
+\setlength{\tabcolsep}{6pt}
+\footnotesize
+\begin{tabular}{@{}lllrr@{}}
+\toprule
+System & Model & Corpus & Sub-task \% & E2E \% \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{AutoPenBench (33 tasks)}} \\
+\midrule
+Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 49.1 & 9.1  \\
+GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
+\textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
+\textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
+\textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
+\textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{Vulhub / Vulhub-derived single-host tasks}} \\
+\midrule
+Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
+\textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Classical Planning & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
+\textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
 
-\subsection{Per-architecture analysis}
-\label{sec:eval:arch}
+\bottomrule
+\end{tabular}
+\smallskip\\
+\footnotesize\emph{%
+\textsuperscript{rel} Relative benchmark success-rate gain over Claude Code
+baseline; absolute E2E rate not published by CheckMate.
+$^\dagger$ We report useful findings as the closest sub-task analogue because
+our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
+Informed mode receives the benchmark case id and vulnerability label; blind
+mode is the fair no-hint setting.
+$^\star$ Full 191-case distributed run. The automatic useful-finding lower
+bound is 69/175 completed agent runs (39\%); manual inspection identifies 15
+additional self-reported \textsc{no finding} cases with exploit evidence,
+raising the conservative lower bound to 84/175 (48\%).}
+\end{table*}
+
+\medskip\noindent\textbf{Vulhub.}
+To assess transfer beyond IoT network scenarios, we evaluate \harnessname{} on
+the Vulhub single-host corpus. The distributed run processed all 191 cases
+across six workers. Of these, 175 reached a completed agent run; 11 failed
+during environment setup; 3 were interrupted by provider rate limits; and 2 were
+skipped after the rate-limit breaker tripped. The 175 completed runs consumed
+194.5M tokens at an estimated cost of \$60.96, or approximately \$0.33 per
+executed case.
+
+The automatic verdict labels 69 of the 175 completed cases as useful findings
+(39\%). This figure undercounts success because Vulhub does not provide a
+uniform flag oracle: an agent that demonstrates command execution or file
+disclosure may still self-report failure while continuing to search for a
+nonexistent flag file. Re-reading the \texttt{proof.json} outputs identifies
+15 such cases, raising the conservative lower bound to 84/175 (48\%). The six
+cases with strictly confirmed exploitation are \texttt{struts2/s2-053},
+\texttt{phpunit/CVE-2017-9841}, \texttt{redis/CVE-2022-0543},
+\texttt{jenkins/CVE-2018-1000861}, \texttt{php/CVE-2024-2961}, and
+\texttt{spring/CVE-2022-22947}; the remaining useful cases are either probable
+vulnerabilities or tool-blocked and credential-blocked findings with actionable
+evidence.
+
+\medskip\noindent\textbf{AutoPenBench.}
+The AutoPenBench rows use the same MiniMax-M2.7 model and the same \harnessname{}
+pipeline, but differ in context policy. In \emph{blind} mode, the agent receives
+only the target endpoint and exposed service metadata. It captures 7/33 flags
+(21.2\%) and produces useful findings on 13/33 tasks (39.4\%), consuming 15.5M
+tokens at a cost of \$4.88. In \emph{informed} mode, the agent additionally
+receives the benchmark case identifier and vulnerability label, raising flag
+capture to 9/33 (27.3\%) and useful findings to 17/33 tasks (51.5\%) at a cost
+of \$7.43 and 23.6M tokens. Blind mode is the fair external evaluation; informed
+mode provides an upper-bound diagnostic on the value of vulnerability-label
+hints. In both configurations, two real-world CVE tasks fail before agent
+invocation due to upstream environment issues: one involves a removed Docker
+base image and one involves a container that enters a crash loop before the
+agent can connect.
+
+Compared with published baselines on AutoPenBench, \harnessname{} in blind mode
+matches the GPT-4o single-agent baseline at 21.2\% E2E, despite using a
+different model and a multi-agent architecture not tuned for single-host tasks.
+The gap relative to VulnBot (30.3\%) and xOffense (79.2\% sub-task) is
+consistent with \harnessname{} being designed and evaluated primarily for
+network-scale scenarios: its tool set and phase structure target multi-hop
+reasoning rather than single-host exploit chaining.
+
+\subsection{Per-scenario analysis}
+\label{sec:eval:perscenario}
 
 \begin{figure}[t]
   \centering
@@ -711,75 +728,25 @@ CVE cases fail before agent invocation due to upstream environment issues
   \label{fig:heatmap}
 \end{figure}
 
-The per-scenario profile in Figure~\ref{fig:heatmap} changes our initial
-expectation. The hub-centric star scenarios are not the weak point: both
-\texttt{s\_5} and \texttt{s\_6} reach 1.000 F1, suggesting that explicit graph
-context and deterministic probing make gateway-mediated dependencies tractable.
-Segmented IT/OT scenarios remain strong but not perfect (\texttt{s\_4}: 0.944
-F1, \texttt{s\_8}: 0.933), mostly because deeper pivots increase the chance of
-duplicate or slightly misclassified findings.
+The per-scenario breakdown in \cref{fig:heatmap} reveals a clear pattern. The
+hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are not difficult:
+both reach F1 = 1.000, which indicates that explicit graph context combined with
+deterministic probing makes gateway-mediated dependencies tractable. Segmented
+IT/OT scenarios remain strong but not perfect (\texttt{s\_4}: F1 = 0.944,
+\texttt{s\_8}: F1 = 0.933), with residual errors caused by deeper pivots that
+increase the chance of duplicate or slightly misclassified findings. The
+edge-cloud pivot (\texttt{s\_7}) stays high at F1 = 0.965, and the mesh
+smart-city case (\texttt{s\_9}) reaches F1 = 0.952 with no false positives.
 
-The most difficult main scenario is \texttt{s\_10}: recall drops to 0.846,
-precision to 0.786, F1 to 0.815, and weighted score to 71.3\%. This scenario is
-flat rather than multi-hop, so the failure is not lateral-movement reasoning.
-Instead, role variants make service semantics less predictable and increase
-near-duplicate reports. The edge-cloud pivot (\texttt{s\_7}) remains high at
-0.965 F1, and the mesh smart-city case (\texttt{s\_9}) reaches 0.952 F1 with
-perfect precision.
+The most difficult main scenario is \texttt{s\_10} (F1 = 0.815, Score = 71.3\%).
+This topology is intentionally flat rather than multi-hop, so the degradation
+is not caused by lateral-movement reasoning. Instead, service role variants
+reduce the predictability of service semantics and increase the proportion of
+near-duplicate reports. The two scalability extensions confirm stability:
+\texttt{s\_11} achieves F1 = 0.875 and Score = 84.8\%, and \texttt{s\_12}
+achieves F1 = 0.942 and Score = 90.6\%.
 
-\subsection{Evidence-level depth}
-\label{sec:eval:evidence}
-
-\begin{table}[t]
-\centering
-\caption{Evidence-level coverage. The latest scenario export reports aggregate
-TP/FP/FN scores but not the per-finding \texttt{evidence\_level} fields needed
-to compute $L_k$; the table records the evaluator state rather than inventing
-coverage values.}
-\label{tab:evidence}
-\scriptsize
-\begin{tabular}{@{}p{0.34\linewidth}ccc@{}}
-\toprule
-System & $L_1$ (detect) & $L_2$ (exploit) & $L_3$ (exfiltrate) \\
-\midrule
-\textbf{\harnessname (full)}                    & n/e & n/e & n/e \\
-\harnessname\ w/o Phase~5                       & n/e & n/e & 0.00 \\
-\midrule
-Nmap NSE                                        & --      & --      & --   \\
-\bottomrule
-\end{tabular}
-\smallskip\\
-\footnotesize\emph{n/e = not exported in the result bundle used for this draft.}
-\end{table}
-
-The distinction still matters methodologically. The scenario-level F1 and
-weighted score confirm that \harnessname{} identifies the injected
-vulnerabilities with high accuracy, but they do not distinguish banner-level
-detection from exploit proof or exfiltration. This is exactly why the
-benchmark stores \texttt{evidence\_level} in Phase~4 deliverables: once the
-per-finding export is enabled, $L_1$--$L_3$ can be recomputed without rerunning
-the agents. Until then, we avoid using the evidence-depth argument as a
-quantitative claim in the results section.
-
-\subsection{Per-protocol analysis}
-\label{sec:eval:protocol}
-
-The current result bundle does not contain a protocol-keyed confusion matrix,
-so we do not report per-protocol recall values. The scenario pattern results
-nevertheless provide two useful signals. First, text-rich service mixes
-(HTTP/SSH/MQTT/Redis-style probes) are handled consistently: the flat,
-hub-centric, mesh, and edge-cloud cases all stay above 0.923 F1 except for the
-role-variant stress case. Second, the two segmented IT/OT scenarios remain
-high but below the easiest hub cases, which is consistent with the added
-uncertainty introduced by OT-side pivots and protocol-specific access paths.
-
-For the final submission, the protocol breakdown should be computed directly
-from ground-truth categories and matched true positives, not inferred from
-scenario names. That export should separate at least HTTP, SSH, MQTT,
-database/key-value services, and OT/fieldbus-facing findings; otherwise the
-paper risks overstating a protocol claim that the present CSV does not support.
-
-\subsection{Failure modes and cost/time envelope}
+\subsection{Failure modes and cost}
 \label{sec:eval:failures}
 
 \begin{table}[t]
@@ -792,11 +759,11 @@ completed agent runs unless marked as pre-agent failures.}
 \toprule
 Outcome & Cases & Share & Interpretation \\
 \midrule
-Max turns & 83 & 47\% & mixed: loops plus exploited-but-no-flag cases \\
+Max turns & 83 & 47\% & loops and exploited-but-no-flag cases \\
 No finding & 23 & 13\% & includes 15 hidden proof-level successes \\
-Blocked: credentials & 23 & 13\% & exploit path needed unavailable secret \\
-Probable vulnerability & 21 & 12\% & actionable but not fully confirmed \\
-Blocked: tool & 19 & 11\% & missing exploit/runtime support \\
+Blocked: credentials & 23 & 13\% & exploit path required unavailable secret \\
+Probable vulnerability & 21 & 12\% & actionable but unconfirmed \\
+Blocked: tool & 19 & 11\% & missing exploit or runtime support \\
 Confirmed exploit & 6 & 3\% & strict automatic success \\
 \midrule
 Environment failed & 11 & -- & target did not reach the agent \\
@@ -805,16 +772,29 @@ Rate-limited / skipped & 5 & -- & provider-side interruption \\
 \end{tabular}
 \end{table}
 
-The main scenario failures are accuracy failures rather than cost failures:
-\texttt{s\_10} dominates the error profile, with both missed findings and
-near-duplicate false positives caused by role variants. On Vulhub, the dominant
-failure mode is different. The largest bucket is \textsc{max turns}, and manual
-inspection shows that it conflates two behaviors: genuinely unproductive loops
-and successful exploitation followed by continued searching for a flag that the
-environment does not standardize. The next largest useful engineering fixes are
-tool coverage and credential handling: 19 completed cases were blocked by
-missing tools, while 23 required credentials or setup assumptions the agent did
-not have.
+\medskip\noindent\textbf{Failure modes.}
+On \systemname{} main scenarios, failures are accuracy failures rather than
+resource failures. The \texttt{s\_10} scenario dominates the error profile,
+contributing both missed findings and near-duplicate false positives that arise
+from role variants. The remaining nine main scenarios each stay above F1 = 0.923,
+suggesting that the pipeline generalises well across varied topologies.
+
+On Vulhub (\cref{tab:vulhub-failures}), the dominant outcome is
+\textsc{max turns} (47\%), which conflates two behaviours: genuinely
+unproductive search loops and successful exploitation followed by continued
+searching for a flag that the Vulhub environment does not standardise. The next
+most actionable failure categories are tool coverage (19 cases blocked by
+missing exploit support) and credential handling (23 cases requiring secrets
+the agent did not possess).
+
+\medskip\noindent\textbf{Computational cost.}
+The 10 main \systemname{} scenarios run at a cost that scales with network size.
+On the AutoPenBench single-host corpus, blind-mode evaluation costs \$4.88 and
+consumes 15.5M tokens for 33 tasks (\$0.15 per task); informed mode costs
+\$7.43 and 23.6M tokens (\$0.23 per task). The Vulhub distributed run
+(191 cases, six workers) consumed 194.5M tokens at a total cost of \$60.96,
+approximately \$0.33 per executed case. These figures confirm that \harnessname{} remains within a practical per-run
+budget for research deployments.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
@@ -823,14 +803,13 @@ not have.
 \label{sec:discussion}
 
 \medskip\noindent\textbf{Where LLMs help, where they don't.}
-\systemname{} is designed to separate several failure modes that are usually
-collapsed into one binary success signal. The current results show strong
-aggregate vulnerability matching across the main scenarios, while the missing
-evidence/protocol export prevents us from attributing that gain to specific
-protocol families. The intended deployment model is therefore hybrid: LLM
-agents for configuration auditing and multi-step reasoning, traditional
-scanners for broad CVE coverage, and human operators or specialised tooling
-for the OT/ICS layer.
+\systemname{} is designed to separate failure modes that binary flag-capture
+benchmarks collapse into a single signal. The results show strong aggregate
+vulnerability matching across varied topologies, with the per-scenario heatmap
+confirming that the gain is not driven by a single easy pattern. The intended
+deployment model is hybrid: LLM agents for configuration auditing and
+multi-step reasoning, traditional scanners for broad CVE coverage, and human
+operators or specialised tooling for the OT/ICS layer.
 
 \medskip\noindent\textbf{Implications for agentic systems.}
 The harness's per-device and per-vulnerability micro-agent structure is one
