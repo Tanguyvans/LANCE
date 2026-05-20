@@ -543,38 +543,48 @@ The two additional scalability scenarios (\texttt{s\_11}, \texttt{s\_12}) are
 consistent with this trend, reaching a mean F1 of 0.909 and a mean weighted
 score of 87.7\%.
 
-\begin{figure}[t]
+\begin{figure}[h!]
   \centering
-  \resizebox{0.98\linewidth}{!}{%
   \begin{tikzpicture}[
     font=\scriptsize,
-    bar/.style={draw=black!55, line width=0.25pt, fill=blue!35},
-    grid/.style={draw=black!15, line width=0.2pt},
-    axis/.style={draw=black!70, line width=0.35pt}
+    ours/.style={draw=blue!80!black, line width=0.4pt, fill=blue!60},
+    base/.style={draw=gray!60,       line width=0.4pt, fill=gray!35},
+    best/.style={draw=gray!60,       line width=0.4pt, fill=gray!35, dashed},
+    grid/.style={draw=black!12, line width=0.2pt},
+    axis/.style={draw=black!55, line width=0.4pt}
   ]
-    \draw[axis] (0,0) -- (7.2,0);
-    \draw[axis] (0,0) -- (0,2.8);
-    \foreach \y/\lab in {0/0,.7/25,1.4/50,2.1/75,2.8/100} {
-      \draw[grid] (0,\y) -- (7.2,\y);
-      \node[anchor=east] at (-0.08,\y) {\lab};
+    \draw[axis] (0,0) -- (9.0,0);
+    \draw[axis] (0,0) -- (0,3.85);
+    \foreach \y/\lab in {0/0, 0.875/25, 1.75/50, 2.625/75, 3.5/100} {
+      \draw[grid] (0,\y) -- (9.0,\y);
+      \node[anchor=east,font=\tiny] at (-0.1,\y) {\lab};
     }
-
-    \foreach \x/\h/\val/\lab in {
-      .35/2.63/{94.0}/{LANCE},
-      1.75/.88/{31.2}/{CAI},
-      3.15/.90/{32.1}/{PentGPT},
-      4.55/.88/{31.6}/{VulnBot},
-      5.95/1.10/{39.3}/{best}
-    } {
-      \draw[bar] (\x,0) rectangle +(0.46,\h);
-      \node[anchor=south] at (\x+0.23,\h+0.04) {\val};
-      \node[anchor=north, align=center] at (\x+0.23,-0.12) {\lab};
-    }
-    \node[anchor=west] at (5.0,2.55) {mean F1 (\%)};
+    \node[rotate=90,anchor=south,font=\tiny] at (-0.55,1.75) {Mean F1 (\%)};
+    % LANCE
+    \draw[ours] (0.25,0) rectangle +(0.9,3.290);
+    \node[anchor=south,font=\scriptsize\bfseries,text=blue!70!black] at (0.70,3.33) {94.0};
+    \node[anchor=north,font=\scriptsize] at (0.70,-0.14) {\harnessname{}};
+    % CAI
+    \draw[base] (2.0,0) rectangle +(0.9,1.092);
+    \node[anchor=south,font=\scriptsize] at (2.45,1.13) {31.2};
+    \node[anchor=north,font=\scriptsize] at (2.45,-0.14) {CAI};
+    % PentGPT
+    \draw[base] (3.75,0) rectangle +(0.9,1.124);
+    \node[anchor=south,font=\scriptsize] at (4.20,1.16) {32.1};
+    \node[anchor=north,font=\scriptsize] at (4.20,-0.14) {PentGPT};
+    % VulnBot
+    \draw[base] (5.5,0) rectangle +(0.9,1.106);
+    \node[anchor=south,font=\scriptsize] at (5.95,1.14) {31.6};
+    \node[anchor=north,font=\scriptsize] at (5.95,-0.14) {VulnBot};
+    % Best baseline (oracle)
+    \draw[best] (7.25,0) rectangle +(0.9,1.376);
+    \node[anchor=south,font=\scriptsize] at (7.70,1.41) {39.3};
+    \node[anchor=north,font=\scriptsize,align=center] at (7.70,-0.14) {Best\\baseline};
   \end{tikzpicture}
-  }
-  \caption{Mean F1 on the 10 main \systemname{} scenarios. \harnessname{}
-  outperforms each adapted LLM-pentest baseline and the per-scenario oracle best.}
+  \caption{Mean F1 on the 10 main \systemname{} scenarios (MiniMax-M2.7).
+  \harnessname{} (blue) outperforms each adapted LLM-pentest baseline and the
+  per-scenario oracle best (dashed). The gap of 0.547 F1 points is consistent
+  across all 10 scenarios.}
   \label{fig:baselines}
 \end{figure}
 
@@ -686,45 +696,61 @@ reasoning rather than single-host exploit chaining.
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
 
-\begin{figure}[t]
+\begin{figure}[h!]
   \centering
-  \resizebox{0.98\linewidth}{!}{%
   \begin{tikzpicture}[font=\tiny]
-    \def\cellw{0.53}
-    \def\cellh{0.34}
-    \foreach \c/\sid in {0/s1,1/s2,2/s3,3/s4,4/s5,5/s6,6/s7,7/s8,8/s9,9/s10} {
-      \node[rotate=45, anchor=west] at (\c*\cellw+0.12,0.25) {\sid};
+    \def\cellw{0.60}
+    \def\cellh{0.42}
+    % column headers
+    \foreach \c/\sid in {0/S1,1/S2,2/S3,3/S4,4/S5,5/S6,6/S7,7/S8,8/S9,9/S10} {
+      \node[rotate=40, anchor=west, font=\scriptsize] at (\c*\cellw+0.08,0.32) {\sid};
     }
-    \foreach \r/\sys in {0/LANCE,1/CAI,2/PentGPT,3/VulnBot} {
-      \node[anchor=east] at (-0.12,-\r*\cellh-.18) {\sys};
+    % row labels
+    \foreach \r/\sys in {0/\textbf{LANCE},1/CAI,2/PentGPT,3/VulnBot} {
+      \node[anchor=east, font=\scriptsize] at (-0.08,-\r*\cellh-\cellh/2) {\sys};
     }
+    % separator line between LANCE and baselines
+    \draw[black!40, line width=0.6pt] (0,-\cellh) -- (10*\cellw,-\cellh);
+    % LANCE row (blue scale, white text)
     \foreach \c/\v in {0/92,1/92,2/95,3/94,4/100,5/100,6/97,7/93,8/95,9/82} {
-      \draw[fill=blue!\v, draw=white] (\c*\cellw,0) rectangle ++(\cellw,\cellh);
-      \node[text=white] at (\c*\cellw+.265,-.17) {\v};
+      \draw[fill=blue!\v!20!white, draw=black!20, line width=0.2pt]
+        (\c*\cellw,0) rectangle ++(\cellw,-\cellh);
+      \node[text=white, font=\bfseries\tiny] at (\c*\cellw+\cellw/2,-\cellh/2) {\v};
     }
-    \foreach \c/\v in {0/15,1/35,2/0,3/36,4/50,5/40,6/50,7/55,8/17,9/14} {
-      \draw[fill=orange!\v, draw=white] (\c*\cellw,-1*\cellh) rectangle ++(\cellw,\cellh);
-      \node[text=black] at (\c*\cellw+.265,-1*\cellh-.17) {\v};
+    % CAI row (orange scale, floor at 8 for visibility)
+    \foreach \c/\v/\cv in
+      {0/15/15,1/35/35,2/0/8,3/36/36,4/50/50,5/40/40,6/50/50,7/55/55,8/17/17,9/14/14} {
+      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+        (\c*\cellw,-\cellh) rectangle ++(\cellw,-\cellh);
+      \node[font=\tiny] at (\c*\cellw+\cellw/2,-\cellh-\cellh/2) {\v};
     }
-    \foreach \c/\v in {0/0,1/14,2/0,3/42,4/64,5/52,6/45,7/35,8/43,9/27} {
-      \draw[fill=orange!\v, draw=white] (\c*\cellw,-2*\cellh) rectangle ++(\cellw,\cellh);
-      \node[text=black] at (\c*\cellw+.265,-2*\cellh-.17) {\v};
+    % PentGPT row
+    \foreach \c/\v/\cv in
+      {0/0/8,1/14/14,2/0/8,3/42/42,4/64/64,5/52/52,6/45/45,7/35/35,8/43/43,9/27/27} {
+      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+        (\c*\cellw,-2*\cellh) rectangle ++(\cellw,-\cellh);
+      \node[font=\tiny] at (\c*\cellw+\cellw/2,-2*\cellh-\cellh/2) {\v};
     }
-    \foreach \c/\v in {0/15,1/45,2/0,3/44,4/50,5/40,6/45,7/35,8/29,9/14} {
-      \draw[fill=orange!\v, draw=white] (\c*\cellw,-3*\cellh) rectangle ++(\cellw,\cellh);
-      \node[text=black] at (\c*\cellw+.265,-3*\cellh-.17) {\v};
+    % VulnBot row
+    \foreach \c/\v/\cv in
+      {0/15/15,1/45/45,2/0/8,3/44/44,4/50/50,5/40/40,6/45/45,7/35/35,8/29/29,9/14/14} {
+      \draw[fill=orange!\cv!8!white, draw=black!20, line width=0.2pt]
+        (\c*\cellw,-3*\cellh) rectangle ++(\cellw,-\cellh);
+      \node[font=\tiny] at (\c*\cellw+\cellw/2,-3*\cellh-\cellh/2) {\v};
     }
-    \draw[black!60] (0,0) rectangle (10*\cellw,-4*\cellh);
-    \node[anchor=west] at (5.55,-.25) {0};
-    \shade[left color=gray!15,right color=blue!70,draw=black!30]
-      (5.55,-.55) rectangle (7.15,-.35);
-    \node[anchor=west] at (7.25,-.25) {100};
+    % outer border
+    \draw[black!50, line width=0.5pt] (0,0) rectangle (10*\cellw,-4*\cellh);
+    % legend
+    \node[font=\tiny, anchor=east] at (10*\cellw+0.05,-4*\cellh-0.30) {F1 (\%):};
+    \node[font=\tiny, anchor=west] at (10*\cellw+0.05,-4*\cellh-0.30) {0};
+    \shade[left color=white, right color=blue!80, draw=black!30, line width=0.2pt]
+      (10*\cellw+0.45,-4*\cellh-0.42) rectangle +(1.2,0.22);
+    \node[font=\tiny, anchor=west] at (10*\cellw+1.70,-4*\cellh-0.30) {100};
   \end{tikzpicture}
-  }
-  \caption{Per-scenario F1 heatmap on the 10 main scenarios (cell values are
-  percentages). The hardest case for \harnessname{} is \texttt{s\_10}, a flat
-  role-variant stress scenario, while the hub-centric \texttt{s\_5}--\texttt{s\_6}
-  cases are solved perfectly.}
+  \caption{Per-scenario F1 heatmap on the 10 main \systemname{} scenarios (values
+  in \%). \harnessname{} (blue, top row) achieves perfect F1 on hub-centric
+  topologies (\texttt{S5}, \texttt{S6}) and is weakest on the flat role-variant
+  scenario \texttt{S10}. Baselines (orange) are uniformly lower.}
   \label{fig:heatmap}
 \end{figure}
 
