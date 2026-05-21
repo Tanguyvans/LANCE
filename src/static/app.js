@@ -1237,7 +1237,7 @@ async function stopRun() {
 async function deployScenario() {
   const scenarioId = document.getElementById('sel-scenario').value;
   if (!scenarioId) return;
-  if (_state.running) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
+  if (document.getElementById('btn-start').disabled) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
 
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
