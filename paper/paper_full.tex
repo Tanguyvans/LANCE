@@ -87,7 +87,7 @@ achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
 CVSS-weighted score. On external single-host corpora, a blind AutoPenBench
 run captures 7/33 flags (21.2\%), while an informed run captures 9/33
 (27.3\%); a 191-case informed Vulhub run gives a conservative 39--48\%
-useful-finding lower bound, and a separate 328-case blind run yields 29\%.
+useful-finding lower bound, and a target-matched blind run yields 29.6\%.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -152,7 +152,7 @@ This section reviews prior work relevant to our approach. We first survey LLM-dr
 
 \medskip\noindent\textbf{Multi-agent pipelines.} \textsc{VulnBot}~\cite{vulnbot25} decomposes pentesting into reconnaissance, scanning, and exploitation over a \emph{Penetration Task Graph}, gaining 21 points end-to-end over its single-agent baseline ($30.3\%$ on AutoPenBench with Llama~3.1-405B). \textsc{AutoPentester}~\cite{autopentester25} adds RAG across five agents for a $+27\%$ subtask gain over \textsc{PentestGPT} on HackTheBox. \textsc{PentestAgent}~\cite{pentestagent25} and \textsc{CAI}~\cite{cai25} generalise this blueprint with modular tool use and a public leaderboard.
 
-\medskip\noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $72.72\%$ task completion and $79.17\%$ best-of-five subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, gaining more than $20\%$ on Vulhub over a Claude Code + Sonnet~4.5 baseline.
+\medskip\noindent\textbf{Model-level improvements.} \textsc{Pentest-R1}~\cite{pentestr125} applies two-stage reinforcement learning on reasoning traces. \textsc{xOffense}~\cite{xoffense25} fine-tunes Qwen3-32B on Chain-of-Thought penetration testing data, reaching $72.72\%$ task completion and $79.17\%$ best-of-five subtask completion on AutoPenBench. \textsc{CheckMate}~\cite{checkmate25} couples an LLM with a \emph{Classical Planning+} module, reaching an interactive shell (milestone M7) on 88\% of 120 Vulhub targets.
 
 \medskip\noindent\textbf{Common limitation.} Despite this diversity, reported
 evaluations remain single-target or challenge-level. They do not score subnet
@@ -241,7 +241,7 @@ CheckMate~\cite{checkmate25}         & 1 host  & \xmark & task-step & \xmark \\
 \midrule
 AutoPenBench~\cite{autopenbench24}   & 1 host  & \xmark & flag      & \xmark \\
 CAIBench / RCTF2~\cite{caibench25}   & 1 host  & partial & flag     & \xmark \\
-Vulhub~\cite{vulhub}                 & 1 host  & \xmark & flag      & \xmark \\
+Vulhub~\cite{vulhub}                 & 1 host  & \xmark & none      & \xmark \\
 Ludus + GOAD~\cite{ludus,goad}       & network & \xmark & none      & \xmark \\
 \midrule
 \textbf{\systemname\ (ours)} & \textbf{network} & \textbf{\cmark} & \textbf{per-vuln} & \textbf{\cmark} \\
@@ -668,57 +668,58 @@ topology prior, per-device decomposition, and lateral-movement phases that
 distinguish \harnessname{} on \systemname{}. The Vulhub results therefore
 evaluate the harness's single-target exploitation component, not the full
 multi-device architecture.
-Prior Vulhub evaluations use different target sets and oracles, so we treat
-them as architecture context rather than a controlled leaderboard. PentestAgent
-reports 74.2\% full-process success on 67 VulHub targets using a multi-agent
-RAG pipeline~\cite{pentestagent25}. CurriculumPT reports exploit success rates
-of 24.0\% for AutoPT, 36.0\% for VulnBot, 42.0\% for PentestAgent, and 60.0\%
-for its curriculum-guided multi-agent system on a 15-task Vulhub hold-out
-with GPT-4o-mini~\cite{curriculumpt25}. CheckMate samples 120 anonymized
-Vulhub containers and reports a $+20\%$ relative gain over Claude~Code +
-Sonnet~4.5~\cite{checkmate25}.
-Table~\ref{tab:vulhub-transfer} summarizes the two final Vulhub runs available
-for this study. They cover \emph{different} case sets and are complementary in
-scope, not a blind/informed ablation.
+Table~\ref{tab:vulhub-transfer} compares \harnessname{} with published Vulhub
+evaluations. The comparison is not controlled: target sets, models, and success
+oracles differ across papers. We therefore report the target set and oracle for
+each row. Our 191-case runs cover the full CVE-tagged Vulhub snapshot used in
+our evaluation, without manual pre-selection by difficulty. The reported
+\emph{useful finding} metric requires machine-readable exploit evidence in
+\texttt{proof.json}, so it is not directly interchangeable with shell-access or
+full-process success rates.
 
 \begin{table}[h!]
 \centering
-\caption{Vulhub transfer runs.}
+\caption{Vulhub results and context.}
 \label{tab:vulhub-transfer}
-\setlength{\tabcolsep}{3pt}
+\setlength{\tabcolsep}{2.5pt}
 \scriptsize
-\begin{tabular}{@{}lrrlr@{}}
+\begin{tabular}{@{}lllr@{}}
 \toprule
-Setting & Cases & Completed & Useful findings & Strict \\
+System & Target set & Protocol / oracle & Result \\
 \midrule
-Informed & 191 & 175 & 69 auto; 84 reviewed & 6 \\
-Blind & 328 & 306 & 90 reported & 6 \\
+PentestAgent~\cite{pentestagent25} & 67 VulHub & full-process success & 74.2\% \\
+CheckMate~\cite{checkmate25} & 120 Vulhub & shell access (M7) & 88\% \\
+\midrule
+\textbf{\harnessname{} informed} & 191 Vulhub & useful findings & 39.4\% \\
+\textbf{\harnessname{} blind}    & 191 Vulhub & useful findings & 29.6\% \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-Informed mode receives the case identifier and vulnerability label. The blind
-run is a distinct larger CVE superset, not the same cases without hints.
-``Strict'' counts automatically labelled confirmed exploits. Costs/tokens are
-\$60.96/194.5M for informed and \$97.29/311.9M for blind.}
+Rows use the original papers' target selections and success protocols.
+PentestAgent reports a 67-target benchmark. CheckMate uses an 11-milestone
+oracle; M7 denotes establishing an interactive shell with user-level privileges,
+the closest analogue to exploit success.
+Both \harnessname{} rows run on the \emph{same} 191 CVE-tagged environments:
+informed mode provides the case identifier and vulnerability label; blind mode
+provides only the target endpoint and exposed service metadata.}
 \end{table}
 
-In the 191-case informed run, 175 cases completed (11 failed during environment
-setup, 3 hit provider rate limits, 2 tripped the rate-limit breaker). The
-automatic verdict marks 69/175 as useful findings (39\%); manual review of
-\texttt{proof.json} identifies 15 additional cases where the agent held exploit
-evidence but self-reported \textsc{no finding}, raising the conservative lower
-bound to 84/175 (48\%). In the 328-case blind run on a distinct superset of CVE
-environments, 306 cases completed, 18 failed during agent execution, and 4
-failed during environment setup. This blind run was executed in two batches:
-124 cases skipped after the first rate-limit breaker were replayed once the API
-quota recovered. The final aggregate reports useful findings on 90/306 cases
-(29\%) and six strictly confirmed exploits. The gap between automatic verdicts
-and manual review underscores the difficulty of oracle design for heterogeneous
-Vulhub tasks. We therefore use Vulhub as evidence that the exploitation
-component transfers to established vulnerable services, while the architectural
-advantage of \harnessname{} is evaluated on the multi-device \systemname{}
-scenarios.
+Both runs cover the same 191 CVE-tagged Vulhub environments; they differ only
+in context policy. In the informed run, 175/191 cases completed (11 failed
+during environment setup, 3 hit provider rate limits, 2 tripped the
+rate-limit breaker); the automatic verdict marks 69/175 as useful findings
+(39.4\%), and manual review raises this to 84/175 (48\%). In the blind run on
+the same 191 cases, 169/191 completed (18 agent failures, 4 environment
+failures); useful findings on 50/169 (29.6\%). The 10-point gap between
+informed and blind modes quantifies the value of providing vulnerability
+context to the agent. The gap between automatic and manual verdicts in the
+informed run underscores the difficulty of oracle design for heterogeneous
+Vulhub tasks. For reference, CurriculumPT~\cite{curriculumpt25} reports exploit success rates
+of 24--60\% across four systems on a 15-case hold-out whose target selection is
+not disclosed. We therefore use Vulhub as transfer evidence for the
+single-target exploitation component, while the architectural advantage of
+\harnessname{} is evaluated on the multi-device \systemname{} scenarios.
 
 \subsection{Per-scenario analysis}
 \label{sec:eval:perscenario}
@@ -807,14 +808,6 @@ The harness uses only standard pentest tools already in widespread use.
 We judge the net societal benefit (reproducible evaluation of LLM
 pentest agents, and a concrete evaluation surface for future defenders)
 to exceed the incremental misuse risk.
-
-\medskip\noindent\textbf{IRB / human subjects.}
-No human subjects are involved. No personal data is collected or processed.
-
-\medskip\noindent\textbf{LLM costs and environmental footprint.}
-We report token-estimated cost, actual API billing, and wall-clock time with
-the experimental results. Energy usage is not claimed unless measured from
-provider- or host-side telemetry.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §10 Conclusion
