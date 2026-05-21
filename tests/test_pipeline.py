@@ -226,6 +226,53 @@ class TestGitCommit:
         assert meta["model"] == "test-model"
 
 
+class TestBlindMode:
+    """Blind mode: scenario VMs deployed, but topology hidden from the agent."""
+
+    def test_init_sets_target_network_when_blind_with_scenario(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider, scenario_id=1, blind=True)
+        assert pipeline.blind is True
+        assert pipeline.target_network == "192.168.100.0/24"
+
+    def test_init_no_target_network_when_blind_without_scenario(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider, blind=True)
+        assert pipeline.target_network is None
+
+    def test_init_preserves_explicit_target_network(self, mock_provider, output_dir):
+        pipeline = Pipeline(
+            provider=mock_provider, scenario_id=1, blind=True,
+            target_network="10.0.0.0/24",
+        )
+        assert pipeline.target_network == "10.0.0.0/24"
+
+    def test_blind_skips_scenario_context(self, mock_provider, output_dir):
+        """In blind mode, _load_scenario_context must not be called — otherwise
+        the agent would receive a list of all target IPs through the prompt."""
+        pipeline = Pipeline(
+            provider=mock_provider, scenario_id=1, blind=True, dry_run=True,
+            phases=[],  # don't run any agents
+        )
+        with patch("src.agent.tools.graph_tools.load_discovery_context", return_value={
+            "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
+        }), patch.object(Pipeline, "_load_scenario_context") as mock_ctx, \
+             patch.object(Pipeline, "_save_ground_truth"):
+            pipeline.run()
+        mock_ctx.assert_not_called()
+
+    def test_non_blind_loads_scenario_context(self, mock_provider, output_dir):
+        """Sanity check: without blind, the scenario context is loaded."""
+        pipeline = Pipeline(
+            provider=mock_provider, scenario_id=1, blind=False, dry_run=True,
+            phases=[],
+        )
+        with patch("src.agent.tools.graph_tools.load_scenario_topology", return_value={
+            "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
+        }), patch.object(Pipeline, "_load_scenario_context", return_value="") as mock_ctx, \
+             patch.object(Pipeline, "_save_ground_truth"):
+            pipeline.run()
+        mock_ctx.assert_called_once_with(1)
+
+
 class TestDeviceAgents:
     """Tests for the per-device sub-agent flow."""
 

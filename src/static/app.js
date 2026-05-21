@@ -1153,8 +1153,8 @@ async function startRun() {
   const body = {
     model,
     provider,
-    scenario_id: blindMode ? null : scenario,
-    target_network: blindMode ? '192.168.100.0/24' : null,
+    scenario_id: scenario,
+    blind: blindMode,
     phases: phases.length < 6 ? phases : null,
     auto_teardown: teardown,
     max_cost_usd: maxCost,
@@ -1209,10 +1209,11 @@ async function startBatch() {
   setCost(0);
   clearPhasePills();
 
+  const blind = document.getElementById('cb-batch-blind-mode')?.checked || false;
   const res = await fetch('/api/pipeline/batch', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null }),
+    body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null, blind }),
   });
   if (!res.ok) {
     const err = await res.json();

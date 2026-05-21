@@ -56,6 +56,8 @@ class StartRequest(BaseModel):
     target_network: str | None = None  # CIDR e.g. "192.168.1.0/24"
     # Deploy-only mode: run Ansible deploy+inject but skip all pentest phases
     deploy_only: bool = False
+    # Blind mode: deploy scenario VMs but hide topology from agent (forces discovery)
+    blind: bool = False
     # Custom mode fields
     architecture: str | None = None
     posture: str | None = None       # "vulnerable" | "hardened"
@@ -99,6 +101,7 @@ def _pipeline_thread(req: StartRequest):
             phase_models=req.phase_models,
             custom_config=custom_config,
             target_network=req.target_network,
+            blind=req.blind,
         )
 
         def callback(event: dict):
@@ -229,6 +232,7 @@ class BatchRequest(BaseModel):
     model: str = "google/gemini-2.0-flash-001"
     provider: str = "openrouter"
     phases: list[int] | None = None
+    blind: bool = False        # Deploy each scenario but hide topology from agent
 
 
 def _batch_thread(req: BatchRequest):
@@ -282,6 +286,7 @@ def _batch_thread(req: BatchRequest):
                 phases=req.phases or None,
                 scenario_id=int(sid) if sid.isdigit() else sid,
                 auto_teardown=True,
+                blind=req.blind,
             )
 
             def make_callback(scenario_id):

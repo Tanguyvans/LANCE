@@ -232,6 +232,7 @@ class Pipeline:
         phase_models: dict[int | str, str] | None = None,
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
         target_network: str | None = None,  # CIDR for Docker discovery mode e.g. "192.168.1.0/24"
+        blind: bool = False,  # Deploy scenario VMs but hide topology from agent (force discovery)
     ):
         self.provider = provider
         self.dry_run = dry_run
@@ -241,7 +242,12 @@ class Pipeline:
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
         self.custom_config = custom_config
+        self.blind = blind
         self.target_network = target_network
+        if self.blind and self.scenario_id is not None and self.target_network is None:
+            # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
+            # on the same /24 via the OpenWrt router's WAN, then must pivot.
+            self.target_network = BENCHMARK_SUBNET
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
 
@@ -336,12 +342,17 @@ class Pipeline:
                 "top_risk": lab["top_risk"],
             })
 
-        # Load benchmark scenario context if specified
+        # Load benchmark scenario context if specified.
+        # In blind mode, we deploy the scenario but hide the topology — the agent
+        # must discover targets itself, so scenario_context stays empty.
         if self.scenario_id is not None:
-            scenario_context = self._load_scenario_context(self.scenario_id)
-            if scenario_context:
-                self.context["scenario_context"] = scenario_context
-                print(f"  Benchmark scenario: S{self.scenario_id} — {scenario_context.splitlines()[0]}")
+            if not self.blind:
+                scenario_context = self._load_scenario_context(self.scenario_id)
+                if scenario_context:
+                    self.context["scenario_context"] = scenario_context
+                    print(f"  Benchmark scenario: S{self.scenario_id} — {scenario_context.splitlines()[0]}")
+            else:
+                print(f"  Benchmark scenario: S{self.scenario_id} (BLIND — topology hidden, discovery on {self.target_network})")
 
             # Save scenario metadata for evaluator
             meta = {
