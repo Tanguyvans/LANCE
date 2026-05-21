@@ -602,6 +602,23 @@ a single favorable topology.
   \label{fig:overall-f1}
 \end{figure}
 
+At scenario level, the same pattern holds. \harnessname{} exceeds every
+adapted baseline in all 10 comparison scenarios. It is exact on the two
+hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}), while the
+strongest baseline reaches only 0.640 and 0.520 F1 on those cases. Performance
+remains high on segmented IT/OT and edge-cloud settings (\texttt{s\_4},
+\texttt{s\_7}, \texttt{s\_8}, \texttt{s\_9}), where the remaining errors
+mostly come from deeper pivots and near-duplicate or slightly misclassified
+findings.
+
+The hardest comparison scenario is \texttt{s\_10} (F1 = 0.815, Score =
+71.3\%). This case is intentionally flat rather than multi-hop, so the drop
+does not point to a failure of lateral-movement reasoning. Instead,
+service-role variants make service semantics less predictable and increase
+duplicate reporting. The two scalability extensions follow the same trend:
+\texttt{s\_11} reaches F1 = 0.875 and Score = 84.8\%, while \texttt{s\_12}
+reaches F1 = 0.942 and Score = 90.6\%.
+
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
 
@@ -720,29 +737,6 @@ of 24--60\% across four systems on a 15-case hold-out whose target selection is
 not disclosed. We therefore use Vulhub as transfer evidence for the
 single-target exploitation component, while the architectural advantage of
 \harnessname{} is evaluated on the multi-device \systemname{} scenarios.
-
-\subsection{Per-scenario analysis}
-\label{sec:eval:perscenario}
-
-The per-scenario breakdown in Table~\ref{tab:scenario-scores} reveals a clear
-pattern: \harnessname{} remains high across heterogeneous topology types, while
-the adapted baselines only partially cover the injected vulnerability sets. The
-hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}) are solved cleanly
-by \harnessname{}: both reach F1 = 1.000, whereas the strongest adapted
-baseline on these scenarios reaches 0.640 and 0.520. Segmented IT/OT scenarios
-remain strong but not perfect (\texttt{s\_4}: F1 = 0.944, \texttt{s\_8}: F1 =
-0.933), with residual errors caused by deeper pivots that increase the chance
-of duplicate or slightly misclassified findings. The edge-cloud pivot
-(\texttt{s\_7}) stays high at F1 = 0.965, and the mesh smart-city case
-(\texttt{s\_9}) reaches F1 = 0.952 with no false positives.
-
-The most difficult comparison scenario is \texttt{s\_10} (F1 = 0.815, Score = 71.3\%).
-This topology is intentionally flat rather than multi-hop, so the degradation
-is not caused by lateral-movement reasoning. Instead, service role variants
-reduce the predictability of service semantics and increase the proportion of
-near-duplicate reports. The two scalability extensions show similar behavior:
-\texttt{s\_11} achieves F1 = 0.875 and Score = 84.8\%, and \texttt{s\_12}
-achieves F1 = 0.942 and Score = 90.6\%.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
