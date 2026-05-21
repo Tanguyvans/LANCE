@@ -86,8 +86,8 @@ independently from model choice. On the 10 main scenarios, \harnessname{}
 achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
 CVSS-weighted score. On external single-host corpora, a blind AutoPenBench
 run captures 7/33 flags (21.2\%), while an informed run captures 9/33
-(27.3\%); a 191-case informed Vulhub run gives a conservative 39--48\%
-useful-finding lower bound, and a target-matched blind run yields 29.6\%.
+(27.3\%); a 191-case informed Vulhub run yields 39.4\% useful findings,
+and a target-matched blind run yields 29.6\%.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -728,13 +728,13 @@ during environment setup, 3 hit provider rate limits, 2 tripped the
 rate-limit breaker); the automatic verdict marks 69/175 as useful findings
 (39.4\%), and manual review raises this to 84/175 (48\%). In the blind run on
 the same 191 cases, 169/191 completed (18 agent failures, 4 environment
-failures); useful findings on 50/169 (29.6\%). The 10-point gap between
+failures); useful findings on 50/169 (29.6\%). The approximately 10-point gap between
 informed and blind modes quantifies the value of providing vulnerability
 context to the agent. The gap between automatic and manual verdicts in the
 informed run underscores the difficulty of oracle design for heterogeneous
 Vulhub tasks. For reference, CurriculumPT~\cite{curriculumpt25} reports exploit success rates
 of 24--60\% across four systems on a 15-case hold-out whose target selection is
-not disclosed. We therefore use Vulhub as transfer evidence for the
+not disclosed, precluding a direct comparison. We therefore use Vulhub as transfer evidence for the
 single-target exploitation component, while the architectural advantage of
 \harnessname{} is evaluated on the multi-device \systemname{} scenarios.
 
