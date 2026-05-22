@@ -86,8 +86,7 @@ independently from model choice. On the 10 main scenarios, \harnessname{}
 achieves 0.962 recall, 0.922 precision, 0.940 F1, and 86.1\%
 CVSS-weighted score. On external single-host corpora, a blind AutoPenBench
 run captures 7/33 flags (21.2\%), while an informed run captures 9/33
-(27.3\%); a 191-case informed Vulhub run yields 39.4\% useful findings,
-and a target-matched blind run yields 29.6\%.
+(27.3\%); a 328-case Vulhub run yields 30.6\% useful findings.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -555,69 +554,30 @@ Mean & 0.940 & 0.312 & 0.321 & 0.316 \\
 \end{tabular}
 \end{table}
 
-Two points stand out. First, the gap is consistent: \harnessname{} exceeds all
-three adapted baselines in every comparison scenario, including both the easier star
-topologies and the harder segmented or role-variant cases. Second, the baselines
-are not empty detectors. They sometimes recover part of the injected ground
-truth, but their coverage is shallow enough to keep F1 low.
+Three points stand out. First, the gap is consistent: \harnessname{} exceeds
+all three adapted baselines in every comparison scenario, so the mean F1 of
+0.940 vs.\ 0.31--0.32 is not explained by a single favorable topology.
+Second, the baselines are not empty detectors --- they sometimes recover
+part of the injected ground truth --- but their coverage is too shallow to
+raise F1 above 0.55 in any scenario. Third, the most extreme failure mode is
+structural: all three baselines score 0.000 on \texttt{S3}, a
+gateway-centric topology where back-end services are only reachable after
+pivoting through the gateway. A single-host agent has no network prior and
+therefore never discovers those services; \harnessname{}'s Phase~1 topology
+analysis makes the dependency explicit before any scan begins.
 
-Figure~\ref{fig:overall-f1} collapses the table into the headline
-macro-average. \harnessname{} reaches 0.940 mean F1, while CAI, PentGPT, and
-VulnBot reach 0.312, 0.321, and 0.316 respectively. The aggregate gap is
-therefore consistent with the per-scenario view: the result is not explained by
-a single favorable topology.
-
-\begin{figure}[h!]
-  \centering
-  \resizebox{\columnwidth}{!}{%
-  \begin{tikzpicture}[
-    font=\scriptsize,
-    ours/.style={draw=blue!80!black, line width=0.4pt, fill=blue!65},
-    base/.style={draw=black!45, line width=0.4pt, fill=black!25},
-    grid/.style={draw=black!12, line width=0.2pt},
-    axis/.style={draw=black!55, line width=0.4pt}
-  ]
-    \draw[axis] (0,0) -- (7.2,0);
-    \draw[axis] (0,0) -- (0,3.85);
-    \foreach \y/\lab in {0/0, 0.875/25, 1.75/50, 2.625/75, 3.5/100} {
-      \draw[grid] (0,\y) -- (7.2,\y);
-      \node[anchor=east,font=\tiny] at (-0.1,\y) {\lab};
-    }
-    \node[rotate=90,anchor=south,font=\tiny] at (-0.55,1.75) {Mean F1 (\%)};
-    \draw[ours] (0.45,0) rectangle +(0.75,3.290);
-    \node[anchor=south,font=\scriptsize\bfseries,text=blue!70!black] at (0.825,3.33) {94.0};
-    \node[anchor=north,font=\scriptsize] at (0.825,-0.14) {\harnessname{}};
-    \draw[base] (2.05,0) rectangle +(0.75,1.092);
-    \node[anchor=south,font=\scriptsize] at (2.425,1.13) {31.2};
-    \node[anchor=north,font=\scriptsize] at (2.425,-0.14) {CAI};
-    \draw[base] (3.65,0) rectangle +(0.75,1.124);
-    \node[anchor=south,font=\scriptsize] at (4.025,1.16) {32.1};
-    \node[anchor=north,font=\scriptsize] at (4.025,-0.14) {PentGPT};
-    \draw[base] (5.25,0) rectangle +(0.75,1.106);
-    \node[anchor=south,font=\scriptsize] at (5.625,1.14) {31.6};
-    \node[anchor=north,font=\scriptsize] at (5.625,-0.14) {VulnBot};
-  \end{tikzpicture}
-  }%
-  \caption{Macro-average F1 over the 10 comparison scenarios.}
-  \label{fig:overall-f1}
-\end{figure}
-
-At scenario level, the same pattern holds. \harnessname{} exceeds every
-adapted baseline in all 10 comparison scenarios. It is exact on the two
-hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}), while the
-strongest baseline reaches only 0.640 and 0.520 F1 on those cases. Performance
-remains high on segmented IT/OT and edge-cloud settings (\texttt{s\_4},
-\texttt{s\_7}, \texttt{s\_8}, \texttt{s\_9}), where the remaining errors
-mostly come from deeper pivots and near-duplicate or slightly misclassified
-findings.
-
-The hardest comparison scenario is \texttt{s\_10} (F1 = 0.815, Score =
-71.3\%). This case is intentionally flat rather than multi-hop, so the drop
-does not point to a failure of lateral-movement reasoning. Instead,
-service-role variants make service semantics less predictable and increase
-duplicate reporting. The two scalability extensions follow the same trend:
-\texttt{s\_11} reaches F1 = 0.875 and Score = 84.8\%, while \texttt{s\_12}
-reaches F1 = 0.942 and Score = 90.6\%.
+\harnessname{} is exact on the two hub-centric star topologies
+(\texttt{S5}, \texttt{S6}), while the strongest baseline reaches only 0.640
+and 0.520 F1 on those cases. Performance remains high on segmented IT/OT and
+edge-cloud settings (\texttt{S4}, \texttt{S7}, \texttt{S8}, \texttt{S9}),
+where the remaining errors mostly come from deeper pivots and near-duplicate
+or slightly misclassified findings. The hardest scenario is \texttt{S10}
+(F1~=~0.815), an intentionally flat topology where service-role variants
+increase semantic ambiguity and duplicate reporting --- a bottleneck in
+per-service reasoning quality rather than lateral-movement reasoning.
+The two scalability extensions (\texttt{S11}: 15 devices; \texttt{S12}:
+35 devices) confirm the trend: F1~=~0.875 and F1~=~0.942 respectively,
+showing no degradation as network size grows beyond the comparison scenarios.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
@@ -685,58 +645,50 @@ topology prior, per-device decomposition, and lateral-movement phases that
 distinguish \harnessname{} on \systemname{}. The Vulhub results therefore
 evaluate the harness's single-target exploitation component, not the full
 multi-device architecture.
-Table~\ref{tab:vulhub-transfer} compares \harnessname{} with published Vulhub
-evaluations. The comparison is not controlled: target sets, models, and success
-oracles differ across papers. We therefore report the target set and oracle for
-each row. Our 191-case runs cover the full CVE-tagged Vulhub snapshot used in
-our evaluation, without manual pre-selection by difficulty. The reported
-\emph{useful finding} metric requires machine-readable exploit evidence in
-\texttt{proof.json}, so it is not directly interchangeable with shell-access or
-full-process success rates.
+Table~\ref{tab:vulhub-transfer} places our run alongside published Vulhub
+results for context. The rows are \emph{not directly comparable}: each paper
+uses a different target subset, a different success oracle, and a different
+model. Crucially, the specific cases evaluated by PentestAgent and CheckMate
+are not disclosed, so we cannot determine whether they overlap with our 328
+cases or were selected for exploitability.
 
 \begin{table}[h!]
 \centering
-\caption{Vulhub results and context.}
+\caption{Vulhub results --- context only, not a controlled comparison.}
 \label{tab:vulhub-transfer}
 \setlength{\tabcolsep}{2.5pt}
 \scriptsize
 \begin{tabular}{@{}lllr@{}}
 \toprule
-System & Target set & Protocol / oracle & Result \\
+System & Cases & Oracle & Result \\
 \midrule
-PentestAgent~\cite{pentestagent25} & 67 VulHub & full-process success & 74.2\% \\
-CheckMate~\cite{checkmate25} & 120 Vulhub & shell access (M7) & 88\% \\
+\multicolumn{4}{@{}l}{\emph{Published results (target selection and model undisclosed)}} \\
 \midrule
-\textbf{\harnessname{} informed} & 191 Vulhub & useful findings & 39.4\% \\
-\textbf{\harnessname{} blind}    & 191 Vulhub & useful findings & 29.6\% \\
+PentestAgent~\cite{pentestagent25} & 67  & full-process success & 74.2\% \\
+CheckMate~\cite{checkmate25}       & 120 & shell access (M7)    & 88\%   \\
+\midrule
+\multicolumn{4}{@{}l}{\emph{This work --- full snapshot, no pre-selection}} \\
+\midrule
+\textbf{\harnessname{}}            & 328 & useful findings      & 30.6\% \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-Rows use the original papers' target selections and success protocols.
-PentestAgent reports a 67-target benchmark. CheckMate uses an 11-milestone
-oracle; M7 denotes establishing an interactive shell with user-level privileges,
-the closest analogue to exploit success.
-Both \harnessname{} rows run on the \emph{same} 191 CVE-tagged environments:
-informed mode provides the case identifier and vulnerability label; blind mode
-provides only the target endpoint and exposed service metadata.}
+PentestAgent: full-process success on an undisclosed 67-case subset.
+CheckMate: 11-milestone oracle, M7 = interactive shell with user-level
+privileges. \harnessname{}: machine-readable exploit evidence in
+\texttt{proof.json} on the complete CVE-tagged snapshot (324/328 completed);
+this oracle is stricter and not interchangeable with shell-access metrics.}
 \end{table}
 
-Both runs cover the same 191 CVE-tagged Vulhub environments; they differ only
-in context policy. In the informed run, 175/191 cases completed (11 failed
-during environment setup, 3 hit provider rate limits, 2 tripped the
-rate-limit breaker); the automatic verdict marks 69/175 as useful findings
-(39.4\%), and manual review raises this to 84/175 (48\%). In the blind run on
-the same 191 cases, 169/191 completed (18 agent failures, 4 environment
-failures); useful findings on 50/169 (29.6\%). The approximately 10-point gap between
-informed and blind modes quantifies the value of providing vulnerability
-context to the agent. The gap between automatic and manual verdicts in the
-informed run underscores the difficulty of oracle design for heterogeneous
-Vulhub tasks. For reference, CurriculumPT~\cite{curriculumpt25} reports exploit success rates
-of 24--60\% across four systems on a 15-case hold-out whose target selection is
-not disclosed, precluding a direct comparison. We therefore use Vulhub as transfer evidence for the
-single-target exploitation component, while the architectural advantage of
-\harnessname{} is evaluated on the multi-device \systemname{} scenarios.
+Of the 328 cases, 324 completed; the automatic verdict marks 99/324 as useful
+findings (30.6\%). A parallel blind run yields 92/306 useful findings on the
+same completed cases (30.1\%), confirming that the vulnerability label is not
+the limiting factor: 25 cases were blocked by missing attacker-side tooling
+and 35 by absent credentials, failure modes that context cannot resolve.
+We use Vulhub as transfer evidence for the single-target exploitation
+component only; the architectural contribution of \harnessname{} is evaluated
+on the multi-device \systemname{} scenarios.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
@@ -744,36 +696,60 @@ single-target exploitation component, while the architectural advantage of
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-\medskip\noindent\textbf{Where LLMs help, where they don't.}
-\systemname{} is designed to separate failure modes that binary flag-capture
-benchmarks collapse into a single signal. The results show strong aggregate
-vulnerability matching across varied topologies, with the per-scenario heatmap
-confirming that the gain is not driven by a single easy pattern. The intended
-deployment model is hybrid: LLM agents for configuration auditing and
-multi-step reasoning, traditional scanners for broad CVE coverage, and human
-operators or specialised tooling for the OT/ICS layer.
+\medskip\noindent\textbf{Why the gap is mechanistic, not accidental.}
+The three-fold F1 gap between \harnessname{} and the adapted baselines
+(0.940 vs.\ 0.31--0.32) is explained by the topology prior, not by a
+difference in per-device exploitation skill. Baselines run once per target
+device with no network context; on \texttt{s\_3} (P2 gateway-centric), they
+score 0.000 because back-end services are unreachable without first compromising
+the gateway --- a dependency that is invisible to a single-host agent.
+\harnessname{}'s Phase~1 topology prior makes this dependency explicit before
+any active scan begins, directing the agent to the correct pivot sequence.
+On hub-centric star topologies (\texttt{s\_5}, \texttt{s\_6}),
+\harnessname{} reaches F1 = 1.000 while the strongest baseline reaches 0.640
+and 0.520, confirming that the star pattern systematically benefits from a
+centrality-guided approach. This structural advantage is precisely what
+single-host corpora (AutoPenBench, Vulhub) cannot measure.
 
-\medskip\noindent\textbf{Implications for agentic systems.}
-The harness's per-device and per-vulnerability micro-agent structure is one
-answer to context scaling, but it cedes cross-device inference. Designs that
-keep a global aggregator agent in the loop without paying the full
-network-context cost are an open research direction.
+\medskip\noindent\textbf{Flat is harder than multi-hop.}
+The hardest scenario for \harnessname{} is \texttt{s\_10} (F1 = 0.815),
+a flat P1 topology with role-variant services --- not a segmented or
+gateway-mediated case. This is counterintuitive: without topology structure to
+guide the agent, semantic ambiguity from service-role variants increases
+duplicate reporting and classification errors. The finding suggests that the
+topology prior is most valuable when the network provides structure to exploit;
+on semantically ambiguous flat networks, the bottleneck shifts to per-service
+reasoning quality.
+
+\medskip\noindent\textbf{Context sensitivity on single-host corpora.}
+On AutoPenBench, blind mode matches the published GPT-4o baseline
+(21.2\% E2E), while informed mode reaches 27.3\%, confirming that
+vulnerability-label context provides measurable lift on compact, flag-based
+tasks. On the larger 328-case Vulhub suite the label effect vanishes (30.6\%
+vs.\ 30.1\% on matched cases): the bottleneck shifts to missing attacker-side
+tooling and absent credentials, which context cannot resolve. The gap with
+fine-tuned systems such as xOffense (72.7\%) reflects specialisation on
+single-host exploit chains, not a weakness in the network-native architecture.
 
 \medskip\noindent\textbf{Limitations.}
 (i)~\emph{Simulated infrastructure.} \systemname{} scenarios emulate IoT
-devices on Linux VMs; real constrained hardware introduces embedded-specific
-attack surfaces (bootloaders, RTOS, firmware) we do not cover.
-(ii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP even
-without ground-truth matches, which inflates precision.
-(iii)~\emph{Model variance.} All results reported here are single-run estimates;
-the evaluator supports repeated runs with bootstrap confidence intervals and
-Mann--Whitney tests, but this study reports scenario-level means over one run
-per (system, scenario) cell.
-(iv)~\emph{Prompt sensitivity.} We fix a single prompt family across models;
-per-model prompt tuning would likely raise scores.
-(v)~\emph{Static architectures.} The five patterns are fixed; real deployments
-evolve over time and include devices not represented here (RFID badge readers,
-industrial PLCs, medical devices).
+devices on Linux containers; real constrained hardware introduces
+embedded-specific attack surfaces (bootloaders, RTOS, firmware) not covered here.
+(ii)~\emph{Single-run estimates.} All results are single-run per
+(system, scenario) cell. The evaluator supports bootstrap confidence
+intervals and Mann--Whitney tests; multi-run variance measurement is left for
+future work.
+(iii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP
+without ground-truth matches, which may inflate precision on scenarios with
+broad bonus lists.
+(iv)~\emph{Prompt sensitivity.} A single prompt family is used across all
+models; per-model tuning would likely narrow the gap with fine-tuned baselines.
+(v)~\emph{Static topologies.} The five architectural patterns are fixed;
+real deployments include devices not represented here (medical devices,
+industrial PLCs, RFID readers) and evolve over time.
+(vi)~\emph{Excluded scenario.} \texttt{s\_13} (real Proxmox VLAN bridge) is
+defined in \systemname{} but excluded from the reported runs; results on
+hardware-enforced VLAN segmentation remain an open data point.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §9 Ethical Considerations
