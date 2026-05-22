@@ -1175,7 +1175,7 @@ class Pipeline:
                 _time.sleep(min(idx * 2, 6))
             _analyze_device(device)
 
-        with ThreadPoolExecutor(max_workers=min(len(surface), 6)) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, min(len(surface), 6))) as pool:
             pool.map(_analyze_with_stagger, enumerate(surface))
 
         print(f"\n{'=' * 60}")
@@ -1596,7 +1596,7 @@ class Pipeline:
                 _time.sleep(min(idx * 0.5, 5))  # 0.5s stagger, max 5s
             _run_single_exploit(task)
 
-        with ThreadPoolExecutor(max_workers=min(len(exploit_tasks), 8)) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), 8))) as pool:
             pool.map(_run_with_stagger, enumerate(exploit_tasks))
 
         print(f"\n{'=' * 60}")

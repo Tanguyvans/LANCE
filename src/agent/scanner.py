@@ -1183,7 +1183,7 @@ def run_scanner(
     print(f"PHASE 3a: DETERMINISTIC SCANNING ({len(devices)} devices)")
     print(f"{'=' * 60}\n")
 
-    with ThreadPoolExecutor(max_workers=min(len(devices), 6)) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, min(len(devices), 6))) as pool:
         for device_id, data in pool.map(_scan_one, devices):
             results[device_id] = data
 
