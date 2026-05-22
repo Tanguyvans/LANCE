@@ -555,6 +555,11 @@ function handleEvent(ev) {
   else if (t === 'inject_start') log('Injecting vulns...', 'info');
   else if (t === 'inject_done') log('Vulns injected ✓', 'success');
 
+  else if (t === 'teardown_done') {
+    log(`Teardown S${ev.scenario_id} ${ev.success ? 'done ✓' : 'failed ✗'}`, ev.success ? 'success' : 'error');
+    if (ev.success) loadTopology();
+  }
+
   else if (t === 'batch_start') {
     log(`Batch started — ${ev.total} scenarios: ${ev.ids.join(', ')}`, 'phase');
   }
@@ -733,7 +738,7 @@ async function loadScenarios() {
 // ── Run controls ───────────────────────────────────────────────────────────
 document.getElementById('btnRun').addEventListener('click', async () => {
   const body = { provider: 'openrouter', model: state.model };
-  if (state.scenario) body.scenario_id = parseInt(state.scenario);
+  if (state.scenario) body.scenario_id = String(state.scenario);
   const r = await fetchJSON('/api/pipeline/start', { method: 'POST', body: JSON.stringify(body) });
   if (r.status !== 'started') log(`Start failed: ${r.detail || JSON.stringify(r)}`, 'error');
 });
@@ -745,8 +750,9 @@ document.getElementById('btnStop').addEventListener('click', async () => {
 
 document.getElementById('btnTeardown').addEventListener('click', async () => {
   if (!state.scenario) { log('No scenario selected', 'warn'); return; }
-  await fetchJSON('/api/pipeline/teardown', { method: 'POST', body: JSON.stringify({ scenario_id: parseInt(state.scenario) }) });
-  log('Teardown requested', 'warn');
+  const res = await fetchJSON('/api/pipeline/teardown', { method: 'POST', body: JSON.stringify({ scenario_id: String(state.scenario) }) });
+  if (res.error) { log(`Teardown request failed (${res.error})`, 'error'); return; }
+  log(`Teardown S${state.scenario} requested...`, 'warn');
 });
 
 // ── Batch modal ────────────────────────────────────────────────────────────

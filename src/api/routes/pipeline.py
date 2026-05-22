@@ -397,6 +397,12 @@ async def teardown_scenario(req: TeardownRequest):
     if _state["running"]:
         raise HTTPException(status_code=409, detail="Pipeline is running — wait for it to finish before teardown")
 
+    # Ensure the SSE queue exists so `teardown_done` reaches a dashboard that
+    # has not started a run yet (a fresh page never created the queue).
+    if _state.get("queue") is None:
+        _state["queue"] = asyncio.Queue()
+        _state["loop"] = asyncio.get_running_loop()
+
     def _run():
         cmd = [
             "ansible-playbook",
