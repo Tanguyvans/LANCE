@@ -1099,12 +1099,17 @@ class Pipeline:
             if not services:
                 continue
             surface.append({"id": ip, "ip": ip, "type": "host", "services": services})
-            if stream_callback:
-                stream_callback({"type": "tool_result", "tool": "nmap_scan", "ip": ip, "phase": 3})
 
         print(f"  Discovered {len(surface)} host(s) with open ports on {target_network}")
         if not surface:
             log.warning("Discovery scan of %s found no hosts with open ports", target_network)
+        if stream_callback:
+            ips = ", ".join(h["ip"] for h in surface) or "none"
+            stream_callback({
+                "type": "tool_result",
+                "name": "discovery_scan",
+                "result": f"Discovered {len(surface)} host(s): {ips}",
+            })
         return surface
 
     def _run_phase3(
