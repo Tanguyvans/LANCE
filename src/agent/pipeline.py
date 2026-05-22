@@ -1031,6 +1031,82 @@ class Pipeline:
     # Phase 3: scanner (3a) + LLM analysis (3b)
     # ------------------------------------------------------------------
 
+    def _discover_attack_surface(
+        self,
+        target_network: str,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> list[dict]:
+        """Discovery/blind mode: nmap-scan the target network to build the
+        Phase 3 device surface.
+
+        In blind mode there is no pre-defined topology, so Phase 3 would
+        otherwise have zero devices. This actively scans the network and
+        excludes the pipeline host's own IPs so the master VM never scans
+        itself (avoids polluting the surface with infrastructure hosts).
+        """
+        port_services = {
+            21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 80: "http",
+            443: "https", 1880: "http", 1883: "mqtt", 3306: "mysql",
+            5432: "postgresql", 6379: "redis", 8000: "http", 8080: "http",
+            8081: "http", 8443: "https", 9001: "mqtt", 9200: "http",
+        }
+        ports = ",".join(str(p) for p in sorted(port_services))
+        print(f"\n{'=' * 60}")
+        print(f"PHASE 3a: DISCOVERY SCAN ({target_network})")
+        print(f"{'=' * 60}\n")
+
+        # Own IPs — the master VM must never appear as a target.
+        local_ips: set[str] = set()
+        try:
+            hn = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
+            local_ips = {ip for ip in hn.stdout.split() if ip}
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+        cmd = ["nmap", "-Pn", "-p", ports, "--open", "-T4", "-oG", "-", *target_network.split()]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            raw = proc.stdout
+        except (OSError, subprocess.SubprocessError) as e:
+            log.error("Discovery nmap failed: %s", e)
+            return []
+
+        try:
+            scans_dir = self.run_dir / "03_scans"
+            scans_dir.mkdir(parents=True, exist_ok=True)
+            (scans_dir / "_discovery.txt").write_text(raw, encoding="utf-8")
+        except OSError:
+            pass
+
+        surface: list[dict] = []
+        for line in raw.splitlines():
+            # Greppable line: "Host: <ip> (<name>)\tPorts: 22/open/tcp//ssh///, ..."
+            if not line.startswith("Host:") or "Ports:" not in line:
+                continue
+            ip = line.split()[1]
+            if ip in local_ips:
+                continue
+            services = []
+            for entry in line.split("Ports:", 1)[1].split(","):
+                parts = entry.strip().split("/")
+                if len(parts) < 2 or parts[1] != "open":
+                    continue
+                try:
+                    port = int(parts[0])
+                except ValueError:
+                    continue
+                services.append({"name": port_services.get(port, "unknown"), "port": port})
+            if not services:
+                continue
+            surface.append({"id": ip, "ip": ip, "type": "host", "services": services})
+            if stream_callback:
+                stream_callback({"type": "tool_result", "tool": "nmap_scan", "ip": ip, "phase": 3})
+
+        print(f"  Discovered {len(surface)} host(s) with open ports on {target_network}")
+        if not surface:
+            log.warning("Discovery scan of %s found no hosts with open ports", target_network)
+        return surface
+
     def _run_phase3(
         self,
         config: AgentConfig,
@@ -1046,18 +1122,21 @@ class Pipeline:
             # Discovery mode returns {"note": ..., "target_network": ...} — no pre-defined nodes
             surface = surface.get("nodes", [])
 
+        # Discovery/blind mode: no pre-defined topology — actively discover the
+        # attack surface by nmap-scanning the target network, then register the
+        # hosts so get_attack_surface(), get_device_info() and
+        # get_network_neighbors() resolve them for Phase 3b agents.
+        if self.target_network and not surface:
+            surface = self._discover_attack_surface(self.target_network, stream_callback)
+            from src.agent.tools.graph_tools import update_discovery_hosts
+            update_discovery_hosts(surface)
+
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
             print("  [dry-run] Skipping scanner")
             return
 
         scanner_results = run_scanner(self.run_dir, surface, stream_callback)
-
-        # In discovery mode, populate the topology with discovered hosts so that
-        # Phase 3b agents can use get_network_neighbors() for network position context.
-        if self.target_network:
-            from src.agent.tools.graph_tools import update_discovery_hosts
-            update_discovery_hosts(surface)
 
         # --- Phase 3b: LLM analysis micro-agents (per device) ---
         print(f"\n{'=' * 60}")

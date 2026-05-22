@@ -341,6 +341,17 @@ def get_device_info(device_id: str) -> str:
         if node:
             return json.dumps(node, ensure_ascii=False)
         return json.dumps({"error": f"Device '{device_id}' not found in scenario"})
+    if _discovery_mode is not None:
+        for host in _discovery_mode.get("discovered_hosts", []):
+            if host.get("id") == device_id or host.get("ip") == device_id:
+                return json.dumps(host, ensure_ascii=False)
+        return json.dumps({
+            "error": f"Device '{device_id}' not found",
+            "mode": "discovery",
+            "note": "Host not yet discovered — run nmap_scan on the target network.",
+        })
+    if _backend is None:
+        return json.dumps({"error": "No topology loaded"})
     try:
         device = _backend.get_device(device_id)
         neighbors = _backend.get_neighbors(device_id)
@@ -354,6 +365,9 @@ def get_attack_surface() -> str:
     """Return devices that expose services (have open ports)."""
     _ensure_loaded()
     if _discovery_mode is not None:
+        hosts = _discovery_mode.get("discovered_hosts")
+        if hosts:
+            return json.dumps(hosts, ensure_ascii=False)
         return json.dumps({
             "note": "Discovery mode — run nmap_scan first to identify the attack surface.",
             "target_network": _discovery_mode["target_network"],

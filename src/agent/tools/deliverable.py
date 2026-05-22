@@ -6,6 +6,11 @@ from pathlib import Path
 
 OUTPUT_DIR: Path = Path("output/agent")
 
+# Files written into the run dir for the evaluator/metadata that the agent
+# must never see. ground_truth.yaml is the benchmark answer key — exposing it
+# via read/list invalidates the score.
+_HIDDEN_DELIVERABLES: frozenset[str] = frozenset({"ground_truth.yaml"})
+
 
 def set_output_dir(path: Path) -> None:
     """Set the output directory (called by pipeline at init)."""
@@ -100,7 +105,7 @@ def save_deliverable(filename: str, content: str) -> str:
 def read_deliverable(filename: str) -> str:
     """Read a previous phase's deliverable."""
     path = OUTPUT_DIR / filename
-    if not path.exists():
+    if Path(filename).name in _HIDDEN_DELIVERABLES or not path.exists():
         return json.dumps({"error": f"Deliverable '{filename}' not found"})
     content = path.read_text(encoding="utf-8")
     return json.dumps({"filename": filename, "content": content})
@@ -111,7 +116,10 @@ def list_deliverables() -> str:
     if not OUTPUT_DIR.exists():
         return json.dumps({"deliverables": []})
     files = sorted(OUTPUT_DIR.glob("*"))
-    return json.dumps({"deliverables": [f.name for f in files if f.is_file()]})
+    return json.dumps({"deliverables": [
+        f.name for f in files
+        if f.is_file() and f.name not in _HIDDEN_DELIVERABLES
+    ]})
 
 
 def aggregate_device_results(pattern: str = "03_device_*.json") -> str:
