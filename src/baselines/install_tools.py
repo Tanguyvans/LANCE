@@ -289,10 +289,15 @@ Scope CIDR: ${SCOPE}
 Scenario: ${SCENARIO}
 Variant: ${VARIANT}
 Target: ${TARGET}
+Target endpoint: ${BASELINE_TARGET_ENDPOINT:-${TARGET}}
+Target service: ${BASELINE_TARGET_SERVICE:-unknown}
+Target protocol: ${BASELINE_TARGET_PROTOCOL:-unknown}
+Target port: ${BASELINE_TARGET_PORT:-unknown}
 Execution limit: stop after at most ${MAX_TURNS} CAI turns.
 
 Use CAI's normal authorized security assessment workflow against the target.
 Keep commands bounded and non-interactive. Avoid full \`-p-\` scans; prefer targeted or top-port scans with explicit timeouts.
+If a target endpoint or port is provided, test that endpoint directly before broader discovery.
 Return ONLY valid JSON with this schema:
 {
   "findings": [
@@ -504,14 +509,33 @@ def run_command(command: list[str], timeout: int = 25) -> dict:
         }
 
 
+def _target_url(target: str, endpoint: str, port: str) -> str:
+    if endpoint.startswith(("http://", "https://")):
+        return endpoint.rstrip("/")
+    if port in {"443", "8443"}:
+        return f"https://{target}:{port}"
+    if port:
+        return f"http://{target}:{port}"
+    return f"http://{target}"
+
+
 def collect_recon(target: str) -> list[dict]:
-    checks = [
+    endpoint = os.environ.get("BASELINE_TARGET_ENDPOINT", "").strip()
+    port = os.environ.get("BASELINE_TARGET_PORT", "").strip()
+    checks = []
+    if port.isdigit():
+        checks.append(["nmap", "-Pn", "--host-timeout", "20s", "-sV", "-p", port, target])
+    checks.extend([
         ["nmap", "-Pn", "--host-timeout", "25s", "-sV", "--top-ports", "100", target],
         ["nmap", "-Pn", "--host-timeout", "20s", "-p", "21,22,23,80,443,1883,3306,5432,6379,8080", target],
-        ["curl", "-sS", "-m", "8", "-i", f"http://{target}/"],
-        ["curl", "-sS", "-m", "8", "-i", f"http://{target}/config.json"],
-        ["curl", "-sS", "-m", "8", "-i", f"http://{target}/.env"],
-    ]
+    ])
+    url = _target_url(target, endpoint, port)
+    if port not in {"6379", "3306", "5432", "21", "22", "23"}:
+        checks.extend([
+            ["curl", "-sS", "-m", "8", "-i", f"{url}/"],
+            ["curl", "-sS", "-m", "8", "-i", f"{url}/config.json"],
+            ["curl", "-sS", "-m", "8", "-i", f"{url}/.env"],
+        ])
     return [run_command(command) for command in checks]
 
 
@@ -535,6 +559,10 @@ Scope CIDR: {args.scope}
 Scenario: {args.scenario}
 Variant: {args.variant}
 Target: {args.target}
+Target endpoint: {os.environ.get("BASELINE_TARGET_ENDPOINT", args.target)}
+Target service: {os.environ.get("BASELINE_TARGET_SERVICE", "unknown")}
+Target protocol: {os.environ.get("BASELINE_TARGET_PROTOCOL", "unknown")}
+Target port: {os.environ.get("BASELINE_TARGET_PORT", "unknown")}
 Model budget hint: {args.max_turns} steps
 
 Recon transcript:
