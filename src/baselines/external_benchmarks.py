@@ -1288,28 +1288,34 @@ def sync_project_to_remote(
 ) -> None:
     """Copy the current project to the baseline VM and prepare its venv."""
     source = source_dir or Path.cwd()
+    help_text = subprocess.run(["tar", "--help"], text=True, capture_output=True, check=False).stdout
+    optional_tar_flags: list[str] = []
+    if "--no-xattrs" in help_text:
+        optional_tar_flags.append("--no-xattrs")
+    if "--no-fflags" in help_text:
+        optional_tar_flags.append("--no-fflags")
     with tempfile.NamedTemporaryFile(prefix="nato-smartcity-iot-", suffix=".tar.gz", delete=False) as tmp:
         archive = Path(tmp.name)
     try:
+        archive_args = [
+            "tar",
+            "-czf",
+            str(archive),
+            *optional_tar_flags,
+            "--exclude=.git",
+            "--exclude=venv",
+            "--exclude=.venv",
+            "--exclude=output",
+            "--exclude=data/knowledge.db",
+            "--exclude=.pytest_cache",
+            "--exclude=__pycache__",
+            "--exclude=node_modules",
+            "--exclude=.mypy_cache",
+            "--exclude=.ruff_cache",
+            ".",
+        ]
         subprocess.run(
-            [
-                "tar",
-                "-czf",
-                str(archive),
-                "--no-xattrs",
-                "--no-fflags",
-                "--exclude=.git",
-                "--exclude=venv",
-                "--exclude=.venv",
-                "--exclude=output",
-                "--exclude=data/knowledge.db",
-                "--exclude=.pytest_cache",
-                "--exclude=__pycache__",
-                "--exclude=node_modules",
-                "--exclude=.mypy_cache",
-                "--exclude=.ruff_cache",
-                ".",
-            ],
+            archive_args,
             cwd=source,
             env={**os.environ, "COPYFILE_DISABLE": "1"},
             check=True,
