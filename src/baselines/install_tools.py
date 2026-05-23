@@ -693,6 +693,7 @@ def main() -> int:
                 api_key=os.environ.get("OPENAI_API_KEY") or os.environ.get("MINIMAX_API_KEY"),
                 base_url=os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or "https://api.minimax.io/v1",
             )
+            t0 = time.time()
             response = client.chat.completions.create(
                 model=normalize_model(args.model),
                 messages=[
@@ -701,9 +702,46 @@ def main() -> int:
                 ],
                 temperature=0.1,
             )
+            elapsed = round(time.time() - t0, 2)
             text = response.choices[0].message.content or ""
+            usage = response.usage
+            input_tokens = int(usage.prompt_tokens) if usage else 0
+            output_tokens = int(usage.completion_tokens) if usage else 0
+            # Per-MTok pricing ($/MTok): MiniMax-M2.7 input=0.30 output=1.20
+            _PRICING: dict[str, tuple[float, float]] = {
+                "MiniMax-M2": (0.20, 1.10),
+                "MiniMax-M2.5": (0.30, 1.20),
+                "MiniMax-M2.7": (0.30, 1.20),
+            }
+            model_key = normalize_model(args.model)
+            in_price, out_price = _PRICING.get(model_key, (0.0, 0.0))
+            estimated_cost = round(
+                input_tokens / 1_000_000 * in_price + output_tokens / 1_000_000 * out_price, 8
+            )
             raw_log.write_text(
-                json.dumps({"recon": recon, "model_output": text}, indent=2, ensure_ascii=False),
+                json.dumps(
+                    {"recon": recon, "model_output": text, "input_tokens": input_tokens, "output_tokens": output_tokens},
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            # Write external_agent_result.json so write_run_proof can pick up tokens/cost.
+            agent_result_path = Path(args.output).parent / "external_agent_result.json"
+            agent_result_path.write_text(
+                json.dumps(
+                    {
+                        "provider": "minimax",
+                        "model": args.model,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "estimated_cost_usd": estimated_cost,
+                        "cost_type": "estimated_api_pricing",
+                        "duration_seconds": elapsed,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
                 encoding="utf-8",
             )
             data = find_json_object(text)
@@ -716,6 +754,9 @@ def main() -> int:
                 }
             data.setdefault("recon", recon)
             data.setdefault("exit_code", 0)
+            data["input_tokens"] = input_tokens
+            data["output_tokens"] = output_tokens
+            data["estimated_cost_usd"] = estimated_cost
 
         data.setdefault("tool", args.tool)
         data.setdefault("scenario", args.scenario)
@@ -723,6 +764,35 @@ def main() -> int:
         data.setdefault("adapter_status", "ok")
         data.setdefault("raw_log", str(raw_log))
         write_output(args.output, data)
+
+        # Write submission.json so write_run_proof gets a structured outcome label.
+        findings = data.get("findings") or []
+        has_confirmed = any(
+            int(f.get("evidence_level", 1) or 1) >= 2
+            for f in findings
+            if isinstance(f, dict)
+        )
+        has_high = any(
+            str(f.get("severity", "")).upper() in {"CRITICAL", "HIGH"}
+            for f in findings
+            if isinstance(f, dict)
+        )
+        if has_confirmed:
+            label = "CONFIRMED"
+        elif has_high:
+            label = "PROBABLE"
+        else:
+            label = "NO_FINDING"
+        evidence_text = "; ".join(
+            str(f.get("details") or f.get("evidence") or "")[:200]
+            for f in findings[:3]
+            if isinstance(f, dict)
+        )
+        submission_path = Path(args.output).parent / "submission.json"
+        submission_path.write_text(
+            json.dumps({"label": label, "evidence": evidence_text, "blocked_by": ""}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
         return 0
     except Exception as exc:
         write_output(
