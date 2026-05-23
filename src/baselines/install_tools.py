@@ -271,7 +271,9 @@ if [[ -n "$CALLER_CAI_TARGET_TIMEOUT" ]]; then CAI_TARGET_TIMEOUT="$CALLER_CAI_T
 if [[ -n "$CALLER_PROMPT_TOOLKIT_NO_CPR" ]]; then PROMPT_TOOLKIT_NO_CPR="$CALLER_PROMPT_TOOLKIT_NO_CPR"; fi
 
 mkdir -p "$(dirname "$OUTPUT")" /opt/baseline-tools/logs
-RAW="$(mktemp /opt/baseline-tools/logs/cai_${SCENARIO}_${VARIANT}_XXXXXX.txt)"
+SAFE_SCENARIO="$(printf "%s" "$SCENARIO" | tr -c "A-Za-z0-9_.-" "_")"
+SAFE_VARIANT="$(printf "%s" "$VARIANT" | tr -c "A-Za-z0-9_.-" "_")"
+RAW="$(mktemp /opt/baseline-tools/logs/cai_${SAFE_SCENARIO}_${SAFE_VARIANT}_XXXXXX.txt)"
 rm -f "$OUTPUT"
 TARGET_TIMEOUT="${CAI_TARGET_TIMEOUT:-$(( MAX_TURNS * 6 ))}"
 if [[ "$TARGET_TIMEOUT" -lt 60 ]]; then
@@ -756,7 +758,9 @@ if [[ -f /opt/baseline-tools/.env ]]; then
 fi
 
 mkdir -p "$(dirname "$OUTPUT")" /opt/baseline-tools/logs
-RAW="$(mktemp /opt/baseline-tools/logs/{tool}_${{SCENARIO}}_${{VARIANT}}_XXXXXX.json)"
+SAFE_SCENARIO="$(printf "%s" "$SCENARIO" | tr -c "A-Za-z0-9_.-" "_")"
+SAFE_VARIANT="$(printf "%s" "$VARIANT" | tr -c "A-Za-z0-9_.-" "_")"
+RAW="$(mktemp /opt/baseline-tools/logs/{tool}_${{SAFE_SCENARIO}}_${{SAFE_VARIANT}}_XXXXXX.json)"
 rm -f "$OUTPUT"
 TARGET_TIMEOUT="${{{upper}_TARGET_TIMEOUT:-$(( MAX_TURNS * 6 ))}}"
 if [[ "$TARGET_TIMEOUT" -lt 60 ]]; then
