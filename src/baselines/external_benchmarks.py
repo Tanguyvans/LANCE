@@ -918,6 +918,10 @@ def external_baseline_tool_command(
             'mkdir -p "$(dirname "$OUT")"; '
             'if [ -f /opt/baseline-tools/.env ]; then set -a; . /opt/baseline-tools/.env; set +a; fi; '
             'if [ ! -x "$ADAPTER" ]; then echo "Missing baseline adapter: $ADAPTER" >&2; exit 127; fi; '
+            'export BASELINE_TARGET_ENDPOINT="{target_or_url}"; '
+            'export BASELINE_TARGET_PORT="{target_port}"; '
+            'export BASELINE_TARGET_SERVICE="{target_service}"; '
+            'export BASELINE_TARGET_PROTOCOL="{target_protocol}"; '
             f'"$ADAPTER" --target "{{target_host}}" --scope "{scope}" --scenario "{scenario}" '
             f'--max-turns "{int(max_turns)}" --model "{model}" --output "$OUT"; '
             'cat "$OUT"'
@@ -1530,6 +1534,35 @@ set +a
 
 def _job_id(suite: str) -> str:
     return f"{suite}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+
+def load_cases_from_file(path: Path) -> list[str]:
+    """Read case ids from a newline-delimited file.
+
+    Empty lines and comments beginning with `#` are ignored. Inline comments are
+    also supported so small run lists can document why a case was selected.
+    """
+    cases: list[str] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if line:
+            cases.append(line)
+    return cases
+
+
+def merge_case_args(cases: list[str] | None, cases_file: Path | None) -> list[str]:
+    merged = list(cases or [])
+    if cases_file:
+        merged.extend(load_cases_from_file(cases_file))
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for case_id in merged:
+        if case_id not in seen:
+            seen.add(case_id)
+            deduped.append(case_id)
+    if not deduped:
+        raise ValueError("Provide cases via --case (repeatable) or --cases-file.")
+    return deduped
 
 
 def _remote_write_file_script(path: Path, content: str) -> str:
@@ -2402,7 +2435,8 @@ def main(argv: list[str] | None = None) -> None:
     detached_parser = sub.add_parser("start-detached", help="Start a long-running external benchmark job on the baseline VM")
     detached_parser.add_argument("--suite", required=True, choices=SUPPORTED_SUITES)
     detached_parser.add_argument("--repo", required=True, type=Path)
-    detached_parser.add_argument("--case", required=True, action="append", dest="cases")
+    detached_parser.add_argument("--case", action="append", dest="cases", default=[])
+    detached_parser.add_argument("--cases-file", type=Path, default=None)
     detached_parser.add_argument("--remote-host", required=True)
     detached_parser.add_argument("--agent-command", default=None)
     detached_parser.add_argument("--baseline-tool", choices=BASELINE_TOOLS, default=None)
@@ -2547,7 +2581,7 @@ def main(argv: list[str] | None = None) -> None:
         job = start_detached_job(
             baseline_host=args.remote_host,
             suite=args.suite,
-            cases=args.cases,
+            cases=merge_case_args(args.cases, args.cases_file),
             repo=args.repo,
             agent_command=command,
             remote_output_dir=args.remote_output_dir,

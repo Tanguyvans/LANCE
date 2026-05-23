@@ -165,7 +165,8 @@ def main() -> None:
     external_detached = external_sub.add_parser("start-detached", help="Start a long-running external benchmark job on the baseline VM")
     external_detached.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
     external_detached.add_argument("--repo", required=True)
-    external_detached.add_argument("--case", required=True, action="append", dest="cases")
+    external_detached.add_argument("--case", action="append", dest="cases", default=[])
+    external_detached.add_argument("--cases-file", type=Path, default=None)
     external_detached.add_argument("--remote-host", required=True)
     external_detached.add_argument("--agent-command", default=None)
     external_detached.add_argument("--baseline-tool", choices=external_benchmarks.BASELINE_TOOLS, default=None)
@@ -594,7 +595,7 @@ def main() -> None:
             job = external_benchmarks.start_detached_job(
                 baseline_host=args.remote_host,
                 suite=args.suite,
-                cases=args.cases,
+                cases=external_benchmarks.merge_case_args(args.cases, args.cases_file),
                 repo=Path(args.repo),
                 agent_command=command,
                 remote_output_dir=Path(args.remote_output_dir),

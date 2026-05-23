@@ -13,6 +13,7 @@ from src.baselines.external_benchmarks import (
     external_agent_command,
     generate_report,
     infer_context_mode_from_command,
+    merge_case_args,
     resolve_external_command,
     run_case,
     summarize_run_dir,
@@ -590,10 +591,33 @@ def test_external_baseline_command_targets_host_and_writes_raw_json(tmp_path):
 
     assert "/opt/baseline-tools/adapters/pentgpt_run.sh" in rendered
     assert '--target "127.0.0.1"' in rendered
+    assert 'BASELINE_TARGET_ENDPOINT="127.0.0.1:6379"' in rendered
+    assert 'BASELINE_TARGET_PORT="6379"' in rendered
+    assert 'BASELINE_TARGET_SERVICE="redis"' in rendered
     assert '--scope "external:vulhub"' in rendered
     assert '--scenario "vulhub:redis/CVE-2022-0543"' in rendered
     assert '--model "openai/MiniMax-M2.7"' in rendered
     assert "/out/pentgpt_raw.json" in rendered
+
+
+def test_external_merge_cases_from_file(tmp_path):
+    cases_file = tmp_path / "cases.txt"
+    cases_file.write_text(
+        "\n".join(
+            [
+                "# smoke set",
+                "redis/CVE-2022-0543",
+                "spring/CVE-2022-22965 # spring4shell",
+                "redis/CVE-2022-0543",
+            ]
+        )
+    )
+
+    assert merge_case_args(["jenkins/CVE-2018-1000861"], cases_file) == [
+        "jenkins/CVE-2018-1000861",
+        "redis/CVE-2022-0543",
+        "spring/CVE-2022-22965",
+    ]
 
 
 def test_resolve_external_command_requires_one_command_mode():
