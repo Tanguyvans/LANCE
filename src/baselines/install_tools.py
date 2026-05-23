@@ -778,6 +778,14 @@ def main() -> int:
                 "exit_code": 1,
             },
         )
+        try:
+            submission_path = Path(args.output).parent / "submission.json"
+            submission_path.write_text(
+                json.dumps({"label": "NO_FINDING", "evidence": str(exc)[:500], "blocked_by": "adapter_error"}, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
         return 1
 
 
