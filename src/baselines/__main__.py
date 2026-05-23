@@ -146,7 +146,11 @@ def main() -> None:
     external_run.add_argument("--suite", required=True, choices=external_benchmarks.SUPPORTED_SUITES)
     external_run.add_argument("--repo", required=True)
     external_run.add_argument("--case", required=True)
-    external_run.add_argument("--agent-command", required=True)
+    external_run.add_argument("--agent-command", default=None)
+    external_run.add_argument("--baseline-tool", choices=external_benchmarks.BASELINE_TOOLS, default=None)
+    external_run.add_argument("--baseline-model", default="openai/MiniMax-M2.7")
+    external_run.add_argument("--baseline-max-turns", default=40, type=int)
+    external_run.add_argument("--baseline-adapter-dir", default="/opt/baseline-tools/adapters")
     external_run.add_argument("--output-dir", default=str(external_benchmarks.DEFAULT_OUTPUT_DIR))
     external_run.add_argument("--remote-host", default=None)
     external_run.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
@@ -164,6 +168,10 @@ def main() -> None:
     external_detached.add_argument("--case", required=True, action="append", dest="cases")
     external_detached.add_argument("--remote-host", required=True)
     external_detached.add_argument("--agent-command", default=None)
+    external_detached.add_argument("--baseline-tool", choices=external_benchmarks.BASELINE_TOOLS, default=None)
+    external_detached.add_argument("--baseline-model", default="openai/MiniMax-M2.7")
+    external_detached.add_argument("--baseline-max-turns", default=40, type=int)
+    external_detached.add_argument("--baseline-adapter-dir", default="/opt/baseline-tools/adapters")
     external_detached.add_argument("--remote-output-dir", default=str(external_benchmarks.DEFAULT_REMOTE_OUTPUT_DIR))
     external_detached.add_argument("--remote-job-dir", default=str(external_benchmarks.DEFAULT_REMOTE_JOB_DIR))
     external_detached.add_argument("--timeout", default=3600, type=int)
@@ -531,13 +539,20 @@ def main() -> None:
                 )
             )
         elif args.external_command == "run":
+            command = external_benchmarks.resolve_external_command(
+                agent_command=args.agent_command,
+                baseline_tool=args.baseline_tool,
+                baseline_model=args.baseline_model,
+                baseline_max_turns=args.baseline_max_turns,
+                baseline_adapter_dir=args.baseline_adapter_dir,
+            )
             if args.remote_host:
                 run_dir = external_benchmarks.run_remote_case(
                     baseline_host=args.remote_host,
                     suite=args.suite,
                     repo=Path(args.repo),
                     case_id=args.case,
-                    agent_command=args.agent_command,
+                    agent_command=command,
                     output_dir=Path(args.output_dir),
                     remote_output_dir=Path(args.remote_output_dir),
                     flag=args.flag,
@@ -553,7 +568,7 @@ def main() -> None:
                     suite=args.suite,
                     repo=Path(args.repo),
                     case_id=args.case,
-                    agent_command=args.agent_command,
+                    agent_command=command,
                     output_dir=Path(args.output_dir),
                     flag=args.flag,
                     dry_run=args.dry_run,
@@ -565,12 +580,23 @@ def main() -> None:
             print(run_dir)
         elif args.external_command == "start-detached":
             import json
+            command = (
+                external_benchmarks.resolve_external_command(
+                    agent_command=args.agent_command,
+                    baseline_tool=args.baseline_tool,
+                    baseline_model=args.baseline_model,
+                    baseline_max_turns=args.baseline_max_turns,
+                    baseline_adapter_dir=args.baseline_adapter_dir,
+                )
+                if args.baseline_tool
+                else args.agent_command
+            )
             job = external_benchmarks.start_detached_job(
                 baseline_host=args.remote_host,
                 suite=args.suite,
                 cases=args.cases,
                 repo=Path(args.repo),
-                agent_command=args.agent_command,
+                agent_command=command,
                 remote_output_dir=Path(args.remote_output_dir),
                 remote_job_dir=Path(args.remote_job_dir),
                 timeout_seconds=args.timeout,

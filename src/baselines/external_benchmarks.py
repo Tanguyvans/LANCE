@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -30,6 +31,7 @@ DEFAULT_REMOTE_OUTPUT_DIR = Path("/opt/baseline-tools/external-results")
 DEFAULT_REMOTE_JOB_DIR = Path("/opt/baseline-tools/external-jobs")
 SUPPORTED_SUITES = ("xbow", "autopenbench", "vulhub", "ai-pentest")
 CONTEXT_MODES = ("blind", "informed")
+BASELINE_TOOLS = ("cai", "pentgpt", "vulnbot")
 DEFAULT_DOCKER_MIN_FREE_GB = 15.0
 # AutoPenBench compose files put every VM on a hard-coded 192.168.0.0/16
 # network, which overlaps the fleet management (192.168.88.x) and benchmark
@@ -843,6 +845,7 @@ def _render_agent_command(
     # over the discovery-time fields.
     target = target_override or case.target_url or ""
     target_or_url = target_override or case.target_url or case.target_endpoint or case.target
+    target_host, target_port = _split_target_host_port(target_or_url, case)
     rendered = template.format(
         suite=case.suite,
         case_id=case.case_id,
@@ -851,10 +854,11 @@ def _render_agent_command(
         target_url=target,
         target_endpoint=case.target_endpoint or "",
         target_or_url=target_or_url,
+        target_host=target_host,
+        target_port=target_port or "",
         target_name=case.target,
         target_service=case.target_service,
         target_protocol=case.target_protocol,
-        target_port=case.target_port or "",
         service_context=case.service_context,
         exposed_services=exposed_services,
         case_context=case.case_context,
@@ -867,6 +871,58 @@ def _render_agent_command(
         context_policy="fair_network_only",
     )
     return shlex.split(rendered)
+
+
+def _split_target_host_port(target: str, case: ExternalBenchmarkCase) -> tuple[str, int | None]:
+    """Return the host and port for adapter CLIs that expect a host target.
+
+    Vulhub cases often expose either a URL (`http://127.0.0.1:8080`) or a
+    protocol endpoint (`127.0.0.1:6379`). The internal CAI/PentGPT/VulnBot
+    adapters were written for one benchmark IP at a time, so the bridge gives
+    them the host while preserving the port in a separate placeholder.
+    """
+    if target.startswith(("http://", "https://")):
+        parsed = urlparse(target)
+        return parsed.hostname or target, parsed.port or case.target_port
+    if target.count(":") == 1:
+        host, port_text = target.rsplit(":", 1)
+        if port_text.isdigit():
+            return host, int(port_text)
+    return target or case.target or case.target_endpoint or case.target_url or "", case.target_port
+
+
+def external_baseline_tool_command(
+    tool: str,
+    model: str = "openai/MiniMax-M2.7",
+    max_turns: int = 40,
+    adapter_dir: str = "/opt/baseline-tools/adapters",
+) -> str:
+    """Build an external benchmark command that invokes an installed baseline adapter.
+
+    The command writes the adapter's raw JSON into the external run directory and
+    prints it to stdout so the existing `agent_stdout.txt`, `proof.json`, and
+    report aggregation paths continue to work.
+    """
+    if tool not in BASELINE_TOOLS:
+        raise ValueError(f"Unsupported baseline tool: {tool}. Available: {', '.join(BASELINE_TOOLS)}")
+    adapter = f"{adapter_dir.rstrip('/')}/{tool}_run.sh"
+    output_name = f"{tool}_raw.json"
+    scenario = "{suite}:{case_id}"
+    scope = "external:{suite}"
+    return (
+        "bash -lc "
+        + shlex.quote(
+            "set -euo pipefail; "
+            f"ADAPTER={shlex.quote(adapter)}; "
+            f'OUT="{{output_dir}}/{output_name}"; '
+            'mkdir -p "$(dirname "$OUT")"; '
+            'if [ -f /opt/baseline-tools/.env ]; then set -a; . /opt/baseline-tools/.env; set +a; fi; '
+            'if [ ! -x "$ADAPTER" ]; then echo "Missing baseline adapter: $ADAPTER" >&2; exit 127; fi; '
+            f'"$ADAPTER" --target "{{target_host}}" --scope "{scope}" --scenario "{scenario}" '
+            f'--max-turns "{int(max_turns)}" --model "{model}" --output "$OUT"; '
+            'cat "$OUT"'
+        )
+    )
 
 
 def infer_context_mode_from_command(command: str) -> str:
@@ -916,6 +972,28 @@ def default_external_agent_command(
     max_turns: int = 40,
 ) -> str:
     return external_agent_command(provider=provider, model=model, max_turns=max_turns, context_mode="informed")
+
+
+def resolve_external_command(
+    *,
+    agent_command: str | None,
+    baseline_tool: str | None,
+    baseline_model: str = "openai/MiniMax-M2.7",
+    baseline_max_turns: int = 40,
+    baseline_adapter_dir: str = "/opt/baseline-tools/adapters",
+) -> str:
+    if baseline_tool and agent_command:
+        raise ValueError("Use either --agent-command or --baseline-tool, not both.")
+    if baseline_tool:
+        return external_baseline_tool_command(
+            baseline_tool,
+            model=baseline_model,
+            max_turns=baseline_max_turns,
+            adapter_dir=baseline_adapter_dir,
+        )
+    if not agent_command:
+        raise ValueError("Provide --agent-command or --baseline-tool.")
+    return agent_command
 
 
 def _compose_abs_path(value: str, base: Path) -> str:
@@ -2304,7 +2382,11 @@ def main(argv: list[str] | None = None) -> None:
     run_parser.add_argument("--suite", required=True, choices=SUPPORTED_SUITES)
     run_parser.add_argument("--repo", required=True, type=Path)
     run_parser.add_argument("--case", required=True)
-    run_parser.add_argument("--agent-command", required=True)
+    run_parser.add_argument("--agent-command", default=None)
+    run_parser.add_argument("--baseline-tool", choices=BASELINE_TOOLS, default=None)
+    run_parser.add_argument("--baseline-model", default="openai/MiniMax-M2.7")
+    run_parser.add_argument("--baseline-max-turns", default=40, type=int)
+    run_parser.add_argument("--baseline-adapter-dir", default="/opt/baseline-tools/adapters")
     run_parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, type=Path)
     run_parser.add_argument("--remote-host", default=None, help="Run Docker and the agent on the baseline VM over SSH")
     run_parser.add_argument("--remote-output-dir", default=DEFAULT_REMOTE_OUTPUT_DIR, type=Path)
@@ -2323,6 +2405,10 @@ def main(argv: list[str] | None = None) -> None:
     detached_parser.add_argument("--case", required=True, action="append", dest="cases")
     detached_parser.add_argument("--remote-host", required=True)
     detached_parser.add_argument("--agent-command", default=None)
+    detached_parser.add_argument("--baseline-tool", choices=BASELINE_TOOLS, default=None)
+    detached_parser.add_argument("--baseline-model", default="openai/MiniMax-M2.7")
+    detached_parser.add_argument("--baseline-max-turns", default=40, type=int)
+    detached_parser.add_argument("--baseline-adapter-dir", default="/opt/baseline-tools/adapters")
     detached_parser.add_argument("--remote-output-dir", default=DEFAULT_REMOTE_OUTPUT_DIR, type=Path)
     detached_parser.add_argument("--remote-job-dir", default=DEFAULT_REMOTE_JOB_DIR, type=Path)
     detached_parser.add_argument("--timeout", default=3600, type=int)
@@ -2411,13 +2497,20 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "manifest":
         print(write_manifest(args.suite, args.repo, args.output))
     elif args.command == "run":
+        command = resolve_external_command(
+            agent_command=args.agent_command,
+            baseline_tool=args.baseline_tool,
+            baseline_model=args.baseline_model,
+            baseline_max_turns=args.baseline_max_turns,
+            baseline_adapter_dir=args.baseline_adapter_dir,
+        )
         if args.remote_host:
             run_dir = run_remote_case(
                 baseline_host=args.remote_host,
                 suite=args.suite,
                 repo=args.repo,
                 case_id=args.case,
-                agent_command=args.agent_command,
+                agent_command=command,
                 output_dir=args.output_dir,
                 remote_output_dir=args.remote_output_dir,
                 flag=args.flag,
@@ -2433,7 +2526,7 @@ def main(argv: list[str] | None = None) -> None:
                 suite=args.suite,
                 repo=args.repo,
                 case_id=args.case,
-                agent_command=args.agent_command,
+                agent_command=command,
                 output_dir=args.output_dir,
                 flag=args.flag,
                 dry_run=args.dry_run,
@@ -2444,12 +2537,19 @@ def main(argv: list[str] | None = None) -> None:
             )
         print(run_dir)
     elif args.command == "start-detached":
+        command = resolve_external_command(
+            agent_command=args.agent_command,
+            baseline_tool=args.baseline_tool,
+            baseline_model=args.baseline_model,
+            baseline_max_turns=args.baseline_max_turns,
+            baseline_adapter_dir=args.baseline_adapter_dir,
+        ) if args.baseline_tool else args.agent_command
         job = start_detached_job(
             baseline_host=args.remote_host,
             suite=args.suite,
             cases=args.cases,
             repo=args.repo,
-            agent_command=args.agent_command,
+            agent_command=command,
             remote_output_dir=args.remote_output_dir,
             remote_job_dir=args.remote_job_dir,
             timeout_seconds=args.timeout,
