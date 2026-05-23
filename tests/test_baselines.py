@@ -9,9 +9,11 @@ from src.baselines.external_benchmarks import (
     build_detached_job_runner,
     default_external_agent_command,
     discover_cases,
+    external_baseline_tool_command,
     external_agent_command,
     generate_report,
     infer_context_mode_from_command,
+    resolve_external_command,
     run_case,
     summarize_run_dir,
     write_run_proof,
@@ -574,6 +576,48 @@ def test_external_informed_command_is_labeled():
     assert "{case_id}" in command
     assert "{vulnerability}" in command
     assert infer_context_mode_from_command(command) == "informed"
+
+
+def test_external_baseline_command_targets_host_and_writes_raw_json(tmp_path):
+    case = tmp_path / "redis" / "CVE-2022-0543"
+    case.mkdir(parents=True)
+    (case / "docker-compose.yml").write_text("services: {redis: {image: redis, ports: ['6379:6379']}}\n")
+    benchmark = discover_cases("vulhub", tmp_path)[0]
+    template = external_baseline_tool_command("pentgpt", model="openai/MiniMax-M2.7", max_turns=12)
+
+    command = _render_agent_command(template, benchmark, tmp_path / "out", "")
+    rendered = " ".join(command)
+
+    assert "/opt/baseline-tools/adapters/pentgpt_run.sh" in rendered
+    assert '--target "127.0.0.1"' in rendered
+    assert '--scope "external:vulhub"' in rendered
+    assert '--scenario "vulhub:redis/CVE-2022-0543"' in rendered
+    assert '--model "openai/MiniMax-M2.7"' in rendered
+    assert "/out/pentgpt_raw.json" in rendered
+
+
+def test_resolve_external_command_requires_one_command_mode():
+    command = resolve_external_command(
+        agent_command=None,
+        baseline_tool="cai",
+        baseline_model="openai/MiniMax-M2.7",
+        baseline_max_turns=5,
+    )
+    assert "cai_run.sh" in command
+
+    try:
+        resolve_external_command(agent_command="echo hi", baseline_tool="cai")
+    except ValueError as exc:
+        assert "either --agent-command or --baseline-tool" in str(exc)
+    else:
+        raise AssertionError("Expected conflicting command modes to fail")
+
+    try:
+        resolve_external_command(agent_command=None, baseline_tool=None)
+    except ValueError as exc:
+        assert "Provide --agent-command or --baseline-tool" in str(exc)
+    else:
+        raise AssertionError("Expected missing command mode to fail")
 
 
 def test_external_compose_long_port_syntax_uses_target_service_port(tmp_path):

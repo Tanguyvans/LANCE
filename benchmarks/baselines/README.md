@@ -395,8 +395,8 @@ python3 -m src.baselines external run \
 ```
 
 The command template receives `{suite}`, `{case_id}`, `{target_url}`,
-`{target_or_url}`, `{target_name}`, `{task}`, `{vulnerability}`, `{output_dir}`,
-and `{flag}`.
+`{target_or_url}`, `{target_host}`, `{target_port}`, `{target_name}`, `{task}`,
+`{vulnerability}`, `{output_dir}`, and `{flag}`.
 For XBOW and AutoPenBench, the harness builds the benchmark with Docker Compose.
 For Vulhub, it starts the compose stack directly because most cases use
 pre-built images. Each run stores `planned.json`, `agent_stdout.txt`,
@@ -405,6 +405,30 @@ known; Vulhub cases usually need either `--flag` or manual inspection of the
 saved output because upstream does not define one universal flag format.
 The AI-Pentest-Benchmark path is recorded as manual because those targets are
 VulnHub/VM based rather than Docker-compose challenges.
+
+Run an installed comparison adapter on an external benchmark case:
+
+```bash
+python3 -m src.baselines external run \
+  --suite vulhub \
+  --repo /opt/external-benchmarks/vulhub \
+  --case redis/CVE-2022-0543 \
+  --baseline-tool cai \
+  --baseline-max-turns 40 \
+  --docker-cleanup
+```
+
+`--baseline-tool` accepts `cai`, `pentgpt`, or `vulnbot`. It calls the matching
+adapter under `/opt/baseline-tools/adapters`, writes the raw adapter JSON into
+the external run directory, and includes that JSON in `agent_stdout.txt` for
+the existing proof/report path. The adapters must already be installed and
+configured, for example with:
+
+```bash
+export MINIMAX_API_KEY="..."
+python3 -m src.baselines setup-baselines \
+  --baseline-host root@192.168.88.36
+```
 
 ### Detached long runs on the baseline VM
 
