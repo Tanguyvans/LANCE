@@ -1523,6 +1523,48 @@ def test_write_run_proof_falls_back_to_text_when_no_submission(tmp_path):
     assert proof["submission_source"] == "text_classifier"
 
 
+def test_write_run_proof_uses_adapter_raw_findings_without_submission(tmp_path):
+    run_dir = tmp_path / "vulhub" / "activemq" / "CVE-2015-5254" / "20990101_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "planned.json").write_text(
+        json.dumps(
+            {
+                "case": {
+                    "suite": "vulhub",
+                    "case_id": "activemq/CVE-2015-5254",
+                    "target_endpoint": "127.0.0.1:61616",
+                    "target_service": "activemq-openwire",
+                    "vulnerability": "CVE-2015-5254",
+                }
+            }
+        )
+    )
+    (run_dir / "result.json").write_text(json.dumps({"status": "completed", "success": False}))
+    (run_dir / "agent_stdout.txt").write_text(json.dumps({"findings": []}))
+    (run_dir / "cai_raw.json").write_text(
+        json.dumps(
+            {
+                "findings": [
+                    {
+                        "type": "default_credentials",
+                        "severity": "CRITICAL",
+                        "details": "Apache ActiveMQ exposes admin console with default credentials admin:admin",
+                        "evidence": "HTTP 200 with admin:admin returning ActiveMQ Console page.",
+                        "evidence_level": 2,
+                    }
+                ]
+            }
+        )
+    )
+
+    proof = write_run_proof(run_dir)
+
+    assert proof["outcome"] == "confirmed_exploit"
+    assert proof["confidence"] == "high"
+    assert proof["submission_source"] == "adapter:cai_raw.json"
+    assert "default credentials" in proof["evidence_summary"]
+
+
 def test_write_run_proof_preserves_environment_failed_over_submission(tmp_path):
     """environment_failed status must win over any leaked submission file."""
     run_dir = tmp_path / "vulhub" / "airflow" / "CVE-2020-11981" / "20990101_000000"

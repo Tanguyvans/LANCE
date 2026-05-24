@@ -405,6 +405,75 @@ _LABEL_TO_OUTCOME = {
 }
 
 
+def _finding_evidence_level(finding: dict[str, Any]) -> int:
+    try:
+        level = int(finding.get("evidence_level", 1) or 1)
+    except (TypeError, ValueError):
+        level = 1
+
+    text = " ".join(
+        str(finding.get(key) or "")
+        for key in ("type", "details", "evidence")
+    ).lower()
+    confirmed_markers = (
+        "/etc/passwd",
+        "root:x:0:0",
+        "uid=0",
+        "http 200",
+        "authentication successful",
+        "default credentials",
+        "logged in as",
+        "successfully exploited",
+        "exploit succeeded",
+        "command output",
+        "nato_upload_proof",
+        "flag{",
+        "ctf{",
+    )
+    if any(marker in text for marker in confirmed_markers):
+        return max(level, 2)
+    return level
+
+
+def _submission_from_findings(payload: dict[str, Any]) -> dict[str, str] | None:
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        return None
+
+    structured_findings = [f for f in findings if isinstance(f, dict)]
+    if not structured_findings:
+        return None
+
+    has_confirmed = any(_finding_evidence_level(f) >= 2 for f in structured_findings)
+    has_actionable = any(
+        str(f.get("severity") or "").upper() in {"CRITICAL", "HIGH", "MEDIUM"}
+        for f in structured_findings
+    )
+    if has_confirmed:
+        label = "CONFIRMED"
+    elif has_actionable:
+        label = "PROBABLE"
+    else:
+        label = "NO_FINDING"
+
+    evidence = "; ".join(
+        str(f.get("details") or f.get("evidence") or "")[:240]
+        for f in structured_findings[:3]
+    )
+    return {"label": label, "evidence": evidence, "blocked_by": ""}
+
+
+def _adapter_submission(run_dir: Path) -> tuple[dict[str, str] | None, str]:
+    for path in sorted(run_dir.glob("*_raw.json")):
+        payload = _read_json(path)
+        if not isinstance(payload, dict):
+            continue
+        submission = _submission_from_findings(payload)
+        if submission:
+            return submission, path.name
+    return None, ""
+
+
 def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict[str, Any]:
     """Create or refresh proof.json from result, agent output, and cost artifacts.
 
@@ -420,6 +489,9 @@ def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict
     existing = _read_json(run_dir / "proof.json")
     cost = _read_json(run_dir / "cost_summary.json")
     submission = _read_json(run_dir / "submission.json")
+    adapter_source = ""
+    if not submission:
+        submission, adapter_source = _adapter_submission(run_dir)
     case = result.get("case") or planned.get("case") or {}
     answer_parts = []
     for filename in ("external_agent_answer.txt", "partial_evidence.txt", "agent_stdout.txt", "agent_stderr.txt"):
@@ -442,7 +514,7 @@ def write_run_proof(run_dir: Path, result: dict[str, Any] | None = None) -> dict
             raw_blocked = str(submission.get("blocked_by") or "").lower()
             blocked_by = "" if raw_blocked in {"", "none"} else raw_blocked
             structured_evidence = str(submission.get("evidence") or "")
-            submission_source = "structured"
+            submission_source = "structured" if not adapter_source else f"adapter:{adapter_source}"
         else:
             outcome, confidence, blocked_by = _classify_text(
                 answer, status=status, dry_run=bool(result.get("dry_run"))
