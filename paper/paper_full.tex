@@ -762,17 +762,24 @@ System & Model & Corpus & Sub-task \% & E2E \% \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{AutoPenBench (33 tasks)}} \\
 \midrule
+\multicolumn{5}{@{}l}{\emph{Results reported in prior papers}} \\
 Llama 3.1-405B baseline~\cite{vulnbot25}  & Llama 3.1-405B    & AutoPenBench & 49.1 & 9.1  \\
 GPT-4o baseline~\cite{vulnbot25}          & GPT-4o            & AutoPenBench & n/r  & 21.2 \\
 \textbf{VulnBot}~\cite{vulnbot25}         & Llama 3.1-405B    & AutoPenBench & \textbf{69.1} & \textbf{30.3} \\
 \textbf{xOffense}~\cite{xoffense25}       & Qwen3-32B (LoRA)  & AutoPenBench & \textbf{79.2} & n/r  \\
+\addlinespace[1pt]
+\multicolumn{5}{@{}l}{\emph{Results obtained in our runs}} \\
+CAI adapter~\cite{cai25}                  & MiniMax-M2.7      & AutoPenBench & 12.1$^\dagger$ & 6.1$^\S$ \\
 \textbf{\harnessname\ (ours, blind)}      & MiniMax-M2.7      & AutoPenBench & 39.4$^\dagger$ & 21.2 \\
 \textbf{\harnessname\ (ours, informed)}   & MiniMax-M2.7      & AutoPenBench & 51.5$^\dagger$ & 27.3$^\ddagger$ \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Vulhub / Vulhub-derived single-host tasks}} \\
 \midrule
+\multicolumn{5}{@{}l}{\emph{Results reported in prior papers}} \\
 Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n/r \\
 \textbf{CheckMate}~\cite{checkmate25}     & Sonnet 4.5 + Classical Planning+ & Vulhub & n/r & \textbf{+20\%\textsuperscript{rel}} \\
+\addlinespace[1pt]
+\multicolumn{5}{@{}l}{\emph{Results obtained in our runs}} \\
 \textbf{\harnessname\ (ours)}             & MiniMax-M2.7      & Vulhub & n/r & \textbf{39--48\%}$^\star$ \\
 
 \bottomrule
@@ -782,7 +789,10 @@ Claude Code (baseline)~\cite{checkmate25} & Sonnet 4.5        & Vulhub & n/r & n
 \textsuperscript{rel} Relative benchmark success-rate gain over Claude Code
 baseline; absolute E2E rate not published by CheckMate.
 $^\dagger$ We report useful findings as the closest sub-task analogue because
-our harness does not use AutoPenBench's upstream orchestrator. $^\ddagger$
+our harness and adapter baselines do not use AutoPenBench's upstream
+orchestrator. $^\S$ CAI completed 31/33 cases; one case failed due to the
+environment and one timed out. Token and cost usage were not reported by the
+CAI adapter. $^\ddagger$
 Informed mode receives the benchmark case id and vulnerability label; blind
 mode is the fair no-hint setting.
 $^\star$ Full 191-case distributed run. The automatic useful-finding lower
