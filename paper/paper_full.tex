@@ -595,9 +595,9 @@ F1~=~0.875 and \texttt{S12} (35 devices) reaches F1~=~0.942.
 
 Table~\ref{tab:detail} reports recall, precision, F1, and CVSS-weighted score
 per scenario for both \harnessname{} modes. Informed recall is perfect on
-eight scenarios; precision drops on \texttt{S10} (sparse coverage of a
-large flat topology). Blind mode trades recall for higher precision on
-gateway-centric scenarios (\texttt{S3}--\texttt{S5}, \texttt{S8}),
+six scenarios (S1, S3, S5--S8); precision drops on \texttt{S10} (sparse
+coverage of a large flat topology). Blind mode trades recall for higher
+precision on gateway-centric scenarios (\texttt{S3}, \texttt{S4}, \texttt{S8}),
 confirming that active discovery raises specificity at the cost of coverage.
 
 \begin{table}[h!]
@@ -635,7 +635,7 @@ Mean         & 0.959 & 0.914 & 0.935 &  86.4 & 0.856 & 0.922 & 0.887 \\
 
 To probe transfer beyond IoT multi-hop scenarios, we run \harnessname{} and the
 adapted baselines on two established single-host benchmarks. Results are contextual:
-models, and oracles differ across papers.
+models and oracles differ across papers.
 
 \medskip\noindent\textbf{AutoPenBench.}
 AutoPenBench defines 33 flag-based tasks with published E2E rates. We run
@@ -712,10 +712,10 @@ Published rows use undisclosed subsets. Useful findings = confirmed exploits
 or probable vulnerabilities with machine-readable evidence.}
 \end{table}
 
-On Vulhub, CAI leads with 170/328 useful findings; \harnessname{} informed and
-blind reach 99 and 92, matching VulnBot. CAI's advantage reflects its
-single-host exploit focus, which is orthogonal to the multi-device topology
-reasoning evaluated in \systemname{}.
+On Vulhub, CAI leads with 170/328 useful findings; \harnessname{} informed
+reaches 99/328, blind reaches 92/328 (equal to VulnBot). CAI's advantage
+reflects its single-host exploit focus, which is orthogonal to the
+multi-device topology reasoning evaluated in \systemname{}.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
