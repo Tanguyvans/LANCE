@@ -532,7 +532,7 @@ Scenario & Inf.A & Inf.B & Blind.A & Blind.B$^\dagger$ & CAI & VulnBot \\
 \texttt{S2}  & 0.923 & 0.833 & 0.923 & 0.740 & 0.350 & 0.450 \\
 \texttt{S3}  & 0.952 & 0.971 & 0.941 & 0.810 & 0.000 & 0.000 \\
 \texttt{S4}  & 0.944 & 0.788 & 0.909 & 0.565 & 0.360 & 0.440 \\
-\texttt{S5}  & 1.000 & 0.965 & 0.929 & 0.126 & 0.500 & 0.500 \\
+\texttt{S5}  & 1.000 & 0.965 & 0.929 & 0.929 & 0.500 & 0.500 \\
 \texttt{S6}  & 1.000 & 0.970 & 1.000 & 0.903 & 0.400 & 0.400 \\
 \texttt{S7}  & 0.965 & 0.783 & 0.889 & 0.786 & 0.500 & 0.450 \\
 \texttt{S8}  & 0.933 & 0.963 & 0.923 & 0.815 & 0.550 & 0.350 \\
@@ -541,7 +541,7 @@ Scenario & Inf.A & Inf.B & Blind.A & Blind.B$^\dagger$ & CAI & VulnBot \\
 \texttt{S11} & 0.875 & 0.957 & 0.857 & 0.857 & 0.414 & 0.414 \\
 \texttt{S12} & 0.942 & 0.919 & 0.762 & 0.762 & 0.242 & 0.307 \\
 \midrule
-Mean & 0.935 & 0.918 & 0.887 & 0.753 & 0.315 & 0.324 \\
+Mean & 0.935 & 0.918 & 0.887 & 0.820 & 0.315 & 0.324 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -553,8 +553,8 @@ The baselines recover part of the injected ground truth but never raise F1 above
 \label{sec:eval:consistency}
 
 Two stability profiles emerge (Table~\ref{tab:rerun-delta}): informed
-\harnessname{} changes by only 0.017 mean F1, while blind \harnessname{} drops from 0.887 to 0.753. The most extreme case is \texttt{S5} blind ($-$0.803),
-where lack of topology context causes a near-total coverage loss. Both adapted
+\harnessname{} changes by only 0.017 mean F1, while blind \harnessname{} drops from 0.887 to 0.820. The most volatile scenario is \texttt{S4} blind ($-$0.344),
+where lack of topology context causes a large coverage drop. Both adapted
 baselines score 0.000 on \texttt{S3}: a gateway-centric topology whose
 back-end services are unreachable without a network prior. In both modes the
 reference-run ordering against the adapted baselines holds.
@@ -573,7 +573,7 @@ Scenario & Inf.A & Inf.B & $\Delta$Inf & Blind.A & Blind.B & $\Delta$Blind \\
 \texttt{S2}  & 0.923 & 0.833 & $-$0.090   & 0.923 & 0.740 & $-$0.183   \\
 \texttt{S3}  & 0.952 & 0.971 & $+$0.019   & 0.941 & 0.810 & $-$0.131   \\
 \texttt{S4}  & 0.944 & 0.788 & $-$0.156   & 0.909 & 0.565 & $-$0.344   \\
-\texttt{S5}  & 1.000 & 0.965 & $-$0.035   & 0.929 & 0.126 & $-$0.803   \\
+\texttt{S5}  & 1.000 & 0.965 & $-$0.035   & 0.929 & 0.929 & $\pm$0.000 \\
 \texttt{S6}  & 1.000 & 0.970 & $-$0.030   & 1.000 & 0.903 & $-$0.097   \\
 \texttt{S7}  & 0.965 & 0.783 & $-$0.182   & 0.889 & 0.786 & $-$0.103   \\
 \texttt{S8}  & 0.933 & 0.963 & $+$0.030   & 0.923 & 0.815 & $-$0.108   \\
@@ -582,7 +582,7 @@ Scenario & Inf.A & Inf.B & $\Delta$Inf & Blind.A & Blind.B & $\Delta$Blind \\
 \texttt{S11} & 0.875 & 0.957 & $+$0.082   & 0.857 & 0.857 & $\pm$0.000 \\
 \texttt{S12} & 0.942 & 0.919 & $-$0.023   & 0.762 & 0.762 & $\pm$0.000 \\
 \midrule
-Mean         & 0.935 & 0.918 & $-$0.017   & 0.887 & 0.753 & $-$0.134   \\
+Mean         & 0.935 & 0.918 & $-$0.017   & 0.887 & 0.820 & $-$0.067   \\
 \bottomrule
 \end{tabular}
 \end{table}
