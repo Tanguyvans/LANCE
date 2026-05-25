@@ -41,6 +41,20 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function _formatErrDetail(detail) {
+  if (detail == null) return 'erreur inconnue';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      if (typeof d === 'string') return d;
+      const loc = Array.isArray(d.loc) ? d.loc.join('.') : '';
+      return loc ? `${loc}: ${d.msg || JSON.stringify(d)}` : (d.msg || JSON.stringify(d));
+    }).join(' ; ');
+  }
+  if (typeof detail === 'object') return detail.msg || JSON.stringify(detail);
+  return String(detail);
+}
+
 // ── Resize handles ─────────────────────────────────────────────────────────
 function initResizeHandles() {
   const root = document.documentElement;
@@ -649,8 +663,8 @@ async function startRun() {
   });
 
   if (!res.ok) {
-    const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur démarrage pipeline'});
+    const err = await res.json().catch(() => ({}));
+    addLog({type:'error', message: _formatErrDetail(err.detail) || 'Erreur démarrage pipeline'});
     return;
   }
 

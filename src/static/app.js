@@ -42,6 +42,20 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function _formatErrDetail(detail) {
+  if (detail == null) return 'erreur inconnue';
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => {
+      if (typeof d === 'string') return d;
+      const loc = Array.isArray(d.loc) ? d.loc.join('.') : '';
+      return loc ? `${loc}: ${d.msg || JSON.stringify(d)}` : (d.msg || JSON.stringify(d));
+    }).join(' ; ');
+  }
+  if (typeof detail === 'object') return detail.msg || JSON.stringify(detail);
+  return String(detail);
+}
+
 // ── Resize handles ─────────────────────────────────────────────────────────
 function initResizeHandles() {
   const root = document.documentElement;
@@ -1148,7 +1162,7 @@ async function startRun() {
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
 
-  const blindMode = document.getElementById('cb-blind-mode')?.checked && mode === 'preset' && scenario;
+  const blindMode = !!(document.getElementById('cb-blind-mode')?.checked && mode === 'preset' && scenario);
 
   const body = {
     model,
@@ -1180,7 +1194,7 @@ async function startRun() {
 
   if (!res.ok) {
     const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur démarrage pipeline'});
+    addLog({type:'error', message: _formatErrDetail(err.detail) || 'Erreur démarrage pipeline'});
     return;
   }
 
@@ -1217,7 +1231,7 @@ async function startBatch() {
   });
   if (!res.ok) {
     const err = await res.json();
-    addLog({type:'error', message: err.detail || 'Erreur démarrage batch'});
+    addLog({type:'error', message: _formatErrDetail(err.detail) || 'Erreur démarrage batch'});
     return;
   }
   document.getElementById('btn-batch-start').disabled = true;
@@ -1261,7 +1275,7 @@ async function deployScenario() {
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({detail: r.statusText}));
-      addLog({type:'error', message:`Déploiement échoué : ${err.detail}`});
+      addLog({type:'error', message:`Déploiement échoué : ${_formatErrDetail(err.detail)}`});
     } else {
       startSSE();
     }
@@ -1288,7 +1302,7 @@ async function teardownScenario() {
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({detail: r.statusText}));
-      addLog({type:'error', message:`Teardown échoué : ${err.detail}`});
+      addLog({type:'error', message:`Teardown échoué : ${_formatErrDetail(err.detail)}`});
     } else {
       addLog({type:'info', message:`Teardown S${scenarioId} lancé`});
     }

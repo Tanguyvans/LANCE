@@ -783,7 +783,7 @@ document.getElementById('btnBatchClose').addEventListener('click', () => {
 document.getElementById('btnBatchRun').addEventListener('click', async () => {
   if (batchSelected.size === 0) { log('Select at least one scenario', 'warn'); return; }
   const ids = [...batchSelected].sort();
-  const body = { scenario_ids: ids, provider: 'openrouter', model: state.model };
+  const body = { batch_ids: ids.map(String), provider: 'openrouter', model: state.model };
   document.getElementById('batchModal').classList.add('hidden');
   await fetchJSON('/api/pipeline/batch', { method: 'POST', body: JSON.stringify(body) });
 });
