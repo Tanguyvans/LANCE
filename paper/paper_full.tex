@@ -513,9 +513,10 @@ The adapted baselines are reported from one controlled run per target device.
 \subsection{Overall performance}
 \label{sec:eval:overall}
 
-Table~\ref{tab:scenario-scores} reports per-scenario F1 for all systems (reference run).
-Informed \harnessname{} reaches 0.962 recall, 0.922 precision, and an
-86.1\% CVSS-weighted score.
+Table~\ref{tab:scenario-scores} reports per-scenario F1 across all four systems.
+Informed \harnessname{} (Run~A) reaches a mean F1 of 0.935 (0.959 recall,
+0.914 precision, 86.4\% CVSS-weighted score); blind \harnessname{} reaches
+0.887 mean F1 without any topology prior.
 
 \begin{table}[h!]
 \centering
@@ -546,42 +547,41 @@ Scenario & Informed & Blind & CAI & VulnBot \\
 Both \harnessname{} modes exceed both adapted baselines on every scenario.
 The baselines recover part of the injected ground truth but never raise F1 above 0.55.
 
-\subsection{Consistency across modes and reruns}
+\subsection{Rerun consistency (informed mode)}
 \label{sec:eval:consistency}
 
-Informed \harnessname{} shows moderate rerun variance ($\Delta = -0.017$ mean F1,
-Table~\ref{tab:rerun-delta}): \texttt{S7} drops the most ($-$0.182) while
-\texttt{S10} improves the most ($+$0.145). Blind \harnessname{} is fully
-stable across reruns ($\Delta = 0$ on all scenarios), as the single blind run
-per scenario is identical in both passes. Both adapted baselines score 0.000
-on \texttt{S3}: a gateway-centric topology whose back-end services are
-unreachable without a network prior. In both modes the reference-run ordering
-against the adapted baselines holds.
+Informed \harnessname{} was executed twice on the same artifact set to
+measure output stability (Table~\ref{tab:rerun-delta}).
+The mean delta is $-$0.017 F1: \texttt{S7} shows the largest drop
+($-$0.182) and \texttt{S10} the largest gain ($+$0.145), while seven
+scenarios change by less than 0.05.
+Blind \harnessname{} was executed once per scenario; rerun variance is
+therefore not measured for that mode.
 
 \begin{table}[h!]
 \centering
-\caption{\footnotesize Rerun delta ($\Delta = \text{B} - \text{A}$) per scenario.}
+\caption{\footnotesize Informed rerun delta ($\Delta = \text{Run\,B} - \text{Run\,A}$).}
 \label{tab:rerun-delta}
 \scriptsize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lrrrrrr@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrr@{}}
 \toprule
-Scenario & Inf.A & Inf.B & $\Delta$Inf & Blind.A & Blind.B & $\Delta$Blind \\
+Scenario & Run A & Run B & $\Delta$ \\
 \midrule
-\texttt{S1}  & 0.923 & 0.960 & $+$0.037   & 0.880 & 0.880 & $\pm$0.000 \\
-\texttt{S2}  & 0.923 & 0.833 & $-$0.090   & 0.923 & 0.923 & $\pm$0.000 \\
-\texttt{S3}  & 0.947 & 0.971 & $+$0.024   & 0.941 & 0.941 & $\pm$0.000 \\
-\texttt{S4}  & 0.944 & 0.788 & $-$0.156   & 0.909 & 0.909 & $\pm$0.000 \\
-\texttt{S5}  & 1.000 & 0.965 & $-$0.035   & 0.929 & 0.929 & $\pm$0.000 \\
-\texttt{S6}  & 1.000 & 0.970 & $-$0.030   & 1.000 & 1.000 & $\pm$0.000 \\
-\texttt{S7}  & 0.965 & 0.783 & $-$0.182   & 0.889 & 0.889 & $\pm$0.000 \\
-\texttt{S8}  & 0.933 & 0.963 & $+$0.030   & 0.923 & 0.923 & $\pm$0.000 \\
-\texttt{S9}  & 0.952 & 0.952 & $\pm$0.000 & 0.857 & 0.857 & $\pm$0.000 \\
-\texttt{S10} & 0.815 & 0.960 & $+$0.145   & 0.769 & 0.769 & $\pm$0.000 \\
-\texttt{S11} & 0.875 & 0.957 & $+$0.082   & 0.857 & 0.857 & $\pm$0.000 \\
-\texttt{S12} & 0.942 & 0.919 & $-$0.023   & 0.762 & 0.762 & $\pm$0.000 \\
+\texttt{S1}  & 0.923 & 0.960 & $+$0.037   \\
+\texttt{S2}  & 0.923 & 0.833 & $-$0.090   \\
+\texttt{S3}  & 0.947 & 0.971 & $+$0.024   \\
+\texttt{S4}  & 0.944 & 0.788 & $-$0.156   \\
+\texttt{S5}  & 1.000 & 0.965 & $-$0.035   \\
+\texttt{S6}  & 1.000 & 0.970 & $-$0.030   \\
+\texttt{S7}  & 0.965 & 0.783 & $-$0.182   \\
+\texttt{S8}  & 0.933 & 0.963 & $+$0.030   \\
+\texttt{S9}  & 0.952 & 0.952 & $\pm$0.000 \\
+\texttt{S10} & 0.815 & 0.960 & $+$0.145   \\
+\texttt{S11} & 0.875 & 0.957 & $+$0.082   \\
+\texttt{S12} & 0.942 & 0.919 & $-$0.023   \\
 \midrule
-Mean         & 0.935 & 0.918 & $-$0.017   & 0.887 & 0.887 & $\pm$0.000 \\
+Mean         & 0.935 & 0.918 & $-$0.017   \\
 \bottomrule
 \end{tabular}
 \end{table}
