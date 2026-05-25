@@ -68,8 +68,9 @@ cameras. This leaves a methodological gap: single-host corpora do not
 measure pivots, protocol roles, or evidence depth.
 
 We present \systemname{}, a reproducible network-scale IoT benchmark of 12
-Proxmox/Ansible scenarios with per-vulnerability ground truth and structured
-metadata for evaluating findings across devices and network paths.
+Proxmox/Ansible scenarios covering 209 injected vulnerabilities across 116
+devices, with per-vulnerability ground truth and structured metadata for
+evaluating findings across devices and network paths.
 We also introduce \harnessname{} (LLM Agent for Network Compromise
 Evaluation), a six-phase network-native harness combining topology
 analysis, active discovery, triage, verification, intrusion attempts, and
@@ -412,13 +413,6 @@ Each LLM finding is matched against ground truth in three ordered passes: (1)~ex
 \medskip\noindent\textbf{Weighted score.}
 The composite score is a severity-weighted True-Positive sum ($w$: critical~4, high~3, medium~2, low~1) normalized by $\sum_{g \in \text{GT}} w(g)$, with $0.5\times$ and $0.75\times$ penalties for fallback and severity-mismatch matches respectively.
 F1 treats each detected vulnerability as binary: found or not, regardless of the severity label the agent assigns. The CVSS-weighted score is more demanding: it weights each true positive by its ground-truth severity and applies a $0.75\times$ penalty when the agent's predicted severity differs from the injected ground truth. Because \harnessname{} infers severity from scan evidence and banner analysis rather than computing it from a CVSS vector, some misclassification is expected even when all vulnerabilities are detected.
-
-\medskip\noindent\textbf{Evidence levels.}
-Ground-truth entries and agent reports can record the deepest evidence level reached:
-\textsf{L1}~detection, \textsf{L2}~exploitation, and \textsf{L3}~exfiltration.
-These labels support later evidence-depth analysis, but the reported comparison in
-this paper aggregates findings only as True Positives, False Positives, recall,
-precision, F1, and severity-weighted score.
 
 \medskip\noindent\textbf{Hop-depth metadata.}
 For each ground-truth vulnerability $g$, the benchmark can store the minimum
