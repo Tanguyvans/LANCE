@@ -594,6 +594,13 @@ Blind    & 0.902 & 0.902 & 0.902 & 0.000 \\
 \end{tabular}
 \end{table}
 
+The informed repeat is not uniformly shifted. Most scenario deltas are below
+0.04 F1, but \texttt{S7} and \texttt{S4} drop by 0.182 and 0.156 respectively,
+mostly through missed findings rather than new false positives; conversely,
+\texttt{S10} improves by 0.145. The remaining larger change is \texttt{S2}
+($-0.090$). Thus the rerun variance is concentrated in a few topology cases,
+while the overall ordering is unchanged.
+
 The trend also holds across topology families. \harnessname{} is exact on the
 two hub-centric star topologies (\texttt{S5}, \texttt{S6}), and remains high on
 segmented IT/OT and edge-cloud settings (\texttt{S4}, \texttt{S7},
