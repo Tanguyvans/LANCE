@@ -704,9 +704,9 @@ the \systemname{} gain are simply not exercised.
 constrained hardware (bootloaders, RTOS, firmware) introduces attack surfaces
 not covered here.
 (ii)~\emph{Run-to-run variance.} Same-artifact reruns confirm that informed
-mode is stable ($\Delta$F1~=~$-$0.026 mean). Blind mode is more sensitive,
-with variance concentrated in a few topology cases (\S\ref{sec:eval:consistency}).
-Full confidence intervals over repeated API calls remain future work.
+mode is stable ($\Delta$F1~=~$-$0.017 mean, Table~\ref{tab:rerun-delta}).
+Blind mode was executed once per scenario; full confidence intervals over
+repeated API calls remain future work.
 (iii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP
 without ground-truth matches, which may inflate precision on scenarios with
 broad bonus lists.
