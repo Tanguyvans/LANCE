@@ -478,10 +478,11 @@ All scenarios are deployed on a single Proxmox VE host as LXC containers on a de
 To isolate architectural contributions from model-specific advantages, all LLM-driven systems run on the same general-purpose model: \textbf{MiniMax-M2.7}~\cite{minimax27}. Security-fine-tuned models are intentionally excluded; this study addresses the architecture axis, not the model fine-tuning axis.
 
 \medskip\noindent\textbf{Baselines.}
-We compare \harnessname{} against three adapted LLM-agent baselines, each reimplementing a published pipeline architecture on the same 12 scenarios and model:
+We compare \harnessname{} against two adapted LLM-agent baselines,
+reimplementing published pipeline architectures on the same scenarios and
+model:
 \begin{itemize}
   \item \textbf{CAI-style adapter}: single-agent tool-calling loop, adapted from the CAI~\cite{cai25} architecture.
-  \item \textbf{PentGPT-style adapter}: three-phase decomposition (recon, scanning, exploitation), adapted from PentestGPT~\cite{pentestgpt24}.
   \item \textbf{VulnBot-style adapter}: multi-agent with a Penetration Task Graph, adapted from VulnBot~\cite{vulnbot25}.
 \end{itemize}
 These systems are designed primarily for single-host or single-target
@@ -489,7 +490,7 @@ workflows, not for full-network graph reasoning. We therefore run each adapted
 baseline once per ground-truth target device in a scenario, normalize the
 per-device outputs into the common finding schema, merge them at scenario
 level, and score the merged output with the same evaluator as \harnessname{}.
-All three baselines use the same MiniMax-M2.7 model.
+Both baselines use the same MiniMax-M2.7 model.
 
 \medskip\noindent\textbf{Metrics.}
 We report recall (task completion), precision, F1, and CVSS-weighted score,
@@ -533,33 +534,33 @@ scenarios, \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
 \label{tab:scenario-scores}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lrrrr@{}}
+\begin{tabular}{@{}lrrr@{}}
 \toprule
-Scenario & \harnessname{} & CAI & PentGPT & VulnBot \\
+Scenario & \harnessname{} & CAI & VulnBot \\
 \midrule
-\texttt{S1}  & 0.923 & 0.150 & 0.000 & 0.150 \\
-\texttt{S2}  & 0.923 & 0.350 & 0.140 & 0.450 \\
-\texttt{S3}  & 0.952 & 0.000 & 0.000 & 0.000 \\
-\texttt{S4}  & 0.944 & 0.360 & 0.420 & 0.440 \\
-\texttt{S5}  & 1.000 & 0.500 & 0.640 & 0.500 \\
-\texttt{S6}  & 1.000 & 0.400 & 0.520 & 0.400 \\
-\texttt{S7}  & 0.965 & 0.500 & 0.450 & 0.450 \\
-\texttt{S8}  & 0.933 & 0.550 & 0.350 & 0.350 \\
-\texttt{S9}  & 0.952 & 0.170 & 0.430 & 0.290 \\
-\texttt{S10} & 0.815 & 0.140 & 0.270 & 0.140 \\
+\texttt{S1}  & 0.923 & 0.150 & 0.150 \\
+\texttt{S2}  & 0.923 & 0.350 & 0.450 \\
+\texttt{S3}  & 0.952 & 0.000 & 0.000 \\
+\texttt{S4}  & 0.944 & 0.360 & 0.440 \\
+\texttt{S5}  & 1.000 & 0.500 & 0.500 \\
+\texttt{S6}  & 1.000 & 0.400 & 0.400 \\
+\texttt{S7}  & 0.965 & 0.500 & 0.450 \\
+\texttt{S8}  & 0.933 & 0.550 & 0.350 \\
+\texttt{S9}  & 0.952 & 0.170 & 0.290 \\
+\texttt{S10} & 0.815 & 0.140 & 0.140 \\
 \midrule
-Mean & 0.940 & 0.312 & 0.321 & 0.316 \\
+Mean & 0.940 & 0.312 & 0.316 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Three points stand out. First, the gap is consistent: \harnessname{} exceeds
-all three adapted baselines in every comparison scenario, so the mean F1 of
+both adapted baselines in every comparison scenario, so the mean F1 of
 0.940 vs.\ 0.31--0.32 is not explained by a single favorable topology.
 Second, the baselines are not empty detectors --- they sometimes recover
 part of the injected ground truth --- but their coverage is too shallow to
 raise F1 above 0.55 in any scenario. Third, the most extreme failure mode is
-structural: all three baselines score 0.000 on \texttt{S3}, a
+structural: both baselines score 0.000 on \texttt{S3}, a
 gateway-centric topology where back-end services are only reachable after
 pivoting through the gateway. A single-host agent has no network prior and
 therefore never discovers those services; \harnessname{}'s Phase~1 topology
