@@ -67,21 +67,20 @@ IoT compromises often depend on reachability across gateways, brokers, and
 cameras. This leaves a methodological gap: single-host corpora do not
 measure pivots, protocol roles, or evidence depth.
 
-We present \systemname{}, a reproducible network-scale IoT benchmark composed
-of 13 Proxmox/Ansible scenarios. The benchmark provides per-vulnerability ground truth and
-structured metadata for evaluating findings across devices and network paths.
+We present \systemname{}, a reproducible network-scale IoT benchmark of 12
+Proxmox/Ansible scenarios with per-vulnerability ground truth and structured
+metadata for evaluating findings across devices and network paths.
 We also introduce \harnessname{} (LLM Agent for Network Compromise
-Evaluation), a six-phase network-native harness that combines topology
+Evaluation), a six-phase network-native harness combining topology
 analysis, active discovery, triage, verification, intrusion attempts, and
 report generation.
 
 In a controlled comparison under the same model and evaluator,
-\harnessname{} achieves 0.959 recall, 0.914 precision, 0.935 F1, and 86.4\%
-CVSS-weighted score on the 12 evaluated scenarios, outperforming every tested
-LLM agent harness in every scenario. On external single-host benchmarks used
-to assess behavior outside the network setting, \harnessname{} reaches 27.3\%
-end-to-end success under the standard AutoPenBench setting and 30.2\% useful
-findings on a 328-case Vulhub run.
+\harnessname{} achieves 0.935 F1 in informed mode (topology prior) and
+0.887 F1 in blind mode (active discovery only), outperforming both adapted
+single-host baselines on all 12 scenarios. On external single-host benchmarks,
+\harnessname{} reaches 27.3\% end-to-end success on AutoPenBench and
+30.2\% useful findings on a 328-case Vulhub snapshot.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -540,6 +539,8 @@ Scenario & Informed & Blind & CAI & VulnBot \\
 \texttt{S10} & 0.815 & 0.769 & 0.143 & 0.143 \\
 \texttt{S11} & 0.875 & 0.857 & 0.414 & 0.414 \\
 \texttt{S12} & 0.942 & 0.762 & 0.242 & 0.307 \\
+\midrule
+Mean         & 0.935 & 0.887 & 0.315 & 0.323 \\
 \bottomrule
 \end{tabular}
 \end{table}
