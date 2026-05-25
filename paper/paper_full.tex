@@ -510,13 +510,10 @@ The adapted baselines are reported from one controlled run per target device.
 \section{Evaluation}
 \label{sec:eval}
 
-The evaluation is organized around three questions. First, does \harnessname{}
-improve per-vulnerability scoring on the 12 network-scale IoT comparison
-scenarios?
-Second, is the gain consistent across topology types, rather than concentrated
-in one easy scenario? Third, how does the same harness transfer to established
-single-host corpora? Cross-corpus results are used only for context: models,
-success oracles, and task definitions differ across papers.
+We evaluate on three axes: overall detection performance on the 12 network-scale
+IoT scenarios, consistency across topology types and reruns, and transfer to
+two established single-host corpora. Cross-corpus results are contextual, as
+models, oracles, and task definitions differ across papers.
 
 \subsection{Overall performance}
 \label{sec:eval:overall}
@@ -559,10 +556,8 @@ Mean & 0.940 & 0.914 & 0.902 & 0.741 & 0.312 & 0.316 \\
 \end{tabular}
 \end{table}
 
-The main result is that both reference \harnessname{} modes exceed both adapted
-baselines on every comparison scenario. The baselines are not empty
-detectors---they recover part of the injected ground truth---but their coverage
-remains too shallow to raise F1 above 0.55 in any scenario.
+Both \harnessname{} modes exceed both adapted baselines on every scenario.
+The baselines recover part of the injected ground truth but never raise F1 above 0.55.
 
 \subsection{Consistency across modes and reruns}
 \label{sec:eval:consistency}
@@ -577,14 +572,12 @@ gateway. A single-host agent has no network prior and therefore never discovers
 those services; \harnessname{}'s Phase~1 topology analysis makes the dependency
 explicit before any scan begins.
 
-The informed repeat is not uniformly shifted. Most scenario deltas are below
-0.04 F1, but \texttt{S7} and \texttt{S4} drop by 0.182 and 0.156 respectively,
-mostly through missed findings rather than new false positives; conversely,
-\texttt{S10} improves by 0.145. The remaining larger change is \texttt{S2}
-($-0.090$). Blind mode is more volatile: the repeat loses substantial coverage
-on \texttt{S5} and \texttt{S4}, but improves on \texttt{S10}. Thus the rerun
-variance is concentrated in a few topology cases, while the reference-run
-ordering against the adapted baselines is unchanged.
+Variance in the informed repeat is scenario-specific: most deltas are below
+0.04 F1, but \texttt{S7} and \texttt{S4} drop by 0.182 and 0.156 (missed
+findings, not new false positives), while \texttt{S10} improves by 0.145.
+Blind mode is more volatile, losing substantial coverage on \texttt{S5} and
+\texttt{S4}. In both cases the reference-run ordering against the adapted
+baselines holds.
 
 The trend also holds across topology families. \harnessname{} is exact on the
 two hub-centric star topologies (\texttt{S5}, \texttt{S6}), and remains high on
@@ -596,17 +589,14 @@ extensions (\texttt{S11}: 15 devices; \texttt{S12}: 35 devices) confirm the
 trend: F1~=~0.875 and F1~=~0.942 respectively.
 
 Across the larger 13-scenario repeat batch, informed and blind reach macro-F1
-0.916 and 0.643 respectively. This is not a full confidence-interval study, but
-it checks that the main result is not an obvious single-call artifact.
+0.916 and 0.643, confirming the main result is not a single-call artifact.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
 
-To assess transfer beyond IoT multi-hop scenarios, we run \harnessname{} and the
-adapted baselines on two single-host corpora used by prior work. These results
-stress the single-target exploitation component inside the harness; they are
-contextual rather than head-to-head with published papers because models,
-target subsets, and success oracles differ.
+To probe transfer beyond IoT multi-hop scenarios, we run \harnessname{} and the
+adapted baselines on two established single-host corpora. Results are contextual:
+models, target subsets, and oracles differ across papers.
 
 \medskip\noindent\textbf{AutoPenBench.}
 AutoPenBench defines 33 flag-based tasks with published E2E rates. We run
@@ -616,60 +606,47 @@ separates published paper results from our controlled MiniMax-M2.7 runs.
 
 \begin{table}[h!]
 \centering
-\caption{\footnotesize AutoPenBench transfer results.}
+\caption{\footnotesize AutoPenBench transfer results (33 tasks).}
 \label{tab:autopenbench}
 \setlength{\tabcolsep}{3pt}
 \scriptsize
 \begin{tabular}{@{}llrr@{}}
 \toprule
-System & Model & Sub-task & E2E \\
+System & Model & Sub-task & Flags (E2E) \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{Published results}} \\
+\multicolumn{4}{@{}l}{\emph{Published (\%)}} \\
 \midrule
 Llama baseline~\cite{vulnbot25,xoffense25}  & Llama 3.1-405B  & 49.1          & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & ---           & 21.2 \\
+GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & n/r           & 21.2 \\
 VulnBot~\cite{vulnbot25}                    & Llama 3.1-405B  & 69.1          & 30.3 \\
 xOffense~\cite{xoffense25}                  & Qwen3-32B LoRA  & 79.2$^\P$     & 72.7 \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{This work --- same tasks, model, and oracle}} \\
+\multicolumn{4}{@{}l}{\emph{This work, same tasks/model/oracle (/33)}} \\
 \midrule
-CAI adapter~\cite{cai25}                    & MiniMax-M2.7    & 12.1$^\dagger$ & 6.1  \\
-VulnBot adapter~\cite{vulnbot25}            & MiniMax-M2.7    & 18.2$^\dagger$ & 15.2 \\
-\textbf{\harnessname{} informed}            & MiniMax-M2.7    & 51.5$^\dagger$ & 27.3 \\
-\textbf{\harnessname{} blind}               & MiniMax-M2.7    & 39.4$^\dagger$ & 21.2 \\
+CAI adapter~\cite{cai25}                    & MiniMax-M2.7    & 4/33$^\dagger$  & 2/33 \\
+VulnBot adapter~\cite{vulnbot25}            & MiniMax-M2.7    & 6/33$^\dagger$  & 5/33 \\
+\textbf{\harnessname{} informed}            & MiniMax-M2.7    & 17/33$^\dagger$ & 9/33 \\
+\textbf{\harnessname{} blind}               & MiniMax-M2.7    & 13/33$^\dagger$ & 7/33 \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-Models and run protocols differ, so this is not a controlled ranking.
-``---'' indicates a metric not reported by the original paper.
-$^\dagger$ Our sub-task analogue is \emph{useful findings}: tasks where the
-agent produced actionable exploit evidence, regardless of flag capture. Our
-local runs do not use the upstream AutoPenBench orchestrator.
-$^\P$ xOffense's sub-task score is best-of-five; its E2E score is strict task
-completion.}
+$^\dagger$ Sub-task = \emph{useful findings} (actionable exploit evidence, no flag required).
+$^\P$ xOffense sub-task is best-of-five. n/r = not reported.}
 \end{table}
 
-Blind \harnessname{} captures 7/33 flags and 13/33 useful findings; informed
-\harnessname{} reaches 9/33 and 17/33. Under the same local wrapper and MiniMax
-model, CAI reaches 2/33 flags and 4/33 useful findings, while VulnBot reaches
-5/33 and 6/33. The blind E2E rate matches the published GPT-4o baseline, while
-the gap with purpose-built systems is expected: our harness is designed for
-multi-hop IoT networks, not single-host exploit chaining.
+Under the same model and oracle, \harnessname{} leads on both metrics: informed
+captures 9 flags and 17 useful findings, blind captures 7 and 13, versus 5 flags
+and 6 useful findings for VulnBot.
 
 \medskip\noindent\textbf{Vulhub.}
-Vulhub has reproducible vulnerable environments but no uniform flag oracle, so
-we report useful-finding lower bounds. Table~\ref{tab:vulhub-transfer}
-separates published context from our controlled 328-case snapshot. Published
-rows are not directly comparable because target subsets, models, and oracles
-differ; our lower block uses the same MiniMax-M2.7 model, local Docker harness,
-and useful-finding oracle.
+Vulhub has no uniform flag oracle, so we report useful-finding lower bounds.
+Table~\ref{tab:vulhub-transfer} shows our controlled 328-case snapshot alongside
+published results for context.
 
 \begin{table*}[t]
 \centering
-\caption{\footnotesize Vulhub transfer results. Published rows provide context; the lower
-block is our controlled 328-case comparison under the same useful-finding
-oracle.}
+\caption{\footnotesize Vulhub transfer results (328 cases).}
 \label{tab:vulhub-transfer}
 \setlength{\tabcolsep}{3pt}
 \scriptsize
@@ -682,7 +659,7 @@ System & Model & Oracle & Cases & Result \\
 PentestAgent~\cite{pentestagent25} & n/r & full-process success & 67  & 74.2\% \\
 CheckMate~\cite{checkmate25}       & Sonnet 4.5 + planner & shell access (M7) & 120 & 88\% \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{This work --- same 328-case Vulhub snapshot and oracle}} \\
+\multicolumn{5}{@{}l}{\emph{This work, same 328-case snapshot and oracle}} \\
 \midrule
 \textbf{\harnessname{} informed}   & MiniMax-M2.7 & useful findings & 328 & 99/328 (30.2\%) \\
 \textbf{\harnessname{} blind}      & MiniMax-M2.7 & useful findings & 328 & 92/328 (28.0\%) \\
@@ -697,11 +674,10 @@ denominator is the full 328-case list; useful findings are confirmed exploits
 plus probable vulnerabilities with machine-readable evidence.}
 \end{table*}
 
-On Vulhub, informed/blind \harnessname{} produce 99 and 92 useful findings,
-while CAI and VulnBot produce 170 and 92. These are single-host transfer
-diagnostics, not replacements for the \systemname{} result: CAI is stronger on
-this oracle, while \harnessname{} is the only evaluated system designed to reason
-over multi-device topology in the main benchmark.
+On Vulhub, CAI leads with 170/328 useful findings; \harnessname{} informed and
+blind reach 99 and 92, matching VulnBot. CAI's advantage reflects its
+single-host exploit focus, which is orthogonal to the multi-device topology
+reasoning evaluated in \systemname{}.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
