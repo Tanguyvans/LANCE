@@ -411,6 +411,7 @@ Each LLM finding is matched against ground truth in three ordered passes: (1)~ex
 
 \medskip\noindent\textbf{Weighted score.}
 The composite score is a severity-weighted True-Positive sum ($w$: critical~4, high~3, medium~2, low~1) normalized by $\sum_{g \in \text{GT}} w(g)$, with $0.5\times$ and $0.75\times$ penalties for fallback and severity-mismatch matches respectively.
+F1 treats each detected vulnerability as binary: found or not, regardless of the severity label the agent assigns. The CVSS-weighted score is more demanding: it weights each true positive by its ground-truth severity and applies a $0.75\times$ penalty when the agent's predicted severity differs from the injected ground truth. Because \harnessname{} infers severity from scan evidence and banner analysis rather than computing it from a CVSS vector, some misclassification is expected even when all vulnerabilities are detected.
 
 \medskip\noindent\textbf{Evidence levels.}
 Ground-truth entries and agent reports can record the deepest evidence level reached:
@@ -512,11 +513,13 @@ The adapted baselines are reported from one controlled run per target device.
 \subsection{Overall performance}
 \label{sec:eval:overall}
 
-Table~\ref{tab:scenario-scores} reports per-scenario F1 across all four systems;
-Table~\ref{tab:detail} details recall, precision, and CVSS score for both
-\harnessname{} modes. Informed \harnessname{} reaches 0.935 mean F1 (0.959
-recall, 0.914 precision, 86.4\% CVSS-weighted); blind \harnessname{} reaches
-0.887 mean F1 without any topology prior.
+Table~\ref{tab:scenario-scores} reports per-scenario F1 across all four systems.
+Informed \harnessname{} reaches 0.935 mean F1 (0.959 recall, 0.914 precision,
+86.4\% CVSS-weighted); blind \harnessname{} reaches 0.887 mean F1 and
+73.8\% CVSS-weighted score without any topology prior. Both modes exceed both
+adapted baselines on every scenario; the baselines never raise F1 above 0.55.
+The scalability scenarios confirm the trend: \texttt{S11} (15 devices) reaches
+F1~=~0.875 and \texttt{S12} (35 devices) reaches F1~=~0.942.
 
 \begin{table}[h!]
 \centering
@@ -545,9 +548,6 @@ Mean         & 0.935 & 0.887 & 0.315 & 0.323 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-Both \harnessname{} modes exceed both adapted baselines on every scenario.
-The baselines recover part of the injected ground truth but never raise F1 above 0.55.
 
 \subsection{Rerun consistency (informed mode)}
 \label{sec:eval:consistency}
@@ -587,18 +587,17 @@ Mean         & 0.935 & 0.918 & $-$0.017   \\
 \end{tabular}
 \end{table}
 
-The scalability extensions confirm the trend: \texttt{S11} (15 devices) reaches
-F1~=~0.875 and \texttt{S12} (35 devices) reaches F1~=~0.942.
-
 \subsection{Per-scenario metric detail}
 \label{sec:eval:detail}
 
 Table~\ref{tab:detail} reports recall, precision, F1, and CVSS-weighted score
 per scenario for both \harnessname{} modes. Informed recall is perfect on
-six scenarios (S1, S3, S5--S8); precision drops on \texttt{S10} (sparse
+six scenarios (S1, S3, S5, S6, S7, S8); precision drops on \texttt{S10} (sparse
 coverage of a large flat topology). Blind mode trades recall for higher
 precision on gateway-centric scenarios (\texttt{S3}, \texttt{S4}, \texttt{S8}),
 confirming that active discovery raises precision at the cost of recall.
+The CVSS-weighted score is systematically lower in blind mode (73.8\% vs.\ 86.4\%),
+reflecting greater severity estimation error when no topology prior is available.
 
 \begin{table}[h!]
 \centering
@@ -634,8 +633,9 @@ Mean         & 0.959 & 0.914 & 0.935 &  86.4 & 0.856 & 0.922 & 0.887 &  73.8 \\
 \label{sec:eval:baselines}
 
 To probe transfer beyond IoT multi-hop scenarios, we run \harnessname{} and the
-adapted baselines on two established single-host benchmarks. Results are contextual:
-models and oracles differ across papers.
+adapted baselines on two established single-host benchmarks. Cross-corpus comparison
+is indicative rather than definitive: each paper uses a different model, oracle, and
+task definition.
 
 \medskip\noindent\textbf{AutoPenBench.}
 AutoPenBench defines 33 flag-based tasks with published E2E rates. We run
@@ -795,7 +795,7 @@ a six-phase network-native harness that decomposes pentesting at device and
 vulnerability granularity.
 
 Under a controlled comparison with the same model and evaluator, \harnessname{}
-achieves 0.935 mean F1 and 86.1\% CVSS-weighted score, outperforming every
+achieves 0.935 mean F1 and 86.4\% CVSS-weighted score, outperforming every
 adapted baseline on every scenario. The sharpest evidence is \texttt{S3}: both
 baselines score 0.000 on a gateway-centric topology that requires a single
 pivot, while \harnessname{} exceeds F1~=~0.94. The gain scales: F1~=~0.942 on
