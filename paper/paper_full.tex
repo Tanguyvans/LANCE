@@ -294,6 +294,7 @@ are unreachable without first compromising it.
 
 \begin{figure}[t]
 \centering
+\scalebox{0.78}{%
 \begin{tikzpicture}[
   natt/.style={draw=AttBorder,fill=AttFill,line width=1.1pt,
     rounded corners=5pt,minimum width=2.2cm,minimum height=0.75cm,
@@ -346,7 +347,8 @@ are unreachable without first compromising it.
 % Note below the IoT zone box
 \node[zlbl,below=0.25cm of zC,align=center]
   {backend unreachable without pivot};
-\end{tikzpicture}
+\end{tikzpicture}%
+}
 \caption{Gateway-centric attack chain (Scenario~S3). Backend services are
 unreachable from the Internet without first pivoting through the gateway.
 Single-host agents fail on this topology (F1\,=\,0.000 for both baselines)
