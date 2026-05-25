@@ -121,15 +121,15 @@
       ansible.builtin.command: qm start {{ base_vmid }}
       when: router_check.rc != 0
 
-    - name: Attendre que le router OpenWrt soit prêt (port 22 ou 80)
-      ansible.builtin.command: >-
-        qm guest exec {{ base_vmid }} -- sh -c "ss -tlnp | grep -qE ':22|:80'"
-      register: router_ready
-      until: router_ready is succeeded
-      retries: 15
-      delay: 5
-      changed_when: false
-      failed_when: false
+    # Vrai check TCP du SSH OpenWrt — sans guest agent (template 9010 n'en a pas),
+    # un `qm guest exec` retourne toujours "No QEMU guest agent configured".
+    # On probe directement le LAN du router depuis le host Proxmox (vmbr1 plumbé).
+    - name: Attendre que le router OpenWrt soit prêt (SSH actif sur le LAN)
+      ansible.builtin.wait_for:
+        host: "{{ benchmark_gateway }}"
+        port: 22
+        timeout: 180
+        delay: 5
 
 
     # ── Services LXC ──
