@@ -518,11 +518,9 @@ models, oracles, and task definitions differ across papers.
 \subsection{Overall performance}
 \label{sec:eval:overall}
 
-Table~\ref{tab:scenario-scores} is the controlled comparison on the 10
-\systemname{} scenarios for which all adapted baselines were run. It reports
-per-scenario F1 for \harnessname{} in informed and blind modes, including a
-same-artifact repeat for each mode, followed by the CAI and VulnBot adapters,
-all using the same MiniMax-M2.7 model and evaluator.
+Table~\ref{tab:scenario-scores} reports per-scenario F1 for \harnessname{} in
+informed and blind modes and for both adapted baselines, all using the same
+MiniMax-M2.7 model and evaluator.
 Since the comparison systems are single-target agents rather than multi-device
 network harnesses, we run each baseline once per target device, merge its
 per-device findings at scenario level, and then compute the F1 shown in the
