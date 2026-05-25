@@ -14,14 +14,31 @@
 \usepackage{amsmath,amssymb}
 \usepackage{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
 \usepackage{xspace}
 \usepackage{verbatim}
 \usepackage{pifont}
 \newcommand{\cmark}{\ding{51}}
 \newcommand{\xmark}{\ding{55}}
 \usepackage[hidelinks,breaklinks=true]{hyperref}
-\usetikzlibrary{arrows.meta,fit,backgrounds}
+% (tikzlibs consolidated above)
+
+% ── figure colors ─────────────────────────────────────────────────────────
+\definecolor{ZIFill}{HTML}{EBF0FB}
+\definecolor{ZIBorder}{HTML}{7B9ED9}
+\definecolor{ZDFill}{HTML}{FFF8E1}
+\definecolor{ZDBorder}{HTML}{D4A017}
+\definecolor{ZCFill}{HTML}{EDF7EE}
+\definecolor{ZCBorder}{HTML}{72B07A}
+\definecolor{AttFill}{HTML}{FDEDEC}
+\definecolor{AttBorder}{HTML}{C0392B}
+\definecolor{GwFill}{HTML}{FEF5E7}
+\definecolor{GwBorder}{HTML}{E67E22}
+\definecolor{BackFill}{HTML}{EBF5FB}
+\definecolor{BackBorder}{HTML}{2471A3}
+\definecolor{FigArrow}{HTML}{7B241C}
+\definecolor{FigBlocked}{HTML}{AAAAAA}
+\definecolor{FigSubtle}{HTML}{777777}
 
 % ── macros ────────────────────────────────────────────────────────────────
 \newcommand{\systemname}{IoTChainBench\xspace}
@@ -270,6 +287,69 @@ This ordering governs both \textsc{LANCE} Phase~4 prompting (\S\ref{sec:harness:
 
 \medskip\noindent\textbf{Scope.}
 We evaluate at the IP/application layer on virtual IoT networks. Out of scope: physical and side-channel attacks, RF-layer exploitation, firmware extraction, post-exploitation persistence, and insider threats.
+
+Figure~\ref{fig:attack-chain} illustrates a representative gateway-centric
+scenario: the attacker can reach the gateway directly but all backend services
+are unreachable without first compromising it.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  natt/.style={draw=AttBorder,fill=AttFill,line width=1.1pt,
+    rounded corners=5pt,minimum width=2.6cm,minimum height=0.85cm,
+    font=\sffamily\bfseries\small},
+  ngw/.style={draw=GwBorder,fill=GwFill,line width=1.2pt,
+    rounded corners=5pt,minimum width=2.6cm,minimum height=0.85cm,
+    font=\sffamily\bfseries\small,align=center},
+  nback/.style={draw=BackBorder,fill=BackFill,line width=1.0pt,
+    rounded corners=5pt,minimum width=2.0cm,minimum height=0.78cm,
+    font=\sffamily\bfseries\scriptsize},
+  arr/.style={->,>=stealth,draw=FigArrow,line width=1.2pt},
+  blk/.style={->,>=stealth,draw=FigBlocked,line width=0.85pt,
+    dashed,dash pattern=on 4pt off 2.5pt},
+  lbl/.style={font=\sffamily\tiny,text=FigArrow!85!black,
+    fill=white,inner sep=1.5pt,midway},
+  badge/.style={draw=AttBorder,fill=white,rounded corners=2pt,
+    font=\sffamily\tiny\bfseries,text=AttBorder,inner sep=2pt,midway},
+  blbl/.style={font=\sffamily\tiny,text=FigBlocked,fill=white,
+    inner sep=1.5pt,midway},
+  zlbl/.style={font=\sffamily\scriptsize\itshape,text=FigSubtle}
+]
+\node[natt] (atk) {Attacker};
+\node[ngw, below=1.8cm of atk] (gw)
+  {Gateway\\[-1pt]{\normalfont\tiny\itshape\color{GwBorder}pivot}};
+\node[nback,below left=1.9cm and 1.7cm of gw]  (mqtt){MQTT Broker};
+\node[nback,below=1.9cm of gw]                  (db)  {MariaDB};
+\node[nback,below right=1.9cm and 1.7cm of gw]  (rpi) {RPi Sensor};
+\begin{scope}[on background layer]
+  \node[fill=ZIFill,draw=ZIBorder,dashed,line width=0.8pt,
+    rounded corners=7pt,inner xsep=18pt,inner ysep=14pt,fit=(atk)](zI){};
+  \node[fill=ZDFill,draw=ZDBorder,dashed,line width=0.8pt,
+    rounded corners=7pt,inner xsep=18pt,inner ysep=14pt,fit=(gw)](zD){};
+  \node[fill=ZCFill,draw=ZCBorder,dashed,line width=0.8pt,
+    rounded corners=7pt,inner xsep=18pt,inner ysep=14pt,
+    fit=(mqtt)(db)(rpi)](zC){};
+\end{scope}
+\node[zlbl] at ([yshift=-9pt]zI.north) {Internet};
+\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-5pt]zD.north west) {DMZ};
+\node[zlbl] at ([yshift=-9pt]zC.north) {IoT Subnet};
+\draw[arr] (atk.south)--(gw.north)   node[badge,right=6pt]{SSH weak creds};
+\draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.4]{anon.\ MQTT};
+\draw[arr] (gw.south)--(db.north)    node[lbl,right=4pt]{root no passwd};
+\draw[arr] (gw.south)--(rpi.north)   node[lbl,right=4pt,pos=0.4]{default creds};
+\draw[blk] (atk.west)  to[out=215,in=130,looseness=0.8]
+  node[blbl,left=3pt,pos=0.48]{blocked} (mqtt.north west);
+\draw[blk] (atk.east)  to[out=325,in=50,looseness=0.8]
+  node[blbl,right=3pt,pos=0.48]{blocked} (rpi.north east);
+\node[zlbl,below=0.3cm of db,align=center]
+  {backend unreachable without pivot};
+\end{tikzpicture}
+\caption{Gateway-centric attack chain (Scenario~S3). Backend services are
+unreachable from the Internet without first pivoting through the gateway.
+Single-host agents fail on this topology (F1\,=\,0.000 for both baselines)
+because they scan each target independently.}
+\label{fig:attack-chain}
+\end{figure}
 
 % ══════════════════════════════════════════════════════════════════════════
 % §4 IoTBench
