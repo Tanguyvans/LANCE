@@ -745,21 +745,25 @@ reproduction in controlled lab environments.
 \section{Conclusion}
 \label{sec:conclusion}
 
-LLM pentest agents are often evaluated on isolated hosts, but IoT compromises
-depend on reachability across devices, protocol roles, and pivot-dependent
-findings. This paper introduced \systemname{}, a reproducible network-scale
-benchmark with 13 vulnerability-injected IoT/OT scenarios, two hardened
-controls, 145 devices total, and 229 injected vulnerabilities, together with
-\harnessname{}, a six-phase network-native harness. \systemname{} adds
-per-vulnerability ground truth with severity, verification commands, and
-reachability metadata for pivot-aware analysis.
+Single-host benchmarks cannot capture the pivot chains, protocol roles, and
+reachability dependencies that define real IoT risk. We introduced
+\systemname{}, a 13-scenario network-scale benchmark with deterministic
+vulnerability injection and per-vulnerability ground truth, and \harnessname{},
+a six-phase network-native harness that decomposes pentesting at device and
+vulnerability granularity.
 
-In the controlled comparison, \harnessname{} achieves 0.940 mean F1 and an
-86.1\% CVSS-weighted score on the 10 main scenarios, outperforming each adapted
-baseline under the same model and evaluator. The result supports the main
-claim of the paper: evaluating LLM pentest agents for IoT requires benchmarks
-that expose network structure, not only single-host exploit completion. All
-artifacts are released at \texttt{ANONYMIZED\_URL}.
+Under a controlled comparison with the same model and evaluator, \harnessname{}
+achieves 0.940 mean F1 and 86.1\% CVSS-weighted score, outperforming every
+adapted baseline on every scenario. The sharpest evidence is \texttt{S3}: both
+baselines score 0.000 on a gateway-centric topology that requires a single
+pivot, while \harnessname{} exceeds F1~=~0.94. The gain scales: F1~=~0.942 on
+a 35-device scenario confirms that bounded per-device context does not degrade
+with network size.
+
+These results show that network-aware context is a necessary condition for IoT
+pentesting, not a refinement. We release all scenarios, playbooks, ground
+truth, and evaluation code to support reproducible research in this setting.
+All artifacts are available at \texttt{ANONYMIZED\_URL}.
 
 % ── bibliography ──────────────────────────────────────────────────────────
 \begin{thebibliography}{00}
