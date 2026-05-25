@@ -519,14 +519,14 @@ Informed \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
 
 \begin{table}[h!]
 \centering
-\caption{\footnotesize Per-scenario F1 on the 10 comparison scenarios. A is the
+\caption{\footnotesize Per-scenario F1 on all 12 scenarios. A is the
 reference run; B is the same-artifact repeat.}
 \label{tab:scenario-scores}
 \scriptsize
 \setlength{\tabcolsep}{2.2pt}
 \begin{tabular}{@{}lrrrrrr@{}}
 \toprule
-Scenario & Inf.A & Inf.B & Blind.A & Blind.B & CAI & VulnBot \\
+Scenario & Inf.A & Inf.B & Blind.A & Blind.B$^\dagger$ & CAI & VulnBot \\
 \midrule
 \texttt{S1}  & 0.923 & 0.960 & 0.880 & 0.880 & 0.150 & 0.150 \\
 \texttt{S2}  & 0.923 & 0.833 & 0.923 & 0.740 & 0.350 & 0.450 \\
@@ -538,10 +538,14 @@ Scenario & Inf.A & Inf.B & Blind.A & Blind.B & CAI & VulnBot \\
 \texttt{S8}  & 0.933 & 0.963 & 0.923 & 0.815 & 0.550 & 0.350 \\
 \texttt{S9}  & 0.952 & 0.952 & 0.857 & 0.909 & 0.170 & 0.290 \\
 \texttt{S10} & 0.815 & 0.960 & 0.769 & 0.880 & 0.140 & 0.140 \\
+\texttt{S11} & 0.875 & 0.957 & 0.857 & n/r   & 0.414 & 0.414 \\
+\texttt{S12} & 0.942 & 0.919 & 0.762 & n/r   & 0.242 & 0.307 \\
 \midrule
-Mean & 0.940 & 0.914 & 0.902 & 0.741 & 0.312 & 0.316 \\
+Mean & 0.935 & 0.918 & 0.887 & 0.741$^\dagger$ & 0.315 & 0.324 \\
 \bottomrule
 \end{tabular}
+\smallskip\\
+\footnotesize\emph{$^\dagger$ Blind.B mean over S1--S10 only; rerun not available for S11--S12.}
 \end{table}
 
 Both \harnessname{} modes exceed both adapted baselines on every scenario.
@@ -551,8 +555,8 @@ The baselines recover part of the injected ground truth but never raise F1 above
 \label{sec:eval:consistency}
 
 Two stability profiles emerge (Table~\ref{tab:rerun-delta}): informed
-\harnessname{} changes by only 0.026 mean F1, while blind \harnessname{} drops
-from 0.902 to 0.741. The most extreme case is \texttt{S5} blind ($-$0.803),
+\harnessname{} changes by only 0.017 mean F1, while blind \harnessname{} drops
+from 0.887 to 0.741 (S1--S10). The most extreme case is \texttt{S5} blind ($-$0.803),
 where lack of topology context causes a near-total coverage loss. Both adapted
 baselines score 0.000 on \texttt{S3}: a gateway-centric topology whose
 back-end services are unreachable without a network prior. In both modes the
@@ -578,8 +582,10 @@ Scenario & Inf.A & Inf.B & $\Delta$Inf & Blind.A & Blind.B & $\Delta$Blind \\
 \texttt{S8}  & 0.933 & 0.963 & $+$0.030   & 0.923 & 0.815 & $-$0.108   \\
 \texttt{S9}  & 0.952 & 0.952 & $\pm$0.000 & 0.857 & 0.909 & $+$0.052   \\
 \texttt{S10} & 0.815 & 0.960 & $+$0.145   & 0.769 & 0.880 & $+$0.111   \\
+\texttt{S11} & 0.875 & 0.957 & $+$0.082   & 0.857 & n/r   & n/r        \\
+\texttt{S12} & 0.942 & 0.919 & $-$0.023   & 0.762 & n/r   & n/r        \\
 \midrule
-Mean         & 0.940 & 0.914 & $-$0.026   & 0.902 & 0.741 & $-$0.161   \\
+Mean         & 0.935 & 0.918 & $-$0.017   & 0.887 & 0.741$^\dagger$ & $-$0.161$^\dagger$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -753,7 +759,7 @@ a six-phase network-native harness that decomposes pentesting at device and
 vulnerability granularity.
 
 Under a controlled comparison with the same model and evaluator, \harnessname{}
-achieves 0.940 mean F1 and 86.1\% CVSS-weighted score, outperforming every
+achieves 0.935 mean F1 and 86.1\% CVSS-weighted score, outperforming every
 adapted baseline on every scenario. The sharpest evidence is \texttt{S3}: both
 baselines score 0.000 on a gateway-centric topology that requires a single
 pivot, while \harnessname{} exceeds F1~=~0.94. The gain scales: F1~=~0.942 on
