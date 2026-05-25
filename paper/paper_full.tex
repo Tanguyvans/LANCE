@@ -523,8 +523,9 @@ success oracles, and task definitions differ across papers.
 
 Table~\ref{tab:scenario-scores} is the controlled comparison on the 10
 \systemname{} scenarios for which all adapted baselines were run. It reports
-per-scenario F1 for \harnessname{} in informed and blind modes, followed by the
-CAI and VulnBot adapters, all using the same MiniMax-M2.7 model and evaluator.
+per-scenario F1 for \harnessname{} in informed and blind modes, including a
+same-artifact repeat for each mode, followed by the CAI and VulnBot adapters,
+all using the same MiniMax-M2.7 model and evaluator.
 Since the comparison systems are single-target agents rather than multi-device
 network harnesses, we run each baseline once per target device, merge its
 per-device findings at scenario level, and then compute the F1 shown in the
@@ -533,73 +534,57 @@ recall, 0.922 precision, and an 86.1\% CVSS-weighted score.
 
 \begin{table}[h!]
 \centering
-\caption{\footnotesize Per-scenario F1 on the 10 comparison scenarios.}
+\caption{\footnotesize Per-scenario F1 on the 10 comparison scenarios. A is the
+reference run; B is the same-artifact repeat.}
 \label{tab:scenario-scores}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lrrrr@{}}
+\scriptsize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular}{@{}lrrrrrr@{}}
 \toprule
-Scenario & \harnessname{} informed & \harnessname{} blind & CAI & VulnBot \\
+Scenario & Inf.A & Inf.B & Blind.A & Blind.B & CAI & VulnBot \\
 \midrule
-\texttt{S1}  & 0.923 & 0.880 & 0.150 & 0.150 \\
-\texttt{S2}  & 0.923 & 0.923 & 0.350 & 0.450 \\
-\texttt{S3}  & 0.952 & 0.941 & 0.000 & 0.000 \\
-\texttt{S4}  & 0.944 & 0.909 & 0.360 & 0.440 \\
-\texttt{S5}  & 1.000 & 0.929 & 0.500 & 0.500 \\
-\texttt{S6}  & 1.000 & 1.000 & 0.400 & 0.400 \\
-\texttt{S7}  & 0.965 & 0.889 & 0.500 & 0.450 \\
-\texttt{S8}  & 0.933 & 0.923 & 0.550 & 0.350 \\
-\texttt{S9}  & 0.952 & 0.857 & 0.170 & 0.290 \\
-\texttt{S10} & 0.815 & 0.769 & 0.140 & 0.140 \\
+\texttt{S1}  & 0.923 & 0.960 & 0.880 & 0.880 & 0.150 & 0.150 \\
+\texttt{S2}  & 0.923 & 0.833 & 0.923 & 0.740 & 0.350 & 0.450 \\
+\texttt{S3}  & 0.952 & 0.971 & 0.941 & 0.810 & 0.000 & 0.000 \\
+\texttt{S4}  & 0.944 & 0.788 & 0.909 & 0.565 & 0.360 & 0.440 \\
+\texttt{S5}  & 1.000 & 0.965 & 0.929 & 0.126 & 0.500 & 0.500 \\
+\texttt{S6}  & 1.000 & 0.970 & 1.000 & 0.903 & 0.400 & 0.400 \\
+\texttt{S7}  & 0.965 & 0.783 & 0.889 & 0.786 & 0.500 & 0.450 \\
+\texttt{S8}  & 0.933 & 0.963 & 0.923 & 0.815 & 0.550 & 0.350 \\
+\texttt{S9}  & 0.952 & 0.952 & 0.857 & 0.909 & 0.170 & 0.290 \\
+\texttt{S10} & 0.815 & 0.960 & 0.769 & 0.880 & 0.140 & 0.140 \\
 \midrule
-Mean & 0.940 & 0.902 & 0.312 & 0.316 \\
+Mean & 0.940 & 0.914 & 0.902 & 0.741 & 0.312 & 0.316 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The main result is that both \harnessname{} modes exceed both adapted baselines
-on every comparison scenario. The baselines are not empty detectors---they
-recover part of the injected ground truth---but their coverage remains too
-shallow to raise F1 above 0.55 in any scenario.
+The main result is that both reference \harnessname{} modes exceed both adapted
+baselines on every comparison scenario. The baselines are not empty
+detectors---they recover part of the injected ground truth---but their coverage
+remains too shallow to raise F1 above 0.55 in any scenario.
 
 \subsection{Consistency across modes and reruns}
 \label{sec:eval:consistency}
 
-The gain is not driven by a single context setting or topology. Table
-\ref{tab:rerun-consistency} shows that both \harnessname{} modes remain stable
-under a same-artifact repeat on the same 10 comparison scenarios: informed
-\harnessname{} changes by 0.026 F1, while the blind repeat is unchanged at the
-reported rounding. Run~A is the reference run used in
-Table~\ref{tab:scenario-scores}; Run~B is the repeat. The most extreme failure mode is
+The gain is not driven by a single context setting or topology. The repeat
+columns in Table~\ref{tab:scenario-scores} show two different stability
+profiles: informed \harnessname{} changes by only 0.026 mean F1, while blind
+\harnessname{} drops from 0.902 to 0.741. The most extreme failure mode is
 structural: both adapted baselines score 0.000 on \texttt{S3}, a gateway-centric
 topology where back-end services are only reachable after pivoting through the
 gateway. A single-host agent has no network prior and therefore never discovers
 those services; \harnessname{}'s Phase~1 topology analysis makes the dependency
 explicit before any scan begins.
 
-\begin{table}[h!]
-\centering
-\caption{\footnotesize Same-artifact \harnessname{} rerun consistency on the 10
-comparison scenarios.}
-\label{tab:rerun-consistency}
-\scriptsize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Mode & Run A & Run B & Mean & $|\Delta|$ \\
-\midrule
-Informed & 0.940 & 0.914 & 0.927 & 0.026 \\
-Blind    & 0.902 & 0.902 & 0.902 & 0.000 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 The informed repeat is not uniformly shifted. Most scenario deltas are below
 0.04 F1, but \texttt{S7} and \texttt{S4} drop by 0.182 and 0.156 respectively,
 mostly through missed findings rather than new false positives; conversely,
 \texttt{S10} improves by 0.145. The remaining larger change is \texttt{S2}
-($-0.090$). Thus the rerun variance is concentrated in a few topology cases,
-while the overall ordering is unchanged.
+($-0.090$). Blind mode is more volatile: the repeat loses substantial coverage
+on \texttt{S5} and \texttt{S4}, but improves on \texttt{S10}. Thus the rerun
+variance is concentrated in a few topology cases, while the reference-run
+ordering against the adapted baselines is unchanged.
 
 The trend also holds across topology families. \harnessname{} is exact on the
 two hub-centric star topologies (\texttt{S5}, \texttt{S6}), and remains high on
@@ -611,7 +596,7 @@ extensions (\texttt{S11}: 15 devices; \texttt{S12}: 35 devices) confirm the
 trend: F1~=~0.875 and F1~=~0.942 respectively.
 
 Across the larger 13-scenario repeat batch, informed and blind reach macro-F1
-0.916 and 0.818 respectively. This is not a full confidence-interval study, but
+0.916 and 0.643 respectively. This is not a full confidence-interval study, but
 it checks that the main result is not an obvious single-call artifact.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
