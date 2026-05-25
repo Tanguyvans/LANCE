@@ -644,42 +644,45 @@ topology prior, per-device decomposition, and lateral-movement phases that
 distinguish \harnessname{} on \systemname{}. The Vulhub results therefore
 evaluate the harness's single-target exploitation component, not the full
 multi-device architecture.
-Table~\ref{tab:vulhub-transfer} places our run alongside published Vulhub
-results for context. The rows are \emph{not directly comparable}: each paper
-uses a different target subset, a different success oracle, and a different
-model. Crucially, the specific cases evaluated by PentestAgent and CheckMate
-are not disclosed, so we cannot determine whether they overlap with our 328
-cases or were selected for exploitability.
+Table~\ref{tab:vulhub-transfer} separates two uses of Vulhub. The first block
+lists published results for literature context only. Those rows are \emph{not}
+directly comparable: each paper uses a different target subset, success oracle,
+and model, and the specific cases evaluated by PentestAgent and CheckMate are
+not disclosed. The second block is our controlled comparison on the same
+328-case snapshot, with the same MiniMax-M2.7 model, the same local
+Docker execution harness, and the same useful-finding lower-bound oracle.
 
-\begin{table}[h!]
+\begin{table*}[t]
 \centering
-\caption{Vulhub results --- context only, not a controlled comparison.}
+\caption{Vulhub transfer results. Published rows provide context; the lower
+block is our controlled 328-case comparison under the same useful-finding
+oracle.}
 \label{tab:vulhub-transfer}
 \setlength{\tabcolsep}{2.5pt}
 \scriptsize
-\begin{tabular}{@{}lllr@{}}
+\begin{tabular}{@{}lllrrr@{}}
 \toprule
-System & Cases & Oracle & Result \\
+System & Model & Oracle & Cases & Completed & Result \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{Published results (target selection and oracle differ)}} \\
+\multicolumn{6}{@{}l}{\emph{Published results (target selection and oracle differ)}} \\
 \midrule
-PentestAgent~\cite{pentestagent25} & 67  & full-process success & 74.2\% \\
-CheckMate~\cite{checkmate25}       & 120 & shell access (M7)    & 88\%   \\
+PentestAgent~\cite{pentestagent25} & n/r & full-process success & 67  & n/r & 74.2\% \\
+CheckMate~\cite{checkmate25}       & Sonnet 4.5 + planner & shell access (M7) & 120 & n/r & 88\% \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{This work --- 328-case Vulhub snapshot}} \\
+\multicolumn{6}{@{}l}{\emph{This work --- same 328-case Vulhub snapshot and oracle}} \\
 \midrule
-\textbf{\harnessname{}}            & 328 & useful findings      & 30.6\% \\
+\textbf{\harnessname{} informed}   & MiniMax-M2.7 & useful findings & 328 & 324 & 99/324 (30.6\%) \\
+CAI adapter~\cite{cai25}           & MiniMax-M2.7 & useful findings & 328 & 320 & 170/320 (53.1\%) \\
+VulnBot adapter~\cite{vulnbot25}   & MiniMax-M2.7 & useful findings & 328 & 322 & 92/322 (28.6\%) \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-PentestAgent: full-process success on an undisclosed 67-case subset.
-CheckMate: 11-milestone oracle, M7 = interactive shell with user-level
-privileges. \harnessname{}: machine-readable exploit evidence in
-\texttt{proof.json} on the complete CVE-tagged snapshot (324/328 completed);
-this oracle differs from shell-access metrics and is not interchangeable with
-them.}
-\end{table}
+PentestAgent and CheckMate use undisclosed Vulhub subsets. Lower block:
+useful findings are confirmed exploits plus probable vulnerabilities with
+machine-readable evidence in \texttt{proof.json}; this oracle differs from
+full-process or shell-access metrics and is not interchangeable with them.}
+\end{table*}
 
 Of the 328 cases, 324 completed; the automatic verdict marks 99/324 as useful
 findings (30.6\%). A parallel blind run yields a similar useful-finding rate,
@@ -687,6 +690,12 @@ findings (30.6\%). A parallel blind run yields a similar useful-finding rate,
 not sufficient to explain the observed failure modes: 25 cases were blocked by
 missing attacker-side tooling and 35 by absent credentials, failure modes that
 context cannot resolve.
+The controlled adapter runs on the same 328 cases give 170/320 useful findings
+for CAI (53.1\%) and 92/322 for VulnBot (28.6\%). These rows should be read as
+single-host transfer diagnostics rather than a replacement for the
+\systemname{} result: CAI is stronger on this particular Vulhub oracle, while
+\harnessname{} remains the only evaluated system in this table that is designed
+to consume and reason over multi-device topology in the main benchmark.
 We use Vulhub as transfer evidence for the single-target exploitation
 component only; the architectural contribution of \harnessname{} is evaluated
 on the multi-device \systemname{} scenarios.
