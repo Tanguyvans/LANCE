@@ -641,35 +641,34 @@ Vulhub has no uniform flag oracle, so we report useful-finding lower bounds.
 Table~\ref{tab:vulhub-transfer} shows our controlled 328-case snapshot alongside
 published results for context.
 
-\begin{table*}[t]
+\begin{table}[h!]
 \centering
-\caption{\footnotesize Vulhub transfer results (328 cases).}
+\caption{\footnotesize Vulhub transfer results. Our runs cover all 328 cases.}
 \label{tab:vulhub-transfer}
-\setlength{\tabcolsep}{3pt}
+\setlength{\tabcolsep}{2.5pt}
 \scriptsize
-\begin{tabular}{@{}lllrr@{}}
+\begin{tabular}{@{}llrr@{}}
 \toprule
-System & Model & Oracle & Cases & Result \\
+System & Model & Cases & Result \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Published results (target selection and oracle differ)}} \\
+\multicolumn{4}{@{}l}{\emph{Published (\%, oracle and subset differ)}} \\
 \midrule
-PentestAgent~\cite{pentestagent25} & n/r & full-process success & 67  & 74.2\% \\
-CheckMate~\cite{checkmate25}       & Sonnet 4.5 + planner & shell access (M7) & 120 & 88\% \\
+PentestAgent~\cite{pentestagent25} & n/r           & 67  & 74.2\% \\
+CheckMate~\cite{checkmate25}       & Sonnet 4.5    & 120 & 88\%   \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{This work, same 328-case snapshot and oracle}} \\
+\multicolumn{4}{@{}l}{\emph{This work, useful-finding oracle (/328)}} \\
 \midrule
-\textbf{\harnessname{} informed}   & MiniMax-M2.7 & useful findings & 328 & 99/328 (30.2\%) \\
-\textbf{\harnessname{} blind}      & MiniMax-M2.7 & useful findings & 328 & 92/328 (28.0\%) \\
-CAI adapter~\cite{cai25}           & MiniMax-M2.7 & useful findings & 328 & 170/328 (51.8\%) \\
-VulnBot adapter~\cite{vulnbot25}   & MiniMax-M2.7 & useful findings & 328 & 92/328 (28.0\%) \\
+\textbf{\harnessname{} informed}   & MiniMax-M2.7  & 328 & 99/328 (30.2\%) \\
+\textbf{\harnessname{} blind}      & MiniMax-M2.7  & 328 & 92/328 (28.0\%) \\
+CAI adapter~\cite{cai25}           & MiniMax-M2.7  & 328 & 170/328 (51.8\%) \\
+VulnBot adapter~\cite{vulnbot25}   & MiniMax-M2.7  & 328 & 92/328 (28.0\%) \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-PentestAgent and CheckMate use undisclosed Vulhub subsets. Lower block:
-denominator is the full 328-case list; useful findings are confirmed exploits
-plus probable vulnerabilities with machine-readable evidence.}
-\end{table*}
+Published rows use undisclosed subsets. Useful findings = confirmed exploits
+or probable vulnerabilities with machine-readable evidence.}
+\end{table}
 
 On Vulhub, CAI leads with 170/328 useful findings; \harnessname{} informed and
 blind reach 99 and 92, matching VulnBot. CAI's advantage reflects its
