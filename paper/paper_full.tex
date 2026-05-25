@@ -560,22 +560,13 @@ The baselines recover part of the injected ground truth but never raise F1 above
 \subsection{Consistency across modes and reruns}
 \label{sec:eval:consistency}
 
-The gain is not driven by a single context setting or topology. Two distinct
-stability profiles emerge: informed \harnessname{} changes by only 0.026 mean
-F1, while blind \harnessname{} drops from 0.902 to 0.741. The most extreme failure mode is
-structural: both adapted baselines score 0.000 on \texttt{S3}, a gateway-centric
-topology where back-end services are only reachable after pivoting through the
-gateway. A single-host agent has no network prior and therefore never discovers
-those services; \harnessname{}'s Phase~1 topology analysis makes the dependency
-explicit before any scan begins.
-
-Table~\ref{tab:rerun-delta} breaks down the per-scenario deltas.
-Variance in the informed repeat is scenario-specific: most deltas are below
-0.04 F1, but \texttt{S7} and \texttt{S4} drop by 0.182 and 0.156 (missed
-findings, not new false positives), while \texttt{S10} improves by 0.145.
-Blind mode is more volatile: \texttt{S5} collapses from 0.929 to 0.126, and
-\texttt{S4} drops by 0.344. In both modes the reference-run ordering against
-the adapted baselines holds.
+Two stability profiles emerge (Table~\ref{tab:rerun-delta}): informed
+\harnessname{} changes by only 0.026 mean F1, while blind \harnessname{} drops
+from 0.902 to 0.741. The most extreme case is \texttt{S5} blind ($-$0.803),
+where lack of topology context causes a near-total coverage loss. Both adapted
+baselines score 0.000 on \texttt{S3}: a gateway-centric topology whose
+back-end services are unreachable without a network prior. In both modes the
+reference-run ordering against the adapted baselines holds.
 
 \begin{table}[h!]
 \centering
@@ -603,17 +594,9 @@ Mean         & $-$0.026   & $-$0.161   \\
 \end{tabular}
 \end{table}
 
-The trend also holds across topology families. \harnessname{} is exact on the
-two hub-centric star topologies (\texttt{S5}, \texttt{S6}), and remains high on
-segmented IT/OT and edge-cloud settings (\texttt{S4}, \texttt{S7},
-\texttt{S8}, \texttt{S9}). The hardest scenario is \texttt{S10}
-(F1~=~0.815), an intentionally flat topology where service-role variants
-increase semantic ambiguity and duplicate reporting. The two scalability
-extensions (\texttt{S11}: 15 devices; \texttt{S12}: 35 devices) confirm the
-trend: F1~=~0.875 and F1~=~0.942 respectively.
-
-Across the larger 13-scenario repeat batch, informed and blind reach macro-F1
-0.916 and 0.643, confirming the main result is not a single-call artifact.
+The scalability extensions confirm the trend: \texttt{S11} (15 devices) reaches
+F1~=~0.875 and \texttt{S12} (35 devices) reaches F1~=~0.942. Across the full
+13-scenario repeat batch, informed and blind reach macro-F1 0.916 and 0.643.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
