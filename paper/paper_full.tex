@@ -499,7 +499,10 @@ metadata are retained in the artifact for diagnostic analysis, but they are not
 reported as aggregate metrics in this paper.
 
 \medskip\noindent\textbf{Variance.}
-All reported results are single-run estimates per (system, scenario) cell under fixed artifacts, fixed prompts, and temperature~0 decoding.
+Reference runs use fixed artifacts, fixed prompts, and temperature~0 decoding.
+For \harnessname{}, we additionally run a same-artifact repeat in both informed
+and blind modes; \S\ref{sec:eval:consistency} reports the observed stability.
+The adapted baselines are reported from one controlled run per target device.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
@@ -530,7 +533,7 @@ recall, 0.922 precision, and an 86.1\% CVSS-weighted score.
 
 \begin{table}[h!]
 \centering
-\caption{Per-scenario F1 on the 10 comparison scenarios.}
+\caption{\footnotesize Per-scenario F1 on the 10 comparison scenarios.}
 \label{tab:scenario-scores}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -562,14 +565,34 @@ shallow to raise F1 above 0.55 in any scenario.
 \subsection{Consistency across modes and reruns}
 \label{sec:eval:consistency}
 
-The gain is not driven by a single context setting or topology. Informed
-\harnessname{} averages 0.940 F1, while the blind run still reaches 0.902 F1
-with only endpoint and service metadata. The most extreme failure mode is
+The gain is not driven by a single context setting or topology. Table
+\ref{tab:rerun-consistency} shows that both \harnessname{} modes remain stable
+under a same-artifact repeat on the same 10 comparison scenarios: informed
+\harnessname{} changes by 0.026 F1, while the blind repeat is unchanged at the
+reported rounding. Run~A is the reference run used in
+Table~\ref{tab:scenario-scores}; Run~B is the repeat. The most extreme failure mode is
 structural: both adapted baselines score 0.000 on \texttt{S3}, a gateway-centric
 topology where back-end services are only reachable after pivoting through the
 gateway. A single-host agent has no network prior and therefore never discovers
 those services; \harnessname{}'s Phase~1 topology analysis makes the dependency
 explicit before any scan begins.
+
+\begin{table}[h!]
+\centering
+\caption{\footnotesize Same-artifact \harnessname{} rerun consistency on the 10
+comparison scenarios.}
+\label{tab:rerun-consistency}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Mode & Run A & Run B & Mean & $|\Delta|$ \\
+\midrule
+Informed & 0.940 & 0.914 & 0.927 & 0.026 \\
+Blind    & 0.902 & 0.902 & 0.902 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 The trend also holds across topology families. \harnessname{} is exact on the
 two hub-centric star topologies (\texttt{S5}, \texttt{S6}), and remains high on
@@ -580,10 +603,9 @@ increase semantic ambiguity and duplicate reporting. The two scalability
 extensions (\texttt{S11}: 15 devices; \texttt{S12}: 35 devices) confirm the
 trend: F1~=~0.875 and F1~=~0.942 respectively.
 
-Finally, a same-artifact rerun of \harnessname{} recovered similar findings:
-the informed rerun reaches macro-F1 0.916 over 13 scenarios and 0.914 on the
-10 comparison scenarios. This is not a full confidence-interval study, but it
-checks that the main result is not an obvious single-call artifact.
+Across the larger 13-scenario repeat batch, informed and blind reach macro-F1
+0.916 and 0.818 respectively. This is not a full confidence-interval study, but
+it checks that the main result is not an obvious single-call artifact.
 
 \subsection{Cross-benchmark comparison on single-host corpora}
 \label{sec:eval:baselines}
@@ -602,7 +624,7 @@ separates published paper results from our controlled MiniMax-M2.7 runs.
 
 \begin{table}[h!]
 \centering
-\caption{AutoPenBench transfer results.}
+\caption{\footnotesize AutoPenBench transfer results.}
 \label{tab:autopenbench}
 \setlength{\tabcolsep}{3pt}
 \scriptsize
@@ -653,7 +675,7 @@ and useful-finding oracle.
 
 \begin{table*}[t]
 \centering
-\caption{Vulhub transfer results. Published rows provide context; the lower
+\caption{\footnotesize Vulhub transfer results. Published rows provide context; the lower
 block is our controlled 328-case comparison under the same useful-finding
 oracle.}
 \label{tab:vulhub-transfer}
