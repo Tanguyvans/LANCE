@@ -499,8 +499,8 @@ reported as aggregate metrics in this paper.
 
 \medskip\noindent\textbf{Variance.}
 Reference runs use fixed artifacts, fixed prompts, and temperature~0 decoding.
-For \harnessname{}, we additionally run a same-artifact repeat in both informed
-and blind modes; \S\ref{sec:eval:consistency} reports the observed stability.
+For \harnessname{}, we additionally run a same-artifact repeat in informed
+mode; \S\ref{sec:eval:consistency} reports the observed stability.
 The adapted baselines are reported from one controlled run per target device.
 
 % ══════════════════════════════════════════════════════════════════════════
@@ -598,7 +598,7 @@ per scenario for both \harnessname{} modes. Informed recall is perfect on
 six scenarios (S1, S3, S5--S8); precision drops on \texttt{S10} (sparse
 coverage of a large flat topology). Blind mode trades recall for higher
 precision on gateway-centric scenarios (\texttt{S3}, \texttt{S4}, \texttt{S8}),
-confirming that active discovery raises specificity at the cost of coverage.
+confirming that active discovery raises precision at the cost of recall.
 
 \begin{table}[h!]
 \centering
