@@ -730,7 +730,10 @@ embedded-specific attack surfaces (bootloaders, RTOS, firmware) not covered here
 (ii)~\emph{Run-to-run variance.} The reported table uses one reference run per
 (system, scenario) cell under fixed artifacts, fixed prompts, and temperature~0
 decoding. This supports a controlled architectural comparison, but it does not
-measure variance across repeated API calls.
+measure variance across repeated API calls. As a sanity check, a later rerun of
+\harnessname{} on the same scenario artifacts recovered similar findings
+(informed macro-F1 0.916 over 13 scenarios, and 0.914 on the 10 comparison
+scenarios), but we leave systematic confidence intervals to future work.
 (iii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP
 without ground-truth matches, which may inflate precision on scenarios with
 broad bonus lists.
