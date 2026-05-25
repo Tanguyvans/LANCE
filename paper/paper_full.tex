@@ -316,13 +316,12 @@ are unreachable without first compromising it.
   zlbl/.style={font=\sffamily\scriptsize\itshape,text=FigSubtle}
 ]
 \node[natt] (atk) {Attacker};
-\node[ngw, below=1.5cm of atk] (gw) {Gateway};
-% "pivot" tag to the right of Gateway, clear of arrows
+\node[ngw, below=1.3cm of atk] (gw) {Gateway};
 \node[font=\sffamily\tiny\itshape\bfseries,text=GwBorder,
       right=0.08cm of gw.east,anchor=west] {pivot};
-\node[nback,below left=1.6cm and 1.5cm of gw]  (mqtt){MQTT Broker};
-\node[nback,below=1.6cm of gw]                  (db)  {MariaDB};
-\node[nback,below right=1.6cm and 1.5cm of gw]  (rpi) {RPi Sensor};
+\node[nback,below left=1.4cm and 1.4cm of gw]  (mqtt){MQTT Broker};
+\node[nback,below=1.4cm of gw]                  (db)  {MariaDB};
+\node[nback,below right=1.4cm and 1.4cm of gw]  (rpi) {RPi Sensor};
 \begin{scope}[on background layer]
   \node[fill=ZIFill,draw=ZIBorder,dashed,line width=0.8pt,
     rounded corners=7pt,inner xsep=16pt,inner ysep=12pt,fit=(atk)](zI){};
@@ -338,8 +337,8 @@ are unreachable without first compromising it.
 \node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-5pt]zC.north west) {IoT Subnet};
 \draw[arr] (atk.south)--(gw.north)   node[badge,right=7pt]{SSH weak creds};
 \draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.42]{anon.\ MQTT};
-\draw[arr] (gw.south)--(db.north)    node[lbl,right=4pt]{root no passwd};
-\draw[arr] (gw.south)--(rpi.north)   node[lbl,right=4pt,pos=0.42]{default creds};
+\draw[arr] (gw.south)--(db.north)    node[lbl,left=4pt,pos=0.25]{root no passwd};
+\draw[arr] (gw.south)--(rpi.north)   node[lbl,right=4pt,pos=0.70]{default creds};
 \draw[blk] (atk.west) to[out=215,in=130,looseness=0.8]
   node[blbl,left=3pt,pos=0.48]{blocked} (mqtt.north west);
 \draw[blk] (atk.east) to[out=325,in=50,looseness=0.8]
