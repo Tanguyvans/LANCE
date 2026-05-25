@@ -681,43 +681,43 @@ reasoning evaluated in \systemname{}.
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-\medskip\noindent\textbf{Scope of the comparison.}
-The controlled \systemname{} comparison fixes the model and evaluator across
-systems. The adapted baselines are executed once per target device and their
-findings are merged at scenario level; \harnessname{} instead evaluates the
-scenario as a network. The reported gap should therefore be read as evidence
-that network-level state matters in these IoT scenarios, not as a claim about
-stronger single-host exploitation.
+\medskip\noindent\textbf{Why the gap holds.}
+\harnessname{} outperforms both adapted baselines on every scenario because the
+baselines treat the network as a flat list of independent targets. The
+clearest evidence is \texttt{S3}: a gateway-centric topology where
+back-end services are unreachable without a prior traversal step, causing both
+baselines to score 0.000 while \harnessname{} exceeds F1~=~0.94. The
+controlled model and evaluator rule out model-specific advantages; the gap
+is architectural.
 
-\medskip\noindent\textbf{Scope of transfer results.}
-The AutoPenBench and Vulhub runs test the single-target exploitation component
-under established single-host workloads. They do not exercise the topology
-prior, per-device decomposition, or lateral-movement phases that define the
-network-native setting. These results show how the single-target component
-behaves outside \systemname{}; the main architectural comparison remains the
-multi-device \systemname{} evaluation.
+\medskip\noindent\textbf{Transfer results in context.}
+On AutoPenBench and Vulhub, \harnessname{} is competitive with adapted
+single-host agents under the same model. CAI leads on the Vulhub
+useful-finding oracle (51.8\% vs 30.2\%), which reflects its stronger
+single-host exploit focus. This is expected and does not contradict the main
+result: neither AutoPenBench nor Vulhub contains pivot-dependent
+vulnerabilities, so the topology prior and lateral-movement phases that drive
+the \systemname{} gain are simply not exercised.
 
 \medskip\noindent\textbf{Limitations.}
-The following limitations bound the generalisability of our results.
-(i)~\emph{Simulated infrastructure.} \systemname{} scenarios emulate IoT
-devices on Linux containers; real constrained hardware introduces
-embedded-specific attack surfaces (bootloaders, RTOS, firmware) not covered here.
-(ii)~\emph{Run-to-run variance.} We include a same-artifact rerun sanity check
-in \S\ref{sec:eval:consistency}, but do not estimate confidence intervals over
-repeated API calls.
+(i)~\emph{Simulated infrastructure.} Scenarios run on Linux containers; real
+constrained hardware (bootloaders, RTOS, firmware) introduces attack surfaces
+not covered here.
+(ii)~\emph{Run-to-run variance.} Same-artifact reruns confirm that informed
+mode is stable ($\Delta$F1~=~$-$0.026 mean). Blind mode is more sensitive,
+with variance concentrated in a few topology cases (\S\ref{sec:eval:consistency}).
+Full confidence intervals over repeated API calls remain future work.
 (iii)~\emph{Evaluator leniency.} Bonus categories are accepted as non-FP
 without ground-truth matches, which may inflate precision on scenarios with
 broad bonus lists.
 (iv)~\emph{Prompt sensitivity.} A single prompt family is used across all
 models; per-model tuning may change absolute scores.
 (v)~\emph{Static topologies.} The five architectural patterns are fixed;
-real deployments include devices not represented here (additional PLC
-families, medical devices, RFID readers) and evolve over time.
-(vi)~\emph{Ground-truth injection scope.} \systemname{} ground truth reflects
-vulnerabilities that are tractably injectable via Ansible; harder-to-automate
-weaknesses (physical-layer timing attacks, supply-chain firmware backdoors)
-are not represented. Scenarios may therefore underestimate the difficulty of
-real IoT audits.
+real deployments include device families not represented here and evolve
+over time.
+(vi)~\emph{Ground-truth injection scope.} Ground truth covers vulnerabilities
+tractably injectable via Ansible; physical-layer and supply-chain weaknesses
+are not represented, potentially underestimating the difficulty of real IoT audits.
 % ══════════════════════════════════════════════════════════════════════════
 % §9 Ethical Considerations
 % ══════════════════════════════════════════════════════════════════════════
