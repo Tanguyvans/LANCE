@@ -332,12 +332,12 @@ are unreachable without first compromising it.
     rounded corners=7pt,inner xsep=14pt,inner ysep=12pt,
     fit=(mqtt)(db)(rpi)](zC){};
 \end{scope}
-% Zone labels: top-left of each zone, away from arrows
-\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-5pt]zI.north west) {Internet};
-\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-5pt]zD.north west) {DMZ};
-\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-5pt]zC.north west) {IoT Subnet};
+% Zone labels: centered above each zone
+\node[zlbl] at ([yshift=8pt]zI.north) {Internet};
+\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-6pt]zD.north west) {DMZ};
+\node[zlbl] at ([yshift=8pt]zC.north) {IoT Subnet};
 \draw[arr] (atk.south)--(gw.north)   node[badge,right=7pt]{SSH weak creds};
-\draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.42]{anon.\ MQTT};
+\draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.68]{anon.\ MQTT};
 \draw[arr] (gw.south)--(db.north)    node[lbl,left=4pt,pos=0.25]{root no passwd};
 \draw[arr] (gw.south)--(rpi.north)   node[lbl,right=4pt,pos=0.70]{default creds};
 \draw[blk] (atk.west) to[out=215,in=130,looseness=0.8]
