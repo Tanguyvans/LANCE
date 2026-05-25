@@ -522,8 +522,8 @@ success oracles, and task definitions differ across papers.
 Table~\ref{tab:scenario-scores} is the controlled comparison on the 10
 \systemname{} scenarios for which all adapted baselines were run. It reports
 per-scenario F1 for the informed \harnessname{} run and for each baseline
-architecture, all using the same MiniMax-M2.7 model, the same informed scenario
-context, and the same evaluator. Since the comparison
+architecture (CAI and VulnBot), all using the same MiniMax-M2.7 model, the same
+informed scenario context, and the same evaluator. Since the comparison
 systems are single-target agents rather than multi-device network harnesses, we
 run each baseline once per target device, merge its per-device findings at
 scenario level, and then compute the F1 shown in the table. Over the same
@@ -538,7 +538,7 @@ scenarios, \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-Scenario & \harnessname{} inf. & CAI inf. & VulnBot inf. \\
+Scenario & \harnessname{} (informed) & CAI (informed) & VulnBot (informed) \\
 \midrule
 \texttt{S1}  & 0.923 & 0.150 & 0.150 \\
 \texttt{S2}  & 0.923 & 0.350 & 0.450 \\
