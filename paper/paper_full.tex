@@ -439,7 +439,7 @@ Existing LLM pentest harnesses treat the network as a flat list of targets, lett
 \subsection{Pipeline}
 \label{sec:harness:pipeline}
 
-\noindent\textbf{Phase 1: Topology prior.} Phase~1 loads a directed graph $G=(V,E)$ of the target network, where $V$ are devices and $E$ are protocol-labeled links. In \emph{scenario mode}, the topology is loaded from the benchmark YAML; in \emph{discovery mode}, the graph starts empty and is populated by Phase~2. The output enumerates the attack surface and ranks pivot candidates by betweenness centrality (identifying devices whose compromise enables the most lateral paths).
+\noindent\textbf{Phase 1: Topology prior.} Phase~1 loads a directed graph $G=(V,E)$ of the target network, where $V$ are devices and $E$ are protocol-labeled links. In \emph{informed} mode, the topology is loaded from the benchmark YAML, giving the harness a full network prior before any scan; in \emph{blind} mode, the graph starts empty and is populated by Phase~2 active discovery. The output enumerates the attack surface and ranks pivot candidates by betweenness centrality (identifying devices whose compromise enables the most lateral paths).
 
 \medskip\noindent\textbf{Phase 2: Network discovery.}
 Phase~2 executes active reconnaissance across the target \texttt{/24} using host discovery, service/version scanning, L2 vendor probing, and protocol-specific probes (MQTT, SSH, HTTP). Unlike single-host harnesses, the agent derives the target IP from the CIDR scope rather than receiving it directly.
