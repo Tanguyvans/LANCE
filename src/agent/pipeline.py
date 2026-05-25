@@ -535,6 +535,7 @@ class Pipeline:
         if stream_callback:
             stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
 
+        full_output = ""
         try:
             import os
             env = os.environ.copy()
@@ -542,14 +543,23 @@ class Pipeline:
             env["LC_ALL"] = "en_US.UTF-8"
             result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600, env=env)
             success = result.returncode == 0
-            output = (result.stdout + result.stderr)[-3000:]
-            print(output)
+            full_output = result.stdout + result.stderr
+            output = full_output[-10000:]
+            print(output, flush=True)
         except subprocess.TimeoutExpired:
             success = False
             output = f"{playbook} timeout (600s)"
+            full_output = output
         except FileNotFoundError:
             success = False
             output = "ansible-playbook not found — deploy skipped"
+            full_output = output
+
+        try:
+            log_path = self.run_dir / f"ansible_{playbook.replace('.yml', '')}.log"
+            log_path.write_text(full_output, encoding="utf-8")
+        except Exception:
+            pass
 
         if stream_callback:
             stream_callback({"type": event_type_done, "scenario_id": self.scenario_id, "playbook": playbook, "success": success, "output": output})
