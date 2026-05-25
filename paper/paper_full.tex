@@ -480,7 +480,7 @@ To isolate architectural contributions from model-specific advantages, all LLM-d
 \medskip\noindent\textbf{Baselines.}
 We compare \harnessname{} against two adapted LLM-agent baselines,
 reimplementing published pipeline architectures on the same scenarios and
-model:
+model in the informed setting:
 \begin{itemize}
   \item \textbf{CAI-style adapter}: single-agent tool-calling loop, adapted from the CAI~\cite{cai25} architecture.
   \item \textbf{VulnBot-style adapter}: multi-agent with a Penetration Task Graph, adapted from VulnBot~\cite{vulnbot25}.
@@ -490,7 +490,8 @@ workflows, not for full-network graph reasoning. We therefore run each adapted
 baseline once per ground-truth target device in a scenario, normalize the
 per-device outputs into the common finding schema, merge them at scenario
 level, and score the merged output with the same evaluator as \harnessname{}.
-Both baselines use the same MiniMax-M2.7 model.
+Both baselines use the same MiniMax-M2.7 model and the same scenario-level
+context as the informed \harnessname{} run.
 
 \medskip\noindent\textbf{Metrics.}
 We report recall (task completion), precision, F1, and CVSS-weighted score,
@@ -520,8 +521,9 @@ success oracles, and task definitions differ across papers.
 
 Table~\ref{tab:scenario-scores} is the controlled comparison on the 10
 \systemname{} scenarios for which all adapted baselines were run. It reports
-per-scenario F1 for \harnessname{} and for each baseline architecture, all using
-the same MiniMax-M2.7 model and the same evaluator. Since the comparison
+per-scenario F1 for the informed \harnessname{} run and for each baseline
+architecture, all using the same MiniMax-M2.7 model, the same informed scenario
+context, and the same evaluator. Since the comparison
 systems are single-target agents rather than multi-device network harnesses, we
 run each baseline once per target device, merge its per-device findings at
 scenario level, and then compute the F1 shown in the table. Over the same
@@ -530,13 +532,13 @@ scenarios, \harnessname{} also reaches 0.962 recall, 0.922 precision, and an
 
 \begin{table}[h!]
 \centering
-\caption{Per-scenario F1 on the 10 comparison scenarios.}
+\caption{Per-scenario F1 on the 10 comparison scenarios, informed setting.}
 \label{tab:scenario-scores}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-Scenario & \harnessname{} & CAI & VulnBot \\
+Scenario & \harnessname{} inf. & CAI inf. & VulnBot inf. \\
 \midrule
 \texttt{S1}  & 0.923 & 0.150 & 0.150 \\
 \texttt{S2}  & 0.923 & 0.350 & 0.450 \\
