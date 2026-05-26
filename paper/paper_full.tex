@@ -335,7 +335,7 @@ are unreachable without first compromising it.
 \end{scope}
 % Zone labels: centered above each zone
 \node[zlbl] at ([yshift=8pt]zI.north) {Internet};
-\node[zlbl] at ([yshift=8pt]zD.north) {DMZ};
+\node[zlbl,anchor=east] at ([xshift=-8pt]zD.west) {DMZ};
 \node[zlbl] at ([yshift=8pt]zC.north) {IoT Subnet};
 \draw[arr] (atk.south)--(gw.north)   node[badge,right=7pt]{SSH weak creds};
 \draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.68]{anon.\ MQTT};
