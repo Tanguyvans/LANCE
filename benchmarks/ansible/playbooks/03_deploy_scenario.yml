@@ -123,7 +123,14 @@
 
     # Vrai check TCP du SSH OpenWrt — sans guest agent (template 9010 n'en a pas),
     # un `qm guest exec` retourne toujours "No QEMU guest agent configured".
-    # On probe directement le LAN du router depuis le host Proxmox (vmbr1 plumbé).
+    # vmbr1 côté Proxmox est `inet manual` (pas d'IPv4) — on lui ajoute une IP
+    # temporaire pour pouvoir probe le LAN du router. Même pattern que 04_inject_vulns.
+    - name: Ajouter IP temporaire 192.168.100.254 sur vmbr1 (accès OpenWrt LAN)
+      ansible.builtin.command: ip addr add 192.168.100.254/24 dev vmbr1
+      register: add_tmp_ip
+      failed_when: false
+      changed_when: add_tmp_ip.rc == 0
+
     - name: Attendre que le router OpenWrt soit prêt (SSH actif sur le LAN)
       ansible.builtin.wait_for:
         host: "{{ benchmark_gateway }}"
