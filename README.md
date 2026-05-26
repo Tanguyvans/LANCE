@@ -8,6 +8,60 @@ Cybersecurity platform for Smart City IoT infrastructures. Models an IoT network
 - **Discovery mode** (Docker) — starts with an empty graph, nmap-discovers any target network from a user-supplied CIDR, displays hosts live in the dashboard.
 - **Reference lab mode** — the `S3 · Réplique NATO Lab` scenario mirrors the real IoT lab topology (LoRaWAN / Zigbee / MQTT / cameras) inside Proxmox, so the same pipeline can be validated against an NATO-Lab-like environment without touching physical devices.
 
+## Results
+
+> Results from the [ACSAC 2026 paper submission](paper/paper_full.pdf). All LLM-driven systems run MiniMax-M2.7 for a fair architectural comparison.
+
+### IoTBench — 12 scenarios (S1–S12)
+
+| System | Recall | Precision | F1 | CVSS-weighted |
+|--------|-------:|----------:|---:|--------------:|
+| **Ours — informed** (topology prior) | **0.959** | **0.914** | **0.935** | **86.4%** |
+| **Ours — blind** (discovery only) | 0.856 | 0.922 | 0.887 | 73.8% |
+| CAI adapter | — | — | 0.315 | — |
+| VulnBot adapter | — | — | 0.323 | — |
+
+Both modes exceed both baselines on every scenario; baselines never reach F1 > 0.55.
+Scales to 35-device topologies: S11 (15 devices) F1 = 0.875, S12 (35 devices) F1 = 0.942.
+
+<details>
+<summary>Per-scenario F1 breakdown</summary>
+
+| Scenario | Informed | Blind | CAI | VulnBot |
+|----------|:--------:|:-----:|:---:|:-------:|
+| S1 — Flat network | 0.923 | 0.880 | 0.153 | 0.153 |
+| S2 — Exposed gateway | 0.923 | 0.923 | 0.353 | 0.445 |
+| S3 — NATO Lab replica | 0.947 | 0.941 | 0.000 | 0.000 |
+| S4 — ICS/SCADA segmented | 0.944 | 0.909 | 0.363 | 0.435 |
+| S5 — Smart Building | 1.000 | 0.929 | 0.500 | 0.500 |
+| S6 — Home automation | 1.000 | 1.000 | 0.400 | 0.400 |
+| S7 — Edge-Cloud pivot | 0.965 | 0.889 | 0.500 | 0.445 |
+| S8 — Multi-zone IT/IoT/OT | 0.933 | 0.923 | 0.546 | 0.353 |
+| S9 — Mesh IoT | 0.952 | 0.857 | 0.167 | 0.286 |
+| S10 — Flat variants | 0.815 | 0.769 | 0.143 | 0.143 |
+| S11 — Smart City 3 zones (15 devices) | 0.875 | 0.857 | 0.414 | 0.414 |
+| S12 — Smart City Large Scale (35 devices) | 0.942 | 0.762 | 0.242 | 0.307 |
+| **Mean** | **0.935** | **0.887** | **0.315** | **0.323** |
+
+S3 (NATO Lab replica) scores 0.000 for both single-host baselines — they cannot reason across heterogeneous multi-hop topologies.
+
+</details>
+
+### Cross-benchmark transfer
+
+| Benchmark | System | Sub-task | End-to-End |
+|-----------|--------|:--------:|:----------:|
+| AutoPenBench (33 tasks) | Ours — informed | 17/33 (51.5%) | 9/33 (27.3%) |
+| AutoPenBench (33 tasks) | Ours — blind | 13/33 (39.4%) | 7/33 (21.2%) |
+| AutoPenBench (33 tasks) | VulnBot adapter | 6/33 (18.2%) | 5/33 (15.2%) |
+| AutoPenBench (33 tasks) | CAI adapter | 4/33 (12.1%) | 2/33 (6.1%) |
+| Vulhub (328 cases) | Ours — informed | 99/328 (30.2%) | — |
+| Vulhub (328 cases) | Ours — blind | 92/328 (28.0%) | — |
+
+All controlled runs use MiniMax-M2.7 under the same oracle.
+
+---
+
 ## Dashboard
 
 The FastAPI + SPA dashboard runs on the master VM (Tailscale) and on the Docker image. It drives every benchmark run: select a scenario, pick an LLM (or one per phase in Expert mode), stream events live, and inspect past runs / scores.
