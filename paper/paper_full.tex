@@ -52,7 +52,7 @@
 \newenvironment{yamlquote}{\par\vspace{.3em}\footnotesize\verbatim}{\endverbatim\normalsize\par\vspace{.3em}}
 
 % ── title & anonymous authors (ACSAC double-blind) ────────────────────────
-\title{LANCE and IoTChainBench: A Network-Native LLM Harness and Benchmark for Multi-Hop IoT Penetration Testing}
+\title{LANCE: An LLM Agent for Network Compromise Evaluation with IoTChainBench}
 
 % ── DOUBLE-BLIND: anonymized for submission ──────────────────────────────
 % Camera-ready author block (uncomment for final version):
@@ -224,7 +224,7 @@ reachability.
 
 \begin{table}[h!]
 \centering
-\caption{Gap analysis across LLM pentest agents and corpora.}
+\caption{Gap analysis across LLM pentest agents and corpora. GT = ground-truth oracle type (flag / task-step / per-vuln / none); MH = multi-hop network reasoning; IoT/OT = covers IoT or OT protocols.}
 \label{tab:related}
 \setlength{\tabcolsep}{4pt}
 \scriptsize
@@ -334,7 +334,7 @@ are unreachable without first compromising it.
 \end{scope}
 % Zone labels: centered above each zone
 \node[zlbl] at ([yshift=8pt]zI.north) {Internet};
-\node[zlbl,anchor=north west] at ([xshift=5pt,yshift=-6pt]zD.north west) {DMZ};
+\node[zlbl] at ([yshift=8pt]zD.north) {DMZ};
 \node[zlbl] at ([yshift=8pt]zC.north) {IoT Subnet};
 \draw[arr] (atk.south)--(gw.north)   node[badge,right=7pt]{SSH weak creds};
 \draw[arr] (gw.south)--(mqtt.north)  node[lbl,left=4pt,pos=0.68]{anon.\ MQTT};
@@ -351,7 +351,7 @@ are unreachable without first compromising it.
 }
 \caption{Gateway-centric attack chain (Scenario~S3). Backend services are
 unreachable from the Internet without first pivoting through the gateway.
-Single-host agents fail on this topology (F1\,=\,0.000 for both baselines)
+Single-host agents fail on this topology (F1\,=\,0 for both baselines)
 because they scan each target independently.}
 \label{fig:attack-chain}
 \end{figure}
@@ -405,7 +405,7 @@ multi-zone variants.
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}llcrl@{}}
 \toprule
-ID & Pattern / role & Dev. & Vulns & Theme \\
+ID & Pattern / role & Dev & Vulns & Theme \\
 \midrule
 \multicolumn{5}{@{}l}{\emph{Main scenarios (pattern coverage)}} \\
 \midrule
@@ -509,7 +509,7 @@ evaluation.
 % ══════════════════════════════════════════════════════════════════════════
 % §5 Harness
 % ══════════════════════════════════════════════════════════════════════════
-\section{\harnessname: A Network-Native LLM Pentest Harness}
+\section{\harnessname: An LLM Agent for Network Compromise Evaluation}
 \label{sec:harness}
 
 Existing LLM pentest harnesses treat the network as a flat list of targets, letting a single agent accumulate unbounded context as the network grows. \textsc{LANCE} instead decomposes network pentesting into six phases with typed deliverables. The key design decision is \emph{parallelization at the device and vulnerability granularity}: rather than a single monolithic agent holding the full network state, we spawn dedicated micro-agents per target with constrained tool sets and aggregate deterministically. This keeps each micro-agent's context bounded at $O(1)$ in the number of network devices, with cross-device state re-introduced only in Phase~5 (intrusion) and Phase~6 (report). Vulnerability type strings produced by LLM agents are resolved through a canonical taxonomy of 11~categories (Table~\ref{tab:categories}), filtering noise and deduplicating collisions before evaluation.
@@ -625,6 +625,8 @@ Scenario & Informed & Blind & CAI & VulnBot \\
 Mean         & 0.935 & 0.887 & 0.315 & 0.323 \\
 \bottomrule
 \end{tabular}
+\smallskip\\
+\footnotesize\emph{F1~=~0 means that the normalized output contained no finding matching the scenario ground truth under the common evaluator.}
 \end{table}
 
 \subsection{Rerun consistency (informed mode)}
@@ -731,25 +733,27 @@ separates published paper results from our controlled MiniMax-M2.7 runs.
 \toprule
 System & Model & Sub-task & Flags (E2E) \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{Published (\%)}} \\
+\multicolumn{4}{@{}l}{\emph{Published results (\%; denominator/subsets differ)}} \\
 \midrule
-Llama baseline~\cite{vulnbot25,xoffense25}  & Llama 3.1-405B  & 49.1          & 9.1  \\
-GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & n/r           & 21.2 \\
-VulnBot~\cite{vulnbot25}                    & Llama 3.1-405B  & 69.1          & 30.3 \\
-xOffense~\cite{xoffense25}                  & Qwen3-32B LoRA  & 79.2$^\P$     & 72.7 \\
+Llama baseline~\cite{vulnbot25,xoffense25}  & Llama 3.1-405B  & 49.1\%        & 9.1\%  \\
+GPT-4o baseline~\cite{vulnbot25,xoffense25} & GPT-4o          & n/r           & 21.2\% \\
+VulnBot~\cite{vulnbot25}                    & Llama 3.1-405B  & 69.1\%        & 30.3\% \\
+xOffense~\cite{xoffense25}                  & Qwen3-32B LoRA  & 79.2\%$^\P$   & 72.7\% \\
 \midrule
-\multicolumn{4}{@{}l}{\emph{This work, same tasks/model/oracle (/33)}} \\
+\multicolumn{4}{@{}l}{\emph{This work (all 33 tasks, MiniMax-M2.7; \%, count/33)}} \\
 \midrule
-CAI adapter~\cite{cai25}                    & MiniMax-M2.7    & 4/33 (12.1\%)$^\dagger$  & 2/33 (6.1\%)  \\
-VulnBot adapter~\cite{vulnbot25}            & MiniMax-M2.7    & 6/33 (18.2\%)$^\dagger$  & 5/33 (15.2\%) \\
-\textbf{\harnessname{} informed}            & MiniMax-M2.7    & 17/33 (51.5\%)$^\dagger$ & 9/33 (27.3\%) \\
-\textbf{\harnessname{} blind}               & MiniMax-M2.7    & 13/33 (39.4\%)$^\dagger$ & 7/33 (21.2\%) \\
+CAI adapter~\cite{cai25}                    & MiniMax-M2.7    & 12.1\% (4/33)$^\dagger$  & 6.1\% (2/33)  \\
+VulnBot adapter~\cite{vulnbot25}            & MiniMax-M2.7    & 18.2\% (6/33)$^\dagger$  & 15.2\% (5/33) \\
+\textbf{\harnessname{} informed}            & MiniMax-M2.7    & \textbf{51.5\% (17/33)$^\dagger$} & \textbf{27.3\% (9/33)} \\
+\harnessname{} blind                        & MiniMax-M2.7    & 39.4\% (13/33)$^\dagger$ & 21.2\% (7/33) \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
 $^\dagger$ Sub-task = \emph{useful findings} (actionable exploit evidence, no flag required).
-$^\P$ xOffense sub-task is best-of-five. n/r = not reported.}
+Published rows report percentages over their own (possibly undisclosed) subsets and are not
+necessarily comparable to the 33-task denominator used here.
+$^\P$ xOffense sub-task is best-of-five. n/r = not reported. \textbf{Bold} = best result in this work.}
 \end{table}
 
 Under the same model and oracle, \harnessname{} leads on both metrics: informed
@@ -778,16 +782,17 @@ CheckMate~\cite{checkmate25}       & Sonnet 4.5    & 120 & 88\%   \\
 \midrule
 \multicolumn{4}{@{}l}{\emph{This work, useful-finding oracle (/328)}} \\
 \midrule
-\textbf{\harnessname{} informed}   & MiniMax-M2.7  & 328 & 99/328 (30.2\%) \\
-\textbf{\harnessname{} blind}      & MiniMax-M2.7  & 328 & 92/328 (28.0\%) \\
-CAI adapter~\cite{cai25}           & MiniMax-M2.7  & 328 & 170/328 (51.8\%) \\
+\harnessname{} informed            & MiniMax-M2.7  & 328 & 99/328 (30.2\%) \\
+\harnessname{} blind               & MiniMax-M2.7  & 328 & 92/328 (28.0\%) \\
+\textbf{CAI adapter~\cite{cai25}}  & MiniMax-M2.7  & 328 & \textbf{170/328 (51.8\%)} \\
 VulnBot adapter~\cite{vulnbot25}   & MiniMax-M2.7  & 328 & 92/328 (28.0\%) \\
 \bottomrule
 \end{tabular}
 \smallskip\\
 \footnotesize\emph{%
-Published rows use undisclosed subsets. Useful findings = confirmed exploits
-or probable vulnerabilities with machine-readable evidence.}
+Published rows use undisclosed subsets and are not comparable to the 328-case denominator used here.
+Useful findings = confirmed exploits or probable vulnerabilities with machine-readable evidence.
+\textbf{Bold} = best result overall.}
 \end{table}
 
 On Vulhub, CAI leads with 170/328 useful findings; \harnessname{} informed
@@ -801,14 +806,15 @@ multi-device topology reasoning evaluated in \systemname{}.
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-\medskip\noindent\textbf{Why the gap holds.}
-\harnessname{} outperforms both adapted baselines on every scenario because the
+\medskip\noindent\textbf{Why the gap holds on \systemname{}.}
+\harnessname{} outperforms both adapted baselines on every \systemname{} scenario because the
 baselines treat the network as a flat list of independent targets. The
 clearest evidence is \texttt{S3}: a gateway-centric topology where
 back-end services are unreachable without a prior traversal step, causing both
-baselines to score 0.000 while \harnessname{} exceeds F1~=~0.94. The
+baselines to produce no true-positive matches (F1~=~0) while \harnessname{} exceeds F1~=~0.94. The
 controlled model and evaluator rule out model-specific advantages; the gap
-is architectural.
+is architectural. Note that this advantage is specific to multi-hop network scenarios:
+on single-host corpora (AutoPenBench, Vulhub), results are more nuanced — see below.
 
 \medskip\noindent\textbf{Transfer results in context.}
 On AutoPenBench and Vulhub, \harnessname{} is competitive with adapted
@@ -875,7 +881,7 @@ vulnerability granularity.
 Under a controlled comparison with the same model and evaluator, \harnessname{}
 achieves 0.935 mean F1 and 86.4\% CVSS-weighted score, outperforming every
 adapted baseline on every scenario. The sharpest evidence is \texttt{S3}: both
-baselines score 0.000 on a gateway-centric topology that requires a single
+baselines produce no true-positive matches (F1~=~0) on a gateway-centric topology that requires a single
 pivot, while \harnessname{} exceeds F1~=~0.94. The gain scales: F1~=~0.942 on
 a 35-device scenario confirms that bounded per-device context does not degrade
 with network size.
