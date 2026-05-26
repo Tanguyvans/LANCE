@@ -9,6 +9,22 @@ output/
 data/
 benchmarks/ansible/group_vars/vault.yml
 PLAN.md
-
+CLAUDE.md
+.claude/
 .gemini/
 gha-creds-*.json
+texput.log
+report/
+scripts/be.tanguy.*
+scripts/vulhub_monitor.py
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.out
+paper/*.synctex.gz
+paper/fig_inpaper-*.png
+paper/page*.png
+paper/pg_*.png
+paper/pv_*.png
