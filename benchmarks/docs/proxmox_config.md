@@ -11,16 +11,16 @@
 - **Version** : Proxmox VE 9.1-1 (Debian Trixie)
 - **Hostname** : benchmark.local
 - **Interface** : nic0 (management)
-- **IP (maison)** : 192.168.1.100/24
-- **Gateway (maison)** : 192.168.1.1
+- **IP** : `<PROXMOX_IP>/24`
+- **Gateway** : `<GATEWAY_IP>`
 - **DNS** : 8.8.8.8
-- **Accès web** : https://192.168.1.100:8006
+- **Accès web** : `https://<PROXMOX_IP>:8006`
 - **User** : root
 
 ## API Token (Ansible)
 
 - **Token ID** : `benchmark@pam!benchmark`
-- **Token Secret** : `0d383b4a-1644-4eb3-81cd-6d92c0ada02a`
+- **Token Secret** : `<PROXMOX_API_TOKEN_SECRET>`
 
 ## Template VM (ID 9000)
 

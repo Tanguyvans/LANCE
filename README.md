@@ -7,14 +7,19 @@ Artifact for the ACSAC 2026 paper submission. Contains two contributions:
 
 ## Quick Start
 
+Requires **Python 3.10+**.
+
 ```bash
 pip install -r requirements.txt
-cp .env.example .env        # add OPENROUTER_API_KEY
+cp .env.example .env        # add OPENROUTER_API_KEY (+ VOYAGE_API_KEY for the knowledge store)
 
-python3 -m src.agent --dry-run --verbose          # validate without LLM calls
+python3 -m src.agent --dry-run --verbose          # validate without LLM calls or infra
 python3 -m src.agent --provider openrouter \
         --model google/gemini-2.5-flash-preview   # full run
 ```
+
+`--dry-run` works offline. A full run needs an LLM key, `VOYAGE_API_KEY` (embeddings), and
+live targets deployed via the Ansible playbooks — see [`benchmarks/README.md`](benchmarks/README.md).
 
 ## Key Directories
 
@@ -26,6 +31,13 @@ python3 -m src.agent --provider openrouter \
 | `benchmarks/ground_truth/` | Per-vulnerability ground truth YAMLs |
 | `benchmarks/ansible/` | Proxmox deployment and injection playbooks |
 | `tests/` | 280+ unit tests |
+
+## Dashboard
+
+Live run view (topology, per-phase events) and cross-model benchmark comparison:
+
+![Dashboard — live run](docs/images/dashboard-main.png)
+![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 
 ## Results
 

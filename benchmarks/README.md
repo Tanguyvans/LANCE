@@ -39,7 +39,7 @@ flowchart LR
 
 ```bash
 # Prérequis : clé SSH sur Proxmox + fichier vault password
-ssh-copy-id root@10.0.0.110
+ssh-copy-id root@<PROXMOX_IP>
 echo "monmotdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass
 
 cd benchmarks/ansible
@@ -47,7 +47,7 @@ ansible-playbook playbooks/deploy_master.yml \
   --vault-password-file ~/.vault_pass -i inventory.yml
 ```
 
-Résultat : VM maître (`10.0.0.10`) accessible via Tailscale avec le dashboard FastAPI sur `:8501` et runner GitHub Actions actif.
+Résultat : VM maître (`<MASTER_IP>`) accessible via Tailscale avec le dashboard FastAPI sur `:8501` et runner GitHub Actions actif.
 
 > **CI/CD** : à chaque push sur `main`, la VM maître se met à jour automatiquement (git pull + restart `nato-fastapi.service`) via le self-hosted runner.
 
@@ -169,7 +169,7 @@ Chaque entrée supporte un champ `bonus_types` listant les types de findings tol
 ```
 benchmarks/
 ├── ansible/                          # Infrastructure-as-Code Proxmox
-│   ├── inventory.yml                 # Proxmox (10.0.0.110) + master (DHCP)
+│   ├── inventory.yml                 # Proxmox (<PROXMOX_IP>) + master (<MASTER_IP> / DHCP)
 │   ├── group_vars/
 │   │   └── all/
 │   │       ├── main.yml              # Scénarios, VMIDs, réseau (source de vérité)
@@ -192,8 +192,7 @@ benchmarks/
 │                                     #  building, edge_cloud, mesh_iot, multizone, star,
 │                                     #  smart_city_3zones, smart_city_large, nato_lab, …)
 ├── packs/                            # Packs de failles réutilisables (auth, misconfig, …)
-│                                     #  — voir docs/benchmark_architecture.md
-├── templates/                        # Templates pour nouveaux scénarios / ground truth
+│                                     #  — voir ../docs/benchmark_architecture.md
 ├── tools/                            # Scripts utilitaires (arp_scan.sh, …)
 ├── results/                          # Résultats des runs LLM (gitignored)
 └── docs/
@@ -204,7 +203,7 @@ benchmarks/
 ```
 
 > **Refactor en cours** : les scénarios monolithiques (`scenarios/S*.yaml`) sont progressivement
-> décomposés en `Topology + Pack[] + Posture` (voir `docs/benchmark_architecture.md` à la racine).
+> décomposés en `Topology + Pack[] + Posture` (voir [`../docs/benchmark_architecture.md`](../docs/benchmark_architecture.md)).
 > Objectif : mutualiser les failles injectées au lieu de dupliquer les mêmes (ex. "MQTT anon"
 > décrit 7 fois aujourd'hui) et permettre des variantes **hardened / vulnerable / control**.
 

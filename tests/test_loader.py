@@ -26,7 +26,7 @@ def infra():
 class TestYAMLLoading:
     def test_loads_without_error(self, infra):
         assert infra is not None
-        assert infra.metadata["name"] == "NATO Smart City IoT Lab"
+        assert infra.metadata["name"] == "Smart City IoT Lab (representative topology)"
 
     def test_device_count(self, infra):
         # 15 devices: mikrotik, netgear, jetson, cam_turret, nvr, rpi5,

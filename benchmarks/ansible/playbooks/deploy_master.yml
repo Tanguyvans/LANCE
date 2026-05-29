@@ -7,7 +7,7 @@
 # Le master peut ensuite déployer les scénarios benchmark de façon autonome.
 #
 # Prérequis (une seule fois) :
-#   1. Clé SSH locale copiée sur Proxmox : ssh-copy-id root@10.0.0.110
+#   1. Clé SSH locale copiée sur Proxmox : ssh-copy-id root@<PROXMOX_IP>
 #   2. Fichier vault password : echo "monmotdepasse" > ~/.vault_pass && chmod 600 ~/.vault_pass
 #   3. Templates Proxmox présents : LXC Debian 13 (VMID 9000), KVM OpenWrt (VMID 9010)
 #
