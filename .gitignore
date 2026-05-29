@@ -12,6 +12,7 @@ PLAN.md
 CLAUDE.md
 .claude/
 .gemini/
+.DS_Store
 gha-creds-*.json
 texput.log
 report/
