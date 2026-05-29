@@ -1,8 +1,11 @@
 name: Update Master VM
 
+# Auto-update en pause : la VM maître est arrêtée (benchmarks terminés pour l'instant).
+# Le runner self-hosted "nato-master" est offline, donc le déclencheur "push" est
+# désactivé pour éviter des workflows en échec à chaque commit.
+# Pour réactiver : remettre le bloc "push: branches: [main]" ci-dessous.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   update:
