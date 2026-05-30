@@ -64,7 +64,7 @@ SSH LAN   : ssh root@<MASTER_IP>
 **Mise en place (une seule fois, avant de lancer `deploy_master.yml`) :**
 
 1. Générer un token de registration sur GitHub :
-   `https://github.com/Tanguyvans/NATO-SmartCity-IoT/settings/actions/runners/new`
+   `https://github.com/Tanguyvans/LANCE/settings/actions/runners/new`
    *(le token expire après 1h — à faire juste avant le playbook)*
 
 2. L'ajouter dans le vault :

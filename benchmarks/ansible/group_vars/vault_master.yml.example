@@ -10,4 +10,4 @@ vault_openrouter_api_key: "sk-or-xxxxxxxxxxxx"
 vault_minimax_api_key: "xxxxxxxxxxxx"                 # optionnel — MiniMax Coding Plan (subscription)
 vault_voyage_api_key: "pa-xxxxxxxxxxxx"               # optionnel (knowledge store)
 vault_github_token: "ghp_xxxxxxxxxxxx"                # Personal Access Token (read:repo) — https://github.com/settings/tokens
-vault_github_runner_token: "AXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Runner registration token — https://github.com/Tanguyvans/NATO-SmartCity-IoT/settings/actions/runners/new
+vault_github_runner_token: "AXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Runner registration token — https://github.com/Tanguyvans/LANCE/settings/actions/runners/new

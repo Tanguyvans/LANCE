@@ -108,7 +108,7 @@
   gather_facts: true
 
   vars:
-    repo_url: "https://{{ vault_github_token }}@github.com/Tanguyvans/NATO-SmartCity-IoT.git"
+    repo_url: "https://{{ vault_github_token }}@github.com/Tanguyvans/LANCE.git"
     repo_dest: "/opt/nato-smartcity-iot"
     repo_branch: "main"
     app_port: 8501
@@ -437,7 +437,7 @@
     - name: Configure runner
       ansible.builtin.command: >
         /opt/actions-runner/config.sh
-        --url https://github.com/Tanguyvans/NATO-SmartCity-IoT
+        --url https://github.com/Tanguyvans/LANCE
         --token {{ vault_github_runner_token }}
         --name nato-master
         --labels nato-master
@@ -452,13 +452,13 @@
       ansible.builtin.command: ./svc.sh install root
       args:
         chdir: /opt/actions-runner
-        creates: /etc/systemd/system/actions.runner.Tanguyvans-NATO-SmartCity-IoT.nato-master.service
+        creates: /etc/systemd/system/actions.runner.Tanguyvans-LANCE.nato-master.service
       environment:
         RUNNER_ALLOW_RUNASROOT: "1"
 
     - name: Start runner service
       ansible.builtin.systemd:
-        name: "actions.runner.Tanguyvans-NATO-SmartCity-IoT.nato-master"
+        name: "actions.runner.Tanguyvans-LANCE.nato-master"
         enabled: true
         state: started
         daemon_reload: true
