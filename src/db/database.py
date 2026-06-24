@@ -195,6 +195,21 @@ def list_models(enabled_only: bool = True) -> list[dict[str, Any]]:
         return []
 
 
+def list_models_admin() -> list[dict[str, Any]]:
+    """Return ALL models (enabled and disabled) with raw columns, for editing."""
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT slug, label, provider, recommended, enabled, "
+                "input_per_mtok, output_per_mtok, base_url, subscription "
+                "FROM models ORDER BY provider, slug"
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        log.warning("list_models_admin failed: %s", exc)
+        return []
+
+
 def get_provider(name: str) -> dict[str, Any] | None:
     """Return a provider row as a dict, or None if absent / DB unavailable."""
     try:
@@ -208,6 +223,61 @@ def get_provider(name: str) -> dict[str, Any] | None:
     except sqlite3.Error as exc:
         log.warning("get_provider(%s) failed: %s", name, exc)
         return None
+
+
+def list_providers() -> list[dict[str, Any]]:
+    """Return all providers as dicts (empty list on DB failure)."""
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT name, base_url, api_key_env, default_model, kind "
+                "FROM providers ORDER BY name"
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        log.warning("list_providers failed: %s", exc)
+        return []
+
+
+def get_model(slug: str) -> dict[str, Any] | None:
+    """Return a single model row as a dict (raw, not provider-joined)."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT slug, label, provider, recommended, enabled, "
+                "input_per_mtok, output_per_mtok, base_url, subscription "
+                "FROM models WHERE slug = ?",
+                (slug,),
+            ).fetchone()
+            return dict(row) if row else None
+    except sqlite3.Error as exc:
+        log.warning("get_model(%s) failed: %s", slug, exc)
+        return None
+
+
+def delete_model(slug: str) -> bool:
+    """Delete a model; return True if a row was removed."""
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("DELETE FROM models WHERE slug = ?", (slug,))
+            return cur.rowcount > 0
+    except sqlite3.Error as exc:
+        log.warning("delete_model(%s) failed: %s", slug, exc)
+        return False
+
+
+def set_model_enabled(slug: str, enabled: bool) -> bool:
+    """Toggle a model's enabled flag; return True if the model exists."""
+    try:
+        with get_conn() as conn:
+            cur = conn.execute(
+                "UPDATE models SET enabled = ? WHERE slug = ?",
+                (int(enabled), slug),
+            )
+            return cur.rowcount > 0
+    except sqlite3.Error as exc:
+        log.warning("set_model_enabled(%s) failed: %s", slug, exc)
+        return False
 
 
 # ── Runs / scores / usage ────────────────────────────────────────────────────

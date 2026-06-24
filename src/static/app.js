@@ -518,6 +518,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('log-clear').addEventListener('click', clearLog);
   document.getElementById('modal-close').addEventListener('click', () => closeModal());
   document.getElementById('modal-overlay').addEventListener('click', closeModal);
+  document.getElementById('btn-manage-models')?.addEventListener('click', openModelsManager);
   document.getElementById('compare-close').addEventListener('click', () => closeCompare());
   document.getElementById('compare-overlay').addEventListener('click', closeCompare);
   document.getElementById('btn-compare').addEventListener('click', openCompare);
@@ -2351,4 +2352,261 @@ async function fetchJSON(url) {
 
 function _truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+// ── Models & Providers manager ───────────────────────────────────────────────
+// Reuses the generic #modal-overlay. Reads the SQLite registry via
+// /api/models/registry and edits it via the models/providers CRUD endpoints.
+// API keys live in .env — only the env-var NAME (api_key_env) is ever stored.
+const _mgr = { models: [], providers: [], editModel: null, editProvider: null, msg: '' };
+
+async function apiSend(method, url, body) {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) {}
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { detail: String(err) } };
+  }
+}
+
+async function openModelsManager() {
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = '⚙️ Modèles & Providers';
+  document.getElementById('modal-body').innerHTML =
+    '<div style="padding:16px;color:var(--muted)">Chargement…</div>';
+  overlay._prevFocus = document.activeElement;
+  overlay.classList.add('open');
+  _mgr.editModel = null; _mgr.editProvider = null; _mgr.msg = '';
+  await _mgrReload();
+}
+
+async function _mgrReload() {
+  const reg = await apiSend('GET', '/api/models/registry');
+  if (!reg.ok) {
+    const detail = reg.data ? _formatErrDetail(reg.data.detail) : `HTTP ${reg.status}`;
+    document.getElementById('modal-body').innerHTML =
+      `<div style="padding:16px;color:#e06c75">Gestion indisponible : ${escapeHtml(detail)}` +
+      `<br><span style="color:var(--muted);font-size:11px">La base SQLite est requise — lance ` +
+      `<code>python3 -m src.db.seed</code> sur le maître.</span></div>`;
+    return;
+  }
+  _mgr.models = reg.data.models || [];
+  _mgr.providers = reg.data.providers || [];
+  _renderManager();
+}
+
+function _mgrSetMsg(text, ok = true) {
+  const bg = ok ? 'rgba(70,180,90,0.15)' : 'rgba(224,108,117,0.18)';
+  const fg = ok ? '#46b45a' : '#e06c75';
+  _mgr.msg = `<div style="margin:6px 0;padding:6px 10px;border-radius:6px;font-size:12px;background:${bg};color:${fg}">${escapeHtml(text)}</div>`;
+}
+
+function _mgrPrice(v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); }
+
+function _renderManager() {
+  const em = _mgr.editModel;     // model being edited (or null = add)
+  const ep = _mgr.editProvider;  // provider being edited (or null = add)
+  const provOpts = (sel) => _mgr.providers
+    .map(p => `<option value="${escapeHtml(p.name)}"${sel === p.name ? ' selected' : ''}>${escapeHtml(p.name)}</option>`)
+    .join('');
+
+  const modelRows = _mgr.models.map(m => `
+    <tr data-slug="${escapeHtml(m.slug)}">
+      <td style="font-family:monospace;font-size:11px">${escapeHtml(m.slug)}</td>
+      <td>${escapeHtml(m.provider || '—')}</td>
+      <td>${escapeHtml(m.label || '')}</td>
+      <td style="text-align:center"><button class="mgr-icon" data-act="star" title="Basculer recommandé">${m.recommended ? '★' : '☆'}</button></td>
+      <td style="text-align:center"><input type="checkbox" data-act="toggle"${m.enabled ? ' checked' : ''} aria-label="Activé"></td>
+      <td style="text-align:right">${_mgrPrice(m.input_per_mtok)}</td>
+      <td style="text-align:right">${_mgrPrice(m.output_per_mtok)}</td>
+      <td style="font-family:monospace;font-size:10px;color:var(--muted)">${escapeHtml(m.base_url || '')}</td>
+      <td style="white-space:nowrap"><button class="mgr-icon" data-act="edit" title="Éditer">✏️</button> <button class="mgr-icon" data-act="del" title="Supprimer">🗑️</button></td>
+    </tr>`).join('');
+
+  const provRows = _mgr.providers.map(p => `
+    <tr data-name="${escapeHtml(p.name)}">
+      <td><strong>${escapeHtml(p.name)}</strong></td>
+      <td>${escapeHtml(p.kind || 'cloud')}</td>
+      <td style="font-family:monospace;font-size:10px">${escapeHtml(p.base_url || '—')}</td>
+      <td style="font-family:monospace;font-size:10px">${escapeHtml(p.default_model || '—')}</td>
+      <td style="font-family:monospace;font-size:10px">${escapeHtml(p.api_key_env || '—')}</td>
+      <td><button class="mgr-icon" data-act="pedit" title="Éditer">✏️</button></td>
+    </tr>`).join('');
+
+  const th = 'style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border, #30363d);font-size:11px;color:var(--muted)"';
+  const tableStyle = 'style="width:100%;border-collapse:collapse;font-size:12px"';
+  const inp = 'style="width:100%;box-sizing:border-box;padding:4px 6px;margin:2px 0"';
+
+  document.getElementById('modal-body').innerHTML = `
+    <style>
+      #modal-body .mgr-icon{background:none;border:none;cursor:pointer;font-size:14px;padding:2px 4px;color:inherit}
+      #modal-body .mgr-icon:hover{filter:brightness(1.4)}
+      #modal-body td{padding:4px 8px;border-bottom:1px solid rgba(128,128,128,0.12);vertical-align:middle}
+      #modal-body .mgr-form{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;margin:8px 0;padding:10px;background:rgba(128,128,128,0.06);border-radius:8px}
+      #modal-body .mgr-form label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+      #modal-body .mgr-form .full{grid-column:1/-1}
+      #modal-body h4{margin:14px 0 4px}
+    </style>
+    ${_mgr.msg}
+
+    <h4>Modèles <span style="font-weight:400;color:var(--muted);font-size:11px">(${_mgr.models.length})</span></h4>
+    <div style="overflow:auto;max-height:38vh">
+      <table ${tableStyle}>
+        <thead><tr>
+          <th ${th}>Slug</th><th ${th}>Provider</th><th ${th}>Label</th>
+          <th ${th} style="text-align:center">★</th><th ${th} style="text-align:center">Activé</th>
+          <th ${th} style="text-align:right">$in/M</th><th ${th} style="text-align:right">$out/M</th>
+          <th ${th}>base_url</th><th ${th}>Actions</th>
+        </tr></thead>
+        <tbody>${modelRows || '<tr><td colspan="9" style="color:var(--muted)">Aucun modèle</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <form class="mgr-form" data-form="model">
+      <div class="full"><strong>${em ? 'Modifier le modèle' : '+ Ajouter un modèle'}</strong></div>
+      <label>Slug<input id="mgr-m-slug" ${inp} value="${em ? escapeHtml(em.slug) : ''}" placeholder="ex: deepseek/deepseek-v4-flash" ${em ? 'readonly' : 'required'}></label>
+      <label>Provider<select id="mgr-m-provider" ${inp}>${provOpts(em ? em.provider : null)}</select></label>
+      <label>Label<input id="mgr-m-label" ${inp} value="${em ? escapeHtml(em.label || '') : ''}" placeholder="nom affiché"></label>
+      <label>base_url (override, optionnel)<input id="mgr-m-baseurl" ${inp} value="${em ? escapeHtml(em.base_url || '') : ''}" placeholder="hérité du provider si vide"></label>
+      <label>Prix $/M input<input id="mgr-m-in" type="number" step="0.01" ${inp} value="${em && em.input_per_mtok != null ? em.input_per_mtok : ''}"></label>
+      <label>Prix $/M output<input id="mgr-m-out" type="number" step="0.01" ${inp} value="${em && em.output_per_mtok != null ? em.output_per_mtok : ''}"></label>
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-rec" ${em && em.recommended ? 'checked' : ''}> Recommandé</label>
+      <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-en" ${!em || em.enabled ? 'checked' : ''}> Activé</label>
+      <div class="full" style="display:flex;gap:8px">
+        <button type="submit">${em ? 'Enregistrer' : 'Ajouter'}</button>
+        ${em ? '<button type="button" data-act="cancel-model">Annuler</button>' : ''}
+      </div>
+    </form>
+
+    <h4>Providers <span style="font-weight:400;color:var(--muted);font-size:11px">(${_mgr.providers.length})</span></h4>
+    <div style="overflow:auto">
+      <table ${tableStyle}>
+        <thead><tr>
+          <th ${th}>Nom</th><th ${th}>Type</th><th ${th}>base_url</th>
+          <th ${th}>default_model</th><th ${th}>api_key_env</th><th ${th}></th>
+        </tr></thead>
+        <tbody>${provRows}</tbody>
+      </table>
+    </div>
+
+    <form class="mgr-form" data-form="provider">
+      <div class="full"><strong>${ep ? 'Modifier le provider' : '+ Ajouter un provider'}</strong></div>
+      <label>Nom<input id="mgr-p-name" ${inp} value="${ep ? escapeHtml(ep.name) : ''}" placeholder="ex: local" ${ep ? 'readonly' : 'required'}></label>
+      <label>Type<select id="mgr-p-kind" ${inp}>
+        <option value="cloud"${ep && ep.kind === 'cloud' ? ' selected' : ''}>cloud</option>
+        <option value="local"${ep && ep.kind === 'local' ? ' selected' : ''}>local</option>
+      </select></label>
+      <label>base_url<input id="mgr-p-baseurl" ${inp} value="${ep ? escapeHtml(ep.base_url || '') : ''}" placeholder="https://… ou http://localhost:11434/v1"></label>
+      <label>default_model<input id="mgr-p-default" ${inp} value="${ep ? escapeHtml(ep.default_model || '') : ''}"></label>
+      <label class="full">Nom de la variable .env pour la clé (api_key_env) — <em>la clé elle-même se met dans <code>.env</code>, pas ici</em>
+        <input id="mgr-p-keyenv" ${inp} value="${ep ? escapeHtml(ep.api_key_env || '') : ''}" placeholder="ex: OPENROUTER_API_KEY"></label>
+      <div class="full" style="display:flex;gap:8px">
+        <button type="submit">${ep ? 'Enregistrer' : 'Ajouter'}</button>
+        ${ep ? '<button type="button" data-act="cancel-provider">Annuler</button>' : ''}
+      </div>
+    </form>`;
+
+  const body = document.getElementById('modal-body');
+  body.onclick = _mgrOnClick;
+  body.onchange = _mgrOnChange;
+  body.onsubmit = _mgrOnSubmit;
+  _mgr.msg = '';
+}
+
+function _mgrSlugOf(el) { const tr = el.closest('tr[data-slug]'); return tr && tr.dataset.slug; }
+
+async function _mgrOnClick(e) {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  if (act === 'cancel-model') { _mgr.editModel = null; _renderManager(); return; }
+  if (act === 'cancel-provider') { _mgr.editProvider = null; _renderManager(); return; }
+
+  const slug = _mgrSlugOf(btn);
+  if (act === 'star') {
+    const m = _mgr.models.find(x => x.slug === slug);
+    await _mgrPatchModel(slug, { recommended: !m.recommended });
+  } else if (act === 'edit') {
+    _mgr.editModel = _mgr.models.find(x => x.slug === slug);
+    _renderManager();
+  } else if (act === 'del') {
+    if (!confirm(`Supprimer le modèle « ${slug} » ?`)) return;
+    const r = await apiSend('DELETE', `/api/models/${slug}`);
+    if (r.ok) { _mgrSetMsg(`Modèle supprimé : ${slug}`); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
+    await _mgrAfterChange();
+  } else if (act === 'pedit') {
+    const name = btn.closest('tr[data-name]').dataset.name;
+    _mgr.editProvider = _mgr.providers.find(x => x.name === name);
+    _renderManager();
+  }
+}
+
+async function _mgrOnChange(e) {
+  if (e.target.dataset.act === 'toggle') {
+    const slug = _mgrSlugOf(e.target);
+    await _mgrPatchModel(slug, { enabled: e.target.checked });
+  }
+}
+
+async function _mgrPatchModel(slug, patch) {
+  const r = await apiSend('PATCH', `/api/models/${slug}`, patch);
+  if (r.ok) { _mgrSetMsg(`Modèle mis à jour : ${slug}`); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
+  await _mgrAfterChange();
+}
+
+function _num(id) { const v = document.getElementById(id).value.trim(); return v === '' ? null : Number(v); }
+
+async function _mgrOnSubmit(e) {
+  e.preventDefault();
+  const form = e.target.dataset.form;
+  if (form === 'model') {
+    const payload = {
+      provider: document.getElementById('mgr-m-provider').value,
+      label: document.getElementById('mgr-m-label').value.trim() || null,
+      base_url: document.getElementById('mgr-m-baseurl').value.trim() || null,
+      input_per_mtok: _num('mgr-m-in'),
+      output_per_mtok: _num('mgr-m-out'),
+      recommended: document.getElementById('mgr-m-rec').checked,
+      enabled: document.getElementById('mgr-m-en').checked,
+    };
+    let r;
+    if (_mgr.editModel) {
+      r = await apiSend('PATCH', `/api/models/${_mgr.editModel.slug}`, payload);
+    } else {
+      payload.slug = document.getElementById('mgr-m-slug').value.trim();
+      if (!payload.slug) { _mgrSetMsg('Slug requis', false); _renderManager(); return; }
+      r = await apiSend('POST', '/api/models', payload);
+    }
+    if (r.ok) { _mgr.editModel = null; _mgrSetMsg('Modèle enregistré'); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
+    await _mgrAfterChange();
+  } else if (form === 'provider') {
+    const payload = {
+      base_url: document.getElementById('mgr-p-baseurl').value.trim() || null,
+      default_model: document.getElementById('mgr-p-default').value.trim() || null,
+      api_key_env: document.getElementById('mgr-p-keyenv').value.trim() || null,
+      kind: document.getElementById('mgr-p-kind').value,
+    };
+    let r;
+    if (_mgr.editProvider) {
+      r = await apiSend('PATCH', `/api/providers/${_mgr.editProvider.name}`, payload);
+    } else {
+      payload.name = document.getElementById('mgr-p-name').value.trim();
+      if (!payload.name) { _mgrSetMsg('Nom requis', false); _renderManager(); return; }
+      r = await apiSend('POST', '/api/providers', payload);
+    }
+    if (r.ok) { _mgr.editProvider = null; _mgrSetMsg('Provider enregistré'); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
+    await _mgrAfterChange();
+  }
+}
+
+// Reload the registry, re-render the panel, and refresh the main model selector.
+async function _mgrAfterChange() {
+  await _mgrReload();
+  try { await loadModels(); } catch (_) {}
 }

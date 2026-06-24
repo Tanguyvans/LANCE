@@ -6,11 +6,65 @@ Supports two providers:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from src.agent.pricing import _load_pricing
 
 router = APIRouter()
+
+
+def _require_db():
+    """Ensure the SQLite DB is reachable; raise 503 otherwise.
+
+    Editing models requires the DB (the hardcoded list is read-only). Returns
+    the database module so callers can use its helpers.
+    """
+    try:
+        from src.db import database as db
+        db.init_db()
+        return db
+    except Exception as exc:  # noqa: BLE001 — surface any DB init failure as 503
+        raise HTTPException(status_code=503, detail=f"Base de données indisponible : {exc}")
+
+
+def _model_out(row: dict) -> dict:
+    """Normalise a raw model row (int flags → bool) for JSON responses."""
+    return {
+        "slug": row["slug"],
+        "label": row.get("label"),
+        "provider": row.get("provider"),
+        "recommended": bool(row.get("recommended")),
+        "enabled": bool(row.get("enabled")),
+        "input_per_mtok": row.get("input_per_mtok"),
+        "output_per_mtok": row.get("output_per_mtok"),
+        "base_url": row.get("base_url"),
+        "subscription": bool(row.get("subscription")),
+    }
+
+
+# api_key is intentionally absent — keys live in .env, only api_key_env is stored.
+class ModelCreate(BaseModel):
+    slug: str
+    provider: str
+    label: str | None = None
+    recommended: bool = False
+    enabled: bool = True
+    input_per_mtok: float | None = None
+    output_per_mtok: float | None = None
+    base_url: str | None = None
+    subscription: bool = False
+
+
+class ModelPatch(BaseModel):
+    provider: str | None = None
+    label: str | None = None
+    recommended: bool | None = None
+    enabled: bool | None = None
+    input_per_mtok: float | None = None
+    output_per_mtok: float | None = None
+    base_url: str | None = None
+    subscription: bool | None = None
 
 
 # Curated list of models to show in the dashboard.
@@ -116,3 +170,60 @@ def list_models() -> dict:
         for slug, label, recommended, provider in CURATED_MODELS
     ]
     return {"models": models}
+
+
+@router.get("/registry")
+def model_registry() -> dict:
+    """Admin view: ALL models (incl. disabled, raw fields) + providers.
+
+    Used by the dashboard's management panel. Requires the DB.
+    """
+    db = _require_db()
+    return {
+        "models": [_model_out(m) for m in db.list_models_admin()],
+        "providers": db.list_providers(),
+    }
+
+
+@router.post("")
+def create_model(body: ModelCreate) -> dict:
+    """Create (or upsert) a model. The provider must already exist."""
+    db = _require_db()
+    if db.get_provider(body.provider) is None:
+        raise HTTPException(status_code=400, detail=f"Provider inconnu : {body.provider}")
+    db.upsert_model(
+        slug=body.slug, label=body.label, provider=body.provider,
+        recommended=body.recommended, enabled=body.enabled,
+        input_per_mtok=body.input_per_mtok, output_per_mtok=body.output_per_mtok,
+        base_url=body.base_url, subscription=body.subscription,
+    )
+    return _model_out(db.get_model(body.slug))
+
+
+@router.patch("/{slug:path}")
+def update_model(slug: str, body: ModelPatch) -> dict:
+    """Partially update an existing model (any field except the slug)."""
+    db = _require_db()
+    existing = db.get_model(slug)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"Modèle introuvable : {slug}")
+    patch = body.model_dump(exclude_unset=True)
+    merged = {**existing, **patch}
+    if patch.get("provider") and db.get_provider(merged["provider"]) is None:
+        raise HTTPException(status_code=400, detail=f"Provider inconnu : {merged['provider']}")
+    db.upsert_model(
+        slug=slug, label=merged.get("label"), provider=merged.get("provider"),
+        recommended=bool(merged.get("recommended")), enabled=bool(merged.get("enabled")),
+        input_per_mtok=merged.get("input_per_mtok"), output_per_mtok=merged.get("output_per_mtok"),
+        base_url=merged.get("base_url"), subscription=bool(merged.get("subscription")),
+    )
+    return _model_out(db.get_model(slug))
+
+
+@router.delete("/{slug:path}")
+def remove_model(slug: str) -> dict:
+    """Delete a model from the registry."""
+    db = _require_db()
+    if not db.delete_model(slug):
+        raise HTTPException(status_code=404, detail=f"Modèle introuvable : {slug}")
+    return {"ok": True}

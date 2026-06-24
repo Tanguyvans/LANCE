@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import models, pipeline, runs, scenarios, topology
+from src.api.routes import models, pipeline, providers, runs, scenarios, topology
 
 ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR    = ROOT / "src" / "static"
@@ -34,13 +34,16 @@ app.include_router(runs.router,      prefix="/api/runs",      tags=["runs"])
 app.include_router(pipeline.router,  prefix="/api/pipeline",  tags=["pipeline"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["scenarios"])
 app.include_router(models.router,    prefix="/api/models",    tags=["models"])
+app.include_router(providers.router, prefix="/api/providers", tags=["providers"])
 
 # Serve static files (JS, CSS) — no-cache pour forcer le rechargement
 app.mount("/static",    StaticFiles(directory=str(STATIC_DIR)),    name="static")
 app.mount("/static_v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="static_v2")
 
 
-_CACHEABLE_API_PATHS = {"/api/models"}
+# NB: /api/models is intentionally NOT cached — it is now editable from the
+# dashboard, so responses must reflect changes immediately.
+_CACHEABLE_API_PATHS: set[str] = set()
 
 @app.middleware("http")
 async def cache_control(request: Request, call_next) -> Response:
