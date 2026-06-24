@@ -47,39 +47,72 @@ CURATED_MODELS: list[tuple[str, str, bool, str]] = [
 ]
 
 
-@router.get("")
-def list_models() -> dict:
-    """Return the curated list of models with per-provider metadata.
+def _entry(slug, label, recommended, provider, subscription, pricing,
+           db_in=None, db_out=None):
+    """Build one response entry, enriched with live OpenRouter pricing.
 
-    OpenRouter models are enriched with live $/M pricing (24h cache).
-    MiniMax Plan models are marked as subscription (no per-token pricing).
+    Live $/M pricing wins; falls back to the price stored in the DB (if any).
+    Subscription models have no per-token price and are always 'available'.
     """
-    pricing = _load_pricing()
-    models = []
-    for slug, label, recommended, provider in CURATED_MODELS:
-        if provider == "minimax":
-            # Subscription plan — no per-token price, always available if key is set.
-            models.append({
-                "id": slug,
-                "label": label + (" (recommandé)" if recommended else ""),
-                "recommended": recommended,
-                "available": True,
-                "provider": "minimax",
-                "subscription": True,
-                "input_per_mtok": None,
-                "output_per_mtok": None,
-            })
-            continue
-
-        price = pricing.get(slug)
-        models.append({
+    if subscription:
+        return {
             "id": slug,
             "label": label + (" (recommandé)" if recommended else ""),
             "recommended": recommended,
-            "available": price is not None,
+            "available": True,
             "provider": provider,
-            "subscription": False,
-            "input_per_mtok": round(price["input"], 4) if price else None,
-            "output_per_mtok": round(price["output"], 4) if price else None,
-        })
+            "subscription": True,
+            "input_per_mtok": None,
+            "output_per_mtok": None,
+        }
+    price = pricing.get(slug)
+    in_price = round(price["input"], 4) if price else (round(db_in, 4) if db_in is not None else None)
+    out_price = round(price["output"], 4) if price else (round(db_out, 4) if db_out is not None else None)
+    return {
+        "id": slug,
+        "label": label + (" (recommandé)" if recommended else ""),
+        "recommended": recommended,
+        "available": (price is not None) or (in_price is not None),
+        "provider": provider,
+        "subscription": False,
+        "input_per_mtok": in_price,
+        "output_per_mtok": out_price,
+    }
+
+
+@router.get("")
+def list_models() -> dict:
+    """Return the list of models with per-provider metadata.
+
+    Source of truth is the SQLite ``models`` table when populated (seed via
+    ``python3 -m src.db.seed``); otherwise it falls back to the hardcoded
+    ``CURATED_MODELS`` list. OpenRouter models are enriched with live $/M
+    pricing (24h cache); MiniMax Plan / local models are marked accordingly.
+    """
+    pricing = _load_pricing()
+
+    # Preferred path: read curated models from the DB so they can be edited
+    # without touching the code. Any failure falls back to the hardcoded list.
+    try:
+        from src.db.database import list_models as db_list_models
+        rows = db_list_models(enabled_only=True)
+    except Exception:
+        rows = []
+
+    if rows:
+        models = [
+            _entry(
+                r["slug"], r["label"] or r["slug"], bool(r["recommended"]),
+                r["provider"] or "openrouter",
+                bool(r["subscription"]) or (r["provider"] == "minimax"),
+                pricing, r["input_per_mtok"], r["output_per_mtok"],
+            )
+            for r in rows
+        ]
+        return {"models": models}
+
+    models = [
+        _entry(slug, label, recommended, provider, provider == "minimax", pricing)
+        for slug, label, recommended, provider in CURATED_MODELS
+    ]
     return {"models": models}

@@ -471,6 +471,30 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
+        # Persist the run to the SQLite history (best effort — never fatal).
+        try:
+            from src.db.database import init_db, record_phase_usage, record_run
+
+            init_db()
+            summary = self.tracker.summary()
+            tokens_in, tokens_out = self.tracker.total_tokens()
+            run_id = record_run({
+                "run_dir": str(self.run_dir),
+                "ts": self.run_dir.name,
+                "scenario_id": self.scenario_id,
+                "model": getattr(self.provider, "model", None),
+                "provider": getattr(self.provider, "provider", None),
+                "status": "completed",
+                "cost_usd": round(self.tracker.total_cost(), 4),
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "git_commit": self.git_commit,
+            })
+            if run_id is not None and summary.get("phases"):
+                record_phase_usage(run_id, summary["phases"])
+        except Exception as e:
+            log.warning("DB run persistence failed (non-fatal): %s", e)
+
         # Ingest run findings into ChromaDB for episodic memory
         try:
             from src.agent.knowledge.ingest import ingest_run_findings

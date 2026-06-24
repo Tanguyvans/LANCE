@@ -76,6 +76,24 @@ OPENAI_PROVIDERS = {
 }
 
 
+def _resolve_provider_cfg(provider: str) -> dict | None:
+    """Provider config (base_url, api_key_env, default_model), DB first.
+
+    The SQLite ``providers`` table wins when present (lets you add/edit
+    providers — e.g. a local OpenAI-compatible endpoint — without code
+    changes); otherwise the hardcoded ``OPENAI_PROVIDERS`` dict is used. Any DB
+    error is swallowed for full backward compatibility when the DB is absent.
+    """
+    try:
+        from src.db.database import get_provider
+        row = get_provider(provider)
+        if row and row.get("base_url"):
+            return row
+    except Exception:
+        pass
+    return OPENAI_PROVIDERS.get(provider)
+
+
 class LLMProvider:
     """Unified LLM interface with synchronous tool-calling loop."""
 
@@ -85,17 +103,19 @@ class LLMProvider:
             import anthropic
             self.client = anthropic.Anthropic()
             self.model = model or "claude-sonnet-4-20250514"
-        elif provider in OPENAI_PROVIDERS:
+        else:
+            cfg = _resolve_provider_cfg(provider)
+            if cfg is None:
+                known = ", ".join(["anthropic", *OPENAI_PROVIDERS])
+                raise ValueError(f"Unknown provider: {provider}. Available: {known}")
             import openai
-            cfg = OPENAI_PROVIDERS[provider]
+            api_key_env = cfg.get("api_key_env") or ""
             self.client = openai.OpenAI(
                 base_url=cfg["base_url"],
-                api_key=os.environ.get(cfg["api_key_env"]),
+                api_key=os.environ.get(api_key_env) or "not-needed",
                 timeout=API_TIMEOUT,
             )
-            self.model = model or cfg["default_model"]
-        else:
-            raise ValueError(f"Unknown provider: {provider}. Available: anthropic, {', '.join(OPENAI_PROVIDERS)}")
+            self.model = model or cfg.get("default_model") or ""
 
     def chat_with_tools(
         self,
