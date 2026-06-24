@@ -51,6 +51,7 @@
         --net0 name=eth0,bridge=vmbr0,ip=dhcp
         --net1 name=eth1,bridge=vmbr1,ip=192.168.100.200/24
         --nameserver 1.1.1.1
+        --ssh-public-keys /root/.ssh/authorized_keys
         --onboot 1
         --unprivileged 1
         --features nesting=1
@@ -92,6 +93,11 @@
         ansible_host: "{{ master_ip }}"
         ansible_user: root
         ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+        # Le maître est sur le LAN 192.168.1.x (injoignable depuis le Mac).
+        # On rebondit via le Proxmox (joignable en Tailscale) en ProxyJump.
+        ansible_ssh_common_args: >-
+          -o ProxyJump=root@{{ hostvars['proxmox']['ansible_host'] }}
+          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
 
     - name: Wait for SSH
       ansible.builtin.wait_for:
@@ -99,6 +105,7 @@
         port: 22
         delay: 5
         timeout: 60
+      delegate_to: proxmox   # le Mac ne joint pas 192.168.1.x:22 ; le Proxmox oui (LAN)
 
 # ══════════════════════════════════════════════════════════════
 # PLAY 2 : Configurer la VM maître
@@ -108,7 +115,7 @@
   gather_facts: true
 
   vars:
-    repo_url: "https://{{ vault_github_token }}@github.com/Tanguyvans/LANCE.git"
+    repo_url: "https://github.com/Tanguyvans/LANCE.git"   # repo public → clone sans token
     repo_dest: "/opt/nato-smartcity-iot"
     repo_branch: "main"
     app_port: 8501
@@ -120,6 +127,14 @@
     - name: Set timezone to Europe/Paris
       community.general.timezone:
         name: Europe/Paris
+
+    # src/agent/pipeline.py force LANG=LC_ALL=en_US.UTF-8 pour le sous-processus
+    # ansible-playbook. Sans cette locale générée, ansible échoue avec
+    # "unsupported locale setting" → le déploiement de scénario avorte.
+    - name: Generate en_US.UTF-8 locale (requis par le pipeline pour lancer Ansible)
+      community.general.locale_gen:
+        name: en_US.UTF-8
+        state: present
 
     - name: Update apt cache
       ansible.builtin.apt:
@@ -395,6 +410,8 @@
           [Service]
           Type=simple
           User=root
+          Environment=LANG=C.UTF-8
+          Environment=LC_ALL=C.UTF-8
           WorkingDirectory={{ repo_dest }}
           EnvironmentFile={{ env_file }}
           ExecStart={{ repo_dest }}/venv/bin/uvicorn src.api.main:app \
@@ -447,6 +464,7 @@
         creates: /opt/actions-runner/.runner
       environment:
         RUNNER_ALLOW_RUNASROOT: "1"
+      ignore_errors: true   # token runner périmé (1h) → non bloquant pour le dashboard
 
     - name: Install runner as systemd service
       ansible.builtin.command: ./svc.sh install root
@@ -455,6 +473,7 @@
         creates: /etc/systemd/system/actions.runner.Tanguyvans-LANCE.nato-master.service
       environment:
         RUNNER_ALLOW_RUNASROOT: "1"
+      ignore_errors: true
 
     - name: Start runner service
       ansible.builtin.systemd:
@@ -462,6 +481,7 @@
         enabled: true
         state: started
         daemon_reload: true
+      ignore_errors: true
 
     # ── Résumé ────────────────────────────────────────────────
     - name: Summary

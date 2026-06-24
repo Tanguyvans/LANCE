@@ -48,9 +48,16 @@
       failed_when: false
       changed_when: true
 
-    - name: Ajouter IP temporaire 192.168.1.100 sur vmbr1 pour joindre OpenWrt LAN
-      ansible.builtin.command: ip addr add {{ openwrt_tmp_proxy_ip }}/24 dev vmbr1
+    # NOTE: ce Proxmox a son management vmbr0 sur 192.168.1.0/24. On ajoute donc
+    # l'IP en /32 (aucune route /24 concurrente) + une route hôte /32 vers OpenWrt
+    # scopée sur vmbr1, pour ne PAS détourner le routage de vmbr0 (gateway/Tailscale).
+    - name: Ajouter IP temporaire 192.168.1.100/32 sur vmbr1 (sans route /24 — évite le conflit avec vmbr0)
+      ansible.builtin.command: ip addr add {{ openwrt_tmp_proxy_ip }}/32 dev vmbr1
       failed_when: false
+      changed_when: true
+
+    - name: Router uniquement 192.168.1.1 (OpenWrt) via vmbr1 — route hôte /32 prioritaire
+      ansible.builtin.command: ip route replace {{ openwrt_default_lan }}/32 dev vmbr1 src {{ openwrt_tmp_proxy_ip }}
       changed_when: true
 
     - name: Détruire la VM temporaire 9010 si elle existe déjà (nettoyage)
@@ -143,14 +150,20 @@
   gather_facts: false
 
   vars:
+    openwrt_raw_vmid: 9001        # défini ici aussi : les vars: sont scopées par play
     openwrt_tmp_vmid: 9010
     openwrt_tmp_proxy_ip: "192.168.1.100"
     openwrt_lan_ip: "192.168.100.1"
 
   tasks:
 
+    - name: Retirer la route hôte temporaire vers OpenWrt (192.168.1.1)
+      ansible.builtin.command: ip route del 192.168.1.1/32 dev vmbr1
+      failed_when: false
+      changed_when: true
+
     - name: Retirer l'IP temporaire 192.168.1.100 de vmbr1
-      ansible.builtin.command: ip addr del {{ openwrt_tmp_proxy_ip }}/24 dev vmbr1
+      ansible.builtin.command: ip addr del {{ openwrt_tmp_proxy_ip }}/32 dev vmbr1
       failed_when: false
       changed_when: true
 
@@ -170,12 +183,13 @@
     - name: Convertir en template (nouveau 9001)
       ansible.builtin.command: qm template {{ openwrt_tmp_vmid }}
 
-    - name: Mettre à jour tpl_openwrt_vmid dans group_vars/all.yml (→ 9010)
+    - name: Mettre à jour tpl_openwrt_vmid dans group_vars/all/main.yml (→ 9010)
       ansible.builtin.replace:
-        path: "{{ playbook_dir }}/../group_vars/all.yml"
+        path: "{{ playbook_dir }}/../group_vars/all/main.yml"
         regexp: "^tpl_openwrt_vmid:.*"
         replace: "tpl_openwrt_vmid: {{ openwrt_tmp_vmid }}   # KVM — OpenWrt x86-64 configuré (LAN=192.168.100.1)"
       delegate_to: localhost
+      failed_when: false
 
     - name: Résumé
       ansible.builtin.debug:

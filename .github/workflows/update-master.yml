@@ -1,10 +1,12 @@
 name: Update Master VM
 
-# Auto-update en pause : la VM maître est arrêtée (benchmarks terminés pour l'instant).
-# Le runner self-hosted "nato-master" est offline, donc le déclencheur "push" est
-# désactivé pour éviter des workflows en échec à chaque commit.
-# Pour réactiver : remettre le bloc "push: branches: [main]" ci-dessous.
+# Auto-update actif : à chaque push sur main, le runner self-hosted "nato-master"
+# (VM maître pve-benchmark) fait git pull + pip install + restart nato-fastapi.
+# Les fichiers env-spécifiques (inventory.yml, main.yml, vault_master.yml) sont en
+# skip-worktree sur le maître → le pull ne les écrase pas. Ne jamais commiter ces 3.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
