@@ -6,6 +6,8 @@ Supports two providers:
 """
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -101,12 +103,35 @@ CURATED_MODELS: list[tuple[str, str, bool, str]] = [
 ]
 
 
+# provider name -> env var holding its API key (fallback when the DB is absent)
+_STATIC_KEY_ENV = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "glm": "GLM_API_KEY",
+    "qwen": "DASHSCOPE_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "local": "LOCAL_API_KEY",
+}
+
+
+def _key_present(provider, key_env_map):
+    """True if the provider's API key env var is set — the real availability test.
+
+    A local (Ollama/vLLM) model has no per-token price, so it must NOT be gated
+    on pricing; it's available as soon as its key env (any non-empty value) is set.
+    """
+    env = key_env_map.get(provider) or _STATIC_KEY_ENV.get(provider)
+    return bool(env and os.environ.get(env))
+
+
 def _entry(slug, label, recommended, provider, subscription, pricing,
-           db_in=None, db_out=None):
+           db_in=None, db_out=None, key_present=True):
     """Build one response entry, enriched with live OpenRouter pricing.
 
     Live $/M pricing wins; falls back to the price stored in the DB (if any).
     Subscription models have no per-token price and are always 'available'.
+    A model is available when its provider key is configured (``key_present``),
+    independently of whether pricing is known (local models have no price).
     """
     if subscription:
         return {
@@ -126,7 +151,7 @@ def _entry(slug, label, recommended, provider, subscription, pricing,
         "id": slug,
         "label": label + (" (recommandé)" if recommended else ""),
         "recommended": recommended,
-        "available": (price is not None) or (in_price is not None),
+        "available": key_present or (price is not None) or (in_price is not None),
         "provider": provider,
         "subscription": False,
         "input_per_mtok": in_price,
@@ -153,6 +178,13 @@ def list_models() -> dict:
     except Exception:
         rows = []
 
+    # provider -> api_key_env, so a model is "available" when its key is set
+    try:
+        from src.db.database import list_providers
+        key_env = {p["name"]: p.get("api_key_env") for p in list_providers()}
+    except Exception:
+        key_env = {}
+
     if rows:
         models = [
             _entry(
@@ -160,13 +192,15 @@ def list_models() -> dict:
                 r["provider"] or "openrouter",
                 bool(r["subscription"]) or (r["provider"] == "minimax"),
                 pricing, r["input_per_mtok"], r["output_per_mtok"],
+                key_present=_key_present(r["provider"] or "openrouter", key_env),
             )
             for r in rows
         ]
         return {"models": models}
 
     models = [
-        _entry(slug, label, recommended, provider, provider == "minimax", pricing)
+        _entry(slug, label, recommended, provider, provider == "minimax", pricing,
+               key_present=_key_present(provider, key_env))
         for slug, label, recommended, provider in CURATED_MODELS
     ]
     return {"models": models}
