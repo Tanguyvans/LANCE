@@ -565,14 +565,17 @@ class Pipeline:
             env = os.environ.copy()
             env["LANG"] = "en_US.UTF-8"
             env["LC_ALL"] = "en_US.UTF-8"
-            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=600, env=env)
+            # Large scenarios (S11/S12/S13 = 15-35 VMs) on a slow Proxmox can take
+            # well over 10 min to clone. Configurable via ANSIBLE_PLAYBOOK_TIMEOUT.
+            pb_timeout = int(os.environ.get("ANSIBLE_PLAYBOOK_TIMEOUT", "1800"))
+            result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=pb_timeout, env=env)
             success = result.returncode == 0
             full_output = result.stdout + result.stderr
             output = full_output[-10000:]
             print(output, flush=True)
         except subprocess.TimeoutExpired:
             success = False
-            output = f"{playbook} timeout (600s)"
+            output = f"{playbook} timeout ({pb_timeout}s)"
             full_output = output
         except FileNotFoundError:
             success = False
@@ -676,20 +679,26 @@ class Pipeline:
             "--extra-vars", f"scenario_id={self.scenario_id}",
         ]
 
+        import os
+        env = os.environ.copy()
+        env["LANG"] = "en_US.UTF-8"
+        env["LC_ALL"] = "en_US.UTF-8"
+        pb_timeout = int(os.environ.get("ANSIBLE_PLAYBOOK_TIMEOUT", "1800"))
         try:
             result = subprocess.run(
                 cmd,
                 cwd=str(repo_root),
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=pb_timeout,
+                env=env,
             )
             success = result.returncode == 0
             output = result.stdout[-2000:] if result.stdout else result.stderr[-2000:]
             print(output)
         except subprocess.TimeoutExpired:
             success = False
-            output = "Teardown timeout (300s)"
+            output = f"Teardown timeout ({pb_timeout}s)"
             log.error("Teardown timeout for scenario %d", self.scenario_id)
         except FileNotFoundError:
             success = False
