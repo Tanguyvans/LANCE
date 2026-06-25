@@ -177,14 +177,19 @@
       when: ct_checks.results[idx].rc != 0
 
     - name: Attendre que chaque CT soit prêt (SSH actif)
-      ansible.builtin.command: >-
-        pct exec {{ base_vmid | int + item.vmid_offset }} --
-        sh -c "ss -tlnp | grep -q ':22'"
+      # Sur un Proxmox à faible RAM, un CT peut être OOM-killed pendant le boot
+      # simultané de nombreux conteneurs (S11/S12 = 15-35 VMs) : on le relance
+      # s'il n'est pas running, puis on vérifie SSH. Retries généreux car le boot
+      # est lent sous pression mémoire.
+      ansible.builtin.shell: |
+        vmid={{ base_vmid | int + item.vmid_offset }}
+        pct status "$vmid" | grep -q running || pct start "$vmid"
+        pct exec "$vmid" -- sh -c "ss -tlnp | grep -q ':22'"
       loop: "{{ scenarios[scenario_id].services }}"
       register: ct_ssh_ready
       until: ct_ssh_ready is succeeded
-      retries: 12
-      delay: 5
+      retries: 30
+      delay: 8
       changed_when: false
 
     - name: Vérifier la connectivité réseau de chaque CT
