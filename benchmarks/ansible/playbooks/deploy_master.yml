@@ -456,8 +456,8 @@
         /opt/actions-runner/config.sh
         --url https://github.com/Tanguyvans/LANCE
         --token {{ vault_github_runner_token }}
-        --name nato-master
-        --labels nato-master
+        --name {{ runner_name | default('nato-master') }}
+        --labels {{ runner_name | default('nato-master') }}
         --unattended
         --replace
       args:
@@ -470,14 +470,14 @@
       ansible.builtin.command: ./svc.sh install root
       args:
         chdir: /opt/actions-runner
-        creates: /etc/systemd/system/actions.runner.Tanguyvans-LANCE.nato-master.service
+        creates: /etc/systemd/system/actions.runner.Tanguyvans-LANCE.{{ runner_name | default('nato-master') }}.service
       environment:
         RUNNER_ALLOW_RUNASROOT: "1"
       ignore_errors: true
 
     - name: Start runner service
       ansible.builtin.systemd:
-        name: "actions.runner.Tanguyvans-LANCE.nato-master"
+        name: "actions.runner.Tanguyvans-LANCE.{{ runner_name | default('nato-master') }}"
         enabled: true
         state: started
         daemon_reload: true
