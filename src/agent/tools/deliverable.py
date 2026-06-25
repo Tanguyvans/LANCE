@@ -18,6 +18,18 @@ def set_output_dir(path: Path) -> None:
     OUTPUT_DIR = path
 
 
+# Deliverable expected for the phase currently running. save_deliverable() falls
+# back to this when the model omits the filename — some models call
+# save_deliverable(content=...) without it, which would otherwise crash the phase.
+_EXPECTED_DELIVERABLE: str | None = None
+
+
+def set_expected_deliverable(name: str | None) -> None:
+    """Set the deliverable filename expected for the current phase."""
+    global _EXPECTED_DELIVERABLE
+    _EXPECTED_DELIVERABLE = name
+
+
 def _sanitize_control_chars(s: str) -> str:
     """Escape literal control characters inside JSON string values using a state machine."""
     result = []
@@ -87,11 +99,17 @@ def _extract_json(content: str) -> str:
     return content
 
 
-def save_deliverable(filename: str, content: str) -> str:
+def save_deliverable(filename: str | None = None, content: str = "") -> str:
     """Save a deliverable file to output/agent/.
 
+    ``filename`` defaults to the current phase's expected deliverable when the
+    model omits it (some models call save_deliverable(content=...) only).
     For JSON files, automatically extracts the JSON block if the LLM wrapped it in markdown.
     """
+    if not filename:
+        filename = _EXPECTED_DELIVERABLE
+    if not filename:
+        return json.dumps({"error": "save_deliverable: filename manquant et aucun livrable attendu défini pour cette phase"})
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUTPUT_DIR / filename
     path.parent.mkdir(parents=True, exist_ok=True)

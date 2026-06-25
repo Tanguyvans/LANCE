@@ -34,7 +34,7 @@ from src.agent.tools.graph_tools import (
     get_device_info,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
-from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, _extract_json
+from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
 from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
@@ -882,6 +882,7 @@ class Pipeline:
         variables = {**self.context}
         variables["previous_deliverables"] = self._list_previous_deliverables()
         variables["expected_deliverable"] = config.deliverable_file
+        set_expected_deliverable(config.deliverable_file)
         variables["available_skills"] = self._filter_skills(config)
 
         # Inject deliverable template if one exists
@@ -1234,6 +1235,7 @@ class Pipeline:
             variables["device_services"] = services_str
             variables["device_os"] = device_os
             variables["expected_deliverable"] = deliverable_file
+            set_expected_deliverable(deliverable_file)
             variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
             variables["trivial_findings"] = json.dumps(
                 scan_data.get("findings", []), indent=2, ensure_ascii=False
@@ -1634,6 +1636,7 @@ class Pipeline:
             variables["vuln_evidence"] = evidence[:500]
             variables["exploit_instructions"] = instructions
             variables["expected_deliverable"] = deliverable_file
+            set_expected_deliverable(deliverable_file)
             variables["available_skills"] = ""
 
             system_prompt = load_prompt("exploit_device_vuln", variables)
@@ -1910,6 +1913,7 @@ class Pipeline:
             variables["device_services"] = ", ".join(str(p) for p in host.get("open_ports", []))
             variables["device_os"] = "unknown"
             variables["expected_deliverable"] = deliverable_file
+            set_expected_deliverable(deliverable_file)
             variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
             variables["trivial_findings"] = json.dumps(
                 scan_data.get("findings", []), indent=2, ensure_ascii=False
