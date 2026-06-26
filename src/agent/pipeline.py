@@ -446,8 +446,11 @@ class Pipeline:
             if agent_config.phase == 2 and self.target_network:
                 self._infer_topology_links(stream_callback)
 
-            # After Phase 5 (intrusion), emit hop events for frontend topology coloring
+            # After Phase 5 (intrusion): small models often run the campaign but
+            # never emit the final deliverable. Synthesize it from recorded tool
+            # calls so the report phase still has data. Then emit hop events.
             if agent_config.phase == 5:
+                self._ensure_intrusion_deliverable(agent_config, results)
                 self._emit_intrusion_events(stream_callback)
 
             # Enforce budget limit after each phase
@@ -2058,6 +2061,120 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
+    def _ensure_intrusion_deliverable(self, config, results: dict) -> None:
+        """Guarantee a valid 05_intrusion.json exists after Phase 5.
+
+        Small local models (e.g. gemma) frequently run the whole campaign via
+        tool calls but never call save_deliverable. When the deliverable is
+        missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
+        real data instead of nothing.
+        """
+        path = self.run_dir / config.deliverable_file
+        validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+        if path.exists():
+            valid, _ = validator_fn(config.deliverable_file)
+            if valid:
+                return
+        log.warning(
+            "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
+        )
+        data = self._synthesize_intrusion_from_tools()
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        results[config.name] = "completed:synthesized"
+        print(
+            f"  Synthesized intrusion deliverable from tool calls "
+            f"({data['summary']['devices_compromised']} compromised, "
+            f"{data['summary']['credentials_harvested']} creds)"
+        )
+
+    def _synthesize_intrusion_from_tools(self) -> dict:
+        """Reconstruct an intrusion deliverable from logged try_credential /
+        ssh_exec calls (both are Phase-5-only tools)."""
+        log_path = self.run_dir / "tool_calls.jsonl"
+        compromised: dict = {}
+        creds: list = []
+        seen_cred: set = set()
+
+        if log_path.exists():
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                tool = rec.get("tool")
+                args = rec.get("args") or {}
+                res: dict = {}
+                raw = rec.get("result")
+                if isinstance(raw, str):
+                    try:
+                        res = json.loads(raw)
+                    except Exception:
+                        res = {}
+                elif isinstance(raw, dict):
+                    res = raw
+                ip = args.get("ip")
+                if not (isinstance(res, dict) and res.get("success") and ip):
+                    continue
+
+                if tool == "try_credential":
+                    user = args.get("user", "")
+                    pwd = args.get("password", "")
+                    svc = args.get("service") or res.get("service", "")
+                    ckey = (ip, user, pwd, svc)
+                    if ckey not in seen_cred:
+                        seen_cred.add(ckey)
+                        creds.append({
+                            "user": user, "password": pwd, "service": svc,
+                            "source_ip": ip, "source_device": "",
+                        })
+                    comp = compromised.setdefault(ip, {
+                        "device_id": "", "device_ip": ip,
+                        "access_method": f"try_credential:{svc}:{user}:{pwd}",
+                        "access_via": "entry_point",
+                        "data_exfiltrated": "", "credentials_found": [],
+                    })
+                elif tool == "ssh_exec":
+                    comp = compromised.setdefault(ip, {
+                        "device_id": "", "device_ip": ip,
+                        "access_method": "ssh_exec",
+                        "access_via": "entry_point",
+                        "data_exfiltrated": "", "credentials_found": [],
+                    })
+                    out = (res.get("stdout") or "").strip()
+                    if out and not comp["data_exfiltrated"]:
+                        comp["data_exfiltrated"] = out[:500]
+
+        devices = list(compromised.values())
+        chains = [{
+            "id": f"chain_{i + 1}",
+            "hops": [{
+                "hop_index": 1,
+                "device_id": d["device_id"],
+                "device_ip": d["device_ip"],
+                "access_method": d["access_method"],
+                "commands_run": [],
+                "output_summary": d["data_exfiltrated"][:400],
+                "pivot_to": None,
+            }],
+            "crown_jewel_reached": None,
+        } for i, d in enumerate(devices)]
+
+        return {
+            "summary": {
+                "devices_compromised": len(devices),
+                "devices_attempted": len(devices),
+                "credentials_harvested": len(creds),
+                "crown_jewels_reached": [],
+                "total_hops": len(devices),
+                "_note": "Synthesized from tool_calls.jsonl — model emitted no deliverable.",
+            },
+            "credential_pool": creds,
+            "compromised_devices": devices,
+            "chains": chains,
+        }
+
     def _generate_intrusion_context(self) -> None:
         """Pre-generate 05_intrusion_context.json for the intrusion agent.
 
@@ -2088,47 +2205,87 @@ class Pipeline:
                 all_exploits = []
             confirmed = [e for e in all_exploits if e.get("status") == "CONFIRMED"]
 
-            # Extract credentials from evidence fields
+            # Extract credentials from evidence / description / data_extracted.
+            # Tolerant of quotes and JSON punctuation so it matches all of:
+            #   user=root pass=x  |  username='test', password='test'
+            #   "db_user":"root","db_pass":"P@ssw0rd123"
             _cred_pattern = _re.compile(
-                r'(?:user(?:name)?|login)[=:\s]+([a-zA-Z0-9_@.\-]+)[,;\s]+(?:pass(?:word)?|pwd)[=:\s]+([^\s,;"\]]+)',
+                r'(?:user(?:name)?|login|db_user)\s*["\']?\s*[=:]\s*["\']?'
+                r'([a-zA-Z0-9_@.\-]+)["\']?[\s,;:"\'(){}]+'
+                r'(?:pass(?:word)?|pwd|db_pass)\s*["\']?\s*[=:]\s*["\']?'
+                r'([^\s,;"\'(){}\]]+)',
                 _re.IGNORECASE,
             )
-            _simple_pattern = _re.compile(r'([a-zA-Z0-9_]+):([a-zA-Z0-9@!#$%^&*_\-+=.]{4,32})')
+            # Inline "user:pass" pairs (e.g. admin:admin, test:test). Slash-style
+            # pairs are deliberately excluded — they match file paths
+            # (etc/issue, cgi-bin/luci); slash passwords are caught by the
+            # quoted/JSON form above instead.
+            _simple_pattern = _re.compile(
+                r'\b([a-zA-Z][a-zA-Z0-9_\-]{1,31}):'
+                r'([a-zA-Z0-9@!#$%^&*_\-+=.]{3,32})\b'
+            )
+            _cred_noise = {"http", "https", "ssh", "tcp", "udp", "version", "port",
+                           "uid", "gid", "groups", "host", "tor", "mosquitto", "server"}
             seen_creds: set = set()
-            for exp in confirmed:
-                evidence = exp.get("evidence", "") or ""
-                data_retrieved = exp.get("data_retrieved", "") or ""
-                for text in [evidence, data_retrieved]:
-                    for m in _cred_pattern.finditer(text):
-                        cred = (m.group(1), m.group(2), exp.get("device_ip", ""))
-                        if cred not in seen_creds:
-                            seen_creds.add(cred)
-                            credentials.append({
-                                "user": m.group(1), "password": m.group(2),
-                                "source_ip": exp.get("device_ip", ""),
-                                "source_device": exp.get("device_id", ""),
-                            })
 
-            # Identify entry points: devices reachable from outside (from graph attack surface)
-            try:
-                surface = json.loads(get_attack_surface())
-                entry_ips = {
-                    node.get("ip") for node in surface.get("nodes", [])
-                    if node.get("network_role") in ("ENTRY_POINT", "PIVOT")
-                }
-            except Exception:
-                entry_ips = set()
+            def _add_cred(user: str, pwd: str, exp: dict) -> None:
+                user = user.split("@")[0].strip()  # user@host → user
+                key = (user, pwd, exp.get("device_ip", ""))
+                if not user or not pwd or key in seen_creds:
+                    return
+                seen_creds.add(key)
+                credentials.append({
+                    "user": user, "password": pwd,
+                    "source_ip": exp.get("device_ip", ""),
+                    "source_device": exp.get("device_id", ""),
+                })
+
+            def _harvest(text: str, exp: dict) -> None:
+                if not text:
+                    return
+                for m in _cred_pattern.finditer(text):
+                    _add_cred(m.group(1), m.group(2), exp)
+                for m in _simple_pattern.finditer(text):
+                    user, pwd = m.group(1), m.group(2)
+                    if user.lower() in _cred_noise or pwd.isdigit():
+                        continue
+                    _add_cred(user, pwd, exp)
 
             for exp in confirmed:
-                if exp.get("device_ip") in entry_ips:
-                    entry_points.append({
-                        "device_id": exp.get("device_id"),
-                        "device_ip": exp.get("device_ip"),
-                        "vuln_type": exp.get("type") or exp.get("vuln_type"),
-                        "service": exp.get("service"),
-                        "port": exp.get("port"),
-                        "evidence": (exp.get("evidence") or "")[:200],
-                    })
+                texts = [exp.get("evidence", ""), exp.get("description", "")]
+                de = exp.get("data_extracted")
+                if isinstance(de, list):
+                    texts.extend(str(x) for x in de)
+                elif isinstance(de, str):
+                    texts.append(de)
+                for text in texts:
+                    _harvest(text or "", exp)
+
+            # Entry points = devices with a confirmed exploit (proven footholds).
+            # Prefer access-granting vuln types; fall back to any confirmed exploit.
+            # (Scenario-mode nodes have no network_role, so we derive from Phase 4.)
+            _foothold_types = {
+                "default_credentials", "no_auth", "weak_credentials",
+                "insecure_protocol", "directory_listing", "data_exposure",
+            }
+            best_by_ip: dict = {}
+            for exp in confirmed:
+                ip = exp.get("device_ip")
+                if not ip:
+                    continue
+                vt = (exp.get("type") or exp.get("vuln_type") or "").lower()
+                score = (2 if vt in _foothold_types else 1, exp.get("evidence_level", 0))
+                if ip not in best_by_ip or score > best_by_ip[ip][0]:
+                    best_by_ip[ip] = (score, exp)
+            for ip, (_score, exp) in best_by_ip.items():
+                entry_points.append({
+                    "device_id": exp.get("device_id"),
+                    "device_ip": ip,
+                    "vuln_type": exp.get("type") or exp.get("vuln_type"),
+                    "service": exp.get("service"),
+                    "port": exp.get("port"),
+                    "evidence": (exp.get("evidence") or "")[:200],
+                })
 
         # Deduplicate entry points by device_ip
         seen_ep: set = set()
@@ -2138,21 +2295,44 @@ class Pipeline:
                 seen_ep.add(ep["device_ip"])
                 unique_entries.append(ep)
 
-        # All devices in the network — full target list for credential spraying
+        # All devices in the network — full target list for credential spraying.
+        # get_attack_surface() returns a bare JSON list in scenario mode and a
+        # dict with a "nodes" key otherwise — normalise both shapes.
         all_targets: list = []
         try:
             surface = json.loads(get_attack_surface())
-            for node in surface.get("nodes", []):
+            nodes = surface if isinstance(surface, list) else surface.get("nodes", [])
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
                 ip = node.get("ip")
                 if ip:
                     all_targets.append({
-                        "device_id": node.get("id"),
+                        "device_id": node.get("id") or node.get("name"),
                         "device_ip": ip,
                         "role": node.get("role"),
-                        "services": [s.get("port") for s in node.get("services", []) if s.get("port")],
+                        "services": [
+                            (s.get("port") if isinstance(s, dict) else s)
+                            for s in node.get("services", [])
+                            if (s.get("port") if isinstance(s, dict) else s)
+                        ],
                     })
         except Exception:
             pass
+
+        # Fallback: derive targets from confirmed exploits if the graph gave nothing.
+        if not all_targets:
+            seen_t: set = set()
+            for exp in confirmed:
+                ip = exp.get("device_ip")
+                if ip and ip not in seen_t:
+                    seen_t.add(ip)
+                    all_targets.append({
+                        "device_id": exp.get("device_id"),
+                        "device_ip": ip,
+                        "role": None,
+                        "services": [exp.get("port")] if exp.get("port") else [],
+                    })
 
         ctx = {
             "generated_for": "phase5_intrusion",
