@@ -329,6 +329,17 @@
           {% if vault_voyage_api_key is defined %}
           VOYAGE_API_KEY={{ vault_voyage_api_key }}
           {% endif %}
+          LOCAL_API_KEY=ollama
+          OLLAMA_BASE_URL={{ vault_ollama_base_url | default('http://localhost:11434/v1') }}
+
+    # ── Provisionner la DB (providers + modèles, dont les modèles locaux Ollama) ──
+    - name: Seed the LANCE SQLite DB
+      ansible.builtin.shell: |
+        set -a; . {{ env_file }}; set +a
+        {{ repo_dest }}/venv/bin/python -m src.db.seed
+      args:
+        chdir: "{{ repo_dest }}"
+      changed_when: true
 
     # ── Tailscale ─────────────────────────────────────────────
     - name: Download Tailscale install script

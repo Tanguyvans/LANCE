@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 from src.db.database import (
@@ -41,6 +42,19 @@ _EXTRA_MODELS: list[tuple[str, str, bool]] = [
     ("qwen/qwen3-30b-a3b",         "qwen3-30b-a3b",     False),
 ]
 
+# Local Ollama model tags (provider=local), num_ctx-tuned, created on the Ollama
+# server. The local provider's base_url comes from the OLLAMA_BASE_URL env var.
+# recommended = best quality/speed fit that stays fully on a 16GB GPU.
+_LOCAL_MODELS: list[tuple[str, str, bool]] = [
+    ("qwen3-14b-32k:latest",   "Qwen3 14B local (32k)",            True),
+    ("gemma4-12b-32k:latest",  "Gemma4 12B local (32k)",           False),
+    ("qwen3.5-9b-32k:latest",  "Qwen3.5 9B local (32k)",           False),
+    ("qwen3.5-27b-32k:latest", "Qwen3.5 27B local (32k, offload)", False),
+]
+
+# Local OpenAI-compatible inference endpoint (ollama / vLLM). Override per host.
+_OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
 
 def seed_providers() -> int:
     """Seed cloud providers from the agent registry + anthropic + a local one."""
@@ -67,12 +81,13 @@ def seed_providers() -> int:
     )
     count += 1
 
-    # Local OpenAI-compatible endpoint (ollama / vLLM). base_url editable later.
+    # Local OpenAI-compatible endpoint (ollama / vLLM). base_url from OLLAMA_BASE_URL
+    # so each host points at its own/the shared Ollama; editable later via the UI.
     upsert_provider(
         name="local",
-        base_url="http://localhost:11434/v1",
+        base_url=_OLLAMA_BASE_URL,
         api_key_env="LOCAL_API_KEY",
-        default_model="",
+        default_model="qwen3-14b-32k:latest",
         kind="local",
     )
     count += 1
@@ -96,6 +111,10 @@ def seed_models() -> int:
 
     for slug, label, recommended in _EXTRA_MODELS:
         upsert_model(slug=slug, label=label, provider="openrouter", recommended=recommended)
+        seen.add(slug)
+
+    for slug, label, recommended in _LOCAL_MODELS:
+        upsert_model(slug=slug, label=label, provider="local", recommended=recommended)
         seen.add(slug)
 
     return len(seen)
