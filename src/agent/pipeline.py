@@ -2066,42 +2066,89 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _repair_deliverable_json(text: str):
+        """Best-effort recovery of a model-produced JSON deliverable that fails
+        strict parsing. Handles the common LLM failures: markdown code fences,
+        control characters, invalid backslash escapes (shell commands such as
+        grep 'pass\\|pwd' produce an invalid \\| escape), and trailing data after
+        the root object. Returns a dict, or None if nothing usable is found.
+        """
+        import re as _re
+        if not text or not text.strip():
+            return None
+        t = text.strip()
+        if t.startswith("```"):
+            t = _re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", t).strip()
+        t = _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", t)         # control chars
+        t = _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', t)             # invalid \escapes
+        decoder = json.JSONDecoder()
+        candidates = [t]
+        brace = t.find("{")
+        if brace > 0:
+            candidates.append(t[brace:])
+        for cand in candidates:
+            try:
+                obj, _end = decoder.raw_decode(cand)   # ignores trailing data
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                continue
+        return None
+
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Guarantee a valid 05_intrusion.json exists after Phase 5.
 
-        Small local models (e.g. gemma) frequently run the whole campaign via
-        tool calls but never call save_deliverable. When the deliverable is
-        missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
-        real data instead of nothing. On success, re-emit a phase_done event so
-        the UI reflects the recovered status instead of the agent's failure.
+        Recovery order, best to worst:
+        1. The agent saved valid JSON → keep it.
+        2. The agent saved RICH but malformed JSON (the common case: unescaped
+           shell backslashes, trailing data) → repair and keep the model's own
+           findings — they are richer than any reconstruction.
+        3. The agent saved nothing usable → reconstruct from tool_calls.jsonl.
+
+        On recovery, re-emit a phase_done event so the UI reflects the repaired
+        status instead of the agent's transient failure.
         """
         path = self.run_dir / config.deliverable_file
+
+        def _emit(status: str) -> None:
+            results[config.name] = status
+            if stream_callback:
+                stream_callback({
+                    "type": "phase_done", "phase": config.phase, "name": config.name,
+                    "status": status, "deliverable": config.deliverable_file,
+                    "cost_usd": 0, "turns": 0,
+                })
+
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
             if valid:
                 return
+            # Try to salvage the model's own (richer) output before discarding it.
+            repaired = self._repair_deliverable_json(
+                path.read_text(encoding="utf-8", errors="replace")
+            )
+            if repaired and (repaired.get("compromised_devices") or repaired.get("summary")):
+                path.write_text(
+                    json.dumps(repaired, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
+                n_dev = len(repaired.get("compromised_devices", []))
+                print(f"  Repaired model's intrusion deliverable — kept model output ({n_dev} devices)")
+                _emit("completed:repaired")
+                return
+
         log.warning(
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
         )
         data = self._synthesize_intrusion_from_tools()
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        results[config.name] = "completed:synthesized"
         print(
             f"  Synthesized intrusion deliverable from tool calls "
             f"({data['summary']['devices_compromised']} compromised, "
             f"{data['summary']['credentials_harvested']} creds)"
         )
-        if stream_callback:
-            stream_callback({
-                "type": "phase_done",
-                "phase": config.phase,
-                "name": config.name,
-                "status": "completed:synthesized",
-                "deliverable": config.deliverable_file,
-                "cost_usd": 0,
-                "turns": 0,
-            })
+        _emit("completed:synthesized")
 
     def _synthesize_intrusion_from_tools(self) -> dict:
         """Reconstruct an intrusion deliverable from logged try_credential /
