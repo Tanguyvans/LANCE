@@ -450,7 +450,7 @@ class Pipeline:
             # never emit the final deliverable. Synthesize it from recorded tool
             # calls so the report phase still has data. Then emit hop events.
             if agent_config.phase == 5:
-                self._ensure_intrusion_deliverable(agent_config, results)
+                self._ensure_intrusion_deliverable(agent_config, results, stream_callback)
                 self._emit_intrusion_events(stream_callback)
 
             # Enforce budget limit after each phase
@@ -1008,12 +1008,17 @@ class Pipeline:
                 and result_text
                 and result_text.strip()
                 and result_text.strip() not in _SENTINEL_OUTPUTS):
-            log.warning(
-                "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
-                config.phase,
-            )
-            deliverable_path.write_text(self._strip_code_fences(result_text), encoding="utf-8")
-            print(f"  Fallback save: {config.deliverable_file}")
+            # Strip fences first — a fence-only output (```json\n```) collapses to
+            # empty, and writing it would create a 0-byte file that masks a clean
+            # "missing deliverable" state with a confusing "Invalid JSON (char 0)".
+            fallback_content = self._strip_code_fences(result_text)
+            if fallback_content.strip():
+                log.warning(
+                    "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
+                    config.phase,
+                )
+                deliverable_path.write_text(fallback_content, encoding="utf-8")
+                print(f"  Fallback save: {config.deliverable_file}")
 
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
@@ -2061,13 +2066,14 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
-    def _ensure_intrusion_deliverable(self, config, results: dict) -> None:
+    def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Guarantee a valid 05_intrusion.json exists after Phase 5.
 
         Small local models (e.g. gemma) frequently run the whole campaign via
         tool calls but never call save_deliverable. When the deliverable is
         missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
-        real data instead of nothing.
+        real data instead of nothing. On success, re-emit a phase_done event so
+        the UI reflects the recovered status instead of the agent's failure.
         """
         path = self.run_dir / config.deliverable_file
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
@@ -2086,6 +2092,16 @@ class Pipeline:
             f"({data['summary']['devices_compromised']} compromised, "
             f"{data['summary']['credentials_harvested']} creds)"
         )
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done",
+                "phase": config.phase,
+                "name": config.name,
+                "status": "completed:synthesized",
+                "deliverable": config.deliverable_file,
+                "cost_usd": 0,
+                "turns": 0,
+            })
 
     def _synthesize_intrusion_from_tools(self) -> dict:
         """Reconstruct an intrusion deliverable from logged try_credential /
@@ -2094,6 +2110,21 @@ class Pipeline:
         compromised: dict = {}
         creds: list = []
         seen_cred: set = set()
+        attempted: set = set()  # all IPs we tried credentials against
+
+        # Map IP -> device_id from the pre-generated intrusion context so the
+        # synthesized deliverable carries real device names, not blanks.
+        ip_to_id: dict = {}
+        ctx_path = self.run_dir / "05_intrusion_context.json"
+        if ctx_path.exists():
+            try:
+                ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+                for entry in (ctx.get("entry_points", []) + ctx.get("all_targets", [])):
+                    did, dip = entry.get("device_id"), entry.get("device_ip")
+                    if dip and did and dip not in ip_to_id:
+                        ip_to_id[dip] = did
+            except Exception:
+                pass
 
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
@@ -2115,6 +2146,8 @@ class Pipeline:
                 elif isinstance(raw, dict):
                     res = raw
                 ip = args.get("ip")
+                if tool == "try_credential" and ip:
+                    attempted.add(ip)
                 if not (isinstance(res, dict) and res.get("success") and ip):
                     continue
 
@@ -2127,17 +2160,17 @@ class Pipeline:
                         seen_cred.add(ckey)
                         creds.append({
                             "user": user, "password": pwd, "service": svc,
-                            "source_ip": ip, "source_device": "",
+                            "source_ip": ip, "source_device": ip_to_id.get(ip, ""),
                         })
                     comp = compromised.setdefault(ip, {
-                        "device_id": "", "device_ip": ip,
+                        "device_id": ip_to_id.get(ip, ""), "device_ip": ip,
                         "access_method": f"try_credential:{svc}:{user}:{pwd}",
                         "access_via": "entry_point",
                         "data_exfiltrated": "", "credentials_found": [],
                     })
                 elif tool == "ssh_exec":
                     comp = compromised.setdefault(ip, {
-                        "device_id": "", "device_ip": ip,
+                        "device_id": ip_to_id.get(ip, ""), "device_ip": ip,
                         "access_method": "ssh_exec",
                         "access_via": "entry_point",
                         "data_exfiltrated": "", "credentials_found": [],
@@ -2164,7 +2197,7 @@ class Pipeline:
         return {
             "summary": {
                 "devices_compromised": len(devices),
-                "devices_attempted": len(devices),
+                "devices_attempted": len(attempted | set(compromised)),
                 "credentials_harvested": len(creds),
                 "crown_jewels_reached": [],
                 "total_hops": len(devices),
