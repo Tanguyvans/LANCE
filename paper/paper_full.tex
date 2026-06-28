@@ -98,7 +98,8 @@ In a controlled comparison under the same model and evaluator,
 0.887 F1 in blind mode (active discovery only), outperforming both adapted
 single-host baselines on all 12 scenarios. On external single-host benchmarks,
 \harnessname{} reaches 27.3\% end-to-end success on AutoPenBench and
-30.2\% useful findings on a 328-case Vulhub snapshot.
+30.2\% useful findings on a 328-case Vulhub snapshot. Across three additional
+LLM backends, \harnessname{} remains in a narrow 0.945--0.947 mean-F1 band.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -147,7 +148,7 @@ Classical attack-graph systems model how vulnerabilities compose across a networ
 \subsection{IoT Security Context}
 \label{sec:related:iot}
 
-Scenario design and ground-truth taxonomy follow OWASP IoT Top~10~\cite{owasp-iot} for vulnerability categories, MITRE ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST SP\,800-82~Rev.\,3~\cite{nist80082} for OT segmentation conventions.
+Scenario design and ground-truth taxonomy draw on the OWASP Internet of Things project's IoT Top~10 categories~\cite{owasp-iot}, MITRE ATT\&CK for ICS~\cite{mitre-ics} for OT-tactic annotations, and NIST SP\,800-82~Rev.\,3~\cite{nist80082} for OT segmentation conventions.
 
 Existing IoT security artifacts mainly target either traffic classification or single-device firmware analysis. Network-traffic datasets such as IoT-23~\cite{iot23}, TON\_IoT~\cite{toniot20}, and Edge-IIoTset~\cite{edgeiiotset22} provide labeled traces for intrusion detection, but not deployable pentest targets with controllable reachability. Firmware-focused work such as Costin~\emph{et al.}~\cite{costin14}, \textsc{Firmadyne}~\cite{firmadyne16}, \textsc{FirmAE}~\cite{firmae20}, and \textsc{IoTGoat}~\cite{iotgoat} exercises single-device analysis. \systemname{} instead evaluates active assessment on deployed multi-device IoT networks where firewall rules enforce which services are directly reachable and which require a pivot, with per-vulnerability ground truth.
 
@@ -334,7 +335,7 @@ For a network with $n$ devices and $v$ candidate findings per device on average,
 All scenarios run as LXC containers on a Proxmox VE host, connected through a dedicated Linux bridge with an OpenWrt gateway. Deployment and teardown are fully automated with Ansible.
 
 \textbf{Model.}
-All LLM-driven systems use the same general-purpose model, \textbf{MiniMax-M2.7}~\cite{minimax27}, with fixed prompts and temperature~0 decoding. This controls for model choice while focusing the comparison on architecture rather than fine-tuning.
+For the architecture comparison, all LLM-driven systems use the same general-purpose model, \textbf{MiniMax-M2.7}~\cite{minimax27}, with fixed prompts and temperature~0 decoding. This controls for model choice while focusing the comparison on architecture rather than fine-tuning.
 
 \textbf{Baselines.}
 We compare \harnessname{} with two adapted LLM-agent baselines: a CAI-style single-agent tool loop~\cite{cai25} and a VulnBot-style multi-agent pipeline with a penetration task graph~\cite{vulnbot25}. The baselines are run in the informed setting, once per ground-truth target device; their outputs are normalized into the common finding schema, merged at scenario level, and scored with the same evaluator. \harnessname{} is reported in both informed and blind modes.
@@ -393,7 +394,7 @@ To estimate run-to-run stability, informed \harnessname{} was executed twice on 
 \subsection{Model Sensitivity}
 \label{sec:eval:model-sensitivity}
 
-To assess whether \harnessname{} depends on a single LLM backend, we rerun the same architecture with MiniMax-M2.7, Gemma, and DeepSeek Flash under identical prompts, tool budgets, artifacts, and evaluator. Table~\ref{tab:model-sensitivity} will report aggregate results over the same 12 scenarios.
+To assess whether \harnessname{} depends on a single LLM backend, we rerun the same architecture with MiniMax-M2.7, DeepSeek V4 Flash, Gemma 4 12B, and Qwen3-14B under identical prompts, tool budgets, artifacts, and evaluator. Table~\ref{tab:model-sensitivity} reports macro-averaged results over the same 12 scenarios. The three additional backends remain close to the MiniMax reference: F1 ranges from 0.945 to 0.947, while severity-weighted score ranges from 83.0\% to 85.5\%.
 
 \begin{table}[h!]
 \centering
@@ -405,12 +406,15 @@ To assess whether \harnessname{} depends on a single LLM backend, we rerun the s
 \toprule
 Model & Recall & Precision & F1 & Sev.-weighted \\
 \midrule
-MiniMax-M2.7     & -- & -- & -- & -- \\
-Gemma            & -- & -- & -- & -- \\
-DeepSeek Flash   & -- & -- & -- & -- \\
+MiniMax-M2.7       & 0.959 & 0.914 & 0.935 & 86.4\% \\
+DeepSeek V4 Flash  & 0.933 & 0.964 & 0.947 & 85.5\% \\
+Gemma 4 12B        & 0.917 & 0.976 & 0.945 & 83.0\% \\
+Qwen3-14B          & 0.923 & 0.976 & 0.947 & 84.1\% \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The main cross-model variation is a precision--recall tradeoff rather than a collapse in task performance: Gemma and Qwen are more conservative, while DeepSeek obtains the highest severity-weighted score among the additional backends.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
@@ -418,7 +422,7 @@ DeepSeek Flash   & -- & -- & -- & -- \\
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-\harnessname{} outperforms both adapted baselines because the baselines treat the network as a flat list of independent targets. The clearest evidence is \texttt{S3}: a gateway-centric topology where back-end services are unreachable without a prior traversal step. Both baselines produce no true-positive matches (F1~=~0), while \harnessname{} exceeds F1~=~0.94 in both informed and blind modes. Using the same model and evaluator controls for model choice in the architecture comparison; the planned Gemma and DeepSeek Flash runs further test whether the effect persists across LLM backends.
+\harnessname{} outperforms both adapted baselines because the baselines treat the network as a flat list of independent targets. The clearest evidence is \texttt{S3}: a gateway-centric topology where back-end services are unreachable without a prior traversal step. Both baselines produce no true-positive matches (F1~=~0), while \harnessname{} exceeds F1~=~0.94 in both informed and blind modes. Using the same model and evaluator controls for model choice in the architecture comparison; the Gemma, DeepSeek, and Qwen reruns further show that the result persists across LLM backends.
 
 Several limitations remain. First, scenarios run on Linux containers; real constrained hardware, bootloaders, RTOS firmware, and physical interfaces introduce attack surfaces not covered here. Second, only informed \harnessname{} was rerun on the same artifact set ($\Delta$F1~=~$-$0.017 mean); blind-mode confidence intervals remain future work. Third, bonus categories are treated as neutral findings, which may inflate precision when bonus lists are broad. Fourth, results use a single prompt family; per-model prompt tuning may change absolute scores. Finally, the benchmark covers fixed topological patterns and vulnerabilities tractably injectable via Ansible; dynamic deployments, RF-layer attacks, and supply-chain weaknesses are out of scope.
 
@@ -430,83 +434,67 @@ Several limitations remain. First, scenarios run on Linux containers; real const
 
 Single-host benchmarks cannot capture the pivot chains, protocol roles, and reachability dependencies that shape IoT/OT risk. We introduced \systemname{}, a 12-scenario network-scale benchmark with deterministic vulnerability injection and per-vulnerability ground truth, and \harnessname{}, a six-phase network-native harness for discovery, verification, intrusion, and reporting.
 
-Under a controlled comparison with the same model and evaluator, \harnessname{} achieves 0.935 mean F1 and 86.4\% severity-weighted score, outperforming both adapted baselines on every scenario. These results show that network-aware context is central to evaluating LLM-based IoT penetration-testing agents. We release the scenarios, playbooks, ground truth, and evaluation code to support reproducible research in this setting.
+Under a controlled comparison with the same model and evaluator, \harnessname{} achieves 0.935 mean F1 and 86.4\% severity-weighted score, outperforming both adapted baselines on every scenario. Additional Gemma, DeepSeek, and Qwen runs remain within 0.945--0.947 mean F1. These results show that network-aware context is central to evaluating LLM-based IoT penetration-testing agents. We release the scenarios, playbooks, ground truth, and evaluation code to support reproducible research in this setting.
 % ── bibliography ──────────────────────────────────────────────────────────
 \begin{thebibliography}{00}
 
-\bibitem{antonakakis17} M.~Antonakakis \textit{et al.}, ``Understanding the Mirai botnet,'' in \textit{Proc. 26th USENIX Security Symp.}, 2017.
-
-\bibitem{verkada21} W.~Turton, ``Hackers breach thousands of security cameras, exposing Tesla, jails, hospitals,'' \textit{Bloomberg}, Mar.~2021.
-
-\bibitem{langner11} R.~Langner, ``Stuxnet: Dissecting a cyberwarfare weapon,'' \textit{IEEE Security \& Privacy}, vol.~9, no.~3, pp.~49--51, 2011.
-
 \bibitem{happe23} A.~Happe and J.~Cito, ``Getting pwn'd by AI: Penetration testing with large language models,'' in \textit{Proc. ACM ESEC/FSE}, 2023.
 
-\bibitem{pentestgpt24} G.~Deng \textit{et al.}, ``PentestGPT: Evaluating and harnessing large language models for automated penetration testing,'' in \textit{Proc. 33rd USENIX Security Symp.}, 2024.
+\bibitem{pentestgpt24} G.~Deng, Y.~Liu, V.~Mayoral-Vilches, P.~Liu, Y.~Li, Y.~Xu, T.~Zhang, Y.~Liu, M.~Pinzger, and S.~Rass, ``PentestGPT: Evaluating and harnessing large language models for automated penetration testing,'' in \textit{Proc. 33rd USENIX Security Symp. (USENIX Security 24)}, 2024, pp.~847--864. [Online]. Available: \url{https://www.usenix.org/conference/usenixsecurity24/presentation/deng}
 
-\bibitem{hackingbuddygpt} A.~Happe \textit{et al.}, ``HackingBuddyGPT: An LLM-driven pentest agent,'' 2024. [Online]. Available: https://github.com/ipa-lab/hackingBuddyGPT
+\bibitem{hackingbuddygpt} A.~Happe \textit{et al.}, ``HackingBuddyGPT: An LLM-driven pentest agent,'' 2024. [Online]. Available: \url{https://github.com/ipa-lab/hackingBuddyGPT}
 
 \bibitem{autoattacker24} J.~Xu \textit{et al.}, ``AutoAttacker: A large language model guided system to implement automatic cyber-attacks,'' \textit{arXiv:2403.01038}, 2024.
 
-\bibitem{nebula24} O.~V.~Aguinaga, ``Nebula: An LLM-powered penetration testing assistant,'' \textit{arXiv:2412.00006}, 2024.
-
-\bibitem{vulnbot25} H.~He \textit{et al.}, ``VulnBot: Autonomous penetration testing for a multi-agent collaborative framework,'' \textit{arXiv:2501.13411}, 2025.
+\bibitem{vulnbot25} H.~Kong \textit{et al.}, ``VulnBot: Autonomous penetration testing for a multi-agent collaborative framework,'' \textit{arXiv:2501.13411}, 2025. [Online]. Available: \url{https://arxiv.org/abs/2501.13411}
 
 \bibitem{autopentester25} Y.~Ginige \textit{et al.}, ``AutoPentester: An LLM agent-based framework for automated pentesting,'' \textit{arXiv:2510.05605}, 2025.
 
-\bibitem{pentestagent25} X.~Shen \textit{et al.}, ``PentestAgent: Incorporating LLM agents to automated penetration testing,'' in \textit{Proc. 20th ACM Asia Conf. Computer and Communications Security (ASIA CCS)}, 2025. doi: 10.1145/3708821.3733882.
-
 \bibitem{cai25} V.~Mayoral-Vilches \textit{et al.}, ``CAI: An open, bug bounty-ready cybersecurity AI,'' \textit{arXiv:2504.06017}, 2025.
-
-\bibitem{pentestr125} Anonymous, ``Pentest-R1: Towards autonomous penetration testing reasoning optimized via two-stage reinforcement learning,'' \textit{arXiv:2508.07382}, 2025.
 
 \bibitem{xoffense25} P.~D.~Luong \textit{et al.}, ``xOffense: An autonomous multi-agent framework for penetration testing with domain-adapted large language models,'' \textit{arXiv:2509.13021}, 2025.
 
-\bibitem{checkmate25} L.~Wang, X.~Shi, Z.~Li, Y.~Jiang, S.~Tan, Y.~Jiang, J.~Cheng, W.~Chen, X.~Shen, Z.~Li, and Y.~Chen, ``Automated penetration testing with LLM agents and classical planning,'' \textit{arXiv:2512.11143}, 2025.
-
 \bibitem{autopenbench24} L.~Gioacchini, M.~Mellia, I.~Drago, A.~Delsanto, G.~Siracusano, and R.~Bifulco, ``AutoPenBench: Benchmarking generative agents for penetration testing,'' \textit{arXiv:2410.03225}, 2024.
 
-\bibitem{vulhub} Vulhub contributors, ``Vulhub: Pre-built vulnerable Docker environments for learning and reproducing CVEs.'' [Online]. Available: https://github.com/vulhub/vulhub
+\bibitem{vulhub} Vulhub contributors, ``Vulhub: Pre-built vulnerable Docker environments for learning and reproducing CVEs.'' [Online]. Available: \url{https://github.com/vulhub/vulhub}
 
-\bibitem{caibench25} V.~Mayoral-Vilches \textit{et al.}, ``CAIBench: A meta-benchmark for evaluating cybersecurity AI agents,'' \textit{arXiv:2510.24317}, 2025.
+\bibitem{caibench25} M.~Sanz-G{\'o}mez, V.~Mayoral-Vilches, F.~Balassone, L.~J.~Navarrete-Lozano, C.~R.~J.~Veas Chavez, and M.~del Mundo de Torres, ``Cybersecurity AI Benchmark (CAIBench): A meta-benchmark for evaluating cybersecurity AI agents,'' \textit{arXiv:2510.24317}, 2025. [Online]. Available: \url{https://arxiv.org/abs/2510.24317}
 
 \bibitem{nyuctfbench24} M.~Shao \textit{et al.}, ``NYU CTF Bench: A scalable open-source benchmark dataset for evaluating LLMs in offensive security,'' in \textit{Proc. NeurIPS Datasets and Benchmarks Track}, 2024.
 
 \bibitem{cybench24} A.~K.~Zhang \textit{et al.}, ``Cybench: A framework for evaluating cybersecurity capabilities and risk of language models,'' \textit{arXiv:2408.08926}, 2024.
 
-\bibitem{ludus} Ludus Cloud, ``Ludus: Cyber range automation on Proxmox.'' [Online]. Available: https://ludus.cloud
+\bibitem{ludus} Ludus Cloud, ``Ludus: Cyber range automation on Proxmox.'' [Online]. Available: \url{https://ludus.cloud}
 
-\bibitem{goad} M3, ``GOAD: Game of Active Directory.'' [Online]. Available: https://github.com/Orange-Cyberdefense/GOAD
+\bibitem{goad} M3, ``GOAD: Game of Active Directory.'' [Online]. Available: \url{https://github.com/Orange-Cyberdefense/GOAD}
 
 \bibitem{phillips98} C.~Phillips and L.~P.~Swiler, ``A graph-based system for network-vulnerability analysis,'' in \textit{Proc. New Security Paradigms Workshop}, 1998.
 
 \bibitem{sheyner02} O.~Sheyner, J.~Haines, S.~Jha, R.~Lippmann, and J.~M.~Wing, ``Automated generation and analysis of attack graphs,'' in \textit{Proc. IEEE Symp. Security and Privacy}, 2002.
 
-\bibitem{mulval05} X.~Ou, S.~Govindavajhala, and A.~W.~Appel, ``MulVAL: A logic-based network security analyzer,'' in \textit{Proc. USENIX Security Symp.}, 2005.
+\bibitem{mulval05} X.~Ou, S.~Govindavajhala, and A.~W.~Appel, ``MulVAL: A logic-based network security analyzer,'' in \textit{Proc. 14th USENIX Security Symp. (USENIX Security 05)}, 2005, pp.~113--128. [Online]. Available: \url{https://www.usenix.org/legacy/events/sec05/tech/full_papers/ou/ou.pdf}
 
-\bibitem{owasp-iot} OWASP Foundation, ``OWASP Internet of Things Top~10,'' 2024. [Online]. Available: https://owasp.org/www-project-internet-of-things-top-10/
+\bibitem{owasp-iot} OWASP Foundation, ``OWASP Internet of Things,'' 2024. [Online]. Available: \url{https://owasp.org/www-project-internet-of-things/}
 
-\bibitem{mitre-ics} MITRE Corporation, ``MITRE ATT\&CK for ICS,'' 2024. [Online]. Available: https://attack.mitre.org/matrices/ics/
+\bibitem{mitre-ics} MITRE Corporation, ``MITRE ATT\&CK for ICS,'' 2024. [Online]. Available: \url{https://attack.mitre.org/matrices/ics/}
 
 \bibitem{nist80082} K.~Stouffer \textit{et al.}, ``Guide to operational technology security,'' National Institute of Standards and Technology, NIST SP\,800-82 Rev.\,3, 2023.
 
-\bibitem{iot23} S.~Garcia, A.~Parmisano, and M.~J.~Erquiaga, ``IoT-23: A labeled dataset with malicious and benign IoT network traffic,'' Stratosphere Laboratory, 2020. [Online]. Available: https://www.stratosphereips.org/datasets-iot23
+\bibitem{iot23} S.~Garcia, A.~Parmisano, and M.~J.~Erquiaga, ``IoT-23: A labeled dataset with malicious and benign IoT network traffic,'' Stratosphere Laboratory, 2020. [Online]. Available: \url{https://www.stratosphereips.org/datasets-iot23}
 
 \bibitem{toniot20} A.~Alsaedi, N.~Moustafa, Z.~Tari, A.~Mahmood, and A.~Anwar, ``TON\_IoT telemetry dataset: A new generation dataset of IoT and IIoT for data-driven intrusion detection systems,'' \textit{IEEE Access}, vol.~8, pp.~165130--165150, 2020.
 
 \bibitem{edgeiiotset22} M.~A.~Ferrag, O.~Friha, D.~Hamouda, L.~Maglaras, and H.~Janicke, ``Edge-IIoTset: A new comprehensive realistic cyber security dataset of IoT and IIoT applications for centralized and federated learning,'' \textit{IEEE Access}, vol.~10, pp.~40281--40306, 2022.
 
-\bibitem{costin14} A.~Costin, J.~Zaddach, A.~Francillon, and D.~Balzarotti, ``A large-scale analysis of the security of embedded firmwares,'' in \textit{Proc. USENIX Security Symp.}, 2014.
+\bibitem{costin14} A.~Costin, J.~Zaddach, A.~Francillon, and D.~Balzarotti, ``A large-scale analysis of the security of embedded firmwares,'' in \textit{Proc. 23rd USENIX Security Symp. (USENIX Security 14)}, 2014, pp.~95--110. [Online]. Available: \url{https://www.usenix.org/conference/usenixsecurity14/technical-sessions/presentation/costin}
 
 \bibitem{firmadyne16} D.~D.~Chen, M.~Egele, M.~Woo, and D.~Brumley, ``Towards automated dynamic analysis for Linux-based embedded firmware,'' in \textit{Proc. NDSS}, 2016.
 
 \bibitem{firmae20} M.~Kim, D.~Kim, E.~Kim, S.~Kim, Y.~Jang, and Y.~Kim, ``FirmAE: Towards large-scale emulation of IoT firmware for dynamic analysis,'' in \textit{Proc. Annual Computer Security Applications Conf. (ACSAC)}, 2020.
 
-\bibitem{iotgoat} OWASP, ``IoTGoat: A deliberately insecure IoT firmware,'' 2024. [Online]. Available: https://github.com/OWASP/IoTGoat
+\bibitem{iotgoat} OWASP, ``IoTGoat: A deliberately insecure IoT firmware,'' 2024. [Online]. Available: \url{https://github.com/OWASP/IoTGoat}
 
-\bibitem{enigma25} T.~Abramovich \textit{et al.}, ``EnIGMA: Interactive tools substantially assist LM agents in solving CTF challenges,'' in \textit{Proc. ICML}, 2025.
-
-\bibitem{minimax27} MiniMax, ``MiniMax-M2.7: A general-purpose large language model,'' 2026. [Online]. Available: https://www.minimax.io/models/text/m27
+\bibitem{minimax27} MiniMax, ``MiniMax-M2.7: A general-purpose large language model,'' 2026. [Online]. Available: \url{https://www.minimax.io/models/text/m27}
 
 \end{thebibliography}
 
