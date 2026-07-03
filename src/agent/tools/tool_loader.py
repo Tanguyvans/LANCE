@@ -22,6 +22,24 @@ DEFINITIONS_DIR = Path(__file__).parent / "definitions"
 REQUIRED_KEYS = {"name", "description", "parameters"}
 HARDWARE_KEYS = {"name", "description"}
 
+import hashlib
+
+# Cache for deduplicating tool outputs (Stateful Tooling)
+# Format: { "tool_name_target": set([hashes...]) }
+_TOOL_CACHE: dict[str, set[str]] = {}
+
+def _get_payload_signature(payload_str: str) -> str:
+    """Generate a signature based on payload type/structure rather than exact content."""
+    payload_stripped = payload_str.strip()
+    if payload_stripped.startswith("{") and payload_stripped.endswith("}"):
+        try:
+            data = json.loads(payload_stripped)
+            if isinstance(data, dict):
+                keys = ",".join(sorted(data.keys()))
+                return f"json_keys:{keys}"
+        except json.JSONDecodeError:
+            pass
+    return hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
 def load_tool_yaml(path: Path) -> dict[str, Any]:
     """Parse and validate a single tool YAML file."""
@@ -123,6 +141,47 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
 
         from src.agent.tools.recon_tools import _run
         result = _run(cmd, timeout=effective_timeout)
+
+        stdout = result.get("stdout", "")
+        tool_name = tool_def["name"]
+
+        # --- Deduplication Cache Logic ---
+        if tool_name == "mqtt_listen" and stdout:
+            broker = kwargs.get("broker", "unknown")
+            cache_key = f"mqtt_{broker}"
+            if cache_key not in _TOOL_CACHE:
+                _TOOL_CACHE[cache_key] = set()
+
+            new_lines = []
+            for line in stdout.splitlines():
+                parts = line.split(" ", 1)
+                if len(parts) == 2:
+                    topic, payload = parts
+                    sig = f"{topic}::{_get_payload_signature(payload)}"
+                    if sig not in _TOOL_CACHE[cache_key]:
+                        _TOOL_CACHE[cache_key].add(sig)
+                        new_lines.append(line)
+                else:
+                    new_lines.append(line)  # Keep unparseable lines
+
+            if not new_lines and stdout.strip():
+                result["stdout"] = "[CACHE] Only duplicate messages received. No new topics or payload structures discovered."
+            else:
+                result["stdout"] = "\n".join(new_lines)
+
+        elif tool_name == "curl_headers" and stdout:
+            url = kwargs.get("url", "unknown")
+            cache_key = f"curl_{url}"
+            sig = hashlib.sha256(stdout.encode("utf-8")).hexdigest()
+
+            if cache_key not in _TOOL_CACHE:
+                _TOOL_CACHE[cache_key] = set()
+
+            if sig in _TOOL_CACHE[cache_key]:
+                result["stdout"] = "[CACHE] Identical HTTP response to previous scan. No new information."
+            else:
+                _TOOL_CACHE[cache_key].add(sig)
+        # ---------------------------------
 
         if filter_lines and result.get("stdout"):
             import re

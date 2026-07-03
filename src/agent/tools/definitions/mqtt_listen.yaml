@@ -1,6 +1,6 @@
 name: "mqtt_listen"
 command: "mosquitto_sub"
-args: []
+args: ["-v"]
 enabled: true
 timeout: 15
 short_description: "MQTT message listener"
