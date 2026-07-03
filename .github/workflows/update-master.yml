@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [nato-master, nato-master-2]
+        runner: [nato-master]
     runs-on: [self-hosted, "${{ matrix.runner }}"]
 
     steps:
