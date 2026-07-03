@@ -32,6 +32,8 @@ from src.agent.tools.graph_tools import (
     get_attack_surface,
     get_risk_scores,
     get_device_info,
+    init_weighted_graph,
+    trigger_disbalance_on_exploit,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
@@ -285,9 +287,13 @@ class Pipeline:
             from src.agent.tools.graph_tools import _scenario_topology as _st_post
             _subnets = (_st_post or {}).get("subnets", [BENCHMARK_SUBNET])
             target_subnet = " ".join(_subnets) if len(_subnets) > 1 else (_subnets[0] if _subnets else BENCHMARK_SUBNET)
+            # Initialize weighted attack graph for disbalance computation
+            init_weighted_graph()
         else:
             lab = load_lab_context()
             target_subnet = PHYSICAL_SUBNET
+            # Initialize weighted attack graph for disbalance computation
+            init_weighted_graph()
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
@@ -1187,6 +1193,8 @@ class Pipeline:
             surface = self._discover_attack_surface(self.target_network, stream_callback)
             from src.agent.tools.graph_tools import update_discovery_hosts
             update_discovery_hosts(surface)
+            # Initialize weighted graph for disbalance computation
+            init_weighted_graph()
 
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
@@ -1727,6 +1735,21 @@ class Pipeline:
                 }
                 deliverable_path.write_text(json.dumps(error_result, indent=2), encoding="utf-8")
 
+            # Trigger local disbalance computation after exploit
+            if deliverable_path.exists():
+                try:
+                    result_data = json.loads(deliverable_path.read_text(encoding="utf-8"))
+                    exploit_status = result_data.get("status", "")
+                    if exploit_status.upper() in ("CONFIRMED", "EXPLOITED", "COMPROMISED"):
+                        trigger_disbalance_on_exploit(
+                            device_id=device_id,
+                            exploit_status=exploit_status,
+                            vuln_type=vuln_type,
+                            device_ip=device_ip,
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass  # Non-fatal: disbalance is informational
+
         # Launch exploit agents with small stagger to avoid API rate limits
         def _run_with_stagger(args):
             idx, task = args
@@ -2066,89 +2089,42 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _repair_deliverable_json(text: str):
-        """Best-effort recovery of a model-produced JSON deliverable that fails
-        strict parsing. Handles the common LLM failures: markdown code fences,
-        control characters, invalid backslash escapes (shell commands such as
-        grep 'pass\\|pwd' produce an invalid \\| escape), and trailing data after
-        the root object. Returns a dict, or None if nothing usable is found.
-        """
-        import re as _re
-        if not text or not text.strip():
-            return None
-        t = text.strip()
-        if t.startswith("```"):
-            t = _re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", t).strip()
-        t = _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", t)         # control chars
-        t = _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', t)             # invalid \escapes
-        decoder = json.JSONDecoder()
-        candidates = [t]
-        brace = t.find("{")
-        if brace > 0:
-            candidates.append(t[brace:])
-        for cand in candidates:
-            try:
-                obj, _end = decoder.raw_decode(cand)   # ignores trailing data
-                if isinstance(obj, dict):
-                    return obj
-            except Exception:
-                continue
-        return None
-
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Guarantee a valid 05_intrusion.json exists after Phase 5.
 
-        Recovery order, best to worst:
-        1. The agent saved valid JSON → keep it.
-        2. The agent saved RICH but malformed JSON (the common case: unescaped
-           shell backslashes, trailing data) → repair and keep the model's own
-           findings — they are richer than any reconstruction.
-        3. The agent saved nothing usable → reconstruct from tool_calls.jsonl.
-
-        On recovery, re-emit a phase_done event so the UI reflects the repaired
-        status instead of the agent's transient failure.
+        Small local models (e.g. gemma) frequently run the whole campaign via
+        tool calls but never call save_deliverable. When the deliverable is
+        missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
+        real data instead of nothing. On success, re-emit a phase_done event so
+        the UI reflects the recovered status instead of the agent's failure.
         """
         path = self.run_dir / config.deliverable_file
-
-        def _emit(status: str) -> None:
-            results[config.name] = status
-            if stream_callback:
-                stream_callback({
-                    "type": "phase_done", "phase": config.phase, "name": config.name,
-                    "status": status, "deliverable": config.deliverable_file,
-                    "cost_usd": 0, "turns": 0,
-                })
-
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
             if valid:
                 return
-            # Try to salvage the model's own (richer) output before discarding it.
-            repaired = self._repair_deliverable_json(
-                path.read_text(encoding="utf-8", errors="replace")
-            )
-            if repaired and (repaired.get("compromised_devices") or repaired.get("summary")):
-                path.write_text(
-                    json.dumps(repaired, indent=2, ensure_ascii=False), encoding="utf-8"
-                )
-                n_dev = len(repaired.get("compromised_devices", []))
-                print(f"  Repaired model's intrusion deliverable — kept model output ({n_dev} devices)")
-                _emit("completed:repaired")
-                return
-
         log.warning(
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
         )
         data = self._synthesize_intrusion_from_tools()
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        results[config.name] = "completed:synthesized"
         print(
             f"  Synthesized intrusion deliverable from tool calls "
             f"({data['summary']['devices_compromised']} compromised, "
             f"{data['summary']['credentials_harvested']} creds)"
         )
-        _emit("completed:synthesized")
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done",
+                "phase": config.phase,
+                "name": config.name,
+                "status": "completed:synthesized",
+                "deliverable": config.deliverable_file,
+                "cost_usd": 0,
+                "turns": 0,
+            })
 
     def _synthesize_intrusion_from_tools(self) -> dict:
         """Reconstruct an intrusion deliverable from logged try_credential /
