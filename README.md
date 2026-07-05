@@ -30,7 +30,7 @@ live targets deployed via the Ansible playbooks — see [`benchmarks/README.md`]
 | `benchmarks/scenarios/` | IoTChainBench scenario definitions |
 | `benchmarks/ground_truth/` | Per-vulnerability ground truth YAMLs |
 | `benchmarks/ansible/` | Proxmox deployment and injection playbooks |
-| `tests/` | 280+ unit tests |
+| `tests/` | 310+ unit tests |
 
 ## Dashboard
 

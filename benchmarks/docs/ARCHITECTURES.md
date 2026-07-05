@@ -1,5 +1,10 @@
 # Architectures & Failles — Diagrammes
 
+> **Document de conception.** Les architectures `A1`–`A8` et la taxonomie de packs `F1`–`F10`
+> ci-dessous forment le vocabulaire de design. Les packs **réellement livrés** sont `f0`–`f9`
+> (9 packs, cf. note dans « ## Packs de failles ») et ne coïncident pas un-à-un avec `F1`–`F10`.
+> Seule la table « Scénarios implémentés » reflète l'état exact du code.
+
 ## Couverture des référentiels
 
 | Référentiel | Couverture | Détails |
@@ -365,6 +370,14 @@ graph TB
 ---
 
 ## Packs de failles
+
+> **⚠️ Taxonomie conceptuelle (design), distincte de l'implémentation.** La liste `F1`–`F10`
+> ci-dessous est le vocabulaire de conception d'origine. Les packs **réellement livrés** sont
+> 9 fichiers minuscules dans `benchmarks/packs/definitions/` : `f0_hardened`, `f1_weak_auth`,
+> `f2_misconfig`, `f3_data_exposure`, `f5_injection`, `f6_crypto`, `f7_postexploit`,
+> `f8_info_disclosure`, `f9_insecure_update`. Il n'y a **ni `f4` ni `f10`**, et la numérotation
+> ne coïncide pas avec `F1`–`F10` (p. ex. le `f3` livré = data exposure, pas « software outdated »).
+> Les mappings OWASP/MITRE de cette section décrivent le design cible, pas l'état exact du code.
 
 ### F1 — Auth faible
 
@@ -807,15 +820,37 @@ graph TB
 
 ### Scénarios implémentés (déployables via Ansible)
 
-| # | Nom | Architecture | Packs | Difficulté | Vulns | VMIDs |
+> **Note taxonomie.** Les packs réellement implémentés sont en minuscules `f0`–`f9`
+> (9 packs, cf. `benchmarks/packs/definitions/`) et ne correspondent **pas** un-à-un à la
+> taxonomie conceptuelle `F1`–`F10` ci-dessus : `f3` = data exposure, `f5` = injection,
+> `f6` = crypto, `f7` = post-exploit / pivot, `f9` = insecure update. La colonne
+> « Topologie » renvoie au fichier `topologies/<nom>.yaml` (source de vérité).
+> Comptages de vulnérabilités = longueur de la liste `vulnerabilities` du ground truth.
+
+| # | Nom | Topologie | Packs | Difficulté | Vulns | VMIDs |
 |---|---|---|---|---|---|---|
-| S1 | Réseau plat | A1 Flat | F1+F2 | Easy | 3 | 100-109 |
-| S2 | Gateway exposée | A3 Gateway | F1+F3+F8 | Medium | 8 | 110-119 |
-| S3 | Réplique NATO Lab | A1 Flat | F1+F3 | Medium | 7 | 120-129 |
-| S4 | Réseau segmenté | A4 Segmenté | F1+F4+F5+F7 | Hard | 8 | 130-139 |
-| S5 | Smart Building | A2 Star | F1+F4+F8 | Medium | 8 | 150-159 |
-| S6 | Domotique centralisée | A2 Star | F1+F4+F8 | Medium | 9 | 160-169 |
-| S7 | Edge-Cloud pivot | A7 Edge-Cloud | F3+F7+F8 | Hard | 8 | 170-179 |
+| S1 | Réseau plat | `flat` | f1+f2+f3+f6+f8 | Easy | 12 | 100-109 |
+| S2 | Gateway exposée | `gateway` | f1+f2+f3+f6+f8+f9 | Medium | 13 | 110-119 |
+| S3 | Réplique NATO Lab | `nato_lab` | f1+f2+f3+f6+f7+f8+f9 | Hard | 18 | 120-129 |
+| S4 | Réseau segmenté (ICS/SCADA) | `ics_scada` | f1+f2+f3+f5+f6+f8+f9 | Hard | 18 | 130-139 |
+| S5 | Smart Building | `building` | f1+f2+f3+f8 | Medium | 15 | 150-159 |
+| S6 | Domotique centralisée | `star` | f1+f2+f3+f6+f8+f9 | Medium | 16 | 160-169 |
+| S7 | Edge-Cloud pivot | `edge_cloud` | f1+f2+f3+f5+f6+f7+f9 | Hard | 14 | 170-179 |
+| S8 | Multi-zone IT/IoT/OT | `multizone` | f1+f2+f3+f5+f6+f9 | Hard | 14 | 180-189 |
+| S9 | Mesh IoT | `mesh_iot` | f1+f2+f3+f8 | Medium | 11 | 190-199 |
+| S10 | Flat avec variantes | `flat_variants` | f1+f2+f3+f5 | Medium | 13 | 210-219 |
+| S11 | Smart City 3 zones | `smart_city_3zones` | f1+f2+f3+f5+f6+f7+f8 | Hard | 23 | 220-234 |
+| S12 | Smart City Large Scale | `smart_city_large` | f1+f2+f3+f5+f6+f7+f8 | Expert | 42 | 235-269 |
+| S13 | VLAN Segmented | `vlan_segmented` | f1+f2+f3+f5+f7 | Hard | 20 | 270-286 |
+
+> S1–S12 constituent le benchmark canonique (209 vulnérabilités, 116 devices). S13 et les
+> variantes **hardened** S1h/S4h (`packs: [f0_hardened]`) sont des extras.
+>
+> ⚠️ **Incohérence connue** : S11/S12/S13 déclarent un pack `f7_pivot` qui n'existe pas dans
+> `packs/definitions/` (le pack post-exploit est `f7_postexploit`). `compose_gt.py` **saute**
+> donc ces scénarios (« Pack not found: f7_pivot.yaml ») ; leurs `ground_truth/scenario_1{1,2,3}.yaml`
+> ont été produits indépendamment et ne sont pas régénérables en l'état. À corriger côté scénarios
+> (renommer `f7_pivot` → `f7_postexploit`) ou en ajoutant un pack `f7_pivot`.
 
 ```bash
 # Déployer un scénario

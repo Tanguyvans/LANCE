@@ -1,5 +1,21 @@
 # Plan : Scalabilité contexte Phase 5 + nettoyage dead code
 
+> **⚠️ Document historique — plan intégralement implémenté (autrement).**
+> Les trois correctifs de ce plan ont été livrés, mais sous une forme différente et
+> après une renumérotation des phases :
+> - Une **phase 5 « intrusion »** a été insérée, si bien que le rapport est désormais la **phase 6**.
+>   Toutes les mentions « Phase 5 report » ci-dessous concernent en réalité la **phase 6**.
+> - **Correctif A** : livré sous le nom `_generate_phase6_context()` (`pipeline.py`, ~ligne 2627)
+>   qui produit `06_phase6_context.json` (agrégé par device, sans les champs `evidence` verbeux) —
+>   et non `_generate_exploitation_summary()` / `04_exploitation_summary.json`. L'appel se fait
+>   pour `agent_config.phase == 6` (`pipeline.py`, ~ligne 426). `report.txt` lit
+>   `06_phase6_context.json` et interdit explicitement la lecture des gros fichiers.
+> - **Correctif B** : le filtre anti-bruit CVE LOW/INFO est présent dans `analyze_device.txt`
+>   (section `## Rules`), et `vuln_device.txt` porte l'en-tête `# DEPRECATED`.
+> - **Correctif C** : `_run_device_agents()` (dead code) a été supprimé — la fonction n'existe plus.
+>
+> Le contenu ci-dessous est conservé pour la trace de conception ; ce n'est **pas** une to-do list active.
+
 ## Contexte
 
 Avec 35 devices (S12), `04_exploitation.json` contient 109 entrées avec leur champ `evidence` (texte brut long). L'agent Phase 5 le lit entièrement via `read_deliverable("04_exploitation.json")` → surcharge de contexte qui dépasse les limites des modèles avec peu de fenêtre contextuelle.

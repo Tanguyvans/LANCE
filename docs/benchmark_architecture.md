@@ -1,5 +1,19 @@
 # Architecture modulaire du benchmark
 
+> **Statut : implémentée** (à quelques déviations près décrites ci-dessous). Le générateur
+> `benchmarks/tools/compose_gt.py` existe et produit les ground truths depuis
+> `scenarios/` + `topologies/` + `packs/definitions/`. Écarts par rapport à la proposition
+> d'origine de ce document :
+> - Fichiers scénario nommés `S1.yaml`, `S1h.yaml`, … `S13.yaml` (pas `S1_flat_vuln.yaml`).
+> - Packs livrés : `f0`–`f9` **sans `f4`** (9 packs) ; vulns keyées par `title`, pas par `id_suffix`.
+> - Pas de dossier `packs/ansible/` : l'injection reste le playbook monolithique
+>   `ansible/playbooks/04_inject_vulns.yml`, piloté par `group_vars/all/main.yml` (pas par les packs).
+> - Topologies : chaque service porte un champ `ip` complet (pas `ip_offset`).
+> - Point d'entrée : `compose_scenario()` ; validation via `compose_gt.py --validate`
+>   (pas de `validate_gt.py` séparé). Extraction : `extract_packs.py`, `extract_topologies.py`.
+>
+> Les sections ci-dessous ont été mises à jour pour refléter l'état réel du code.
+
 ## Probleme actuel
 
 ```
@@ -34,65 +48,66 @@ Scenario = Topologie + [Pack, Pack, ...] + Posture
 ```
 benchmarks/
 │
-├── topologies/                    # ← TOPOLOGIES (forme du reseau)
-│   ├── flat.yaml                  #    3-4 devices, 1 subnet
-│   ├── gateway.yaml               #    5-6 devices, gateway pivot
-│   ├── nato_lab.yaml              #    7-8 devices, replique lab
-│   ├── ics_scada.yaml             #    7-8 devices, IT/OT
-│   ├── building.yaml              #    7-8 devices, surveillance/HVAC
-│   ├── star.yaml                  #    5-6 devices, hub central
-│   └── edge_cloud.yaml            #    5-6 devices, edge + cloud
+├── topologies/                    # ← TOPOLOGIES (forme du reseau) — 13 fichiers
+│   ├── flat.yaml                  #    S1  — reseau plat, 1 subnet
+│   ├── gateway.yaml               #    S2  — gateway pivot
+│   ├── nato_lab.yaml              #    S3  — replique lab NATO
+│   ├── ics_scada.yaml             #    S4  — IT/OT segmente
+│   ├── building.yaml              #    S5  — surveillance/HVAC
+│   ├── star.yaml                  #    S6  — hub central
+│   ├── edge_cloud.yaml            #    S7  — edge + cloud
+│   ├── multizone.yaml             #    S8  — 3+ zones IT/IoT/OT
+│   ├── mesh_iot.yaml              #    S9  — mesh
+│   ├── flat_variants.yaml         #    S10 — plat avec variantes de roles
+│   ├── smart_city_3zones.yaml     #    S11 — 15 devices
+│   ├── smart_city_large.yaml      #    S12 — 35 devices
+│   └── vlan_segmented.yaml        #    S13 — VLAN segmente
 │
-├── packs/                         # ← PACKS DE VULNS (par role)
-│   ├── definitions/               #    description des vulns
-│   │   ├── f0_hardened.yaml       #    0 vulns, config securisee
-│   │   ├── f1_weak_auth.yaml      #    default creds, no auth
-│   │   ├── f2_misconfig.yaml      #    telnet, MQTT anon, autoindex
-│   │   ├── f3_data_exposure.yaml  #    .env, backup SQL, MQTT topics
-│   │   ├── f4_protocol_ics.yaml   #    Modbus, BACnet, MQTT WS
-│   │   ├── f5_injection.yaml      #    file upload RCE, SSRF
-│   │   ├── f6_crypto.yaml         #    weak ciphers, Terrapin CVE
-│   │   ├── f7_postexploit.yaml    #    SUID, cron writable
-│   │   ├── f8_info_disclosure.yaml#    server version, SSH banner, $SYS
-│   │   └── f9_insecure_update.yaml#    OTA sans signature
-│   │
-│   └── ansible/                   #    playbooks d'injection par pack
-│       ├── f0_hardened.yml
-│       ├── f1_weak_auth.yml
-│       ├── f2_misconfig.yml
-│       └── ...
+├── packs/                         # ← PACKS DE VULNS (par role) — 9 packs, PAS de f4
+│   └── definitions/               #    description des vulns (keyees par title)
+│       ├── f0_hardened.yaml       #    0 vulns, config securisee
+│       ├── f1_weak_auth.yaml      #    default creds, no auth
+│       ├── f2_misconfig.yaml      #    telnet, MQTT anon, autoindex
+│       ├── f3_data_exposure.yaml  #    .env, backup SQL, MQTT topics
+│       ├── f5_injection.yaml      #    file upload RCE, SSRF
+│       ├── f6_crypto.yaml         #    weak ciphers, Terrapin CVE
+│       ├── f7_postexploit.yaml    #    SUID, cron writable, pivots
+│       ├── f8_info_disclosure.yaml#    server version, SSH banner, $SYS
+│       └── f9_insecure_update.yaml#    OTA sans signature
+│                                  #    injection : ansible/playbooks/04_inject_vulns.yml
+│                                  #    (PAS de dossier packs/ansible/)
 │
-├── scenarios/                     # ← SCENARIOS (composition)
-│   ├── S1_flat_vuln.yaml          #    topology: flat, packs: [f1,f2,f3,f8]
-│   ├── S1h_flat_hardened.yaml     #    topology: flat, packs: [f0]
-│   ├── S2_gateway_vuln.yaml
-│   ├── S3_nato_lab_vuln.yaml
-│   ├── S4_ics_vuln.yaml
-│   ├── S4h_ics_hardened.yaml
-│   ├── S5_building_vuln.yaml
-│   ├── S6_star_vuln.yaml
-│   └── S7_edge_cloud_vuln.yaml
+├── scenarios/                     # ← SCENARIOS (composition) — S1..S13 + S1h, S4h
+│   ├── S1.yaml                    #    topology: flat, packs: [f1,f2,f3,f6,f8]
+│   ├── S1h.yaml                   #    topology: flat, packs: [f0_hardened]
+│   ├── S2.yaml
+│   ├── S3.yaml
+│   ├── S4.yaml
+│   ├── S4h.yaml
+│   └── S5.yaml … S13.yaml
 │
-├── ground_truth/                  # ← AUTO-GENERE par compose_gt.py
+├── ground_truth/                  # ← GENERE par compose_gt.py (15 fichiers)
 │   ├── scenario_1.yaml
 │   ├── scenario_1h.yaml
 │   ├── scenario_4.yaml
 │   ├── scenario_4h.yaml
-│   └── ...
+│   └── scenario_2.yaml … scenario_13.yaml
 │
 ├── ansible/                       # ← PLAYBOOKS ORCHESTRATION
 │   ├── playbooks/
 │   │   ├── 03_deploy_scenario.yml
-│   │   ├── 04_inject.yml          #    boucle sur packs du scenario
+│   │   ├── 04_inject_vulns.yml    #    injection (piloté par group_vars, pas par packs)
 │   │   ├── 05_populate_services.yml
 │   │   └── 06_verify.yml
 │   ├── group_vars/
-│   │   └── all/main.yml           #    config Proxmox, VMIDs
+│   │   └── all/main.yml           #    config Proxmox, VMIDs, scenarios
 │   └── inventory.yml
 │
 └── tools/                         # ← OUTILS
-    ├── compose_gt.py              #    genere ground_truth/ depuis scenarios/ + packs/
-    └── validate_gt.py             #    verifie coherence
+    ├── compose_gt.py              #    genere ground_truth/ ; validation via --validate
+    ├── extract_packs.py           #    extraction des packs depuis les GT existants
+    └── extract_topologies.py      #    extraction des topologies
+```
 
 
 ## Format des fichiers
@@ -101,36 +116,40 @@ benchmarks/
 
 ```yaml
 id: flat
-name: "Reseau plat"
-description: "Reseau IoT sans segmentation, 1 subnet"
+name: Réseau plat
+description: Reseau IoT sans segmentation, 3-4 devices sur 1 subnet
+base_vmid: 100
 
 router:
-  name_template: "s{sid}-router"
+  name_template: s{sid}-router
   type: openwrt
+  ip: 192.168.100.1
 
 services:
-  - { name_template: "s{sid}-mqtt", vmid_offset: 1, ip_offset: 11, role: mqtt_broker }
-  - { name_template: "s{sid}-web",  vmid_offset: 2, ip_offset: 12, role: web_server  }
-  - { name_template: "s{sid}-ssh",  vmid_offset: 3, ip_offset: 13, role: ssh_server  }
+  - { name_template: s{sid}-mqtt, vmid_offset: 1, ip: 192.168.100.11, role: mqtt_broker }
+  - { name_template: s{sid}-web,  vmid_offset: 2, ip: 192.168.100.12, role: web_server  }
+  - { name_template: s{sid}-ssh,  vmid_offset: 3, ip: 192.168.100.13, role: ssh_server  }
 ```
 
 `{sid}` est remplace par le scenario_id a la composition.
-`ip_offset: 11` → `192.168.100.11`.
+Chaque service porte son `ip` complète (lue directement par `compose_gt.py`) et un
+`vmid_offset` (VMID = `base_vmid` + offset).
 
 
 ### Pack de vulns (ex: packs/definitions/f2_misconfig.yaml)
 
+# Format réel : id = nom complet du pack ; chaque vuln est keyée par `title`
+# (il n'y a PAS de champ `id_suffix` — les V-ids V1,V2,… sont attribués à la composition).
+# Un champ optionnel `scenarios: ['6', '11']` restreint la vuln à certains scénarios.
 ```yaml
-id: f2
-name: "Misconfigurations"
-description: "Services mal configures : telnet, MQTT anon, directory listing, admin WAN"
+id: f2_misconfig
+name: Misconfigurations
 
 # Vulns definies par ROLE — s'appliquent a tout device ayant ce role
 vulnerabilities:
 
   mqtt_broker:
-    - id_suffix: "mqtt_anon"
-      title: "MQTT sans authentification"
+    - title: "MQTT sans authentification"
       severity: high
       category: misconfiguration
       owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
@@ -145,8 +164,7 @@ vulnerabilities:
       confidence_required: high
 
   web_server:
-    - id_suffix: "dir_listing"
-      title: "Directory listing active (nginx autoindex on)"
+    - title: "Directory listing active (nginx autoindex on)"
       severity: medium
       category: misconfiguration
       description: >
@@ -159,8 +177,7 @@ vulnerabilities:
       confidence_required: medium
 
   router:
-    - id_suffix: "telnet"
-      title: "Telnet active sur le routeur (port 23)"
+    - title: "Telnet active sur le routeur (port 23)"
       severity: medium
       category: misconfiguration
       description: >
@@ -171,8 +188,7 @@ vulnerabilities:
       confidence_required: medium
       router_vuln: telnet    # flag special pour injection OpenWrt
 
-    - id_suffix: "admin_wan"
-      title: "Interface web admin OpenWrt accessible depuis le WAN"
+    - title: "Interface web admin OpenWrt accessible depuis le WAN"
       severity: critical
       category: misconfiguration
       description: >
@@ -187,55 +203,51 @@ vulnerabilities:
 `{ip}` est remplace par l'IP reelle du device a la composition.
 
 
-### Scenario (ex: scenarios/S1_flat_vuln.yaml)
+### Scenario (ex: scenarios/S1.yaml)
 
 ```yaml
-scenario_id: "1"
-name: "Reseau plat"
+scenario_id: '1'
+name: Réseau plat
 difficulty: easy
 posture: vulnerable
-
-topology: flat          # reference topologies/flat.yaml
-base_vmid: 100          # plage VMID
+topology: flat          # reference topologies/flat.yaml (la plage VMID vient de base_vmid)
 
 packs:                  # packs de vulns a injecter
   - f1_weak_auth
   - f2_misconfig
   - f3_data_exposure
+  - f6_crypto
   - f8_info_disclosure
-
-# Overrides specifiques au scenario (vulns qui ne sont pas generiques par role)
-extra_vulnerabilities: []
 
 # Chemins d'attaque attendus (specifiques au scenario)
 attack_paths:
   - id: P1
-    title: "Acces MQTT via routeur compromis"
+    title: Accès MQTT via routeur compromis
+    difficulty: easy
     chain:
-      - { hop: 1, action: "Telnet vers routeur" }
-      - { hop: 2, action: "Subscribe MQTT sans auth" }
-    vulnerabilities_used: [f2.router.telnet, f2.mqtt_broker.mqtt_anon]
+      - { hop: 1, device: Internet,          action: Telnet vers routeur }
+      - { hop: 2, device: s1-router (100.1), action: Subscribe MQTT sans auth }
+    vulnerabilities_used: [V5, V1]   # V-ids attribués par compose_gt.py
+    impact: Lecture/écriture de tous les topics IoT
 
 bonus_types:
   - weak_cipher
 ```
 
+> Il n'y a pas de champ `base_vmid` ni `extra_vulnerabilities` dans les fichiers de scénario
+> réels : la plage VMID est portée par la topologie et par `scenario_vmid_ranges` (main.yml).
 
-### Scenario hardened (ex: scenarios/S1h_flat_hardened.yaml)
+
+### Scenario hardened (ex: scenarios/S1h.yaml)
 
 ```yaml
 scenario_id: "1h"
 name: "Reseau plat (hardened)"
 difficulty: control
 posture: hardened
-
 topology: flat
-base_vmid: 100
-
 packs:
   - f0_hardened       # securise tout
-
-extra_vulnerabilities: []
 attack_paths: []
 bonus_types: []
 ```
@@ -246,7 +258,10 @@ bonus_types: []
 ```python
 """Genere les ground_truth/ depuis scenarios/ + topologies/ + packs/"""
 
-def compose(scenario_path):
+# Pseudocode simplifié — le vrai point d'entrée est compose_scenario() dans
+# benchmarks/tools/compose_gt.py (lecture directe du champ `ip`, filtre `scenarios:`,
+# scoring incluant total_attack_paths). Validation : `compose_gt.py --validate`.
+def compose_scenario(scenario_path):
     scenario = load_yaml(scenario_path)
     topology = load_yaml(f"topologies/{scenario['topology']}.yaml")
 
@@ -265,7 +280,7 @@ def compose(scenario_path):
                 vuln = {
                     'id': f'V{vuln_counter}',
                     'device': service['name_template'].format(sid=scenario['scenario_id']),
-                    'ip': f"192.168.100.{service['ip_offset']}",
+                    'ip': service['ip'],
                     'role': role,
                     'pack': pack_id,
                     **vuln_template,
@@ -281,7 +296,7 @@ def compose(scenario_path):
                 vuln = {
                     'id': f'V{vuln_counter}',
                     'device': topology['router']['name_template'].format(sid=scenario['scenario_id']),
-                    'ip': '192.168.100.1',
+                    'ip': topology['router']['ip'],
                     'role': 'router',
                     'pack': pack_id,
                     **vuln_template,
@@ -321,9 +336,9 @@ def compose(scenario_path):
 ### Ajouter une nouvelle vulnerabilite
 
 ```
-1. Editer packs/definitions/fX_xxx.yaml     → ajouter la vuln pour le role
-2. Editer packs/ansible/fX_xxx.yml          → ajouter l'injection Ansible
-3. python3 benchmarks/tools/compose_gt.py   → regenere TOUS les ground truths
+1. Editer packs/definitions/fX_xxx.yaml       → ajouter la vuln pour le role (keyee par title)
+2. Ajouter l'injection dans ansible/playbooks/04_inject_vulns.yml (pilote par group_vars)
+3. python3 benchmarks/tools/compose_gt.py     → regenere TOUS les ground truths
 4. Done. Tous les scenarios qui utilisent ce pack heritent de la vuln.
 ```
 
@@ -331,9 +346,9 @@ def compose(scenario_path):
 
 ```
 1. Choisir une topologie existante (ou en creer une)
-2. Creer scenarios/S8_xxx.yaml avec topology + packs
-3. python3 benchmarks/tools/compose_gt.py   → genere le ground truth
-4. Done.
+2. Creer scenarios/S14.yaml avec topology + packs
+3. python3 benchmarks/tools/compose_gt.py -s 14   → genere le ground truth
+4. Ajouter l'entree dans ansible/group_vars/all/main.yml pour le rendre deployable.
 ```
 
 ### Creer un scenario hardened
@@ -348,15 +363,16 @@ def compose(scenario_path):
 ### Deployer et tester
 
 ```bash
-# Deployer le scenario 4
-ansible-playbook 03_deploy_scenario.yml -e scenario_id=4
+# Deployer le scenario 4 (depuis benchmarks/ansible/)
+ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
+  --ask-vault-pass --extra-vars "scenario_id=4"
 
-# Injecter les vulns (boucle sur les packs)
-ansible-playbook 04_inject.yml -e scenario_id=4
+# Injecter les vulns
+ansible-playbook -i inventory.yml playbooks/04_inject_vulns.yml \
+  --ask-vault-pass --extra-vars "scenario_id=4"
 
-# Ou deployer le scenario 4 hardened
-ansible-playbook 04_inject.yml -e scenario_id=4h
-# → le playbook voit packs=[f0], applique le hardening
+# NB : les variantes hardened S1h/S4h ne sont PAS dans main.yml → non deployables
+#      via 03_deploy_scenario (elles existent seulement comme ground truth de reference).
 
 # Lancer le LLM agent
 python3 -m src.agent --scenario 4
@@ -367,49 +383,49 @@ python3 -m src.benchmark.evaluator --run-dir output/agent/latest \
 ```
 
 
-## Migration depuis la structure actuelle
+## Migration depuis la structure monolithique (effectuée)
 
-### Ce qui ne change pas
+### Ce qui n'a pas changé
 - Le pipeline LLM (src/agent/) reste identique
 - L'evaluateur (src/benchmark/evaluator.py) reste identique
 - Le format final des ground_truth/*.yaml reste le meme
 
-### Ce qui change
-- Les 7 ground truths manuels → auto-generes par compose_gt.py
-- Le gros 04_inject_vulns.yml (600 lignes) → eclate en 10 fichiers de pack
-- group_vars/all/main.yml → les topologies migrent vers topologies/
-- Les scenarios deviennent des fichiers de composition (5-10 lignes chacun)
+### Ce qui a changé
+- Les ground truths (aujourd'hui 15 fichiers) sont générés par `compose_gt.py`
+- Les topologies ont été extraites vers `topologies/` (via `extract_topologies.py`)
+- Les descriptions de vulns ont été extraites vers `packs/definitions/` (via `extract_packs.py`)
+- Les scénarios sont devenus des fichiers de composition courts (`topology` + `packs`)
 
-### Etapes de migration
-1. Creer topologies/ depuis les definitions actuelles dans main.yml
-2. Extraire les vulns du 04_inject_vulns.yml vers packs/ansible/
-3. Extraire les descriptions de vulns des ground truths vers packs/definitions/
-4. Ecrire compose_gt.py
-5. Creer les scenarios/ (fichiers de composition)
-6. Valider que compose_gt.py genere les memes ground truths qu'avant
-7. Supprimer les anciens fichiers
+### Restes de la migration (non faits)
+- L'injection Ansible **n'a pas** été éclatée en `packs/ansible/` : `04_inject_vulns.yml`
+  reste monolithique et piloté par `group_vars/all/main.yml`. La composition (ground truth)
+  et l'injection (Ansible) sont donc deux sources séparées à garder synchronisées manuellement.
 
 
 ## Matrice de couverture
 
-Avec cette structure, on peut generer automatiquement une matrice de couverture :
+Générée depuis le champ `packs:` de chaque `scenarios/S*.yaml` (packs réels `f0`–`f9`, pas de `f4`) :
 
 ```
-                    f0   f1   f2   f3   f4   f5   f6   f7   f8   f9
-                   hard auth misc data prot inj  cryp post info upd
-S1  flat            -    x    x    x    -    -    -    -    x    -
-S1h flat           [x]   -    -    -    -    -    -    -    -    -
-S2  gateway         -    x    x    x    -    -    x    -    x    x
-S3  nato_lab        -    x    x    x    -    -    x    x    x    -
-S4  ics             -    x    x    x    x    x    x    x    x    x
-S4h ics            [x]   -    -    -    -    -    -    -    -    -
-S5  building        -    x    x    x    x    -    -    -    x    -
-S6  star            -    x    x    x    x    -    -    -    x    x
-S7  edge_cloud      -    x    x    x    -    x    x    x    x    x
+                          f0   f1   f2   f3   f5   f6   f7   f8   f9
+                         hard auth misc data inj  cryp post info upd
+S1  flat                  -    x    x    x    -    x    -    x    -
+S1h flat                 [x]   -    -    -    -    -    -    -    -
+S2  gateway               -    x    x    x    -    x    -    x    x
+S3  nato_lab              -    x    x    x    -    x    x    x    x
+S4  ics_scada             -    x    x    x    x    x    -    x    x
+S4h ics_scada            [x]   -    -    -    -    -    -    -    -
+S5  building              -    x    x    x    -    -    -    x    -
+S6  star                  -    x    x    x    -    x    -    x    x
+S7  edge_cloud            -    x    x    x    x    x    x    -    x
+S8  multizone             -    x    x    x    x    x    -    -    x
+S9  mesh_iot              -    x    x    x    -    -    -    x    -
+S10 flat_variants         -    x    x    x    x    -    -    -    -
+S11 smart_city_3zones     -    x    x    x    x    x    x*   x    -
+S12 smart_city_large      -    x    x    x    x    x    x*   x    -
+S13 vlan_segmented        -    x    x    x    x    -    x*   -    -
 ```
 
-Chaque `x` = le pack est actif pour ce scenario.
-`[x]` = pack hardened (f0).
-
-On voit immediatement les trous et on peut decider quels packs ajouter ou.
-```
+Chaque `x` = le pack est actif pour ce scenario. `[x]` = pack hardened (f0).
+`x*` = déclaré `f7_pivot` dans le scénario (pack inexistant — cf. incohérence connue plus haut ;
+le pack réel est `f7_postexploit`).
