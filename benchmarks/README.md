@@ -87,21 +87,23 @@ Voir [ansible/README.md](ansible/README.md) pour la documentation complète des 
 
 ## Scénarios implémentés
 
-Définis dans `ansible/group_vars/all/main.yml` — source unique de vérité.
-Les scénarios `*h` sont des variantes **hard** (mêmes services, mais failles plus subtiles / filtrages additionnels).
+Les **ID déployables via Ansible** sont les scénarios numériques `1`–`13`, définis dans
+`ansible/group_vars/all/main.yml` (source unique de vérité pour le déploiement).
+Les variantes **hard** `*h` (S1h, S4h) n'existent **que** comme définitions de benchmark
+(`scenarios/S*h.yaml` + `ground_truth/scenario_*h.yaml`) : elles ne sont pas dans `main.yml`
+et ne se déploient donc pas via `03_deploy_scenario`.
 
 | ID | Nom | Services | VMIDs | Difficulté |
 | --- | --- | --- | --- | --- |
 | `1` | Réseau plat | mqtt + web + ssh | 100–109 | Facile |
-| `1h` | Réseau plat — hard | idem S1, failles réduites | — | Moyen |
 | `2` | Gateway exposée | web + mqtt + iot-gw + db + jump | 110–119 | Moyen |
-| `3` | Réplique NATO Lab | wisgate + rpi5 + iot-hub + jetson + ap + cam + nvr | 120–129 | Moyen |
+| `3` | Réplique NATO Lab | wisgate + rpi5 + iot-hub + jetson + ap + cam + nvr | 120–129 | Difficile |
 | `4` | Réseau segmenté (ICS/SCADA) | admin + webapp + mqtt + lora-gw + plc + hmi + historian | 130–139 | Difficile |
-| `4h` | ICS/SCADA — hard | idem S4, surface réduite | — | Très difficile |
 | `5` | Smart Building | cam×2 + nvr + access-ctrl + hvac + mqtt + web | 150–159 | Moyen |
 | `6` | Domotique centralisée | hub + mqtt + db + cam + web | 160–169 | Moyen |
 | `7` | Edge-Cloud pivot | edge-gw + edge-mqtt + edge-compute + cloud-api + cloud-db | 170–179 | Difficile |
-| `8`–`12` | Variantes supplémentaires | voir `benchmarks/scenarios/S*.yaml` et `ground_truth/scenario_*.yaml` | — | Variable |
+| `8`–`13` | Variantes supplémentaires (multizone, mesh, flat_variants, smart_city, vlan_segmented) | voir `benchmarks/scenarios/S*.yaml` et `ground_truth/scenario_*.yaml` | — | Variable |
+| `1h`, `4h` | Variantes **hard** (benchmark uniquement, non déployables) | idem S1 / S4, posture `hardened` | — | Contrôle |
 
 ---
 
@@ -133,17 +135,19 @@ Chaque scénario a un fichier `ground_truth/scenario_N.yaml` décrivant :
 
 ```
 ground_truth/
-├── scenario_1.yaml       # Réseau plat (5 vulns)
-├── scenario_1h.yaml      # Variante hard
-├── scenario_2.yaml       # Gateway exposée (8 vulns)
-├── scenario_3.yaml       # Réplique NATO Lab
-├── scenario_4.yaml       # ICS/SCADA
-├── scenario_4h.yaml      # Variante hard
-├── scenario_5.yaml       # Smart Building
-├── scenario_6.yaml       # Domotique
-├── scenario_7.yaml       # Edge-Cloud pivot
-├── scenario_8.yaml … scenario_12.yaml
+├── scenario_1.yaml       # Réseau plat (12 vulns)
+├── scenario_1h.yaml      # Variante hard (posture hardened)
+├── scenario_2.yaml       # Gateway exposée (13 vulns)
+├── scenario_3.yaml       # Réplique NATO Lab (18 vulns)
+├── scenario_4.yaml       # ICS/SCADA (18 vulns)
+├── scenario_4h.yaml      # Variante hard (posture hardened)
+├── scenario_5.yaml       # Smart Building (15 vulns)
+├── scenario_6.yaml       # Domotique (16 vulns)
+├── scenario_7.yaml       # Edge-Cloud pivot (14 vulns)
+├── scenario_8.yaml … scenario_13.yaml   # S8=14, S9=11, S10=13, S11=23, S12=42, S13=20
 ```
+
+> Total sur les 12 scénarios canoniques S1–S12 : **209 vulnérabilités** (116 devices).
 
 Chaque entrée supporte un champ `bonus_types` listant les types de findings tolérés (ne comptent pas en FP lorsqu'ils ne figurent pas dans l'ensemble injecté). La taxonomie canonique est définie dans `src/agent/vuln_taxonomy.py` — toute nouvelle alias passe par `VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu'en duplication locale.
 
@@ -157,8 +161,8 @@ Chaque entrée supporte un champ `bonus_types` listant les types de findings tol
 | Precision | Vrais positifs / (VP + faux positifs) |
 | F1 Score | Moyenne harmonique precision/recall |
 | Weighted Score | Score pondéré par sévérité (critical=4, high=3, medium=2, low=1) |
-| Exploitation Coverage | Vulns confirmées par Phase 4 / total findings |
-| Path Coverage | Chemins d'attaque identifiés / chemins attendus |
+| Exploitation Coverage | Vrais positifs prouvés (`evidence_level` ≥ 2) / total vrais positifs |
+| Multi-Hop Reach (MHR_1/2/3) | Fraction des vulns du ground truth à profondeur de pivot ≥ k détectées |
 | Hallucination Rate | Failles inventées / total findings |
 | Coût | Tokens consommés par scénario (résumé par phase) |
 
