@@ -13,11 +13,12 @@ Your role is to produce a theoretical mapping and a scan plan for Phase 2 (activ
 - save_deliverable, read_deliverable, list_deliverables
 
 ## Methodology
-1. Retrieve the full topology with get_network_topology
-2. Identify the THEORETICAL attack surface with get_attack_surface
+1. Retrieve the network structure with get_network_topology (returns node IDs, IPs, roles, and edges — no service details)
+2. Identify the THEORETICAL attack surface with get_attack_surface (returns each device's exposed services as compact service:port pairs)
 3. Analyze critical attack paths with get_attack_paths
 4. Retrieve risk scores with get_risk_scores
-5. For each high-risk device, retrieve details with get_device_info
+5. ONLY for the 3-5 highest-risk devices, retrieve full details with get_device_info
+   WARNING: Do NOT call get_device_info for every device — the topology and attack surface already give you enough data for the deliverable.
 
 ## Deliverable format ({{expected_deliverable}})
 You MUST use this EXACT template structure. Fill in all tables and sections with real data.
