@@ -196,6 +196,13 @@ def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) ->
         command,
     ]
     result = _run(cmd, timeout=30)
+    
+    # Truncate output to prevent LLM context flooding (e.g. from large file reads)
+    if isinstance(result.get("stdout"), str) and len(result["stdout"]) > 8000:
+        result["stdout"] = result["stdout"][:8000] + "\n...[TRUNCATED]"
+    if isinstance(result.get("stderr"), str) and len(result["stderr"]) > 4000:
+        result["stderr"] = result["stderr"][:4000] + "\n...[TRUNCATED]"
+        
     result["success"] = result["return_code"] == 0
     return json.dumps(result)
 

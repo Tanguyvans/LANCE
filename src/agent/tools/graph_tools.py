@@ -382,7 +382,10 @@ def _ensure_loaded():
 # ── Tool functions ───────────────────────────────────────────────
 
 def get_network_topology() -> str:
-    """Return the full network topology as JSON (nodes + edges)."""
+    """Return a summarized network topology as JSON (nodes + edges).
+    Nodes are summarized to save LLM context tokens.
+    Use get_device_info(id) to get full details for a specific device.
+    """
     _ensure_loaded()
     if _discovery_mode is not None:
         return json.dumps({
@@ -390,14 +393,22 @@ def get_network_topology() -> str:
             "target_network": _discovery_mode["target_network"],
             "note": "No pre-defined topology. Use nmap_scan to discover hosts on the target network.",
         }, ensure_ascii=False)
+        
+    def _summarize_nodes(nodes):
+        # Only keep critical topological attributes, drop heavy 'services'/'vulnerabilities'
+        return [{"id": n.get("id"), "ip": n.get("ip"), "type": n.get("type"), "role": n.get("role")} for n in nodes]
+
     if _scenario_topology is not None:
         return json.dumps({
             "scenario": _scenario_topology["scenario_name"],
             "subnet": _scenario_topology["subnet"],
-            "nodes": _scenario_topology["nodes"],
+            "nodes": _summarize_nodes(_scenario_topology["nodes"]),
             "edges": _scenario_topology["edges"],
         }, ensure_ascii=False)
-    return json.dumps(_backend.to_dict(), ensure_ascii=False, default=str)
+        
+    backend_dict = _backend.to_dict()
+    backend_dict["nodes"] = _summarize_nodes(backend_dict.get("nodes", []))
+    return json.dumps(backend_dict, ensure_ascii=False, default=str)
 
 
 def get_device_info(device_id: str) -> str:
