@@ -1,11 +1,11 @@
 name: Update Master VM
 
-# Auto-update actif : à chaque push sur main, CHAQUE master self-hosted fait
-# git pull + pip install + restart nato-fastapi. La matrix cible les deux runners
-# (nato-master = pve-benchmark, nato-master-2 = pve) → les deux boxes se mettent
-# à jour. fail-fast: false → si un box est offline, l'autre se met quand même à jour.
+# Auto-update actif : à chaque push sur main, le master self-hosted fait
+# git pull + pip install + restart nato-fastapi. La box unique est pve-nato
+# (runner nato-master, 192.168.88.165 / Tailscale 100.103.253.86). Elle remplace
+# les anciennes pve + pve-benchmark (décommissionnées). fail-fast: false conservé.
 # Les fichiers env-spécifiques (inventory.yml, main.yml, vault_master.yml) sont en
-# skip-worktree sur chaque master → le pull ne les écrase pas. Ne jamais commiter ces 3.
+# skip-worktree sur le master → le pull ne les écrase pas. Ne jamais commiter ces 3.
 on:
   push:
     branches: [main]
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [nato-master, nato-master-2]
+        runner: [nato-master]
     runs-on: [self-hosted, "${{ matrix.runner }}"]
 
     steps:
