@@ -398,6 +398,7 @@ class TestGraphTools:
             "get_attack_surface",
             "get_attack_paths",
             "get_risk_scores",
+            "get_graph_disbalance",
         }
         assert names == expected
 

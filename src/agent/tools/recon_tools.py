@@ -196,6 +196,13 @@ def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) ->
         command,
     ]
     result = _run(cmd, timeout=30)
+    
+    # Truncate output to prevent LLM context flooding (e.g. from large file reads)
+    if isinstance(result.get("stdout"), str) and len(result["stdout"]) > 8000:
+        result["stdout"] = result["stdout"][:8000] + "\n...[TRUNCATED]"
+    if isinstance(result.get("stderr"), str) and len(result["stderr"]) > 4000:
+        result["stderr"] = result["stderr"][:4000] + "\n...[TRUNCATED]"
+        
     result["success"] = result["return_code"] == 0
     return json.dumps(result)
 
@@ -594,6 +601,39 @@ def decode_value(value: str, kind: str) -> str:
         return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
 
 
+def modbus_write(target: str, register: int, value: int, port: int = 502, unit_id: int = 1) -> str:
+    """Write a value to a Modbus holding register."""
+    try:
+        from pymodbus.client import ModbusTcpClient
+        from pymodbus.exceptions import ModbusException
+    except ImportError:
+        return json.dumps({"error": "pymodbus is not installed in the LANCE backend."})
+
+    try:
+        client = ModbusTcpClient(target, port=port)
+        if not client.connect():
+            return json.dumps({"error": f"Connection Refused: Cannot connect to {target}:{port}"})
+
+        # Write to holding register (function code 6)
+        response = client.write_register(register, value, slave=unit_id)
+        
+        if response.isError():
+            result = {"success": False, "error": str(response)}
+        else:
+            result = {
+                "success": True, 
+                "message": f"Successfully wrote value {value} to register {register} at {target}:{port} (slave {unit_id})"
+            }
+        
+        client.close()
+        return json.dumps(result)
+        
+    except ModbusException as exc:
+        return json.dumps({"success": False, "error": f"Modbus Exception: {exc}"})
+    except Exception as exc:
+        return json.dumps({"success": False, "error": f"Exception: {exc}"})
+
+
 # ── Tool definitions (generated from YAML) ───────────────────────
 
 def _load_recon_tools() -> list[dict]:
@@ -602,6 +642,7 @@ def _load_recon_tools() -> list[dict]:
 
     tools = load_all_tools()
     register_python_handler(tools, "nvd_lookup", nvd_lookup)
+    register_python_handler(tools, "modbus_write", modbus_write)
     register_python_handler(tools, "arp_scan", arp_scan)
     register_python_handler(tools, "ssh_exec", ssh_exec)
     register_python_handler(tools, "try_credential", try_credential)

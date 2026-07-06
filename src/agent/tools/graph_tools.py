@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import asdict
 from pathlib import Path
@@ -13,6 +14,18 @@ from src.loader import build_graph, load_yaml
 from src.cve_lookup import load_cpe_mapping, scan_all_devices
 from src.risk_scorer import score_all_devices
 from src.attack_path import analyze_attack_paths
+from src.agent.tools.disbalance_engine import (
+    WeightedAttackGraph,
+    build_weighted_attack_graph,
+    compute_node_disbalance,
+)
+from src.agent.tools.impact_cone import (
+    identify_epicenter,
+    compute_graph_disbalance,
+    build_graph_delta_report,
+)
+
+log = logging.getLogger(__name__)
 
 INFRA_YAML = Path("infrastructure/nato_lab.yaml")
 CPE_YAML = Path("infrastructure/cpe_mapping.yaml")
@@ -29,6 +42,11 @@ _scenario_topology: dict | None = None
 
 # Discovery mode — set by load_discovery_context() when no pre-defined topology
 _discovery_mode: dict | None = None  # {"target_network": "192.168.1.0/24"}
+
+# Weighted attack graph — for local disbalance computation
+_weighted_graph: WeightedAttackGraph | None = None
+# Last computed graph delta report
+_last_disbalance_report: dict | None = None
 
 
 def load_discovery_context(target_network: str) -> dict:
@@ -300,11 +318,60 @@ def update_discovery_hosts(hosts: list[dict]) -> None:
     Called by the pipeline after Phase 3a scanner runs in discovery mode so that
     get_network_neighbors() can provide neighbor context to Phase 3b agents.
 
+    Also triggers local disbalance computation if new hosts were added.
+
     hosts: list of {"id": str, "ip": str, "role": str, "services": [...]}
     """
-    global _discovery_mode
+    global _discovery_mode, _weighted_graph, _last_disbalance_report
     if _discovery_mode is not None:
+        old_hosts = _discovery_mode.get("discovered_hosts", [])
+        old_ids = {h.get("id") for h in old_hosts}
         _discovery_mode["discovered_hosts"] = hosts
+
+        # Detect new hosts for disbalance computation
+        new_hosts = [h for h in hosts if h.get("id") not in old_ids]
+        if new_hosts and _weighted_graph is not None:
+            mutation_data = {"new_hosts": new_hosts}
+            epicenter = identify_epicenter("discovery", mutation_data)
+            if epicenter:
+                # Update graph edges for new hosts
+                for h in new_hosts:
+                    _weighted_graph.add_node(
+                        h["id"], role=h.get("role", ""), ip=h.get("ip", ""),
+                    )
+                    # Add edges from existing hosts to new host
+                    for existing in old_hosts:
+                        _weighted_graph.set_edge_weight(
+                            existing["id"], h["id"], 0.1,
+                        )
+                        _weighted_graph.set_edge_weight(
+                            h["id"], existing["id"], 0.1,
+                        )
+
+                # Compute cone of impact
+                affected = compute_graph_disbalance(
+                    _weighted_graph, epicenter,
+                )
+                edges_mod = [
+                    {
+                        "from": existing["id"],
+                        "to": h["id"],
+                        "previous_weight": "infinite",
+                        "current_weight": "0.1",
+                        "status": "DISCOVERED",
+                    }
+                    for existing in old_hosts
+                    for h in new_hosts
+                ]
+                _last_disbalance_report = build_graph_delta_report(
+                    affected, edges_mod, "update_discovery_hosts",
+                )
+                # Update snapshot for next iteration
+                _weighted_graph.snapshot_distances()
+                log.info(
+                    "Discovery disbalance: %d affected nodes from epicenter %s",
+                    len(affected), epicenter,
+                )
 
 
 def _ensure_loaded():
@@ -315,7 +382,10 @@ def _ensure_loaded():
 # ── Tool functions ───────────────────────────────────────────────
 
 def get_network_topology() -> str:
-    """Return the full network topology as JSON (nodes + edges)."""
+    """Return a summarized network topology as JSON (nodes + edges).
+    Nodes are summarized to save LLM context tokens.
+    Use get_device_info(id) to get full details for a specific device.
+    """
     _ensure_loaded()
     if _discovery_mode is not None:
         return json.dumps({
@@ -323,14 +393,22 @@ def get_network_topology() -> str:
             "target_network": _discovery_mode["target_network"],
             "note": "No pre-defined topology. Use nmap_scan to discover hosts on the target network.",
         }, ensure_ascii=False)
+        
+    def _summarize_nodes(nodes):
+        # Only keep critical topological attributes, drop heavy 'services'/'vulnerabilities'
+        return [{"id": n.get("id"), "ip": n.get("ip"), "type": n.get("type"), "role": n.get("role")} for n in nodes]
+
     if _scenario_topology is not None:
         return json.dumps({
             "scenario": _scenario_topology["scenario_name"],
             "subnet": _scenario_topology["subnet"],
-            "nodes": _scenario_topology["nodes"],
+            "nodes": _summarize_nodes(_scenario_topology["nodes"]),
             "edges": _scenario_topology["edges"],
         }, ensure_ascii=False)
-    return json.dumps(_backend.to_dict(), ensure_ascii=False, default=str)
+        
+    backend_dict = _backend.to_dict()
+    backend_dict["nodes"] = _summarize_nodes(backend_dict.get("nodes", []))
+    return json.dumps(backend_dict, ensure_ascii=False, default=str)
 
 
 def get_device_info(device_id: str) -> str:
@@ -417,6 +495,115 @@ def get_risk_scores() -> str:
     return json.dumps(scores, ensure_ascii=False, default=str)
 
 
+# ── Disbalance integration ────────────────────────────────────────
+
+
+def init_weighted_graph(target_node: str | None = None) -> None:
+    """Initialize the weighted attack graph from current topology.
+
+    Should be called after topology is loaded (scenario or discovery mode)
+    and before any mutations occur.
+    """
+    global _weighted_graph
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    if _scenario_topology is not None:
+        nodes = _scenario_topology.get("nodes", [])
+        edges = _scenario_topology.get("edges", [])
+    elif _discovery_mode is not None:
+        hosts = _discovery_mode.get("discovered_hosts", [])
+        nodes = [{"id": h["id"], "ip": h.get("ip", ""),
+                  "role": h.get("role", ""), "services": h.get("services", [])}
+                 for h in hosts]
+        # In discovery mode, initially flat topology (all interconnected)
+        for i, n1 in enumerate(nodes):
+            for n2 in nodes[i + 1:]:
+                edges.append({"source": n1["id"], "target": n2["id"]})
+                edges.append({"source": n2["id"], "target": n1["id"]})
+    elif _backend is not None:
+        topo = _backend.to_dict()
+        nodes = topo.get("nodes", [])
+        edges = topo.get("edges", [])
+
+    if nodes:
+        _weighted_graph = build_weighted_attack_graph(nodes, edges, target_node)
+        log.info("Weighted attack graph initialized: %d nodes", len(nodes))
+    else:
+        log.warning("No topology available to initialize weighted graph")
+
+
+def trigger_disbalance_on_exploit(
+    device_id: str,
+    exploit_status: str,
+    vuln_type: str = "",
+    device_ip: str = "",
+) -> dict | None:
+    """Trigger disbalance computation after a successful exploitation.
+
+    Updates the edge weights for the compromised node (weight → 0 = free
+    traversal) and runs the cone-of-impact algorithm.
+
+    Returns the graph_delta report, or None if no weighted graph is available.
+    """
+    global _weighted_graph, _last_disbalance_report
+    if _weighted_graph is None:
+        log.warning("No weighted graph — cannot compute exploit disbalance")
+        return None
+
+    mutation_data = {
+        "device_id": device_id,
+        "device_ip": device_ip,
+        "exploit_status": exploit_status,
+        "vuln_type": vuln_type,
+    }
+    epicenter = identify_epicenter("exploitation", mutation_data)
+    if not epicenter:
+        return None
+
+    # Update edge weights: all edges TO the compromised node get weight = 1.0
+    # (free traversal since node is now under attacker control)
+    edges_modified: list[dict] = []
+    for pred in _weighted_graph.predecessors(epicenter):
+        old_weight = _weighted_graph.get_edge_weight(pred, epicenter)
+        _weighted_graph.set_edge_weight(pred, epicenter, 1.0)
+        edges_modified.append({
+            "from": pred,
+            "to": epicenter,
+            "previous_weight": str(round(old_weight, 4)) if old_weight != float("inf") else "infinite",
+            "current_weight": "1.0",
+            "status": "EXPLOITED",
+        })
+
+    # Compute cone of impact
+    affected = compute_graph_disbalance(_weighted_graph, epicenter)
+    _last_disbalance_report = build_graph_delta_report(
+        affected, edges_modified, vuln_type or "exploitation",
+    )
+    # Update snapshot for next iteration
+    _weighted_graph.snapshot_distances()
+    log.info(
+        "Exploit disbalance: %d affected nodes from epicenter %s",
+        len(affected), epicenter,
+    )
+    return _last_disbalance_report
+
+
+def get_graph_disbalance() -> str:
+    """Return the last computed graph disbalance report as JSON.
+
+    Shows which nodes were affected by the most recent graph mutation
+    (discovery or exploitation) and their local disbalance scores.
+    """
+    if _last_disbalance_report is not None:
+        return json.dumps(_last_disbalance_report, ensure_ascii=False)
+    return json.dumps({
+        "status": "no_data",
+        "message": "No graph mutation has been detected yet. "
+                   "Disbalance is computed after discovery or exploitation events.",
+    })
+
+
 # ── Tool definitions (for the provider) ──────────────────────────
 
 GRAPH_TOOLS = [
@@ -458,5 +645,16 @@ GRAPH_TOOLS = [
         "description": "Get risk scores for all devices, combining CVSS vulnerability scores, network exposure, and betweenness centrality.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
         "function": get_risk_scores,
+    },
+    {
+        "name": "get_graph_disbalance",
+        "description": (
+            "Get the local disbalance report showing which nodes were affected "
+            "by the most recent graph mutation (discovery or exploitation). "
+            "Returns the cone of impact: only nodes whose shortest-path distance "
+            "to the OT target changed, with their delta scores."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+        "function": get_graph_disbalance,
     },
 ]

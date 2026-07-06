@@ -1,0 +1,30 @@
+name: modbus_write
+handler: python
+description: >
+  Write a value to a Modbus holding register (function code 6) or multiple registers.
+  Use this to safely exploit exposed PLC ICS devices by altering their physical or logic state.
+  Do NOT write manual Python scripts for Modbus, ALWAYS use this tool instead.
+tags: ["ics", "scada", "exploitation", "modbus"]
+parameters:
+  - name: target
+    type: string
+    description: "Target IP address of the Modbus server (PLC/HMI)"
+    required: true
+  - name: register
+    type: integer
+    description: "The Modbus register address to write to"
+    required: true
+  - name: value
+    type: integer
+    description: "The integer value to write"
+    required: true
+  - name: port
+    type: integer
+    description: "Modbus TCP port (default 502)"
+    required: false
+    default: 502
+  - name: unit_id
+    type: integer
+    description: "Modbus Slave ID / Unit Identifier (default 1)"
+    required: false
+    default: 1
