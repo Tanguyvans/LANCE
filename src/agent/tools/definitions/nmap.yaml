@@ -1,6 +1,6 @@
 name: "nmap_scan"
 command: "nmap"
-args: ["-sV"]
+args: ["-sV", "-T4", "--max-retries=1"]
 enabled: true
 timeout: 300
 short_description: "Network port and service scanner"
