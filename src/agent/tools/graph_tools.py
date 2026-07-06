@@ -440,10 +440,7 @@ def get_device_info(device_id: str) -> str:
 
 
 def get_attack_surface() -> str:
-    """Return devices that expose services (have open ports).
-    Returns a compact summary per device (id, ip, role, service:port list).
-    Use get_device_info(id) to get full details for a specific device.
-    """
+    """Return devices that expose services (have open ports)."""
     _ensure_loaded()
     if _discovery_mode is not None:
         hosts = _discovery_mode.get("discovered_hosts")
@@ -453,25 +450,9 @@ def get_attack_surface() -> str:
             "note": "Discovery mode — run nmap_scan first to identify the attack surface.",
             "target_network": _discovery_mode["target_network"],
         }, ensure_ascii=False)
-
-    def _summarize_surface(nodes):
-        """Compact surface: id, ip, role + flat list of 'service:port'."""
-        result = []
-        for n in nodes:
-            services = n.get("services", [])
-            if not services:
-                continue
-            compact_svcs = [f"{s.get('name','?')}:{s.get('port','?')}" for s in services]
-            result.append({
-                "id": n.get("id"),
-                "ip": n.get("ip"),
-                "role": n.get("role"),
-                "services": compact_svcs,
-            })
-        return result
-
     if _scenario_topology is not None:
-        return json.dumps(_summarize_surface(_scenario_topology["nodes"]), ensure_ascii=False)
+        exposed = [n for n in _scenario_topology["nodes"] if n.get("services")]
+        return json.dumps(exposed, ensure_ascii=False)
     return json.dumps(_backend.get_attack_surface(), ensure_ascii=False, default=str)
 
 
