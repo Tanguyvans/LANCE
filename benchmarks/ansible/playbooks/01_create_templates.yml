@@ -90,8 +90,8 @@
         --net0 name=eth0,bridge=vmbr0,ip=dhcp
         --unprivileged 1
         --features nesting=1
-        --storage local-lvm
-        --rootfs local-lvm:5
+        --storage {{ proxmox_storage }}
+        --rootfs {{ proxmox_storage }}:5
         --password benchmark
         --ssh-public-keys /root/.ssh/authorized_keys
       when: ct_debian_check.rc != 0
@@ -107,6 +107,18 @@
         seconds: 10
       when: ct_debian_check.rc != 0
       tags: [lxc]
+
+    # Pointer l'apt du template vers le cache apt-cacher-ng du Proxmox (:3142).
+    # Baké AVANT l'install des paquets de base → le build ET tous les CT de
+    # scénario clonés depuis ce template héritent du cache. apt_cache_host doit
+    # être une IP du Proxmox joignable depuis le réseau benchmark (via OpenWrt NAT)
+    # — par défaut proxmox_api_host (LAN). Voir 00_proxmox_init (install acng).
+    - name: Configurer le cache apt dans le CT template (hérité par les CT de scénario)
+      ansible.builtin.shell: |
+        pct exec {{ debian_lxc_vmid }} -- bash -c 'printf "Acquire::http::Proxy \"http://{{ apt_cache_host | default(proxmox_api_host) }}:3142\";\n" > /etc/apt/apt.conf.d/00aptproxy'
+      when: ct_debian_check.rc != 0
+      changed_when: true
+      tags: [lxc, aptcache]
 
     - name: Installer les paquets de base dans le CT
       ansible.builtin.command: >-

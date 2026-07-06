@@ -51,6 +51,31 @@
         state: present
       tags: [deps]
 
+    # ── Cache apt local (apt-cacher-ng) ──
+    # Proxy-cache pour ne pas retélécharger les .deb depuis l'extérieur à chaque
+    # déploiement de scénario. Écoute sur :3142. Le template Debian (01) et le
+    # master (deploy_master) pointent leur apt dessus → gros gain de bande passante.
+    - name: Installer apt-cacher-ng (proxy-cache apt local)
+      ansible.builtin.apt:
+        name: apt-cacher-ng
+        state: present
+      tags: [aptcache]
+
+    - name: Activer et démarrer apt-cacher-ng
+      ansible.builtin.systemd:
+        name: apt-cacher-ng
+        enabled: true
+        state: started
+      tags: [aptcache]
+
+    - name: Pointer l'apt du host Proxmox vers le cache local
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/00aptproxy
+        mode: "0644"
+        content: |
+          Acquire::http::Proxy "http://localhost:3142";
+      tags: [aptcache]
+
     # ── Bridge réseau vmbr1 ──
     - name: Vérifier si vmbr1 existe déjà
       ansible.builtin.command: ip link show {{ benchmark_bridge }}

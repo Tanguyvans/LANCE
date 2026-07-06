@@ -136,6 +136,27 @@
         name: en_US.UTF-8
         state: present
 
+    # ── Cache apt local ──────────────────────────────────────
+    # Router l'apt du master vers apt-cacher-ng sur le Proxmox (:3142) si
+    # joignable — l'install système ci-dessous (git, ansible, nmap…) est le plus
+    # gros téléchargement apt du système. Best-effort : si acng est absent
+    # (00_proxmox_init non joué), on n'écrit rien et l'apt part en direct.
+    - name: Vérifier si le cache apt (acng) du Proxmox est joignable
+      ansible.builtin.wait_for:
+        host: "{{ hostvars['proxmox']['ansible_host'] }}"
+        port: 3142
+        timeout: 5
+      register: acng_check
+      failed_when: false
+
+    - name: Pointer l'apt du master vers le cache local (si joignable)
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/00aptproxy
+        mode: "0644"
+        content: |
+          Acquire::http::Proxy "http://{{ hostvars['proxmox']['ansible_host'] }}:3142";
+      when: acng_check.state is defined and acng_check.state == "started"
+
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
@@ -229,6 +250,15 @@
         out_interface: eth0
         protocol: udp
         destination_port: "41641"
+        jump: ACCEPT
+
+    - name: Allow apt-cacher-ng sur eth0 (cache apt local vers le Proxmox)
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        out_interface: eth0
+        protocol: tcp
+        destination: "{{ hostvars['proxmox']['ansible_host'] }}"
+        destination_port: "3142"
         jump: ACCEPT
 
     - name: Block all other output on eth0 (pas de scans offensifs)
