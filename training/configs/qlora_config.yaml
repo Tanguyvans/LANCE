@@ -42,5 +42,5 @@ training:
   report_to: "wandb"
 
 data:
-  dataset_path: "data/finetuning/dataset.jsonl"
+  dataset_path: "data/finetuning/dataset_combined.jsonl"
   chat_template: "llama3"

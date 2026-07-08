@@ -1,6 +1,7 @@
 import json
 import os
 import argparse
+import re
 
 def format_lance_trace(trace_file: str) -> dict:
     """
@@ -40,9 +41,53 @@ def format_lance_trace(trace_file: str) -> dict:
                 
     return {"messages": messages}
 
+def format_txt_trace(trace_file: str) -> list:
+    """
+    Reads an AI-generated synthetic trace in custom <TRACE> XML-like format
+    and returns a list of formatted conversations.
+    """
+    system_prompt = "You are LANCE, an autonomous LLM Agent for Network Compromise Evaluation. Your goal is to identify and exploit vulnerabilities using the tools provided."
+    
+    with open(trace_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    traces = re.findall(r'<TRACE>(.*?)</TRACE>', content, re.DOTALL)
+    formatted_traces = []
+    
+    for trace in traces:
+        messages = []
+        messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": "Commence the network compromise evaluation."})
+        
+        steps = re.findall(r'<STEP>(.*?)</STEP>', trace, re.DOTALL)
+        for step in steps:
+            tool_match = re.search(r'<TOOL>(.*?)</TOOL>', step, re.DOTALL)
+            args_match = re.search(r'<ARGS>(.*?)</ARGS>', step, re.DOTALL)
+            result_match = re.search(r'<RESULT>(.*?)</RESULT>', step, re.DOTALL)
+            
+            if tool_match and args_match and result_match:
+                tool = tool_match.group(1).strip()
+                args_str = args_match.group(1).strip()
+                result = result_match.group(1).strip()
+                
+                try:
+                    args = json.loads(args_str)
+                except:
+                    args = {}
+                
+                action = {"tool": tool, "args": args}
+                messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+                messages.append({"role": "user", "content": result})
+                
+        if len(messages) > 2:
+            formatted_traces.append({"messages": messages})
+            
+    return formatted_traces
+
 def main(input_dir: str, output_file: str):
     """
     Convert a directory of traces into a JSONL dataset for QLoRA fine-tuning.
+    Handles both original .jsonl files and synthetic .txt files.
     """
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
@@ -50,22 +95,31 @@ def main(input_dir: str, output_file: str):
     with open(output_file, 'a', encoding='utf-8') as out_f:
         for root, _, files in os.walk(input_dir):
             for file in files:
-                # Assuming the trace files are named tool_calls.jsonl or similar
+                filepath = os.path.join(root, file)
+                
                 if file.endswith(".jsonl"):
-                    trace_path = os.path.join(root, file)
                     try:
-                        formatted_trace = format_lance_trace(trace_path)
-                        if len(formatted_trace["messages"]) > 2: # More than just system + init
+                        formatted_trace = format_lance_trace(filepath)
+                        if len(formatted_trace["messages"]) > 2:
                             out_f.write(json.dumps(formatted_trace, ensure_ascii=False) + "\n")
                             processed_count += 1
                     except Exception as e:
-                        print(f"Failed to process {trace_path}: {e}")
+                        print(f"Failed to process JSONL {filepath}: {e}")
+                        
+                elif file.endswith(".txt"):
+                    try:
+                        formatted_traces = format_txt_trace(filepath)
+                        for trace in formatted_traces:
+                            out_f.write(json.dumps(trace, ensure_ascii=False) + "\n")
+                            processed_count += 1
+                    except Exception as e:
+                        print(f"Failed to process TXT {filepath}: {e}")
                         
     print(f"Successfully processed {processed_count} traces and saved to {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_dir", type=str, default="data/raw_traces", help="Directory containing raw JSONL traces")
+    parser.add_argument("--input_dir", type=str, default="data/raw_traces", help="Directory containing raw traces (.jsonl or .txt)")
     parser.add_argument("--output_file", type=str, default="data/finetuning/dataset.jsonl", help="Output JSONL dataset path")
     args = parser.parse_args()
     
