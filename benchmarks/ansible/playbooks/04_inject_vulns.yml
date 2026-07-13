@@ -19,9 +19,9 @@
 
   vars:
     scenario_id: "1"
-    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+    base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     proxmox_tmp_ip: "192.168.100.254"   # IP temp sur vmbr1 pour joindre OpenWrt
-    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S19)
 
   tasks:
 
@@ -30,7 +30,7 @@
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
         --nameserver {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_dns }}{% endif %}
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       register: dns_set
       changed_when: dns_set.rc == 0
 
@@ -244,7 +244,7 @@
       ansible.builtin.shell: |
         printf 'Acquire::http::Proxy "http://192.168.100.200:3142/";\nAcquire::ForceIPv4 "true";\n' > /tmp/s13_01proxy
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s13_01proxy /etc/apt/apt.conf.d/01proxy
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: scenario_id == '13'
       changed_when: true
 
@@ -252,7 +252,7 @@
       ansible.builtin.shell: >-
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         sh -c "ping -c1 -W3 192.168.100.200 >/dev/null 2>&1 && nc -zw3 192.168.100.200 3142 >/dev/null 2>&1 && echo PROXY_OK"
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }}"
       when: scenario_id == '13'
@@ -308,7 +308,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_mqtt.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'mqtt_broker'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
@@ -366,7 +366,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_web.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'web_server'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
@@ -437,7 +437,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ldap.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'ldap_server'
       changed_when: true
 
@@ -476,7 +476,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ssh.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'ssh_server'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
@@ -576,7 +576,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_iotgw.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'iot_gateway'
       changed_when: true
 
@@ -613,7 +613,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_db.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'db_server'
       changed_when: true
 
@@ -669,7 +669,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_modbus.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'modbus_server'
       changed_when: true
 
@@ -737,7 +737,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_webupload.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'web_upload'
       changed_when: true
 
@@ -790,7 +790,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_camera.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'camera_server'
       changed_when: true
 
@@ -828,7 +828,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_nvr.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'nvr_server'
       changed_when: true
 
@@ -842,7 +842,7 @@
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
         'opkg update; opkg install socat'
-      when: "'telnet' in scenarios[scenario_id].router_vulns"
+      when: "'telnet' in benchmark_scenarios[scenario_id].router_vulns"
       changed_when: true
 
     - name: "[OpenWrt] Activer Telnet (port 23) via socat (service persistant)"
@@ -854,7 +854,7 @@
         chmod +x /etc/init.d/telnet_bench &&
         /etc/init.d/telnet_bench enable &&
         /etc/init.d/telnet_bench start'
-      when: "'telnet' in scenarios[scenario_id].router_vulns"
+      when: "'telnet' in benchmark_scenarios[scenario_id].router_vulns"
       changed_when: true
 
     - name: "[OpenWrt] Vérifier que Telnet écoute sur le port 23"
@@ -865,7 +865,7 @@
       register: telnet_check
       failed_when: telnet_check.rc != 0
       changed_when: false
-      when: "'telnet' in scenarios[scenario_id].router_vulns"
+      when: "'telnet' in benchmark_scenarios[scenario_id].router_vulns"
 
     - name: "[OpenWrt] Exposer l'interface web admin sur WAN (port 80)"
       ansible.builtin.shell: |
@@ -874,7 +874,7 @@
           'uci set uhttpd.main.listen_http="0.0.0.0:80"
            uci commit uhttpd
            /etc/init.d/uhttpd restart'
-      when: "'admin_wan' in scenarios[scenario_id].router_vulns"
+      when: "'admin_wan' in benchmark_scenarios[scenario_id].router_vulns"
       changed_when: true
 
     - name: "[OpenWrt] Activer FTP (port 21) via vsftpd"
@@ -884,7 +884,7 @@
           'opkg update; opkg install vsftpd &&
            echo "anonymous_enable=YES" >> /etc/vsftpd.conf &&
            /etc/init.d/vsftpd enable && /etc/init.d/vsftpd start'
-      when: "'ftp' in scenarios[scenario_id].router_vulns"
+      when: "'ftp' in benchmark_scenarios[scenario_id].router_vulns"
       failed_when: false
       changed_when: true
 
@@ -903,7 +903,7 @@
             systemctl restart mosquitto
             echo "[OK] MQTT WebSocket activé sur port 9001"
           fi'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'mqtt_broker'
         - scenario_id in ['1', '6']
@@ -924,7 +924,7 @@
         SECRET_KEY=django-insecure-key-for-iot-dashboard
         ENVEOF
           echo "[OK] .env exposé dans /var/www/html/"'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role in ['web_server', 'web_upload']
         - scenario_id in ['6', '7']
@@ -943,7 +943,7 @@
         Disallow: /.env
         ROBOTEOF
           echo "[OK] robots.txt injecté"'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role in ['web_server', 'web_upload', 'iot_gateway']
         - scenario_id in ['4', '6']
@@ -966,7 +966,7 @@
         ?>
         PHPEOF
           echo "[OK] SSRF endpoint check.php injecté"'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'web_upload'
         - scenario_id == '4'
@@ -991,7 +991,7 @@
           chmod 777 /opt/iot/maintenance.sh
           echo "*/5 * * * * root /opt/iot/maintenance.sh" >> /etc/crontab
           echo "[OK] SUID + cron writable injectés"'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'ssh_server'
         - scenario_id in ['3', '7']
@@ -1035,7 +1035,7 @@
           systemctl enable bacnet
           systemctl start bacnet
           echo "[OK] BACnet/IP sur port 47808 (sans auth)"'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.name is defined and item.name is search('hvac')
         - scenario_id == '5'
@@ -1083,7 +1083,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_mqtt_v2.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'mqtt_broker_v2'
       changed_when: true
 
@@ -1138,7 +1138,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ssh_v2.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'ssh_server_v2'
       changed_when: true
 
@@ -1215,7 +1215,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_web_v2.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'web_server_v2'
       changed_when: true
 
@@ -1253,7 +1253,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_redis.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'db_server_v2'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
@@ -1308,7 +1308,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ftp.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'ftp_server'
       changed_when: true
 
@@ -1346,7 +1346,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_snmp.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'snmp_server'
       changed_when: true
 
@@ -1415,7 +1415,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_coap.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'coap_server'
       changed_when: true
 
@@ -1517,7 +1517,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_nodered.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'nodered_server'
       changed_when: true
 
@@ -1538,7 +1538,7 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/configure_s14_control.sh /tmp/configure_s14_control.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- \
           bash /tmp/configure_s14_control.sh '{{ item.role }}' '{{ item.security_profile }}'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
@@ -1612,7 +1612,7 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/{{ 'device-a' if item.security_profile == 'hardened' else 'device-b' }}.key /etc/nato-pki/device.key
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/{{ 'device-a' if item.security_profile == 'hardened' else 'device-b' }}.public-key.sha256 /etc/nato-pki/public-key.sha256
         pct exec {{ base_vmid | int + item.vmid_offset }} -- chmod 0600 /etc/nato-pki/device.key
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }}"
       when:
@@ -1645,7 +1645,7 @@
           '{{ item.security_profile | default("vulnerable") }}' \
           's{{ scenario_id }}-{{ item.name }}' \
           '{{ "192.168.100.12" if scenario_id == "18" else "" }}'
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
       when:
@@ -1672,10 +1672,10 @@
           ══════════════════════════════════════════════════════════
           Vulnérabilités injectées — Scénario S{{ scenario_id }}
           ──────────────────────────────────────────────────────────
-          {% for svc in scenarios[scenario_id].services %}
+          {% for svc in benchmark_scenarios[scenario_id].services %}
           {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  [{{ svc.role }}]
           {% endfor %}
-          {{ base_vmid }}  s{{ scenario_id }}-router  {{ scenarios[scenario_id].router_vulns | join(', ') }}
+          {{ base_vmid }}  s{{ scenario_id }}-router  {{ benchmark_scenarios[scenario_id].router_vulns | join(', ') }}
           ──────────────────────────────────────────────────────────
           Prochaine étape : lancer le pipeline LLM sur ce scénario
           ══════════════════════════════════════════════════════════

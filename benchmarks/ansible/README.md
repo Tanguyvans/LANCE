@@ -188,7 +188,8 @@ ansible/
 ├── inventory.yml                  # Proxmox (<PROXMOX_IP>) + master (DHCP)
 ├── group_vars/
 │   └── all/
-│       ├── main.yml               # Variables globales (réseau, VMIDs, scénarios)
+│       ├── main.yml               # Variables locales + scénarios historiques S1–S13
+│       ├── scenarios_v2.yml       # Scénarios S14–S19 + variables fusionnées des playbooks
 │       └── vault_master.yml       # Secrets chiffrés (Vault, Tailscale, OpenRouter, GitHub)
 ├── group_vars/vault_master.yml.example  # Template des secrets à renseigner
 └── playbooks/

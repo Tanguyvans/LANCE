@@ -38,6 +38,15 @@ jobs:
         run: |
           bash -n files/configure_s14_control.sh files/generate_s16_pki.sh files/install_benchmark_simulator.sh
           ansible-playbook -i inventory.yml playbooks/deploy_master.yml --syntax-check
+          for playbook in \
+            03_deploy_scenario.yml \
+            04_inject_vulns.yml \
+            05_populate_services.yml \
+            06_verify.yml \
+            08_reset_scenario.yml \
+            99_teardown.yml; do
+            ansible-playbook -i inventory.yml "playbooks/${playbook}" --syntax-check
+          done
 
       - name: Run test suite
         env:

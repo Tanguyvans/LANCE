@@ -106,7 +106,7 @@ Le CLI public reconnaît le sélecteur `eval`, mais refuse volontairement son ex
 
 `catalog.yaml` est la source de vérité pour l’identifiant, le label et le split. Les définitions techniques de S1–S19 se trouvent dans `scenarios/`, `topologies/`, `packs/` et `ground_truth/`. Pour S20–S25, seul le profil de politique opaque est public.
 
-Les **ID déployables via Ansible** sont désormais les scénarios numériques `1`–`19`, définis dans `ansible/group_vars/all/main.yml` (source de vérité du déploiement public). Les variantes de contrôle S1h et S4h sont absentes de `catalog.yaml` et de `main.yml` : elles ne se déploient pas via `03_deploy_scenario`.
+Les **ID déployables via Ansible** sont désormais les scénarios numériques `1`–`19`. Les définitions historiques S1–S13 restent dans `ansible/group_vars/all/main.yml` et les ajouts S14–S19 sont isolés dans `ansible/group_vars/all/scenarios_v2.yml`, puis fusionnés pour les playbooks. Cette séparation préserve la configuration locale `main.yml` de la VM maître pendant les mises à jour CI/CD. Les variantes de contrôle S1h et S4h sont absentes de `catalog.yaml` et des variables de déploiement : elles ne se déploient pas via `03_deploy_scenario`.
 
 | ID | Label exact | Split | Difficulté publique | Surface étudiée |
 | --- | --- | --- | --- | --- |
@@ -214,7 +214,8 @@ benchmarks/
 │   ├── inventory.yml                 # Proxmox (<PROXMOX_IP>) + master (<MASTER_IP> / DHCP)
 │   ├── group_vars/
 │   │   └── all/
-│   │       ├── main.yml              # Inventaire, VMIDs et réseau du déploiement public
+│   │       ├── main.yml              # Configuration locale + définitions historiques S1–S13
+│   │       ├── scenarios_v2.yml      # Définitions suivies S14–S19 et vues fusionnées
 │   │       └── vault_master.yml      # Secrets chiffrés (Vault, Tailscale, OpenRouter, GitHub)
 │   └── playbooks/
 │       ├── deploy_master.yml         # Provisioning VM maître (LXC + Tailscale + FastAPI)

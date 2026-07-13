@@ -726,20 +726,27 @@ class Pipeline:
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
         """Teardown any currently running scenario before deploying a new one."""
         repo_root = Path(__file__).resolve().parents[2]
-        # Load all scenario IDs dynamically from group_vars
-        import yaml as _yaml
+        # Load the historical inventory and the independently versioned v2
+        # additions. main.yml is intentionally kept host-local on the master VM.
         all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
+        v2_yml = repo_root / "benchmarks/ansible/group_vars/all/scenarios_v2.yml"
         try:
-            _all_data = _yaml.safe_load(all_yml.read_text())
-            scenario_ids = [int(k) for k in _all_data.get("scenario_vmid_ranges", {}).keys()]
+            _all_data = yaml.safe_load(all_yml.read_text(encoding="utf-8")) or {}
+            _v2_data = yaml.safe_load(v2_yml.read_text(encoding="utf-8")) or {}
+            scenario_ranges = {
+                **_all_data.get("scenario_vmid_ranges", {}),
+                **_v2_data.get("scenario_vmid_ranges_v2", {}),
+            }
+            scenario_ids = [int(k) for k in scenario_ranges]
         except Exception:
+            scenario_ranges = {}
             scenario_ids = list(range(1, 11))
 
         # Read Proxmox host IP from inventory (single source of truth)
         proxmox_host = "192.168.88.100"
         try:
             inv_yml = repo_root / "benchmarks/ansible/inventory.yml"
-            inv = _yaml.safe_load(inv_yml.read_text())
+            inv = yaml.safe_load(inv_yml.read_text(encoding="utf-8"))
             proxmox_host = inv["all"]["hosts"]["proxmox"]["ansible_host"]
         except Exception:
             pass
@@ -749,8 +756,7 @@ class Pipeline:
                 continue  # Will be redeployed fresh
             # Check if any VM in this scenario's range exists
             try:
-                data = _all_data
-                base = data["scenario_vmid_ranges"].get(str(sid))
+                base = scenario_ranges.get(str(sid))
                 if not base:
                     continue
             except Exception:

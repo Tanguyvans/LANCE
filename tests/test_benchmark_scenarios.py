@@ -19,6 +19,7 @@ PACKS = BENCHMARKS / "packs" / "definitions"
 GROUND_TRUTH = BENCHMARKS / "ground_truth"
 EVAL_PROFILES = BENCHMARKS / "eval_profiles"
 GROUP_VARS = BENCHMARKS / "ansible" / "group_vars" / "all" / "main.yml"
+GROUP_VARS_V2 = BENCHMARKS / "ansible" / "group_vars" / "all" / "scenarios_v2.yml"
 
 PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 20))
 SEALED_IDS = tuple(str(scenario_id) for scenario_id in range(20, 26))
@@ -50,6 +51,23 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict), f"{path} must contain a YAML mapping"
     return data
+
+
+def _load_ansible_group_vars() -> dict[str, Any]:
+    """Return the same merged scenario view consumed by Ansible playbooks."""
+    group_vars = _load_yaml(GROUP_VARS)
+    group_vars_v2 = _load_yaml(GROUP_VARS_V2)
+    return {
+        **group_vars,
+        "scenario_vmid_ranges": {
+            **group_vars["scenario_vmid_ranges"],
+            **group_vars_v2["scenario_vmid_ranges_v2"],
+        },
+        "scenarios": {
+            **group_vars["scenarios"],
+            **group_vars_v2["scenarios_v2"],
+        },
+    }
 
 
 def _load_compose_gt() -> ModuleType:
@@ -213,7 +231,7 @@ def test_vulnerable_profiles_and_control_assertions_are_consistent(scenario_id: 
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_topology_matches_ansible_inventory_service_for_service(scenario_id: str):
-    group_vars = _load_yaml(GROUP_VARS)
+    group_vars = _load_ansible_group_vars()
     scenario = _load_yaml(SCENARIOS / f"S{scenario_id}.yaml")
     topology = _load_yaml(TOPOLOGIES / f"{scenario['topology']}.yaml")
     ansible = group_vars["scenarios"][scenario_id]
@@ -248,7 +266,7 @@ def test_topology_matches_ansible_inventory_service_for_service(scenario_id: str
 
 
 def test_ansible_vmid_ranges_do_not_overlap():
-    group_vars = _load_yaml(GROUP_VARS)
+    group_vars = _load_ansible_group_vars()
     ranges: dict[str, tuple[int, int]] = {}
 
     for scenario_id, scenario in group_vars["scenarios"].items():

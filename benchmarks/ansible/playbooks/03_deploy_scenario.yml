@@ -2,7 +2,7 @@
 # Usage : ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml \
 #           --ask-vault-pass --extra-vars "scenario_id=1"
 #
-# Scénarios disponibles (définis dans group_vars/all/main.yml) :
+# Scénarios disponibles (vue fusionnée dans group_vars/all/scenarios_v2.yml) :
 #   1-7  — Scénarios de base (Flat, Gateway, NATO Lab, Segmenté, Building, Domotique, Edge-Cloud)
 #   8-10 — Scénarios étendus (Multi-zone IT/IoT/OT, Mesh IoT, Flat variantes)
 #   11   — Smart City 3 zones (15 VMs, VMIDs 220-234)
@@ -17,15 +17,16 @@
 
   vars:
     scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
-    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
+    base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
+    max_vmid_offset: "{{ benchmark_scenarios[scenario_id].services | map(attribute='vmid_offset') | max | int }}"
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S19)
 
   tasks:
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
-      when: scenario_id not in scenarios
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ benchmark_scenarios.keys() | sort | join(', ') }}"
+      when: scenario_id not in benchmark_scenarios
 
     - name: Vérifier que le template Debian ({{ tpl_debian_vmid }}) existe
       ansible.builtin.command: pct status {{ tpl_debian_vmid }}
@@ -57,17 +58,13 @@
         )
         conflict_scenario=""
         for vmid in $running; do
-          [ "$vmid" -lt 100 ] 2>/dev/null || [ "$vmid" -gt 286 ] 2>/dev/null && continue
-          base={{ base_vmid }}
-          # S11: 15 VMIDs (220-234); S12: 35 VMIDs (235-269); S13: 17 VMIDs (270-286); others: 10
-          slot_size=10
-          [ "$base" -eq 220 ] && slot_size=15
-          [ "$base" -eq 235 ] && slot_size=35
-          [ "$base" -eq 270 ] && slot_size=17
-          [ "$vmid" -ge "$base" ] && [ "$vmid" -lt "$((base + slot_size))" ] && continue
-          {% for sid, sbase in scenario_vmid_ranges.items() %}
-          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -lt "{{ sbase + (15 if sbase == 220 else (35 if sbase == 235 else (17 if sbase == 270 else 10))) }}" ]; then
+          {% for sid, sbase in benchmark_scenario_vmid_ranges.items() %}
+          if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -le "{{ (sbase | int) + (benchmark_scenarios[sid].services | map(attribute='vmid_offset') | max | int) }}" ]; then
+            if [ "{{ sid }}" = "{{ scenario_id }}" ]; then
+              continue
+            fi
             conflict_scenario="{{ sid }}"
+            break
           fi
           {% endfor %}
           [ -n "$conflict_scenario" ] && break
@@ -93,9 +90,9 @@
     - name: Afficher le scénario à déployer
       ansible.builtin.debug:
         msg: |
-          Déploiement : S{{ scenario_id }} — {{ scenarios[scenario_id].name }}
+          Déploiement : S{{ scenario_id }} — {{ benchmark_scenarios[scenario_id].name }}
           VMID router  : {{ base_vmid }}
-          VMID services: {{ base_vmid | int + 1 }} → {{ base_vmid | int + scenarios[scenario_id].services | length }}
+          VMID services: {{ base_vmid | int + 1 }} → {{ base_vmid | int + max_vmid_offset | int }}
 
 
     # ── Router OpenWrt ──
@@ -145,7 +142,7 @@
       register: ct_checks
       changed_when: false
       failed_when: false
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
 
@@ -154,7 +151,7 @@
         pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + item.vmid_offset }}
         --hostname s{{ scenario_id }}-{{ item.name }}
         --full
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
@@ -164,14 +161,14 @@
         pct set {{ base_vmid | int + item.vmid_offset }}
         --net0 name=eth0,bridge={{ benchmark_bridge }}{% if item.vlan_id is defined %},tag={{ item.vlan_id }}{% endif %},ip={{ item.ip }}/24,gw={% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
         --nameserver {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_dns }}{% endif %}
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
 
     - name: Démarrer chaque CT service
       ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
@@ -185,7 +182,7 @@
         vmid={{ base_vmid | int + item.vmid_offset }}
         pct status "$vmid" | grep -q running || pct start "$vmid"
         pct exec "$vmid" -- sh -c "ss -tlnp | grep -q ':22'"
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       register: ct_ssh_ready
       until: ct_ssh_ready is succeeded
       retries: 30
@@ -196,7 +193,7 @@
       ansible.builtin.command: >-
         pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2
         {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       register: ct_ping
@@ -218,10 +215,10 @@
       ansible.builtin.debug:
         msg: |
           ══════════════════════════════════════════════════════════
-          Scénario S{{ scenario_id }} — {{ scenarios[scenario_id].name }} déployé
+          Scénario S{{ scenario_id }} — {{ benchmark_scenarios[scenario_id].name }} déployé
           ──────────────────────────────────────────────────────────
           {{ base_vmid }}  s{{ scenario_id }}-router  192.168.100.1  (OpenWrt WAN=DHCP)
-          {% for svc in scenarios[scenario_id].services %}
+          {% for svc in benchmark_scenarios[scenario_id].services %}
           {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  {{ svc.ip }}  [{{ 'OK' if ct_ping.results[loop.index0].rc == 0 else 'NO PING' }}]
           {% endfor %}
           ──────────────────────────────────────────────────────────

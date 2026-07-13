@@ -16,14 +16,15 @@
 
   vars:
     scenario_id: "1"
-    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
+    base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
+    max_vmid_offset: "{{ benchmark_scenarios[scenario_id].services | map(attribute='vmid_offset') | max | int }}"
 
   tasks:
 
     - name: Vérifier que le scénario est défini
       ansible.builtin.fail:
-        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ scenarios.keys() | sort | join(', ') }}"
-      when: scenario_id not in scenarios
+        msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ benchmark_scenarios.keys() | sort | join(', ') }}"
+      when: scenario_id not in benchmark_scenarios
 
     - name: Vérifier que le router du scénario existe
       ansible.builtin.command: qm status {{ base_vmid }}
@@ -38,7 +39,7 @@
 
     - name: Afficher le scénario à resetter
       ansible.builtin.debug:
-        msg: "Reset S{{ scenario_id }} — {{ scenarios[scenario_id].name }} (VMIDs {{ base_vmid }}–{{ base_vmid | int + scenarios[scenario_id].services | length }})"
+        msg: "Reset S{{ scenario_id }} — {{ benchmark_scenarios[scenario_id].name }} (VMIDs {{ base_vmid }}–{{ base_vmid | int + max_vmid_offset | int }})"
 
     # ── Redémarrage des CTs ──
     - name: Redémarrer chaque CT service
@@ -46,14 +47,14 @@
         pct stop {{ base_vmid | int + item.vmid_offset }} 2>/dev/null || true
         sleep 2
         pct start {{ base_vmid | int + item.vmid_offset }}
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       changed_when: true
 
     - name: Attendre que les CTs soient prêts (SSH actif)
       ansible.builtin.command: >-
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         sh -c "ss -tlnp | grep -q ':22'"
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       register: ct_ssh_ready
       until: ct_ssh_ready is succeeded
       retries: 12

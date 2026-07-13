@@ -17,8 +17,8 @@
 
   vars:
     scenario_id: "1"
-    base_vmid: "{{ scenario_vmid_ranges[scenario_id] | int }}"
-    # scenarios est défini dans group_vars/all.yml (source unique de vérité)
+    base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S19)
 
   tasks:
 
@@ -115,7 +115,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'mqtt_broker'
       changed_when: true
 
@@ -261,7 +261,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_web.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'web_server'
       changed_when: true
 
@@ -360,7 +360,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_ssh.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'ssh_server'
       changed_when: true
 
@@ -452,7 +452,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_iotgw.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'iot_gateway'
       changed_when: true
 
@@ -554,7 +554,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_db.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'db_server'
       changed_when: true
 
@@ -631,7 +631,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_modbus.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'modbus_server'
       changed_when: true
 
@@ -687,7 +687,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_webupload.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'web_upload'
       changed_when: true
 
@@ -762,7 +762,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_camera.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'camera_server'
       changed_when: true
 
@@ -839,7 +839,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_nvr.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'nvr_server'
       changed_when: true
 
@@ -874,7 +874,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt_bridge_s7.sh /tmp/populate_bridge.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_bridge.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: scenario_id == "7" and item.role == 'mqtt_broker'
       changed_when: true
 
@@ -931,7 +931,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_webupload_s7.sh /tmp/populate_s7.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_s7.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: scenario_id == "7" and item.role == 'web_upload'
       changed_when: true
 
@@ -985,7 +985,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt_v2.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'mqtt_broker_v2'
       changed_when: true
 
@@ -1018,7 +1018,7 @@
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_ssh_v2.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
-      loop: "{{ scenarios[scenario_id].services }}"
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when: item.role == 'ssh_server_v2'
       changed_when: true
 
