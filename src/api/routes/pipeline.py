@@ -171,6 +171,20 @@ async def start_pipeline(req: StartRequest):
     """Start the pipeline. Returns 409 if already running."""
     if _state["running"]:
         raise HTTPException(status_code=409, detail="Pipeline already running")
+    if req.scenario_id is not None:
+        from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
+        try:
+            req.scenario_id = _parse_single_scenario_id(req.scenario_id)
+        except SealedScenarioError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "S20-S25 require the external sealed controller and isolated worker. "
+                    "They cannot run inside the dashboard process."
+                ),
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     from datetime import datetime
     _state["running"] = True
@@ -241,6 +255,16 @@ def _batch_thread(req: BatchRequest):
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
 
+        from src.agent.batch import (
+            _aggregate_batch_results,
+            _evaluation_metrics,
+            _parse_scenario_ids,
+        )
+        # Validate before importing/constructing any execution machinery. This
+        # is the worker-side defense if _batch_thread is called directly.
+        selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
+        batch_ids = _parse_scenario_ids(selector)
+
         from src.agent.provider import LLMProvider
         from src.agent.pipeline import Pipeline
         from src.benchmark.evaluator import evaluate
@@ -258,16 +282,8 @@ def _batch_thread(req: BatchRequest):
                 if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
                     _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
 
-        # Resolve "all" to all available scenario IDs
-        if req.batch_ids == ["all"]:
-            batch_ids = sorted(
-                p.stem.replace("scenario_", "")
-                for p in sorted(GT_DIR.glob("scenario_*.yaml"))
-            )
-        else:
-            batch_ids = req.batch_ids
-
         results = []
+        evaluation_results = []
         total = len(batch_ids)
 
         _push({"type": "batch_start", "total": total, "ids": batch_ids})
@@ -279,15 +295,6 @@ def _batch_thread(req: BatchRequest):
             gt_file = GT_DIR / f"scenario_{sid}.yaml"
             _push({"type": "batch_scenario_start", "scenario_id": sid, "index": idx, "total": total})
             _state["scenario_id"] = sid
-
-            provider = LLMProvider(provider=req.provider, model=req.model)
-            pipeline = Pipeline(
-                provider=provider,
-                phases=req.phases or None,
-                scenario_id=int(sid) if sid.isdigit() else sid,
-                auto_teardown=True,
-                blind=req.blind,
-            )
 
             def make_callback(scenario_id):
                 def callback(event: dict):
@@ -305,42 +312,83 @@ def _batch_thread(req: BatchRequest):
                         _state["run_dir"] = ev.get("run_dir")
                 return callback
 
-            pipeline.run(stream_callback=make_callback(sid), stop_event=_state.get("stop_event"))
+            pipeline = None
+            try:
+                provider = LLMProvider(provider=req.provider, model=req.model)
+                pipeline = Pipeline(
+                    provider=provider,
+                    phases=req.phases or None,
+                    scenario_id=int(sid) if sid.isdigit() else sid,
+                    auto_teardown=True,
+                    blind=req.blind,
+                    benchmark_split="dev-public",
+                )
+                pipeline.run(
+                    stream_callback=make_callback(sid),
+                    stop_event=_state.get("stop_event"),
+                )
+            except Exception as exc:
+                failed_run_dir = getattr(pipeline, "run_dir", None)
+                tracker = getattr(pipeline, "tracker", None)
+                cost = round(tracker.total_cost(), 4) if tracker is not None else 0.0
+                entry = {
+                    "scenario_id": sid,
+                    "run_dir": str(failed_run_dir) if failed_run_dir else None,
+                    "cost_usd": cost,
+                    "metrics": None,
+                    "status": "failed",
+                    "reason": str(exc),
+                }
+                results.append(entry)
+                _push({
+                    "type": "batch_scenario_done",
+                    "scenario_id": sid,
+                    "index": idx,
+                    "total": total,
+                    "cost_usd": cost,
+                    "metrics": None,
+                    "run_dir": entry["run_dir"],
+                    "status": "failed",
+                    "error": str(exc),
+                })
+                continue
+
             run_dir = pipeline.run_dir
             cost = round(pipeline.tracker.total_cost(), 4)
 
             metrics = None
+            evaluation_error = None
             if gt_file.exists():
                 try:
-                    ev_result = evaluate(run_dir, gt_file)
-                    metrics = {
-                        "recall": round(ev_result.recall, 3),
-                        "precision": round(ev_result.precision, 3),
-                        "f1": round(ev_result.f1_score, 3),
-                        "score_pct": round(ev_result.score_pct, 1),
-                        "tp": ev_result.true_positives,
-                        "fp": ev_result.false_positives,
-                        "fn": ev_result.false_negatives,
-                    }
-                except Exception:
-                    pass
+                    ev_result = evaluate(run_dir, gt_file, policy="strict-v2")
+                    ev_result.split = "dev-public"
+                    evaluation_results.append(ev_result)
+                    metrics = _evaluation_metrics(ev_result)
+                except Exception as exc:
+                    evaluation_error = str(exc)
 
-            entry = {"scenario_id": sid, "run_dir": str(run_dir), "cost_usd": cost, "metrics": metrics}
-            results.append(entry)
-            _push({"type": "batch_scenario_done", "scenario_id": sid, "index": idx, "total": total,
-                   "cost_usd": cost, "metrics": metrics, "run_dir": str(run_dir)})
-
-        # Aggregate
-        evaluated = [r for r in results if r.get("metrics")]
-        aggregate = {}
-        if evaluated:
-            aggregate = {
-                "avg_recall": round(sum(r["metrics"]["recall"] for r in evaluated) / len(evaluated), 3),
-                "avg_precision": round(sum(r["metrics"]["precision"] for r in evaluated) / len(evaluated), 3),
-                "avg_f1": round(sum(r["metrics"]["f1"] for r in evaluated) / len(evaluated), 3),
-                "avg_score_pct": round(sum(r["metrics"]["score_pct"] for r in evaluated) / len(evaluated), 1),
-                "total_cost_usd": round(sum(r["cost_usd"] for r in results), 4),
+            entry = {
+                "scenario_id": sid,
+                "run_dir": str(run_dir),
+                "cost_usd": cost,
+                "metrics": metrics,
+                "status": "ok" if metrics else "evaluation_failed",
             }
+            if evaluation_error:
+                entry["reason"] = evaluation_error
+            results.append(entry)
+            _push({
+                "type": "batch_scenario_done",
+                "scenario_id": sid,
+                "index": idx,
+                "total": total,
+                "cost_usd": cost,
+                "metrics": metrics,
+                "run_dir": str(run_dir),
+                "status": entry["status"],
+            })
+
+        aggregate = _aggregate_batch_results(evaluation_results, results, batch_ids)
 
         _push({"type": "batch_done", "results": results, "aggregate": aggregate,
                "total_cost_usd": aggregate.get("total_cost_usd", 0)})
@@ -363,6 +411,16 @@ async def start_batch(req: BatchRequest):
     """Start a batch run of multiple scenarios sequentially. Returns 409 if already running."""
     if _state["running"]:
         raise HTTPException(status_code=409, detail="Pipeline already running")
+
+    from src.agent.batch import SealedScenarioError, _parse_scenario_ids
+    try:
+        selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
+        selected_ids = _parse_scenario_ids(selector)
+    except SealedScenarioError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    req.batch_ids = selected_ids
 
     from datetime import datetime
     _state["running"] = True
@@ -396,6 +454,16 @@ async def teardown_scenario(req: TeardownRequest):
     """Run 99_teardown.yml for the given scenario in a background thread."""
     if _state["running"]:
         raise HTTPException(status_code=409, detail="Pipeline is running — wait for it to finish before teardown")
+    from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
+    try:
+        req.scenario_id = _parse_single_scenario_id(req.scenario_id)
+    except SealedScenarioError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Sealed scenario teardown is owned by the external controller",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Ensure the SSE queue exists so `teardown_done` reaches a dashboard that
     # has not started a run yet (a fresh page never created the queue).

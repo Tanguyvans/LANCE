@@ -1,0 +1,79 @@
+id: f12_device_pki
+name: Device PKI Lifecycle
+description: Certificate enrollment, cloning and revocation weaknesses using generated lab certificates.
+vulnerabilities:
+  pki_ca_server:
+  - key: F12-CA-KEY-EXPOSURE
+    applies_to: {profiles: [vulnerable]}
+    title: Provisioning endpoint exposes the device CA private key
+    severity: critical
+    category: data_exposure
+    hop_depth: 0
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The simulated CA status endpoint serves a PEM private key without authentication.
+    indicators:
+    - GET /ca/private-key returns HTTP 200
+    - Response begins with a PEM private-key marker
+    verification: curl -fsS http://{ip}:8080/ca/private-key
+    confidence_required: high
+  pki_enrollment_server:
+  - key: F12-ENROLL-REPLAY
+    applies_to: {profiles: [vulnerable]}
+    title: One-time device enrollment token can be replayed
+    severity: high
+    category: misconfiguration
+    hop_depth: 1
+    owasp_iot: I8 - Lack of Device Management
+    description: The same bootstrap token issues a bundle more than once.
+    indicators:
+    - Two POST requests with bootstrap-device-b both return 201
+    - Both responses contain the same device identity bundle
+    verification: POST http://{ip}:8080/enroll twice with token bootstrap-device-b
+    confidence_required: high
+  pki_mtls_server:
+  - key: F12-REVOCATION-IGNORED
+    applies_to: {profiles: [vulnerable]}
+    title: Revoked client certificate remains accepted by mTLS API
+    severity: high
+    category: weak_crypto
+    hop_depth: 3
+    owasp_iot: I8 - Lack of Device Management
+    description: TLS validates the lab CA but the service does not load or check the generated revocation list.
+    indicators:
+    - Connection without a client certificate is rejected
+    - The revoked device-b certificate receives HTTP 200
+    verification: curl with the generated revoked client certificate to https://{ip}:8443/device/status
+    confidence_required: high
+  pki_device:
+  - key: F12-CLONED-IDENTITY
+    applies_to: {profiles: [cloned]}
+    title: Device identity private key is cloned across devices
+    severity: critical
+    category: weak_crypto
+    hop_depth: 2
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The device-b fixture reuses device-a key material, allowing identity impersonation.
+    indicators:
+    - Public-key fingerprints for device-a and device-b are identical
+    - The cloned identity authenticates to the mTLS device API
+    verification: compare the generated device certificate public-key fingerprints
+    confidence_required: high
+controls:
+  pki_mtls_server:
+  - key: C12-MTLS-REQUIRED
+    applies_to: {profiles: [vulnerable]}
+    assertion: client_certificate_required
+    description: The API rejects clients that do not present a certificate signed by the lab CA.
+    verification: curl without a client certificate to https://{ip}:8443/device/status fails TLS authentication
+  pki_enrollment_server:
+  - key: C12-ENROLL-INVALID
+    applies_to: {profiles: [vulnerable]}
+    assertion: unknown_enrollment_token_rejected
+    description: An unknown bootstrap token returns HTTP 401.
+    verification: POST http://{ip}:8080/enroll with token invalid returns 401
+  pki_device:
+  - key: C12-UNIQUE-DEVICE-A
+    applies_to: {profiles: [hardened]}
+    assertion: unique_device_private_key
+    description: Device-a has a unique generated key and certificate.
+    verification: device-a public-key fingerprint differs from the CA and server keys

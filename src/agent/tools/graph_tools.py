@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ipaddress
 import re
 from dataclasses import asdict
 from pathlib import Path
@@ -114,12 +115,37 @@ _ROLE_SERVICES: dict[str, list[dict]] = {
     "coap_server":   [{"name": "coap", "port": 5683, "protocol": "udp"}],
     "snmp_server":   [{"name": "snmp", "port": 161, "protocol": "udp"}],
     "modbus_server": [{"name": "modbus", "port": 502, "protocol": "tcp"}],
+    "api_identity_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "api_tenant_server":   [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "api_data_store":      [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "api_event_broker":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "api_admin_portal":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "pki_ca_server":         [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "pki_enrollment_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "pki_mtls_server":       [{"name": "https", "port": 8443, "protocol": "tcp"}],
+    "pki_registry":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "pki_device":            [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ota_repository": [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ota_server":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ota_device":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ota_signer":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ota_monitor":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "cloud_web_server":      [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "cloud_metadata_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "cloud_control_plane":   [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "cloud_worker":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "cloud_audit":           [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ot_hmi":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ot_opcua_server": [{"name": "opcua", "port": 4840, "protocol": "tcp"}, {"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ot_bacnet_server":[{"name": "bacnet", "port": 47808, "protocol": "udp"}, {"name": "http", "port": 8080, "protocol": "tcp"}],
+    "ot_historian":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
 }
 
 _PORT_NAME: dict[int, str] = {
     21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 80: "http",
     389: "ldap", 443: "https", 1883: "mqtt", 2049: "nfs",
-    3306: "mysql", 5432: "postgres", 8080: "http-alt", 8883: "mqtt-tls",
+    3306: "mysql", 4840: "opcua", 5432: "postgres", 8080: "http-alt",
+    8443: "https", 8883: "mqtt-tls", 47808: "bacnet",
 }
 
 _PORT_RE = re.compile(r'[Pp]ort (\d+)/(tcp|udp)')
@@ -172,33 +198,42 @@ def _build_edges_from_attack_paths(attack_paths_data: list[dict], node_index: di
     return edges
 
 
-def load_scenario_topology(scenario_id: int) -> dict:
-    """Override graph tools with the benchmark scenario topology.
+def load_scenario_topology(scenario_id: int | str) -> dict:
+    """Load the *public* topology for a development benchmark scenario.
 
-    When active, get_network_topology / get_attack_surface / get_device_info
-    return the scenario VMs (192.168.100.x) instead of the physical lab.
-    Returns a summary dict (device_count, link_count, cve_count, top_risk).
+    The previous implementation read ``ground_truth/scenario_N.yaml`` and used
+    vulnerability indicators and attack paths to enrich the graph.  That made
+    the benchmark answer key part of the agent context.  Scenario mode now reads
+    only ``scenarios/SN.yaml`` and the referenced public topology definition.
+
+    Vulnerability counts and risk labels deliberately remain empty: they belong
+    to the evaluator-side oracle, not to the worker.
     """
     global _scenario_topology, _discovery_mode
     _discovery_mode = None  # Discovery mode must not take precedence over scenario topology
 
-    gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
-    if not gt_path.exists():
+    sid = str(scenario_id)
+    scenario_path = Path("benchmarks/scenarios") / f"S{sid}.yaml"
+    if not scenario_path.exists():
         return load_lab_context()
 
-    data = _yaml.safe_load(gt_path.read_text())
-    topology = data.get("topology", {})
+    scenario = _yaml.safe_load(scenario_path.read_text()) or {}
+    topology_id = scenario.get("topology")
+    topology_path = Path("benchmarks/topologies") / f"{topology_id}.yaml"
+    if not topology_id or not topology_path.exists():
+        return load_lab_context()
+
+    topology = _yaml.safe_load(topology_path.read_text()) or {}
     router = topology.get("router", {})
     services = topology.get("services", [])
-    vulnerabilities = data.get("vulnerabilities", [])
-    attack_paths_data = data.get("attack_paths", [])
 
     # Build nodes with role-based services
     nodes: list[dict] = []
     if router:
+        router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
         nodes.append({
-            "id": router.get("name", "router"),
-            "name": router.get("name", "router"),
+            "id": router_name,
+            "name": router_name,
             "type": "router",
             "role": "router",
             "ip": router.get("ip"),
@@ -207,9 +242,10 @@ def load_scenario_topology(scenario_id: int) -> dict:
         })
     for svc in services:
         role = svc.get("role", "")
+        device_name = svc.get("name_template", "s{sid}-device").format(sid=sid)
         nodes.append({
-            "id": svc["name"],
-            "name": svc["name"],
+            "id": device_name,
+            "name": device_name,
             "type": "server",
             "role": role,
             "ip": svc.get("ip"),
@@ -218,30 +254,49 @@ def load_scenario_topology(scenario_id: int) -> dict:
         })
 
     node_index = {n["id"]: n for n in nodes}
-    ip_to_id = {n["ip"]: n["id"] for n in nodes if n.get("ip")}
+    # Public links describe connectivity, not exploitation paths.  Flat
+    # topologies without explicit links are represented as a router-centred star.
+    edges: list[dict] = []
+    seen_edges: set[tuple[str, str]] = set()
+    for link in topology.get("links", []):
+        source = str(link.get("source", "")).format(sid=sid)
+        target = str(link.get("target", "")).format(sid=sid)
+        if source in node_index and target in node_index and source != target:
+            key = (source, target)
+            if key not in seen_edges:
+                seen_edges.add(key)
+                edges.append({"source": source, "target": target})
+    if not edges and router:
+        router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
+        edges = [
+            {"source": router_name, "target": node["id"]}
+            for node in nodes
+            if node["id"] != router_name
+        ]
 
-    # Enrich services from vulnerability indicators (port mentions)
-    for node in nodes:
-        _enrich_node_services(node, vulnerabilities)
-
-    # Build edges from attack_path chains
-    edges = _build_edges_from_attack_paths(attack_paths_data, node_index, ip_to_id)
-
-    # Count CVEs (vulns with a real CVE ID)
-    cve_count = sum(1 for v in vulnerabilities if v.get("cve"))
-
-    # Top risk = device with highest severity vulnerability
-    sev_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
-    top_risk = max(vulnerabilities, key=lambda v: sev_order.get(v.get("severity", ""), 0), default={}).get("device")
-
-    # Support multi-subnet scenarios (e.g. S13 VLAN with 3 separate zones)
-    raw_subnets = data.get("topology", {}).get("subnets")
-    subnet = raw_subnets[0] if raw_subnets else "192.168.100.0/24"
-    subnets = raw_subnets if raw_subnets else ["192.168.100.0/24"]
+    # Derive public scan subnets from service addresses unless explicitly given.
+    raw_subnets = topology.get("subnets")
+    if raw_subnets:
+        subnets = list(raw_subnets)
+    else:
+        subnets = []
+        for node in nodes:
+            ip = node.get("ip")
+            if not ip:
+                continue
+            try:
+                network = str(ipaddress.ip_network(f"{ip}/24", strict=False))
+            except ValueError:
+                continue
+            if network not in subnets:
+                subnets.append(network)
+        if not subnets:
+            subnets = ["192.168.100.0/24"]
+    subnet = subnets[0]
 
     _scenario_topology = {
         "scenario_id": scenario_id,
-        "scenario_name": data.get("scenario_name", f"S{scenario_id}"),
+        "scenario_name": scenario.get("name", f"S{sid}"),
         "subnet": subnet,
         "subnets": subnets,
         "nodes": nodes,
@@ -252,8 +307,8 @@ def load_scenario_topology(scenario_id: int) -> dict:
     return {
         "device_count": len(nodes),
         "link_count": len(edges),
-        "cve_count": cve_count,
-        "top_risk": top_risk,
+        "cve_count": 0,
+        "top_risk": None,
     }
 
 

@@ -19,6 +19,53 @@ import yaml
 from src.agent.vuln_taxonomy import canonicalize, NOISE_TYPES
 
 
+# ── Evaluation policies ───────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EvaluationPolicy:
+    """Matching/scoring behaviour for a benchmark evaluation.
+
+    ``legacy-v1`` preserves historical scores. ``strict-v2`` is intended for
+    new benchmark results: CVEs are target-bound, loose IP+severity matching is
+    disabled, and unmatched "common" findings are not silently auto-bonused.
+    """
+
+    name: str
+    require_cve_same_ip: bool
+    allow_loose_match: bool
+    allow_auto_bonus: bool
+
+
+LEGACY_V1 = EvaluationPolicy(
+    name="legacy-v1",
+    require_cve_same_ip=False,
+    allow_loose_match=True,
+    allow_auto_bonus=True,
+)
+STRICT_V2 = EvaluationPolicy(
+    name="strict-v2",
+    require_cve_same_ip=True,
+    allow_loose_match=False,
+    allow_auto_bonus=False,
+)
+
+EVALUATION_POLICIES: dict[str, EvaluationPolicy] = {
+    LEGACY_V1.name: LEGACY_V1,
+    STRICT_V2.name: STRICT_V2,
+}
+
+
+def resolve_policy(policy: str | EvaluationPolicy) -> EvaluationPolicy:
+    """Resolve a policy name while failing closed on unknown policy values."""
+    if isinstance(policy, EvaluationPolicy):
+        return policy
+    try:
+        return EVALUATION_POLICIES[policy]
+    except KeyError as exc:
+        choices = ", ".join(sorted(EVALUATION_POLICIES))
+        raise ValueError(f"Unknown evaluation policy '{policy}' (expected one of: {choices})") from exc
+
+
 # ── CVE year sanity ─────────────────────────────────────────────────────────────
 
 _CVE_YEAR_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
@@ -118,6 +165,11 @@ CATEGORY_TO_TYPE = {
         "token_forgery", "broken_authentication", "ssrf",
         "server_side_request_forgery",
     },
+    "broken_access_control": {
+        "broken_access_control", "idor", "bola", "mass_assignment",
+        "jwt_scope", "scope_bypass", "authorization_bypass",
+        "cross_tenant_access", "improper_privilege_management",
+    },
 }
 
 
@@ -161,6 +213,14 @@ class EvaluationResult:
     run_dir: str
     ground_truth_file: str
 
+    # Evaluation protocol / scenario-level metric. Historical fields below are
+    # intentionally retained for JSON/API compatibility.
+    scoring_policy: str = LEGACY_V1.name
+    split: str | None = None
+    is_zero_gt: bool = False
+    specificity: float | None = None
+    scenario_score_pct: float = 0.0
+
     # Counts
     total_gt_vulns: int = 0
     true_positives: int = 0
@@ -199,6 +259,15 @@ class EvaluationResult:
     gt_at_depth: dict = field(default_factory=dict)  # {0: 5, 1: 3, 2: 1} — GT counts per depth bucket
     tp_at_depth: dict = field(default_factory=dict)  # {0: 4, 1: 2, 2: 0} — TP counts per depth bucket
 
+    # An attack path is detected only when every GT vulnerability referenced by
+    # ``vulnerabilities_used`` was matched. This remains a diagnostic metric;
+    # the strict-v2 primary scenario score is still F1 (or specificity for a
+    # zero-GT control).
+    total_attack_paths: int = 0
+    attack_paths_detected: int = 0
+    path_coverage: float = 0.0
+    path_matches: list[dict] = field(default_factory=list)
+
     # Details
     matches: list[dict] = field(default_factory=list)
     unmatched_llm: list[dict] = field(default_factory=list)
@@ -207,13 +276,21 @@ class EvaluationResult:
 
 # ── Matching logic ────────────────────────────────────────────────────────────
 
-def _match_by_cve(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Match ground truth vuln to LLM finding by CVE ID (case-insensitive)."""
+def _match_by_cve(
+    gt_vuln: dict,
+    llm_findings: list[dict],
+    *,
+    require_same_ip: bool = False,
+) -> dict | None:
+    """Match a GT vulnerability by CVE ID, optionally bound to the target IP."""
     gt_cve = gt_vuln.get("cve")
     if not gt_cve:
         return None
     gt_cve_norm = gt_cve.upper()
+    gt_ip = gt_vuln.get("ip", "")
     for f in llm_findings:
+        if require_same_ip and (not gt_ip or f.get("device_ip", "") != gt_ip):
+            continue
         llm_cves = [c.upper() for c in (f.get("cve_ids") or [])]
         if gt_cve_norm in llm_cves:
             return f
@@ -275,6 +352,30 @@ def _infer_type_from_title(title: str) -> str | None:
         ("rce", "code_injection"),
         ("command injection", "code_injection"),
         ("ssrf", "auth_bypass"),
+        ("cross-tenant", "broken_access_control"),
+        ("another tenant", "broken_access_control"),
+        ("idor", "broken_access_control"),
+        ("bola", "broken_access_control"),
+        ("mass assignment", "broken_access_control"),
+        ("privileged ownership fields", "broken_access_control"),
+        ("jwt scope", "broken_access_control"),
+        ("administrative export", "broken_access_control"),
+        ("enrollment token", "misconfiguration"),
+        ("token can be replayed", "misconfiguration"),
+        ("revoked client certificate", "weak_cipher"),
+        ("identity private key is cloned", "weak_cipher"),
+        ("verification secret is shared", "weak_cipher"),
+        ("firmware rollback", "insecure_update"),
+        ("signed firmware rollback", "insecure_update"),
+        ("obsolete signed firmware", "insecure_update"),
+        ("signature does not cover", "insecure_update"),
+        ("over-privileged", "privilege_escalation"),
+        ("securitypolicy none", "weak_cipher"),
+        ("anonymous opc ua", "no_auth"),
+        ("bacnet client can write", "no_auth"),
+        ("without authorization", "no_auth"),
+        ("unauthenticated write", "no_auth"),
+        ("who-is exposes", "info_disclosure"),
         # ── Data exposure (EN + FR) ──────────────────────────────────────────
         ("server version", "info_disclosure"),
         ("banner disclosure", "info_disclosure"),
@@ -389,17 +490,33 @@ def _match_by_ip_and_service(gt_vuln: dict, llm_findings: list[dict]) -> dict | 
     return None
 
 
-def match_vuln(gt_vuln: dict, llm_findings: list[dict]) -> tuple[dict | None, str]:
+def match_vuln(
+    gt_vuln: dict,
+    llm_findings: list[dict],
+    policy: str | EvaluationPolicy = LEGACY_V1.name,
+) -> tuple[dict | None, str]:
     """Try to match a ground truth vuln to an LLM finding. Returns (finding, method)."""
-    f = _match_by_cve(gt_vuln, llm_findings)
+    resolved = resolve_policy(policy)
+    f = _match_by_cve(
+        gt_vuln,
+        llm_findings,
+        require_same_ip=resolved.require_cve_same_ip,
+    )
     if f:
         return f, "cve"
+
+    # In strict mode a GT entry carrying a CVE must be identified by that CVE;
+    # a generic type on the same host is insufficient.
+    if resolved.require_cve_same_ip and gt_vuln.get("cve"):
+        return None, ""
+
     f = _match_by_ip_and_type(gt_vuln, llm_findings)
     if f:
         return f, "ip+type"
-    f = _match_by_ip_and_service(gt_vuln, llm_findings)
-    if f:
-        return f, "ip+category"
+    if resolved.allow_loose_match:
+        f = _match_by_ip_and_service(gt_vuln, llm_findings)
+        if f:
+            return f, "ip+category"
     return None, ""
 
 
@@ -533,10 +650,17 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
     )
 
 
-def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
+def evaluate(
+    run_dir: Path,
+    ground_truth_file: Path,
+    policy: str | EvaluationPolicy = LEGACY_V1.name,
+) -> EvaluationResult:
+    resolved_policy = resolve_policy(policy)
+
     # Load ground truth
     gt_data = yaml.safe_load(ground_truth_file.read_text())
     gt_vulns = gt_data.get("vulnerabilities", [])
+    gt_attack_paths = gt_data.get("attack_paths", [])
     scenario_id = str(gt_data.get("scenario_id", "?"))
     weights = gt_data.get("scoring", {}).get("weights", {"critical": 4, "high": 3, "medium": 2, "low": 1})
     bonus_types = set(gt_data.get("bonus_types", []))
@@ -558,16 +682,29 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         scenario_id=scenario_id,
         run_dir=str(run_dir),
         ground_truth_file=str(ground_truth_file),
+        scoring_policy=resolved_policy.name,
+        is_zero_gt=not gt_vulns,
         total_gt_vulns=len(gt_vulns),
         total_llm_findings=len(llm_findings),
         max_weighted_score=max_score,
+        total_attack_paths=len(gt_attack_paths),
     )
 
-    # Use composite key id|device_ip to avoid collisions when multiple devices share the same VULN-00x IDs
-    matched_llm_keys: set[str] = set()
+    # Findings are identified by their list index, never by model-provided IDs.
+    # IDs are frequently blank or duplicated and must not hide false positives.
+    matched_llm_indices: set[int] = set()
 
-    def _llm_key(f: dict) -> str:
-        return f"{f.get('id', '')}|{f.get('device_ip', '')}"
+    def _remaining_findings() -> tuple[list[dict], list[int]]:
+        indices = [i for i in range(len(llm_findings)) if i not in matched_llm_indices]
+        return [llm_findings[i] for i in indices], indices
+
+    def _source_index(match: dict, indices: list[int]) -> int:
+        # Matching helpers return the original dict object, so identity is stable
+        # even when two findings have identical content or duplicate IDs.
+        for i in indices:
+            if llm_findings[i] is match:
+                return i
+        raise RuntimeError("Matched finding is not part of the source findings list")
 
     # Sort GT vulns by category specificity (narrow categories match first to avoid
     # broad categories like "misconfiguration" stealing narrow matches like "missing_header").
@@ -581,34 +718,43 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         return len(compatible) if compatible else 999
 
     sorted_gt = sorted(enumerate(gt_vulns), key=lambda pair: _category_specificity(pair[1]))
-    matches_by_gt_index: dict[int, tuple] = {}
+    matches_by_gt_index: dict[int, tuple[dict | None, str, int | None]] = {}
 
     # Pass 1: Exact CVE + ip+type matches only (no loose ip+severity)
     for gt_index, gt in sorted_gt:
-        remaining = [f for f in llm_findings if _llm_key(f) not in matched_llm_keys]
+        remaining, remaining_indices = _remaining_findings()
         # Try exact matches only
-        match = _match_by_cve(gt, remaining)
+        match = _match_by_cve(
+            gt,
+            remaining,
+            require_same_ip=resolved_policy.require_cve_same_ip,
+        )
         method = "cve" if match else ""
-        if not match:
+        # Strict CVE entries cannot fall back to a generic type match.
+        if not match and not (resolved_policy.require_cve_same_ip and gt.get("cve")):
             match = _match_by_ip_and_type(gt, remaining)
             method = "ip+type" if match else ""
+        match_index = None
         if match:
-            matched_llm_keys.add(_llm_key(match))
-        matches_by_gt_index[gt_index] = (match, method)
+            match_index = _source_index(match, remaining_indices)
+            matched_llm_indices.add(match_index)
+        matches_by_gt_index[gt_index] = (match, method, match_index)
 
     # Pass 2: Loose ip+severity matches for GT vulns still unmatched
-    for gt_index, gt in sorted_gt:
-        if matches_by_gt_index[gt_index][0] is not None:
-            continue
-        remaining = [f for f in llm_findings if _llm_key(f) not in matched_llm_keys]
-        match = _match_by_ip_and_service(gt, remaining)
-        if match:
-            matched_llm_keys.add(_llm_key(match))
-            matches_by_gt_index[gt_index] = (match, "ip+category")
+    if resolved_policy.allow_loose_match:
+        for gt_index, gt in sorted_gt:
+            if matches_by_gt_index[gt_index][0] is not None:
+                continue
+            remaining, remaining_indices = _remaining_findings()
+            match = _match_by_ip_and_service(gt, remaining)
+            if match:
+                match_index = _source_index(match, remaining_indices)
+                matched_llm_indices.add(match_index)
+                matches_by_gt_index[gt_index] = (match, "ip+category", match_index)
 
     # Re-iterate in original order to preserve report output
     for gt_index, gt in enumerate(gt_vulns):
-        match, method = matches_by_gt_index[gt_index]
+        match, method, _match_index = matches_by_gt_index[gt_index]
         severity = gt.get("severity", "low")
         weight = weights.get(severity, 1)
 
@@ -669,8 +815,8 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     # Bonus conditions:
     #   - explicit in ground_truth.yaml bonus_types list, OR
     #   - type is in BONUS_TYPES_AUTO AND the device has other matched findings (real device)
-    for f in llm_findings:
-        if _llm_key(f) in matched_llm_keys:
+    for finding_index, f in enumerate(llm_findings):
+        if finding_index in matched_llm_indices:
             continue
 
         f_type = f.get("type", "")
@@ -680,7 +826,11 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
 
         if bonus_types and (f_type in bonus_types or f_type_canon in bonus_types):
             is_bonus = True
-        elif (f_type in BONUS_TYPES_AUTO or f_type_canon in BONUS_TYPES_AUTO) and f_ip in matched_device_ips:
+        elif (
+            resolved_policy.allow_auto_bonus
+            and (f_type in BONUS_TYPES_AUTO or f_type_canon in BONUS_TYPES_AUTO)
+            and f_ip in matched_device_ips
+        ):
             is_bonus = True
 
         finding_summary = {
@@ -697,6 +847,33 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
         else:
             result.false_positives += 1
             result.unmatched_llm.append(finding_summary)
+
+    # Evaluate complete attack chains after one-to-one finding matching. Partial
+    # chains are intentionally not counted as detected, but their missing GT IDs
+    # remain visible on the public development split for diagnosis.
+    matched_gt_ids = {
+        str(match["gt_id"])
+        for match in result.matches
+        if match.get("matched") and match.get("gt_id")
+    }
+    for index, attack_path in enumerate(gt_attack_paths, start=1):
+        required = [str(item) for item in attack_path.get("vulnerabilities_used", [])]
+        missing = [item for item in required if item not in matched_gt_ids]
+        detected = bool(required) and not missing
+        if detected:
+            result.attack_paths_detected += 1
+        result.path_matches.append({
+            "id": str(attack_path.get("id", f"P{index}")),
+            "title": str(attack_path.get("title", "")),
+            "hop_count": len(attack_path.get("chain", [])),
+            "vulnerabilities_used": required,
+            "matched_vulnerabilities": [item for item in required if item in matched_gt_ids],
+            "missing_vulnerabilities": missing,
+            "detected": detected,
+        })
+    result.path_coverage = round(
+        result.attack_paths_detected / result.total_attack_paths, 3
+    ) if result.total_attack_paths else 0.0
 
     # Compute metrics
     tp = result.true_positives
@@ -717,6 +894,18 @@ def evaluate(run_dir: Path, ground_truth_file: Path) -> EvaluationResult:
     result.exploitation_coverage = round(
         result.tp_exploited / tp, 3
     ) if tp > 0 else 0.0
+
+    # A zero-GT control is one all-negative scenario-level trial. Reporting a
+    # clean run as 0% (the historical weighted-score behaviour) is misleading,
+    # while inventing a TN denominator from host counts is not statistically
+    # defensible. The aggregate clean-control rate is therefore the mean of this
+    # binary specificity across zero-GT scenarios/runs.
+    if result.is_zero_gt:
+        result.specificity = 1.0 if fp == 0 else 0.0
+        result.scenario_score_pct = result.specificity * 100.0
+    else:
+        result.specificity = None
+        result.scenario_score_pct = round(result.f1_score * 100.0, 1)
 
     # Multi-Hop Reach — fraction of GT vulns at depth >= k that were detected.
     # Computed on result.matches (which carries gt_hop_depth per match).
@@ -750,6 +939,10 @@ def print_report(result: EvaluationResult) -> None:
     print(f"    MHR_1 (vulns at depth >= 1) : {_fmt_mhr(result.mhr_1)}")
     print(f"    MHR_2 (vulns at depth >= 2) : {_fmt_mhr(result.mhr_2)}")
     print(f"    MHR_3 (vulns at depth >= 3) : {_fmt_mhr(result.mhr_3)}")
+    print(
+        f"    Path coverage                 : {result.path_coverage:.1%}  "
+        f"({result.attack_paths_detected}/{result.total_attack_paths})"
+    )
     if result.gt_at_depth:
         depth_breakdown = ", ".join(
             f"d{d}: {result.tp_at_depth.get(d, 0)}/{n}"
@@ -802,6 +995,12 @@ def main() -> None:
     parser.add_argument("--run-dir", required=True, help="Path to agent run output directory")
     parser.add_argument("--ground-truth", required=True, help="Path to ground_truth/scenario_N.yaml")
     parser.add_argument("--output", default=None, help="Path to save evaluation JSON (optional)")
+    parser.add_argument(
+        "--policy",
+        choices=sorted(EVALUATION_POLICIES),
+        default=LEGACY_V1.name,
+        help="Evaluation policy (legacy-v1 preserves historical scores)",
+    )
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -812,7 +1011,7 @@ def main() -> None:
     if not gt_file.exists():
         raise SystemExit(f"Ground truth file not found: {gt_file}")
 
-    result = evaluate(run_dir, gt_file)
+    result = evaluate(run_dir, gt_file, policy=args.policy)
     print_report(result)
 
     if args.output:

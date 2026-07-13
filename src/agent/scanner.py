@@ -35,7 +35,13 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "/firmware/", "/api/devices", "/api/status", "/api/exec",
             "/update", "/.env", "/robots.txt",
             "/upload", "/uploads/",
+            "/health", "/docs", "/protocol", "/firmware", "/status",
+            "/identity/certificate", "/identity/fingerprint",
+            "/ca/private-key", "/credentials",
         ]
+    ],
+    "https": [
+        ("tls_inspect", {"host": "{ip}", "port": "{port}"}),
     ],
     "mqtt": [
         ("mqtt_listen", {"broker": "{ip}", "topic": "#", "count": 5, "timeout": 5}),
@@ -89,6 +95,27 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "target": "{ip}", "ports": "5683",
             "skip_discovery": True,
             "udp_scan": True,
+        }),
+    ],
+    "opcua": [
+        ("tcp_send", {
+            "host": "{ip}", "port": "{port}", "payload_hex": "48454c",
+            "recv_bytes": 256, "timeout": 5,
+        }),
+        ("tcp_send", {
+            "host": "{ip}", "port": "{port}",
+            "payload_hex": "524541442042656e6368506f696e74",
+            "recv_bytes": 256, "timeout": 5,
+        }),
+    ],
+    "bacnet": [
+        ("udp_send", {
+            "host": "{ip}", "port": "{port}", "payload": "WHO-IS",
+            "encoding": "text", "recv_bytes": 256, "timeout": 5,
+        }),
+        ("udp_send", {
+            "host": "{ip}", "port": "{port}", "payload": "READ BenchPoint",
+            "encoding": "text", "recv_bytes": 256, "timeout": 5,
         }),
     ],
 }
@@ -145,7 +172,7 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
 # Service name aliases → SCAN_MATRIX key
 SERVICE_ALIASES: dict[str, str] = {
     "ssh": "ssh",
-    "http": "http", "https": "http", "http-alt": "http",
+    "http": "http", "https": "https", "http-alt": "http",
     "mqtt": "mqtt",
     "telnet": "telnet",
     "mysql": "mysql", "mariadb": "mysql",
@@ -155,6 +182,8 @@ SERVICE_ALIASES: dict[str, str] = {
     "snmp": "snmp",
     "coap": "coap",
     "ldap": "ldap",
+    "opcua": "opcua",
+    "bacnet": "bacnet",
     "port-9001": "mqtt",  # MQTT WebSocket
 }
 

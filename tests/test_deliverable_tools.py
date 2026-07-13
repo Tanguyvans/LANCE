@@ -47,6 +47,83 @@ class TestReadDeliverable:
         assert "error" in result
 
 
+class TestDeliverablePathConfinement:
+    def test_read_rejects_parent_traversal(self, clean_output):
+        outside = clean_output.parent / "secret.txt"
+        outside.write_text("oracle-secret")
+
+        result = json.loads(read_deliverable("../secret.txt"))
+
+        assert "error" in result
+        assert "oracle-secret" not in json.dumps(result)
+
+    def test_save_rejects_parent_traversal(self, clean_output):
+        outside = clean_output.parent / "escaped.txt"
+
+        result = json.loads(save_deliverable("../escaped.txt", "should-not-exist"))
+
+        assert "error" in result
+        assert not outside.exists()
+
+    def test_absolute_paths_are_rejected(self, clean_output):
+        target = clean_output / "absolute.md"
+
+        read_result = json.loads(read_deliverable(str(target)))
+        save_result = json.loads(save_deliverable(str(target), "content"))
+
+        assert "error" in read_result
+        assert "error" in save_result
+        assert not target.exists()
+
+    def test_read_rejects_symlink_escape(self, clean_output):
+        outside = clean_output.parent / "outside-secret.txt"
+        outside.write_text("secret-via-symlink")
+        (clean_output / "link.txt").symlink_to(outside)
+
+        result = json.loads(read_deliverable("link.txt"))
+
+        assert "error" in result
+        assert "secret-via-symlink" not in json.dumps(result)
+
+    def test_save_rejects_symlink_escape(self, clean_output):
+        outside = clean_output.parent / "outside-target.txt"
+        outside.write_text("original")
+        (clean_output / "link.txt").symlink_to(outside)
+
+        result = json.loads(save_deliverable("link.txt", "overwritten"))
+
+        assert "error" in result
+        assert outside.read_text() == "original"
+
+    def test_hidden_ground_truth_cannot_be_read_or_overwritten(self, clean_output):
+        hidden = clean_output / "ground_truth.yaml"
+        hidden.write_text("answer-key")
+
+        read_result = json.loads(read_deliverable("ground_truth.yaml"))
+        save_result = json.loads(save_deliverable("ground_truth.yaml", "tampered"))
+
+        assert "error" in read_result
+        assert "error" in save_result
+        assert hidden.read_text() == "answer-key"
+
+    def test_list_omits_hidden_and_escaping_symlink(self, clean_output):
+        (clean_output / "visible.md").write_text("ok")
+        (clean_output / "ground_truth.yaml").write_text("answer-key")
+        outside = clean_output.parent / "outside-list.txt"
+        outside.write_text("secret")
+        (clean_output / "outside-link.txt").symlink_to(outside)
+
+        result = json.loads(list_deliverables())
+
+        assert result["deliverables"] == ["visible.md"]
+
+    def test_aggregate_rejects_path_pattern(self, clean_output):
+        result = json.loads(aggregate_device_results("../*.json"))
+
+        assert result["vulnerabilities"] == []
+        assert "error" in result
+
+
 class TestListDeliverables:
     def test_empty_dir(self, clean_output):
         result = json.loads(list_deliverables())

@@ -1,0 +1,225 @@
+scenario_id: '14'
+scenario_name: Sparse Mixed-Hardening
+difficulty: hard
+description: Sparse Mixed-Hardening — Ten look-alike services with only four intentional
+  findings and explicit hardened controls
+topology:
+  router:
+    name: s14-router
+    vmid: 300
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s14-mqtt-open
+    vmid: 301
+    ip: 192.168.100.11
+    role: mqtt_broker
+    security_profile: vulnerable
+  - name: s14-mqtt-secure
+    vmid: 302
+    ip: 192.168.100.12
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s14-web-backup
+    vmid: 303
+    ip: 192.168.100.13
+    role: web_server
+    security_profile: vulnerable
+  - name: s14-web-nearmiss
+    vmid: 304
+    ip: 192.168.100.14
+    role: web_server
+    security_profile: near_miss
+  - name: s14-ssh-legacy
+    vmid: 305
+    ip: 192.168.100.15
+    role: ssh_server
+    security_profile: vulnerable
+  - name: s14-ssh-secure
+    vmid: 306
+    ip: 192.168.100.16
+    role: ssh_server
+    security_profile: hardened
+  - name: s14-redis-open
+    vmid: 307
+    ip: 192.168.100.17
+    role: db_server_v2
+    security_profile: vulnerable
+  - name: s14-redis-secure
+    vmid: 308
+    ip: 192.168.100.18
+    role: db_server_v2
+    security_profile: hardened
+  - name: s14-web-secure
+    vmid: 309
+    ip: 192.168.100.19
+    role: web_server
+    security_profile: hardened
+  - name: s14-mqtt-nearmiss
+    vmid: 310
+    ip: 192.168.100.20
+    role: mqtt_broker
+    security_profile: near_miss
+vulnerabilities:
+- id: F10-MQTT-ANON@s14-mqtt-open
+  device: s14-mqtt-open
+  ip: 192.168.100.11
+  role: mqtt_broker
+  security_profile: vulnerable
+  template_key: F10-MQTT-ANON
+  title: Anonymous MQTT subscription exposes retained operational secrets
+  severity: high
+  category: no_authentication
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: The broker accepts an unauthenticated wildcard subscription and publishes
+    retained secrets.
+  indicators:
+  - Port 1883/tcp accepts a CONNECT packet without username or password
+  - Wildcard subscription returns smartcity/admin/credentials
+  verification: mosquitto_sub -h 192.168.100.11 -t '#' -C 1 -W 5
+  confidence_required: high
+- id: F10-WEB-BACKUP@s14-web-backup
+  device: s14-web-backup
+  ip: 192.168.100.13
+  role: web_server
+  security_profile: vulnerable
+  template_key: F10-WEB-BACKUP
+  title: Public web backup contains database credentials
+  severity: high
+  category: data_exposure
+  owasp_iot: I2 - Insecure Network Services
+  description: Directory listing exposes a SQL backup and an application configuration
+    file.
+  indicators:
+  - GET /backup/ returns HTTP 200 with an index
+  - GET /backup/db_backup_2024-01-15.sql returns credential material
+  verification: curl -fsS http://192.168.100.13/backup/db_backup_2024-01-15.sql
+  confidence_required: high
+- id: F10-SSH-DEFAULT@s14-ssh-legacy
+  device: s14-ssh-legacy
+  ip: 192.168.100.15
+  role: ssh_server
+  security_profile: vulnerable
+  template_key: F10-SSH-DEFAULT
+  title: Default administrative SSH credentials remain enabled
+  severity: critical
+  category: default_credentials
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The administrative account accepts the vendor-style admin/admin credential
+    pair.
+  indicators:
+  - PasswordAuthentication is enabled
+  - SSH login admin/admin succeeds
+  verification: sshpass -p admin ssh admin@192.168.100.15 true
+  confidence_required: high
+- id: F10-REDIS-NOAUTH@s14-redis-open
+  device: s14-redis-open
+  ip: 192.168.100.17
+  role: db_server_v2
+  security_profile: vulnerable
+  template_key: F10-REDIS-NOAUTH
+  title: Redis accepts commands without authentication
+  severity: high
+  category: no_authentication
+  owasp_iot: I2 - Insecure Network Services
+  description: Redis is bound to all interfaces with protected mode and authentication
+    disabled.
+  indicators:
+  - Port 6379/tcp is reachable
+  - Unauthenticated PING returns PONG
+  verification: redis-cli -h 192.168.100.17 PING
+  confidence_required: high
+attack_paths: []
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 0
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 13
+  total_controls: 8
+bonus_types: []
+controls:
+- id: C10-MQTT-AUTH@s14-mqtt-secure
+  device: s14-mqtt-secure
+  ip: 192.168.100.12
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.12 -t '#' -C 1 -W 2 must fail with authorization
+    error
+- id: C10-WEB-BACKUP-DENIED@s14-web-nearmiss
+  device: s14-web-nearmiss
+  ip: 192.168.100.14
+  role: web_server
+  security_profile: near_miss
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.14/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s14-web-nearmiss
+  device: s14-web-nearmiss
+  ip: 192.168.100.14
+  role: web_server
+  security_profile: near_miss
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.14/admin
+    returns 401
+- id: C10-SSH-PASSWORD-OFF@s14-ssh-secure
+  device: s14-ssh-secure
+  ip: 192.168.100.16
+  role: ssh_server
+  security_profile: hardened
+  template_key: C10-SSH-PASSWORD-OFF
+  assertion: ssh_password_authentication_disabled
+  description: SSH exposes public-key authentication only.
+  verification: nmap --script ssh-auth-methods -p22 192.168.100.16 reports publickey
+    and no password
+- id: C10-REDIS-AUTH@s14-redis-secure
+  device: s14-redis-secure
+  ip: 192.168.100.18
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C10-REDIS-AUTH
+  assertion: redis_authentication_required
+  description: An unauthenticated Redis command returns NOAUTH.
+  verification: redis-cli -h 192.168.100.18 PING returns NOAUTH Authentication required
+- id: C10-WEB-BACKUP-DENIED@s14-web-secure
+  device: s14-web-secure
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.19/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s14-web-secure
+  device: s14-web-secure
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.19/admin
+    returns 401
+- id: C10-MQTT-AUTH@s14-mqtt-nearmiss
+  device: s14-mqtt-nearmiss
+  ip: 192.168.100.20
+  role: mqtt_broker
+  security_profile: near_miss
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.20 -t '#' -C 1 -W 2 must fail with authorization
+    error

@@ -97,7 +97,7 @@ class TestSkillToolDefinitions:
     """Test that SKILL_TOOLS are properly formatted."""
 
     def test_tool_count(self):
-        assert len(SKILL_TOOLS) == 6
+        assert len(SKILL_TOOLS) == 5
 
     def test_all_have_required_fields(self):
         for tool in SKILL_TOOLS:
@@ -145,7 +145,8 @@ class TestHardFiltering:
     def test_no_filter_returns_all(self):
         set_skill_filter(None)
         result = json.loads(list_skills())
-        assert len(result) == 8
+        assert len(result) == 9
+        assert "modbus_exploitation" in {skill["name"] for skill in result}
 
     def test_filter_by_mqtt_tag(self):
         set_skill_filter(["mqtt"])

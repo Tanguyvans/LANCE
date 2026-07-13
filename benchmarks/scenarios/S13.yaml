@@ -8,7 +8,6 @@ packs:
 - f2_misconfig
 - f3_data_exposure
 - f5_injection
-- f7_pivot
 attack_paths:
 - id: P1
   title: VLAN bypass via Node-RED MQTT bridge IoT→OT

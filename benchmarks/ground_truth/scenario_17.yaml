@@ -1,0 +1,208 @@
+scenario_id: '17'
+scenario_name: Stateful Signed OTA
+difficulty: expert
+description: Stateful Signed OTA — Stateful deterministic firmware repository and
+  device simulators exercising signature coverage and rollback protection
+topology:
+  router:
+    name: s17-router
+    vmid: 360
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s17-ota-repo
+    vmid: 361
+    ip: 192.168.100.11
+    role: ota_repository
+    security_profile: vulnerable
+    simulator: ota_repository
+  - name: s17-ota-api
+    vmid: 362
+    ip: 192.168.100.12
+    role: ota_server
+    security_profile: vulnerable
+    simulator: ota_server
+  - name: s17-device-a
+    vmid: 363
+    ip: 192.168.100.13
+    role: ota_device
+    security_profile: vulnerable
+    simulator: ota_device
+  - name: s17-device-b
+    vmid: 364
+    ip: 192.168.100.14
+    role: ota_device
+    security_profile: key_reuse
+    simulator: ota_device
+  - name: s17-signer
+    vmid: 365
+    ip: 192.168.100.15
+    role: ota_signer
+    security_profile: hardened
+    simulator: ota_signer
+  - name: s17-monitor
+    vmid: 366
+    ip: 192.168.100.16
+    role: ota_monitor
+    security_profile: hardened
+    simulator: ota_monitor
+vulnerabilities:
+- id: F13-OLD-FIRMWARE@s17-ota-repo
+  device: s17-ota-repo
+  ip: 192.168.100.11
+  role: ota_repository
+  security_profile: vulnerable
+  template_key: F13-OLD-FIRMWARE
+  title: Public repository exposes an obsolete signed firmware
+  severity: medium
+  category: data_exposure
+  hop_depth: 0
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: The repository lists both current v2 and obsolete but validly signed
+    v1 artifacts.
+  indicators:
+  - GET /firmware returns both version 1 and version 2 manifests
+  - The version 1 payload signature remains valid
+  verification: curl -fsS http://192.168.100.11:8080/firmware
+  confidence_required: high
+- id: F13-ROLLBACK@s17-device-a
+  device: s17-device-a
+  ip: 192.168.100.13
+  role: ota_device
+  security_profile: vulnerable
+  template_key: F13-ROLLBACK
+  title: Device accepts a correctly signed firmware rollback
+  severity: high
+  category: insecure_update
+  hop_depth: 2
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: A device at version 2 accepts the old signed version 1 because no monotonic
+    counter is checked.
+  indicators:
+  - Initial /status reports version 2
+  - Installing the signed v1 fixture returns 200 and /status becomes version 1
+  verification: POST the v1 fixture to http://192.168.100.13:8080/install then GET
+    /status
+  confidence_required: high
+- id: F13-UNSIGNED-METADATA@s17-device-a
+  device: s17-device-a
+  ip: 192.168.100.13
+  role: ota_device
+  security_profile: vulnerable
+  template_key: F13-UNSIGNED-METADATA
+  title: Firmware signature does not cover version metadata
+  severity: high
+  category: insecure_update
+  hop_depth: 1
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: The signature authenticates only payload bytes, so the version field
+    can be changed without invalidating it.
+  indicators:
+  - Reusing a valid payload signature with a modified version is accepted
+  - Device status stores the attacker-controlled version
+  verification: change only version in a valid manifest submitted to http://192.168.100.13:8080/install
+  confidence_required: high
+- id: F13-SHARED-UPDATE-KEY@s17-device-b
+  device: s17-device-b
+  ip: 192.168.100.14
+  role: ota_device
+  security_profile: key_reuse
+  template_key: F13-SHARED-UPDATE-KEY
+  title: Update verification secret is shared by multiple device models
+  severity: high
+  category: weak_crypto
+  hop_depth: 1
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: Device-b uses the same deterministic verification secret as device-a.
+  indicators:
+  - A payload signed for device-a is accepted by device-b
+  - Both device status endpoints report the same key identifier
+  verification: submit the device-a signed fixture to http://192.168.100.14:8080/install
+  confidence_required: high
+attack_paths:
+- id: P17-1
+  title: Public legacy artifact to signed downgrade
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: s17-ota-repo
+    action: Download the obsolete signed version 1 fixture
+  - hop: 2
+    device: s17-device-a
+    action: Replay the valid payload signature with modified metadata
+  - hop: 3
+    device: s17-device-a
+    action: Downgrade the running firmware from version 2 to version 1
+  vulnerabilities_used:
+  - F13-OLD-FIRMWARE@s17-ota-repo
+  - F13-UNSIGNED-METADATA@s17-device-a
+  - F13-ROLLBACK@s17-device-a
+  impact: Reintroduction of obsolete firmware while cryptographic verification appears
+    successful
+- id: P17-2
+  title: Shared verification key compromises a second device class
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: s17-device-a
+    action: Reuse the valid device-a signed fixture
+  - hop: 2
+    device: s17-device-b
+    action: Install it because the verification secret is shared
+  vulnerabilities_used:
+  - F13-SHARED-UPDATE-KEY@s17-device-b
+  impact: Cross-model update trust-domain compromise
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 2
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 11
+  total_controls: 4
+bonus_types: []
+controls:
+- id: C13-BAD-SIGNATURE@s17-device-a
+  device: s17-device-a
+  ip: 192.168.100.13
+  role: ota_device
+  security_profile: vulnerable
+  template_key: C13-BAD-SIGNATURE
+  assertion: invalid_firmware_signature_rejected
+  description: A modified payload with an invalid signature returns HTTP 400 and is
+    not installed.
+  verification: POST an invalid signature to http://192.168.100.13:8080/install returns
+    400
+- id: C13-VALID-UPGRADE@s17-device-a
+  device: s17-device-a
+  ip: 192.168.100.13
+  role: ota_device
+  security_profile: vulnerable
+  template_key: C13-VALID-UPGRADE
+  assertion: valid_signed_update_accepted
+  description: The normal signed version 2 fixture is accepted.
+  verification: POST the valid v2 fixture to http://192.168.100.13:8080/install returns
+    200
+- id: C13-BAD-SIGNATURE@s17-device-b
+  device: s17-device-b
+  ip: 192.168.100.14
+  role: ota_device
+  security_profile: key_reuse
+  template_key: C13-BAD-SIGNATURE
+  assertion: invalid_firmware_signature_rejected
+  description: A modified payload with an invalid signature returns HTTP 400 and is
+    not installed.
+  verification: POST an invalid signature to http://192.168.100.14:8080/install returns
+    400
+- id: C13-VALID-UPGRADE@s17-device-b
+  device: s17-device-b
+  ip: 192.168.100.14
+  role: ota_device
+  security_profile: key_reuse
+  template_key: C13-VALID-UPGRADE
+  assertion: valid_signed_update_accepted
+  description: The normal signed version 2 fixture is accepted.
+  verification: POST the valid v2 fixture to http://192.168.100.14:8080/install returns
+    200

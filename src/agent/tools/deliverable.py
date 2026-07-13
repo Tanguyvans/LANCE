@@ -12,6 +12,37 @@ OUTPUT_DIR: Path = Path("output/agent")
 _HIDDEN_DELIVERABLES: frozenset[str] = frozenset({"ground_truth.yaml"})
 
 
+def _resolve_deliverable_path(filename: str) -> Path:
+    """Resolve a deliverable path and guarantee it remains inside OUTPUT_DIR.
+
+    ``Path.resolve`` follows existing symlinks, so this rejects both ordinary
+    ``..`` traversal and a symlink in the run directory that points outside it.
+    Absolute paths are rejected even when they happen to point back inside the
+    output directory: tools should address deliverables by relative name only.
+    """
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("filename must be a non-empty relative path")
+
+    relative = Path(filename)
+    if relative.is_absolute():
+        raise ValueError("absolute deliverable paths are not allowed")
+
+    root = OUTPUT_DIR.resolve()
+    candidate = (OUTPUT_DIR / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("deliverable path escapes the output directory") from exc
+
+    if candidate.name in _HIDDEN_DELIVERABLES:
+        raise ValueError("deliverable is not accessible to agents")
+    return candidate
+
+
+def _path_error(filename: str, exc: ValueError) -> str:
+    return json.dumps({"error": f"Invalid deliverable path '{filename}': {exc}"})
+
+
 def set_output_dir(path: Path) -> None:
     """Set the output directory (called by pipeline at init)."""
     global OUTPUT_DIR
@@ -110,8 +141,10 @@ def save_deliverable(filename: str | None = None, content: str = "") -> str:
         filename = _EXPECTED_DELIVERABLE
     if not filename:
         return json.dumps({"error": "save_deliverable: filename manquant et aucun livrable attendu défini pour cette phase"})
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT_DIR / filename
+    try:
+        path = _resolve_deliverable_path(filename)
+    except ValueError as exc:
+        return _path_error(filename, exc)
     path.parent.mkdir(parents=True, exist_ok=True)
     # For JSON deliverables, strip surrounding markdown if needed
     if filename.endswith(".json"):
@@ -122,8 +155,11 @@ def save_deliverable(filename: str | None = None, content: str = "") -> str:
 
 def read_deliverable(filename: str) -> str:
     """Read a previous phase's deliverable."""
-    path = OUTPUT_DIR / filename
-    if Path(filename).name in _HIDDEN_DELIVERABLES or not path.exists():
+    try:
+        path = _resolve_deliverable_path(filename)
+    except ValueError as exc:
+        return _path_error(filename, exc)
+    if not path.exists() or not path.is_file():
         return json.dumps({"error": f"Deliverable '{filename}' not found"})
     content = path.read_text(encoding="utf-8")
     return json.dumps({"filename": filename, "content": content})
@@ -133,19 +169,30 @@ def list_deliverables() -> str:
     """List all deliverables in output/agent/."""
     if not OUTPUT_DIR.exists():
         return json.dumps({"deliverables": []})
-    files = sorted(OUTPUT_DIR.glob("*"))
-    return json.dumps({"deliverables": [
-        f.name for f in files
-        if f.is_file() and f.name not in _HIDDEN_DELIVERABLES
-    ]})
+    visible = []
+    for f in sorted(OUTPUT_DIR.glob("*")):
+        try:
+            safe_path = _resolve_deliverable_path(f.name)
+        except ValueError:
+            continue
+        if safe_path.is_file():
+            visible.append(f.name)
+    return json.dumps({"deliverables": visible})
 
 
 def aggregate_device_results(pattern: str = "03_device_*.json") -> str:
     """Aggregate all device vulnerability files into a single list of results."""
+    pattern_path = Path(pattern)
+    if pattern_path.is_absolute() or len(pattern_path.parts) != 1 or ".." in pattern_path.parts:
+        return json.dumps({
+            "vulnerabilities": [],
+            "error": "Invalid aggregate pattern: only a filename glob inside the output directory is allowed",
+        })
     results = []
     for f in sorted(OUTPUT_DIR.glob(pattern)):
         try:
-            data = json.loads(_extract_json(f.read_text(encoding="utf-8")))
+            safe_path = _resolve_deliverable_path(f.name)
+            data = json.loads(_extract_json(safe_path.read_text(encoding="utf-8")))
             if isinstance(data, list):
                 results.extend(data)
             elif isinstance(data, dict):

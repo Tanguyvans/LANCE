@@ -1,0 +1,31 @@
+schema_version: "1"
+benchmark_version: "2.0.0"
+
+# This catalogue is intentionally metadata-only. Detailed topology, packs,
+# ground truth, seeds and deployment data never belong here.
+scenarios:
+  - {id: "1", label: "Réseau plat", split: dev-public}
+  - {id: "2", label: "Gateway exposée", split: dev-public}
+  - {id: "3", label: "Réplique NATO Lab", split: dev-public}
+  - {id: "4", label: "Réseau segmenté", split: dev-public}
+  - {id: "5", label: "Smart Building", split: dev-public}
+  - {id: "6", label: "Domotique centralisée", split: dev-public}
+  - {id: "7", label: "Edge-Cloud pivot", split: dev-public}
+  - {id: "8", label: "Multi-zone IT/IoT/OT", split: dev-public}
+  - {id: "9", label: "Mesh IoT", split: dev-public}
+  - {id: "10", label: "Flat avec variantes", split: dev-public}
+  - {id: "11", label: "Smart City 3 zones", split: dev-public}
+  - {id: "12", label: "Smart City Large Scale", split: dev-public}
+  - {id: "13", label: "VLAN Segmented Network", split: dev-public}
+  - {id: "14", label: "Sparse Mixed-Hardening", split: dev-public}
+  - {id: "15", label: "Authenticated Multi-Tenant API", split: dev-public}
+  - {id: "16", label: "Device PKI Lifecycle", split: dev-public}
+  - {id: "17", label: "Stateful Signed OTA", split: dev-public}
+  - {id: "18", label: "Simulated Cloud IAM and SSRF", split: dev-public}
+  - {id: "19", label: "Safe Multi-Protocol OT Cell", split: dev-public}
+  - {id: "20", label: "Évaluation scellée S20", split: eval-sealed, profile: "eval_profiles/S20.yaml"}
+  - {id: "21", label: "Évaluation scellée S21", split: eval-sealed, profile: "eval_profiles/S21.yaml"}
+  - {id: "22", label: "Évaluation scellée S22", split: eval-sealed, profile: "eval_profiles/S22.yaml"}
+  - {id: "23", label: "Évaluation scellée S23", split: eval-sealed, profile: "eval_profiles/S23.yaml"}
+  - {id: "24", label: "Évaluation scellée S24", split: eval-sealed, profile: "eval_profiles/S24.yaml"}
+  - {id: "25", label: "Évaluation scellée S25", split: eval-sealed, profile: "eval_profiles/S25.yaml"}

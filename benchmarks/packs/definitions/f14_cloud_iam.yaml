@@ -1,0 +1,65 @@
+id: f14_cloud_iam
+name: Simulated Cloud IAM and Metadata
+description: Local deterministic cloud model; it does not claim compatibility with a public cloud provider.
+vulnerabilities:
+  cloud_web_server:
+  - key: F14-SSRF-METADATA
+    applies_to: {profiles: [vulnerable]}
+    title: Server-side request forgery reaches isolated metadata service
+    severity: critical
+    category: code_injection
+    hop_depth: 0
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: The fetch endpoint permits requests to the metadata service even though it is not directly reachable by the scanner.
+    indicators:
+    - Direct HTTP request to metadata is filtered
+    - GET /fetch?url=http://192.168.100.12:8080/credentials returns a role token
+    verification: curl -G http://{ip}:8080/fetch --data-urlencode url=http://192.168.100.12:8080/credentials
+    confidence_required: high
+  cloud_metadata_server:
+  - key: F14-OVERPRIV-ROLE
+    applies_to: {profiles: [vulnerable]}
+    title: Workload metadata issues an over-privileged cloud role token
+    severity: high
+    category: privilege_escalation
+    hop_depth: 1
+    owasp_iot: I9 - Insecure Default Settings
+    description: Metadata returns a bearer token with object-store administrative scope.
+    indicators:
+    - Credentials response identifies scope object-admin
+    - Token grants access to the city-secrets bucket
+    verification: retrieve /credentials through the SSRF service and inspect the returned scope
+    confidence_required: high
+  cloud_control_plane:
+  - key: F14-SECRET-BUCKET
+    applies_to: {profiles: [vulnerable]}
+    title: Stolen workload role can read city secrets bucket
+    severity: critical
+    category: data_exposure
+    hop_depth: 2
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The metadata role token authorizes retrieval of sensitive simulated object-store data.
+    indicators:
+    - GET /bucket/city-secrets with metadata token returns HTTP 200
+    - Response contains the benchmark city-control marker
+    verification: GET http://{ip}:8080/bucket/city-secrets with the token obtained through SSRF
+    confidence_required: high
+controls:
+  cloud_metadata_server:
+  - key: C14-METADATA-ISOLATED
+    applies_to: {profiles: [vulnerable]}
+    assertion: metadata_not_directly_reachable
+    description: Port 8080 is filtered for every source except the vulnerable cloud-web service.
+    verification: direct curl http://{ip}:8080/credentials times out or is rejected
+  cloud_control_plane:
+  - key: C14-LIMITED-TOKEN
+    applies_to: {profiles: [vulnerable]}
+    assertion: least_privilege_token_denied
+    description: The known limited-token fixture receives HTTP 403 for the secrets bucket.
+    verification: GET http://{ip}:8080/bucket/city-secrets with limited-token returns 403
+  cloud_web_server:
+  - key: C14-SSRF-FILTER
+    applies_to: {profiles: [hardened]}
+    assertion: private_address_ssrf_blocked
+    description: The hardened fetch endpoint rejects metadata and other private destinations.
+    verification: GET http://{ip}:8080/fetch?url=http://192.168.100.12:8080/credentials returns 403

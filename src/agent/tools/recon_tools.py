@@ -489,6 +489,110 @@ def tcp_send(
     })
 
 
+def udp_send(
+    host: str,
+    port: int,
+    payload: str,
+    encoding: str = "text",
+    recv_bytes: int = 4096,
+    timeout: int = 5,
+) -> str:
+    """Send one UDP datagram and return the first response as hex and text."""
+    effective_timeout = max(1, min(int(timeout or 5), 30))
+    effective_recv = max(1, min(int(recv_bytes or 4096), 65536))
+    if encoding == "hex":
+        try:
+            wire_payload = bytes.fromhex((payload or "").strip().replace(" ", ""))
+        except ValueError as exc:
+            return json.dumps({"error": f"invalid hex payload: {exc}"})
+    elif encoding == "text":
+        wire_payload = (payload or "").encode("utf-8")
+    else:
+        return json.dumps({"error": "encoding must be 'text' or 'hex'"})
+    if len(wire_payload) > 65507:
+        return json.dumps({"error": "UDP payload exceeds 65507 bytes"})
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(effective_timeout)
+    try:
+        sock.sendto(wire_payload, (host, int(port)))
+        received, peer = sock.recvfrom(effective_recv)
+    except OSError as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+    finally:
+        sock.close()
+    ascii_preview = "".join(chr(b) if 32 <= b < 127 else "." for b in received[:512])
+    return json.dumps({
+        "host": host,
+        "port": int(port),
+        "peer": f"{peer[0]}:{peer[1]}",
+        "sent_bytes": len(wire_payload),
+        "received_bytes": len(received),
+        "received_hex": received.hex()[:4096],
+        "received_ascii": ascii_preview,
+    })
+
+
+def mtls_request(
+    url: str,
+    certificate_pem: str,
+    private_key_pem: str,
+    ca_pem: str | None = None,
+    method: str = "GET",
+    headers: dict | None = None,
+    body: str | None = None,
+    timeout: int = 10,
+) -> str:
+    """Perform an HTTPS request with an in-memory PEM client identity."""
+    try:
+        import requests
+    except ImportError:
+        return json.dumps({"error": "requests library not installed"})
+    if not url.lower().startswith("https://"):
+        return json.dumps({"error": "mTLS requests require an https:// URL"})
+    if "BEGIN CERTIFICATE" not in (certificate_pem or ""):
+        return json.dumps({"error": "certificate_pem is not a PEM certificate"})
+    if "PRIVATE KEY" not in (private_key_pem or ""):
+        return json.dumps({"error": "private_key_pem is not a PEM private key"})
+    if max(len(certificate_pem), len(private_key_pem), len(ca_pem or "")) > 65536:
+        return json.dumps({"error": "PEM input exceeds 65536 characters"})
+
+    effective_timeout = max(1, min(int(timeout or 10), 30))
+    try:
+        with tempfile.TemporaryDirectory(prefix="benchmark-mtls-") as temp_dir:
+            cert_path = os.path.join(temp_dir, "client.crt")
+            key_path = os.path.join(temp_dir, "client.key")
+            ca_path = os.path.join(temp_dir, "ca.crt")
+            with open(cert_path, "w", encoding="utf-8") as handle:
+                handle.write(certificate_pem)
+            with open(key_path, "w", encoding="utf-8") as handle:
+                handle.write(private_key_pem)
+            os.chmod(key_path, 0o600)
+            verify: bool | str = False
+            if ca_pem:
+                with open(ca_path, "w", encoding="utf-8") as handle:
+                    handle.write(ca_pem)
+                verify = ca_path
+            response = requests.request(
+                method=(method or "GET").upper(),
+                url=url,
+                headers=headers or None,
+                data=body if body is not None else None,
+                cert=(cert_path, key_path),
+                verify=verify,
+                timeout=effective_timeout,
+                allow_redirects=False,
+            )
+    except requests.exceptions.RequestException as exc:
+        return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+    return json.dumps({
+        "status_code": response.status_code,
+        "final_url": response.url,
+        "headers": dict(response.headers),
+        "body": response.text[:8000],
+    })
+
+
 def tls_inspect(host: str, port: int = 443, sni: str | None = None) -> str:
     """Fetch leaf cert + cipher info.
 
@@ -650,6 +754,8 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "python_exec", python_exec)
     register_python_handler(tools, "http_request", http_request)
     register_python_handler(tools, "tcp_send", tcp_send)
+    register_python_handler(tools, "udp_send", udp_send)
+    register_python_handler(tools, "mtls_request", mtls_request)
     register_python_handler(tools, "tls_inspect", tls_inspect)
     register_python_handler(tools, "decode_value", decode_value)
     return tools

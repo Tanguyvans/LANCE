@@ -1,0 +1,42 @@
+name: "mtls_request"
+handler: "python"
+enabled: true
+timeout: 30
+short_description: "HTTPS request with a PEM client identity"
+description: >
+  Perform an HTTPS request with a client certificate and private key supplied as PEM strings.
+  Temporary files are private and deleted after the request. Use only with credentials obtained
+  from an authorized benchmark enrollment flow to verify device mTLS and revocation behaviour.
+parameters:
+  - name: "url"
+    type: "string"
+    description: "Target HTTPS URL."
+    required: true
+  - name: "certificate_pem"
+    type: "string"
+    description: "PEM-encoded client certificate."
+    required: true
+  - name: "private_key_pem"
+    type: "string"
+    description: "PEM-encoded client private key."
+    required: true
+  - name: "ca_pem"
+    type: "string"
+    description: "Optional PEM CA certificate; when omitted, server verification is disabled for the isolated lab."
+    required: false
+  - name: "method"
+    type: "string"
+    description: "HTTP method (default GET)."
+    required: false
+  - name: "headers"
+    type: "object"
+    description: "Optional HTTP headers."
+    required: false
+  - name: "body"
+    type: "string"
+    description: "Optional raw request body."
+    required: false
+  - name: "timeout"
+    type: "integer"
+    description: "Request timeout in seconds (default 10, max 30)."
+    required: false

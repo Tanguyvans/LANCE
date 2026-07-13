@@ -42,7 +42,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "ss -tlnp | grep -q ':1883' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'mqtt_broker'
+      when:
+        - item.role == 'mqtt_broker'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: mqtt_port_check
       changed_when: false
 
@@ -51,7 +53,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "grep -r 'allow_anonymous true' /etc/mosquitto/ && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'mqtt_broker'
+      when:
+        - item.role == 'mqtt_broker'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: mqtt_anon_check
       changed_when: false
 
@@ -62,7 +66,9 @@
                  mosquitto_sub -h 127.0.0.1 -t 'verify/test' -C 1 -W 3 2>&1 | grep -q 'ok' &&
                  echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'mqtt_broker'
+      when:
+        - item.role == 'mqtt_broker'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: mqtt_conn_check
       changed_when: false
       failed_when: false
@@ -73,7 +79,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "ss -tlnp | grep -q ':80' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'web_server'
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: web_port_check
       changed_when: false
 
@@ -82,7 +90,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "grep -r 'autoindex on' /etc/nginx/ && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'web_server'
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: web_autoindex_check
       changed_when: false
 
@@ -92,7 +102,9 @@
         bash -c "curl -s http://127.0.0.1/backup/ | grep -qi 'db_backup\|config\|Index' &&
                  echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'web_server'
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: web_listing_check
       changed_when: false
       failed_when: false
@@ -103,7 +115,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "ss -tlnp | grep -q ':22' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'ssh_server'
+      when:
+        - item.role == 'ssh_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: ssh_port_check
       changed_when: false
 
@@ -112,7 +126,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "grep -i 'PasswordAuthentication yes' /etc/ssh/sshd_config && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'ssh_server'
+      when:
+        - item.role == 'ssh_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: ssh_pwauth_check
       changed_when: false
 
@@ -121,7 +137,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "id admin &>/dev/null && getent shadow admin | cut -d: -f2 | grep -qv '!' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'ssh_server'
+      when:
+        - item.role == 'ssh_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: ssh_creds_check
       changed_when: false
       failed_when: false
@@ -417,7 +435,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "ss -tlnp | grep -q ':6379' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'db_server_v2'
+      when:
+        - item.role == 'db_server_v2'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: redis_port_check
       changed_when: false
 
@@ -426,7 +446,9 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} --
         bash -c "redis-cli PING 2>/dev/null | grep -q 'PONG' && echo OK || echo FAIL"
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'db_server_v2'
+      when:
+        - item.role == 'db_server_v2'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       register: redis_ping_check
       changed_when: false
       failed_when: false
@@ -504,6 +526,245 @@
       failed_when: false
 
 
+    # ════════════════════════════════════════════════════
+    # CONTRÔLES S14 ET SIMULATEURS S15-S19
+    # ════════════════════════════════════════════════════
+
+    - name: "[S14] Vérifier les assertions négatives sur les profils non vulnérables"
+      ansible.builtin.shell: |
+        set -o pipefail
+        case '{{ item.role }}' in
+          mqtt_broker)
+            if timeout 3 pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+              mosquitto_sub -h 127.0.0.1 -t '#' -C 1 -W 1 >/dev/null 2>&1; then
+              echo FAIL
+            else
+              echo OK
+            fi
+            ;;
+          web_server)
+            backup_code=$(pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+              curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1/backup/)
+            admin_code=$(pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+              curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1/admin)
+            if [ "${backup_code}" = 404 ] && [ "${admin_code}" = 401 ]; then echo OK; else echo FAIL; fi
+            ;;
+          ssh_server)
+            pct exec {{ base_vmid | int + item.vmid_offset }} -- sshd -T \
+              | grep -q '^passwordauthentication no$' && echo OK || echo FAIL
+            ;;
+          db_server_v2)
+            pct exec {{ base_vmid | int + item.vmid_offset }} -- redis-cli PING 2>&1 \
+              | grep -q 'NOAUTH' && echo OK || echo FAIL
+            ;;
+          *) echo FAIL ;;
+        esac
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
+      when:
+        - scenario_id == '14'
+        - (item.security_profile | default('vulnerable')) != 'vulnerable'
+      register: s14_control_checks
+      changed_when: false
+      failed_when: false
+
+    - name: "[S15-S19] Vérifier que tous les simulateurs sont actifs"
+      ansible.builtin.shell: >-
+        pct exec {{ base_vmid | int + item.vmid_offset }} --
+        systemctl is-active --quiet nato-benchmark-simulator.service
+        && echo OK || echo FAIL
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
+      when:
+        - scenario_id in ['15', '16', '17', '18', '19']
+        - item.simulator is defined
+      register: simulator_service_checks
+      changed_when: false
+      failed_when: false
+
+    - name: "[S15] Vérifier authentification, IDOR, mass assignment et scope admin"
+      ansible.builtin.shell: |
+        set -o pipefail
+        bad_login=$(pct exec {{ base_vmid | int + 1 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' -d '{"username":"tenant-a","password":"wrong"}' \
+          http://127.0.0.1:8080/auth/login)
+        no_token=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          http://127.0.0.1:8080/v1/devices/device-a)
+        idor=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Authorization: Bearer tenant-a-read' http://127.0.0.1:8080/v1/devices/device-b)
+        patch=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+          -H 'Authorization: Bearer tenant-a-read' -H 'Content-Type: application/json' \
+          -d '{"role":"admin"}' http://127.0.0.1:8080/v1/devices/device-a)
+        export_code=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Authorization: Bearer tenant-a-read' http://127.0.0.1:8080/v1/admin/export)
+        hardened=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Authorization: Bearer tenant-a-read' http://127.0.0.1:8080/v1/devices/device-b)
+        restore_patch=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+          -H 'Authorization: Bearer tenant-a-read' -H 'Content-Type: application/json' \
+          -d '{"role":"sensor"}' http://127.0.0.1:8080/v1/devices/device-a)
+        if [ "${bad_login}" = 401 ] && [ "${no_token}" = 401 ] && [ "${idor}" = 200 ] \
+          && [ "${patch}" = 200 ] && [ "${export_code}" = 200 ] && [ "${hardened}" = 403 ] \
+          && [ "${restore_patch}" = 200 ]; then
+          echo OK
+        else
+          echo FAIL
+        fi
+      when: scenario_id == '15'
+      register: s15_behavior_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[S16] Vérifier exposition CA, rejeu d'enrôlement, clone et révocation ignorée"
+      ansible.builtin.shell: |
+        set -o pipefail
+        ca_exposed=$(pct exec {{ base_vmid | int + 1 }} -- curl -fsS http://127.0.0.1:8080/ca/private-key \
+          | grep -c 'BEGIN.*PRIVATE KEY')
+        enroll_1=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' -d '{"token":"bootstrap-device-b"}' http://127.0.0.1:8080/enroll)
+        enroll_2=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' -d '{"token":"bootstrap-device-b"}' http://127.0.0.1:8080/enroll)
+        invalid=$(pct exec {{ base_vmid | int + 2 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' -d '{"token":"invalid"}' http://127.0.0.1:8080/enroll)
+        revoked=$(pct exec {{ base_vmid | int + 2 }} -- curl -ksS -o /dev/null -w '%{http_code}' \
+          --cert /etc/nato-pki/device-b.crt --key /etc/nato-pki/device-b.key \
+          https://192.168.100.13:8443/device/status)
+        if pct exec {{ base_vmid | int + 2 }} -- curl -ksS -o /dev/null \
+          https://192.168.100.13:8443/device/status; then
+          no_certificate=FAIL
+        else
+          no_certificate=OK
+        fi
+        if [ "${ca_exposed}" -gt 0 ] && [ "${enroll_1}" = 201 ] && [ "${enroll_2}" = 201 ] \
+          && [ "${invalid}" = 401 ] && [ "${revoked}" = 200 ] && [ "${no_certificate}" = OK ] \
+          && cmp -s /tmp/s16-pki/device-a.public-key.sha256 /tmp/s16-pki/device-b.public-key.sha256; then
+          echo OK
+        else
+          echo FAIL
+        fi
+      when: scenario_id == '16'
+      register: s16_behavior_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[S17] Vérifier rollback, métadonnées non signées, clé partagée et contrôles"
+      ansible.builtin.shell: |
+        set -o pipefail
+        repository=$(pct exec {{ base_vmid | int + 1 }} -- curl -fsS http://127.0.0.1:8080/firmware)
+        initial_status=$(pct exec {{ base_vmid | int + 3 }} -- curl -fsS http://127.0.0.1:8080/status)
+        v1=$(printf '%s' "${repository}" | python3 -c \
+          'import json,sys; print(json.dumps(next(x for x in json.load(sys.stdin)["artifacts"] if x["version"] == "1")))')
+        v2=$(printf '%s' "${repository}" | python3 -c \
+          'import json,sys; print(json.dumps(next(x for x in json.load(sys.stdin)["artifacts"] if x["version"] == "2")))')
+        tampered_metadata=$(printf '%s' "${v2}" | python3 -c \
+          'import json,sys; x=json.load(sys.stdin); x["version"]="99"; print(json.dumps(x))')
+
+        rollback=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' --data-binary "${v1}" http://127.0.0.1:8080/install)
+        rolled_status=$(pct exec {{ base_vmid | int + 3 }} -- curl -fsS http://127.0.0.1:8080/status)
+        unsigned_metadata=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' --data-binary "${tampered_metadata}" http://127.0.0.1:8080/install)
+        restore=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' --data-binary "${v2}" http://127.0.0.1:8080/install)
+        restored_status=$(pct exec {{ base_vmid | int + 3 }} -- curl -fsS http://127.0.0.1:8080/status)
+
+        shared_key=$(pct exec {{ base_vmid | int + 4 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' --data-binary "${v2}" http://127.0.0.1:8080/install)
+        isolated_rollback=$(pct exec {{ base_vmid | int + 4 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' --data-binary "${v1}" http://127.0.0.1:8080/install)
+        invalid=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Content-Type: application/json' \
+          -d '{"version":"1","payload":"modified","signature":"invalid"}' \
+          http://127.0.0.1:8080/install)
+        if printf '%s' "${repository}" | grep -q 'firmware-v1-obsolete' \
+          && printf '%s' "${repository}" | grep -q 'firmware-v2-current' \
+          && printf '%s' "${initial_status}" | grep -q '"version": "2"' \
+          && [ "${rollback}" = 200 ] && printf '%s' "${rolled_status}" | grep -q '"version": "1"' \
+          && [ "${unsigned_metadata}" = 200 ] && [ "${restore}" = 200 ] \
+          && printf '%s' "${restored_status}" | grep -q '"version": "2"' \
+          && [ "${shared_key}" = 200 ] && [ "${isolated_rollback}" = 409 ] \
+          && [ "${invalid}" = 400 ]; then echo OK; else echo FAIL; fi
+      when: scenario_id == '17'
+      register: s17_behavior_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[S18] Vérifier chaîne SSRF→metadata→secret et variante filtrée"
+      ansible.builtin.shell: |
+        set -o pipefail
+        if timeout 3 curl -fsS http://192.168.100.12:8080/credentials >/dev/null 2>&1; then
+          direct=FAIL
+        else
+          direct=OK
+        fi
+        ssrf=$(pct exec {{ base_vmid | int + 1 }} -- curl -sS -G http://127.0.0.1:8080/fetch \
+          --data-urlencode 'url=http://192.168.100.12:8080/credentials')
+        secret=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS \
+          -H 'Authorization: Bearer metadata-object-admin-token' \
+          http://127.0.0.1:8080/bucket/city-secrets)
+        limited=$(pct exec {{ base_vmid | int + 3 }} -- curl -sS -o /dev/null -w '%{http_code}' \
+          -H 'Authorization: Bearer limited-token' \
+          http://127.0.0.1:8080/bucket/city-secrets)
+        hardened=$(pct exec {{ base_vmid | int + 6 }} -- curl -sS -o /dev/null -w '%{http_code}' -G \
+          http://127.0.0.1:8080/fetch --data-urlencode 'url=http://192.168.100.12:8080/credentials')
+        if [ "${direct}" = OK ] && printf '%s' "${ssrf}" | grep -q 'metadata-object-admin-token' \
+          && printf '%s' "${secret}" | grep -q 'CITY-CONTROL-SECRET-S18' \
+          && [ "${limited}" = 403 ] && [ "${hardened}" = 403 ]; then echo OK; else echo FAIL; fi
+      when: scenario_id == '18'
+      register: s18_behavior_check
+      changed_when: false
+      failed_when: false
+
+    - name: "[S19] Vérifier écritures OPC UA/BACnet simulées et refus hardened"
+      ansible.builtin.shell: |
+        set -o pipefail
+        opc_policy=$(pct exec {{ base_vmid | int + 2 }} -- curl -fsS http://127.0.0.1:8080/protocol)
+        opc_hardened_policy=$(pct exec {{ base_vmid | int + 3 }} -- curl -fsS http://127.0.0.1:8080/protocol)
+        opc_open=$(pct exec {{ base_vmid | int + 2 }} -- python3 -c \
+          "import socket;s=socket.create_connection(('127.0.0.1',4840),3);s.sendall(b'WRITE BenchPoint 22');print(s.recv(64).decode())")
+        opc_secure=$(pct exec {{ base_vmid | int + 3 }} -- python3 -c \
+          "import socket;s=socket.create_connection(('127.0.0.1',4840),3);s.sendall(b'WRITE BenchPoint 22');print(s.recv(64).decode())")
+        bac_discovery=$(pct exec {{ base_vmid | int + 4 }} -- python3 -c \
+          "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'WHO-IS',('127.0.0.1',47808));print(s.recvfrom(64)[0][4:].decode())")
+        bac_open=$(pct exec {{ base_vmid | int + 4 }} -- python3 -c \
+          "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'WRITE BenchPoint 22',('127.0.0.1',47808));print(s.recvfrom(64)[0].decode())")
+        bac_secure=$(pct exec {{ base_vmid | int + 5 }} -- python3 -c \
+          "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'WRITE BenchPoint 22',('127.0.0.1',47808));print(s.recvfrom(64)[0].decode())")
+        opc_restore=$(pct exec {{ base_vmid | int + 2 }} -- python3 -c \
+          "import socket;s=socket.create_connection(('127.0.0.1',4840),3);s.sendall(b'WRITE BenchPoint 21.5');print(s.recv(64).decode())")
+        bac_restore=$(pct exec {{ base_vmid | int + 4 }} -- python3 -c \
+          "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);s.sendto(b'WRITE BenchPoint 21.5',('127.0.0.1',47808));print(s.recvfrom(64)[0].decode())")
+        modbus=$(pct exec {{ base_vmid | int + 6 }} -- python3 -c '
+        import socket, struct
+        def exchange(pdu):
+            with socket.create_connection(("127.0.0.1", 502), 3) as sock:
+                sock.sendall(struct.pack(">HHHB", 1, 0, len(pdu) + 1, 1) + pdu)
+                return sock.recv(64)[7:]
+        initial = exchange(struct.pack(">BHH", 3, 99, 1))
+        assert initial[:2] == bytes((3, 2))
+        original = struct.unpack(">H", initial[2:4])[0]
+        assert exchange(struct.pack(">BHH", 6, 99, 1234)) == struct.pack(">BHH", 6, 99, 1234)
+        assert exchange(struct.pack(">BHH", 3, 99, 1)) == struct.pack(">BBH", 3, 2, 1234)
+        assert exchange(struct.pack(">BHH", 6, 99, original)) == struct.pack(">BHH", 6, 99, original)
+        print("MODBUS OK")
+        ')
+        if printf '%s' "${opc_policy}" | grep -q '"security_policy": "None"' \
+          && printf '%s' "${opc_hardened_policy}" | grep -q '"security_policy": "SignAndEncrypt"' \
+          && printf '%s' "${opc_open}" | grep -q '^OK' \
+          && printf '%s' "${opc_secure}" | grep -q 'DENIED' \
+          && printf '%s' "${bac_discovery}" | grep -q 'NATO-BENCHMARK-I-AM' \
+          && printf '%s' "${bac_open}" | grep -q 'BACNET OK' \
+          && printf '%s' "${bac_secure}" | grep -q 'BACNET DENIED' \
+          && printf '%s' "${opc_restore}" | grep -q '^OK' \
+          && printf '%s' "${bac_restore}" | grep -q 'BACNET OK' \
+          && printf '%s' "${modbus}" | grep -q 'MODBUS OK'; then echo OK; else echo FAIL; fi
+      when: scenario_id == '19'
+      register: s19_behavior_check
+      changed_when: false
+      failed_when: false
+
+
     # ── Retirer IP temporaire ──
     - name: Retirer l'IP temporaire de vmbr1
       ansible.builtin.command: ip addr del 192.168.100.254/24 dev vmbr1
@@ -524,15 +785,37 @@
 
     - name: Évaluer les résultats — consolider les checks OK/FAIL
       ansible.builtin.set_fact:
-        _check_router_ok: "{{ 'OK' in (router_telnet_check.stdout | default('')) }}"
+        _check_router_ok: "{{ ('telnet' not in scenarios[scenario_id].router_vulns) or ('OK' in (router_telnet_check.stdout | default(''))) }}"
         _check_mqtt_ok:   "{{ 'FAIL' not in (mqtt_conn_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_db_ok:     "{{ 'FAIL' not in (db_nopass_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_ssh_ok:    "{{ 'FAIL' not in (ssh_creds_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_web_ok:    "{{ 'FAIL' not in (web_listing_check.results | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_redis_ok:  "{{ 'FAIL' not in (redis_ping_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_modbus_ok: "{{ 'FAIL' not in (modbus_svc_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_s14_ok: >-
+          {{ scenario_id != '14' or
+             (('OK' in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' '))) and
+              ('FAIL' not in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' ')))) }}
+        _check_simulators_ok: >-
+          {{ scenario_id not in ['15', '16', '17', '18', '19'] or
+             (('OK' in (simulator_service_checks.results | default([]) | map(attribute='stdout', default='') | join(' '))) and
+              ('FAIL' not in (simulator_service_checks.results | default([]) | map(attribute='stdout', default='') | join(' ')))) }}
+        _check_s15_ok: "{{ scenario_id != '15' or 'OK' in (s15_behavior_check.stdout | default('')) }}"
+        _check_s16_ok: "{{ scenario_id != '16' or 'OK' in (s16_behavior_check.stdout | default('')) }}"
+        _check_s17_ok: "{{ scenario_id != '17' or 'OK' in (s17_behavior_check.stdout | default('')) }}"
+        _check_s18_ok: "{{ scenario_id != '18' or 'OK' in (s18_behavior_check.stdout | default('')) }}"
+        _check_s19_ok: "{{ scenario_id != '19' or 'OK' in (s19_behavior_check.stdout | default('')) }}"
 
     - name: Calculer le statut global de vérification
       ansible.builtin.set_fact:
-        _verify_all_ok: "{{ (_check_router_ok | bool) and (_check_mqtt_ok | bool) and (_check_db_ok | bool) and (_check_ssh_ok | bool) and (_check_web_ok | bool) }}"
+        _verify_all_ok: >-
+          {{ (_check_router_ok | bool) and (_check_mqtt_ok | bool) and
+             (_check_db_ok | bool) and (_check_ssh_ok | bool) and
+             (_check_web_ok | bool) and (_check_redis_ok | bool) and
+             (_check_modbus_ok | bool) and (_check_s14_ok | bool) and
+             (_check_simulators_ok | bool) and (_check_s15_ok | bool) and
+             (_check_s16_ok | bool) and (_check_s17_ok | bool) and
+             (_check_s18_ok | bool) and (_check_s19_ok | bool) }}
 
     - name: Bloquer si des vulnérabilités critiques sont absentes
       ansible.builtin.fail:
@@ -543,5 +826,14 @@
           DB root:       {{ 'OK' if _check_db_ok | bool else 'FAIL' }}
           SSH creds:     {{ 'OK' if _check_ssh_ok | bool else 'FAIL' }}
           Web listing:   {{ 'OK' if _check_web_ok | bool else 'FAIL' }}
+          Redis no-auth: {{ 'OK' if _check_redis_ok | bool else 'FAIL' }}
+          Modbus:        {{ 'OK' if _check_modbus_ok | bool else 'FAIL' }}
+          S14 controls:  {{ 'OK' if _check_s14_ok | bool else 'FAIL' }}
+          Simulators:    {{ 'OK' if _check_simulators_ok | bool else 'FAIL' }}
+          S15 behavior:  {{ 'OK' if _check_s15_ok | bool else 'FAIL' }}
+          S16 behavior:  {{ 'OK' if _check_s16_ok | bool else 'FAIL' }}
+          S17 behavior:  {{ 'OK' if _check_s17_ok | bool else 'FAIL' }}
+          S18 behavior:  {{ 'OK' if _check_s18_ok | bool else 'FAIL' }}
+          S19 behavior:  {{ 'OK' if _check_s19_ok | bool else 'FAIL' }}
           Relancez 04_inject_vulns.yml avant de demarrer le pipeline LLM.
       when: not (_verify_all_ok | bool)

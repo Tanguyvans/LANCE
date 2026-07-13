@@ -81,7 +81,7 @@ class TestBuildSubprocessFunction:
         result = fn(target="192.168.88.1")
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["nmap", "-sV", "192.168.88.1"]
+        assert cmd == ["nmap", "-sV", "-T4", "--max-retries=1", "192.168.88.1"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_nmap_with_ports(self, mock_run):
@@ -90,7 +90,10 @@ class TestBuildSubprocessFunction:
         fn = build_subprocess_function(data)
         fn(target="192.168.88.1", ports="22,80")
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["nmap", "-sV", "-p", "22,80", "192.168.88.1"]
+        assert cmd == [
+            "nmap", "-sV", "-T4", "--max-retries=1",
+            "-p", "22,80", "192.168.88.1",
+        ]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_curl_positional(self, mock_run):
@@ -207,7 +210,7 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 39
+        assert len(tools) == 42
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
@@ -219,6 +222,7 @@ class TestExpectedTools:
         expected_exploit = {
             "ssh_login", "ssh_exec", "mysql_query", "telnet_connect",
             "ftp_list", "http_get", "redis_cmd", "try_credential",
+            "modbus_write",
         }
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
         # New offensive/recon tools added by the agent-tools-expansion PR.
@@ -229,7 +233,7 @@ class TestExpectedTools:
             "openssl_inspect", "ysoserial_payload",
         }
         expected_new_python = {
-            "python_exec", "http_request", "tcp_send",
+            "python_exec", "http_request", "tcp_send", "udp_send", "mtls_request",
             "tls_inspect", "decode_value",
         }
         expected = (

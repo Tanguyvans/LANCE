@@ -1,0 +1,22 @@
+id: ota_lifecycle
+name: Signed OTA Lifecycle
+description: Stateful deterministic firmware repository and device simulators exercising signature coverage and rollback protection
+base_vmid: 360
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-ota-repo', vmid_offset: 1, ip: 192.168.100.11, role: ota_repository, security_profile: vulnerable, simulator: ota_repository}
+- {name_template: 's{sid}-ota-api', vmid_offset: 2, ip: 192.168.100.12, role: ota_server, security_profile: vulnerable, simulator: ota_server}
+- {name_template: 's{sid}-device-a', vmid_offset: 3, ip: 192.168.100.13, role: ota_device, security_profile: vulnerable, simulator: ota_device}
+- {name_template: 's{sid}-device-b', vmid_offset: 4, ip: 192.168.100.14, role: ota_device, security_profile: key_reuse, simulator: ota_device}
+- {name_template: 's{sid}-signer', vmid_offset: 5, ip: 192.168.100.15, role: ota_signer, security_profile: hardened, simulator: ota_signer}
+- {name_template: 's{sid}-monitor', vmid_offset: 6, ip: 192.168.100.16, role: ota_monitor, security_profile: hardened, simulator: ota_monitor}
+links:
+- {source: 's{sid}-signer', target: 's{sid}-ota-repo', protocol: https}
+- {source: 's{sid}-ota-api', target: 's{sid}-ota-repo', protocol: https}
+- {source: 's{sid}-device-a', target: 's{sid}-ota-api', protocol: https}
+- {source: 's{sid}-device-b', target: 's{sid}-ota-api', protocol: https}
+- {source: 's{sid}-device-a', target: 's{sid}-monitor', protocol: https}

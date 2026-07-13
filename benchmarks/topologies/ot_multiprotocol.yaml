@@ -1,0 +1,24 @@
+id: ot_multiprotocol
+name: Multi-Protocol OT Cell
+description: Safe deterministic OT simulators for OPC UA and BACnet plus the existing Modbus service
+base_vmid: 400
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-hmi', vmid_offset: 1, ip: 192.168.100.11, role: ot_hmi, security_profile: hardened, simulator: ot_hmi}
+- {name_template: 's{sid}-opcua-open', vmid_offset: 2, ip: 192.168.100.12, role: ot_opcua_server, security_profile: vulnerable, simulator: opcua}
+- {name_template: 's{sid}-opcua-secure', vmid_offset: 3, ip: 192.168.100.13, role: ot_opcua_server, security_profile: hardened, simulator: opcua}
+- {name_template: 's{sid}-bacnet-open', vmid_offset: 4, ip: 192.168.100.14, role: ot_bacnet_server, security_profile: vulnerable, simulator: bacnet}
+- {name_template: 's{sid}-bacnet-secure', vmid_offset: 5, ip: 192.168.100.15, role: ot_bacnet_server, security_profile: hardened, simulator: bacnet}
+- {name_template: 's{sid}-modbus', vmid_offset: 6, ip: 192.168.100.16, role: modbus_server, security_profile: vulnerable}
+- {name_template: 's{sid}-historian', vmid_offset: 7, ip: 192.168.100.17, role: ot_historian, security_profile: hardened, simulator: ot_historian}
+links:
+- {source: 's{sid}-hmi', target: 's{sid}-opcua-open', protocol: opcua}
+- {source: 's{sid}-hmi', target: 's{sid}-opcua-secure', protocol: opcua}
+- {source: 's{sid}-hmi', target: 's{sid}-bacnet-open', protocol: bacnet}
+- {source: 's{sid}-hmi', target: 's{sid}-bacnet-secure', protocol: bacnet}
+- {source: 's{sid}-hmi', target: 's{sid}-modbus', protocol: modbus}
+- {source: 's{sid}-historian', target: 's{sid}-opcua-open', protocol: opcua}

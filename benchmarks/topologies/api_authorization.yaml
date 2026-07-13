@@ -1,0 +1,22 @@
+id: api_authorization
+name: Multi-Tenant IoT API
+description: Deterministic simulated SaaS control plane with authentication, tenant isolation and authorization boundaries
+base_vmid: 320
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-identity', vmid_offset: 1, ip: 192.168.100.11, role: api_identity_server, security_profile: hardened, simulator: api_identity}
+- {name_template: 's{sid}-fleet-api', vmid_offset: 2, ip: 192.168.100.12, role: api_tenant_server, security_profile: vulnerable, simulator: api_tenant}
+- {name_template: 's{sid}-audit-api', vmid_offset: 3, ip: 192.168.100.13, role: api_tenant_server, security_profile: hardened, simulator: api_tenant}
+- {name_template: 's{sid}-data-store', vmid_offset: 4, ip: 192.168.100.14, role: api_data_store, security_profile: hardened, simulator: api_data_store}
+- {name_template: 's{sid}-event-broker', vmid_offset: 5, ip: 192.168.100.15, role: api_event_broker, security_profile: hardened, simulator: api_event_broker}
+- {name_template: 's{sid}-admin-portal', vmid_offset: 6, ip: 192.168.100.16, role: api_admin_portal, security_profile: near_miss, simulator: api_portal}
+links:
+- {source: 's{sid}-identity', target: 's{sid}-fleet-api', protocol: https}
+- {source: 's{sid}-identity', target: 's{sid}-audit-api', protocol: https}
+- {source: 's{sid}-fleet-api', target: 's{sid}-data-store', protocol: http}
+- {source: 's{sid}-fleet-api', target: 's{sid}-event-broker', protocol: http}
+- {source: 's{sid}-admin-portal', target: 's{sid}-fleet-api', protocol: https}

@@ -1,0 +1,179 @@
+scenario_id: '15'
+scenario_name: Authenticated Multi-Tenant API
+difficulty: hard
+description: Authenticated Multi-Tenant API — Deterministic simulated SaaS control
+  plane with authentication, tenant isolation and authorization boundaries
+topology:
+  router:
+    name: s15-router
+    vmid: 320
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s15-identity
+    vmid: 321
+    ip: 192.168.100.11
+    role: api_identity_server
+    security_profile: hardened
+    simulator: api_identity
+  - name: s15-fleet-api
+    vmid: 322
+    ip: 192.168.100.12
+    role: api_tenant_server
+    security_profile: vulnerable
+    simulator: api_tenant
+  - name: s15-audit-api
+    vmid: 323
+    ip: 192.168.100.13
+    role: api_tenant_server
+    security_profile: hardened
+    simulator: api_tenant
+  - name: s15-data-store
+    vmid: 324
+    ip: 192.168.100.14
+    role: api_data_store
+    security_profile: hardened
+    simulator: api_data_store
+  - name: s15-event-broker
+    vmid: 325
+    ip: 192.168.100.15
+    role: api_event_broker
+    security_profile: hardened
+    simulator: api_event_broker
+  - name: s15-admin-portal
+    vmid: 326
+    ip: 192.168.100.16
+    role: api_admin_portal
+    security_profile: near_miss
+    simulator: api_portal
+vulnerabilities:
+- id: F11-IDOR@s15-fleet-api
+  device: s15-fleet-api
+  ip: 192.168.100.12
+  role: api_tenant_server
+  security_profile: vulnerable
+  template_key: F11-IDOR
+  title: Authenticated tenant can read another tenant's device
+  severity: high
+  category: broken_access_control
+  hop_depth: 1
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: A valid tenant-a bearer token can retrieve device-b by changing the
+    object identifier.
+  indicators:
+  - Requests without a bearer token return 401
+  - Tenant-a token receives HTTP 200 for /v1/devices/device-b
+  verification: obtain a token from the identity fixture then GET http://192.168.100.12:8080/v1/devices/device-b
+  confidence_required: high
+- id: F11-MASS-ASSIGNMENT@s15-fleet-api
+  device: s15-fleet-api
+  ip: 192.168.100.12
+  role: api_tenant_server
+  security_profile: vulnerable
+  template_key: F11-MASS-ASSIGNMENT
+  title: Device update accepts privileged ownership fields
+  severity: high
+  category: broken_access_control
+  hop_depth: 2
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: PATCH accepts owner_id and role fields that should be server controlled.
+  indicators:
+  - PATCH /v1/devices/device-a with role=admin returns 200
+  - A subsequent GET exposes the modified privileged field
+  verification: PATCH http://192.168.100.12:8080/v1/devices/device-a with a valid
+    tenant token and role=admin
+  confidence_required: high
+- id: F11-JWT-SCOPE@s15-fleet-api
+  device: s15-fleet-api
+  ip: 192.168.100.12
+  role: api_tenant_server
+  security_profile: vulnerable
+  template_key: F11-JWT-SCOPE
+  title: Administrative export ignores JWT scope
+  severity: critical
+  category: broken_access_control
+  hop_depth: 3
+  owasp_iot: I9 - Insecure Default Settings
+  description: A valid read-only token is accepted by the administrative export route.
+  indicators:
+  - Read-only bearer token receives HTTP 200 from /v1/admin/export
+  - Response contains both tenant records
+  verification: GET http://192.168.100.12:8080/v1/admin/export with the read-only
+    fixture token
+  confidence_required: high
+attack_paths:
+- id: P15-1
+  title: Low-privilege tenant token to cross-tenant administrative export
+  difficulty: hard
+  chain:
+  - hop: 1
+    device: s15-identity
+    action: Obtain a legitimate read-only tenant-a token
+  - hop: 2
+    device: s15-fleet-api
+    action: Enumerate device-b through the IDOR
+  - hop: 3
+    device: s15-fleet-api
+    action: Promote device-a through mass assignment
+  - hop: 4
+    device: s15-fleet-api
+    action: Retrieve the administrative export without admin scope
+  vulnerabilities_used:
+  - F11-IDOR@s15-fleet-api
+  - F11-MASS-ASSIGNMENT@s15-fleet-api
+  - F11-JWT-SCOPE@s15-fleet-api
+  impact: Cross-tenant disclosure and unauthorized control-plane privilege
+scoring:
+  total_vulnerabilities: 3
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 10
+  total_controls: 4
+bonus_types: []
+controls:
+- id: C11-IDENTITY-BADLOGIN@s15-identity
+  device: s15-identity
+  ip: 192.168.100.11
+  role: api_identity_server
+  security_profile: hardened
+  template_key: C11-IDENTITY-BADLOGIN
+  assertion: invalid_login_rejected
+  description: Invalid credentials are rejected with HTTP 401.
+  verification: POST http://192.168.100.11:8080/auth/login with an invalid password
+    returns 401
+- id: C11-NO-TOKEN@s15-fleet-api
+  device: s15-fleet-api
+  ip: 192.168.100.12
+  role: api_tenant_server
+  security_profile: vulnerable
+  template_key: C11-NO-TOKEN
+  assertion: api_requires_authentication
+  description: API routes reject missing bearer tokens; the tested defect is authorization,
+    not no-authentication.
+  verification: GET http://192.168.100.12:8080/v1/devices/device-a without Authorization
+    returns 401
+- id: C11-NO-TOKEN@s15-audit-api
+  device: s15-audit-api
+  ip: 192.168.100.13
+  role: api_tenant_server
+  security_profile: hardened
+  template_key: C11-NO-TOKEN
+  assertion: api_requires_authentication
+  description: API routes reject missing bearer tokens; the tested defect is authorization,
+    not no-authentication.
+  verification: GET http://192.168.100.13:8080/v1/devices/device-a without Authorization
+    returns 401
+- id: C11-TENANT-ISOLATION@s15-audit-api
+  device: s15-audit-api
+  ip: 192.168.100.13
+  role: api_tenant_server
+  security_profile: hardened
+  template_key: C11-TENANT-ISOLATION
+  assertion: cross_tenant_access_denied
+  description: The hardened API returns 403 for a cross-tenant object request.
+  verification: tenant-a token GET http://192.168.100.13:8080/v1/devices/device-b
+    returns 403

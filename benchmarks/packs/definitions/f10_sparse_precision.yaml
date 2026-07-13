@@ -1,0 +1,86 @@
+id: f10_sparse_precision
+name: Sparse Findings and Hardened Controls
+description: Precision-oriented pack; positive findings apply only to explicitly vulnerable service profiles.
+vulnerabilities:
+  mqtt_broker:
+  - key: F10-MQTT-ANON
+    applies_to: {profiles: [vulnerable]}
+    title: Anonymous MQTT subscription exposes retained operational secrets
+    severity: high
+    category: no_authentication
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: The broker accepts an unauthenticated wildcard subscription and publishes retained secrets.
+    indicators:
+    - Port 1883/tcp accepts a CONNECT packet without username or password
+    - Wildcard subscription returns smartcity/admin/credentials
+    verification: mosquitto_sub -h {ip} -t '#' -C 1 -W 5
+    confidence_required: high
+  web_server:
+  - key: F10-WEB-BACKUP
+    applies_to: {profiles: [vulnerable]}
+    title: Public web backup contains database credentials
+    severity: high
+    category: data_exposure
+    owasp_iot: I2 - Insecure Network Services
+    description: Directory listing exposes a SQL backup and an application configuration file.
+    indicators:
+    - GET /backup/ returns HTTP 200 with an index
+    - GET /backup/db_backup_2024-01-15.sql returns credential material
+    verification: curl -fsS http://{ip}/backup/db_backup_2024-01-15.sql
+    confidence_required: high
+  ssh_server:
+  - key: F10-SSH-DEFAULT
+    applies_to: {profiles: [vulnerable]}
+    title: Default administrative SSH credentials remain enabled
+    severity: critical
+    category: default_credentials
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The administrative account accepts the vendor-style admin/admin credential pair.
+    indicators:
+    - PasswordAuthentication is enabled
+    - SSH login admin/admin succeeds
+    verification: sshpass -p admin ssh admin@{ip} true
+    confidence_required: high
+  db_server_v2:
+  - key: F10-REDIS-NOAUTH
+    applies_to: {profiles: [vulnerable]}
+    title: Redis accepts commands without authentication
+    severity: high
+    category: no_authentication
+    owasp_iot: I2 - Insecure Network Services
+    description: Redis is bound to all interfaces with protected mode and authentication disabled.
+    indicators:
+    - Port 6379/tcp is reachable
+    - Unauthenticated PING returns PONG
+    verification: redis-cli -h {ip} PING
+    confidence_required: high
+controls:
+  mqtt_broker:
+  - key: C10-MQTT-AUTH
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: anonymous_mqtt_denied
+    description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+    verification: mosquitto_sub -h {ip} -t '#' -C 1 -W 2 must fail with authorization error
+  web_server:
+  - key: C10-WEB-BACKUP-DENIED
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: sensitive_backup_not_exposed
+    description: Backup-looking paths return 403 or 404 and contain no secrets.
+    verification: curl -sS -o /dev/null -w '%{http_code}' http://{ip}/backup/ returns 403 or 404
+  - key: C10-WEB-ADMIN-AUTH
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: admin_authentication_enforced
+    description: The visible admin endpoint is a near miss and correctly returns HTTP 401.
+    verification: curl -sS -o /dev/null -w '%{http_code}' http://{ip}/admin returns 401
+  ssh_server:
+  - key: C10-SSH-PASSWORD-OFF
+    applies_to: {profiles: [hardened]}
+    assertion: ssh_password_authentication_disabled
+    description: SSH exposes public-key authentication only.
+    verification: nmap --script ssh-auth-methods -p22 {ip} reports publickey and no password
+  db_server_v2:
+  - key: C10-REDIS-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: redis_authentication_required
+    description: An unauthenticated Redis command returns NOAUTH.
+    verification: redis-cli -h {ip} PING returns NOAUTH Authentication required

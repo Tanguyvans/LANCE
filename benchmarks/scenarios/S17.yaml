@@ -1,0 +1,30 @@
+schema_version: 2
+scenario_id: '17'
+name: Stateful Signed OTA
+difficulty: expert
+posture: mixed
+topology: ota_lifecycle
+packs: [f13_ota_advanced]
+attack_paths:
+- id: P17-1
+  title: Public legacy artifact to signed downgrade
+  difficulty: hard
+  chain:
+  - {hop: 1, device: s17-ota-repo, action: Download the obsolete signed version 1 fixture}
+  - {hop: 2, device: s17-device-a, action: Replay the valid payload signature with modified metadata}
+  - {hop: 3, device: s17-device-a, action: Downgrade the running firmware from version 2 to version 1}
+  vulnerabilities_used:
+  - F13-OLD-FIRMWARE@s17-ota-repo
+  - F13-UNSIGNED-METADATA@s17-device-a
+  - F13-ROLLBACK@s17-device-a
+  impact: Reintroduction of obsolete firmware while cryptographic verification appears successful
+- id: P17-2
+  title: Shared verification key compromises a second device class
+  difficulty: hard
+  chain:
+  - {hop: 1, device: s17-device-a, action: Reuse the valid device-a signed fixture}
+  - {hop: 2, device: s17-device-b, action: Install it because the verification secret is shared}
+  vulnerabilities_used:
+  - F13-SHARED-UPDATE-KEY@s17-device-b
+  impact: Cross-model update trust-domain compromise
+bonus_types: []

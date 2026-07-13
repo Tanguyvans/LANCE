@@ -1,0 +1,85 @@
+id: f15_ot_protocols
+name: Safe Multi-Protocol OT Simulation
+description: Protocol-aware but non-physical OPC UA and BACnet simulators plus a disposable Modbus register.
+vulnerabilities:
+  ot_opcua_server:
+  - key: F15-OPCUA-NONE
+    applies_to: {profiles: [vulnerable]}
+    title: OPC UA endpoint advertises SecurityPolicy None
+    severity: high
+    category: weak_crypto
+    hop_depth: 0
+    owasp_iot: I2 - Insecure Network Services
+    description: The deterministic OPC UA simulator accepts a no-signing, no-encryption session.
+    indicators:
+    - Port 4840/tcp returns an OPC UA ACK to HEL
+    - Endpoint metadata advertises SecurityPolicy None
+    verification: send an OPC UA HEL packet to {ip}:4840 and inspect the ACK and endpoint metadata
+    confidence_required: high
+  - key: F15-OPCUA-WRITE
+    applies_to: {profiles: [vulnerable]}
+    title: Anonymous OPC UA client can modify disposable process value
+    severity: critical
+    category: no_authentication
+    hop_depth: 1
+    owasp_iot: I2 - Insecure Network Services
+    description: The anonymous write operation changes only the simulator BenchPoint value.
+    indicators:
+    - Anonymous read returns BenchPoint
+    - Anonymous write changes BenchPoint without credentials
+    verification: use the simulator protocol command WRITE BenchPoint against {ip}:4840
+    confidence_required: high
+  ot_bacnet_server:
+  - key: F15-BACNET-DISCLOSURE
+    applies_to: {profiles: [vulnerable]}
+    title: BACnet Who-Is exposes controller identity and objects
+    severity: medium
+    category: info_disclosure
+    hop_depth: 1
+    owasp_iot: I2 - Insecure Network Services
+    description: The BACnet/IP simulator answers unauthenticated discovery with its device and point inventory.
+    indicators:
+    - UDP 47808 answers Who-Is with I-Am
+    - Response identifies the SmartCity HVAC controller
+    verification: send BACnet Who-Is to {ip}:47808/udp
+    confidence_required: high
+  - key: F15-BACNET-WRITE
+    applies_to: {profiles: [vulnerable]}
+    title: BACnet client can write disposable analog value without authorization
+    severity: high
+    category: no_authentication
+    hop_depth: 2
+    owasp_iot: I2 - Insecure Network Services
+    description: The simulator accepts an unauthenticated write to the BenchPoint analog value.
+    indicators:
+    - WriteProperty for BenchPoint succeeds without credentials
+    - Subsequent read returns the modified safe test value
+    verification: write and restore the disposable BenchPoint on {ip}:47808/udp
+    confidence_required: high
+  modbus_server:
+  - key: F15-MODBUS-WRITE
+    applies_to: {profiles: [vulnerable]}
+    title: Modbus/TCP permits unauthenticated write to test register
+    severity: high
+    category: no_authentication
+    hop_depth: 3
+    owasp_iot: I2 - Insecure Network Services
+    description: Function code 6 changes the simulator-only holding register without authentication.
+    indicators:
+    - Port 502/tcp responds to Modbus device identification
+    - Holding register 100 can be modified and restored
+    verification: perform a safe write/read/restore cycle against {ip}:502
+    confidence_required: high
+controls:
+  ot_opcua_server:
+  - key: C15-OPCUA-SECURE
+    applies_to: {profiles: [hardened]}
+    assertion: opcua_anonymous_write_denied
+    description: The hardened simulator rejects anonymous writes and does not advertise SecurityPolicy None.
+    verification: anonymous WRITE BenchPoint to {ip}:4840 is rejected
+  ot_bacnet_server:
+  - key: C15-BACNET-READONLY
+    applies_to: {profiles: [hardened]}
+    assertion: bacnet_write_denied
+    description: Discovery remains available but the disposable point is read-only to unauthenticated clients.
+    verification: unauthenticated WriteProperty to {ip}:47808/udp is rejected

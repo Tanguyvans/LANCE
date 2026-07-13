@@ -7,6 +7,8 @@ from pathlib import Path
 import yaml
 from fastapi import APIRouter
 
+from src.benchmark.catalog import EVAL_SEALED, load_catalog, load_eval_profile
+
 router = APIRouter()
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -70,21 +72,47 @@ def list_scenarios():
                 "vulns": vuln_list,
             })
 
-    # Pre-configured scenarios
-    scenarios = []
+    # Public development scenarios are backed by deployable YAML.  Sealed
+    # scenarios are appended from the metadata-only catalogue and never expose
+    # topology, packs, seeds, or oracle details.
+    scenarios_by_id: dict[str, dict] = {}
     scen_dir = BENCHMARKS / "scenarios"
     if scen_dir.exists():
         for f in sorted(scen_dir.glob("S*.yaml")):
             data = yaml.safe_load(f.read_text())
-            scenarios.append({
-                "id": data.get("scenario_id", f.stem),
+            sid = str(data.get("scenario_id", f.stem.removeprefix("S")))
+            scenarios_by_id[sid] = {
+                "id": sid,
                 "name": data.get("name", ""),
                 "difficulty": data.get("difficulty", "medium"),
                 "posture": data.get("posture", "vulnerable"),
                 "topology": data.get("topology", ""),
                 "packs": data.get("packs", []),
-            })
-        scenarios.sort(key=_scenario_sort_key)
+                "split": "dev-public",
+                "sealed": False,
+            }
+
+    catalog = load_catalog()
+    for descriptor in catalog.scenarios:
+        if descriptor.split == EVAL_SEALED:
+            profile = load_eval_profile(descriptor, catalog=catalog)
+            scenarios_by_id[descriptor.id] = {
+                "id": descriptor.id,
+                "name": descriptor.label,
+                "difficulty": "sealed",
+                "posture": "unknown",
+                "topology": None,
+                "packs": [],
+                "split": descriptor.split,
+                "sealed": True,
+                "controller_required": profile.controller_required,
+                "blind_required": profile.blind_required,
+                "score_visibility": profile.score_visibility,
+            }
+        elif descriptor.id in scenarios_by_id:
+            scenarios_by_id[descriptor.id]["split"] = descriptor.split
+
+    scenarios = sorted(scenarios_by_id.values(), key=_scenario_sort_key)
 
     return {
         "architectures": architectures,

@@ -1,0 +1,23 @@
+schema_version: 2
+scenario_id: '19'
+name: Safe Multi-Protocol OT Cell
+difficulty: expert
+posture: mixed
+topology: ot_multiprotocol
+packs: [f15_ot_protocols]
+attack_paths:
+- id: P19-1
+  title: Anonymous multi-protocol process manipulation
+  difficulty: expert
+  chain:
+  - {hop: 1, device: s19-opcua-open, action: Negotiate the simulated OPC UA endpoint without message security}
+  - {hop: 2, device: s19-opcua-open, action: Modify the disposable BenchPoint anonymously}
+  - {hop: 3, device: s19-bacnet-open, action: Discover the HVAC object and modify its disposable value}
+  - {hop: 4, device: s19-modbus, action: Modify and restore the Modbus test register}
+  vulnerabilities_used:
+  - F15-OPCUA-NONE@s19-opcua-open
+  - F15-OPCUA-WRITE@s19-opcua-open
+  - F15-BACNET-WRITE@s19-bacnet-open
+  - F15-MODBUS-WRITE@s19-modbus
+  impact: Demonstrated unauthenticated writes across three safe OT protocol simulators
+bonus_types: []

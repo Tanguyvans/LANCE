@@ -1,0 +1,62 @@
+id: f11_api_authorization
+name: Authenticated API Authorization
+description: Deterministic multi-tenant authorization flaws behind otherwise working authentication.
+vulnerabilities:
+  api_tenant_server:
+  - key: F11-IDOR
+    applies_to: {profiles: [vulnerable]}
+    title: Authenticated tenant can read another tenant's device
+    severity: high
+    category: broken_access_control
+    hop_depth: 1
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: A valid tenant-a bearer token can retrieve device-b by changing the object identifier.
+    indicators:
+    - Requests without a bearer token return 401
+    - Tenant-a token receives HTTP 200 for /v1/devices/device-b
+    verification: obtain a token from the identity fixture then GET http://{ip}:8080/v1/devices/device-b
+    confidence_required: high
+  - key: F11-MASS-ASSIGNMENT
+    applies_to: {profiles: [vulnerable]}
+    title: Device update accepts privileged ownership fields
+    severity: high
+    category: broken_access_control
+    hop_depth: 2
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: PATCH accepts owner_id and role fields that should be server controlled.
+    indicators:
+    - PATCH /v1/devices/device-a with role=admin returns 200
+    - A subsequent GET exposes the modified privileged field
+    verification: PATCH http://{ip}:8080/v1/devices/device-a with a valid tenant token and role=admin
+    confidence_required: high
+  - key: F11-JWT-SCOPE
+    applies_to: {profiles: [vulnerable]}
+    title: Administrative export ignores JWT scope
+    severity: critical
+    category: broken_access_control
+    hop_depth: 3
+    owasp_iot: I9 - Insecure Default Settings
+    description: A valid read-only token is accepted by the administrative export route.
+    indicators:
+    - Read-only bearer token receives HTTP 200 from /v1/admin/export
+    - Response contains both tenant records
+    verification: GET http://{ip}:8080/v1/admin/export with the read-only fixture token
+    confidence_required: high
+controls:
+  api_identity_server:
+  - key: C11-IDENTITY-BADLOGIN
+    applies_to: {profiles: [hardened]}
+    assertion: invalid_login_rejected
+    description: Invalid credentials are rejected with HTTP 401.
+    verification: POST http://{ip}:8080/auth/login with an invalid password returns 401
+  api_tenant_server:
+  - key: C11-NO-TOKEN
+    applies_to: {profiles: [vulnerable, hardened]}
+    assertion: api_requires_authentication
+    description: API routes reject missing bearer tokens; the tested defect is authorization, not no-authentication.
+    verification: GET http://{ip}:8080/v1/devices/device-a without Authorization returns 401
+  - key: C11-TENANT-ISOLATION
+    applies_to: {profiles: [hardened]}
+    assertion: cross_tenant_access_denied
+    description: The hardened API returns 403 for a cross-tenant object request.
+    verification: tenant-a token GET http://{ip}:8080/v1/devices/device-b returns 403

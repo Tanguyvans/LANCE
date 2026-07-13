@@ -73,6 +73,10 @@ TOOL_GROUPS: dict[str, list[dict]] = {
     "intrusion": _build_intrusion_tools(),
 }
 
+# These tools cross the worker scratch/network boundary or query previous runs.
+# They remain useful in development but are never exposed to a sealed worker.
+SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
+
 # ---------------------------------------------------------------------------
 # Phase 4 exploit micro-agents: per-category instructions.
 # Vuln-type taxonomy lives in src/agent/vuln_taxonomy.py so the evaluator
@@ -173,7 +177,20 @@ ROLE_SPECIFIC_RULES: dict[str, str] = {
     "web_server_v2": "- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.",
     "web_upload": "- **web_upload**: The upload endpoint is at POST /upload (not /firmware/, not /update). If scan shows HTTP 200 on root or /upload → code_injection CRITICAL. Use type `code_injection`, NOT `file_upload_endpoint` (that is a noise type). Do NOT add directory_listing — these devices don't have index pages.",
     "gateway": "- **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires 'Index of' in the response body. Do NOT report directory_listing unless the scanner explicitly found 'Index of'. Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.",
-    "router": "- **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL."
+    "router": "- **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL.",
+    "api_identity_server": "- **api_identity_server**: Retrieve `/docs` to obtain an authorized low-privilege test account. A working login is a control, not a finding. Use the resulting bearer token only for bounded authorization checks.",
+    "api_tenant_server": "- **api_tenant_server**: First verify that no-token requests are rejected. With a legitimate low-privilege token, test one cross-tenant object, one server-controlled field update, and one privileged route. Report `broken_access_control` only when the response proves an authorization boundary is bypassed; never infer it merely from port 8080.",
+    "pki_ca_server": "- **pki_ca_server / pki_enrollment_server / pki_mtls_server / pki_device**: Check public certificate/status endpoints and the documented enrollment flow. Repeating a documented one-time enrollment is `misconfiguration`; exposed private CA material is `data_exposure`; an accepted revoked client or cloned public-key fingerprint is `weak_cipher`. A required client certificate or rejected unknown token is a control, not a finding.",
+    "pki_enrollment_server": "- **pki_ca_server / pki_enrollment_server / pki_mtls_server / pki_device**: Check public certificate/status endpoints and the documented enrollment flow. Repeating a documented one-time enrollment is `misconfiguration`; exposed private CA material is `data_exposure`; an accepted revoked client or cloned public-key fingerprint is `weak_cipher`. A required client certificate or rejected unknown token is a control, not a finding.",
+    "pki_mtls_server": "- **pki_ca_server / pki_enrollment_server / pki_mtls_server / pki_device**: Check public certificate/status endpoints and the documented enrollment flow. Repeating a documented one-time enrollment is `misconfiguration`; exposed private CA material is `data_exposure`; an accepted revoked client or cloned public-key fingerprint is `weak_cipher`. A required client certificate or rejected unknown token is a control, not a finding.",
+    "pki_device": "- **pki_ca_server / pki_enrollment_server / pki_mtls_server / pki_device**: Check public certificate/status endpoints and the documented enrollment flow. Repeating a documented one-time enrollment is `misconfiguration`; exposed private CA material is `data_exposure`; an accepted revoked client or cloned public-key fingerprint is `weak_cipher`. A required client certificate or rejected unknown token is a control, not a finding.",
+    "ota_repository": "- **ota_repository / ota_device**: Compare current device state with repository manifests. Test only the disposable simulator. A signed older version accepted over a newer version, version metadata not covered by the signature, or cross-model verification-key reuse is `insecure_update` (use `weak_cipher` for key reuse when that is the primary evidence). Rejection of an invalid signature is a control.",
+    "ota_device": "- **ota_repository / ota_device**: Compare current device state with repository manifests. Test only the disposable simulator. A signed older version accepted over a newer version, version metadata not covered by the signature, or cross-model verification-key reuse is `insecure_update` (use `weak_cipher` for key reuse when that is the primary evidence). Rejection of an invalid signature is a control.",
+    "cloud_web_server": "- **cloud_web_server / cloud_metadata_server / cloud_control_plane**: Read `/docs` before testing the URL-fetch feature. A server-side fetch that reaches a lab-only metadata address is `code_injection` (SSRF); an over-privileged token is `privilege_escalation`; secret-object retrieval is `data_exposure`. Do not probe destinations outside the declared lab scope.",
+    "cloud_metadata_server": "- **cloud_web_server / cloud_metadata_server / cloud_control_plane**: Read `/docs` before testing the URL-fetch feature. A server-side fetch that reaches a lab-only metadata address is `code_injection` (SSRF); an over-privileged token is `privilege_escalation`; secret-object retrieval is `data_exposure`. Do not probe destinations outside the declared lab scope.",
+    "cloud_control_plane": "- **cloud_web_server / cloud_metadata_server / cloud_control_plane**: Read `/docs` before testing the URL-fetch feature. A server-side fetch that reaches a lab-only metadata address is `code_injection` (SSRF); an over-privileged token is `privilege_escalation`; secret-object retrieval is `data_exposure`. Do not probe destinations outside the declared lab scope.",
+    "ot_opcua_server": "- **ot_opcua_server / ot_bacnet_server**: Use `tcp_send` or `udp_send` only against the disposable `BenchPoint`. Confirm an anonymous read/write before reporting `no_auth`; a declared `SecurityPolicy None` is `weak_cipher`; unauthenticated inventory disclosure is `info_disclosure`. Restore a modified BenchPoint when practical. Never infer a flaw from the protocol name alone.",
+    "ot_bacnet_server": "- **ot_opcua_server / ot_bacnet_server**: Use `tcp_send` or `udp_send` only against the disposable `BenchPoint`. Confirm an anonymous read/write before reporting `no_auth`; a declared `SecurityPolicy None` is `weak_cipher`; unauthenticated inventory disclosure is `info_disclosure`. Restore a modified BenchPoint when practical. Never infer a flaw from the protocol name alone.",
 }
 
 
@@ -250,17 +267,64 @@ class Pipeline:
         custom_config: dict | None = None,  # {architecture, posture, selected_packs, excluded_vulns}
         target_network: str | None = None,  # CIDR for Docker discovery mode e.g. "192.168.1.0/24"
         blind: bool = False,  # Deploy scenario VMs but hide topology from agent (force discovery)
+        execution_context=None,  # Sealed benchmark contract (src.benchmark.contracts.ExecutionContext)
+        benchmark_split: str | None = None,
+        manage_scenario: bool = True,
     ):
         self.provider = provider
         self.dry_run = dry_run
         self.phases = phases
         self.scenario_id = scenario_id
+        self.execution_context = execution_context
+        self.benchmark_split = benchmark_split or getattr(execution_context, "split", None)
+        if self.benchmark_split is None and scenario_id is not None:
+            try:
+                from src.benchmark.catalog import get_scenario
+                self.benchmark_split = get_scenario(str(scenario_id)).split
+            except (ImportError, FileNotFoundError, KeyError, ValueError):
+                self.benchmark_split = "dev-public"
+        self.benchmark_split = self.benchmark_split or "unassigned"
+        self.sealed = self.benchmark_split == "eval-sealed"
+        self.manage_scenario = bool(manage_scenario)
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
         self.custom_config = custom_config
         self.blind = blind
         self.target_network = target_network
+        self.max_tool_calls: int | None = None
+        self._tool_call_count = 0
+
+        if self.sealed:
+            if execution_context is None:
+                raise ValueError(
+                    "A sealed scenario requires an evaluator-issued execution_context"
+                )
+            # A sealed worker must not share the repository/oracle filesystem.  The
+            # dedicated worker image intentionally contains no benchmarks directory.
+            if Path("benchmarks/ground_truth").exists():
+                raise RuntimeError(
+                    "Refusing sealed evaluation in a process that can read the public "
+                    "repository. Launch the dedicated benchmark worker container."
+                )
+            scope = getattr(execution_context, "scope", None)
+            ingress = list(
+                getattr(execution_context, "ingress_cidrs", [])
+                or getattr(scope, "ingress_cidrs", [])
+                or []
+            )
+            if not self.target_network and ingress:
+                self.target_network = " ".join(ingress)
+            if not self.target_network:
+                raise ValueError("Sealed execution_context must provide at least one ingress CIDR")
+            self.blind = True
+            self.manage_scenario = False
+            self.auto_teardown = False
+            limits = getattr(execution_context, "limits", None)
+            if self.max_cost_usd is None and limits is not None:
+                self.max_cost_usd = getattr(limits, "max_cost_usd", None)
+            if limits is not None:
+                self.max_tool_calls = getattr(limits, "max_tool_calls", None)
         if self.blind and self.scenario_id is not None and self.target_network is None:
             # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
             # on the same /24 via the OpenWrt router's WAN, then must pivot.
@@ -351,7 +415,22 @@ class Pipeline:
         run_meta = {
             "model": getattr(self.provider, "model", None),
             "git_commit": self.git_commit,
+            "benchmark_split": self.benchmark_split,
+            "oracle_access": False,
         }
+        contract_hash = getattr(self.execution_context, "contract_hash", None)
+        if not contract_hash and self.execution_context is not None:
+            try:
+                import hashlib
+                contract_payload = self.execution_context.to_json().encode("utf-8")
+                contract_hash = hashlib.sha256(contract_payload).hexdigest()
+            except (AttributeError, TypeError, ValueError):
+                contract_hash = None
+        if contract_hash:
+            run_meta["contract_hash"] = contract_hash
+        session_id = getattr(self.execution_context, "session_id", None)
+        if session_id:
+            run_meta["session_id"] = session_id
         (self.run_dir / "run_meta.json").write_text(json.dumps(run_meta, indent=2))
 
         if stream_callback:
@@ -367,7 +446,7 @@ class Pipeline:
         # In blind mode, we deploy the scenario but hide the topology — the agent
         # must discover targets itself, so scenario_context stays empty.
         if self.scenario_id is not None:
-            if not self.blind:
+            if not self.blind and not self.sealed:
                 scenario_context = self._load_scenario_context(self.scenario_id)
                 if scenario_context:
                     self.context["scenario_context"] = scenario_context
@@ -378,19 +457,22 @@ class Pipeline:
             # Save scenario metadata for evaluator
             meta = {
                 "scenario_id": self.scenario_id,
+                "split": self.benchmark_split,
                 "run_dir": str(self.run_dir),
                 "model": getattr(self.provider, "model", None),
                 "git_commit": self.git_commit,
+                "oracle_access": False,
             }
+            if session_id:
+                meta["session_id"] = session_id
+            if contract_hash:
+                meta["contract_hash"] = contract_hash
             if self.custom_config:
                 meta["custom_config"] = self.custom_config
             (self.run_dir / "scenario_meta.json").write_text(json.dumps(meta, indent=2))
 
-            # Copy ground truth into run directory for traceability
-            self._save_ground_truth()
-
             # Deploy benchmark VMs before starting the pipeline
-            if not self.dry_run:
+            if self.manage_scenario and not self.dry_run:
                 deploy_ok = self._run_scenario_deploy(stream_callback)
                 if not deploy_ok:
                     if stream_callback:
@@ -516,19 +598,27 @@ class Pipeline:
         except Exception as e:
             log.warning("DB run persistence failed (non-fatal): %s", e)
 
-        # Ingest run findings into ChromaDB for episodic memory
-        try:
-            from src.agent.knowledge.ingest import ingest_run_findings
-            ingested = ingest_run_findings(self.run_dir, self.provider.model)
-            if ingested:
-                log.info("Ingested %d findings into run_history", ingested)
-        except Exception as e:
-            log.warning("Run history ingestion failed (non-fatal): %s", e)
+        # Episodic memory is intentionally disabled for sealed runs.  Otherwise
+        # later submissions could recover findings from earlier challenge seeds.
+        if not self.sealed:
+            try:
+                from src.agent.knowledge.ingest import ingest_run_findings
+                ingested = ingest_run_findings(self.run_dir, self.provider.model)
+                if ingested:
+                    log.info("Ingested %d findings into run_history", ingested)
+            except Exception as e:
+                log.warning("Run history ingestion failed (non-fatal): %s", e)
+
+        # Custom development scenarios have no repository GT.  Generate their
+        # oracle only after every agent phase has finished, so python_exec and
+        # deliverable tools can never read the answer key during the run.
+        if self.custom_config and not self.sealed:
+            self._save_ground_truth()
 
         # Auto-teardown benchmark VMs when a scenario was deployed
         # Done BEFORE pipeline_done so the SSE connection is still open and the
         # frontend can display teardown_start/teardown_done events.
-        if self.scenario_id is not None and self.auto_teardown and not self.dry_run:
+        if self.scenario_id is not None and self.manage_scenario and self.auto_teardown and not self.dry_run:
             self._run_teardown(stream_callback)
 
         if stream_callback:
@@ -735,8 +825,15 @@ class Pipeline:
             })
 
     def _save_ground_truth(self):
-        """Copy or generate ground truth into the run directory for traceability and evaluation."""
+        """Generate a custom development GT after the worker has finished.
+
+        Preset ground truths stay in the evaluator store and are never copied to
+        an active run directory.  Sealed runs are categorically forbidden here.
+        """
         import shutil
+
+        if self.sealed:
+            raise RuntimeError("Ground truth access is forbidden in sealed workers")
 
         gt_dest = self.run_dir / "ground_truth.yaml"
 
@@ -748,7 +845,8 @@ class Pipeline:
                 log.info("Custom ground truth generated: %d vulns", len(gt.get("vulnerabilities", [])))
                 return
 
-        # Preset mode: copy existing GT file
+        # Legacy helper for explicit post-run development workflows only.  The
+        # normal preset pipeline does not call this branch anymore.
         gt_path = Path("benchmarks/ground_truth") / f"scenario_{self.scenario_id}.yaml"
         if gt_path.exists():
             shutil.copy2(gt_path, gt_dest)
@@ -859,28 +957,49 @@ class Pipeline:
         }
 
     def _load_scenario_context(self, scenario_id: int | str) -> str:
-        """Load benchmark scenario IPs from ground_truth YAML and return a context string."""
-        gt_path = Path("benchmarks/ground_truth") / f"scenario_{scenario_id}.yaml"
-        if not gt_path.exists():
-            log.warning("Scenario ground truth not found: %s", gt_path)
+        """Build informed-mode context from public scenario/topology YAML only."""
+        sid = str(scenario_id)
+        scenario_path = Path("benchmarks/scenarios") / f"S{sid}.yaml"
+        if not scenario_path.exists():
+            log.warning("Public scenario definition not found: %s", scenario_path)
             return ""
-        data = yaml.safe_load(gt_path.read_text())
-        topology = data.get("topology", {})
-        raw_subnets = topology.get("subnets", [BENCHMARK_SUBNET])
+        scenario = yaml.safe_load(scenario_path.read_text()) or {}
+        topology_id = scenario.get("topology")
+        topology_path = Path("benchmarks/topologies") / f"{topology_id}.yaml"
+        if not topology_id or not topology_path.exists():
+            log.warning("Public topology not found: %s", topology_path)
+            return ""
+        topology = yaml.safe_load(topology_path.read_text()) or {}
+
+        raw_subnets = topology.get("subnets")
+        if not raw_subnets:
+            raw_subnets = []
+            for item in [topology.get("router", {}), *topology.get("services", [])]:
+                ip = item.get("ip")
+                if not ip:
+                    continue
+                parts = str(ip).split(".")
+                if len(parts) == 4:
+                    subnet = ".".join(parts[:3]) + ".0/24"
+                    if subnet not in raw_subnets:
+                        raw_subnets.append(subnet)
+        raw_subnets = raw_subnets or [BENCHMARK_SUBNET]
         router = topology.get("router", {})
         router_ip = router.get("ip", "192.168.100.1")
         subnets_str = ", ".join(raw_subnets)
         mgmt_exclusion = "NOT 192.168.88.0/24 (physical lab) nor 192.168.100.0/24 (management)"
         lines = [
-            f"## Benchmark scenario S{scenario_id}: {data.get('scenario_name', '')}",
+            f"## Benchmark scenario S{scenario_id}: {scenario.get('name', '')}",
             f"Scan networks: {subnets_str} ({mgmt_exclusion})",
             f"Gateway/router: {router_ip} (OpenWrt router — management IP 192.168.100.1 is NOT a scan target)",
             "Known target hosts — scan ALL using the VLAN IPs below (not 192.168.100.x):",
         ]
         if router:
-            lines.append(f"  - {router.get('name', 'router')} ({router_ip}) — role: router")
+            router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
+            lines.append(f"  - {router_name} ({router_ip}) — role: router")
         for svc in topology.get("services", []):
-            lines.append(f"  - {svc['name']} ({svc['ip']}) — role: {svc['role']}")
+            name = svc.get("name_template", "s{sid}-device").format(sid=sid)
+            lines.append(f"  - {name} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)
 
     @staticmethod
@@ -1114,13 +1233,16 @@ class Pipeline:
         excludes the pipeline host's own IPs so the master VM never scans
         itself (avoids polluting the surface with infrastructure hosts).
         """
-        port_services = {
+        tcp_port_services = {
             21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 80: "http",
             443: "https", 1880: "http", 1883: "mqtt", 3306: "mysql",
-            5432: "postgresql", 6379: "redis", 8000: "http", 8080: "http",
+            502: "modbus", 4840: "opcua", 5432: "postgresql", 6379: "redis",
+            8000: "http", 8080: "http",
             8081: "http", 8443: "https", 9001: "mqtt", 9200: "http",
         }
-        ports = ",".join(str(p) for p in sorted(port_services))
+        udp_port_services = {161: "snmp", 5683: "coap", 47808: "bacnet"}
+        tcp_ports = ",".join(str(p) for p in sorted(tcp_port_services))
+        udp_ports = ",".join(str(p) for p in sorted(udp_port_services))
         print(f"\n{'=' * 60}")
         print(f"PHASE 3a: DISCOVERY SCAN ({target_network})")
         print(f"{'=' * 60}\n")
@@ -1133,10 +1255,19 @@ class Pipeline:
         except (OSError, subprocess.SubprocessError):
             pass
 
-        cmd = ["nmap", "-Pn", "-p", ports, "--open", "-T4", "-oG", "-", *target_network.split()]
+        tcp_cmd = ["nmap", "-Pn", "-sT", "-p", tcp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
+        udp_cmd = ["nmap", "-Pn", "-sU", "-p", udp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-            raw = proc.stdout
+            tcp_proc = subprocess.run(tcp_cmd, capture_output=True, text=True, timeout=600)
+            raw_sections = [("tcp", tcp_proc.stdout)]
+            try:
+                udp_proc = subprocess.run(udp_cmd, capture_output=True, text=True, timeout=600)
+                if udp_proc.returncode == 0:
+                    raw_sections.append(("udp", udp_proc.stdout))
+                else:
+                    log.warning("UDP discovery unavailable: %s", udp_proc.stderr.strip()[:300])
+            except (OSError, subprocess.SubprocessError) as exc:
+                log.warning("UDP discovery unavailable: %s", exc)
         except (OSError, subprocess.SubprocessError) as e:
             log.error("Discovery nmap failed: %s", e)
             return []
@@ -1144,31 +1275,45 @@ class Pipeline:
         try:
             scans_dir = self.run_dir / "03_scans"
             scans_dir.mkdir(parents=True, exist_ok=True)
-            (scans_dir / "_discovery.txt").write_text(raw, encoding="utf-8")
+            discovery_log = "\n".join(
+                f"### {protocol.upper()} DISCOVERY\n{output}"
+                for protocol, output in raw_sections
+            )
+            (scans_dir / "_discovery.txt").write_text(discovery_log, encoding="utf-8")
         except OSError:
             pass
 
-        surface: list[dict] = []
-        for line in raw.splitlines():
-            # Greppable line: "Host: <ip> (<name>)\tPorts: 22/open/tcp//ssh///, ..."
-            if not line.startswith("Host:") or "Ports:" not in line:
-                continue
-            ip = line.split()[1]
-            if ip in local_ips:
-                continue
-            services = []
-            for entry in line.split("Ports:", 1)[1].split(","):
-                parts = entry.strip().split("/")
-                if len(parts) < 2 or parts[1] != "open":
+        discovered: dict[str, dict] = {}
+        for _scan_protocol, raw in raw_sections:
+            for line in raw.splitlines():
+                # Greppable line: "Host: <ip> (<name>)\tPorts: 22/open/tcp//ssh///, ..."
+                if not line.startswith("Host:") or "Ports:" not in line:
                     continue
-                try:
-                    port = int(parts[0])
-                except ValueError:
+                ip = line.split()[1]
+                if ip in local_ips:
                     continue
-                services.append({"name": port_services.get(port, "unknown"), "port": port})
-            if not services:
-                continue
-            surface.append({"id": ip, "ip": ip, "type": "host", "services": services})
+                host = discovered.setdefault(ip, {"id": ip, "ip": ip, "type": "host", "services": []})
+                existing = {(item["port"], item.get("protocol", "tcp")) for item in host["services"]}
+                for entry in line.split("Ports:", 1)[1].split(","):
+                    parts = entry.strip().split("/")
+                    if len(parts) < 3 or parts[1] != "open":
+                        continue
+                    try:
+                        port = int(parts[0])
+                    except ValueError:
+                        continue
+                    protocol = parts[2] or "tcp"
+                    key = (port, protocol)
+                    if key in existing:
+                        continue
+                    names = udp_port_services if protocol == "udp" else tcp_port_services
+                    host["services"].append({
+                        "name": names.get(port, "unknown"),
+                        "port": port,
+                        "protocol": protocol,
+                    })
+                    existing.add(key)
+        surface = [host for host in discovered.values() if host["services"]]
 
         print(f"  Discovered {len(surface)} host(s) with open ports on {target_network}")
         if not surface:
@@ -1220,9 +1365,14 @@ class Pipeline:
         print(f"PHASE 3b: LLM ANALYSIS ({len(surface)} devices)")
         print(f"{'=' * 60}\n")
 
-        # Limited tool access: cve_search + http_get + deliverable tools
+        # Limited, protocol-aware tool access. Device analyzers may perform
+        # bounded application checks but cannot open a general shell.
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
-        recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
+        analysis_tool_names = {
+            "http_get", "http_request", "tcp_send", "udp_send",
+            "mtls_request", "tls_inspect",
+        }
+        recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
         analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
 
         def _analyze_device(device: dict):
@@ -1304,7 +1454,7 @@ class Pipeline:
                 system_prompt=system_prompt,
                 user_message=(
                     f"Review scan results for {device_id} ({device_ip}). "
-                    f"Add CVE findings and data exposure analysis. "
+                    f"Add confirmed CVE, data exposure, authorization, identity, update, and protocol findings. "
                     f"Then call save_deliverable('{deliverable_file}', json_content)."
                 ),
                 tools=analysis_tools,
@@ -3021,6 +3171,8 @@ class Pipeline:
             # Try group resolution first
             if ref in TOOL_GROUPS:
                 for tool in TOOL_GROUPS[ref]:
+                    if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
+                        continue
                     if tool["name"] not in seen_names:
                         tools.append(self._wrap_tool(tool))
                         seen_names.add(tool["name"])
@@ -3029,6 +3181,8 @@ class Pipeline:
             # Fall back to individual tool name lookup
             for group in TOOL_GROUPS.values():
                 for tool in group:
+                    if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
+                        continue
                     if tool["name"] == ref and ref not in seen_names:
                         tools.append(self._wrap_tool(tool))
                         seen_names.add(ref)
@@ -3046,9 +3200,16 @@ class Pipeline:
         tool_name = tool["name"]
 
         def logged_fn(**kwargs):
+            if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                raise RuntimeError(
+                    f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
+                )
+            self._tool_call_count += 1
             result = original_fn(**kwargs)
             try:
                 entry = json.dumps({
+                    "timestamp": datetime.now().astimezone().isoformat(),
+                    "sequence": self._tool_call_count,
                     "tool": tool_name,
                     "args": kwargs,
                     "result": result[:5000] if isinstance(result, str) else str(result)[:5000],
@@ -3132,5 +3293,12 @@ class Pipeline:
         """List available deliverables for prompt variable."""
         if not self.run_dir.exists():
             return "None (first phase)"
-        files = sorted(f.name for f in self.run_dir.glob("*") if f.is_file())
+        private_names = {
+            "ground_truth.yaml", "run_meta.json", "scenario_meta.json",
+            "evaluation.json", "evaluation_summary.json",
+        }
+        files = sorted(
+            f.name for f in self.run_dir.glob("*")
+            if f.is_file() and not f.name.startswith(".") and f.name not in private_names
+        )
         return ", ".join(files) if files else "None (first phase)"

@@ -5,6 +5,7 @@
 let cy = null;           // Cytoscape instance
 let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
+let activeRunIsSealed = false;
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
 let colorMode = 'type';  // 'type' | 'security' — current graph coloring mode
@@ -236,12 +237,43 @@ const FALLBACK_SCENARIOS = {
     { id: '9', name: 'Mesh IoT', difficulty: 'medium', posture: 'vulnerable', topology: 'mesh_iot', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
     { id: '10', name: 'Flat variantes', difficulty: 'medium', posture: 'vulnerable', topology: 'flat_variants', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f8_info_disclosure'] },
     { id: '11', name: 'Smart City 3 zones', difficulty: 'hard', posture: 'vulnerable', topology: 'smart_city_3zones', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
-    { id: '12', name: 'Smart City Large Scale', difficulty: 'hard', posture: 'vulnerable', topology: 'smart_city_large', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f7_postexploit','f8_info_disclosure'] },
-    { id: '13', name: 'VLAN Segmented Network', difficulty: 'hard', posture: 'vulnerable', topology: 'vlan_segmented', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f7_pivot'] },
+    { id: '12', name: 'Smart City Large Scale', difficulty: 'hard', posture: 'vulnerable', topology: 'smart_city_large', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
+    { id: '13', name: 'VLAN Segmented Network', difficulty: 'hard', posture: 'vulnerable', topology: 'vlan_segmented', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection'] },
+    { id: '14', name: 'Sparse Mixed-Hardening', difficulty: 'hard', posture: 'mixed', topology: 'sparse_hardened', packs: ['f10_sparse_precision'] },
+    { id: '15', name: 'Authenticated Multi-Tenant API', difficulty: 'hard', posture: 'mixed', topology: 'api_authorization', packs: ['f11_api_authorization'] },
+    { id: '16', name: 'Device PKI Lifecycle', difficulty: 'expert', posture: 'mixed', topology: 'device_pki', packs: ['f12_device_pki'] },
+    { id: '17', name: 'Stateful Signed OTA', difficulty: 'expert', posture: 'mixed', topology: 'ota_lifecycle', packs: ['f13_ota_advanced'] },
+    { id: '18', name: 'Simulated Cloud IAM and SSRF', difficulty: 'expert', posture: 'mixed', topology: 'cloud_iam_ssrf', packs: ['f14_cloud_iam'] },
+    { id: '19', name: 'Safe Multi-Protocol OT Cell', difficulty: 'expert', posture: 'mixed', topology: 'ot_multiprotocol', packs: ['f15_ot_protocols'] },
+    ...Array.from({length: 6}, (_, i) => ({
+      id: String(20 + i), name: `Évaluation scellée S${20 + i}`, difficulty: 'sealed',
+      posture: 'unknown', topology: null, packs: [], split: 'eval-sealed', sealed: true,
+    })),
     { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
     { id: '4h', name: 'ICS/SCADA (hardened)', difficulty: 'control', posture: 'hardened', topology: 'ics_scada', packs: ['f0_hardened'] },
   ],
 };
+
+function isSealedScenarioId(value) {
+  const scenarioId = String(value || '').trim().replace(/^S/i, '');
+  return /^\d+$/.test(scenarioId) && Number(scenarioId) >= 20 && Number(scenarioId) <= 25;
+}
+
+function isSealedScenario(scenario) {
+  return Boolean(scenario && (
+    scenario.sealed === true ||
+    scenario.split === 'eval-sealed' ||
+    isSealedScenarioId(scenario.id)
+  ));
+}
+
+function isSealedRun(run) {
+  if (!run) return false;
+  if (run.sealed === true) return true;
+  // Compatibility with historical API responses that predate the explicit
+  // `sealed` marker. The backend remains the authoritative access boundary.
+  return isSealedScenarioId(run.scenario);
+}
 
 async function loadModels() {
   let models = null;
@@ -327,22 +359,31 @@ async function loadScenariosConfig() {
   vulnGroup.label = 'Vulnerable';
   const hardGroup = document.createElement('optgroup');
   hardGroup.label = 'Hardened (contrôle)';
+  const sealedGroup = document.createElement('optgroup');
+  sealedGroup.label = 'Évaluation scellée (controller requis)';
 
   for (const s of _scenariosData.scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
     opt.textContent = `S${s.id} · ${s.name}`;
-    if (s.posture === 'hardened') hardGroup.appendChild(opt);
+    if (isSealedScenario(s)) {
+      opt.disabled = true;
+      opt.textContent += ' · indisponible localement';
+      sealedGroup.appendChild(opt);
+    }
+    else if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
   }
   if (vulnGroup.children.length) sel.appendChild(vulnGroup);
   if (hardGroup.children.length) sel.appendChild(hardGroup);
+  if (sealedGroup.children.length) sel.appendChild(sealedGroup);
+  populateBenchmarkScenarioFilter();
 
   // Populate batch checkboxes (all non-hardened scenarios)
   const batchBox = document.getElementById('batch-checkboxes');
   batchBox.innerHTML = '';
   for (const s of _scenariosData.scenarios) {
-    if (s.posture === 'hardened') continue;
+    if (s.posture === 'hardened' || isSealedScenario(s)) continue;
     const lbl = document.createElement('label');
     lbl.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer';
     const cb = document.createElement('input');
@@ -453,10 +494,22 @@ function buildPacksUI() {
 function getSelectedScenarioId() {
   const mode = document.querySelector('input[name="run-mode"]:checked').value;
   if (mode === 'preset') {
-    return document.getElementById('sel-scenario').value || null;
+    const scenarioId = document.getElementById('sel-scenario').value || null;
+    return isSealedScenarioId(scenarioId) ? null : scenarioId;
   }
   // Custom mode: return architecture + packs info (handled separately in startRun)
   return null;
+}
+
+function populateBenchmarkScenarioFilter() {
+  const filter = document.getElementById('bm-filter-scenario');
+  if (!filter) return;
+  const previous = filter.value;
+  const publicScenarios = (_scenariosData.scenarios || []).filter(s => !isSealedScenario(s));
+  filter.innerHTML = '<option value="">Tous les scénarios</option>' + publicScenarios.map(s =>
+    `<option value="S${escapeHtml(s.id)}">S${escapeHtml(s.id)} · ${escapeHtml(s.name)}</option>`
+  ).join('');
+  if (publicScenarios.some(s => `S${s.id}` === previous)) filter.value = previous;
 }
 
 function getCustomConfig() {
@@ -498,6 +551,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('sel-scenario').addEventListener('change', function () {
+    if (isSealedScenarioId(this.value)) this.value = '';
     loadTopology(this.value || null);
     document.getElementById('btn-teardown').disabled = !this.value;
     document.getElementById('btn-deploy').disabled = !this.value;
@@ -554,7 +608,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   document.querySelectorAll('.phase-pill').forEach(pill => {
     pill.addEventListener('click', () => {
-      if (!activeRunId) return;
+      if (!activeRunId || activeRunIsSealed) return;
       const file = PHASE_FILE[pill.dataset.phase];
       if (file) viewFile(activeRunId, file);
     });
@@ -730,12 +784,28 @@ function _updateTopologyTable(nodes) {
   }).join('');
 }
 
+function showSealedTopologyPlaceholder() {
+  resetNodeColors();
+  nodeVulns = {};
+  nodeHosts = {};
+  if (cy) cy.elements().remove();
+  _updateTopologyTable([]);
+  const loading = document.getElementById('cy-loading');
+  if (loading) {
+    loading.textContent = 'Topologie masquée pour l’évaluation scellée';
+    loading.style.display = 'flex';
+  }
+}
+
 async function loadTopology(scenarioId = null) {
   const url = scenarioId ? `/api/topology?scenario=${scenarioId}` : '/api/topology';
   const cyDiv = document.getElementById('cy');
   const loading = document.getElementById('cy-loading');
 
-  if (loading) loading.style.display = 'flex';
+  if (loading) {
+    loading.textContent = 'Chargement de la topologie…';
+    loading.style.display = 'flex';
+  }
 
   const data = await fetchJSON(url);
 
@@ -1124,6 +1194,10 @@ async function startRun() {
   let scenario = null;
   if (mode === 'preset') {
     scenario = document.getElementById('sel-scenario').value || null;
+    if (isSealedScenarioId(scenario)) {
+      addLog({type:'error', message:'Les scénarios scellés nécessitent le controller d’évaluation'});
+      return;
+    }
   } else {
     // Custom mode — build scenario_id from architecture + posture
     const config = getCustomConfig();
@@ -1212,6 +1286,10 @@ async function startBatch() {
     addLog({type:'error', message:'Sélectionne au moins un scénario pour le batch'});
     return;
   }
+  if (ids.some(isSealedScenarioId)) {
+    addLog({type:'error', message:'Un batch local ne peut pas contenir de scénario scellé'});
+    return;
+  }
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
@@ -1253,6 +1331,10 @@ async function stopRun() {
 async function deployScenario() {
   const scenarioId = document.getElementById('sel-scenario').value;
   if (!scenarioId) return;
+  if (isSealedScenarioId(scenarioId)) {
+    addLog({type:'error', message:'Le déploiement scellé est réservé au controller'});
+    return;
+  }
   if (document.getElementById('btn-start').disabled) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
 
   const modelSel = document.getElementById('sel-model');
@@ -1284,13 +1366,17 @@ async function deployScenario() {
     addLog({type:'error', message:`Déploiement erreur réseau : ${e}`});
   } finally {
     btn.textContent = 'Déployer';
-    btn.disabled = !scenarioId;
+    btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
   }
 }
 
 async function teardownScenario() {
   const scenarioId = document.getElementById('sel-scenario').value;
   if (!scenarioId) return;
+  if (isSealedScenarioId(scenarioId)) {
+    addLog({type:'error', message:'Le teardown scellé est réservé au controller'});
+    return;
+  }
   const btn = document.getElementById('btn-teardown');
   btn.disabled = true;
   btn.textContent = 'Teardown…';
@@ -1311,7 +1397,7 @@ async function teardownScenario() {
     addLog({type:'error', message:`Teardown erreur réseau : ${e}`});
   } finally {
     btn.textContent = 'Teardown';
-    btn.disabled = false;
+    btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
   }
 }
 
@@ -1540,6 +1626,8 @@ let _runsShown = RUNS_PER_PAGE;
 const _compareSet = new Set(); // max 2 run IDs
 
 function toggleCompare(runId) {
+  const run = _allRuns.find(item => item.id === runId);
+  if (isSealedRun(run)) return;
   if (_compareSet.has(runId)) {
     _compareSet.delete(runId);
   } else {
@@ -1569,7 +1657,10 @@ function _updateCompareButton() {
 }
 
 async function openCompare() {
-  const ids = [..._compareSet];
+  const ids = [..._compareSet].filter(id => {
+    const run = _allRuns.find(item => item.id === id);
+    return !isSealedRun(run);
+  });
   if (ids.length < 2) return;
   const [idA, idB] = ids;
 
@@ -1633,11 +1724,16 @@ function closeCompare(e) {
 
 function _renderRunItem(r) {
   const ts  = r.id.replace('_', ' ').replace(/_/g, ':');
-  const scnLabel = r.scenario || 'Lab physique';
+  const sealed = isSealedRun(r);
+  const scnLabel = sealed ? `${r.scenario || 'Évaluation'} · scellé` : (r.scenario || 'Lab physique');
   const scn = `<span class="run-badge ${r.scenario ? 'done' : ''}">${escapeHtml(scnLabel)}</span>`;
-  const cost = r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
+  const cost = !sealed && r.cost != null ? `<span>$${r.cost.toFixed(4)}</span>` : '';
   const eid = escapeHtml(r.id);
   const inCmp = _compareSet.has(r.id);
+  const actions = sealed
+    ? '<span style="color:var(--muted);font-size:10px">agrégats uniquement</span>'
+    : `<button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>
+       <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">zip</button>`;
   return `
     <div class="run-item ${r.id === activeRunId ? 'active' : ''} ${inCmp ? 'compare-active' : ''}" data-id="${eid}"
       onclick="viewRun('${eid}')"
@@ -1649,8 +1745,7 @@ function _renderRunItem(r) {
       </div>
       <div class="run-meta">
         ${scn} ${cost}
-        <button class="run-compare ${inCmp ? 'active' : ''}" onclick="event.stopPropagation(); toggleCompare('${eid}')" title="Ajouter à la comparaison">+ cmp</button>
-        <button class="run-download" onclick="event.stopPropagation(); downloadRun('${eid}')">zip</button>
+        ${actions}
       </div>
     </div>
   `;
@@ -1703,6 +1798,10 @@ async function loadRuns() {
     return;
   }
   _allRuns = runs;
+  for (const run of runs) {
+    if (isSealedRun(run)) _compareSet.delete(run.id);
+  }
+  _updateCompareButton();
   _runsShown = RUNS_PER_PAGE;
   _renderRunList();
 }
@@ -1718,31 +1817,39 @@ async function viewRun(runId) {
   const run = await fetchJSON(`/api/runs/${runId}`);
   if (!run) return;
 
+  const sealed = isSealedRun(run);
+  activeRunIsSealed = sealed;
   const eRunId = escapeHtml(runId);
-  const scenarioId = run.scenario ? run.scenario.replace('S', '') : null;
+  const scenarioId = run.scenario ? run.scenario.replace(/^S/i, '') : null;
   const hasScore = run.scenario && run.files.includes('03_vuln_analysis.json');
   const reportFile = run.files.includes('06_report.md') ? '06_report.md'
                    : run.files.includes('05_report.md') ? '05_report.md' : null;
 
-  // Load topology first (fast), then fetch score + report in parallel
-  resetNodeColors();
-  nodeVulns = {};
-  nodeHosts = {};
-  await loadTopology(scenarioId);
-
-  // Sync dropdown after topology is loaded
-  document.getElementById('sel-scenario').value = scenarioId || '';
+  // Sealed runs must never request their topology or raw artifacts. Public
+  // runs keep the normal interactive graph.
+  if (sealed) {
+    showSealedTopologyPlaceholder();
+    document.getElementById('sel-scenario').value = '';
+  } else {
+    resetNodeColors();
+    nodeVulns = {};
+    nodeHosts = {};
+    await loadTopology(scenarioId);
+    document.getElementById('sel-scenario').value = scenarioId || '';
+  }
 
   // Show run view in detail panel immediately after topology
   document.getElementById('detail-placeholder').hidden = true;
   document.getElementById('detail-content').hidden = false;
   document.getElementById('detail-node-view').hidden = true;
   document.getElementById('detail-run-view').hidden = false;
+  document.getElementById('tab-files').hidden = sealed;
+  document.getElementById('tab-report').hidden = sealed;
 
   // Fetch score + report in parallel (both can be slow)
   const [score, reportData] = await Promise.all([
-    hasScore ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
-    reportFile ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
+    (sealed || hasScore) ? fetchJSON(`/api/runs/${eRunId}/score`) : Promise.resolve(null),
+    (!sealed && reportFile) ? fetchJSON(`/api/runs/${eRunId}/${reportFile}`) : Promise.resolve(null),
   ]);
 
   // Title
@@ -1756,7 +1863,33 @@ async function viewRun(runId) {
 
   // ── Info panel ────────────────────────────────────────────────────────────
   let scoreHtml = '';
-  if (score && score.recall != null) {
+  if (sealed) {
+    const metricLabels = {
+      overall_score: 'Score global',
+      precision: 'Précision',
+      recall: 'Recall',
+      f1: 'F1',
+      exploitation_coverage: 'Couverture d’exploitation',
+      path_coverage: 'Couverture des chemins',
+      cost_usd: 'Coût',
+    };
+    const metricOrder = Object.keys(metricLabels);
+    const metrics = score && score.metrics ? score.metrics : null;
+    const rows = metrics ? metricOrder.filter(key => metrics[key] != null).map(key => {
+      const value = Number(metrics[key]);
+      let rendered;
+      if (key === 'cost_usd') rendered = `$${value.toFixed(4)}`;
+      else {
+        rendered = `${(value * 100).toFixed(1)}%`;
+      }
+      return `<div class="detail-row"><span class="detail-key">${metricLabels[key]}</span><span class="detail-val">${rendered}</span></div>`;
+    }).join('') : '';
+    scoreHtml = `
+      <div class="detail-section">
+        <h3>Résultat scellé · agrégats uniquement</h3>
+        ${rows || '<div style="color:var(--muted);font-size:11px">Évaluation en attente ou indisponible.</div>'}
+      </div>`;
+  } else if (score && score.recall != null) {
     scoreHtml = `
       <div class="detail-section">
         <h3>Score benchmark</h3>
@@ -1768,11 +1901,13 @@ async function viewRun(runId) {
       </div>`;
   }
 
+  const displayedCost = sealed ? score?.metrics?.cost_usd : run.cost;
+
   document.getElementById('detail-panel-info').innerHTML = `
     <div class="detail-row"><span class="detail-key">Scénario</span><span class="detail-val">${escapeHtml(run.scenario || 'Lab physique')}</span></div>
-    <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${run.cost != null ? '$'+run.cost.toFixed(4) : '—'}</span></div>
+    <div class="detail-row"><span class="detail-key">Coût</span><span class="detail-val">${displayedCost != null ? '$'+Number(displayedCost).toFixed(4) : '—'}</span></div>
     <div class="detail-row"><span class="detail-key">Statut</span><span class="detail-val"><span class="run-badge ${escapeHtml(run.status)}">${escapeHtml(run.status)}</span></span></div>
-    <div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>
+    ${sealed ? '' : `<div class="detail-row"><span class="detail-key">Fichiers</span><span class="detail-val">${run.files.length}</span></div>`}
     ${run.commit ? `<div class="detail-row"><span class="detail-key">Commit</span><span class="detail-val"><code style="font-size:11px">${escapeHtml(run.commit)}</code></span></div>` : ''}
     ${scoreHtml}
   `;
@@ -1789,23 +1924,27 @@ async function viewRun(runId) {
       <span style="color:var(--muted)">→</span>
     </div>`;
   }).join('');
-  document.getElementById('detail-panel-files').innerHTML = `<div class="file-list">${fileHtml}</div>`;
+  document.getElementById('detail-panel-files').innerHTML = sealed
+    ? '<div style="color:var(--muted);font-size:11px">Les artefacts bruts ne sont pas exposés pour un run scellé.</div>'
+    : `<div class="file-list">${fileHtml}</div>`;
 
   // ── Rapport panel ─────────────────────────────────────────────────────────
   const reportPanel = document.getElementById('detail-panel-report');
-  if (reportFile && reportData && reportData.content) {
+  if (sealed) {
+    reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px">Le rapport brut reste privé ; seuls les agrégats signés sont visibles.</div>';
+  } else if (reportFile && reportData && reportData.content) {
     reportPanel.innerHTML = `<div class="md-render">${renderMarkdown(reportData.content)}</div>`;
   } else {
     reportPanel.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:4px 0">Rapport (phase 6) non généré pour ce run.</div>';
   }
 
   // Load vuln data to color graph nodes
-  if (run.files.includes('03_vuln_analysis.json')) {
+  if (!sealed && run.files.includes('03_vuln_analysis.json')) {
     await fetchVulnResults(runId);
   }
 
   // Overlay intrusion chains (pwned edges + compromised node colors)
-  if (run.files.includes('05_intrusion.json')) {
+  if (!sealed && run.files.includes('05_intrusion.json')) {
     await loadIntrusionOverlay(runId);
   }
 }
@@ -2028,6 +2167,7 @@ function renderBenchmarkTable() {
   );
 
   const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
+  const toRatio = v => v == null ? null : Number(v);
   const barColor = v => {
     if (v == null) return 'var(--muted)';
     if (v >= 0.75) return 'var(--green)';
@@ -2038,14 +2178,18 @@ function renderBenchmarkTable() {
   const tbody = document.getElementById('bm-tbody');
   tbody.innerHTML = rows.map(r => {
     const s = r.score;
-    const f1 = s?.f1_score;
-    const barW = f1 != null ? Math.round(f1 * 100) : 0;
+    const sealed = isSealedRun(r);
+    const aggregate = sealed ? s?.metrics : null;
+    const recall = sealed ? toRatio(aggregate?.recall) : s?.recall;
+    const precision = sealed ? toRatio(aggregate?.precision) : s?.precision;
+    const f1 = sealed ? toRatio(aggregate?.f1) : s?.f1_score;
+    const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
 
     // Match quality breakdown: % of each method
     let qualityCell = noScore;
-    if (s?.matches) {
+    if (!sealed && s?.matches) {
       const matched = s.matches.filter(m => m.matched);
       const total = matched.length;
       if (total > 0) {
@@ -2061,13 +2205,19 @@ function renderBenchmarkTable() {
     }
 
     // score_pct
-    const scorePct = s?.score_pct != null
-      ? `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`
+    let scorePct = noScore;
+    if (sealed && aggregate?.overall_score != null) {
+      scorePct = `<span title="Agrégat signé">${pct(toRatio(aggregate.overall_score))}</span>`;
+    } else if (s?.score_pct != null) {
+      scorePct = `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`;
+    }
+    const weightedCell = !sealed && s
+      ? `${s.weighted_score}/${s.max_weighted_score}`
       : noScore;
 
     // Severity breakdown: C:found/total H:found/total M:found/total L:found/total
     let sevCell = noScore;
-    if (s?.matches) {
+    if (!sealed && s?.matches) {
       const SEV_KEYS = [['critical','C','var(--red)'],['high','H','var(--orange)'],['medium','M','var(--yellow,#d29922)'],['low','L','var(--green)']];
       const parts = SEV_KEYS.map(([sev, label, color]) => {
         const total = s.matches.filter(m => m.gt_severity === sev).length;
@@ -2087,17 +2237,20 @@ function renderBenchmarkTable() {
     const commitCell = r.commit
       ? `<code style="font-size:10px;color:var(--muted)">${escapeHtml(r.commit)}</code>`
       : '<span style="color:var(--muted)">—</span>';
+    const costValue = sealed ? aggregate?.cost_usd : r.cost;
+    const rowStatus = sealed && s?.status ? s.status : r.status;
+    const scenarioLabel = sealed ? `${r.scenario} · scellé` : r.scenario;
     return `<tr>
       <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
-      <td><span class="run-badge done">${escapeHtml(r.scenario)}</span></td>
+      <td><span class="run-badge done">${escapeHtml(scenarioLabel)}</span></td>
       <td style="font-size:11px;color:var(--muted)">${modelShort}</td>
       <td>${commitCell}</td>
-      <td><span class="run-badge ${escapeHtml(r.status)}">${escapeHtml(r.status)}</span></td>
-      <td>${r.cost != null ? '$'+r.cost.toFixed(4) : '—'}</td>
-      <td>${s ? pct(s.recall) : noScore}</td>
-      <td>${s ? pct(s.precision) : noScore}</td>
-      <td>${s ? pct(f1) : noScore}</td>
-      <td>${s ? `${s.weighted_score}/${s.max_weighted_score}` : noScore}</td>
+      <td><span class="run-badge ${escapeHtml(rowStatus)}">${escapeHtml(rowStatus)}</span></td>
+      <td>${costValue != null ? '$'+Number(costValue).toFixed(4) : '—'}</td>
+      <td>${recall != null ? pct(recall) : noScore}</td>
+      <td>${precision != null ? pct(precision) : noScore}</td>
+      <td>${f1 != null ? pct(f1) : noScore}</td>
+      <td>${weightedCell}</td>
       <td>${scorePct}</td>
       <td style="font-size:11px">${qualityCell}</td>
       <td>${sevCell}</td>
@@ -2327,8 +2480,13 @@ async function pollStatus() {
 
   // — Sync scenario dropdown & topology —
   if (status.scenario_id) {
-    document.getElementById('sel-scenario').value = String(status.scenario_id);
-    await loadTopology(status.scenario_id);
+    if (isSealedScenarioId(status.scenario_id)) {
+      document.getElementById('sel-scenario').value = '';
+      showSealedTopologyPlaceholder();
+    } else {
+      document.getElementById('sel-scenario').value = String(status.scenario_id);
+      await loadTopology(status.scenario_id);
+    }
   }
 
   // — Reconnect to SSE stream —

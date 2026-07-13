@@ -1,0 +1,34 @@
+name: "udp_send"
+handler: "python"
+enabled: true
+timeout: 30
+short_description: "Raw UDP send/receive (text or hex payload)"
+description: >
+  Send one UDP datagram to a lab service and return the first response as both hexadecimal and an
+  ASCII preview. Use for protocol-aware checks on uncommon UDP services, including deterministic
+  BACnet fixtures. The payload may be plain UTF-8 text or hex-encoded bytes.
+parameters:
+  - name: "host"
+    type: "string"
+    description: "Target IP address or hostname."
+    required: true
+  - name: "port"
+    type: "integer"
+    description: "Target UDP port."
+    required: true
+  - name: "payload"
+    type: "string"
+    description: "Payload to send as text or hexadecimal according to encoding."
+    required: true
+  - name: "encoding"
+    type: "string"
+    description: "Payload encoding: text (default) or hex."
+    required: false
+  - name: "recv_bytes"
+    type: "integer"
+    description: "Maximum response bytes (default 4096, max 65536)."
+    required: false
+  - name: "timeout"
+    type: "integer"
+    description: "Response timeout in seconds (default 5, max 30)."
+    required: false

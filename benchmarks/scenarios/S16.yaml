@@ -1,0 +1,23 @@
+schema_version: 2
+scenario_id: '16'
+name: Device PKI Lifecycle
+difficulty: expert
+posture: mixed
+topology: device_pki
+packs: [f12_device_pki]
+attack_paths:
+- id: P16-1
+  title: Exposed CA material to cloned device identity
+  difficulty: expert
+  chain:
+  - {hop: 1, device: s16-pki-ca, action: Retrieve exposed CA private-key material}
+  - {hop: 2, device: s16-enrollment, action: Replay the bootstrap token to obtain the device bundle}
+  - {hop: 3, device: s16-device-b, action: Use cloned device identity}
+  - {hop: 4, device: s16-device-api, action: Authenticate with the revoked certificate}
+  vulnerabilities_used:
+  - F12-CA-KEY-EXPOSURE@s16-pki-ca
+  - F12-ENROLL-REPLAY@s16-enrollment
+  - F12-CLONED-IDENTITY@s16-device-b
+  - F12-REVOCATION-IGNORED@s16-device-api
+  impact: Persistent impersonation of a revoked field device
+bonus_types: []

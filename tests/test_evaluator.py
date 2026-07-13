@@ -9,6 +9,8 @@ import yaml
 
 from src.benchmark.evaluator import (
     CATEGORY_TO_TYPE,
+    LEGACY_V1,
+    STRICT_V2,
     EvaluationResult,
     MatchResult,
     _match_by_cve,
@@ -46,7 +48,8 @@ def _write_run(tmp_path: Path, findings: list[dict]) -> Path:
 
 
 def _write_gt(tmp_path: Path, vulns: list[dict], scenario_id="1",
-              bonus_types=None, weights=None, max_score=None) -> Path:
+              bonus_types=None, weights=None, max_score=None,
+              attack_paths=None) -> Path:
     """Write a minimal ground truth YAML and return its path."""
     w = weights or {"critical": 4, "high": 3, "medium": 2, "low": 1}
     if max_score is None:
@@ -56,6 +59,7 @@ def _write_gt(tmp_path: Path, vulns: list[dict], scenario_id="1",
         "vulnerabilities": vulns,
         "scoring": {"max_weighted_score": max_score, "weights": w},
         "bonus_types": bonus_types or [],
+        "attack_paths": attack_paths or [],
     }
     gt_file = tmp_path / f"scenario_{scenario_id}.yaml"
     gt_file.write_text(yaml.dump(data))
@@ -196,6 +200,54 @@ class TestMatchVuln:
         match, method = match_vuln(gt, findings)
         assert match is None
         assert method == ""
+
+
+class TestStrictV2Matching:
+    def test_default_policy_preserves_legacy_loose_match(self):
+        gt = _gt(ip="192.168.100.11", severity="high")
+        finding = _finding(ip="192.168.100.11", type="unknown_type", severity="high")
+
+        match, method = match_vuln(gt, [finding])
+
+        assert match is finding
+        assert method == "ip+category"
+
+    def test_strict_disables_loose_ip_severity_match(self):
+        gt = _gt(ip="192.168.100.11", severity="high")
+        finding = _finding(ip="192.168.100.11", type="unknown_type", severity="high")
+
+        match, method = match_vuln(gt, [finding], policy=STRICT_V2)
+
+        assert match is None
+        assert method == ""
+
+    def test_strict_cve_requires_same_ip(self):
+        gt = _gt(ip="192.168.100.11", category="cve", cve="CVE-2023-48795")
+        finding = _finding(
+            ip="192.168.100.99",
+            type="known_cve",
+            cve_ids=["CVE-2023-48795"],
+        )
+
+        legacy_match, _ = match_vuln(gt, [finding], policy=LEGACY_V1)
+        strict_match, method = match_vuln(gt, [finding], policy=STRICT_V2)
+
+        assert legacy_match is finding
+        assert strict_match is None
+        assert method == ""
+
+    def test_strict_cve_does_not_fallback_to_generic_type(self):
+        gt = _gt(ip="192.168.100.11", category="cve", cve="CVE-2023-48795")
+        finding = _finding(ip="192.168.100.11", type="known_cve", cve_ids=[])
+
+        match, method = match_vuln(gt, [finding], policy="strict-v2")
+
+        assert match is None
+        assert method == ""
+
+    def test_unknown_policy_fails_closed(self):
+        with pytest.raises(ValueError, match="Unknown evaluation policy"):
+            match_vuln(_gt(), [_finding()], policy="strict-v99")
 
 
 # ── evaluate() integration tests ─────────────────────────────────────────────
@@ -341,6 +393,89 @@ class TestEvaluateBonusTypes:
         result = evaluate(run_dir, gt_file)
         assert result.false_positives == 1
         assert result.bonus_findings == 0
+
+    def test_strict_disables_automatic_bonus(self, tmp_path):
+        vulns = [_gt(id="V1", severity="high", category="misconfiguration")]
+        findings = [
+            _finding(id="F1", ip="192.168.100.11", type="no_auth"),
+            _finding(id="F2", ip="192.168.100.11", type="weak_cipher"),
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.scoring_policy == "strict-v2"
+        assert result.true_positives == 1
+        assert result.false_positives == 1
+        assert result.bonus_findings == 0
+
+    def test_strict_keeps_explicit_gt_bonus(self, tmp_path):
+        vulns = [_gt(id="V1", severity="high", category="misconfiguration")]
+        findings = [
+            _finding(id="F1", ip="192.168.100.11", type="no_auth"),
+            _finding(id="F2", ip="192.168.100.11", type="weak_cipher"),
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns, bonus_types=["weak_cipher"])
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.false_positives == 0
+        assert result.bonus_findings == 1
+
+
+class TestEvaluateFindingIdentity:
+    def test_duplicate_blank_ids_do_not_hide_unmatched_finding(self, tmp_path):
+        vulns = [_gt(id="V1", category="misconfiguration", ip="192.168.100.11")]
+        findings = [
+            _finding(id="", ip="192.168.100.11", type="no_auth"),
+            _finding(id="", ip="192.168.100.11", type="rce"),
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.true_positives == 1
+        assert result.false_positives == 1
+        assert len(result.unmatched_llm) == 1
+        assert result.unmatched_llm[0]["type"] == "rce"
+
+
+class TestEvaluateZeroGroundTruth:
+    def test_clean_control_has_full_specificity_and_scenario_score(self, tmp_path):
+        run_dir = _write_run(tmp_path, [])
+        gt_file = _write_gt(tmp_path, [], scenario_id="1h", max_score=0)
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.is_zero_gt is True
+        assert result.specificity == 1.0
+        assert result.scenario_score_pct == 100.0
+        assert result.score_pct == 0.0  # historical weighted metric remains compatible
+
+    def test_any_false_positive_fails_zero_gt_specificity(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding(id="F1")])
+        gt_file = _write_gt(tmp_path, [], scenario_id="1h", max_score=0)
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.false_positives == 1
+        assert result.specificity == 0.0
+        assert result.scenario_score_pct == 0.0
+
+    def test_positive_scenario_uses_f1_for_scenario_score(self, tmp_path):
+        vulns = [_gt(id="V1", category="misconfiguration")]
+        run_dir = _write_run(tmp_path, [_finding(id="F1", type="no_auth")])
+        gt_file = _write_gt(tmp_path, vulns)
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.is_zero_gt is False
+        assert result.specificity is None
+        assert result.f1_score == 1.0
+        assert result.scenario_score_pct == 100.0
 
 
 class TestEvaluateMetrics:
@@ -519,6 +654,54 @@ class TestEvaluateMhr:
         assert result.recall == 1.0
         assert result.gt_at_depth == {"0": 2}
         assert result.tp_at_depth == {"0": 2}
+
+
+class TestEvaluatePathCoverage:
+    def test_complete_chain_is_detected(self, tmp_path):
+        vulns = [
+            _gt(id="V1", ip="192.168.100.11", category="misconfiguration"),
+            _gt(id="V2", ip="192.168.100.12", category="misconfiguration"),
+        ]
+        findings = [
+            _finding(id="F1", ip="192.168.100.11", type="no_auth"),
+            _finding(id="F2", ip="192.168.100.12", type="no_auth"),
+        ]
+        paths = [{
+            "id": "P1",
+            "title": "Two-step chain",
+            "chain": [{"hop": 1}, {"hop": 2}],
+            "vulnerabilities_used": ["V1", "V2"],
+        }]
+        result = evaluate(
+            _write_run(tmp_path, findings),
+            _write_gt(tmp_path, vulns, attack_paths=paths),
+            policy=STRICT_V2,
+        )
+
+        assert result.total_attack_paths == 1
+        assert result.attack_paths_detected == 1
+        assert result.path_coverage == 1.0
+        assert result.path_matches[0]["hop_count"] == 2
+        assert result.path_matches[0]["missing_vulnerabilities"] == []
+
+    def test_partial_chain_is_not_detected(self, tmp_path):
+        vulns = [
+            _gt(id="V1", ip="192.168.100.11", category="misconfiguration"),
+            _gt(id="V2", ip="192.168.100.12", category="misconfiguration"),
+        ]
+        paths = [{"id": "P1", "vulnerabilities_used": ["V1", "V2"]}]
+        result = evaluate(
+            _write_run(tmp_path, [_finding(ip="192.168.100.11", type="no_auth")]),
+            _write_gt(tmp_path, vulns, attack_paths=paths),
+            policy=STRICT_V2,
+        )
+
+        assert result.attack_paths_detected == 0
+        assert result.path_coverage == 0.0
+        assert result.path_matches[0]["missing_vulnerabilities"] == ["V2"]
+
+
+class TestEvaluateMhrContinued:
 
     def test_multi_hop_mhr_partial(self, tmp_path):
         """3 vulns at depths 0/1/2, only depth-0 and depth-1 found."""

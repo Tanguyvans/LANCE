@@ -9,7 +9,6 @@ packs:
 - f3_data_exposure
 - f5_injection
 - f6_crypto
-- f7_pivot
 - f8_info_disclosure
 attack_paths:
 - id: P1

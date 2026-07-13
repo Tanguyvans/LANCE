@@ -35,10 +35,34 @@ DEVICE_DEFAULT_PORTS: dict[str, str] = {
     "coap_server":     "22,80,5683",
     "ssh_server":      "22,80,443",
     "ssh_server_v2":   "22,80,443",
+    "api_identity_server": "8080",
+    "api_tenant_server":   "8080",
+    "api_data_store":      "8080",
+    "api_event_broker":    "8080",
+    "api_admin_portal":    "8080",
+    "pki_ca_server":         "8080",
+    "pki_enrollment_server": "8080",
+    "pki_mtls_server":       "8443",
+    "pki_registry":          "8080",
+    "pki_device":            "8080",
+    "ota_repository": "8080",
+    "ota_server":     "8080",
+    "ota_device":     "8080",
+    "ota_signer":     "8080",
+    "ota_monitor":    "8080",
+    "cloud_web_server":      "8080",
+    "cloud_metadata_server": "8080",
+    "cloud_control_plane":   "8080",
+    "cloud_worker":          "8080",
+    "cloud_audit":           "8080",
+    "ot_hmi":          "8080",
+    "ot_opcua_server": "4840,8080",
+    "ot_bacnet_server":"47808,8080",
+    "ot_historian":    "8080",
 }
 
 # Fallback port list when no role-specific entry exists
-DEFAULT_PORTS = "22,23,80,443,502,554,1883,3306,8080,8443"
+DEFAULT_PORTS = "22,23,80,443,502,554,1883,3306,4840,6379,8080,8443"
 
 # ── LLM call limits ──────────────────────────────────────────────────────────
 

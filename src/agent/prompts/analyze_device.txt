@@ -86,6 +86,7 @@ If the topology context shows multiple subnets or vlan_id per device, check thes
 no_auth            default_credentials   misconfiguration    code_injection
 insecure_protocol  insecure_update       data_exposure       directory_listing
 weak_cipher        known_cve             info_disclosure     missing_header
+broken_access_control                  privilege_escalation
 ```
 
 **NEVER use a service name as `type`** — `mqtt_broker`, `rtsp_server`, `coap_server`, `ftp_server`,
@@ -110,8 +111,8 @@ These are NOT vulnerabilities — drop them entirely:
 - `pivot_capability`, `pivot_enabler`, `pivot_opportunity`, `pivot_risk` — lateral movement is NOT a vuln
 - `firmware_ota_no_sig`, `firmware_no_signature` — use `insecure_update` if applicable
 - `weak_credential` — use `default_credentials` instead
-- `improper_privilege_management`, `weak_protocol_design` — too vague, not actionable
-- `missing_cryptographic_authentication`, `denial_of_service` — not testable by scanner
+- `improper_privilege_management`, `weak_protocol_design` — too vague; use a confirmed canonical type
+- `missing_cryptographic_authentication`, `denial_of_service` — too vague or unsafe to test
 - `file_upload_endpoint` — use `code_injection` instead
 
 ## Your task
@@ -122,6 +123,7 @@ Add findings that automated extraction CANNOT detect:
    - Apply STRICT version checking — only include CVEs where the detected version is INSIDE the vulnerable range.
    - Do NOT include CVEs for versions that are patched (detected version >= fix version).
    - Do NOT include CVEs with year >= 2026 (hallucination) or year <= 2014 (too old).
+   - Do NOT search CVEs for `NATO-Benchmark-Simulator`; it is an explicit local fixture, not a vendor product.
 
 2. **Data exposure deep analysis**: If scan results show accessible HTTP paths with sensitive content,
    call http_get(url) to retrieve the full file and classify the content (credentials, API keys, configs).
@@ -130,7 +132,7 @@ Add findings that automated extraction CANNOT detect:
 
 ## Rules
 - Do NOT call ssh_audit, nmap_scan, curl_headers, mqtt_listen — scanning is done.
-- You CAN call: cve_search(), http_get(), save_deliverable(), read_deliverable(), list_deliverables()
+- You CAN call: cve_search(), http_get(), http_request(), tcp_send(), udp_send(), mtls_request(), tls_inspect(), save_deliverable(), read_deliverable(), list_deliverables()
 - MERGE your findings WITH the automated findings into one JSON.
 - Max 5 tool calls.
 - LOW/INFO CVE findings (CVSS < 4.0): only include if the CVE is directly exploitable

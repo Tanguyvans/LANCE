@@ -1,0 +1,70 @@
+id: f13_ota_advanced
+name: Stateful Signed OTA
+description: Deterministic signed-payload simulation with replay, rollback and key-reuse defects.
+vulnerabilities:
+  ota_repository:
+  - key: F13-OLD-FIRMWARE
+    applies_to: {profiles: [vulnerable]}
+    title: Public repository exposes an obsolete signed firmware
+    severity: medium
+    category: data_exposure
+    hop_depth: 0
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: The repository lists both current v2 and obsolete but validly signed v1 artifacts.
+    indicators:
+    - GET /firmware returns both version 1 and version 2 manifests
+    - The version 1 payload signature remains valid
+    verification: curl -fsS http://{ip}:8080/firmware
+    confidence_required: high
+  ota_device:
+  - key: F13-ROLLBACK
+    applies_to: {profiles: [vulnerable]}
+    title: Device accepts a correctly signed firmware rollback
+    severity: high
+    category: insecure_update
+    hop_depth: 2
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: A device at version 2 accepts the old signed version 1 because no monotonic counter is checked.
+    indicators:
+    - Initial /status reports version 2
+    - Installing the signed v1 fixture returns 200 and /status becomes version 1
+    verification: POST the v1 fixture to http://{ip}:8080/install then GET /status
+    confidence_required: high
+  - key: F13-UNSIGNED-METADATA
+    applies_to: {devices: ['s{sid}-device-a']}
+    title: Firmware signature does not cover version metadata
+    severity: high
+    category: insecure_update
+    hop_depth: 1
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: The signature authenticates only payload bytes, so the version field can be changed without invalidating it.
+    indicators:
+    - Reusing a valid payload signature with a modified version is accepted
+    - Device status stores the attacker-controlled version
+    verification: change only version in a valid manifest submitted to http://{ip}:8080/install
+    confidence_required: high
+  - key: F13-SHARED-UPDATE-KEY
+    applies_to: {profiles: [key_reuse]}
+    title: Update verification secret is shared by multiple device models
+    severity: high
+    category: weak_crypto
+    hop_depth: 1
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: Device-b uses the same deterministic verification secret as device-a.
+    indicators:
+    - A payload signed for device-a is accepted by device-b
+    - Both device status endpoints report the same key identifier
+    verification: submit the device-a signed fixture to http://{ip}:8080/install
+    confidence_required: high
+controls:
+  ota_device:
+  - key: C13-BAD-SIGNATURE
+    applies_to: {profiles: [vulnerable, key_reuse]}
+    assertion: invalid_firmware_signature_rejected
+    description: A modified payload with an invalid signature returns HTTP 400 and is not installed.
+    verification: POST an invalid signature to http://{ip}:8080/install returns 400
+  - key: C13-VALID-UPGRADE
+    applies_to: {profiles: [vulnerable, key_reuse]}
+    assertion: valid_signed_update_accepted
+    description: The normal signed version 2 fixture is accepted.
+    verification: POST the valid v2 fixture to http://{ip}:8080/install returns 200

@@ -1,0 +1,21 @@
+schema_version: 2
+scenario_id: '18'
+name: Simulated Cloud IAM and SSRF
+difficulty: expert
+posture: mixed
+topology: cloud_iam_ssrf
+packs: [f14_cloud_iam]
+attack_paths:
+- id: P18-1
+  title: SSRF to metadata role and secret object store
+  difficulty: expert
+  chain:
+  - {hop: 1, device: s18-cloud-web, action: Use the fetch endpoint to reach the filtered metadata service}
+  - {hop: 2, device: s18-metadata, action: Obtain the over-privileged workload role token}
+  - {hop: 3, device: s18-cloud-control, action: Read the city-secrets object with the stolen role}
+  vulnerabilities_used:
+  - F14-SSRF-METADATA@s18-cloud-web
+  - F14-OVERPRIV-ROLE@s18-metadata
+  - F14-SECRET-BUCKET@s18-cloud-control
+  impact: Simulated cloud control-plane secret disclosure from a public web entrypoint
+bonus_types: []

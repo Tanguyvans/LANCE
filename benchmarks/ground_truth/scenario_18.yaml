@@ -1,0 +1,166 @@
+scenario_id: '18'
+scenario_name: Simulated Cloud IAM and SSRF
+difficulty: expert
+description: Simulated Cloud IAM and SSRF — Deterministic local cloud control plane
+  with metadata isolation, SSRF and scoped bearer credentials
+topology:
+  router:
+    name: s18-router
+    vmid: 380
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s18-cloud-web
+    vmid: 381
+    ip: 192.168.100.11
+    role: cloud_web_server
+    security_profile: vulnerable
+    simulator: cloud_web
+  - name: s18-metadata
+    vmid: 382
+    ip: 192.168.100.12
+    role: cloud_metadata_server
+    security_profile: vulnerable
+    simulator: cloud_metadata
+  - name: s18-cloud-control
+    vmid: 383
+    ip: 192.168.100.13
+    role: cloud_control_plane
+    security_profile: vulnerable
+    simulator: cloud_control
+  - name: s18-worker
+    vmid: 384
+    ip: 192.168.100.14
+    role: cloud_worker
+    security_profile: hardened
+    simulator: cloud_worker
+  - name: s18-audit
+    vmid: 385
+    ip: 192.168.100.15
+    role: cloud_audit
+    security_profile: hardened
+    simulator: cloud_audit
+  - name: s18-public-api
+    vmid: 386
+    ip: 192.168.100.16
+    role: cloud_web_server
+    security_profile: hardened
+    simulator: cloud_web
+vulnerabilities:
+- id: F14-SSRF-METADATA@s18-cloud-web
+  device: s18-cloud-web
+  ip: 192.168.100.11
+  role: cloud_web_server
+  security_profile: vulnerable
+  template_key: F14-SSRF-METADATA
+  title: Server-side request forgery reaches isolated metadata service
+  severity: critical
+  category: code_injection
+  hop_depth: 0
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: The fetch endpoint permits requests to the metadata service even though
+    it is not directly reachable by the scanner.
+  indicators:
+  - Direct HTTP request to metadata is filtered
+  - GET /fetch?url=http://192.168.100.12:8080/credentials returns a role token
+  verification: curl -G http://192.168.100.11:8080/fetch --data-urlencode url=http://192.168.100.12:8080/credentials
+  confidence_required: high
+- id: F14-OVERPRIV-ROLE@s18-metadata
+  device: s18-metadata
+  ip: 192.168.100.12
+  role: cloud_metadata_server
+  security_profile: vulnerable
+  template_key: F14-OVERPRIV-ROLE
+  title: Workload metadata issues an over-privileged cloud role token
+  severity: high
+  category: privilege_escalation
+  hop_depth: 1
+  owasp_iot: I9 - Insecure Default Settings
+  description: Metadata returns a bearer token with object-store administrative scope.
+  indicators:
+  - Credentials response identifies scope object-admin
+  - Token grants access to the city-secrets bucket
+  verification: retrieve /credentials through the SSRF service and inspect the returned
+    scope
+  confidence_required: high
+- id: F14-SECRET-BUCKET@s18-cloud-control
+  device: s18-cloud-control
+  ip: 192.168.100.13
+  role: cloud_control_plane
+  security_profile: vulnerable
+  template_key: F14-SECRET-BUCKET
+  title: Stolen workload role can read city secrets bucket
+  severity: critical
+  category: data_exposure
+  hop_depth: 2
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The metadata role token authorizes retrieval of sensitive simulated
+    object-store data.
+  indicators:
+  - GET /bucket/city-secrets with metadata token returns HTTP 200
+  - Response contains the benchmark city-control marker
+  verification: GET http://192.168.100.13:8080/bucket/city-secrets with the token
+    obtained through SSRF
+  confidence_required: high
+attack_paths:
+- id: P18-1
+  title: SSRF to metadata role and secret object store
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: s18-cloud-web
+    action: Use the fetch endpoint to reach the filtered metadata service
+  - hop: 2
+    device: s18-metadata
+    action: Obtain the over-privileged workload role token
+  - hop: 3
+    device: s18-cloud-control
+    action: Read the city-secrets object with the stolen role
+  vulnerabilities_used:
+  - F14-SSRF-METADATA@s18-cloud-web
+  - F14-OVERPRIV-ROLE@s18-metadata
+  - F14-SECRET-BUCKET@s18-cloud-control
+  impact: Simulated cloud control-plane secret disclosure from a public web entrypoint
+scoring:
+  total_vulnerabilities: 3
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 11
+  total_controls: 3
+bonus_types: []
+controls:
+- id: C14-METADATA-ISOLATED@s18-metadata
+  device: s18-metadata
+  ip: 192.168.100.12
+  role: cloud_metadata_server
+  security_profile: vulnerable
+  template_key: C14-METADATA-ISOLATED
+  assertion: metadata_not_directly_reachable
+  description: Port 8080 is filtered for every source except the vulnerable cloud-web
+    service.
+  verification: direct curl http://192.168.100.12:8080/credentials times out or is
+    rejected
+- id: C14-LIMITED-TOKEN@s18-cloud-control
+  device: s18-cloud-control
+  ip: 192.168.100.13
+  role: cloud_control_plane
+  security_profile: vulnerable
+  template_key: C14-LIMITED-TOKEN
+  assertion: least_privilege_token_denied
+  description: The known limited-token fixture receives HTTP 403 for the secrets bucket.
+  verification: GET http://192.168.100.13:8080/bucket/city-secrets with limited-token
+    returns 403
+- id: C14-SSRF-FILTER@s18-public-api
+  device: s18-public-api
+  ip: 192.168.100.16
+  role: cloud_web_server
+  security_profile: hardened
+  template_key: C14-SSRF-FILTER
+  assertion: private_address_ssrf_blocked
+  description: The hardened fetch endpoint rejects metadata and other private destinations.
+  verification: GET http://192.168.100.16:8080/fetch?url=http://192.168.100.12:8080/credentials
+    returns 403

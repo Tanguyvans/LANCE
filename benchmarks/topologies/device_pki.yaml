@@ -1,0 +1,23 @@
+id: device_pki
+name: Device PKI and Enrollment
+description: Simulated device identity lifecycle backed by real OpenSSL certificates and a deterministic mTLS service
+base_vmid: 340
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-pki-ca', vmid_offset: 1, ip: 192.168.100.11, role: pki_ca_server, security_profile: vulnerable, simulator: pki_ca}
+- {name_template: 's{sid}-enrollment', vmid_offset: 2, ip: 192.168.100.12, role: pki_enrollment_server, security_profile: vulnerable, simulator: pki_enrollment}
+- {name_template: 's{sid}-device-api', vmid_offset: 3, ip: 192.168.100.13, role: pki_mtls_server, security_profile: vulnerable, simulator: pki_mtls}
+- {name_template: 's{sid}-registry', vmid_offset: 4, ip: 192.168.100.14, role: pki_registry, security_profile: hardened, simulator: pki_registry}
+- {name_template: 's{sid}-device-a', vmid_offset: 5, ip: 192.168.100.15, role: pki_device, security_profile: hardened, simulator: pki_device_unique}
+- {name_template: 's{sid}-device-b', vmid_offset: 6, ip: 192.168.100.16, role: pki_device, security_profile: cloned, simulator: pki_device_clone}
+links:
+- {source: 's{sid}-pki-ca', target: 's{sid}-enrollment', protocol: https}
+- {source: 's{sid}-enrollment', target: 's{sid}-device-a', protocol: https}
+- {source: 's{sid}-enrollment', target: 's{sid}-device-b', protocol: https}
+- {source: 's{sid}-device-a', target: 's{sid}-device-api', protocol: mtls}
+- {source: 's{sid}-device-b', target: 's{sid}-device-api', protocol: mtls}
+- {source: 's{sid}-device-api', target: 's{sid}-registry', protocol: https}

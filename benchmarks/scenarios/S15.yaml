@@ -1,0 +1,22 @@
+schema_version: 2
+scenario_id: '15'
+name: Authenticated Multi-Tenant API
+difficulty: hard
+posture: mixed
+topology: api_authorization
+packs: [f11_api_authorization]
+attack_paths:
+- id: P15-1
+  title: Low-privilege tenant token to cross-tenant administrative export
+  difficulty: hard
+  chain:
+  - {hop: 1, device: s15-identity, action: Obtain a legitimate read-only tenant-a token}
+  - {hop: 2, device: s15-fleet-api, action: Enumerate device-b through the IDOR}
+  - {hop: 3, device: s15-fleet-api, action: Promote device-a through mass assignment}
+  - {hop: 4, device: s15-fleet-api, action: Retrieve the administrative export without admin scope}
+  vulnerabilities_used:
+  - F11-IDOR@s15-fleet-api
+  - F11-MASS-ASSIGNMENT@s15-fleet-api
+  - F11-JWT-SCOPE@s15-fleet-api
+  impact: Cross-tenant disclosure and unauthorized control-plane privilege
+bonus_types: []

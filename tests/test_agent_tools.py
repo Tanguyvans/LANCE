@@ -42,7 +42,7 @@ class TestReconTools:
         assert "22/tcp" in result["stdout"]
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["nmap", "-sV", "192.168.88.1"]
+        assert cmd == ["nmap", "-sV", "-T4", "--max-retries=1", "192.168.88.1"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_nmap_scan_with_ports(self, mock_run):
@@ -50,7 +50,10 @@ class TestReconTools:
         fn = _get_tool_fn("nmap_scan")
         fn(target="192.168.88.1", ports="22,80")
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["nmap", "-sV", "-p", "22,80", "192.168.88.1"]
+        assert cmd == [
+            "nmap", "-sV", "-T4", "--max-retries=1",
+            "-p", "22,80", "192.168.88.1",
+        ]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit(self, mock_run):
@@ -242,7 +245,11 @@ class TestHttpRequest:
             def log_message(self, *args, **kwargs):
                 pass
 
-        with socketserver.TCPServer(("127.0.0.1", 0), Handler) as server:
+        try:
+            server = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+        except PermissionError:
+            pytest.skip("local socket listeners are disabled by this sandbox")
+        with server:
             port = server.server_address[1]
             t = threading.Thread(target=server.handle_request, daemon=True)
             t.start()
@@ -260,7 +267,11 @@ class TestTcpSend:
         from src.agent.tools.recon_tools import tcp_send
 
         server = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        server.bind(("127.0.0.1", 0))
+        try:
+            server.bind(("127.0.0.1", 0))
+        except PermissionError:
+            server.close()
+            pytest.skip("local socket listeners are disabled by this sandbox")
         server.listen(1)
         host, port = server.getsockname()
 
@@ -349,7 +360,11 @@ class TestTlsInspect:
         context = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(str(cert_path), str(key_path))
         server = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        server.bind(("127.0.0.1", 0))
+        try:
+            server.bind(("127.0.0.1", 0))
+        except PermissionError:
+            server.close()
+            pytest.skip("local socket listeners are disabled by this sandbox")
         server.listen(1)
         host, port = server.getsockname()
 

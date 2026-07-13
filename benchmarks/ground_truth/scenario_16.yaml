@@ -1,0 +1,184 @@
+scenario_id: '16'
+scenario_name: Device PKI Lifecycle
+difficulty: expert
+description: Device PKI Lifecycle — Simulated device identity lifecycle backed by
+  real OpenSSL certificates and a deterministic mTLS service
+topology:
+  router:
+    name: s16-router
+    vmid: 340
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s16-pki-ca
+    vmid: 341
+    ip: 192.168.100.11
+    role: pki_ca_server
+    security_profile: vulnerable
+    simulator: pki_ca
+  - name: s16-enrollment
+    vmid: 342
+    ip: 192.168.100.12
+    role: pki_enrollment_server
+    security_profile: vulnerable
+    simulator: pki_enrollment
+  - name: s16-device-api
+    vmid: 343
+    ip: 192.168.100.13
+    role: pki_mtls_server
+    security_profile: vulnerable
+    simulator: pki_mtls
+  - name: s16-registry
+    vmid: 344
+    ip: 192.168.100.14
+    role: pki_registry
+    security_profile: hardened
+    simulator: pki_registry
+  - name: s16-device-a
+    vmid: 345
+    ip: 192.168.100.15
+    role: pki_device
+    security_profile: hardened
+    simulator: pki_device_unique
+  - name: s16-device-b
+    vmid: 346
+    ip: 192.168.100.16
+    role: pki_device
+    security_profile: cloned
+    simulator: pki_device_clone
+vulnerabilities:
+- id: F12-CA-KEY-EXPOSURE@s16-pki-ca
+  device: s16-pki-ca
+  ip: 192.168.100.11
+  role: pki_ca_server
+  security_profile: vulnerable
+  template_key: F12-CA-KEY-EXPOSURE
+  title: Provisioning endpoint exposes the device CA private key
+  severity: critical
+  category: data_exposure
+  hop_depth: 0
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The simulated CA status endpoint serves a PEM private key without authentication.
+  indicators:
+  - GET /ca/private-key returns HTTP 200
+  - Response begins with a PEM private-key marker
+  verification: curl -fsS http://192.168.100.11:8080/ca/private-key
+  confidence_required: high
+- id: F12-ENROLL-REPLAY@s16-enrollment
+  device: s16-enrollment
+  ip: 192.168.100.12
+  role: pki_enrollment_server
+  security_profile: vulnerable
+  template_key: F12-ENROLL-REPLAY
+  title: One-time device enrollment token can be replayed
+  severity: high
+  category: misconfiguration
+  hop_depth: 1
+  owasp_iot: I8 - Lack of Device Management
+  description: The same bootstrap token issues a bundle more than once.
+  indicators:
+  - Two POST requests with bootstrap-device-b both return 201
+  - Both responses contain the same device identity bundle
+  verification: POST http://192.168.100.12:8080/enroll twice with token bootstrap-device-b
+  confidence_required: high
+- id: F12-REVOCATION-IGNORED@s16-device-api
+  device: s16-device-api
+  ip: 192.168.100.13
+  role: pki_mtls_server
+  security_profile: vulnerable
+  template_key: F12-REVOCATION-IGNORED
+  title: Revoked client certificate remains accepted by mTLS API
+  severity: high
+  category: weak_crypto
+  hop_depth: 3
+  owasp_iot: I8 - Lack of Device Management
+  description: TLS validates the lab CA but the service does not load or check the
+    generated revocation list.
+  indicators:
+  - Connection without a client certificate is rejected
+  - The revoked device-b certificate receives HTTP 200
+  verification: curl with the generated revoked client certificate to https://192.168.100.13:8443/device/status
+  confidence_required: high
+- id: F12-CLONED-IDENTITY@s16-device-b
+  device: s16-device-b
+  ip: 192.168.100.16
+  role: pki_device
+  security_profile: cloned
+  template_key: F12-CLONED-IDENTITY
+  title: Device identity private key is cloned across devices
+  severity: critical
+  category: weak_crypto
+  hop_depth: 2
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The device-b fixture reuses device-a key material, allowing identity
+    impersonation.
+  indicators:
+  - Public-key fingerprints for device-a and device-b are identical
+  - The cloned identity authenticates to the mTLS device API
+  verification: compare the generated device certificate public-key fingerprints
+  confidence_required: high
+attack_paths:
+- id: P16-1
+  title: Exposed CA material to cloned device identity
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: s16-pki-ca
+    action: Retrieve exposed CA private-key material
+  - hop: 2
+    device: s16-enrollment
+    action: Replay the bootstrap token to obtain the device bundle
+  - hop: 3
+    device: s16-device-b
+    action: Use cloned device identity
+  - hop: 4
+    device: s16-device-api
+    action: Authenticate with the revoked certificate
+  vulnerabilities_used:
+  - F12-CA-KEY-EXPOSURE@s16-pki-ca
+  - F12-ENROLL-REPLAY@s16-enrollment
+  - F12-CLONED-IDENTITY@s16-device-b
+  - F12-REVOCATION-IGNORED@s16-device-api
+  impact: Persistent impersonation of a revoked field device
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 14
+  total_controls: 3
+bonus_types: []
+controls:
+- id: C12-ENROLL-INVALID@s16-enrollment
+  device: s16-enrollment
+  ip: 192.168.100.12
+  role: pki_enrollment_server
+  security_profile: vulnerable
+  template_key: C12-ENROLL-INVALID
+  assertion: unknown_enrollment_token_rejected
+  description: An unknown bootstrap token returns HTTP 401.
+  verification: POST http://192.168.100.12:8080/enroll with token invalid returns
+    401
+- id: C12-MTLS-REQUIRED@s16-device-api
+  device: s16-device-api
+  ip: 192.168.100.13
+  role: pki_mtls_server
+  security_profile: vulnerable
+  template_key: C12-MTLS-REQUIRED
+  assertion: client_certificate_required
+  description: The API rejects clients that do not present a certificate signed by
+    the lab CA.
+  verification: curl without a client certificate to https://192.168.100.13:8443/device/status
+    fails TLS authentication
+- id: C12-UNIQUE-DEVICE-A@s16-device-a
+  device: s16-device-a
+  ip: 192.168.100.15
+  role: pki_device
+  security_profile: hardened
+  template_key: C12-UNIQUE-DEVICE-A
+  assertion: unique_device_private_key
+  description: Device-a has a unique generated key and certificate.
+  verification: device-a public-key fingerprint differs from the CA and server keys

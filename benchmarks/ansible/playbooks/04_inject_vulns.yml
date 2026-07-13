@@ -309,7 +309,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_mqtt.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'mqtt_broker'
+      when:
+        - item.role == 'mqtt_broker'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -365,7 +367,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_web.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'web_server'
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -473,7 +477,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_ssh.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'ssh_server'
+      when:
+        - item.role == 'ssh_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -633,7 +639,9 @@
           store = ModbusSlaveContext(
               di=ModbusSequentialDataBlock(0, [1]*100),
               co=ModbusSequentialDataBlock(0, [0]*100),
-              hr=ModbusSequentialDataBlock(0, [i*10 for i in range(100)]),
+              # 101 values keep wire address 99 (human register 100) valid
+              # with pymodbus' default one-based SlaveContext translation.
+              hr=ModbusSequentialDataBlock(0, [i*10 for i in range(101)]),
               ir=ModbusSequentialDataBlock(0, [i*5  for i in range(100)]),
           )
           context = ModbusServerContext(slaves=store, single=True)
@@ -1246,7 +1254,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/inject_redis.sh /tmp/inject.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
-      when: item.role == 'db_server_v2'
+      when:
+        - item.role == 'db_server_v2'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -1509,6 +1519,139 @@
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/inject.sh
       loop: "{{ scenarios[scenario_id].services }}"
       when: item.role == 'nodered_server'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # S14 — services ressemblants mais correctement durcis
+    # ════════════════════════════════════════════════════
+
+    - name: "[S14] Copier l'installateur des profils de contrôle sur Proxmox"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/configure_s14_control.sh"
+        dest: /tmp/configure_s14_control.sh
+        mode: "0755"
+      when: scenario_id == '14'
+
+    - name: "[S14] Configurer les services hardened et near-miss"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/configure_s14_control.sh /tmp/configure_s14_control.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+          bash /tmp/configure_s14_control.sh '{{ item.role }}' '{{ item.security_profile }}'
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
+      when:
+        - scenario_id == '14'
+        - (item.security_profile | default('vulnerable')) != 'vulnerable'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # S16 — PKI réelle générée localement pour les fixtures mTLS
+    # ════════════════════════════════════════════════════
+
+    - name: "[S16] Copier le générateur PKI sur Proxmox"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/generate_s16_pki.sh"
+        dest: /tmp/generate_s16_pki.sh
+        mode: "0755"
+      when: scenario_id == '16'
+
+    - name: "[S16] Générer CA, certificats clients, CRL et clé clonée dans le CT CA"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + 1 }} /tmp/generate_s16_pki.sh /tmp/generate_s16_pki.sh
+        pct exec {{ base_vmid | int + 1 }} -- bash /tmp/generate_s16_pki.sh
+      when: scenario_id == '16'
+      register: s16_pki_generation
+      changed_when: true
+      failed_when: s16_pki_generation.rc != 0 or 'PKI_OK' not in s16_pki_generation.stdout
+
+    - name: "[S16] Extraire les fixtures PKI du CT CA vers Proxmox"
+      ansible.builtin.shell: |
+        install -d -m 0700 /tmp/s16-pki
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/ca.crt /tmp/s16-pki/ca.crt
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/ca.crl /tmp/s16-pki/ca.crl
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/server.crt /tmp/s16-pki/server.crt
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/server.key /tmp/s16-pki/server.key
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-a.crt /tmp/s16-pki/device-a.crt
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-a.key /tmp/s16-pki/device-a.key
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-a.public-key.sha256 /tmp/s16-pki/device-a.public-key.sha256
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.crt /tmp/s16-pki/device-b.crt
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.key /tmp/s16-pki/device-b.key
+        pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.public-key.sha256 /tmp/s16-pki/device-b.public-key.sha256
+      when: scenario_id == '16'
+      changed_when: true
+
+    - name: "[S16] Installer le certificat serveur mTLS (device-api)"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + 3 }} -- install -d -m 0700 /etc/nato-pki
+        pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/ca.crt /etc/nato-pki/ca.crt
+        pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/ca.crl /etc/nato-pki/ca.crl
+        pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/server.crt /etc/nato-pki/server.crt
+        pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/server.key /etc/nato-pki/server.key
+        pct exec {{ base_vmid | int + 3 }} -- chmod 0600 /etc/nato-pki/server.key
+      when: scenario_id == '16'
+      changed_when: true
+
+    - name: "[S16] Installer le bundle rejouable sur le service d'enrôlement"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + 2 }} -- install -d -m 0700 /etc/nato-pki
+        pct push {{ base_vmid | int + 2 }} /tmp/s16-pki/ca.crt /etc/nato-pki/ca.crt
+        pct push {{ base_vmid | int + 2 }} /tmp/s16-pki/device-b.crt /etc/nato-pki/device-b.crt
+        pct push {{ base_vmid | int + 2 }} /tmp/s16-pki/device-b.key /etc/nato-pki/device-b.key
+        pct exec {{ base_vmid | int + 2 }} -- chmod 0600 /etc/nato-pki/device-b.key
+      when: scenario_id == '16'
+      changed_when: true
+
+    - name: "[S16] Installer l'identité propre à chaque fixture device"
+      ansible.builtin.shell: |
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- install -d -m 0700 /etc/nato-pki
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/ca.crt /etc/nato-pki/ca.crt
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/{{ 'device-a' if item.security_profile == 'hardened' else 'device-b' }}.crt /etc/nato-pki/device.crt
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/{{ 'device-a' if item.security_profile == 'hardened' else 'device-b' }}.key /etc/nato-pki/device.key
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s16-pki/{{ 'device-a' if item.security_profile == 'hardened' else 'device-b' }}.public-key.sha256 /etc/nato-pki/public-key.sha256
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- chmod 0600 /etc/nato-pki/device.key
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - scenario_id == '16'
+        - item.role == 'pki_device'
+      changed_when: true
+
+
+    # ════════════════════════════════════════════════════
+    # S15–S19 — services déterministes et sans dépendance cloud/vendor
+    # ════════════════════════════════════════════════════
+
+    - name: "[S15-S19] Copier le runtime des simulateurs sur Proxmox"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/{{ item.src }}"
+        dest: "/tmp/{{ item.dest }}"
+        mode: "0755"
+      loop:
+        - {src: benchmark_simulator.py, dest: benchmark_simulator.py}
+        - {src: install_benchmark_simulator.sh, dest: install_benchmark_simulator.sh}
+      when: scenario_id in ['15', '16', '17', '18', '19']
+
+    - name: "[S15-S19] Installer et démarrer chaque simulateur"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/benchmark_simulator.py /tmp/benchmark_simulator.py
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/install_benchmark_simulator.sh /tmp/install_benchmark_simulator.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+          bash /tmp/install_benchmark_simulator.sh \
+          '{{ item.simulator }}' \
+          '{{ item.security_profile | default("vulnerable") }}' \
+          's{{ scenario_id }}-{{ item.name }}' \
+          '{{ "192.168.100.12" if scenario_id == "18" else "" }}'
+      loop: "{{ scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
+      when:
+        - scenario_id in ['15', '16', '17', '18', '19']
+        - item.simulator is defined
+      register: simulator_installation
       changed_when: true
 
 

@@ -1,0 +1,31 @@
+id: sparse_hardened
+name: Sparse Mixed-Hardening Network
+description: Ten look-alike services with only four intentional findings and explicit hardened controls
+base_vmid: 300
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-mqtt-open', vmid_offset: 1, ip: 192.168.100.11, role: mqtt_broker, security_profile: vulnerable}
+- {name_template: 's{sid}-mqtt-secure', vmid_offset: 2, ip: 192.168.100.12, role: mqtt_broker, security_profile: hardened}
+- {name_template: 's{sid}-web-backup', vmid_offset: 3, ip: 192.168.100.13, role: web_server, security_profile: vulnerable}
+- {name_template: 's{sid}-web-nearmiss', vmid_offset: 4, ip: 192.168.100.14, role: web_server, security_profile: near_miss}
+- {name_template: 's{sid}-ssh-legacy', vmid_offset: 5, ip: 192.168.100.15, role: ssh_server, security_profile: vulnerable}
+- {name_template: 's{sid}-ssh-secure', vmid_offset: 6, ip: 192.168.100.16, role: ssh_server, security_profile: hardened}
+- {name_template: 's{sid}-redis-open', vmid_offset: 7, ip: 192.168.100.17, role: db_server_v2, security_profile: vulnerable}
+- {name_template: 's{sid}-redis-secure', vmid_offset: 8, ip: 192.168.100.18, role: db_server_v2, security_profile: hardened}
+- {name_template: 's{sid}-web-secure', vmid_offset: 9, ip: 192.168.100.19, role: web_server, security_profile: hardened}
+- {name_template: 's{sid}-mqtt-nearmiss', vmid_offset: 10, ip: 192.168.100.20, role: mqtt_broker, security_profile: near_miss}
+links:
+- {source: 's{sid}-router', target: 's{sid}-mqtt-open', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-mqtt-secure', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-web-backup', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-web-nearmiss', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-ssh-legacy', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-ssh-secure', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-redis-open', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-redis-secure', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-web-secure', protocol: ethernet}
+- {source: 's{sid}-router', target: 's{sid}-mqtt-nearmiss', protocol: ethernet}

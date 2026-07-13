@@ -14,7 +14,7 @@ CANONICAL_TYPES: frozenset[str] = frozenset({
     "terrapin", "version_leak", "known_cve", "directory_listing",
     "data_exposure", "insecure_protocol", "default_credentials",
     "network_exposure", "insecure_update", "code_injection",
-    "misconfiguration", "privilege_escalation",
+    "misconfiguration", "privilege_escalation", "broken_access_control",
 })
 
 
@@ -95,9 +95,7 @@ NOISE_TYPES: frozenset[str] = frozenset({
     # Weak credential as standalone type (covered by default_credentials alias)
     "weak_credential",
     # Privilege management / OT protocol observations
-    "improper_privilege_management",
     "weak_protocol_design",
-    "missing_cryptographic_authentication",
     "denial_of_service",
     # Process / OS configuration observations (not network vulns)
     "process_running_as_root",
@@ -129,6 +127,7 @@ EXPLOIT_CATEGORY_MAP: dict[str, str] = {
     "network_exposure":    "data_access",
     "misconfiguration":    "data_access",
     "privilege_escalation":"injection",
+    "broken_access_control": "data_access",
 }
 
 
@@ -266,6 +265,33 @@ VULN_TYPE_ALIASES: dict[str, str] = {
     "rce":                        "code_injection",
     "remote_code_execution":      "code_injection",
     "exec_node":                  "code_injection",
+    # application authorization
+    "idor":                       "broken_access_control",
+    "bola":                       "broken_access_control",
+    "mass_assignment":            "broken_access_control",
+    "jwt_scope":                  "broken_access_control",
+    "scope_bypass":               "broken_access_control",
+    "authorization_bypass":       "broken_access_control",
+    "cross_tenant_access":        "broken_access_control",
+    # SSRF is exercised as a bounded server-side request primitive
+    "ssrf":                       "code_injection",
+    "server_side_request_forgery": "code_injection",
+    # identity / lifecycle findings
+    "enrollment_replay":          "misconfiguration",
+    "bootstrap_token_replay":     "misconfiguration",
+    "revocation_failure":         "weak_cipher",
+    "certificate_reuse":          "weak_cipher",
+    "public_key_reuse":           "weak_cipher",
+    "verification_key_reuse":     "weak_cipher",
+    # privilege and unauthenticated control aliases
+    "excessive_privilege":        "privilege_escalation",
+    "overprivileged_role":        "privilege_escalation",
+    "improper_privilege_management": "privilege_escalation",
+    "unauthorized_write":         "no_auth",
+    "anonymous_write":            "no_auth",
+    "missing_cryptographic_authentication": "no_auth",
+    "opcua_security_none":        "weak_cipher",
+    "bacnet_discovery":           "info_disclosure",
 }
 
 

@@ -1,0 +1,22 @@
+id: cloud_iam_ssrf
+name: Simulated Cloud IAM and SSRF
+description: Deterministic local cloud control plane with metadata isolation, SSRF and scoped bearer credentials
+base_vmid: 380
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-cloud-web', vmid_offset: 1, ip: 192.168.100.11, role: cloud_web_server, security_profile: vulnerable, simulator: cloud_web}
+- {name_template: 's{sid}-metadata', vmid_offset: 2, ip: 192.168.100.12, role: cloud_metadata_server, security_profile: vulnerable, simulator: cloud_metadata}
+- {name_template: 's{sid}-cloud-control', vmid_offset: 3, ip: 192.168.100.13, role: cloud_control_plane, security_profile: vulnerable, simulator: cloud_control}
+- {name_template: 's{sid}-worker', vmid_offset: 4, ip: 192.168.100.14, role: cloud_worker, security_profile: hardened, simulator: cloud_worker}
+- {name_template: 's{sid}-audit', vmid_offset: 5, ip: 192.168.100.15, role: cloud_audit, security_profile: hardened, simulator: cloud_audit}
+- {name_template: 's{sid}-public-api', vmid_offset: 6, ip: 192.168.100.16, role: cloud_web_server, security_profile: hardened, simulator: cloud_web}
+links:
+- {source: 's{sid}-cloud-web', target: 's{sid}-metadata', protocol: http}
+- {source: 's{sid}-cloud-web', target: 's{sid}-cloud-control', protocol: https}
+- {source: 's{sid}-worker', target: 's{sid}-cloud-control', protocol: https}
+- {source: 's{sid}-cloud-control', target: 's{sid}-audit', protocol: https}
+- {source: 's{sid}-public-api', target: 's{sid}-cloud-control', protocol: https}
