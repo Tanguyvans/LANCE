@@ -9,7 +9,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig
 
 def load_config(config_path: str):
     with open(config_path, "r") as f:
@@ -55,8 +55,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=bnb_config,
-        device_map="auto",
-        attn_implementation=config["model"].get("attn_implementation", "sdpa")
+        device_map="auto"
     )
     model.config.use_cache = False # Required for gradient checkpointing
     model = prepare_model_for_kbit_training(model)
@@ -74,7 +73,7 @@ def main():
     model.print_trainable_parameters()
 
     # 6. Training Arguments
-    training_args = TrainingArguments(
+    training_args = SFTConfig(
         output_dir=config["training"]["output_dir"],
         num_train_epochs=config["training"]["num_train_epochs"],
         per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
@@ -90,19 +89,18 @@ def main():
         report_to=config["training"].get("report_to", "none"),
         fp16=False,
         bf16=True, # Llama-3 performs better with bf16
-        gradient_checkpointing=True
+        gradient_checkpointing=True,
+        dataset_text_field="text",
+        max_length=config["training"]["max_seq_length"],
+        packing=False
     )
 
     # 7. Initialize Trainer
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
-        peft_config=lora_config,
-        dataset_text_field="text",
-        max_seq_length=config["training"]["max_seq_length"],
-        tokenizer=tokenizer,
-        args=training_args,
-        packing=False
+        processing_class=tokenizer,
+        args=training_args
     )
 
     # 8. Train
