@@ -121,7 +121,9 @@ def _key_present(provider, key_env_map):
     on pricing; it's available as soon as its key env (any non-empty value) is set.
     """
     env = key_env_map.get(provider) or _STATIC_KEY_ENV.get(provider)
-    return bool(env and os.environ.get(env))
+    if not env or provider.startswith("local"):
+        return True
+    return bool(os.environ.get(env))
 
 
 def _entry(slug, label, recommended, provider, subscription, pricing,

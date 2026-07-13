@@ -104,43 +104,111 @@ def _route_expert(messages: List[Message]) -> str:
     return "base"
 
 # --- Qwen Tool Call Parser ---
+def _extract_json_objects(text: str) -> list[tuple[dict, str]]:
+    """Robustly extract all JSON objects from a string, handling nested braces."""
+    results = []
+    brace_level = 0
+    in_string = False
+    escape_next = False
+    start_idx = -1
+    
+    for i, char in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+            
+        if char == '\\':
+            escape_next = True
+            continue
+            
+        if char == '"':
+            in_string = not in_string
+            continue
+            
+        if not in_string:
+            if char == '{':
+                if brace_level == 0:
+                    start_idx = i
+                brace_level += 1
+            elif char == '}':
+                brace_level -= 1
+                if brace_level == 0 and start_idx != -1:
+                    json_str = text[start_idx:i+1]
+                    try:
+                        results.append((json.loads(json_str), json_str))
+                    except Exception:
+                        pass
+                    start_idx = -1
+                elif brace_level < 0:
+                    brace_level = 0  # reset if malformed
+                    
+    return results
+
 def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
-    """Parse Qwen's <tool_call> tags into OpenAI tool_calls structure."""
-    content_parts = []
+    """Parse tool calls, supporting both Qwen native <tool_call> tags and fine-tuned JSON formats."""
     tool_calls = []
     
-    # Qwen tool call format:
-    # <tool_call>
-    # {"name": "func_name", "arguments": {"arg1": "val1"}}
-    # </tool_call>
+    # 1. Strip dangling commas often hallucinated at the start
+    text = text.lstrip(",").strip()
     
-    pattern = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
+    # 2. Extract anything inside <tool_call> tags (even unclosed)
+    pattern = re.compile(r"<tool_call>\s*(.*?)(?:</tool_call>|$)", re.DOTALL)
     
+    content_parts = []
     last_idx = 0
+    
     for match in pattern.finditer(text):
         if match.start() > last_idx:
             content_parts.append(text[last_idx:match.start()].strip())
-        
+            
+        call_str = match.group(1).strip()
         try:
-            call_data = json.loads(match.group(1))
-            tool_calls.append({
-                "id": f"call_{uuid.uuid4().hex[:8]}",
-                "type": "function",
-                "function": {
-                    "name": call_data.get("name"),
-                    # OpenAI expects arguments as stringified JSON
-                    "arguments": json.dumps(call_data.get("arguments", {}))
-                }
-            })
+            call_data = json.loads(call_str)
+            name = call_data.get("name") or call_data.get("tool")
+            args = call_data.get("arguments") or call_data.get("args") or {}
+            
+            if name:
+                tool_calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args)
+                    }
+                })
         except Exception as e:
-            log.error(f"Failed to parse tool call: {e}")
+            log.error(f"Failed to parse Qwen tool call JSON '{call_str}': {e}")
             
         last_idx = match.end()
         
     if last_idx < len(text):
-        content_parts.append(text[last_idx:].strip())
-        
-    return "\n".join(content_parts).strip(), tool_calls
+        remainder = text[last_idx:].strip()
+        if remainder:
+            content_parts.append(remainder)
+            
+    content = "\n".join(content_parts).strip()
+    
+    # 3. If no <tool_call> tags were found, maybe the model outputted RAW JSON
+    if not tool_calls:
+        extracted = _extract_json_objects(content)
+        for obj, obj_str in extracted:
+            name = obj.get("tool") or obj.get("name")
+            args = obj.get("args") or obj.get("arguments") or {}
+            
+            # If it looks like a tool call, extract it
+            if name and isinstance(name, str) and isinstance(args, dict):
+                tool_calls.append({
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args)
+                    }
+                })
+                # Remove this JSON block from the textual content
+                content = content.replace(obj_str, "").strip()
+
+    return content, tool_calls
 
 # --- Endpoints ---
 @app.get("/health")

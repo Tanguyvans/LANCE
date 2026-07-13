@@ -31,3 +31,4 @@ paper/fig_inpaper-*.png
 paper/page*.png
 paper/pg_*.png
 paper/pv_*.png
+test_regex.py

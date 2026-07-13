@@ -160,10 +160,11 @@ async function loadModels() {
   const currentValue = sel.value;
   sel.innerHTML = '';
 
-  // Group models by provider: OpenRouter first, then MiniMax Plan.
+  // Group models by provider: OpenRouter first, then MiniMax Plan, then Local MoE.
   const groups = {
     openrouter: { label: 'OpenRouter (pay-per-token)', models: [] },
     minimax:    { label: 'MiniMax Coding Plan ($10/mo)', models: [] },
+    'local-moe': { label: 'LANCE Local HMoE', models: [] },
   };
   for (const m of models) {
     const provider = m.provider || 'openrouter';
