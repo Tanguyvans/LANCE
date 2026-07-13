@@ -56,7 +56,7 @@ jobs:
         run: python -m pytest -q
 
       - name: Reject whitespace errors
-        run: git show --check --oneline --no-renames HEAD
+        run: git diff-tree --check --root -r --no-renames HEAD
 
   sealed-worker-image:
     runs-on: ubuntu-latest
