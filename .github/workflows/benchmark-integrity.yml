@@ -26,6 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt ansible-core
+          ansible-galaxy collection install -r benchmarks/ansible/requirements.yml
 
       - name: Validate generated ground truths
         run: python benchmarks/tools/compose_gt.py --validate

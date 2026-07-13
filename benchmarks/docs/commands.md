@@ -6,7 +6,7 @@
 
 ```bash
 pip install ansible proxmoxer requests passlib
-ansible-galaxy collection install community.general
+ansible-galaxy collection install -r benchmarks/ansible/requirements.yml
 ```
 
 ### 2. Copier la clé SSH sur Proxmox

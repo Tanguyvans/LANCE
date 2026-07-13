@@ -185,6 +185,7 @@ ansible-playbook benchmarks/ansible/playbooks/99_teardown.yml \
 
 ```
 ansible/
+├── requirements.yml               # Collections Ansible requises et versions validées
 ├── inventory.yml                  # Proxmox (<PROXMOX_IP>) + master (DHCP)
 ├── group_vars/
 │   └── all/
