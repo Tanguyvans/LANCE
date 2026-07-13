@@ -21,6 +21,12 @@ python3 -m src.agent --provider openrouter \
 `--dry-run` works offline. A full run needs an LLM key, `VOYAGE_API_KEY` (embeddings), and
 live targets deployed via the Ansible playbooks — see [`benchmarks/README.md`](benchmarks/README.md).
 
+## Local HMoE and OpenWebUI
+
+The four QLoRA experts can be served behind one OpenAI-compatible API and exposed as
+five model IDs in OpenWebUI. See the [local HMoE deployment guide](docs/lance_hmoe_openwebui.md)
+for the systemd service, permissions, model registration, and troubleshooting steps.
+
 ## Key Directories
 
 | Path | Description |

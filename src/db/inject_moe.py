@@ -2,6 +2,8 @@
 """Inject HMoE configuration into the LANCE SQLite registry."""
 from __future__ import annotations
 
+import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.db.database import init_db, get_conn
+
 
 def upsert_provider(name: str, base_url: str, api_key_env: str, default_model: str, kind: str = "local") -> None:
     query = """
@@ -39,24 +42,40 @@ def upsert_model(slug: str, label: str, provider: str, recommended: bool = False
     with get_conn() as conn:
         conn.execute(query, (slug, label, provider, int(recommended), int(enabled)))
 
-def main():
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("LANCE_MOE_BASE_URL", "http://localhost:8001/v1"),
+        help="OpenAI-compatible HMoE API URL (default: %(default)s)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
     init_db()
-    
+
     upsert_provider(
         name="local-moe",
-        base_url="http://localhost:8001/v1",
+        base_url=args.base_url.rstrip("/"),
         api_key_env="LOCAL_API_KEY",
         default_model="lance-moe",
         kind="local"
     )
-    
+
     upsert_model("lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", True, True)
     upsert_model("expert-recon", "Expert (Recon)", "local-moe", False, True)
     upsert_model("expert-vuln", "Expert (Vuln)", "local-moe", False, True)
     upsert_model("expert-exploit", "Expert (Exploit)", "local-moe", False, True)
     upsert_model("expert-secretary", "Expert (Secretary)", "local-moe", False, True)
-    
-    print("Successfully injected 'local-moe' provider and HMoE models into LANCE registry!")
+
+    print(
+        "Successfully injected 'local-moe' provider and HMoE models "
+        f"using {args.base_url.rstrip('/')}"
+    )
+
 
 if __name__ == "__main__":
     main()

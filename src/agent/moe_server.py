@@ -18,10 +18,13 @@ import uuid
 import time
 import argparse
 import logging
+import threading
+from contextlib import nullcontext
 from typing import Optional, List, Dict, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 import torch
@@ -38,11 +41,20 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 _MODEL = None
 _TOKENIZER = None
 _ADAPTERS = []
+_GENERATION_LOCK = threading.Lock()
+
+_MODEL_IDS = [
+    "lance-moe",
+    "expert-recon",
+    "expert-vuln",
+    "expert-exploit",
+    "expert-secretary",
+]
 
 # --- API Models ---
 class Message(BaseModel):
     role: str
-    content: str | List[Dict[str, Any]] = ""
+    content: str | List[Dict[str, Any]] | None = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
     tool_call_id: Optional[str] = None
     name: Optional[str] = None
@@ -53,6 +65,7 @@ class ChatCompletionRequest(BaseModel):
     tools: Optional[List[Dict[str, Any]]] = None
     max_tokens: Optional[int] = 4096
     temperature: Optional[float] = 0.0
+    stream: bool = False
 
 # --- Router Logic ---
 def _route_expert(messages: List[Message]) -> str:
@@ -61,15 +74,30 @@ def _route_expert(messages: List[Message]) -> str:
     if not isinstance(sys_prompt, str):
         sys_prompt = json.dumps(sys_prompt)
     sys_prompt = sys_prompt.lower()
+
+    phase_match = re.search(r"phase\s+([1-6])\s+of\s+6", sys_prompt)
+    if phase_match:
+        return {
+            "1": "secretary",
+            "2": "recon",
+            "3": "vuln",
+            "4": "exploit",
+            "5": "exploit",
+            "6": "secretary",
+        }[phase_match.group(1)]
     
     # Check for exact roles defined in the first lines of LANCE prompts
     if "topology analyst" in sys_prompt or "report writer" in sys_prompt:
         return "secretary"
-    elif "reconnaissance and network scanning" in sys_prompt:
+    elif "reconnaissance and network scanning" in sys_prompt or "network reconnaissance agent" in sys_prompt:
         return "recon"
-    elif "vulnerability analyst" in sys_prompt:
+    elif "vulnerability analyst" in sys_prompt or "vulnerability aggregator" in sys_prompt:
         return "vuln"
-    elif "exploit verification agent" in sys_prompt or "offensive security agent" in sys_prompt:
+    elif (
+        "exploit verification agent" in sys_prompt
+        or "offensive security agent" in sys_prompt
+        or "iot pentester exploiting vulnerabilities" in sys_prompt
+    ):
         return "exploit"
     
     # Fallback to base model if no clear match
@@ -115,8 +143,79 @@ def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
     return "\n".join(content_parts).strip(), tool_calls
 
 # --- Endpoints ---
+@app.get("/health")
+def health():
+    return {"status": "ok", "loaded_adapters": _ADAPTERS}
+
+
+@app.get("/v1/models")
+def list_models():
+    created = int(time.time())
+    return {
+        "object": "list",
+        "data": [
+            {"id": model_id, "object": "model", "created": created, "owned_by": "lance"}
+            for model_id in _MODEL_IDS
+        ],
+    }
+
+
+def _format_hf_message(message: Message) -> dict[str, Any]:
+    content = message.content
+    if isinstance(content, list):
+        content = json.dumps(content)
+
+    formatted: dict[str, Any] = {"role": message.role, "content": content or ""}
+    if message.tool_calls:
+        tool_calls = json.loads(json.dumps(message.tool_calls))
+        for tool_call in tool_calls:
+            function = tool_call.get("function", {})
+            arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    function["arguments"] = json.loads(arguments)
+                except json.JSONDecodeError:
+                    pass
+        formatted["tool_calls"] = tool_calls
+    if message.tool_call_id:
+        formatted["tool_call_id"] = message.tool_call_id
+    if message.name:
+        formatted["name"] = message.name
+    return formatted
+
+
+def _stream_response(response: dict[str, Any]):
+    response_id = response["id"]
+    model = response["model"]
+    created = response["created"]
+    message = response["choices"][0]["message"]
+
+    first_chunk = {
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": message, "finish_reason": None}],
+    }
+    final_chunk = {
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": response["choices"][0]["finish_reason"],
+        }],
+        "usage": response["usage"],
+    }
+    yield f"data: {json.dumps(first_chunk)}\n\n"
+    yield f"data: {json.dumps(final_chunk)}\n\n"
+    yield "data: [DONE]\n\n"
+
+
 @app.post("/v1/chat/completions")
-async def chat_completions(req: ChatCompletionRequest):
+def chat_completions(req: ChatCompletionRequest):
     global _MODEL, _TOKENIZER, _ADAPTERS
     if not _MODEL:
         raise HTTPException(status_code=503, detail="Model not initialized")
@@ -130,23 +229,8 @@ async def chat_completions(req: ChatCompletionRequest):
         target_expert = req.model.replace("expert-", "")
         log.info(f"[ROUTER] Manual standalone expert requested: {target_expert}")
         
-    # Swap adapter
-    if target_expert != "base":
-        if target_expert not in _ADAPTERS:
-            log.warning(f"Expert {target_expert} not found in loaded adapters. Falling back to base model.")
-            _MODEL.set_adapter("default") # PEFT default is base
-        else:
-            _MODEL.set_adapter(target_expert)
-            log.info(f"Active Adapter: {target_expert}")
-    else:
-        _MODEL.set_adapter("default")
-        log.info("Active Adapter: BASE")
-
     # Format messages for the tokenizer
-    hf_messages = []
-    for m in req.messages:
-        content = m.content if isinstance(m.content, str) else json.dumps(m.content)
-        hf_messages.append({"role": m.role, "content": content})
+    hf_messages = [_format_hf_message(message) for message in req.messages]
         
     # Render prompt with chat template (handling tools if supported)
     try:
@@ -161,19 +245,28 @@ async def chat_completions(req: ChatCompletionRequest):
         log.warning(f"Tokenizer tool formatting failed, falling back to basic template: {e}")
         prompt = _TOKENIZER.apply_chat_template(hf_messages, tokenize=False, add_generation_prompt=True)
         
-    # Generate
-    inputs = _TOKENIZER(prompt, return_tensors="pt").to(_MODEL.device)
-    
-    t0 = time.time()
-    with torch.no_grad():
-        outputs = _MODEL.generate(
-            **inputs,
-            max_new_tokens=req.max_tokens,
-            temperature=req.temperature if req.temperature > 0 else 0.01,
-            do_sample=req.temperature > 0,
-            pad_token_id=_TOKENIZER.eos_token_id
-        )
-    t1 = time.time()
+    with _GENERATION_LOCK:
+        adapter_context = nullcontext()
+        if target_expert in _ADAPTERS:
+            _MODEL.set_adapter(target_expert)
+            log.info(f"Active Adapter: {target_expert}")
+        else:
+            if target_expert != "base":
+                log.warning(f"Expert {target_expert} not found. Falling back to the base model.")
+            adapter_context = _MODEL.disable_adapter()
+            log.info("Active Adapter: BASE")
+
+        inputs = _TOKENIZER(prompt, return_tensors="pt").to(_MODEL.device)
+        t0 = time.time()
+        with adapter_context, torch.no_grad():
+            outputs = _MODEL.generate(
+                **inputs,
+                max_new_tokens=req.max_tokens,
+                temperature=req.temperature if req.temperature > 0 else 0.01,
+                do_sample=req.temperature > 0,
+                pad_token_id=_TOKENIZER.eos_token_id
+            )
+        t1 = time.time()
     
     # Extract only the newly generated tokens
     generated_ids = outputs[0][inputs.input_ids.shape[-1]:]
@@ -194,7 +287,7 @@ async def chat_completions(req: ChatCompletionRequest):
     
     log.info(f"Generated {output_tokens} tokens in {t1-t0:.2f}s ({output_tokens/(t1-t0):.1f} t/s)")
     
-    return {
+    response = {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
         "created": int(time.time()),
@@ -210,6 +303,9 @@ async def chat_completions(req: ChatCompletionRequest):
             "total_tokens": input_tokens + output_tokens
         }
     }
+    if req.stream:
+        return StreamingResponse(_stream_response(response), media_type="text/event-stream")
+    return response
 
 
 def load_models(base_model_path: str, adapters_dir: str):
@@ -241,14 +337,15 @@ def load_models(base_model_path: str, adapters_dir: str):
                 log.warning(f"Expert dir not found: {expert_dir}")
                 continue
                 
-            # Find highest checkpoint
-            checkpoints = [d for d in os.listdir(expert_dir) if d.startswith("checkpoint-")]
-            if not checkpoints:
-                log.warning(f"No checkpoints found in {expert_dir}")
-                continue
-                
-            best_ckpt = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))[-1]
-            adapter_path = os.path.join(expert_dir, best_ckpt)
+            adapter_path = expert_dir
+            if not os.path.isfile(os.path.join(adapter_path, "adapter_model.safetensors")):
+                checkpoints = [d for d in os.listdir(expert_dir) if d.startswith("checkpoint-")]
+                if not checkpoints:
+                    log.warning(f"No adapter weights or checkpoints found in {expert_dir}")
+                    continue
+
+                best_ckpt = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))[-1]
+                adapter_path = os.path.join(expert_dir, best_ckpt)
             
             log.info(f"Loading adapter [{expert_name}] from {adapter_path}")
             # If it's the first adapter, PeftModel wraps the base model
