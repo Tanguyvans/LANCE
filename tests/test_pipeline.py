@@ -5,8 +5,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.pipeline import Pipeline, TOOL_GROUPS
+from src.agent.pipeline import Pipeline, TOOL_GROUPS, _resolve_model_provider
 from src.agent.registry import AgentConfig, AGENTS
+
+
+def test_resolve_model_provider_uses_registry(monkeypatch):
+    monkeypatch.setattr(
+        "src.db.database.get_model",
+        lambda model: {"provider": "local-moe"} if model == "lance-moe" else None,
+    )
+
+    assert _resolve_model_provider("lance-moe") == "local-moe"
+    assert _resolve_model_provider("MiniMax-M2.7") == "minimax"
+    assert _resolve_model_provider("openai/gpt-4o") == "openrouter"
 
 
 @pytest.fixture

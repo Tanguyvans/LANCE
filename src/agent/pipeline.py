@@ -44,6 +44,21 @@ from src.agent.validators import VALIDATORS
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
+
+def _resolve_model_provider(model: str) -> str:
+    """Resolve a model's provider from the registry, with legacy fallback."""
+    try:
+        from src.db.database import get_model
+
+        row = get_model(model)
+        if row and row.get("provider"):
+            return row["provider"]
+    except Exception:
+        pass
+
+    return "minimax" if "/" not in model else "openrouter"
+
+
 def _build_intrusion_tools() -> list[dict]:
     """Extract ssh_exec and try_credential from RECON_TOOLS for the intrusion group."""
     _intrusion_names = {"ssh_exec", "try_credential"}
@@ -395,10 +410,7 @@ class Pipeline:
             # Handle keys from JSON as strings or ints
             target_model = self.phase_models.get(phase_num) or self.phase_models.get(str(phase_num))
             if target_model and target_model != self.provider.model:
-                # MiniMax Coding Plan slugs are bare names ("MiniMax-M2.7"); OpenRouter
-                # slugs are namespaced ("openrouter_vendor/model-name"). Infer provider
-                # from the presence of a slash so multi-model mode supports both.
-                target_provider = "minimax" if "/" not in target_model else "openrouter"
+                target_provider = _resolve_model_provider(target_model)
                 log.info("Switching to phase %d specific model: %s (%s)", phase_num, target_model, target_provider)
                 self.provider = LLMProvider(provider=target_provider, model=target_model)
                 self.tracker.model = target_model

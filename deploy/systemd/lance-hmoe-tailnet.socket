@@ -1,0 +1,11 @@
+[Unit]
+Description=LANCE HMoE Tailscale listener
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Socket]
+ListenStream=100.66.221.22:8001
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

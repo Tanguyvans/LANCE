@@ -4,6 +4,7 @@
 const state = {
   scenario: null,
   model: null,
+  provider: 'openrouter',
   running: false,
   currentRun: null,
   layers: new Set(['network']),
@@ -737,7 +738,7 @@ async function loadScenarios() {
 
 // ── Run controls ───────────────────────────────────────────────────────────
 document.getElementById('btnRun').addEventListener('click', async () => {
-  const body = { provider: 'openrouter', model: state.model };
+  const body = { provider: state.provider, model: state.model };
   if (state.scenario) body.scenario_id = String(state.scenario);
   const r = await fetchJSON('/api/pipeline/start', { method: 'POST', body: JSON.stringify(body) });
   if (r.status !== 'started') log(`Start failed: ${r.detail || JSON.stringify(r)}`, 'error');
@@ -783,16 +784,16 @@ document.getElementById('btnBatchClose').addEventListener('click', () => {
 document.getElementById('btnBatchRun').addEventListener('click', async () => {
   if (batchSelected.size === 0) { log('Select at least one scenario', 'warn'); return; }
   const ids = [...batchSelected].sort();
-  const body = { batch_ids: ids.map(String), provider: 'openrouter', model: state.model };
+  const body = { batch_ids: ids.map(String), provider: state.provider, model: state.model };
   document.getElementById('batchModal').classList.add('hidden');
   await fetchJSON('/api/pipeline/batch', { method: 'POST', body: JSON.stringify(body) });
 });
 
 // ── Model selector ─────────────────────────────────────────────────────────
 const FALLBACK_MODELS = [
-  { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash' },
-  { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { id: 'openai/gpt-4o', label: 'GPT-4o' },
+  { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash', provider: 'openrouter' },
+  { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'openrouter' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o', provider: 'openrouter' },
 ];
 
 async function loadModels() {
@@ -804,10 +805,21 @@ async function loadModels() {
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.label || m.id;
+    opt.dataset.provider = m.provider || 'openrouter';
+    opt.disabled = m.available === false;
     sel.appendChild(opt);
   });
-  state.model = sel.value;
-  sel.addEventListener('change', () => { state.model = sel.value; });
+  const preferred = models.find(m => m.recommended && m.available !== false)
+    || models.find(m => m.available !== false)
+    || models[0];
+  if (preferred) sel.value = preferred.id;
+
+  const syncSelection = () => {
+    state.model = sel.value;
+    state.provider = sel.selectedOptions[0]?.dataset.provider || 'openrouter';
+  };
+  syncSelection();
+  sel.addEventListener('change', syncSelection);
 }
 
 // ── Runs list ──────────────────────────────────────────────────────────────

@@ -1,0 +1,7 @@
+[Unit]
+Description=LANCE HMoE Tailscale proxy
+Requires=lance-hmoe-tailnet.socket
+After=lance-hmoe.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 172.17.0.1:8001

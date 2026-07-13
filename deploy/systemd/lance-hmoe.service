@@ -1,0 +1,19 @@
+[Unit]
+Description=LANCE Hybrid Mixture of Experts API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/tanguy/LANCE
+Environment=PYTHONPATH=/home/tanguy/.local/share/lance-hmoe/site-packages
+Environment=PYTHONUNBUFFERED=1
+Environment=TOKENIZERS_PARALLELISM=false
+ExecStart=/home/leo/LANCE/env/bin/python /home/tanguy/LANCE/src/agent/moe_server.py --base-model Qwen/Qwen2.5-0.5B-Instruct --adapters-dir /home/leo/LANCE/output/adapters/lance-qlora_moe --host 172.17.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

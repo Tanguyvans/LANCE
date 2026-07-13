@@ -101,28 +101,11 @@ firewall rules are added first.
 
 ## Persistent systemd service
 
-Create `~/.config/systemd/user/lance-hmoe.service`:
+Install the versioned user unit:
 
-```ini
-[Unit]
-Description=LANCE Hybrid Mixture of Experts API
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/home/tanguy/LANCE
-Environment=PYTHONPATH=/home/tanguy/.local/share/lance-hmoe/site-packages
-Environment=PYTHONUNBUFFERED=1
-Environment=TOKENIZERS_PARALLELISM=false
-ExecStart=/home/leo/LANCE/env/bin/python /home/tanguy/LANCE/src/agent/moe_server.py --base-model Qwen/Qwen2.5-0.5B-Instruct --adapters-dir /home/leo/LANCE/output/adapters/lance-qlora_moe --host 172.17.0.1 --port 8001
-Restart=on-failure
-RestartSec=5
-KillSignal=SIGINT
-TimeoutStopSec=30
-
-[Install]
-WantedBy=default.target
+```bash
+install -Dm0644 deploy/systemd/lance-hmoe.service \
+  /home/tanguy/.config/systemd/user/lance-hmoe.service
 ```
 
 Enable and inspect the service:
@@ -159,14 +142,70 @@ docker exec open-webui python -c \
 
 The result must contain all five model IDs before configuring OpenWebUI.
 
+## Access from a remote LANCE application
+
+The dashboard on `nato-master` (`100.103.253.86:8501`) runs on a different host.
+The HMoE process remains bound to `172.17.0.1` so OpenWebUI can reach it without
+exposing the API on every interface. A socket-activated proxy publishes the same
+process only on the GPU host's Tailscale address:
+
+```text
+nato-master -> 100.66.221.22:8001 -> 172.17.0.1:8001 -> HMoE
+```
+
+Install and enable the versioned proxy units on `ilia-corsair-5000x`:
+
+```bash
+install -Dm0644 deploy/systemd/lance-hmoe-tailnet.socket \
+  /home/tanguy/.config/systemd/user/lance-hmoe-tailnet.socket
+install -Dm0644 deploy/systemd/lance-hmoe-tailnet.service \
+  /home/tanguy/.config/systemd/user/lance-hmoe-tailnet.service
+systemctl --user daemon-reload
+systemctl --user enable --now lance-hmoe-tailnet.socket
+```
+
+Verify the tailnet path:
+
+```bash
+curl http://100.66.221.22:8001/health
+curl http://100.66.221.22:8001/v1/models
+```
+
+This listener is restricted to the Tailscale address, but the API itself has no
+Bearer validation. Keep tailnet ACLs restricted and never forward port `8001`
+from the public internet or LAN router.
+
+When Tailscale Serve is enabled for the tailnet, it can replace the socket proxy
+with a tailnet-only HTTPS endpoint:
+
+```bash
+tailscale serve --bg http://172.17.0.1:8001
+```
+
 ## Register models in LANCE
 
-The host-side LANCE registry uses the Docker bridge address because the API is
-bound to that interface:
+For a LANCE application on the same host, use the Docker bridge address:
 
 ```bash
 cd /home/tanguy/LANCE
 python3 src/db/inject_moe.py --base-url http://172.17.0.1:8001/v1
+```
+
+For the application on `nato-master`, run the injection from its LANCE checkout
+with the tailnet URL:
+
+```bash
+python3 src/db/inject_moe.py --base-url http://100.66.221.22:8001/v1
+```
+
+By default, the LANCE dashboard receives only `lance-moe`. The HMoE server routes
+each phase to the correct expert. Direct expert IDs are useful for debugging and
+can be added explicitly:
+
+```bash
+python3 src/db/inject_moe.py \
+  --base-url http://100.66.221.22:8001/v1 \
+  --include-experts
 ```
 
 `LANCE_MOE_BASE_URL` can be used instead of the command-line option:
@@ -215,6 +254,8 @@ journalctl --user -u lance-hmoe.service -n 100 --no-pager
 
 Confirm that the service listens on the current `docker0` address and that the
 OpenWebUI container resolves `host.docker.internal` to the host gateway.
+For the remote LANCE application, also check
+`systemctl --user status lance-hmoe-tailnet.socket`.
 
 ### An adapter is missing
 

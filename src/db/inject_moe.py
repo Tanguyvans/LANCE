@@ -6,6 +6,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Sequence
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,10 +29,17 @@ def upsert_provider(name: str, base_url: str, api_key_env: str, default_model: s
     with get_conn() as conn:
         conn.execute(query, (name, base_url, api_key_env, default_model, kind))
 
-def upsert_model(slug: str, label: str, provider: str, recommended: bool = False, enabled: bool = True) -> None:
+def upsert_model(
+    slug: str,
+    label: str,
+    provider: str,
+    recommended: bool = False,
+    enabled: bool = True,
+    subscription: bool = False,
+) -> None:
     query = """
         INSERT INTO models (slug, label, provider, recommended, enabled, subscription)
-        VALUES (?, ?, ?, ?, ?, 1)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
             label = excluded.label,
             provider = excluded.provider,
@@ -40,21 +48,29 @@ def upsert_model(slug: str, label: str, provider: str, recommended: bool = False
             subscription = excluded.subscription
     """
     with get_conn() as conn:
-        conn.execute(query, (slug, label, provider, int(recommended), int(enabled)))
+        conn.execute(
+            query,
+            (slug, label, provider, int(recommended), int(enabled), int(subscription)),
+        )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
         default=os.environ.get("LANCE_MOE_BASE_URL", "http://localhost:8001/v1"),
         help="OpenAI-compatible HMoE API URL (default: %(default)s)",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--include-experts",
+        action="store_true",
+        help="Also expose the four direct expert model IDs in the LANCE dashboard",
+    )
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_args(argv)
     init_db()
 
     upsert_provider(
@@ -66,13 +82,14 @@ def main() -> None:
     )
 
     upsert_model("lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", True, True)
-    upsert_model("expert-recon", "Expert (Recon)", "local-moe", False, True)
-    upsert_model("expert-vuln", "Expert (Vuln)", "local-moe", False, True)
-    upsert_model("expert-exploit", "Expert (Exploit)", "local-moe", False, True)
-    upsert_model("expert-secretary", "Expert (Secretary)", "local-moe", False, True)
+    if args.include_experts:
+        upsert_model("expert-recon", "Expert (Recon)", "local-moe", False, True)
+        upsert_model("expert-vuln", "Expert (Vuln)", "local-moe", False, True)
+        upsert_model("expert-exploit", "Expert (Exploit)", "local-moe", False, True)
+        upsert_model("expert-secretary", "Expert (Secretary)", "local-moe", False, True)
 
     print(
-        "Successfully injected 'local-moe' provider and HMoE models "
+        "Successfully injected 'local-moe' provider and HMoE model(s) "
         f"using {args.base_url.rstrip('/')}"
     )
 
