@@ -2233,6 +2233,7 @@ function renderBenchmarkTable() {
     const llmData = s?.llm_judge_data;
     const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
+    const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
     const scoreLlmCell = llmData ? `<span title="Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}" style="cursor:help">${pct(llmData.f1_score)} 🤖</span>` : noScore;
 
     // Match quality breakdown: % of each method

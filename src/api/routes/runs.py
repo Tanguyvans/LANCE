@@ -440,14 +440,14 @@ def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
     if _is_sealed_run(run_dir):
         raise HTTPException(status_code=403, detail="Sealed runs cannot be re-evaluated")
 
-    meta_file = run_dir / "metadata.json"
+    meta_file = run_dir / "scenario_meta.json"
     if not meta_file.exists():
-        raise HTTPException(status_code=404, detail="metadata.json not found")
+        raise HTTPException(status_code=404, detail="scenario_meta.json not found")
     
     try:
         scenario_id = json.loads(meta_file.read_text()).get("scenario_id")
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=500, detail=f"Corrupt metadata.json: {exc}") from exc
+        raise HTTPException(status_code=500, detail=f"Corrupt scenario_meta.json: {exc}") from exc
         
     scenario_id = _normalized_scenario_id(scenario_id)
     gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
