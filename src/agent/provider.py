@@ -183,6 +183,7 @@ class LLMProvider:
                 call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
                 if (len(recent_calls) >= _REPEAT_THRESHOLD
                         and all(c == call_sig for c in recent_calls[-_REPEAT_THRESHOLD:])):
+                    if cost_tracker: cost_tracker.record_tool_error()
                     return json.dumps({"warning": f"Tool '{tc.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
                 recent_calls.append(call_sig)
                 return self._execute_tool(tc.name, tc.input, tool_map)
@@ -195,12 +196,15 @@ class LLMProvider:
                 tool_results = []
                 for f, tc in futures.items():
                     res = f.result()
-                    if cost_tracker and '"fallback_used"' in res:
-                        try:
-                            if json.loads(res).get("fallback_used"):
-                                cost_tracker.record_format_fallback()
-                        except Exception:
-                            pass
+                    if cost_tracker:
+                        if res.startswith("Error"):
+                            cost_tracker.record_tool_error()
+                        if '"fallback_used"' in res:
+                            try:
+                                if json.loads(res).get("fallback_used"):
+                                    cost_tracker.record_format_fallback()
+                            except Exception:
+                                pass
                     # Only mark required_tool as called if it succeeded (no error)
                     if required_tool and tc.name == required_tool and not res.startswith("Error"):
                         required_tool_called = True
@@ -308,6 +312,7 @@ class LLMProvider:
 
             if malformed_ids:
                 malformed_retries += 1
+                if cost_tracker: cost_tracker.record_tool_error()
                 log.warning("Tool call(s) with malformed JSON arguments detected (attempt %d/3): %s", malformed_retries, malformed_ids)
                 if stream_callback:
                     stream_callback({"type": "tool_call", "name": "ERROR", "args": {"error": "invalid JSON", "tool_call_ids": malformed_ids}})
@@ -327,17 +332,21 @@ class LLMProvider:
                 recent_calls.append(call_sig)
                 if (len(recent_calls) >= _REPEAT_THRESHOLD
                         and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
+                    if cost_tracker: cost_tracker.record_tool_error()
                     res = json.dumps({"warning": f"Tool '{tc.function.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                 else:
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
-                if cost_tracker and '"fallback_used"' in res:
-                    try:
-                        if json.loads(res).get("fallback_used"):
-                            cost_tracker.record_format_fallback()
-                    except Exception:
-                        pass
+                if cost_tracker:
+                    if res.startswith("Error"):
+                        cost_tracker.record_tool_error()
+                    if '"fallback_used"' in res:
+                        try:
+                            if json.loads(res).get("fallback_used"):
+                                cost_tracker.record_format_fallback()
+                        except Exception:
+                            pass
 
                 # Only mark required_tool as called if it succeeded (no error)
                 if required_tool and tc.function.name == required_tool and not res.startswith("Error"):

@@ -73,6 +73,7 @@ class PhaseUsage:
     model: str = ""
     format_fallbacks: int = 0
     validation_failures: int = 0
+    tool_errors: int = 0
 
     def cost_usd(self, model: str = "") -> float:
         m = model or self.model
@@ -121,6 +122,13 @@ class CostTracker:
         with self._lock:
             current.validation_failures += 1
 
+    def record_tool_error(self) -> None:
+        current = getattr(self._thread_local, 'current', None)
+        if current is None:
+            return
+        with self._lock:
+            current.tool_errors += 1
+
     def end_phase(self) -> PhaseUsage | None:
         current = getattr(self._thread_local, 'current', None)
         start_time = getattr(self._thread_local, 'start_time', 0.0)
@@ -158,6 +166,7 @@ class CostTracker:
                 "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
                 "total_format_fallbacks": sum(p.format_fallbacks for p in self.phases),
                 "total_validation_failures": sum(p.validation_failures for p in self.phases),
+                "total_tool_errors": sum(p.tool_errors for p in self.phases),
                 "phases": [
                     {
                         "agent": p.agent_name,
@@ -169,6 +178,7 @@ class CostTracker:
                         "duration_s": round(p.duration_s, 1),
                         "format_fallbacks": p.format_fallbacks,
                         "validation_failures": p.validation_failures,
+                        "tool_errors": p.tool_errors,
                     }
                     for p in self.phases
                 ],
@@ -194,6 +204,7 @@ class CostTracker:
             issues = []
             if p.format_fallbacks: issues.append(f"FB:{p.format_fallbacks}")
             if p.validation_failures: issues.append(f"VF:{p.validation_failures}")
+            if p.tool_errors: issues.append(f"TE:{p.tool_errors}")
             issues_str = " ".join(issues)
             print(
                 f"{p.agent_name:<22} {p.turns:>6} {p.input_tokens:>11,} "

@@ -256,7 +256,9 @@ class EvaluationResult:
     turns_per_tp: float | None = None
     format_fallbacks: int = 0
     validation_failures: int = 0
+    total_tool_errors: int = 0
     format_compliance_rate: float = 1.0
+    over_generation_ratio: float = 0.0
 
     # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
     # Convention: hop_depth=0 means directly reachable from the entry point;
@@ -701,6 +703,7 @@ def evaluate(
     total_turns = cost_data.get("total_turns", 0)
     format_fallbacks = cost_data.get("total_format_fallbacks", 0)
     validation_failures = cost_data.get("total_validation_failures", 0)
+    total_tool_errors = cost_data.get("total_tool_errors", 0)
 
     result = EvaluationResult(
         scenario_id=scenario_id,
@@ -717,6 +720,7 @@ def evaluate(
         total_turns=total_turns,
         format_fallbacks=format_fallbacks,
         validation_failures=validation_failures,
+        total_tool_errors=total_tool_errors,
     )
 
     # Findings are identified by their list index, never by model-provided IDs.
@@ -928,8 +932,13 @@ def evaluate(
         result.turns_per_tp = round(result.total_turns / tp, 1)
 
     if result.total_turns > 0:
-        issues = result.format_fallbacks + result.validation_failures
+        issues = result.format_fallbacks + result.validation_failures + result.total_tool_errors
         result.format_compliance_rate = round(max(0.0, (result.total_turns - issues) / result.total_turns), 3)
+
+    if result.total_gt_vulns > 0:
+        result.over_generation_ratio = round(result.total_llm_findings / result.total_gt_vulns, 2)
+    else:
+        result.over_generation_ratio = float(result.total_llm_findings)
 
     # A zero-GT control is one all-negative scenario-level trial. Reporting a
     # clean run as 0% (the historical weighted-score behaviour) is misleading,
@@ -977,11 +986,13 @@ def print_report(result: EvaluationResult) -> None:
         print(f"    Cost per True Positive   : ${result.cost_per_tp:.4f}")
         print(f"    Turns per True Positive  : {result.turns_per_tp:.1f}")
     
-    if result.format_fallbacks > 0 or result.validation_failures > 0 or result.format_compliance_rate < 1.0:
-        print("\n  FORMAT HALLUCINATIONS (PARSER RESCUES & RETRIES)")
-        print(f"    Format Compliance Rate     : {result.format_compliance_rate:.1%} (sans erreur ni secours)")
+    if result.format_fallbacks > 0 or result.validation_failures > 0 or result.total_tool_errors > 0 or result.format_compliance_rate < 1.0:
+        print("\n  PROCESS QUALITY & HALLUCINATIONS")
+        print(f"    Process Compliance Rate    : {result.format_compliance_rate:.1%} (sans erreur, secours ni syntaxe outil)")
+        print(f"    Tool Errors / Stuck Loops  : {result.total_tool_errors} fois le LLM a mal appelé un outil")
         print(f"    Format Fallbacks (Rescued) : {result.format_fallbacks} fois le parseur a dû corriger le LLM")
         print(f"    Validation Failures        : {result.validation_failures} fois le LLM s'est trompé de schéma")
+        print(f"    Noise (Over-gen Ratio)     : {result.over_generation_ratio:.0%} ({result.total_llm_findings} générés / {result.total_gt_vulns} attendus)")
 
     print(f"{'─'*60}")
 

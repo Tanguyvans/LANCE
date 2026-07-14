@@ -2229,12 +2229,14 @@ function renderBenchmarkTable() {
       if (parts.length) sevCell = `<span style="font-size:11px">${parts.join(' ')}</span>`;
     }
 
+    const hallucTitle = `Faux positifs: ${s.false_positives}\nNoise ratio: ${s.over_generation_ratio != null ? (s.over_generation_ratio * 100).toFixed(0) + '%' : 'N/A'}`;
     const hallucCell = s?.hallucination_rate != null
-      ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${s.false_positives} faux positifs">${pct(s.hallucination_rate)}</span>`
+      ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${hallucTitle}">${pct(s.hallucination_rate)}</span>`
       : noScore;
 
+    const complianceTitle = `Format fallbacks: ${s.format_fallbacks}\nValidation errors: ${s.validation_failures}\nTool errors: ${s.total_tool_errors || 0}`;
     const complianceCell = s?.format_compliance_rate != null
-      ? `<span style="color:${s.format_compliance_rate < 0.8 ? 'var(--red)' : s.format_compliance_rate < 0.95 ? 'var(--orange)' : 'var(--text)'}" title="${s.format_fallbacks} fallbacks, ${s.validation_failures} val errs">${pct(s.format_compliance_rate)}</span>`
+      ? `<span style="color:${s.format_compliance_rate < 0.8 ? 'var(--red)' : s.format_compliance_rate < 0.95 ? 'var(--orange)' : 'var(--text)'}" title="${complianceTitle}">${pct(s.format_compliance_rate)}</span>`
       : noScore;
 
     const commitCell = r.commit
