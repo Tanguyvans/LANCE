@@ -1132,13 +1132,7 @@ class Pipeline:
             stream_callback=stream_callback,
             required_tool="save_deliverable",
         )
-        usage = self.tracker.end_phase()
-
-        if usage:
-            print(
-                f"\n  Phase {config.phase} done: {usage.turns} turns, "
-                f"${usage.cost_usd(self.tracker.model):.4f}"
-            )
+        # usage will be recorded after validation
 
         # Fallback: if the LLM never called save_deliverable, save its last text output.
         # Exclude sentinel strings returned by the provider loop when turns are exhausted.
@@ -1169,6 +1163,16 @@ class Pipeline:
 
         status = "completed" if valid else f"failed:{msg}"
 
+        if hasattr(self, 'tracker') and self.tracker and not valid:
+            self.tracker.record_validation_failure()
+
+        usage = self.tracker.end_phase()
+        if usage:
+            print(
+                f"\n  Phase {config.phase} done: {usage.turns} turns, "
+                f"${usage.cost_usd(self.tracker.model):.4f}"
+            )
+
         if valid:
             log.info("Phase %d deliverable validated: %s", config.phase, msg)
             print(f"  Deliverable validated: {config.deliverable_file}")
@@ -1176,8 +1180,6 @@ class Pipeline:
             log.error("Phase %d deliverable FAILED: %s", config.phase, msg)
             print(f"  Deliverable FAILED validation: {msg}")
             print(f"  LLM final output: {result_text[:500]}")
-            if hasattr(self, 'tracker') and self.tracker:
-                self.tracker.record_validation_failure()
 
             # Reflector retry for main agent
             log.warning("Phase %d: reflector retry — prompting for save_deliverable", config.phase)
@@ -1201,9 +1203,12 @@ class Pipeline:
                 stream_callback=stream_callback,
                 required_tool="save_deliverable",
             )
-            self.tracker.end_phase()
             # Re-validate after reflector
             valid, msg = validator_fn(config.deliverable_file)
+            if hasattr(self, 'tracker') and self.tracker and not valid:
+                self.tracker.record_validation_failure()
+            self.tracker.end_phase()
+            
             status = "completed" if valid else f"failed:{msg}"
             if valid:
                 log.info("Phase %d reflector validated: %s", config.phase, msg)
