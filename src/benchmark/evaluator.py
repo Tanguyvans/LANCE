@@ -258,7 +258,6 @@ class EvaluationResult:
     validation_failures: int = 0
     total_tool_errors: int = 0
     format_compliance_rate: float = 1.0
-    over_generation_ratio: float = 0.0
 
     # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
     # Convention: hop_depth=0 means directly reachable from the entry point;
@@ -935,11 +934,6 @@ def evaluate(
         issues = result.format_fallbacks + result.validation_failures + result.total_tool_errors
         result.format_compliance_rate = round(max(0.0, (result.total_turns - issues) / result.total_turns), 3)
 
-    if result.total_gt_vulns > 0:
-        result.over_generation_ratio = round(result.false_positives / result.total_gt_vulns, 2)
-    else:
-        result.over_generation_ratio = float(result.false_positives)
-
     # A zero-GT control is one all-negative scenario-level trial. Reporting a
     # clean run as 0% (the historical weighted-score behaviour) is misleading,
     # while inventing a TN denominator from host counts is not statistically
@@ -992,7 +986,6 @@ def print_report(result: EvaluationResult) -> None:
         print(f"    Tool Errors / Stuck Loops  : {result.total_tool_errors} fois le LLM a mal appelé un outil")
         print(f"    Format Fallbacks (Rescued) : {result.format_fallbacks} fois le parseur a dû corriger le LLM")
         print(f"    Validation Failures        : {result.validation_failures} fois le LLM s'est trompé de schéma")
-        print(f"    Strict Noise (Over-gen FP): {result.over_generation_ratio:.0%} ({result.false_positives} inventées / {result.total_gt_vulns} attendues)")
 
     print(f"{'─'*60}")
 
