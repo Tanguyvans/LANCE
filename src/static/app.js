@@ -144,6 +144,34 @@ function resetDeviceProgress() {
 // ── Scenario config state ─────────────────────────────────────────────────
 let _scenariosData = { architectures: [], packs: [], scenarios: [] };
 
+document.getElementById('btn-judge-run').onclick = async () => {
+    if (!activeRunId) return;
+    const modelSel = document.getElementById('sel-judge-model');
+    const opt = modelSel.options[modelSel.selectedIndex];
+    if (!opt || !opt.value) return;
+    
+    document.getElementById('btn-judge-run').disabled = true;
+    document.getElementById('btn-judge-run').textContent = 'Évaluation...';
+    try {
+        const res = await fetch(`/api/runs/${activeRunId}/evaluate/llm`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                model: opt.value,
+                provider: opt.dataset.provider || 'openrouter'
+            })
+        });
+        if (!res.ok) throw new Error(res.statusText);
+        await loadBenchmark();
+        viewRun(activeRunId);
+    } catch (e) {
+        alert('Erreur LLM Judge: ' + e.message);
+    } finally {
+        document.getElementById('btn-judge-run').disabled = false;
+        document.getElementById('btn-judge-run').textContent = 'Évaluer';
+    }
+};
+
 // Fallback data if API is unavailable
 const FALLBACK_SCENARIOS = {
   architectures: [
@@ -335,6 +363,23 @@ async function loadModels() {
   // Restore previous selection if still in list
   if (currentValue && Array.from(sel.options).some(o => o.value === currentValue)) {
     sel.value = currentValue;
+  }
+  
+  // Clone options for the judge model select
+  const judgeSel = document.getElementById('sel-judge-model');
+  if (judgeSel) {
+    const judgeVal = judgeSel.value;
+    judgeSel.innerHTML = '';
+    for (const [, group] of Object.entries(groups)) {
+      if (group.models.length === 0) continue;
+      const og = document.createElement('optgroup');
+      og.label = group.label;
+      for (const m of group.models) og.appendChild(buildOption(m));
+      judgeSel.appendChild(og);
+    }
+    if (judgeVal && Array.from(judgeSel.options).some(o => o.value === judgeVal)) {
+      judgeSel.value = judgeVal;
+    }
   }
 }
 
@@ -1808,6 +1853,8 @@ async function loadRuns() {
 
 async function viewRun(runId) {
   activeRunId = runId;
+  const btnJudge = document.getElementById('btn-judge-run');
+  if (btnJudge) btnJudge.disabled = false;
 
   // Highlight active run
   document.querySelectorAll('.run-item').forEach(el => {
@@ -2183,9 +2230,10 @@ function renderBenchmarkTable() {
     const recall = sealed ? toRatio(aggregate?.recall) : s?.recall;
     const precision = sealed ? toRatio(aggregate?.precision) : s?.precision;
     const f1 = sealed ? toRatio(aggregate?.f1) : s?.f1_score;
+    const llmData = s?.llm_judge_data;
     const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
-    const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
+    const scoreLlmCell = llmData ? `<span title="Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}" style="cursor:help">${pct(llmData.f1_score)} 🤖</span>` : noScore;
 
     // Match quality breakdown: % of each method
     let qualityCell = noScore;
@@ -2257,6 +2305,7 @@ function renderBenchmarkTable() {
       <td>${f1 != null ? pct(f1) : noScore}</td>
       <td>${weightedCell}</td>
       <td>${scorePct}</td>
+      <td style="font-weight:600;color:${barColor(llmData ? llmData.f1_score : null)}">${scoreLlmCell}</td>
       <td style="font-size:11px">${qualityCell}</td>
       <td>${sevCell}</td>
       <td>${hallucCell}</td>

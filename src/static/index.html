@@ -90,6 +90,16 @@
         </div>
       </div>
 
+      <label class="multi-model-toggle" style="margin-top:12px; border-top: 1px solid var(--border); padding-top: 12px;">
+        <span>Évaluation par LLM Judge</span>
+      </label>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px;">
+        <select id="sel-judge-model" style="flex:1" aria-label="Modèle Juge">
+          <option value="">Sélectionnez un modèle...</option>
+        </select>
+        <button id="btn-judge-run" disabled title="Sélectionnez un run terminé pour l'évaluer">Évaluer</button>
+      </div>
+
       <label>Mode</label>
       <div class="mode-toggle">
         <label><input type="radio" name="run-mode" value="preset" checked> Scénario</label>
@@ -312,6 +322,7 @@
           <th>F1</th>
           <th>Score</th>
           <th>Score%</th>
+          <th>Score LLM</th>
           <th title="CVE : correspondance CVE exacte | T : IP + type | ~ : IP + catégorie (loose)" style="cursor:help">Qualité ⓘ</th>
           <th title="Sévérité globale trouvée vs attendue" style="cursor:help">Sévérité ⓘ</th>
           <th title="Taux de faux positifs (hallucinations LLM)" style="cursor:help">Halluc. ⓘ</th>

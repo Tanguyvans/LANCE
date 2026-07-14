@@ -284,6 +284,10 @@ class EvaluationResult:
     unmatched_llm: list[dict] = field(default_factory=list)
     bonus_findings_list: list[dict] = field(default_factory=list)
 
+    # LLM Judge data
+    judge_model: str | None = None
+    llm_judge_data: dict | None = None
+
 
 # ── Matching logic ────────────────────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -306,7 +307,16 @@ def get_benchmark():
                 try:
                     from src.benchmark.evaluator import evaluate
                     result = evaluate(d, gt_path, policy="strict-v2")
-                    entry["score"] = asdict(result)
+                    score_dict = asdict(result)
+                    
+                    llm_file = d / "benchmark_llm.json"
+                    if llm_file.exists():
+                        try:
+                            score_dict["llm_judge_data"] = json.loads(llm_file.read_text())
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    entry["score"] = score_dict
                 except Exception:
                     pass
 
@@ -406,9 +416,53 @@ def score_run(run_id: str):
     try:
         from src.benchmark.evaluator import evaluate
         result = evaluate(run_dir, gt_path, policy="strict-v2")
-        return asdict(result)
+        score_dict = asdict(result)
+        
+        llm_file = run_dir / "benchmark_llm.json"
+        if llm_file.exists():
+            try:
+                score_dict["llm_judge_data"] = json.loads(llm_file.read_text())
+            except json.JSONDecodeError:
+                pass
+
+        return score_dict
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}") from exc
+
+
+class LLMJudgeRequest(BaseModel):
+    model: str
+    provider: str
+
+@router.post("/{run_id}/evaluate/llm")
+def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
+    run_dir = _resolve_run_dir(run_id)
+    if _is_sealed_run(run_dir):
+        raise HTTPException(status_code=403, detail="Sealed runs cannot be re-evaluated")
+
+    meta_file = run_dir / "metadata.json"
+    if not meta_file.exists():
+        raise HTTPException(status_code=404, detail="metadata.json not found")
+    
+    try:
+        scenario_id = json.loads(meta_file.read_text()).get("scenario_id")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail=f"Corrupt metadata.json: {exc}") from exc
+        
+    scenario_id = _normalized_scenario_id(scenario_id)
+    gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+    if not gt_path.exists():
+        raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
+
+    try:
+        from src.agent.judge import evaluate_with_llm
+        llm_score = evaluate_with_llm(run_dir, gt_path, request.model, request.provider)
+        
+        bench_llm_file = run_dir / "benchmark_llm.json"
+        bench_llm_file.write_text(json.dumps(llm_score, indent=2))
+        return llm_score
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"LLM Judge failed: {exc}") from exc
 
 
 @router.get("/{run_id}/download/zip")
