@@ -2234,7 +2234,17 @@ function renderBenchmarkTable() {
     const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
-    const scoreLlmCell = llmData ? `<span title="Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}" style="cursor:help">${pct(llmData.f1_score)} 🤖</span>` : noScore;
+    
+    let scoreLlmCell = noScore;
+    if (llmData) {
+        let tooltip = `Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}`;
+        let extra = '';
+        if (llmData.clarity_score != null) {
+            tooltip += `\nClarté: ${llmData.clarity_score}/5\nRemédiation: ${llmData.remediation_score}/5`;
+            extra = ` <span style="font-size:10px;color:var(--text)" title="Score qualitatif (Clarté & Remédiation)">📝${llmData.clarity_score}</span>`;
+        }
+        scoreLlmCell = `<span title="${tooltip}" style="cursor:help">${pct(llmData.f1_score)} 🤖${extra}</span>`;
+    }
 
     // Match quality breakdown: % of each method
     let qualityCell = noScore;

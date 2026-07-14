@@ -22,6 +22,10 @@ CRITICAL RULES FOR SEMANTIC VALIDATION:
 - If a ground truth vulnerability is not matched by any valid LLM finding, it is a False Negative.
 - A single ground truth vulnerability might be matched by multiple valid LLM findings. That's fine, map them all.
 
+Additionally, provide two overall qualitative scores for the AI pentester's findings (from 1 to 5):
+- 'overall_clarity_score' (1-5): How clear, understandable, and professional are the 'details' and 'proof_of_concept'? (1=Nonsense/Incomprehensible, 5=Clear, professional, and well-structured).
+- 'overall_remediation_score' (1-5): How accurate and actionable are the proposed 'remediation' steps? (1=Completely wrong or absent, 5=Highly accurate and actionable).
+
 Return ONLY a JSON object (no markdown formatting, just raw JSON) matching this schema:
 {
   "matches": [
@@ -36,7 +40,9 @@ Return ONLY a JSON object (no markdown formatting, just raw JSON) matching this 
       "llm_finding_id": <int index>,
       "reasoning": "<why this doesn't match anything>"
     }
-  ]
+  ],
+  "overall_clarity_score": <int 1-5>,
+  "overall_remediation_score": <int 1-5>
 }
 """
 
@@ -112,20 +118,26 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
 
     # Compute additional metrics
     tp = len({m["gt_vuln_id"] for m in parsed.get("matches", [])})
-    fp = len(parsed.get("false_positives", []))
-    fn = len(gt_vulns) - tp
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / len(gt_vulns) if gt_vulns else 0.0
-    f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    false_positives = len(parsed.get("false_positives", []))
+    
+    clarity_score = parsed.get("overall_clarity_score", None)
+    remediation_score = parsed.get("overall_remediation_score", None)
+    
+    total_gt = len(gt_vulns)
+
+    precision = tp / (tp + false_positives) if (tp + false_positives) > 0 else 0.0
+    recall = tp / total_gt if total_gt > 0 else 0.0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
     return {
         "model": model,
         "true_positives": tp,
-        "false_positives": fp,
-        "false_negatives": fn,
+        "false_positives": false_positives,
         "precision": precision,
         "recall": recall,
-        "f1_score": f1_score,
+        "f1_score": f1,
+        "clarity_score": clarity_score,
+        "remediation_score": remediation_score,
         "matches": parsed.get("matches", []),
-        "hallucinations": parsed.get("false_positives", [])
+        "false_positives_list": parsed.get("false_positives", [])
     }
