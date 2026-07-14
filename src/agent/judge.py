@@ -119,10 +119,10 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
     # Compute additional metrics
     tp = len({m["gt_vuln_id"] for m in parsed.get("matches", [])})
     false_positives = len(parsed.get("false_positives", []))
-    
+
     clarity_score = parsed.get("overall_clarity_score", None)
     remediation_score = parsed.get("overall_remediation_score", None)
-    
+
     total_gt = len(gt_vulns)
 
     precision = tp / (tp + false_positives) if (tp + false_positives) > 0 else 0.0

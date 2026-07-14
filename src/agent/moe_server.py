@@ -144,6 +144,94 @@ def _extract_json_objects(text: str) -> list[tuple[dict, str]]:
                     
     return results
 
+
+def _load_tool_call_json(text: str) -> Optional[dict[str, Any]]:
+    """Load a Qwen tool call and repair conservative truncation patterns."""
+    candidate = text.lstrip(" ,\n\r\t")
+    if not candidate.startswith("{"):
+        return None
+
+    candidate = re.split(
+        r"</(?:tool_call|tool_response|delabelyer)>",
+        candidate,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].rstrip()
+    try:
+        value = json.loads(candidate)
+        return value if isinstance(value, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    # The adapters also sometimes close the root object with ``]``. Only
+    # accept that exact one-character repair when it produces valid JSON.
+    if candidate.endswith("]"):
+        try:
+            value = json.loads(candidate[:-1] + "}")
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            pass
+
+    stack: list[str] = []
+    in_string = False
+    escape_next = False
+    complete_at: Optional[int] = None
+    matching = {"}": "{", "]": "["}
+    for index, char in enumerate(candidate):
+        if escape_next:
+            escape_next = False
+            continue
+        if in_string and char == "\\":
+            escape_next = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char in "{[":
+            stack.append(char)
+        elif char in "}]":
+            if not stack or stack[-1] != matching[char]:
+                return None
+            stack.pop()
+            if not stack:
+                complete_at = index + 1
+                break
+
+    if complete_at is not None:
+        repaired = candidate[:complete_at]
+    else:
+        repaired = candidate
+        if escape_next:
+            repaired += "\\"
+        if in_string:
+            repaired += '"'
+        repaired = re.sub(r",\s*$", "", repaired)
+        repaired += "".join("}" if opener == "{" else "]" for opener in reversed(stack))
+
+    try:
+        value = json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _to_openai_tool_call(call_data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Validate and convert one model-emitted call to OpenAI format."""
+    name = call_data.get("name") or call_data.get("tool")
+    args = call_data.get("arguments")
+    if args is None:
+        args = call_data.get("args", {})
+    if not isinstance(name, str) or not name.strip() or not isinstance(args, dict):
+        return None
+    return {
+        "id": f"call_{uuid.uuid4().hex[:8]}",
+        "type": "function",
+        "function": {"name": name.strip(), "arguments": json.dumps(args)},
+    }
+
 def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
     """Parse tool calls, supporting both Qwen native <tool_call> tags and fine-tuned JSON formats."""
     tool_calls = []
@@ -162,22 +250,12 @@ def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
             content_parts.append(text[last_idx:match.start()].strip())
             
         call_str = match.group(1).strip()
-        try:
-            call_data = json.loads(call_str)
-            name = call_data.get("name") or call_data.get("tool")
-            args = call_data.get("arguments") or call_data.get("args") or {}
-            
-            if name:
-                tool_calls.append({
-                    "id": f"call_{uuid.uuid4().hex[:8]}",
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "arguments": json.dumps(args)
-                    }
-                })
-        except Exception as e:
-            log.error(f"Failed to parse Qwen tool call JSON '{call_str}': {e}")
+        call_data = _load_tool_call_json(call_str) if call_str else None
+        tool_call = _to_openai_tool_call(call_data) if call_data else None
+        if tool_call:
+            tool_calls.append(tool_call)
+        elif call_str:
+            log.error("Failed to parse Qwen tool call JSON: %r", call_str[:500])
             
         last_idx = match.end()
         
@@ -192,19 +270,11 @@ def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
     if not tool_calls:
         extracted = _extract_json_objects(content)
         for obj, obj_str in extracted:
-            name = obj.get("tool") or obj.get("name")
-            args = obj.get("args") or obj.get("arguments") or {}
-            
+            tool_call = _to_openai_tool_call(obj)
+
             # If it looks like a tool call, extract it
-            if name and isinstance(name, str) and isinstance(args, dict):
-                tool_calls.append({
-                    "id": f"call_{uuid.uuid4().hex[:8]}",
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "arguments": json.dumps(args)
-                    }
-                })
+            if tool_call:
+                tool_calls.append(tool_call)
                 # Remove this JSON block from the textual content
                 content = content.replace(obj_str, "").strip()
 

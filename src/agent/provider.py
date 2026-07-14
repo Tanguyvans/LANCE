@@ -163,13 +163,11 @@ class LLMProvider:
 
             if not tool_calls:
                 if required_tool and not required_tool_called and not reminder_sent:
-                    # Only send reminder if NO tool has been called yet AND it's not the first turn
-                    if turn > 0:
-                        reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
-                        messages.append({"role": "assistant", "content": response.content})
-                        messages.append({"role": "user", "content": reminder})
-                        reminder_sent = True
-                        continue
+                    reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "user", "content": reminder})
+                    reminder_sent = True
+                    continue
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return "\n".join(text_parts)
 
@@ -286,11 +284,10 @@ class LLMProvider:
 
             if not message.tool_calls:
                 if required_tool and not required_tool_called and not reminder_sent:
-                    if turn > 0:
-                        messages.append({"role": "assistant", "content": message.content or ""})
-                        messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
-                        reminder_sent = True
-                        continue
+                    messages.append({"role": "assistant", "content": message.content or ""})
+                    messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
+                    reminder_sent = True
+                    continue
                 if message.content and stream_callback:
                     stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})

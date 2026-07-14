@@ -2234,7 +2234,7 @@ function renderBenchmarkTable() {
     const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
-    
+
     let scoreLlmCell = noScore;
     if (llmData) {
         let tooltip = `Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}`;
