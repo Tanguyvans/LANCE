@@ -2229,7 +2229,7 @@ function renderBenchmarkTable() {
       if (parts.length) sevCell = `<span style="font-size:11px">${parts.join(' ')}</span>`;
     }
 
-    const hallucTitle = s ? `Faux positifs: ${s.false_positives}\nNoise ratio: ${s.over_generation_ratio != null ? (s.over_generation_ratio * 100).toFixed(0) + '%' : 'N/A'}` : '';
+    const hallucTitle = s ? `Faux positifs: ${s.false_positives}\nStrict Noise: ${s.over_generation_ratio != null ? (s.over_generation_ratio * 100).toFixed(0) + '%' : 'N/A'}` : '';
     const hallucCell = s?.hallucination_rate != null
       ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${hallucTitle}">${pct(s.hallucination_rate)}</span>`
       : noScore;
