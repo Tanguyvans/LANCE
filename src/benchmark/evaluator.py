@@ -248,6 +248,16 @@ class EvaluationResult:
     tp_exploited: int = 0               # TP findings with evidence_level >= 2
     tp_detected_only: int = 0           # TP findings with evidence_level < 2
 
+    # Process and Efficiency metrics
+    total_cost_usd: float = 0.0
+    total_tokens: int = 0
+    total_turns: int = 0
+    cost_per_tp: float | None = None
+    turns_per_tp: float | None = None
+    format_fallbacks: int = 0
+    validation_failures: int = 0
+    format_compliance_rate: float = 1.0
+
     # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
     # Convention: hop_depth=0 means directly reachable from the entry point;
     # hop_depth>=1 means at least one pivot / zone transition is required.
@@ -678,6 +688,20 @@ def evaluate(
 
     llm_findings = _load_llm_findings(run_dir)
 
+    cost_file = run_dir / "cost_summary.json"
+    cost_data = {}
+    if cost_file.exists():
+        try:
+            cost_data = json.loads(cost_file.read_text())
+        except Exception:
+            pass
+
+    total_cost_usd = cost_data.get("total_cost_usd", 0.0)
+    total_tokens = cost_data.get("total_input_tokens", 0) + cost_data.get("total_output_tokens", 0)
+    total_turns = cost_data.get("total_turns", 0)
+    format_fallbacks = cost_data.get("total_format_fallbacks", 0)
+    validation_failures = cost_data.get("total_validation_failures", 0)
+
     result = EvaluationResult(
         scenario_id=scenario_id,
         run_dir=str(run_dir),
@@ -688,6 +712,11 @@ def evaluate(
         total_llm_findings=len(llm_findings),
         max_weighted_score=max_score,
         total_attack_paths=len(gt_attack_paths),
+        total_cost_usd=total_cost_usd,
+        total_tokens=total_tokens,
+        total_turns=total_turns,
+        format_fallbacks=format_fallbacks,
+        validation_failures=validation_failures,
     )
 
     # Findings are identified by their list index, never by model-provided IDs.
@@ -894,6 +923,13 @@ def evaluate(
     result.exploitation_coverage = round(
         result.tp_exploited / tp, 3
     ) if tp > 0 else 0.0
+    if tp > 0:
+        result.cost_per_tp = round(result.total_cost_usd / tp, 4)
+        result.turns_per_tp = round(result.total_turns / tp, 1)
+
+    if result.total_turns > 0:
+        issues = result.format_fallbacks + result.validation_failures
+        result.format_compliance_rate = round(max(0.0, (result.total_turns - issues) / result.total_turns), 3)
 
     # A zero-GT control is one all-negative scenario-level trial. Reporting a
     # clean run as 0% (the historical weighted-score behaviour) is misleading,
@@ -930,6 +966,23 @@ def print_report(result: EvaluationResult) -> None:
     print(f"    Recall (vulns found)     : {result.recall:.1%}  ({result.true_positives}/{result.total_gt_vulns})")
     print(f"    Weighted Score           : {result.weighted_score}/{result.max_weighted_score} ({result.score_pct:.1f}%)")
     print(f"    Exploitation Coverage    : {result.exploitation_coverage:.1%}  ({result.tp_exploited}/{result.true_positives} TP prouvés niveau ≥ 2)")
+    print(f"{'─'*60}")
+
+    # Process and Efficiency metrics
+    print("  PROCESS & EFFICIENCY METRICS")
+    print(f"    Total Cost (USD)         : ${result.total_cost_usd:.4f}")
+    print(f"    Total Tokens             : {result.total_tokens:,}")
+    print(f"    Total Agent Turns        : {result.total_turns}")
+    if result.cost_per_tp is not None:
+        print(f"    Cost per True Positive   : ${result.cost_per_tp:.4f}")
+        print(f"    Turns per True Positive  : {result.turns_per_tp:.1f}")
+    
+    if result.format_fallbacks > 0 or result.validation_failures > 0 or result.format_compliance_rate < 1.0:
+        print("\n  FORMAT HALLUCINATIONS (PARSER RESCUES & RETRIES)")
+        print(f"    Format Compliance Rate     : {result.format_compliance_rate:.1%} (sans erreur ni secours)")
+        print(f"    Format Fallbacks (Rescued) : {result.format_fallbacks} fois le parseur a dû corriger le LLM")
+        print(f"    Validation Failures        : {result.validation_failures} fois le LLM s'est trompé de schéma")
+
     print(f"{'─'*60}")
 
     # Multi-Hop Reach

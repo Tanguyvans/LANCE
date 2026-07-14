@@ -147,10 +147,14 @@ def save_deliverable(filename: str | None = None, content: str = "") -> str:
         return _path_error(filename, exc)
     path.parent.mkdir(parents=True, exist_ok=True)
     # For JSON deliverables, strip surrounding markdown if needed
+    fallback_used = False
     if filename.endswith(".json"):
+        original_content = content.strip()
         content = _extract_json(content)
+        if content != original_content:
+            fallback_used = True
     path.write_text(content, encoding="utf-8")
-    return json.dumps({"status": "saved", "path": str(path), "size": len(content)})
+    return json.dumps({"status": "saved", "path": str(path), "size": len(content), "fallback_used": fallback_used})
 
 
 def read_deliverable(filename: str) -> str:

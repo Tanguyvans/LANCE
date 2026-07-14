@@ -1176,6 +1176,8 @@ class Pipeline:
             log.error("Phase %d deliverable FAILED: %s", config.phase, msg)
             print(f"  Deliverable FAILED validation: {msg}")
             print(f"  LLM final output: {result_text[:500]}")
+            if hasattr(self, 'tracker') and self.tracker:
+                self.tracker.record_validation_failure()
 
             # Reflector retry for main agent
             log.warning("Phase %d: reflector retry — prompting for save_deliverable", config.phase)

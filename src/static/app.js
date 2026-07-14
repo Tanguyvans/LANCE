@@ -2229,9 +2229,12 @@ function renderBenchmarkTable() {
       if (parts.length) sevCell = `<span style="font-size:11px">${parts.join(' ')}</span>`;
     }
 
-    // Hallucination rate
     const hallucCell = s?.hallucination_rate != null
       ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${s.false_positives} faux positifs">${pct(s.hallucination_rate)}</span>`
+      : noScore;
+
+    const complianceCell = s?.format_compliance_rate != null
+      ? `<span style="color:${s.format_compliance_rate < 0.8 ? 'var(--red)' : s.format_compliance_rate < 0.95 ? 'var(--orange)' : 'var(--text)'}" title="${s.format_fallbacks} fallbacks, ${s.validation_failures} val errs">${pct(s.format_compliance_rate)}</span>`
       : noScore;
 
     const commitCell = r.commit
@@ -2255,6 +2258,7 @@ function renderBenchmarkTable() {
       <td style="font-size:11px">${qualityCell}</td>
       <td>${sevCell}</td>
       <td>${hallucCell}</td>
+      <td>${complianceCell}</td>
       <td>
         <div class="bm-bar-wrap" title="${f1 != null ? pct(f1)+' F1' : 'pas de score'}">
           <div class="bm-bar" style="width:${barW}%;background:${barColor(f1)}"></div>

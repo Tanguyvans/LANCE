@@ -71,6 +71,8 @@ class PhaseUsage:
     turns: int = 0
     duration_s: float = 0.0
     model: str = ""
+    format_fallbacks: int = 0
+    validation_failures: int = 0
 
     def cost_usd(self, model: str = "") -> float:
         m = model or self.model
@@ -104,6 +106,20 @@ class CostTracker:
             current.output_tokens += output_tokens
             current.tool_calls += tool_call_count
             current.turns += 1
+
+    def record_format_fallback(self) -> None:
+        current = getattr(self._thread_local, 'current', None)
+        if current is None:
+            return
+        with self._lock:
+            current.format_fallbacks += 1
+
+    def record_validation_failure(self) -> None:
+        current = getattr(self._thread_local, 'current', None)
+        if current is None:
+            return
+        with self._lock:
+            current.validation_failures += 1
 
     def end_phase(self) -> PhaseUsage | None:
         current = getattr(self._thread_local, 'current', None)
@@ -140,6 +156,8 @@ class CostTracker:
                 "total_output_tokens": out_tok,
                 "total_turns": sum(p.turns for p in self.phases),
                 "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
+                "total_format_fallbacks": sum(p.format_fallbacks for p in self.phases),
+                "total_validation_failures": sum(p.validation_failures for p in self.phases),
                 "phases": [
                     {
                         "agent": p.agent_name,
@@ -149,6 +167,8 @@ class CostTracker:
                         "tool_calls": p.tool_calls,
                         "cost_usd": round(p.cost_usd(self.model), 4),
                         "duration_s": round(p.duration_s, 1),
+                        "format_fallbacks": p.format_fallbacks,
+                        "validation_failures": p.validation_failures,
                     }
                     for p in self.phases
                 ],
@@ -171,9 +191,13 @@ class CostTracker:
             phases_copy = list(self.phases)
         for p in phases_copy:
             cost = p.cost_usd(self.model)
+            issues = []
+            if p.format_fallbacks: issues.append(f"FB:{p.format_fallbacks}")
+            if p.validation_failures: issues.append(f"VF:{p.validation_failures}")
+            issues_str = " ".join(issues)
             print(
                 f"{p.agent_name:<22} {p.turns:>6} {p.input_tokens:>11,} "
-                f"{p.output_tokens:>11,} {cost:>9.4f} {p.duration_s:>8.0f}s"
+                f"{p.output_tokens:>11,} {cost:>9.4f} {p.duration_s:>8.0f}s  {issues_str}"
             )
         print("-" * 72)
         in_tok, out_tok = self.total_tokens()
@@ -181,8 +205,16 @@ class CostTracker:
         with self._lock:
             total_turns = sum(p.turns for p in self.phases)
             total_dur = sum(p.duration_s for p in self.phases)
+            total_fb = sum(p.format_fallbacks for p in self.phases)
+            total_vf = sum(p.validation_failures for p in self.phases)
+        
+        issues_total = []
+        if total_fb: issues_total.append(f"FB:{total_fb}")
+        if total_vf: issues_total.append(f"VF:{total_vf}")
+        issues_tot_str = " ".join(issues_total)
+
         print(
             f"{'TOTAL':<22} {total_turns:>6} "
-            f"{in_tok:>11,} {out_tok:>11,} {total:>9.4f} {total_dur:>8.0f}s"
+            f"{in_tok:>11,} {out_tok:>11,} {total:>9.4f} {total_dur:>8.0f}s  {issues_tot_str}"
         )
         print("=" * 72)

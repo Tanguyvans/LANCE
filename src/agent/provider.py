@@ -195,6 +195,12 @@ class LLMProvider:
                 tool_results = []
                 for f, tc in futures.items():
                     res = f.result()
+                    if cost_tracker and '"fallback_used"' in res:
+                        try:
+                            if json.loads(res).get("fallback_used"):
+                                cost_tracker.record_format_fallback()
+                        except Exception:
+                            pass
                     # Only mark required_tool as called if it succeeded (no error)
                     if required_tool and tc.name == required_tool and not res.startswith("Error"):
                         required_tool_called = True
@@ -325,6 +331,14 @@ class LLMProvider:
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                 else:
                     res = self._execute_tool(tc.function.name, args, tool_map)
+                
+                if cost_tracker and '"fallback_used"' in res:
+                    try:
+                        if json.loads(res).get("fallback_used"):
+                            cost_tracker.record_format_fallback()
+                    except Exception:
+                        pass
+
                 # Only mark required_tool as called if it succeeded (no error)
                 if required_tool and tc.function.name == required_tool and not res.startswith("Error"):
                     required_tool_called = True
