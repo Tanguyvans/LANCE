@@ -27,9 +27,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 log = logging.getLogger("moe-server")
@@ -354,6 +351,8 @@ def _stream_response(response: dict[str, Any]):
 
 @app.post("/v1/chat/completions")
 def chat_completions(req: ChatCompletionRequest):
+    import torch
+
     global _MODEL, _TOKENIZER, _ADAPTERS
     if not _MODEL:
         raise HTTPException(status_code=503, detail="Model not initialized")
@@ -447,6 +446,10 @@ def chat_completions(req: ChatCompletionRequest):
 
 
 def load_models(base_model_path: str, adapters_dir: str):
+    import torch
+    from peft import PeftModel
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
     global _MODEL, _TOKENIZER, _ADAPTERS
     log.info(f"Loading base model in 4-bit: {base_model_path}")
     
