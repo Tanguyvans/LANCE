@@ -36,20 +36,25 @@ RULE: NEVER call modbus_scan — it times out and Phase 3 scanner handles Modbus
 RULE: NEVER use udp_scan=True without a ports= value. NEVER use udp_scan in Phase 2 at all.
 RULE: The report template is SHORT (3 sections, 3 tables). Fill it quickly — do not elaborate.
 
-## Step 1 — Discovery (3 tool calls)
+## Step 1 — Discovery (mandatory tool calls)
 1. Call arp_scan() to list live hosts.
 2. Call nmap_discovery(target="{{target_subnet}}") to scan the subnet.
 3. Call read_deliverable("01_graph_analysis.md") for the device list.
 
 ## Step 2 — Port scans
-**MANDATORY: follow the pre-built groups below EXACTLY — one nmap_scan call per row.**
-These groups are computed from the known topology. Do NOT split them or invent new groupings.
+**MANDATORY: follow the scan ledger below EXACTLY — one nmap_scan call per row.**
+The pipeline will reject save_deliverable until every row has completed successfully.
+Do not change target, ports, or skip_discovery.
 
 {{nmap_scan_groups}}
 
 Always use skip_discovery=true on every nmap_scan call.
 IMPORTANT: Once you have made all the calls in the table above, go directly to Step 3.
-If {{nmap_scan_groups}} is empty (discovery mode), group by observed role and budget max 25 calls.
+If {{nmap_scan_groups}} is empty (discovery mode), nmap_discovery results create the mandatory ledger dynamically. Scan each discovered in-scope IP with explicit ports and skip_discovery=true.
+
+Only these tools are available in Phase 2: arp_scan, nmap_discovery, nmap_scan,
+read_deliverable, save_deliverable. Do not request aliases such as `scan`, and do
+not request ssh_audit or service-exploitation tools.
 
 ## Step 3 — Document and save
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.

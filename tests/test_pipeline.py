@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.pipeline import Pipeline, TOOL_GROUPS, _resolve_model_provider
+from src.agent.pipeline import (
+    Pipeline,
+    TOOL_GROUPS,
+    _has_positive_exploit_evidence,
+    _resolve_model_provider,
+)
 from src.agent.registry import AgentConfig, AGENTS
 
 
@@ -66,6 +71,122 @@ class TestResolveTools:
         recon_names = {t["name"] for t in TOOL_GROUPS["recon"]}
         resolved_names = {t["name"] for t in tools}
         assert recon_names.isdisjoint(resolved_names)
+
+
+class TestReconToolContract:
+    def test_requires_exact_model_executed_scan_ledger(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [
+                {"id": "router", "ip": "192.168.100.1", "role": "router"},
+                {"id": "mqtt", "ip": "192.168.100.11", "role": "mqtt_broker"},
+            ]
+        })
+        pipeline = Pipeline(provider=mock_provider)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+
+        calls = []
+
+        def tool(name, result='{"status":"ok"}'):
+            def execute(**kwargs):
+                calls.append((name, kwargs))
+                return result
+            return {
+                "name": name,
+                "description": name,
+                "input_schema": {},
+                "function": execute,
+            }
+
+        tools = [
+            tool("arp_scan", '{"hosts":[]}'),
+            tool("nmap_discovery", '{"stdout":"discovery"}'),
+            tool("nmap_scan", '{"stdout":"scan"}'),
+            tool("read_deliverable", '{"content":"phase1"}'),
+            tool("save_deliverable", '{"status":"saved"}'),
+            tool("ssh_audit"),
+        ]
+        guarded = {
+            item["name"]: item["function"]
+            for item in pipeline._apply_recon_tool_contract(tools)
+        }
+
+        assert "ssh_audit" not in guarded
+        early = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        assert early["error_kind"] == "recon_contract_incomplete"
+
+        guarded["arp_scan"]()
+        guarded["nmap_discovery"](target="192.168.100.0/24")
+        guarded["read_deliverable"](filename="01_graph_analysis.md")
+        for item in pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"]):
+            guarded["nmap_scan"](
+                target=item["target"],
+                ports=item["ports"],
+                skip_discovery=True,
+            )
+
+        saved = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        assert saved["status"] == "saved"
+        assert [name for name, _ in calls].count("nmap_scan") == 2
+
+    def test_duplicate_scan_is_rejected(self, mock_provider, output_dir, monkeypatch):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {"nodes": []})
+        pipeline = Pipeline(provider=mock_provider)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+        execute = MagicMock(return_value='{"stdout":"ok"}')
+        guarded = pipeline._apply_recon_tool_contract([{
+            "name": "nmap_scan",
+            "description": "scan",
+            "input_schema": {},
+            "function": execute,
+        }])[0]["function"]
+
+        kwargs = {"target": "192.168.100.10", "ports": "80", "skip_discovery": True}
+        guarded(**kwargs)
+        duplicate = json.loads(guarded(**kwargs))
+        assert duplicate["error_kind"] == "duplicate_recon_call"
+        assert execute.call_count == 1
+
+
+class TestExploitEvidenceGuard:
+    def test_cache_or_timeout_is_not_positive_evidence(self):
+        assert not _has_positive_exploit_evidence({
+            "evidence": "[CACHE] Only duplicate messages received. Timed out.",
+            "evidence_level": 2,
+        })
+
+    def test_concrete_extracted_data_is_positive_evidence(self):
+        assert _has_positive_exploit_evidence({
+            "evidence": "Anonymous subscribe accepted; payload captured",
+            "evidence_level": 3,
+            "data_extracted": ["sensors/temp 21.4"],
+        })
+
+    def test_unsupported_exploited_verdict_is_downgraded(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        exploit_file = pipeline.run_dir / "result.json"
+        exploit_file.write_text(json.dumps({
+            "status": "EXPLOITED",
+            "evidence": "[CACHE] Only duplicate messages received",
+            "evidence_level": 2,
+        }))
+        verdict = pipeline._resolve_exploit_verdict(
+            {"id": "VULN-001", "device_id": "mqtt", "type": "no_auth"},
+            exploit_file,
+        )
+        assert verdict["status"] == "ERROR"
+        assert verdict["evidence_level"] == 0
 
 
 class TestPrerequisites:

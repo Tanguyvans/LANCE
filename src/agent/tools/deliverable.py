@@ -141,6 +141,12 @@ def save_deliverable(filename: str | None = None, content: str = "") -> str:
         filename = _EXPECTED_DELIVERABLE
     if not filename:
         return json.dumps({"error": "save_deliverable: filename manquant et aucun livrable attendu défini pour cette phase"})
+    if not content or not content.strip():
+        return json.dumps({
+            "ok": False,
+            "error": "save_deliverable: content must be non-empty",
+            "error_kind": "empty_deliverable",
+        })
     try:
         path = _resolve_deliverable_path(filename)
     except ValueError as exc:

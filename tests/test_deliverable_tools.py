@@ -34,6 +34,12 @@ class TestSaveDeliverable:
         result = json.loads(save_deliverable("big.md", content))
         assert result["size"] == 100
 
+    def test_save_rejects_empty_content(self, clean_output):
+        result = json.loads(save_deliverable("empty.md", "  \n"))
+        assert result["ok"] is False
+        assert result["error_kind"] == "empty_deliverable"
+        assert not (clean_output / "empty.md").exists()
+
 
 class TestReadDeliverable:
     def test_read_existing(self, clean_output):

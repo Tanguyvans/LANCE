@@ -29,6 +29,72 @@ def validate_markdown_with_sections(filename: str) -> tuple[bool, str]:
     return True, "OK"
 
 
+def _section(content: str, heading_prefix: str, next_prefix: str | None) -> str:
+    """Return one numbered Markdown section for structural validation."""
+    start = content.find(heading_prefix)
+    if start < 0:
+        return ""
+    if next_prefix is None:
+        return content[start:]
+    end = content.find(next_prefix, start + len(heading_prefix))
+    return content[start:] if end < 0 else content[start:end]
+
+
+def _table_data_rows(section: str) -> list[str]:
+    rows = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells or all(not cell or set(cell) <= {"-", ":"} for cell in cells):
+            continue
+        if cells[0].lower() in {"device", "metric", "finding", "ip", "rank", "#"}:
+            continue
+        rows.append(stripped)
+    return rows
+
+
+def validate_recon_markdown(filename: str) -> tuple[bool, str]:
+    """Require the complete Recon structure and at least two discovered devices."""
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+    content = (OUTPUT_DIR / filename).read_text(encoding="utf-8")
+    required = ("## 1. Summary", "## 2. Discovered Services per Device", "## 3. Key Findings")
+    missing = [heading for heading in required if heading not in content]
+    if missing:
+        return False, f"Missing Recon sections: {missing}"
+    service_section = _section(content, required[1], required[2])
+    rows = _table_data_rows(service_section)
+    if len(rows) < 2:
+        return False, f"Expected at least 2 discovered-device rows, found {len(rows)}"
+    if len(content.strip()) < 600:
+        return False, f"Recon deliverable is implausibly short ({len(content.strip())} chars)"
+    return True, "OK"
+
+
+def validate_report_markdown(filename: str) -> tuple[bool, str]:
+    """Require all report sections and deterministic-table placeholders."""
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+    content = (OUTPUT_DIR / filename).read_text(encoding="utf-8")
+    # Sections 5 and 6 are represented by placeholders until the deterministic
+    # post-processing merge injects their complete tables.
+    required = [f"## {number}." for number in (1, 2, 3, 4, 7, 8, 9, 10)]
+    missing = [prefix for prefix in required if prefix not in content]
+    if missing:
+        return False, f"Missing report sections: {missing}"
+    placeholders = ("{{SECTION_5_TABLE}}", "{{SECTION_6_TABLES}}")
+    missing_placeholders = [value for value in placeholders if value not in content]
+    if missing_placeholders:
+        return False, f"Missing report placeholders: {missing_placeholders}"
+    if len(content.strip()) < 1500:
+        return False, f"Report is implausibly short ({len(content.strip())} chars)"
+    return True, "OK"
+
+
 def _validate_json_with_key(
     filename: str, key: str, expect_list: bool = False
 ) -> tuple[bool, str]:
@@ -93,6 +159,8 @@ def validate_json_valid(filename: str) -> tuple[bool, str]:
 VALIDATORS = {
     "default": validate_default,
     "markdown_with_sections": validate_markdown_with_sections,
+    "recon_markdown": validate_recon_markdown,
+    "report_markdown": validate_report_markdown,
     "json_vuln_queue": validate_json_vuln_queue,
     "json_exploitation": validate_json_exploitation,
     "json_exploit_result": validate_json_exploit_result,

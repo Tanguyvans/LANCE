@@ -7,6 +7,8 @@ import pytest
 from src.agent.validators import (
     validate_default,
     validate_markdown_with_sections,
+    validate_recon_markdown,
+    validate_report_markdown,
     validate_json_vuln_queue,
     validate_json_exploitation,
     VALIDATORS,
@@ -57,6 +59,25 @@ class TestValidateMarkdown:
         (clean_output / "good.md").write_text(content)
         ok, msg = validate_markdown_with_sections("good.md")
         assert ok
+
+    def test_recon_rejects_short_single_device_report(self, clean_output):
+        content = (
+            "## 1. Summary\n| Metric | Value |\n|---|---|\n| Hosts | 1 |\n"
+            "## 2. Discovered Services per Device\n"
+            "| Device | IP | Open Ports | Key Services |\n|---|---|---|---|\n"
+            "| router | 192.0.2.1 | 22 | ssh |\n"
+            "## 3. Key Findings\nNone"
+        )
+        (clean_output / "recon.md").write_text(content)
+        ok, msg = validate_recon_markdown("recon.md")
+        assert not ok
+        assert "rows" in msg or "short" in msg
+
+    def test_report_rejects_missing_sections_and_placeholders(self, clean_output):
+        (clean_output / "report.md").write_text("## 1. Executive Summary\nIncomplete")
+        ok, msg = validate_report_markdown("report.md")
+        assert not ok
+        assert "sections" in msg
 
 
 class TestValidateJsonQueue:
@@ -122,6 +143,8 @@ class TestValidatorsRegistry:
     def test_expected_validators_exist(self):
         assert "default" in VALIDATORS
         assert "markdown_with_sections" in VALIDATORS
+        assert "recon_markdown" in VALIDATORS
+        assert "report_markdown" in VALIDATORS
         assert "json_vuln_queue" in VALIDATORS
         assert "json_exploitation" in VALIDATORS
         assert "json_valid" in VALIDATORS

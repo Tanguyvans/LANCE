@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import re
 import subprocess
@@ -250,6 +251,35 @@ def _make_test_entry(
         "description": result.get("description") or vuln.get("details", ""),
         "cve_ids": vuln.get("cve_ids", []),
     }
+
+
+def _has_positive_exploit_evidence(result: dict) -> bool:
+    """Conservatively decide whether an EXPLOITED verdict has real evidence."""
+    evidence = str(result.get("evidence", "")).strip()
+    data_extracted = result.get("data_extracted") or []
+    combined = " ".join([
+        evidence,
+        str(result.get("description", "")),
+        " ".join(str(value) for value in data_extracted),
+    ]).lower()
+    negative_markers = (
+        "[cache]", "only duplicate", "timed out", "timeout", "no new information",
+        "no new topics", "return_code\": 1", "return code 1", "connection refused",
+        "empty response", "no output", "failed to", "error executing",
+    )
+    if any(marker in combined for marker in negative_markers):
+        return False
+    if data_extracted:
+        return True
+    positive_markers = (
+        "connack", "accepted", "authenticated", "login successful", "uid=",
+        "root:", "http 200", "status 200", "open port", "anonymous subscribe",
+        "payload", "topic", "keys *", "database", "directory listing",
+        "command output", "access granted",
+    )
+    return bool(evidence) and int(result.get("evidence_level", 0) or 0) >= 2 and any(
+        marker in combined for marker in positive_markers
+    )
 
 
 class Pipeline:
@@ -1030,6 +1060,12 @@ class Pipeline:
         variables["expected_deliverable"] = config.deliverable_file
         set_expected_deliverable(config.deliverable_file)
         variables["available_skills"] = self._filter_skills(config)
+
+        # Recon remains model-driven: the expert calls every tool itself.  The
+        # contract only constrains its tool surface and prevents completion
+        # until the mandatory discovery/read/scan ledger is satisfied.
+        if config.name == "recon" and not self.dry_run:
+            tools = self._apply_recon_tool_contract(tools)
 
         # Inject deliverable template if one exists
         template_path = Path(__file__).parent / "templates" / config.deliverable_file
@@ -1999,36 +2035,224 @@ class Pipeline:
         return new_hosts
 
     @staticmethod
-    def _build_nmap_groups(nodes: list) -> str:
-        """Group topology nodes by role and return a ready-to-use nmap_scan call table.
-
-        Each row is one nmap_scan call the Phase 2 agent should make, with the target
-        IPs pre-filled from the actual topology — no guessing required.
-        """
-        from collections import defaultdict
-        groups: dict[str, list[str]] = defaultdict(list)
+    def _recon_scan_plan(nodes: list) -> list[dict]:
+        """Return the exact per-device nmap calls required from the Recon expert."""
+        plan = []
         for node in nodes:
             ip = node.get("ip", "")
+            if not ip:
+                continue
             role = node.get("role") or node.get("type") or "unknown"
-            if ip:
-                groups[role].append(ip)
+            plan.append({
+                "target": ip,
+                "ports": DEVICE_DEFAULT_PORTS.get(role, DEFAULT_PORTS),
+                "skip_discovery": True,
+                "device_id": node.get("id", ip),
+                "role": role,
+            })
+        return sorted(plan, key=lambda item: ipaddress.ip_address(item["target"]))
 
-        if not groups:
+    @classmethod
+    def _build_nmap_groups(cls, nodes: list) -> str:
+        """Return the exact per-device nmap_scan call table shown to Recon.
+
+        Calls are deliberately per-device rather than grouped so the execution
+        contract can validate each target, port list, and completion state.
+        """
+        plan = cls._recon_scan_plan(nodes)
+        if not plan:
             return ""
 
-        lines = ["Pre-built nmap_scan groups from topology — use these EXACTLY, one call per row:"]
+        lines = ["Mandatory nmap_scan ledger — call each row EXACTLY once:"]
         lines.append("")
-        lines.append("| Call # | target (comma-separated IPs) | ports |")
-        lines.append("|--------|------------------------------|-------|")
-        call_n = 1
-        for role, ips in sorted(groups.items()):
-            ports = DEVICE_DEFAULT_PORTS.get(role, DEFAULT_PORTS)
-            target = ",".join(sorted(ips))
-            lines.append(f"| {call_n} | `{target}` | `{ports}` |")
-            call_n += 1
+        lines.append("| Call # | Device | Role | target | ports | skip_discovery |")
+        lines.append("|--------|--------|------|--------|-------|----------------|")
+        for call_n, item in enumerate(plan, 1):
+            lines.append(
+                f"| {call_n} | `{item['device_id']}` | `{item['role']}` | "
+                f"`{item['target']}` | `{item['ports']}` | `true` |"
+            )
         lines.append("")
-        lines.append(f"Total: {call_n - 1} nmap_scan calls to cover all {sum(len(v) for v in groups.values())} devices.")
+        lines.append(f"Total: {len(plan)} mandatory nmap_scan calls.")
         return "\n".join(lines)
+
+    def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
+        """Constrain Recon tools while leaving all tool decisions to the model.
+
+        The expert must execute discovery, read Phase 1, and complete the exact
+        topology-derived nmap ledger before save_deliverable is allowed.  Unique
+        in-scope follow-up nmap scans remain possible, with a small bounded budget.
+        """
+        allowed_names = {
+            "arp_scan", "nmap_discovery", "nmap_scan",
+            "read_deliverable", "save_deliverable",
+        }
+        selected = [tool for tool in tools if tool["name"] in allowed_names]
+
+        from src.agent.tools.graph_tools import _scenario_topology as topology
+
+        nodes = (topology or {}).get("nodes", [])
+        plan = self._recon_scan_plan(nodes)
+        expected_scans: dict[tuple[str, str, bool], dict] = {
+            (item["target"], item["ports"], True): item for item in plan
+        }
+        completed_scans: set[tuple[str, str, bool]] = set()
+        completed_calls: set[str] = set()
+        seen_signatures: set[tuple[str, str]] = set()
+        optional_scans = 0
+        max_optional_scans = 5
+        target_subnets = [
+            value for value in str(self.context.get("target_subnet", "")).split()
+            if value
+        ]
+
+        def _in_scope(target: str) -> bool:
+            try:
+                address = ipaddress.ip_address(target)
+                return any(address in ipaddress.ip_network(cidr, strict=False) for cidr in target_subnets)
+            except ValueError:
+                return False
+
+        def _discover_targets(result: str) -> None:
+            """In blind mode, discovery results become the mandatory scan ledger."""
+            if plan:
+                return
+            discovered: set[str] = set()
+            try:
+                payload = json.loads(result)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {}
+            for host in payload.get("hosts", []) if isinstance(payload, dict) else []:
+                if isinstance(host, dict) and host.get("ip"):
+                    discovered.add(str(host["ip"]))
+            stdout = payload.get("stdout", "") if isinstance(payload, dict) else str(result)
+            discovered.update(re.findall(
+                r"Nmap scan report for (?:[^\s(]+ \()?((?:\d{1,3}\.){3}\d{1,3})\)?",
+                stdout,
+            ))
+            for target in sorted(discovered):
+                if not _in_scope(target):
+                    continue
+                key = (target, DEFAULT_PORTS, True)
+                expected_scans.setdefault(key, {
+                    "target": target,
+                    "ports": DEFAULT_PORTS,
+                    "skip_discovery": True,
+                    "device_id": target,
+                    "role": "discovered",
+                })
+
+        def _missing_contract_calls() -> list[str]:
+            missing = []
+            if "arp_scan" not in completed_calls:
+                missing.append("arp_scan({})")
+            for subnet in target_subnets:
+                marker = f"nmap_discovery:{subnet}"
+                if marker not in completed_calls:
+                    missing.append(f'nmap_discovery({{"target":"{subnet}"}})')
+            if "read_phase1" not in completed_calls:
+                missing.append('read_deliverable({"filename":"01_graph_analysis.md"})')
+            for key, item in expected_scans.items():
+                if key not in completed_scans:
+                    missing.append(
+                        "nmap_scan("
+                        + json.dumps({
+                            "target": item["target"],
+                            "ports": item["ports"],
+                            "skip_discovery": True,
+                        }, separators=(",", ":"))
+                        + ")"
+                    )
+            return missing
+
+        def _error(kind: str, message: str, **extra) -> str:
+            return json.dumps({"ok": False, "error_kind": kind, "error": message, **extra})
+
+        def _guard(name: str, original_fn):
+            def guarded(**kwargs):
+                nonlocal optional_scans
+                signature = (
+                    name,
+                    json.dumps(kwargs, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
+                )
+                if signature in seen_signatures and name != "save_deliverable":
+                    return _error("duplicate_recon_call", f"Duplicate Recon call rejected: {name}")
+
+                if name == "arp_scan":
+                    if kwargs:
+                        return _error("invalid_recon_args", "arp_scan must be called without arguments")
+                    seen_signatures.add(signature)
+                    result = original_fn(**kwargs)
+                    completed_calls.add("arp_scan")
+                    _discover_targets(result)
+                    return result
+
+                if name == "nmap_discovery":
+                    target = str(kwargs.get("target", ""))
+                    if target not in target_subnets:
+                        return _error(
+                            "invalid_recon_target",
+                            "nmap_discovery must target the declared subnet",
+                            allowed_targets=target_subnets,
+                        )
+                    seen_signatures.add(signature)
+                    result = original_fn(**kwargs)
+                    completed_calls.add(f"nmap_discovery:{target}")
+                    _discover_targets(result)
+                    return result
+
+                if name == "read_deliverable":
+                    if kwargs.get("filename") != "01_graph_analysis.md":
+                        return _error(
+                            "invalid_recon_read",
+                            "Recon may read only 01_graph_analysis.md before completion",
+                        )
+                    seen_signatures.add(signature)
+                    result = original_fn(**kwargs)
+                    completed_calls.add("read_phase1")
+                    return result
+
+                if name == "nmap_scan":
+                    target = str(kwargs.get("target", ""))
+                    ports = str(kwargs.get("ports", ""))
+                    skip_discovery = kwargs.get("skip_discovery") is True
+                    key = (target, ports, skip_discovery)
+                    if key in expected_scans:
+                        seen_signatures.add(signature)
+                        result = original_fn(**kwargs)
+                        completed_scans.add(key)
+                        return result
+                    if not _in_scope(target):
+                        return _error("invalid_recon_target", f"Out-of-scope nmap target: {target}")
+                    if not ports or not skip_discovery:
+                        return _error(
+                            "invalid_recon_args",
+                            "Follow-up scans require explicit ports and skip_discovery=true",
+                        )
+                    if optional_scans >= max_optional_scans:
+                        return _error("recon_followup_budget", "Optional Recon scan budget exhausted")
+                    optional_scans += 1
+                    seen_signatures.add(signature)
+                    return original_fn(**kwargs)
+
+                if name == "save_deliverable":
+                    missing = _missing_contract_calls()
+                    if missing:
+                        return _error(
+                            "recon_contract_incomplete",
+                            "Recon cannot finish until every mandatory call succeeds",
+                            missing_calls=missing,
+                        )
+                    return original_fn(**kwargs)
+
+                return _error("forbidden_recon_tool", f"Tool not allowed in Recon: {name}")
+
+            return guarded
+
+        return [
+            {**tool, "function": _guard(tool["name"], tool["function"])}
+            for tool in selected
+        ]
 
     @staticmethod
     def _infer_role_from_ports(ports: list) -> str:
@@ -2235,20 +2459,17 @@ class Pipeline:
                         best = c
                 exploit_file = best
             else:
-                return _make_test_entry(vuln, status="CONFIRMED")
+                return _make_test_entry(
+                    vuln,
+                    status="ERROR",
+                    evidence="No Phase 4 exploit result was produced",
+                    evidence_level=0,
+                )
 
-        phase3_confirmed = vuln.get("exploitation_status", "") == "confirmed"
         try:
             result = json.loads(exploit_file.read_text(encoding="utf-8"))
         except Exception as e:
             log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
-            if phase3_confirmed:
-                return _make_test_entry(
-                    vuln,
-                    status="CONFIRMED",
-                    evidence=f"{vuln.get('evidence', '')}\n[Phase 4 exploit agent output unparseable: {e}]",
-                    evidence_level=1,
-                )
             return _make_test_entry(
                 vuln,
                 status="ERROR",
@@ -2256,19 +2477,22 @@ class Pipeline:
                 evidence_level=0,
             )
 
-        status = result.get("status", "ERROR")
-        if phase3_confirmed and status in ("FAILED", "ERROR"):
-            log.info("Keeping Phase 3 confirmed status for %s (Phase 4 %s ignored)",
-                     vuln.get("id"), status)
-            p4_evidence = result.get("evidence", "")[:100]
+        status = str(result.get("status", "ERROR")).upper()
+        if status == "EXPLOITED" and not _has_positive_exploit_evidence(result):
+            log.warning("Downgrading unsupported EXPLOITED verdict for %s", vuln.get("id"))
             return _make_test_entry(
                 vuln,
-                status="CONFIRMED",
+                status="ERROR",
                 result=result,
-                evidence=f"{vuln.get('evidence', '')}\n[Phase 4 could not re-verify: {p4_evidence}]",
+                evidence=(
+                    "Unsupported EXPLOITED verdict: no positive tool evidence. "
+                    + str(result.get("evidence", ""))
+                ),
+                evidence_level=0,
             )
-
         final_status = "CONFIRMED" if status == "EXPLOITED" else status
+        if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
+            final_status = "ERROR"
         return _make_test_entry(vuln, status=final_status, result=result)
 
     # ------------------------------------------------------------------
@@ -3052,11 +3276,19 @@ class Pipeline:
             if content.strip() in {"(max turns reached)", "(malformed tool call JSON — max retries)"}:
                 report_path.unlink()
             else:
-                merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
-                if merged != content:
-                    report_path.write_text(merged, encoding="utf-8")
-                    print(f"  [merge] Injected prefill tables into 06_report.md ({report_path.stat().st_size:,} bytes)")
-                return
+                valid, validation_error = VALIDATORS["report_markdown"]("06_report.md")
+                if not valid:
+                    log.warning(
+                        "Phase 6 report invalid before merge (%s) — using deterministic fallback",
+                        validation_error,
+                    )
+                    report_path.unlink()
+                else:
+                    merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
+                    if merged != content:
+                        report_path.write_text(merged, encoding="utf-8")
+                        print(f"  [merge] Injected prefill tables into 06_report.md ({report_path.stat().st_size:,} bytes)")
+                    return
 
         # Fallback: LLM never saved the report — build a complete one from prefill + context
         context_path = self.run_dir / "06_phase6_context.json"
