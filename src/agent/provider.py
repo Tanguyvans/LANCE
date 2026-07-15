@@ -143,14 +143,15 @@ class LLMProvider:
         stream_callback: Callable[[dict], None] | None = None,
         required_tool: str | None = None,
         terminate_after_tool: str | None = None,
+        repeat_guard: bool = True,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard)
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -201,7 +202,7 @@ class LLMProvider:
             for tc in tool_calls:
                 call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
                 call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
-                if call_counts[call_sig] >= _REPEAT_THRESHOLD:
+                if repeat_guard and call_counts[call_sig] >= _REPEAT_THRESHOLD:
                     repeated_tool_ids.add(tc.id)
                     if required_tool:
                         completion_only = True
@@ -240,7 +241,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -370,7 +371,7 @@ class LLMProvider:
                 call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
                 if completion_only_at_turn and required_tool and tc.function.name != required_tool:
                     res = json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
-                elif call_counts[call_sig] >= _REPEAT_THRESHOLD:
+                elif repeat_guard and call_counts[call_sig] >= _REPEAT_THRESHOLD:
                     res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                     if required_tool:

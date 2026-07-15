@@ -119,6 +119,15 @@ class TestReconToolContract:
             filename="02_recon.md", content="report"
         ))
         assert early["error_kind"] == "recon_contract_incomplete"
+        assert early["next_required_call"] == {
+            "name": "arp_scan", "arguments": {},
+        }
+
+        wrong = json.loads(guarded["nmap_scan"](
+            target="192.168.100.200", ports="80", skip_discovery=True
+        ))
+        assert wrong["error_kind"] == "recon_next_call_required"
+        assert wrong["next_required_call"] == early["next_required_call"]
 
         guarded["arp_scan"]()
         guarded["nmap_discovery"](target="192.168.100.0/24")
@@ -135,6 +144,77 @@ class TestReconToolContract:
         ))
         assert saved["status"] == "saved"
         assert [name for name, _ in calls].count("nmap_scan") == 2
+
+    def test_premature_save_requires_missing_mqtt_scan_next(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        """Regression: a late save cannot deadlock Recon in duplicate scans."""
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [
+                {"id": "router", "ip": "192.168.100.1", "role": "router"},
+                {"id": "mqtt", "ip": "192.168.100.11", "role": "mqtt_broker"},
+                {"id": "web", "ip": "192.168.100.12", "role": "web_server"},
+                {"id": "ssh", "ip": "192.168.100.13", "role": "ssh_server"},
+            ]
+        })
+        pipeline = Pipeline(provider=mock_provider)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+        execute = MagicMock(return_value='{"status":"ok"}')
+        tools = [{
+            "name": name,
+            "description": name,
+            "input_schema": {},
+            "function": execute,
+        } for name in (
+            "arp_scan", "nmap_discovery", "nmap_scan",
+            "read_deliverable", "save_deliverable",
+        )]
+        guarded = {
+            item["name"]: item["function"]
+            for item in pipeline._apply_recon_tool_contract(tools)
+        }
+
+        guarded["arp_scan"]()
+        # Extra discovery arguments from the model are ignored by the contract.
+        guarded["nmap_discovery"](
+            target="192.168.100.0/24", ports="22,80", skip_discovery=True
+        )
+        guarded["read_deliverable"](filename="01_graph_analysis.md")
+        plan = pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"])
+        mqtt_call = next(item for item in plan if item["target"] == "192.168.100.11")
+        for item in plan:
+            if item is mqtt_call:
+                continue
+            guarded["nmap_scan"](
+                target=item["target"], ports=item["ports"], skip_discovery=True
+            )
+
+        early = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        expected = {
+            "name": "nmap_scan",
+            "arguments": {
+                "target": mqtt_call["target"],
+                "ports": mqtt_call["ports"],
+                "skip_discovery": True,
+            },
+        }
+        assert early["next_required_call"] == expected
+
+        wrong = json.loads(guarded["nmap_scan"](
+            target="192.168.100.200", ports="22,80,443", skip_discovery=True
+        ))
+        assert wrong["error_kind"] == "recon_next_call_required"
+        assert wrong["next_required_call"] == expected
+
+        guarded["nmap_scan"](**expected["arguments"])
+        saved = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        assert saved["status"] == "ok"
 
     def test_duplicate_scan_is_rejected(self, mock_provider, output_dir, monkeypatch):
         import src.agent.tools.graph_tools as graph_tools
@@ -613,6 +693,49 @@ class TestRepeatingToolDetector:
 
         # Warning triggers on 3rd identical call — only 2 actual executions
         assert call_count["n"] == 2
+
+    def test_openai_loop_can_disable_generic_repeat_guard(self):
+        """Recon's own contract can retain control after repeated model calls."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+        execute = MagicMock(return_value='{"status":"ok"}')
+
+        responses = []
+        for index in range(4):
+            tool_call = MagicMock()
+            tool_call.function.name = "scan"
+            tool_call.function.arguments = '{}'
+            tool_call.id = f"call_{index}"
+            message = MagicMock(content=None, tool_calls=[tool_call])
+            responses.append(MagicMock(
+                choices=[MagicMock(finish_reason="tool_calls", message=message)],
+                usage=None,
+            ))
+        responses.append(MagicMock(
+            choices=[MagicMock(
+                finish_reason="stop",
+                message=MagicMock(content="Done.", tool_calls=None),
+            )],
+            usage=None,
+        ))
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = responses
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[{
+                "name": "scan", "description": "scan",
+                "input_schema": {}, "function": execute,
+            }],
+            max_turns=10,
+            repeat_guard=False,
+        )
+
+        assert execute.call_count == 4
 
     def test_openai_loop_terminates_after_successful_tool(self):
         """A successful terminal tool call must not trigger another model turn."""

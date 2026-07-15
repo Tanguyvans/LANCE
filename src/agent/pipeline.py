@@ -1168,6 +1168,9 @@ class Pipeline:
             stream_callback=stream_callback,
             required_tool="save_deliverable",
             terminate_after_tool="save_deliverable",
+            # Recon has its own topology-aware progress contract.  The generic
+            # save-only cycle guard can otherwise deadlock it after an early save.
+            repeat_guard=config.name != "recon",
         )
         # usage will be recorded after validation
 
@@ -2101,6 +2104,7 @@ class Pipeline:
         seen_signatures: set[tuple[str, str]] = set()
         optional_scans = 0
         max_optional_scans = 5
+        next_required_call: tuple[str, dict] | None = None
         target_subnets = [
             value for value in str(self.context.get("target_subnet", "")).split()
             if value
@@ -2165,15 +2169,68 @@ class Pipeline:
                     )
             return missing
 
+        def _next_contract_call() -> tuple[str, dict] | None:
+            """Return the first incomplete mandatory call in execution order."""
+            if "arp_scan" not in completed_calls:
+                return "arp_scan", {}
+            for subnet in target_subnets:
+                if f"nmap_discovery:{subnet}" not in completed_calls:
+                    return "nmap_discovery", {"target": subnet}
+            if "read_phase1" not in completed_calls:
+                return "read_deliverable", {"filename": "01_graph_analysis.md"}
+            for key, item in expected_scans.items():
+                if key not in completed_scans:
+                    return "nmap_scan", {
+                        "target": item["target"],
+                        "ports": item["ports"],
+                        "skip_discovery": True,
+                    }
+            return None
+
+        def _contract_args(name: str, kwargs: dict) -> dict:
+            """Keep only arguments relevant to the Recon execution contract."""
+            if name == "arp_scan":
+                return {} if not kwargs else kwargs
+            if name == "nmap_discovery":
+                return {"target": str(kwargs.get("target", ""))}
+            if name == "read_deliverable":
+                return {"filename": kwargs.get("filename")}
+            if name == "nmap_scan":
+                return {
+                    "target": str(kwargs.get("target", "")),
+                    "ports": str(kwargs.get("ports", "")),
+                    "skip_discovery": kwargs.get("skip_discovery") is True,
+                }
+            return kwargs
+
         def _error(kind: str, message: str, **extra) -> str:
             return json.dumps({"ok": False, "error_kind": kind, "error": message, **extra})
 
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
-                nonlocal optional_scans
+                nonlocal optional_scans, next_required_call
+                contract_kwargs = _contract_args(name, kwargs)
+
+                # A premature save switches the contract into a one-step
+                # correction mode.  This prevents the model from wandering
+                # through duplicate/optional scans while still requiring it to
+                # make the actual tool call itself.
+                if next_required_call is not None:
+                    required_name, required_args = next_required_call
+                    if name != required_name or contract_kwargs != required_args:
+                        return _error(
+                            "recon_next_call_required",
+                            "Call the exact mandatory tool below before any other Recon action",
+                            next_required_call={
+                                "name": required_name,
+                                "arguments": required_args,
+                            },
+                        )
+                    next_required_call = None
+
                 signature = (
                     name,
-                    json.dumps(kwargs, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
+                    json.dumps(contract_kwargs, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
                 )
                 if signature in seen_signatures and name != "save_deliverable":
                     return _error("duplicate_recon_call", f"Duplicate Recon call rejected: {name}")
@@ -2188,7 +2245,7 @@ class Pipeline:
                     return result
 
                 if name == "nmap_discovery":
-                    target = str(kwargs.get("target", ""))
+                    target = contract_kwargs["target"]
                     if target not in target_subnets:
                         return _error(
                             "invalid_recon_target",
@@ -2196,30 +2253,30 @@ class Pipeline:
                             allowed_targets=target_subnets,
                         )
                     seen_signatures.add(signature)
-                    result = original_fn(**kwargs)
+                    result = original_fn(**contract_kwargs)
                     completed_calls.add(f"nmap_discovery:{target}")
                     _discover_targets(result)
                     return result
 
                 if name == "read_deliverable":
-                    if kwargs.get("filename") != "01_graph_analysis.md":
+                    if contract_kwargs["filename"] != "01_graph_analysis.md":
                         return _error(
                             "invalid_recon_read",
                             "Recon may read only 01_graph_analysis.md before completion",
                         )
                     seen_signatures.add(signature)
-                    result = original_fn(**kwargs)
+                    result = original_fn(**contract_kwargs)
                     completed_calls.add("read_phase1")
                     return result
 
                 if name == "nmap_scan":
-                    target = str(kwargs.get("target", ""))
-                    ports = str(kwargs.get("ports", ""))
-                    skip_discovery = kwargs.get("skip_discovery") is True
+                    target = contract_kwargs["target"]
+                    ports = contract_kwargs["ports"]
+                    skip_discovery = contract_kwargs["skip_discovery"]
                     key = (target, ports, skip_discovery)
                     if key in expected_scans:
                         seen_signatures.add(signature)
-                        result = original_fn(**kwargs)
+                        result = original_fn(**contract_kwargs)
                         completed_scans.add(key)
                         return result
                     if not _in_scope(target):
@@ -2233,15 +2290,21 @@ class Pipeline:
                         return _error("recon_followup_budget", "Optional Recon scan budget exhausted")
                     optional_scans += 1
                     seen_signatures.add(signature)
-                    return original_fn(**kwargs)
+                    return original_fn(**contract_kwargs)
 
                 if name == "save_deliverable":
                     missing = _missing_contract_calls()
                     if missing:
+                        next_required_call = _next_contract_call()
+                        required_name, required_args = next_required_call
                         return _error(
                             "recon_contract_incomplete",
-                            "Recon cannot finish until every mandatory call succeeds",
-                            missing_calls=missing,
+                            "Recon cannot finish yet; call the exact mandatory tool below next",
+                            next_required_call={
+                                "name": required_name,
+                                "arguments": required_args,
+                            },
+                            remaining_call_count=len(missing),
                         )
                     return original_fn(**kwargs)
 
