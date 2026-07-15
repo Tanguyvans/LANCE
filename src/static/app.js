@@ -2312,9 +2312,9 @@ function renderBenchmarkTable() {
       ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${hallucTitle}">${pct(s.hallucination_rate)}</span>`
       : noScore;
 
-    const complianceTitle = s ? `Format fallbacks: ${s.format_fallbacks || 0}\nValidation errors: ${s.validation_failures || 0}\nTool errors: ${s.total_tool_errors || 0}` : '';
-    const complianceCell = s?.format_compliance_rate != null
-      ? `<span style="color:${s.format_compliance_rate < 0.8 ? 'var(--red)' : s.format_compliance_rate < 0.95 ? 'var(--orange)' : 'var(--text)'}" title="${complianceTitle}">${pct(s.format_compliance_rate)}</span>`
+    const complianceTitle = s?.process_metrics_available ? `Validations: ${s.validation_successes || 0}/${s.validation_attempts || 0}\nFormat fallbacks: ${s.format_fallbacks || 0}/${s.format_attempts || 0}\nTool errors: ${s.total_tool_errors || 0}/${s.total_tool_calls || 0}` : "Métriques indisponibles pour cet ancien schéma";
+    const complianceCell = s?.process_metrics_available
+      ? `<span style="font-size:11px" title="${complianceTitle}">V:${pct(s.validation_success_rate)} · F:${pct(s.format_fallback_rate)} · O:${pct(s.tool_error_rate)}</span>`
       : noScore;
 
     const commitCell = r.commit

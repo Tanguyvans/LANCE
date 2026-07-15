@@ -119,6 +119,24 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "specificity": round(specificity, 3) if specificity is not None else None,
         "is_zero_gt": evaluation.is_zero_gt,
         "scoring_policy": evaluation.scoring_policy,
+        "process_metrics_schema_version": getattr(evaluation, "process_metrics_schema_version", None),
+        "process_metrics_available": getattr(evaluation, "process_metrics_available", False),
+        "total_cost_usd": getattr(evaluation, "total_cost_usd", None),
+        "cost_is_estimate": getattr(evaluation, "cost_is_estimate", None),
+        "total_tokens": getattr(evaluation, "total_tokens", None),
+        "total_turns": getattr(evaluation, "total_turns", None),
+        "total_tool_calls": getattr(evaluation, "total_tool_calls", None),
+        "cost_per_tp": getattr(evaluation, "cost_per_tp", None),
+        "turns_per_tp": getattr(evaluation, "turns_per_tp", None),
+        "format_fallbacks": getattr(evaluation, "format_fallbacks", None),
+        "format_attempts": getattr(evaluation, "format_attempts", None),
+        "format_fallback_rate": getattr(evaluation, "format_fallback_rate", None),
+        "validation_failures": getattr(evaluation, "validation_failures", None),
+        "validation_attempts": getattr(evaluation, "validation_attempts", None),
+        "validation_successes": getattr(evaluation, "validation_successes", None),
+        "validation_success_rate": getattr(evaluation, "validation_success_rate", None),
+        "total_tool_errors": getattr(evaluation, "total_tool_errors", None),
+        "tool_error_rate": getattr(evaluation, "tool_error_rate", None),
     }
 
 
@@ -140,6 +158,17 @@ def _aggregate_batch_results(
         expected_scenarios=expected,
         scenario_splits={sid: "dev-public" for sid in expected},
     )
+    process = [result["metrics"] for result in completed if result["metrics"].get("process_metrics_available")]
+
+    def _process_total(name: str) -> int:
+        return sum(int(metrics.get(name) or 0) for metrics in process)
+
+    format_attempts = _process_total("format_attempts")
+    format_fallbacks = _process_total("format_fallbacks")
+    validation_attempts = _process_total("validation_attempts")
+    validation_successes = _process_total("validation_successes")
+    tool_calls = _process_total("total_tool_calls")
+    tool_errors = _process_total("total_tool_errors")
     return {
         **official,
         "avg_recall": round(
@@ -152,7 +181,17 @@ def _aggregate_batch_results(
             sum(result["metrics"]["f1"] for result in completed) / len(completed), 3
         ) if completed else 0.0,
         "avg_score_pct": official["macro_scenario_score_pct"],
-        "total_cost_usd": round(sum(result.get("cost_usd", 0) for result in results), 4),
+        "total_cost_usd": sum(float(metrics["total_cost_usd"]) for metrics in (result["metrics"] for result in completed) if metrics.get("total_cost_usd") is not None),
+        "process_metrics_runs": len(process),
+        "format_fallbacks": format_fallbacks,
+        "format_attempts": format_attempts,
+        "format_fallback_rate": round(format_fallbacks / format_attempts, 3) if format_attempts else None,
+        "validation_successes": validation_successes,
+        "validation_attempts": validation_attempts,
+        "validation_success_rate": round(validation_successes / validation_attempts, 3) if validation_attempts else None,
+        "total_tool_errors": tool_errors,
+        "total_tool_calls": tool_calls,
+        "tool_error_rate": round(tool_errors / tool_calls, 3) if tool_calls else None,
         "scenarios_evaluated": len(completed),
         "scenarios_skipped": len(expected) - len(completed),
     }

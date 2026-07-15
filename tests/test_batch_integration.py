@@ -172,3 +172,40 @@ def test_cli_accepts_public_hardened_variant(monkeypatch):
     provider.assert_called_once()
     assert pipeline.call_args.kwargs["scenario_id"] == "4h"
     assert pipeline.call_args.kwargs["benchmark_split"] == "dev-public"
+
+def test_batch_process_metrics_are_propagated_and_weighted_by_attempts():
+    first = _evaluation("1", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False)
+    second = _evaluation("2", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False)
+    for evaluation, attempts, successes in ((first, 2, 1), (second, 8, 8)):
+        evaluation.process_metrics_schema_version = 2
+        evaluation.process_metrics_available = True
+        evaluation.total_cost_usd = 0.1
+        evaluation.cost_is_estimate = False
+        evaluation.total_tokens = 10
+        evaluation.total_turns = 1
+        evaluation.total_tool_calls = attempts
+        evaluation.total_tool_errors = attempts - successes
+        evaluation.format_attempts = attempts
+        evaluation.format_fallbacks = attempts - successes
+        evaluation.validation_attempts = attempts
+        evaluation.validation_successes = successes
+        evaluation.validation_failures = attempts - successes
+        evaluation.cost_per_tp = 0.1
+        evaluation.turns_per_tp = 1.0
+        evaluation.format_fallback_rate = (attempts - successes) / attempts
+        evaluation.validation_success_rate = successes / attempts
+        evaluation.tool_error_rate = (attempts - successes) / attempts
+
+    metrics = [_evaluation_metrics(first), _evaluation_metrics(second)]
+    results = [
+        {"scenario_id": "1", "metrics": metrics[0], "cost_usd": 0.1},
+        {"scenario_id": "2", "metrics": metrics[1], "cost_usd": 0.1},
+    ]
+
+    aggregate = _aggregate_batch_results([first, second], results, ["1", "2"])
+
+    assert metrics[0]["validation_success_rate"] == 0.5
+    assert aggregate["validation_success_rate"] == 0.9
+    assert aggregate["format_fallback_rate"] == 0.1
+    assert aggregate["tool_error_rate"] == 0.1
+    assert aggregate["total_cost_usd"] == 0.2

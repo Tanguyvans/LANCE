@@ -117,6 +117,21 @@ class LLMProvider:
             )
             self.model = model or cfg.get("default_model") or ""
 
+
+    @staticmethod
+    def _tool_result_metadata(result: str) -> tuple[bool, bool]:
+        """Return (failed, fallback_used) for legacy text and JSON tool results."""
+        failed = result.startswith("Error")
+        fallback_used = False
+        try:
+            payload = json.loads(result)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            failed = failed or payload.get("ok") is False or bool(payload.get("error")) or payload.get("status") == "ERROR"
+            fallback_used = bool(payload.get("fallback_used"))
+        return failed, fallback_used
+
     def chat_with_tools(
         self,
         system_prompt: str,
@@ -177,13 +192,17 @@ class LLMProvider:
             # Execute tools (parallel)
             from concurrent.futures import ThreadPoolExecutor
 
-            def _maybe_execute_anthropic(tc):
+            repeated_tool_ids: set[str] = set()
+            for tc in tool_calls:
                 call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
-                if (len(recent_calls) >= _REPEAT_THRESHOLD
-                        and all(c == call_sig for c in recent_calls[-_REPEAT_THRESHOLD:])):
-                    if cost_tracker: cost_tracker.record_tool_error()
-                    return json.dumps({"warning": f"Tool '{tc.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
                 recent_calls.append(call_sig)
+                if (len(recent_calls) >= _REPEAT_THRESHOLD
+                        and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
+                    repeated_tool_ids.add(tc.id)
+
+            def _maybe_execute_anthropic(tc):
+                if tc.id in repeated_tool_ids:
+                    return json.dumps({"ok": False, "error": f"Tool {tc.name} called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable.", "error_kind": "repeated_call"})
                 return self._execute_tool(tc.name, tc.input, tool_map)
 
             if stream_callback:
@@ -194,19 +213,16 @@ class LLMProvider:
                 tool_results = []
                 for f, tc in futures.items():
                     res = f.result()
+                    failed, fallback_used = self._tool_result_metadata(res)
                     if cost_tracker:
-                        if res.startswith("Error"):
+                        if failed:
                             cost_tracker.record_tool_error()
-                        if '"fallback_used"' in res:
-                            try:
-                                if json.loads(res).get("fallback_used"):
-                                    cost_tracker.record_format_fallback()
-                            except Exception:
-                                pass
-                    # Only mark required_tool as called if it succeeded (no error)
-                    if required_tool and tc.name == required_tool and not res.startswith("Error"):
+                        if tc.name == "save_deliverable":
+                            cost_tracker.record_format_attempt(fallback_used=fallback_used)
+                    # Only mark required_tool as called if it succeeded.
+                    if required_tool and tc.name == required_tool and not failed:
                         required_tool_called = True
-                    if terminate_after_tool and tc.name == terminate_after_tool and not res.startswith("Error"):
+                    if terminate_after_tool and tc.name == terminate_after_tool and not failed:
                         terminate_now = True
                     if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
                     tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
@@ -246,6 +262,8 @@ class LLMProvider:
                 )
                 if is_bad_tool_args and malformed_retries < 3:
                     malformed_retries += 1
+                    if cost_tracker:
+                        cost_tracker.record_tool_error()
                     log.warning("400 invalid tool arguments (attempt %d/3) — removing malformed messages: %s", malformed_retries, exc)
                     # Strip tool results and the malformed assistant message from history
                     while messages and isinstance(messages[-1], dict) and messages[-1].get("role") == "tool":
@@ -261,11 +279,16 @@ class LLMProvider:
             choice = response.choices[0]
             message = choice.message
 
+            if cost_tracker and response.usage:
+                cost_tracker.record_turn(input_tokens=response.usage.prompt_tokens or 0, output_tokens=response.usage.completion_tokens or 0, tool_call_count=len(message.tool_calls or []))
+
             if choice.finish_reason == "error":
                 if malformed_retries < 2:
                     malformed_retries += 1
                     fallback = _call_with_retry(self.client.chat.completions.create, model=self.model, messages=messages, max_tokens=max_tokens)
                     if fallback.choices:
+                        if cost_tracker and fallback.usage:
+                            cost_tracker.record_turn(input_tokens=fallback.usage.prompt_tokens or 0, output_tokens=fallback.usage.completion_tokens or 0)
                         fb_content = fallback.choices[0].message.content or ""
                         if stream_callback: stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
                         if required_tool and not required_tool_called and not reminder_sent:
@@ -275,9 +298,6 @@ class LLMProvider:
                             continue
                         return fb_content
                 continue
-
-            if cost_tracker and response.usage:
-                cost_tracker.record_turn(input_tokens=response.usage.prompt_tokens or 0, output_tokens=response.usage.completion_tokens or 0, tool_call_count=len(message.tool_calls or []))
 
             if message.content:
                 last_nonempty_text = message.content
@@ -309,7 +329,9 @@ class LLMProvider:
 
             if malformed_ids:
                 malformed_retries += 1
-                if cost_tracker: cost_tracker.record_tool_error()
+                if cost_tracker:
+                    for _ in malformed_ids:
+                        cost_tracker.record_tool_error()
                 log.warning("Tool call(s) with malformed JSON arguments detected (attempt %d/3): %s", malformed_retries, malformed_ids)
                 if stream_callback:
                     stream_callback({"type": "tool_call", "name": "ERROR", "args": {"error": "invalid JSON", "tool_call_ids": malformed_ids}})
@@ -329,26 +351,22 @@ class LLMProvider:
                 recent_calls.append(call_sig)
                 if (len(recent_calls) >= _REPEAT_THRESHOLD
                         and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
-                    if cost_tracker: cost_tracker.record_tool_error()
-                    res = json.dumps({"warning": f"Tool '{tc.function.name}' called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable."})
+                    res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable.", "error_kind": "repeated_call"})
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                 else:
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
+                failed, fallback_used = self._tool_result_metadata(res)
                 if cost_tracker:
-                    if res.startswith("Error"):
+                    if failed:
                         cost_tracker.record_tool_error()
-                    if '"fallback_used"' in res:
-                        try:
-                            if json.loads(res).get("fallback_used"):
-                                cost_tracker.record_format_fallback()
-                        except Exception:
-                            pass
+                    if tc.function.name == "save_deliverable":
+                        cost_tracker.record_format_attempt(fallback_used=fallback_used)
 
-                # Only mark required_tool as called if it succeeded (no error)
-                if required_tool and tc.function.name == required_tool and not res.startswith("Error"):
+                # Only mark required_tool as called if it succeeded.
+                if required_tool and tc.function.name == required_tool and not failed:
                     required_tool_called = True
-                if terminate_after_tool and tc.function.name == terminate_after_tool and not res.startswith("Error"):
+                if terminate_after_tool and tc.function.name == terminate_after_tool and not failed:
                     terminate_now = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})

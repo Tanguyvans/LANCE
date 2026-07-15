@@ -94,3 +94,60 @@ class TestCostTracker:
         assert "COST SUMMARY" in captured.out
         assert "recon" in captured.out
         assert "TOTAL" in captured.out
+
+    def test_multi_model_cost_uses_each_phase_model(self):
+        with patch("src.agent.cost_tracker.get_dynamic_pricing", return_value=None):
+            tracker = CostTracker(model="openai/gpt-4o")
+            tracker.start_phase("phase1")
+            tracker.record_turn(1_000_000, 0)
+            tracker.end_phase()
+            tracker.model = "deepseek/deepseek-chat-v3-0324"
+            tracker.start_phase("phase2")
+            tracker.record_turn(1_000_000, 0)
+            tracker.end_phase()
+
+        assert tracker.total_cost() == 2.77
+        assert [phase["model"] for phase in tracker.summary()["phases"]] == [
+            "openai/gpt-4o", "deepseek/deepseek-chat-v3-0324"
+        ]
+
+    def test_pricing_is_snapshotted_at_phase_start(self):
+        with patch("src.agent.cost_tracker.get_dynamic_pricing") as pricing:
+            pricing.return_value = {"input": 2.0, "output": 4.0}
+            tracker = CostTracker(model="dynamic/model")
+            tracker.start_phase("phase")
+            tracker.record_turn(1_000_000, 0)
+            tracker.end_phase()
+            pricing.return_value = {"input": 99.0, "output": 99.0}
+            assert tracker.total_cost() == 2.0
+
+    def test_process_denominators_and_schema_are_persisted(self):
+        tracker = CostTracker(model="test")
+        tracker.start_phase("phase")
+        tracker.record_turn(10, 5, tool_call_count=2)
+        tracker.record_format_attempt(fallback_used=True)
+        tracker.record_validation_result(success=False)
+        tracker.record_validation_result(success=True)
+        tracker.record_tool_error()
+        tracker.end_phase()
+
+        summary = tracker.summary()
+        assert summary["metrics_schema_version"] == 2
+        assert summary["total_tool_calls"] == 2
+        assert summary["total_format_attempts"] == 1
+        assert summary["total_format_fallbacks"] == 1
+        assert summary["total_validation_attempts"] == 2
+        assert summary["total_validation_successes"] == 1
+        assert summary["total_validation_failures"] == 1
+        assert summary["total_tool_errors"] == 1
+
+    def test_unknown_model_cost_is_explicitly_estimated(self):
+        with patch("src.agent.cost_tracker.get_dynamic_pricing", return_value=None):
+            tracker = CostTracker(model="local/unknown")
+            tracker.start_phase("phase")
+            tracker.record_turn(1, 1)
+            tracker.end_phase()
+            summary = tracker.summary()
+
+        assert summary["cost_is_estimate"] is True
+        assert summary["phases"][0]["pricing_source"] == "default_estimate"

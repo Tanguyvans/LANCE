@@ -12,6 +12,7 @@ from src.agent.tools.recon_tools import (
 )
 from src.agent.tools.graph_tools import GRAPH_TOOLS
 from src.agent.provider import LLMProvider
+from src.agent.cost_tracker import CostTracker
 
 
 # ------------------------------------------------------------------
@@ -577,3 +578,43 @@ class TestOrchestrator:
         all_tools = GRAPH_TOOLS + RECON_TOOLS + DELIVERABLE_TOOLS
         names = [t["name"] for t in all_tools]
         assert len(names) == len(set(names)), "Duplicate tool names found"
+
+def test_tool_result_metadata_detects_json_error_envelopes():
+    assert LLMProvider._tool_result_metadata(json.dumps({"error": "boom"})) == (True, False)
+    assert LLMProvider._tool_result_metadata(json.dumps({"ok": False, "error_kind": "timeout"})) == (True, False)
+    assert LLMProvider._tool_result_metadata(json.dumps({"status": "saved", "fallback_used": True})) == (False, True)
+    assert LLMProvider._tool_result_metadata("plain successful output") == (False, False)
+
+
+def test_anthropic_repeated_calls_are_counted_on_parent_tracker_thread():
+    provider = object.__new__(LLMProvider)
+    provider.provider = "anthropic"
+    provider.model = "test-model"
+    provider.client = MagicMock()
+
+    responses = []
+    for index in range(3):
+        tool_call = MagicMock(type="tool_use", input={"target": "same"}, id=f"tc-{index}")
+        tool_call.name = "probe"
+        responses.append(MagicMock(content=[tool_call], usage=MagicMock(input_tokens=1, output_tokens=1)))
+    responses.append(MagicMock(
+        content=[MagicMock(type="text", text="done")],
+        usage=MagicMock(input_tokens=1, output_tokens=1),
+    ))
+    provider.client.messages.create.side_effect = responses
+    executions = []
+    tools = [{
+        "name": "probe", "description": "probe", "input_schema": {"type": "object"},
+        "function": lambda **kwargs: executions.append(kwargs) or json.dumps({"ok": True}),
+    }]
+
+    with patch("src.agent.cost_tracker.get_dynamic_pricing", return_value=None):
+        tracker = CostTracker(model="test-model")
+        tracker.start_phase("phase")
+        result = provider.chat_with_tools("system", "user", tools, cost_tracker=tracker)
+        usage = tracker.end_phase()
+
+    assert result == "done"
+    assert len(executions) == 2
+    assert usage.tool_calls == 3
+    assert usage.tool_errors == 1

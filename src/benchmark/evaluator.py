@@ -248,16 +248,27 @@ class EvaluationResult:
     tp_exploited: int = 0               # TP findings with evidence_level >= 2
     tp_detected_only: int = 0           # TP findings with evidence_level < 2
 
-    # Process and Efficiency metrics
-    total_cost_usd: float = 0.0
-    total_tokens: int = 0
-    total_turns: int = 0
+    # Process and efficiency metrics. None means unavailable in an older run.
+    process_metrics_schema_version: int | None = None
+    process_metrics_available: bool = False
+    total_cost_usd: float | None = None
+    cost_is_estimate: bool | None = None
+    total_tokens: int | None = None
+    total_turns: int | None = None
+    total_tool_calls: int | None = None
     cost_per_tp: float | None = None
     turns_per_tp: float | None = None
-    format_fallbacks: int = 0
-    validation_failures: int = 0
-    total_tool_errors: int = 0
-    format_compliance_rate: float = 1.0
+    format_fallbacks: int | None = None
+    format_attempts: int | None = None
+    format_fallback_rate: float | None = None
+    validation_failures: int | None = None
+    validation_attempts: int | None = None
+    validation_successes: int | None = None
+    validation_success_rate: float | None = None
+    total_tool_errors: int | None = None
+    tool_error_rate: float | None = None
+    # Deprecated field retained for JSON compatibility; no longer calculated.
+    format_compliance_rate: float | None = None
 
     # Multi-Hop Reach (MHR) — fraction of GT vulns at depth >= k that were detected.
     # Convention: hop_depth=0 means directly reachable from the entry point;
@@ -586,6 +597,20 @@ def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
 # Phase 4 statuses that mean "test ran but vuln not exploitable" or "tool error"
 # — they are excluded from the LLM findings so they don't count as false positives.
 _SKIPPED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "ERROR"})
+_EXPLOITED_PHASE4_STATUSES: frozenset[str] = frozenset({"CONFIRMED", "EXPLOITED", "COMPROMISED"})
+
+
+def _derive_evidence_level(test: dict) -> int:
+    """Derive evidence strength from validated fields, never a model-provided integer."""
+    status = str(test.get("status", "")).upper()
+    extracted = test.get("data_extracted")
+    has_extracted_data = isinstance(extracted, list) and bool(extracted)
+    has_execution_trace = bool(str(test.get("tool_used", "")).strip()) and bool(str(test.get("evidence", "")).strip())
+    if status in _EXPLOITED_PHASE4_STATUSES and has_extracted_data:
+        return 3
+    if status in _EXPLOITED_PHASE4_STATUSES and has_execution_trace:
+        return 2
+    return 1
 
 
 def _load_llm_findings(run_dir: Path) -> list[dict]:
@@ -643,7 +668,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                 "severity": t.get("severity", ""),
                 "details": t.get("description") or t.get("details", ""),
                 "evidence": t.get("evidence", ""),
-                "evidence_level": t.get("evidence_level", 0),
+                "evidence_level": _derive_evidence_level(t),
                 "remediation": t.get("remediation", ""),
                 "cve_ids": _sanitize_cve_ids(t.get("cve_ids", [])),
             })
@@ -696,19 +721,48 @@ def evaluate(
     llm_findings = _load_llm_findings(run_dir)
 
     cost_file = run_dir / "cost_summary.json"
-    cost_data = {}
+    cost_data: dict = {}
     if cost_file.exists():
         try:
-            cost_data = json.loads(cost_file.read_text())
-        except Exception:
-            pass
+            loaded = json.loads(cost_file.read_text())
+            if isinstance(loaded, dict):
+                cost_data = loaded
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            cost_data = {}
 
-    total_cost_usd = cost_data.get("total_cost_usd", 0.0)
-    total_tokens = cost_data.get("total_input_tokens", 0) + cost_data.get("total_output_tokens", 0)
-    total_turns = cost_data.get("total_turns", 0)
-    format_fallbacks = cost_data.get("total_format_fallbacks", 0)
-    validation_failures = cost_data.get("total_validation_failures", 0)
-    total_tool_errors = cost_data.get("total_tool_errors", 0)
+    def _number(name: str) -> float | None:
+        value = cost_data.get(name)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    def _integer(name: str) -> int | None:
+        value = cost_data.get(name)
+        return int(value) if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+    process_schema = _integer("metrics_schema_version")
+    process_available = False
+    total_cost_usd = _number("total_cost_usd")
+    input_tokens = _integer("total_input_tokens")
+    output_tokens = _integer("total_output_tokens")
+    total_tokens = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
+    total_turns = _integer("total_turns")
+    total_tool_calls = _integer("total_tool_calls")
+    format_fallbacks = _integer("total_format_fallbacks")
+    format_attempts = _integer("total_format_attempts")
+    validation_failures = _integer("total_validation_failures")
+    validation_attempts = _integer("total_validation_attempts")
+    validation_successes = _integer("total_validation_successes")
+    total_tool_errors = _integer("total_tool_errors")
+    required_process_counts = (
+        total_tool_calls, format_fallbacks, format_attempts, validation_failures,
+        validation_attempts, validation_successes, total_tool_errors,
+    )
+    process_available = (
+        process_schema == 2
+        and all(value is not None for value in required_process_counts)
+        and format_fallbacks <= format_attempts
+        and validation_successes + validation_failures == validation_attempts
+        and total_tool_errors <= total_tool_calls
+    )
 
     result = EvaluationResult(
         scenario_id=scenario_id,
@@ -720,11 +774,18 @@ def evaluate(
         total_llm_findings=len(llm_findings),
         max_weighted_score=max_score,
         total_attack_paths=len(gt_attack_paths),
+        process_metrics_schema_version=process_schema,
+        process_metrics_available=process_available,
         total_cost_usd=total_cost_usd,
+        cost_is_estimate=cost_data.get("cost_is_estimate") if isinstance(cost_data.get("cost_is_estimate"), bool) else None,
         total_tokens=total_tokens,
         total_turns=total_turns,
+        total_tool_calls=total_tool_calls,
         format_fallbacks=format_fallbacks,
+        format_attempts=format_attempts,
         validation_failures=validation_failures,
+        validation_attempts=validation_attempts,
+        validation_successes=validation_successes,
         total_tool_errors=total_tool_errors,
     )
 
@@ -933,12 +994,18 @@ def evaluate(
         result.tp_exploited / tp, 3
     ) if tp > 0 else 0.0
     if tp > 0:
-        result.cost_per_tp = round(result.total_cost_usd / tp, 4)
-        result.turns_per_tp = round(result.total_turns / tp, 1)
+        if result.total_cost_usd is not None:
+            result.cost_per_tp = round(result.total_cost_usd / tp, 6)
+        if result.total_turns is not None:
+            result.turns_per_tp = round(result.total_turns / tp, 3)
 
-    if result.total_turns > 0:
-        issues = result.format_fallbacks + result.validation_failures + result.total_tool_errors
-        result.format_compliance_rate = round(max(0.0, (result.total_turns - issues) / result.total_turns), 3)
+    if result.process_metrics_available:
+        if result.format_attempts:
+            result.format_fallback_rate = round((result.format_fallbacks or 0) / result.format_attempts, 3)
+        if result.validation_attempts:
+            result.validation_success_rate = round((result.validation_successes or 0) / result.validation_attempts, 3)
+        if result.total_tool_calls:
+            result.tool_error_rate = round((result.total_tool_errors or 0) / result.total_tool_calls, 3)
 
     # A zero-GT control is one all-negative scenario-level trial. Reporting a
     # clean run as 0% (the historical weighted-score behaviour) is misleading,
@@ -979,19 +1046,24 @@ def print_report(result: EvaluationResult) -> None:
 
     # Process and Efficiency metrics
     print("  PROCESS & EFFICIENCY METRICS")
-    print(f"    Total Cost (USD)         : ${result.total_cost_usd:.4f}")
-    print(f"    Total Tokens             : {result.total_tokens:,}")
-    print(f"    Total Agent Turns        : {result.total_turns}")
+    print(f"    Total Cost (USD)         : ${result.total_cost_usd:.6f}" if result.total_cost_usd is not None else "    Total Cost (USD)         : n/a")
+    print(f"    Total Tokens             : {result.total_tokens:,}" if result.total_tokens is not None else "    Total Tokens             : n/a")
+    print(f"    Total Agent Turns        : {result.total_turns}" if result.total_turns is not None else "    Total Agent Turns        : n/a")
     if result.cost_per_tp is not None:
         print(f"    Cost per True Positive   : ${result.cost_per_tp:.4f}")
-        print(f"    Turns per True Positive  : {result.turns_per_tp:.1f}")
+        if result.turns_per_tp is not None:
+            print(f"    Turns per True Positive  : {result.turns_per_tp:.3f}")
     
-    if result.format_fallbacks > 0 or result.validation_failures > 0 or result.total_tool_errors > 0 or result.format_compliance_rate < 1.0:
-        print("\n  PROCESS QUALITY & HALLUCINATIONS")
-        print(f"    Process Compliance Rate    : {result.format_compliance_rate:.1%} (sans erreur, secours ni syntaxe outil)")
-        print(f"    Tool Errors / Stuck Loops  : {result.total_tool_errors} fois le LLM a mal appelé un outil")
-        print(f"    Format Fallbacks (Rescued) : {result.format_fallbacks} fois le parseur a dû corriger le LLM")
-        print(f"    Validation Failures        : {result.validation_failures} fois le LLM s'est trompé de schéma")
+    print("\n  PROCESS QUALITY")
+    if not result.process_metrics_available:
+        print("    Process metrics          : unavailable (legacy or invalid schema)")
+    else:
+        validation_rate = f"{result.validation_success_rate:.1%}" if result.validation_success_rate is not None else "n/a"
+        fallback_rate = f"{result.format_fallback_rate:.1%}" if result.format_fallback_rate is not None else "n/a"
+        tool_rate = f"{result.tool_error_rate:.1%}" if result.tool_error_rate is not None else "n/a"
+        print(f"    Validation Success Rate : {validation_rate}")
+        print(f"    Format Fallback Rate    : {fallback_rate}")
+        print(f"    Tool Error Rate         : {tool_rate}")
 
     print(f"{'─'*60}")
 

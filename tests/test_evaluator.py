@@ -17,6 +17,7 @@ from src.benchmark.evaluator import (
     _match_by_ip_and_service,
     _match_by_ip_and_type,
     compute_mhr,
+    _derive_evidence_level,
     evaluate,
     match_vuln,
 )
@@ -767,3 +768,83 @@ class TestEvaluateMhrContinued:
         # Should not crash; treats as flat
         assert result.matches[0]["gt_hop_depth"] == 0
         assert result.mhr_1 is None
+
+class TestProcessMetricsV2:
+    def test_legacy_run_reports_process_metrics_as_unavailable(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding()])
+        gt_file = _write_gt(tmp_path, [_gt()])
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.process_metrics_available is False
+        assert result.format_compliance_rate is None
+        assert result.validation_success_rate is None
+        assert result.format_fallback_rate is None
+        assert result.tool_error_rate is None
+        assert result.format_fallbacks is None
+
+    def test_corrupt_cost_summary_is_not_treated_as_perfect(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding()])
+        (run_dir / "cost_summary.json").write_text("{not-json")
+        gt_file = _write_gt(tmp_path, [_gt()])
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.process_metrics_available is False
+        assert result.total_cost_usd is None
+        assert result.format_compliance_rate is None
+
+    def test_versioned_process_rates_use_their_own_denominators(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding()])
+        (run_dir / "cost_summary.json").write_text(json.dumps({
+            "metrics_schema_version": 2,
+            "total_cost_usd": 0.123456,
+            "cost_is_estimate": False,
+            "total_input_tokens": 100,
+            "total_output_tokens": 20,
+            "total_turns": 4,
+            "total_tool_calls": 10,
+            "total_tool_errors": 2,
+            "total_format_attempts": 4,
+            "total_format_fallbacks": 1,
+            "total_validation_attempts": 5,
+            "total_validation_successes": 4,
+            "total_validation_failures": 1,
+        }))
+        gt_file = _write_gt(tmp_path, [_gt()])
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+
+        assert result.process_metrics_available is True
+        assert result.validation_success_rate == 0.8
+        assert result.format_fallback_rate == 0.25
+        assert result.tool_error_rate == 0.2
+        assert result.format_compliance_rate is None
+        assert result.cost_per_tp == 0.123456
+
+    def test_evidence_level_is_derived_not_trusted(self):
+        assert _derive_evidence_level({"status": "CONFIRMED", "evidence_level": 3}) == 1
+        assert _derive_evidence_level({
+            "status": "CONFIRMED", "evidence": "command output", "tool_used": "ssh",
+            "evidence_level": 0,
+        }) == 2
+        assert _derive_evidence_level({
+            "status": "EXPLOITED", "data_extracted": ["secret"], "evidence_level": 0,
+        }) == 3
+
+
+    def test_inconsistent_v2_counters_make_process_metrics_unavailable(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding()])
+        (run_dir / "cost_summary.json").write_text(json.dumps({
+            "metrics_schema_version": 2,
+            "total_input_tokens": 1, "total_output_tokens": 1, "total_turns": 1,
+            "total_tool_calls": 1, "total_tool_errors": 2,
+            "total_format_attempts": 0, "total_format_fallbacks": 0,
+            "total_validation_attempts": 1, "total_validation_successes": 1,
+            "total_validation_failures": 1,
+        }))
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+
+        assert result.process_metrics_available is False
+        assert result.tool_error_rate is None
+        assert result.validation_success_rate is None

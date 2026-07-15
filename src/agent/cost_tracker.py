@@ -60,6 +60,18 @@ PRICING = {
     "deepseek/deepseek-r1": {"input": 0.50, "output": 2.18},
 }
 DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
+METRICS_SCHEMA_VERSION = 2
+
+
+def _resolve_pricing(model: str) -> tuple[dict[str, float], str, bool]:
+    """Resolve pricing once so a completed run cannot be repriced later."""
+    dynamic = get_dynamic_pricing(model)
+    if dynamic:
+        return dynamic, "dynamic_catalog", False
+    if model in PRICING:
+        return PRICING[model], "static_catalog", False
+    # Keep historical budget behaviour, but label unknown-model cost as estimated.
+    return DEFAULT_PRICING, "default_estimate", True
 
 
 @dataclass
@@ -71,14 +83,24 @@ class PhaseUsage:
     turns: int = 0
     duration_s: float = 0.0
     model: str = ""
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+    pricing_source: str = ""
+    cost_is_estimate: bool = False
     format_fallbacks: int = 0
+    format_attempts: int = 0
     validation_failures: int = 0
+    validation_attempts: int = 0
+    validation_successes: int = 0
     tool_errors: int = 0
 
     def cost_usd(self, model: str = "") -> float:
-        m = model or self.model
-        # Try dynamic pricing from OpenRouter first (up to date), then hardcoded fallback
-        pricing = get_dynamic_pricing(m) or PRICING.get(m, DEFAULT_PRICING)
+        if model:
+            pricing, _, _ = _resolve_pricing(model)
+        elif self.input_price_per_million is not None and self.output_price_per_million is not None:
+            pricing = {"input": self.input_price_per_million, "output": self.output_price_per_million}
+        else:
+            pricing, _, _ = _resolve_pricing(self.model)
         return (
             self.input_tokens * pricing["input"]
             + self.output_tokens * pricing["output"]
@@ -93,7 +115,15 @@ class CostTracker:
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
 
     def start_phase(self, agent_name: str) -> None:
-        self._thread_local.current = PhaseUsage(agent_name=agent_name, model=self.model)
+        # Serialize pricing resolution so parallel agents share one catalog snapshot.
+        with self._lock:
+            pricing, pricing_source, estimated = _resolve_pricing(self.model)
+        self._thread_local.current = PhaseUsage(
+            agent_name=agent_name, model=self.model,
+            input_price_per_million=pricing["input"],
+            output_price_per_million=pricing["output"],
+            pricing_source=pricing_source, cost_is_estimate=estimated,
+        )
         self._thread_local.start_time = time.monotonic()
 
     def record_turn(
@@ -109,18 +139,32 @@ class CostTracker:
             current.turns += 1
 
     def record_format_fallback(self) -> None:
-        current = getattr(self._thread_local, 'current', None)
+        """Record a structured-save attempt that required recovery."""
+        self.record_format_attempt(fallback_used=True)
+
+    def record_format_attempt(self, fallback_used: bool = False) -> None:
+        current = getattr(self._thread_local, "current", None)
         if current is None:
             return
         with self._lock:
-            current.format_fallbacks += 1
+            current.format_attempts += 1
+            if fallback_used:
+                current.format_fallbacks += 1
 
     def record_validation_failure(self) -> None:
-        current = getattr(self._thread_local, 'current', None)
+        """Record a failed validation attempt (legacy call-site helper)."""
+        self.record_validation_result(success=False)
+
+    def record_validation_result(self, success: bool) -> None:
+        current = getattr(self._thread_local, "current", None)
         if current is None:
             return
         with self._lock:
-            current.validation_failures += 1
+            current.validation_attempts += 1
+            if success:
+                current.validation_successes += 1
+            else:
+                current.validation_failures += 1
 
     def record_tool_error(self) -> None:
         current = getattr(self._thread_local, 'current', None)
@@ -143,7 +187,7 @@ class CostTracker:
 
     def total_cost(self) -> float:
         with self._lock:
-            return sum(p.cost_usd(self.model) for p in self.phases)
+            return sum(p.cost_usd() for p in self.phases)
 
     def total_tokens(self) -> tuple[int, int]:
         with self._lock:
@@ -156,16 +200,23 @@ class CostTracker:
         with self._lock:
             in_tok = sum(p.input_tokens for p in self.phases)
             out_tok = sum(p.output_tokens for p in self.phases)
-            total_cost = sum(p.cost_usd(self.model) for p in self.phases)
+            total_cost = sum(p.cost_usd() for p in self.phases)
             return {
+                "metrics_schema_version": METRICS_SCHEMA_VERSION,
                 "model": self.model,
-                "total_cost_usd": round(total_cost, 4),
+                "models": list(dict.fromkeys(p.model for p in self.phases if p.model)),
+                "total_cost_usd": total_cost,
+                "cost_is_estimate": any(p.cost_is_estimate for p in self.phases),
                 "total_input_tokens": in_tok,
                 "total_output_tokens": out_tok,
                 "total_turns": sum(p.turns for p in self.phases),
+                "total_tool_calls": sum(p.tool_calls for p in self.phases),
                 "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
                 "total_format_fallbacks": sum(p.format_fallbacks for p in self.phases),
+                "total_format_attempts": sum(p.format_attempts for p in self.phases),
                 "total_validation_failures": sum(p.validation_failures for p in self.phases),
+                "total_validation_attempts": sum(p.validation_attempts for p in self.phases),
+                "total_validation_successes": sum(p.validation_successes for p in self.phases),
                 "total_tool_errors": sum(p.tool_errors for p in self.phases),
                 "phases": [
                     {
@@ -174,10 +225,18 @@ class CostTracker:
                         "input_tokens": p.input_tokens,
                         "output_tokens": p.output_tokens,
                         "tool_calls": p.tool_calls,
-                        "cost_usd": round(p.cost_usd(self.model), 4),
+                        "model": p.model,
+                        "cost_usd": p.cost_usd(),
+                        "cost_is_estimate": p.cost_is_estimate,
+                        "pricing_source": p.pricing_source,
+                        "input_price_per_million": p.input_price_per_million,
+                        "output_price_per_million": p.output_price_per_million,
                         "duration_s": round(p.duration_s, 1),
                         "format_fallbacks": p.format_fallbacks,
+                        "format_attempts": p.format_attempts,
                         "validation_failures": p.validation_failures,
+                        "validation_attempts": p.validation_attempts,
+                        "validation_successes": p.validation_successes,
                         "tool_errors": p.tool_errors,
                     }
                     for p in self.phases
@@ -200,7 +259,7 @@ class CostTracker:
         with self._lock:
             phases_copy = list(self.phases)
         for p in phases_copy:
-            cost = p.cost_usd(self.model)
+            cost = p.cost_usd()
             issues = []
             if p.format_fallbacks: issues.append(f"FB:{p.format_fallbacks}")
             if p.validation_failures: issues.append(f"VF:{p.validation_failures}")

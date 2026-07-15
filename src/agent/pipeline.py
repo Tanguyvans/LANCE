@@ -1156,6 +1156,7 @@ class Pipeline:
                 )
                 deliverable_path.write_text(fallback_content, encoding="utf-8")
                 print(f"  Fallback save: {config.deliverable_file}")
+                self.tracker.record_format_attempt(fallback_used=True)
 
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
@@ -1163,14 +1164,14 @@ class Pipeline:
 
         status = "completed" if valid else f"failed:{msg}"
 
-        if hasattr(self, 'tracker') and self.tracker and not valid:
-            self.tracker.record_validation_failure()
+        if hasattr(self, "tracker") and self.tracker:
+            self.tracker.record_validation_result(success=valid)
 
         usage = self.tracker.end_phase()
         if usage:
             print(
                 f"\n  Phase {config.phase} done: {usage.turns} turns, "
-                f"${usage.cost_usd(self.tracker.model):.4f}"
+                f"${usage.cost_usd():.4f}"
             )
 
         if valid:
@@ -1205,8 +1206,8 @@ class Pipeline:
             )
             # Re-validate after reflector
             valid, msg = validator_fn(config.deliverable_file)
-            if hasattr(self, 'tracker') and self.tracker and not valid:
-                self.tracker.record_validation_failure()
+            if hasattr(self, "tracker") and self.tracker:
+                self.tracker.record_validation_result(success=valid)
             self.tracker.end_phase()
             
             status = "completed" if valid else f"failed:{msg}"
@@ -1223,7 +1224,7 @@ class Pipeline:
                 "name": config.name,
                 "status": status,
                 "deliverable": config.deliverable_file,
-                "cost_usd": round(usage.cost_usd(self.tracker.model), 4) if usage else 0,
+                "cost_usd": round(usage.cost_usd(), 4) if usage else 0,
                 "turns": usage.turns if usage else 0,
             })
 
@@ -1868,19 +1869,7 @@ class Pipeline:
                     stream_callback=stream_callback,
                     required_tool="save_deliverable",
                 )
-                usage = self.tracker.end_phase()
 
-            if usage:
-                print(f"  [+] Done: {phase_name} in {usage.turns} turns")
-            if stream_callback:
-                stream_callback({
-                    "type": "exploit_done",
-                    "device_id": device_id,
-                    "vuln_type": vuln_type,
-                    "vuln_id": vuln_id,
-                    "phase": 4,
-                    "turns": usage.turns if usage else 0,
-                })
 
             # Fallback: if save_deliverable was never called, try to extract JSON from the text
             deliverable_path = self.run_dir / deliverable_file
@@ -1892,8 +1881,19 @@ class Pipeline:
                 try:
                     json.loads(fallback)
                     deliverable_path.write_text(fallback, encoding="utf-8")
+                    self.tracker.record_format_attempt(fallback_used=True)
                 except (json.JSONDecodeError, ValueError):
                     log.warning("Exploit %s: fallback content is not valid JSON — letting safety net write ERROR", phase_name)
+
+            usage = self.tracker.end_phase()
+            if usage:
+                print(f"  [+] Done: {phase_name} in {usage.turns} turns")
+            if stream_callback:
+                stream_callback({
+                    "type": "exploit_done", "device_id": device_id,
+                    "vuln_type": vuln_type, "vuln_id": vuln_id, "phase": 4,
+                    "turns": usage.turns if usage else 0,
+                })
 
             # Safety net: if still no file, write ERROR result
             if not deliverable_path.exists():
