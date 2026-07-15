@@ -289,8 +289,14 @@ Your device has role = **{{device_role}}**.
    For EACH service with a known version, run cve_search(query):
    - Build a CPE or keyword query from the service name/version
    - Examples: cve_search("cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*"), cve_search("OpenSSH 8.9"), cve_search("nginx 1.18.0")
-   - cve_search checks the local cache first (fast), then queries NVD live on cache miss. Prefer it over nvd_lookup.
+   - cve_search checks the local cache first, then queries NVD live on cache miss. It returns every selected candidate with a `compatibility.status`: `compatible`, `conditional`, `indeterminate`, or `incompatible`. It ranks but does not delete candidates. Prefer it over nvd_lookup.
    - RULE: Use the software name and version as detected by nmap, NOT an assumed software.
+
+   **How to use compatibility.status:**
+   - `compatible`: NVD product/version range matches. Still verify required runtime conditions and the observed service.
+   - `conditional`: product/version matches, but platform or runtime conditions remain. Investigate them with available tools/evidence.
+   - `indeterminate`: CPE data or banner mapping is insufficient. Keep it available for analysis and report it only as potential unless other evidence confirms applicability.
+   - `incompatible`: NVD explicitly contradicts the observed product/version. Normally reject it. You MAY override the label only when concrete scan evidence and an authoritative affected-range source show that the NVD mapping is incomplete or stale; record that evidence and rationale.
 
    **MANDATORY VERSION CHECK — for EVERY CVE candidate, write this out before including it:**
    ```
@@ -306,21 +312,20 @@ Your device has role = **{{device_role}}**.
    - MariaDB ANY version vs CVE affecting "before 11.4.10" or "11.5.x through 11.8": ambiguous → REJECT (cannot confirm version is in range)
    - MariaDB 11.8.6 vs CVE affecting "before 11.8.6": 11.8.6 is NOT before 11.8.6 → REJECT
    - nginx 1.18 vs CVE-2009-2629 (affects 0.1.0–0.8.14): 1.18 > 0.8.14 → REJECT
-   - Dropbear 2020.81 vs CVE-2025-14282 (multi-user mode): cannot confirm multi-user mode → REJECT
-   - uHTTPd on OpenWrt vs ANY CVE: version not in banner → REJECT all uHTTPd CVEs unconditionally
+   - Dropbear 2020.81 vs a CVE requiring multi-user mode: if mode is unverified → CONDITIONAL/INDETERMINATE, not confirmed
+   - uHTTPd on OpenWrt with no version in the banner → INDETERMINATE until another source confirms the build/version
 
-   **STRICT REJECTION RULES** — do NOT add a CVE if ANY of the following apply:
+   **DEFAULT REJECTION RULES** — reject unless the documented evidence-based override above applies:
      1. The CVE affects versions "before X" or "< X" and the detected version is X or higher → REJECT
      2. The detected version is HIGHER than the upper bound of the vulnerable range → REJECT
-     3. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → REJECT unconditionally
-     4. The CVE ID year ≥ 2026 (e.g. CVE-2026-XXXXX) → REJECT unconditionally — NVD does not contain future CVEs, this is a hallucination
-     5. The CVE was published before 2015 (year ≤ 2014) → REJECT unconditionally. CVE-2009-2629 nginx, CVE-2011-4315 nginx, etc. — all pre-2015 CVEs are automatically REJECTED regardless of version. Do NOT include them.
-     6. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
-     7. You cannot confirm the exact version from tool output → REJECT (do not assume the version is vulnerable)
-     8. uHTTPd/OpenWrt: ALWAYS REJECT all CVEs for uHTTPd. The version is never confirmed from the banner. Do NOT include any uHTTPd CVE regardless of what cve_search returns.
-     9. Dropbear CVE-2025-14282: REJECT unconditionally — this CVE requires "multi-user mode" which is not present on IoT gateways running standard Dropbear. Do NOT include this CVE.
-    10. MariaDB CVEs with ambiguous ranges ("before X.Y.Z" where X.Y.Z ≠ detected version exactly): REJECT if you cannot confirm the exact patch status. When in doubt → REJECT.
-   - Only include CVEs where the detected version falls INSIDE the vulnerable range. If unsure, do NOT include.
+     3. The CVE is OS-specific (Windows/IIS/macOS) and the device runs Linux → incompatible unless authoritative evidence includes the observed platform
+     4. The affected software name does not match (e.g. CVE for Apache on a nginx server → REJECT)
+     5. You cannot confirm the exact version from tool output → keep the candidate indeterminate; do not present it as a confirmed finding without additional evidence
+     6. uHTTPd/OpenWrt with no confirmed version → indeterminate; seek firmware/build evidence before reporting it as confirmed.
+     7. A CVE requiring a special runtime mode (for example Dropbear multi-user mode) → conditional until that mode is observed; do not assume either presence or absence.
+     8. MariaDB CVEs with ambiguous branch ranges → indeterminate until the exact release branch and patch status are confirmed.
+   - Do NOT reject solely because a CVE is old or recent. Product, detected version, vulnerable range, and required runtime conditions determine compatibility.
+   - Confirmed CVE findings require the detected version inside the vulnerable range or explicit authoritative evidence justifying an override. Uncertain candidates remain available for reasoning but must not be mislabeled as confirmed.
    - Do NOT skip this step, even if get_risk_scores() already has CVEs
 
 4. Cross-reference with graph CVEs: get_risk_scores() and get_device_info("{{device_id}}")

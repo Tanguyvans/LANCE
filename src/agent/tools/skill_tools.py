@@ -173,12 +173,16 @@ def search_knowledge(
 def cve_search(query: str, top_k: int = 5) -> str:
     """Cache-then-query CVE lookup.
 
-    Searches ChromaDB first. On cache miss, queries NVD live,
-    stores results, and returns them.
+    Searches ChromaDB first. On cache miss, queries NVD live, stores results,
+    then annotates and ranks every candidate without suppressing any because
+    of its compatibility classification.
     """
     try:
         from src.agent.knowledge.store import get_or_fetch
-        from src.cve_lookup import query_nvd
+        from src.cve_lookup import (
+            classify_cve_compatibility,
+            query_nvd,
+        )
 
         def fetch_from_nvd(q: str) -> list[dict]:
             api_key = os.environ.get("NVD_API_KEY")
@@ -195,19 +199,46 @@ def cve_search(query: str, top_k: int = 5) -> str:
                     "severity": r.severity or "UNKNOWN",
                     "attack_vector": r.attack_vector or "UNKNOWN",
                     "description": r.description,
+                    "affected_cpes_json": json.dumps(r.cpe_matches, separators=(",", ":")),
+                    "compatibility_status": r.compatibility_status,
+                    "compatibility_reason": r.compatibility_reason,
+                    "matched_cpes_json": json.dumps(r.matched_cpes, separators=(",", ":")),
                 }
                 for r in results
             ]
 
+        def annotate_result(item: dict) -> dict:
+            metadata = item.get("metadata") or item
+            raw_matches = metadata.get("affected_cpes_json", "[]")
+            try:
+                matches = json.loads(raw_matches)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                matches = []
+            assessment = classify_cve_compatibility(query, matches)
+            annotated = dict(item)
+            annotated["compatibility"] = {
+                "status": assessment.status,
+                "reason": assessment.reason,
+                "matched_cpes": assessment.matched_cpes,
+            }
+            return annotated
+
         try:
+            # Retrieve a wider cache window before ranking: semantic similarity
+            # alone can otherwise let an incompatible candidate crowd a more
+            # useful compatible candidate out of a small top_k response.
+            cache_k = max(top_k * 4, 20)
             results = get_or_fetch(
-                "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=top_k,
+                "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
                 threshold=0.62,
             )
         except Exception as store_err:
             log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
             results = fetch_from_nvd(query)[:top_k]
-        return json.dumps(results, ensure_ascii=False)
+        annotated = [annotate_result(item) for item in results]
+        priority = {"compatible": 0, "conditional": 1, "indeterminate": 2, "incompatible": 3}
+        annotated.sort(key=lambda item: priority[item["compatibility"]["status"]])
+        return json.dumps(annotated[:top_k], ensure_ascii=False)
     except Exception as e:
         log.error("CVE search failed: %s", e)
         return json.dumps({"error": str(e)})
@@ -275,7 +306,7 @@ SKILL_TOOLS = [
     },
     {
         "name": "cve_search",
-        "description": "Search for CVEs by CPE string or keyword. Checks local knowledge store first (fast), falls back to live NVD API on cache miss (slower). Results are cached for future searches.",
+        "description": "Search for CVEs by CPE string or software+version. Every candidate is returned with a compatibility classification (compatible, conditional, indeterminate, or incompatible) derived from NVD CPE ranges; classification ranks evidence but never deletes candidates. Product-only queries remain indeterminate until a version is confirmed.",
         "input_schema": {
             "type": "object",
             "properties": {

@@ -3,7 +3,7 @@ handler: "python"
 enabled: true
 timeout: 30
 short_description: "NIST NVD CVE search"
-description: "Search NIST NVD for known CVEs by CPE string or keyword. Use for versions discovered by nmap. Example: nvd_lookup('cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*') or nvd_lookup('Dropbear SSH 2020.81')."
+description: "Search NIST NVD for known CVEs by CPE string or keyword. Results are ranked and annotated as compatible, conditional, indeterminate, or incompatible using NVD vulnerable product/version ranges; no candidate is deleted by this classification. Product-only queries remain indeterminate until a version is confirmed. Example: nvd_lookup('cpe:2.3:a:eclipse:mosquitto:2.0.11:*:*:*:*:*:*:*') or nvd_lookup('Dropbear SSH 2020.81')."
 parameters:
   - name: "query"
     type: "string"

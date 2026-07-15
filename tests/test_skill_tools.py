@@ -9,6 +9,7 @@ import pytest
 
 import src.agent.knowledge.store  # noqa: F401 — registers module so @patch("src.agent.knowledge.store.search") works
 from src.agent.tools.skill_tools import (
+    cve_search,
     list_skills,
     load_skill,
     search_history,
@@ -110,6 +111,38 @@ class TestSkillToolDefinitions:
     def test_expected_tool_names(self):
         names = {t["name"] for t in SKILL_TOOLS}
         assert names == {"list_skills", "load_skill", "search_knowledge", "cve_search", "search_history"}
+
+
+class TestCVESearchCompatibilityCache:
+    @patch("src.agent.knowledge.store.get_or_fetch")
+    def test_versioned_query_classifies_without_deleting_cache_results(self, mock_get):
+        compatible_matches = [{
+            "criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+            "versionEndExcluding": "9.6",
+        }]
+        incompatible_matches = [{
+            "criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+            "versionEndIncluding": "2.9",
+        }]
+
+        mock_get.return_value = [
+            {"id": "legacy", "metadata": {}},
+            {"id": "old", "metadata": {
+                "affected_cpes_json": json.dumps(incompatible_matches),
+            }},
+            {"id": "terrapin", "metadata": {
+                "affected_cpes_json": json.dumps(compatible_matches),
+            }},
+        ]
+
+        results = json.loads(cve_search("OpenSSH 9.2"))
+
+        assert [result["id"] for result in results] == ["terrapin", "legacy", "old"]
+        assert [result["compatibility"]["status"] for result in results] == [
+            "compatible", "indeterminate", "incompatible",
+        ]
+        assert mock_get.call_args.kwargs["top_k"] == 20
+        assert "cached_filter" not in mock_get.call_args.kwargs
 
 
 class TestSearchHistory:

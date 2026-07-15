@@ -308,6 +308,11 @@ def nvd_lookup(query: str, top_k: int = 10) -> str:
                     "cvss_score": r.cvss_score,
                     "severity": r.severity,
                     "attack_vector": r.attack_vector,
+                    "compatibility": {
+                        "status": r.compatibility_status,
+                        "reason": r.compatibility_reason,
+                        "matched_cpes": r.matched_cpes,
+                    },
                 }
                 for r in results[:top_k]
             ]

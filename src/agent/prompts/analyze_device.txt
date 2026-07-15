@@ -120,9 +120,11 @@ Add findings that automated extraction CANNOT detect:
 
 1. **CVE matching**: For each software version found in the scan results, call cve_search(query).
    - Build queries from detected versions: "OpenSSH 9.2", "nginx 1.22", "Mosquitto 2.0.21"
-   - Apply STRICT version checking — only include CVEs where the detected version is INSIDE the vulnerable range.
-   - Do NOT include CVEs for versions that are patched (detected version >= fix version).
-   - Do NOT include CVEs with year >= 2026 (hallucination) or year <= 2014 (too old).
+   - Apply strict evidence checking: a confirmed finding normally requires the detected version INSIDE the vulnerable range. Keep uncertain candidates available as potential/indeterminate instead of silently discarding them.
+   - A version at or above the documented fix is incompatible by default; override only with concrete authoritative evidence that the published mapping is incomplete or stale.
+   - cve_search classifies every candidate as compatible, conditional, indeterminate, or incompatible from NVD CPE ranges; it does not delete candidates.
+   - Treat the classification as evidence: investigate conditional/indeterminate results. Normally reject incompatible results, but you may override that label when concrete scan evidence and an authoritative affected-range source demonstrate that the NVD mapping is incomplete or stale. State the evidence explicitly.
+   - Do NOT reject solely from the CVE year. Product, version range, and required runtime conditions determine compatibility.
    - Do NOT search CVEs for `NATO-Benchmark-Simulator`; it is an explicit local fixture, not a vendor product.
 
 2. **Data exposure deep analysis**: If scan results show accessible HTTP paths with sensitive content,

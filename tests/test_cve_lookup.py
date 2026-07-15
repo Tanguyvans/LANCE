@@ -9,6 +9,9 @@ from src.cve_lookup import (
     CVEResult,
     DeviceCVEReport,
     _parse_cve_item,
+    classify_cve_compatibility,
+    classify_cve_results,
+    cve_matches_query,
     load_cpe_mapping,
     query_nvd,
     scan_device,
@@ -17,6 +20,18 @@ from src.cve_lookup import (
 CPE_MAPPING_PATH = (
     Path(__file__).resolve().parent.parent / "infrastructure" / "cpe_mapping.yaml"
 )
+
+ROUTEROS_CONFIGURATIONS = [{
+    "nodes": [{
+        "operator": "OR",
+        "cpeMatch": [{
+            "vulnerable": True,
+            "criteria": "cpe:2.3:o:mikrotik:routeros:*:*:*:*:*:*:*:*",
+            "versionStartIncluding": "7.0",
+            "versionEndExcluding": "7.19",
+        }],
+    }],
+}]
 
 SAMPLE_CVE_ITEM = {
     "cve": {
@@ -35,6 +50,7 @@ SAMPLE_CVE_ITEM = {
                 }
             ]
         },
+        "configurations": ROUTEROS_CONFIGURATIONS,
     }
 }
 
@@ -45,6 +61,7 @@ SAMPLE_CVE_ITEM_NO_METRICS = {
             {"lang": "en", "value": "A CVE with no CVSS score yet."}
         ],
         "metrics": {},
+        "configurations": ROUTEROS_CONFIGURATIONS,
     }
 }
 
@@ -64,6 +81,7 @@ class TestParseCVEItem:
         assert result.severity == "HIGH"
         assert result.attack_vector == "NETWORK"
         assert "RouterOS" in result.description
+        assert result.cpe_matches[0]["versionEndExcluding"] == "7.19"
 
     def test_parse_without_metrics(self):
         result = _parse_cve_item(SAMPLE_CVE_ITEM_NO_METRICS)
@@ -113,6 +131,99 @@ class TestQueryNVD:
         call_params = mock_get.call_args[0][0]
         assert "keywordSearch" in call_params
 
+    @patch("src.cve_lookup._nvd_get")
+    def test_query_by_exact_cve_id_is_not_version_filtered(self, mock_get):
+        mock_get.return_value = SAMPLE_NVD_RESPONSE
+        results = query_nvd("CVE-2023-12345")
+        assert len(results) == 2
+        assert mock_get.call_args[0][0]["cveId"] == "CVE-2023-12345"
+
+
+class TestCVECompatibility:
+    @staticmethod
+    def match(criteria: str, **bounds) -> list[dict]:
+        return [{"criteria": criteria, **bounds}]
+
+    def test_terrapin_matches_openssh_92_but_not_96(self):
+        matches = self.match(
+            "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+            versionEndExcluding="9.6",
+        )
+        assert cve_matches_query("OpenSSH 9.2", matches)
+        assert not cve_matches_query("OpenSSH 9.6", matches)
+
+    def test_old_openssh_cve_is_rejected_for_modern_version(self):
+        matches = self.match(
+            "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+            versionEndIncluding="2.9",
+        )
+        assert not cve_matches_query("OpenSSH 9.2", matches)
+
+    def test_old_nginx_cve_is_rejected_for_nginx_122(self):
+        matches = self.match(
+            "cpe:2.3:a:nginx:nginx:*:*:*:*:*:*:*:*",
+            versionEndExcluding="1.14.1",
+        )
+        assert not cve_matches_query("nginx 1.22", matches)
+
+    def test_product_mismatch_is_rejected(self):
+        mysql_matches = self.match(
+            "cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*",
+            versionEndIncluding="5.6",
+        )
+        assert not cve_matches_query("openSUSE Leap 5.6", mysql_matches)
+
+    def test_exact_mosquitto_version_matches(self):
+        matches = self.match(
+            "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"
+        )
+        assert cve_matches_query("mosquitto version 2.0.21", matches)
+        assert not cve_matches_query("mosquitto version 2.0.20", matches)
+
+    def test_common_apache_alias_matches_http_server_cpe(self):
+        matches = self.match(
+            "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+            versionEndExcluding="2.4.50",
+        )
+        assert cve_matches_query("Apache 2.4.49", matches)
+
+    def test_not_applicable_cpe_version_does_not_match_numeric_version(self):
+        matches = self.match("cpe:2.3:a:vendor:product:-:*:*:*:*:*:*:*")
+        assert not cve_matches_query("product 1.0", matches)
+
+    def test_product_only_query_remains_available(self):
+        assert cve_matches_query("OpenSSH", [])
+
+    def test_product_only_and_missing_config_are_indeterminate(self):
+        assert classify_cve_compatibility("OpenSSH", []).status == "indeterminate"
+        assert classify_cve_compatibility("OpenSSH 9.2", []).status == "indeterminate"
+
+    def test_conditional_match_is_not_promoted_to_unconditional(self):
+        matches = self.match(
+            "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+            versionEndExcluding="9.6",
+            conditional=True,
+        )
+        assert classify_cve_compatibility("OpenSSH 9.2", matches).status == "conditional"
+
+    def test_classification_keeps_and_ranks_all_results(self):
+        compatible = CVEResult(
+            "CVE-2023-48795", "Terrapin", cpe_matches=self.match(
+                "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+                versionEndExcluding="9.6",
+            )
+        )
+        incompatible = CVEResult(
+            "CVE-2001-0572", "Old OpenSSH", cpe_matches=self.match(
+                "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+                versionEndIncluding="2.9",
+            )
+        )
+        ranked = classify_cve_results("OpenSSH 9.2", [incompatible, compatible])
+        assert ranked == [compatible, incompatible]
+        assert compatible.compatibility_status == "compatible"
+        assert incompatible.compatibility_status == "incompatible"
+
 
 class TestScanDevice:
     @patch("src.cve_lookup.query_nvd")
@@ -125,6 +236,21 @@ class TestScanDevice:
         report = scan_device("mikrotik", "MikroTik RB5009", ["query1", "query2"])
         assert len(report.cves) == 2  # deduplicated
         assert report.device_id == "mikrotik"
+
+    @patch("src.cve_lookup.query_nvd")
+    def test_deduplication_keeps_best_compatibility_assessment(self, mock_query):
+        incompatible = CVEResult(
+            "CVE-2023-12345", "first", 9.8, compatibility_status="incompatible"
+        )
+        compatible = CVEResult(
+            "CVE-2023-12345", "better evidence", 7.5,
+            compatibility_status="compatible",
+        )
+        mock_query.side_effect = [[incompatible], [compatible]]
+
+        report = scan_device("device", "Device", ["query1", "query2"])
+
+        assert report.cves == [compatible]
 
     @patch("src.cve_lookup.query_nvd")
     def test_sorted_by_score(self, mock_query):

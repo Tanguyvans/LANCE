@@ -74,6 +74,19 @@ TOOL_GROUPS: dict[str, list[dict]] = {
     "intrusion": _build_intrusion_tools(),
 }
 
+# Phase 2 may use any non-mutating reconnaissance capability.  This list is a
+# phase/safety boundary, not a model-capability profile: every compared model
+# receives the same tools.  Credential use, remote execution, protocol writes,
+# payload generation, and arbitrary code/request primitives remain in their
+# dedicated exploitation/intrusion phases.
+RECON_READ_ONLY_TOOL_NAMES = frozenset({
+    "arp_scan", "curl_headers", "decode_value", "dig_query", "enum4linux",
+    "ftp_list", "gobuster_dir", "http_get", "modbus_scan", "mqtt_listen",
+    "nikto_scan", "nmap_discovery", "nmap_scan", "nuclei_scan", "nvd_lookup",
+    "openssl_inspect", "searchsploit", "smbclient_list", "sqlmap", "ssh_audit",
+    "tls_inspect", "traceroute", "whatweb", "wpscan",
+})
+
 # These tools cross the worker scratch/network boundary or query previous runs.
 # They remain useful in development but are never exposed to a sealed worker.
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
@@ -2039,7 +2052,7 @@ class Pipeline:
 
     @staticmethod
     def _recon_scan_plan(nodes: list) -> list[dict]:
-        """Return the exact per-device nmap calls required from the Recon expert."""
+        """Return the minimum per-device port coverage required from Recon."""
         plan = []
         for node in nodes:
             ip = node.get("ip", "")
@@ -2057,54 +2070,53 @@ class Pipeline:
 
     @classmethod
     def _build_nmap_groups(cls, nodes: list) -> str:
-        """Return the exact per-device nmap_scan call table shown to Recon.
-
-        Calls are deliberately per-device rather than grouped so the execution
-        contract can validate each target, port list, and completion state.
-        """
+        """Return the minimum per-device port coverage table shown to Recon."""
         plan = cls._recon_scan_plan(nodes)
         if not plan:
             return ""
 
-        lines = ["Mandatory nmap_scan ledger — call each row EXACTLY once:"]
+        lines = ["Minimum nmap coverage ledger — satisfy every row in any order:"]
         lines.append("")
-        lines.append("| Call # | Device | Role | target | ports | skip_discovery |")
-        lines.append("|--------|--------|------|--------|-------|----------------|")
+        lines.append("| Row | Device | Role | target | minimum ports | recommended skip_discovery |")
+        lines.append("|-----|--------|------|--------|---------------|----------------------------|")
         for call_n, item in enumerate(plan, 1):
             lines.append(
                 f"| {call_n} | `{item['device_id']}` | `{item['role']}` | "
                 f"`{item['target']}` | `{item['ports']}` | `true` |"
             )
         lines.append("")
-        lines.append(f"Total: {len(plan)} mandatory nmap_scan calls.")
+        lines.append(
+            f"Total: {len(plan)} devices requiring minimum port coverage. "
+            "A wider scan or several complementary scans also satisfy a row."
+        )
         return "\n".join(lines)
 
     def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
-        """Constrain Recon tools while leaving all tool decisions to the model.
+        """Enforce Recon invariants without prescribing the model's strategy.
 
-        The expert must execute discovery, read Phase 1, and complete the exact
-        topology-derived nmap ledger before save_deliverable is allowed.  Unique
-        in-scope follow-up nmap scans remain possible, with a small bounded budget.
+        All models receive the same non-mutating reconnaissance surface and may
+        choose call order, repeat observations, split port ranges, widen scans,
+        and use specialized probes.  The contract enforces only universal
+        invariants: network scope, a discovery/read baseline, minimum per-device
+        port coverage, and a non-empty validated deliverable at completion.
         """
-        allowed_names = {
-            "arp_scan", "nmap_discovery", "nmap_scan",
-            "read_deliverable", "save_deliverable",
-        }
+        supporting_names = {
+            tool["name"]
+            for group in (GRAPH_TOOLS, DELIVERABLE_TOOLS, SKILL_TOOLS)
+            for tool in group
+        } - {"search_history"}
+        allowed_names = RECON_READ_ONLY_TOOL_NAMES | supporting_names
         selected = [tool for tool in tools if tool["name"] in allowed_names]
 
         from src.agent.tools.graph_tools import _scenario_topology as topology
 
         nodes = (topology or {}).get("nodes", [])
         plan = self._recon_scan_plan(nodes)
-        expected_scans: dict[tuple[str, str, bool], dict] = {
-            (item["target"], item["ports"], True): item for item in plan
+        expected_scans: dict[str, dict] = {
+            item["target"]: item for item in plan
         }
-        completed_scans: set[tuple[str, str, bool]] = set()
+        covered_ports: dict[str, set[int]] = {}
         completed_calls: set[str] = set()
-        seen_signatures: set[tuple[str, str]] = set()
-        optional_scans = 0
-        max_optional_scans = 5
-        next_required_call: tuple[str, dict] | None = None
         target_subnets = [
             value for value in str(self.context.get("target_subnet", "")).split()
             if value
@@ -2112,10 +2124,64 @@ class Pipeline:
 
         def _in_scope(target: str) -> bool:
             try:
-                address = ipaddress.ip_address(target)
-                return any(address in ipaddress.ip_network(cidr, strict=False) for cidr in target_subnets)
+                candidate = ipaddress.ip_network(target, strict=False)
+                return any(
+                    candidate.subnet_of(ipaddress.ip_network(cidr, strict=False))
+                    for cidr in target_subnets
+                )
             except ValueError:
                 return False
+
+        def _out_of_scope_argument(kwargs: dict) -> str | None:
+            """Return the first explicit IPv4/CIDR outside the declared scope."""
+            target_fields = {"target", "host", "ip", "broker", "url"}
+            for field, value in kwargs.items():
+                if field not in target_fields or value is None:
+                    continue
+                for match in re.findall(r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?", str(value)):
+                    if not _in_scope(match):
+                        return match
+            return None
+
+        def _ports(spec: str) -> set[int]:
+            """Expand common nmap comma/range syntax into a coverage set."""
+            result: set[int] = set()
+            for token in str(spec).replace(" ", ",").split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                token = re.sub(r"^[TtUu]:", "", token)
+                if token == "-":
+                    result.update(range(1, 65536))
+                    continue
+                try:
+                    if "-" in token:
+                        start, end = (int(part) for part in token.split("-", 1))
+                        if 1 <= start <= end <= 65535:
+                            result.update(range(start, end + 1))
+                    else:
+                        port = int(token)
+                        if 1 <= port <= 65535:
+                            result.add(port)
+                except ValueError:
+                    continue
+            return result
+
+        def _succeeded(result: str) -> bool:
+            if str(result).startswith("Error"):
+                return False
+            try:
+                payload = json.loads(result)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return True
+            if not isinstance(payload, dict):
+                return True
+            return not (
+                payload.get("ok") is False
+                or bool(payload.get("error"))
+                or payload.get("status") == "ERROR"
+                or payload.get("return_code") not in (None, 0)
+            )
 
         def _discover_targets(result: str) -> None:
             """In blind mode, discovery results become the mandatory scan ledger."""
@@ -2137,8 +2203,7 @@ class Pipeline:
             for target in sorted(discovered):
                 if not _in_scope(target):
                     continue
-                key = (target, DEFAULT_PORTS, True)
-                expected_scans.setdefault(key, {
+                expected_scans.setdefault(target, {
                     "target": target,
                     "ports": DEFAULT_PORTS,
                     "skip_discovery": True,
@@ -2146,169 +2211,95 @@ class Pipeline:
                     "role": "discovered",
                 })
 
-        def _missing_contract_calls() -> list[str]:
-            missing = []
+        def _missing_requirements() -> list[dict]:
+            missing: list[dict] = []
             if "arp_scan" not in completed_calls:
-                missing.append("arp_scan({})")
+                missing.append({"requirement": "local_discovery", "tool": "arp_scan"})
             for subnet in target_subnets:
                 marker = f"nmap_discovery:{subnet}"
                 if marker not in completed_calls:
-                    missing.append(f'nmap_discovery({{"target":"{subnet}"}})')
+                    missing.append({
+                        "requirement": "subnet_discovery",
+                        "target": subnet,
+                        "tool": "nmap_discovery",
+                    })
             if "read_phase1" not in completed_calls:
-                missing.append('read_deliverable({"filename":"01_graph_analysis.md"})')
-            for key, item in expected_scans.items():
-                if key not in completed_scans:
-                    missing.append(
-                        "nmap_scan("
-                        + json.dumps({
-                            "target": item["target"],
-                            "ports": item["ports"],
-                            "skip_discovery": True,
-                        }, separators=(",", ":"))
-                        + ")"
-                    )
+                missing.append({
+                    "requirement": "phase1_context",
+                    "filename": "01_graph_analysis.md",
+                    "tool": "read_deliverable",
+                })
+            for target, item in expected_scans.items():
+                required = _ports(item["ports"])
+                absent = sorted(required - covered_ports.get(target, set()))
+                if absent:
+                    missing.append({
+                        "requirement": "minimum_port_coverage",
+                        "target": target,
+                        "missing_ports": absent,
+                        "suggested_tool": "nmap_scan",
+                    })
             return missing
-
-        def _next_contract_call() -> tuple[str, dict] | None:
-            """Return the first incomplete mandatory call in execution order."""
-            if "arp_scan" not in completed_calls:
-                return "arp_scan", {}
-            for subnet in target_subnets:
-                if f"nmap_discovery:{subnet}" not in completed_calls:
-                    return "nmap_discovery", {"target": subnet}
-            if "read_phase1" not in completed_calls:
-                return "read_deliverable", {"filename": "01_graph_analysis.md"}
-            for key, item in expected_scans.items():
-                if key not in completed_scans:
-                    return "nmap_scan", {
-                        "target": item["target"],
-                        "ports": item["ports"],
-                        "skip_discovery": True,
-                    }
-            return None
-
-        def _contract_args(name: str, kwargs: dict) -> dict:
-            """Keep only arguments relevant to the Recon execution contract."""
-            if name == "arp_scan":
-                return {} if not kwargs else kwargs
-            if name == "nmap_discovery":
-                return {"target": str(kwargs.get("target", ""))}
-            if name == "read_deliverable":
-                return {"filename": kwargs.get("filename")}
-            if name == "nmap_scan":
-                return {
-                    "target": str(kwargs.get("target", "")),
-                    "ports": str(kwargs.get("ports", "")),
-                    "skip_discovery": kwargs.get("skip_discovery") is True,
-                }
-            return kwargs
 
         def _error(kind: str, message: str, **extra) -> str:
             return json.dumps({"ok": False, "error_kind": kind, "error": message, **extra})
 
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
-                nonlocal optional_scans, next_required_call
-                contract_kwargs = _contract_args(name, kwargs)
-
-                # A premature save switches the contract into a one-step
-                # correction mode.  This prevents the model from wandering
-                # through duplicate/optional scans while still requiring it to
-                # make the actual tool call itself.
-                if next_required_call is not None:
-                    required_name, required_args = next_required_call
-                    if name != required_name or contract_kwargs != required_args:
-                        return _error(
-                            "recon_next_call_required",
-                            "Call the exact mandatory tool below before any other Recon action",
-                            next_required_call={
-                                "name": required_name,
-                                "arguments": required_args,
-                            },
-                        )
-                    next_required_call = None
-
-                signature = (
-                    name,
-                    json.dumps(contract_kwargs, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
-                )
-                if signature in seen_signatures and name != "save_deliverable":
-                    return _error("duplicate_recon_call", f"Duplicate Recon call rejected: {name}")
+                outside = _out_of_scope_argument(kwargs)
+                if outside is not None:
+                    return _error(
+                        "invalid_recon_target",
+                        f"Out-of-scope Recon target: {outside}",
+                        allowed_subnets=target_subnets,
+                    )
 
                 if name == "arp_scan":
                     if kwargs:
                         return _error("invalid_recon_args", "arp_scan must be called without arguments")
-                    seen_signatures.add(signature)
                     result = original_fn(**kwargs)
-                    completed_calls.add("arp_scan")
+                    if _succeeded(result):
+                        completed_calls.add("arp_scan")
                     _discover_targets(result)
                     return result
 
                 if name == "nmap_discovery":
-                    target = contract_kwargs["target"]
-                    if target not in target_subnets:
-                        return _error(
-                            "invalid_recon_target",
-                            "nmap_discovery must target the declared subnet",
-                            allowed_targets=target_subnets,
-                        )
-                    seen_signatures.add(signature)
-                    result = original_fn(**contract_kwargs)
-                    completed_calls.add(f"nmap_discovery:{target}")
+                    target = str(kwargs.get("target", ""))
+                    result = original_fn(target=target)
+                    if _succeeded(result) and target in target_subnets:
+                        completed_calls.add(f"nmap_discovery:{target}")
                     _discover_targets(result)
                     return result
 
                 if name == "read_deliverable":
-                    if contract_kwargs["filename"] != "01_graph_analysis.md":
-                        return _error(
-                            "invalid_recon_read",
-                            "Recon may read only 01_graph_analysis.md before completion",
-                        )
-                    seen_signatures.add(signature)
-                    result = original_fn(**contract_kwargs)
-                    completed_calls.add("read_phase1")
+                    result = original_fn(**kwargs)
+                    if (
+                        kwargs.get("filename") == "01_graph_analysis.md"
+                        and _succeeded(result)
+                    ):
+                        completed_calls.add("read_phase1")
                     return result
 
                 if name == "nmap_scan":
-                    target = contract_kwargs["target"]
-                    ports = contract_kwargs["ports"]
-                    skip_discovery = contract_kwargs["skip_discovery"]
-                    key = (target, ports, skip_discovery)
-                    if key in expected_scans:
-                        seen_signatures.add(signature)
-                        result = original_fn(**contract_kwargs)
-                        completed_scans.add(key)
-                        return result
-                    if not _in_scope(target):
-                        return _error("invalid_recon_target", f"Out-of-scope nmap target: {target}")
-                    if not ports or not skip_discovery:
-                        return _error(
-                            "invalid_recon_args",
-                            "Follow-up scans require explicit ports and skip_discovery=true",
+                    target = str(kwargs.get("target", ""))
+                    result = original_fn(**kwargs)
+                    if _succeeded(result) and target in expected_scans:
+                        covered_ports.setdefault(target, set()).update(
+                            _ports(str(kwargs.get("ports", "")))
                         )
-                    if optional_scans >= max_optional_scans:
-                        return _error("recon_followup_budget", "Optional Recon scan budget exhausted")
-                    optional_scans += 1
-                    seen_signatures.add(signature)
-                    return original_fn(**contract_kwargs)
+                    return result
 
                 if name == "save_deliverable":
-                    missing = _missing_contract_calls()
+                    missing = _missing_requirements()
                     if missing:
-                        next_required_call = _next_contract_call()
-                        required_name, required_args = next_required_call
                         return _error(
                             "recon_contract_incomplete",
-                            "Recon cannot finish yet; call the exact mandatory tool below next",
-                            next_required_call={
-                                "name": required_name,
-                                "arguments": required_args,
-                            },
-                            remaining_call_count=len(missing),
+                            "Recon cannot finish until all minimum evidence requirements are satisfied; strategy and call order remain free",
+                            missing_requirements=missing,
                         )
                     return original_fn(**kwargs)
 
-                return _error("forbidden_recon_tool", f"Tool not allowed in Recon: {name}")
+                return original_fn(**kwargs)
 
             return guarded
 

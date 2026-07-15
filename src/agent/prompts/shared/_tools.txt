@@ -15,7 +15,7 @@
 - **curl_headers(url)** — HTTP headers + body. Detects: missing security headers, directory listings ("Index of" in body), exposed sensitive files. Use on /backup/, /config/, /admin/ paths.
 - **mqtt_listen(broker, topic?, count?, timeout?)** — Passive MQTT listener. topic="#" by default, count=10, timeout=5s. return_code=0 or 27 → anonymous access CONFIRMED. return_code=5 → auth required.
 - **modbus_scan(target, skip_discovery?)** — nmap -sV -p 502. Port 502 open = Modbus TCP (no auth, HIGH severity). Use on PLC/SCADA/HMI devices.
-- **nvd_lookup(query)** — Direct NIST NVD query (no cache). Prefer **cve_search** instead — it is faster and caches results. Use nvd_lookup only if cve_search is unavailable.
+- **nvd_lookup(query)** — Direct NIST NVD query (no cache). Candidates are annotated and ranked by NVD product/version compatibility; none are removed. Prefer **cve_search** instead.
 
 
 
@@ -23,7 +23,7 @@
 - **list_skills()** — [DO NOT USE] The available skills are already listed below. Do not waste tokens calling this.
 - **load_skill(skill_name)** — Load a full skill document for detailed methodology. Use the list below to find skill names.
 - **search_knowledge(query, collection?, top_k?)** — Semantic search across CVE knowledge and skills
-- **cve_search(query, top_k?)** — **Preferred CVE lookup.** Searches local cache first (fast), falls back to live NVD on miss and caches the result. Use this instead of nvd_lookup.
+- **cve_search(query, top_k?)** — **Preferred CVE lookup.** Searches local cache first, falls back to live NVD, and returns candidates ranked as `compatible`, `conditional`, `indeterminate`, or `incompatible`. Classification is advisory evidence and never suppresses a candidate. Always include the detected version.
 - **search_history(query, device_id?, top_k?)** — Search previous run findings for a device or vulnerability type
 
 **Available skills for this phase:**

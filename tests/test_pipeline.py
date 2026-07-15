@@ -74,7 +74,7 @@ class TestResolveTools:
 
 
 class TestReconToolContract:
-    def test_requires_exact_model_executed_scan_ledger(
+    def test_requires_minimum_evidence_without_prescribing_call_order(
         self, mock_provider, output_dir, monkeypatch
     ):
         import src.agent.tools.graph_tools as graph_tools
@@ -108,27 +108,27 @@ class TestReconToolContract:
             tool("read_deliverable", '{"content":"phase1"}'),
             tool("save_deliverable", '{"status":"saved"}'),
             tool("ssh_audit"),
+            tool("ssh_exec"),
         ]
         guarded = {
             item["name"]: item["function"]
             for item in pipeline._apply_recon_tool_contract(tools)
         }
 
-        assert "ssh_audit" not in guarded
+        assert "ssh_audit" in guarded
+        assert "ssh_exec" not in guarded
         early = json.loads(guarded["save_deliverable"](
             filename="02_recon.md", content="report"
         ))
         assert early["error_kind"] == "recon_contract_incomplete"
-        assert early["next_required_call"] == {
-            "name": "arp_scan", "arguments": {},
+        requirements = {item["requirement"] for item in early["missing_requirements"]}
+        assert requirements == {
+            "local_discovery", "subnet_discovery", "phase1_context",
+            "minimum_port_coverage",
         }
 
-        wrong = json.loads(guarded["nmap_scan"](
-            target="192.168.100.200", ports="80", skip_discovery=True
-        ))
-        assert wrong["error_kind"] == "recon_next_call_required"
-        assert wrong["next_required_call"] == early["next_required_call"]
-
+        # A specialized safe probe may run before the mandatory baseline.
+        guarded["ssh_audit"](host="192.168.100.1")
         guarded["arp_scan"]()
         guarded["nmap_discovery"](target="192.168.100.0/24")
         guarded["read_deliverable"](filename="01_graph_analysis.md")
@@ -144,11 +144,12 @@ class TestReconToolContract:
         ))
         assert saved["status"] == "saved"
         assert [name for name, _ in calls].count("nmap_scan") == 2
+        assert calls[0][0] == "ssh_audit"
 
-    def test_premature_save_requires_missing_mqtt_scan_next(
+    def test_wider_split_and_repeated_scans_are_valid_strategies(
         self, mock_provider, output_dir, monkeypatch
     ):
-        """Regression: a late save cannot deadlock Recon in duplicate scans."""
+        """A capable model may widen, split, reorder, and repeat its scans."""
         import src.agent.tools.graph_tools as graph_tools
 
         monkeypatch.setattr(graph_tools, "_scenario_topology", {
@@ -183,40 +184,51 @@ class TestReconToolContract:
         )
         guarded["read_deliverable"](filename="01_graph_analysis.md")
         plan = pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"])
-        mqtt_call = next(item for item in plan if item["target"] == "192.168.100.11")
         for item in plan:
-            if item is mqtt_call:
+            if item["target"] in {"192.168.100.1", "192.168.100.11"}:
                 continue
             guarded["nmap_scan"](
                 target=item["target"], ports=item["ports"], skip_discovery=True
             )
 
+        # A broad range satisfies the router's smaller minimum baseline.
+        guarded["nmap_scan"](
+            target="192.168.100.1", ports="1-9000", scripts="default,vuln"
+        )
+
         early = json.loads(guarded["save_deliverable"](
             filename="02_recon.md", content="report"
         ))
-        expected = {
-            "name": "nmap_scan",
-            "arguments": {
-                "target": mqtt_call["target"],
-                "ports": mqtt_call["ports"],
-                "skip_discovery": True,
-            },
-        }
-        assert early["next_required_call"] == expected
+        coverage = [
+            item for item in early["missing_requirements"]
+            if item["requirement"] == "minimum_port_coverage"
+        ]
+        assert coverage == [{
+            "requirement": "minimum_port_coverage",
+            "target": "192.168.100.11",
+            "missing_ports": [22, 80, 1883, 8883],
+            "suggested_tool": "nmap_scan",
+        }]
 
-        wrong = json.loads(guarded["nmap_scan"](
-            target="192.168.100.200", ports="22,80,443", skip_discovery=True
+        outside = json.loads(guarded["nmap_scan"](
+            target="198.51.100.10", ports="22,80,443", skip_discovery=True
         ))
-        assert wrong["error_kind"] == "recon_next_call_required"
-        assert wrong["next_required_call"] == expected
+        assert outside["error_kind"] == "invalid_recon_target"
 
-        guarded["nmap_scan"](**expected["arguments"])
+        # Two complementary scans satisfy MQTT coverage; repeating one remains
+        # allowed when the model wants fresh or confirmatory evidence.
+        guarded["nmap_scan"](target="192.168.100.11", ports="22,80")
+        guarded["nmap_scan"](target="192.168.100.11", ports="1883,8883")
+        guarded["nmap_scan"](target="192.168.100.11", ports="1883,8883")
         saved = json.loads(guarded["save_deliverable"](
             filename="02_recon.md", content="report"
         ))
         assert saved["status"] == "ok"
+        assert execute.call_count == 10
 
-    def test_duplicate_scan_is_rejected(self, mock_provider, output_dir, monkeypatch):
+    def test_duplicate_in_scope_scan_is_not_rejected(
+        self, mock_provider, output_dir, monkeypatch
+    ):
         import src.agent.tools.graph_tools as graph_tools
 
         monkeypatch.setattr(graph_tools, "_scenario_topology", {"nodes": []})
@@ -231,10 +243,60 @@ class TestReconToolContract:
         }])[0]["function"]
 
         kwargs = {"target": "192.168.100.10", "ports": "80", "skip_discovery": True}
-        guarded(**kwargs)
-        duplicate = json.loads(guarded(**kwargs))
-        assert duplicate["error_kind"] == "duplicate_recon_call"
-        assert execute.call_count == 1
+        assert json.loads(guarded(**kwargs))["stdout"] == "ok"
+        assert json.loads(guarded(**kwargs))["stdout"] == "ok"
+        assert execute.call_count == 2
+
+    def test_failed_scan_does_not_satisfy_minimum_coverage(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [{"id": "web", "ip": "192.168.100.12", "role": "web_server"}]
+        })
+        pipeline = Pipeline(provider=mock_provider)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+        scan = MagicMock(side_effect=[
+            '{"stdout":"","stderr":"timeout","return_code":-1}',
+            '{"stdout":"open","stderr":"","return_code":0}',
+        ])
+
+        def constant(result):
+            return lambda **kwargs: result
+
+        tools = [
+            {"name": "arp_scan", "description": "arp", "input_schema": {},
+             "function": constant('{"hosts":[]}')},
+            {"name": "nmap_discovery", "description": "discovery", "input_schema": {},
+             "function": constant('{"stdout":"ok","return_code":0}')},
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": constant('{"content":"phase1"}')},
+            {"name": "nmap_scan", "description": "scan", "input_schema": {},
+             "function": scan},
+            {"name": "save_deliverable", "description": "save", "input_schema": {},
+             "function": constant('{"status":"saved"}')},
+        ]
+        guarded = {
+            item["name"]: item["function"]
+            for item in pipeline._apply_recon_tool_contract(tools)
+        }
+        guarded["arp_scan"]()
+        guarded["nmap_discovery"](target="192.168.100.0/24")
+        guarded["read_deliverable"](filename="01_graph_analysis.md")
+        ports = pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"])[0]["ports"]
+
+        guarded["nmap_scan"](target="192.168.100.12", ports=ports)
+        rejected = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        assert rejected["error_kind"] == "recon_contract_incomplete"
+
+        guarded["nmap_scan"](target="192.168.100.12", ports=ports)
+        saved = json.loads(guarded["save_deliverable"](
+            filename="02_recon.md", content="report"
+        ))
+        assert saved["status"] == "saved"
 
 
 class TestExploitEvidenceGuard:

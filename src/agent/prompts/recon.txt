@@ -30,41 +30,40 @@ Your deliverable is the port/service map used by all subsequent phases.
 <instructions>
 IMPORTANT: Execute ALL steps below autonomously, one after the other, without pausing.
 TURN BUDGET: You have at most 50 turns. Aim to call save_deliverable by turn 45.
-RULE: Call read_deliverable EXACTLY ONCE. Never call search_history more than once.
-RULE: Do NOT call ssh_audit, curl_headers, or mqtt_listen — those are reserved for Phase 3.
-RULE: NEVER call modbus_scan — it times out and Phase 3 scanner handles Modbus automatically.
-RULE: NEVER use udp_scan=True without a ports= value. NEVER use udp_scan in Phase 2 at all.
+RULE: Reconnaissance must remain non-destructive. Credential use, remote execution,
+protocol writes, payload generation, and arbitrary code execution belong to later phases.
+RULE: Keep every explicit network target inside {{target_subnet}}.
 RULE: The report template is SHORT (3 sections, 3 tables). Fill it quickly — do not elaborate.
 
-## Step 1 — Discovery (mandatory tool calls)
-1. Call arp_scan() to list live hosts.
-2. Call nmap_discovery(target="{{target_subnet}}") to scan the subnet.
-3. Call read_deliverable("01_graph_analysis.md") for the device list.
+## Minimum evidence requirements
+Before saving, obtain all of the following. Their order is entirely your choice:
+1. Local discovery evidence from arp_scan().
+2. Subnet discovery evidence from nmap_discovery(target="{{target_subnet}}").
+3. The theoretical device context from read_deliverable("01_graph_analysis.md").
+4. The minimum per-device port coverage listed below.
 
-## Step 2 — Port scans
-**MANDATORY: follow the scan ledger below EXACTLY — one nmap_scan call per row.**
-The pipeline will reject save_deliverable until every row has completed successfully.
-Do not change target, ports, or skip_discovery.
+## Port coverage baseline
+The ledger is a minimum evidence baseline, not a prescribed sequence of calls.
 
 {{nmap_scan_groups}}
 
-Always use skip_discovery=true on every nmap_scan call.
-IMPORTANT: Once you have made all the calls in the table above, go directly to Step 3.
-If {{nmap_scan_groups}} is empty (discovery mode), nmap_discovery results create the mandatory ledger dynamically. Scan each discovered in-scope IP with explicit ports and skip_discovery=true.
+- You may satisfy a row with one exact scan, a wider scan, or several complementary scans.
+- You may scan devices in any order and repeat a scan when fresh evidence is useful.
+- You may add ports, scripts, version detection, UDP probes, and specialized read-only
+  reconnaissance tools when observations justify them.
+- Additional in-scope scans are not capped by a fixed pipeline budget; the common
+  turn budget remains the fairness and cost boundary for every model.
+- If the ledger is empty (blind discovery mode), discovered in-scope hosts create
+  a minimum coverage requirement dynamically.
 
-Only these tools are available in Phase 2: arp_scan, nmap_discovery, nmap_scan,
-read_deliverable, save_deliverable. Do not request aliases such as `scan`, and do
-not request ssh_audit or service-exploitation tools.
-
-## Step 3 — Document and save
+## Document and save
 For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
-For IPs not individually scanned (budget limit), document them using nmap_discovery results.
-Then immediately call save_deliverable.
+Document failures as evidence rather than inventing results. Then call save_deliverable.
 
-## Step 4 — Completion checklist (MANDATORY before save_deliverable)
-- [ ] All rows from the nmap_scan_groups table have been called
+## Completion checklist (MANDATORY before save_deliverable)
+- [ ] Every row has its minimum port coverage (possibly through wider or split scans)
 - [ ] Every discovered IP documented (scanned or noted from discovery)
-- [ ] No modbus_scan or udp_scan calls made
+- [ ] All active probes remained non-destructive and inside scope
 Fill the template with ALL results, then call save_deliverable.
 </instructions>
 
