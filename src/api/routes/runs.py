@@ -9,11 +9,12 @@ import zipfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
@@ -431,35 +432,58 @@ def score_run(run_id: str):
 
 
 class LLMJudgeRequest(BaseModel):
-    model: str
-    provider: str
+    model: str = Field(min_length=1, max_length=200)
+    provider: str = Field(min_length=1, max_length=50, pattern=r"^[A-Za-z0-9._-]+$")
 
 @router.post("/{run_id}/evaluate/llm")
 def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
     run_dir = _resolve_run_dir(run_id)
     if _is_sealed_run(run_dir):
         raise HTTPException(status_code=403, detail="Sealed runs cannot be re-evaluated")
+    if not request.model.strip():
+        raise HTTPException(status_code=400, detail="Judge model must not be blank")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", request.provider):
+        raise HTTPException(status_code=400, detail="Invalid judge provider")
 
-    meta_file = run_dir / "scenario_meta.json"
-    if not meta_file.exists():
-        raise HTTPException(status_code=404, detail="scenario_meta.json not found")
-    
     try:
-        scenario_id = json.loads(meta_file.read_text()).get("scenario_id")
-    except json.JSONDecodeError as exc:
+        meta = _read_scenario_meta(run_dir)
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Corrupt scenario_meta.json: {exc}") from exc
-        
-    scenario_id = _normalized_scenario_id(scenario_id)
-    gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
-    if not gt_path.exists():
-        raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
+    if meta is None:
+        raise HTTPException(status_code=404, detail="scenario_meta.json not found")
+    if meta.get("scenario_id") is None:
+        raise HTTPException(status_code=400, detail="scenario_id missing from metadata")
+    scenario_id = _normalized_scenario_id(meta.get("scenario_id"))
+
+    if meta.get("custom_config"):
+        gt_path = run_dir / "ground_truth.yaml"
+        if not gt_path.is_file() or gt_path.is_symlink():
+            raise HTTPException(status_code=404, detail="Custom ground truth not generated")
+    else:
+        gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+        if not gt_path.exists():
+            raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
+        try:
+            gt_data = yaml.safe_load(gt_path.read_text(encoding="utf-8")) or {}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Invalid trusted ground truth: {exc}") from exc
+        if str(gt_data.get("scenario_id")) != scenario_id:
+            raise HTTPException(status_code=500, detail="Trusted ground truth scenario mismatch")
+
+    bench_llm_file = run_dir / "benchmark_llm.json"
+    if bench_llm_file.is_symlink():
+        raise HTTPException(status_code=400, detail="benchmark_llm.json must not be a symlink")
 
     try:
         from src.agent.judge import evaluate_with_llm
         llm_score = evaluate_with_llm(run_dir, gt_path, request.model, request.provider)
-        
-        bench_llm_file = run_dir / "benchmark_llm.json"
-        bench_llm_file.write_text(json.dumps(llm_score, indent=2))
+
+        tmp_file = run_dir / f".benchmark_llm.{uuid4().hex}.tmp"
+        try:
+            tmp_file.write_text(json.dumps(llm_score, indent=2), encoding="utf-8")
+            tmp_file.replace(bench_llm_file)
+        finally:
+            tmp_file.unlink(missing_ok=True)
         return llm_score
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"LLM Judge failed: {exc}") from exc

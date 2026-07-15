@@ -631,6 +631,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                         "details": p3.get("details", ""),
                         "evidence": p3.get("evidence", ""),
                         "evidence_level": 1,
+                        "remediation": p3.get("remediation", ""),
                         "cve_ids": p3.get("cve_ids", []),
                     })
                 continue
@@ -643,6 +644,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                 "details": t.get("description") or t.get("details", ""),
                 "evidence": t.get("evidence", ""),
                 "evidence_level": t.get("evidence_level", 0),
+                "remediation": t.get("remediation", ""),
                 "cve_ids": _sanitize_cve_ids(t.get("cve_ids", [])),
             })
         if findings:

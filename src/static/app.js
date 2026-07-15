@@ -161,7 +161,11 @@ document.getElementById('btn-judge-run').onclick = async () => {
                 provider: opt.dataset.provider || 'openrouter'
             })
         });
-        if (!res.ok) throw new Error(res.statusText);
+        if (!res.ok) {
+            let detail = res.statusText;
+            try { detail = (await res.json()).detail || detail; } catch (_) {}
+            throw new Error(detail);
+        }
         await loadBenchmark();
         viewRun(activeRunId);
     } catch (e) {
@@ -2237,13 +2241,26 @@ function renderBenchmarkTable() {
 
     let scoreLlmCell = noScore;
     if (llmData) {
-        let tooltip = `Modèle: ${escapeHtml(llmData.model || '?')}\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}`;
+        const judgeScore = llmData.scenario_score ?? llmData.f1_score ?? llmData.specificity;
+        let tooltip = `Modèle: ${escapeHtml(llmData.model || '?')}\nFournisseur: ${escapeHtml(llmData.provider || '?')}`;
+        if (llmData.specificity != null) {
+          tooltip += `\nSpécificité: ${pct(llmData.specificity)}`;
+        } else {
+          tooltip += `\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}`;
+        }
+        tooltip += `\nTP/FP/FN: ${Number(llmData.true_positives || 0)}/${Number(llmData.false_positives || 0)}/${Number(llmData.false_negatives || 0)}`;
+        if (llmData.duplicate_findings) tooltip += `\nDoublons: ${Number(llmData.duplicate_findings)}`;
+        if (llmData.prompt_version) tooltip += `\nPrompt: v${escapeHtml(llmData.prompt_version)}`;
+        if (llmData.input_tokens != null) tooltip += `\nTokens: ${Number(llmData.input_tokens || 0) + Number(llmData.output_tokens || 0)}`;
+        if (llmData.cost_usd != null) tooltip += `\nCoût juge: $${Number(llmData.cost_usd).toFixed(6)}`;
         let extra = '';
         if (llmData.clarity_score != null) {
-            tooltip += `\nClarté: ${llmData.clarity_score}/5\nRemédiation: ${llmData.remediation_score}/5`;
-            extra = ` <span style="font-size:10px;color:var(--text)" title="Score qualitatif (Clarté & Remédiation)">📝${llmData.clarity_score}</span>`;
+            const clarity = Number(llmData.clarity_score);
+            tooltip += `\nClarté: ${clarity.toFixed(2)}/5`;
+            if (llmData.remediation_score != null) tooltip += `\nRemédiation: ${Number(llmData.remediation_score).toFixed(2)}/5`;
+            extra = ` <span style="font-size:10px;color:var(--text)" title="Score qualitatif moyen">📝${clarity.toFixed(2)}</span>`;
         }
-        scoreLlmCell = `<span title="${tooltip}" style="cursor:help">${pct(llmData.f1_score)} 🤖${extra}</span>`;
+        scoreLlmCell = `<span title="${tooltip}" style="cursor:help">${pct(judgeScore)} 🤖${extra}</span>`;
     }
 
     // Match quality breakdown: % of each method
@@ -2316,7 +2333,7 @@ function renderBenchmarkTable() {
       <td>${f1 != null ? pct(f1) : noScore}</td>
       <td>${weightedCell}</td>
       <td>${scorePct}</td>
-      <td style="font-weight:600;color:${barColor(llmData ? llmData.f1_score : null)}">${scoreLlmCell}</td>
+      <td style="font-weight:600;color:${barColor(llmData ? (llmData.scenario_score ?? llmData.f1_score ?? llmData.specificity) : null)}">${scoreLlmCell}</td>
       <td style="font-size:11px">${qualityCell}</td>
       <td>${sevCell}</td>
       <td>${hallucCell}</td>
