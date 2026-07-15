@@ -536,6 +536,67 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 1
         save.assert_called_once_with(filename="result.md", content="done")
 
+    def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
+        """Interleaved duplicate calls must switch the model to save-only mode."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        def response(tool_name, arguments, call_id):
+            tool_call = MagicMock()
+            tool_call.function.name = tool_name
+            tool_call.function.arguments = arguments
+            tool_call.id = call_id
+            message = MagicMock(content=None, tool_calls=[tool_call])
+            choice = MagicMock(finish_reason="tool_calls", message=message)
+            return MagicMock(choices=[choice], usage=None)
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            response("scan", '{"target":"a"}', "call_a1"),
+            response("scan", '{"target":"b"}', "call_b1"),
+            response("scan", '{"target":"a"}', "call_a2"),
+            response("scan", '{"target":"b"}', "call_b2"),
+            response("scan", '{"target":"a"}', "call_a3"),
+            response(
+                "save_deliverable",
+                '{"filename":"result.md","content":"done"}',
+                "call_save",
+            ),
+        ]
+        scan = MagicMock(return_value='{"status":"scanned"}')
+        save = MagicMock(return_value='{"status":"saved"}')
+        tools = [
+            {"name": "scan", "description": "scan", "input_schema": {}, "function": scan},
+            {
+                "name": "save_deliverable",
+                "description": "save",
+                "input_schema": {},
+                "function": save,
+            },
+        ]
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=tools,
+            max_turns=10,
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+        )
+
+        assert scan.call_count == 4
+        save.assert_called_once_with(filename="result.md", content="done")
+        final_request_tools = (
+            provider.client.chat.completions.create.call_args_list[-1]
+            .kwargs["tools"]
+        )
+        assert [tool["function"]["name"] for tool in final_request_tools] == [
+            "save_deliverable"
+        ]
+
 
 class TestStripCodeFences:
     """Tests for _strip_code_fences — the fallback content sanitizer."""

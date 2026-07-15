@@ -155,14 +155,18 @@ class LLMProvider:
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
         reminder_sent = False
-        recent_calls: list[tuple[str, str]] = []
+        call_counts: dict[tuple[str, str], int] = {}
+        completion_only = False
         _REPEAT_THRESHOLD = 3
+
+        terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
+            active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
             response = _call_with_retry(
                 self.client.messages.create,
-                model=self.model, max_tokens=max_tokens, system=system_prompt, tools=api_tools, messages=messages
+                model=self.model, max_tokens=max_tokens, system=system_prompt, tools=active_api_tools, messages=messages
             )
             text_parts = []
             tool_calls = []
@@ -177,7 +181,7 @@ class LLMProvider:
                 cost_tracker.record_turn(input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, tool_call_count=len(tool_calls))
 
             if not tool_calls:
-                if required_tool and not required_tool_called and not reminder_sent:
+                if required_tool and not required_tool_called and (completion_only or not reminder_sent):
                     reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
                     messages.append({"role": "assistant", "content": response.content})
                     messages.append({"role": "user", "content": reminder})
@@ -192,17 +196,21 @@ class LLMProvider:
             # Execute tools (parallel)
             from concurrent.futures import ThreadPoolExecutor
 
+            completion_only_at_turn = completion_only
             repeated_tool_ids: set[str] = set()
             for tc in tool_calls:
                 call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
-                recent_calls.append(call_sig)
-                if (len(recent_calls) >= _REPEAT_THRESHOLD
-                        and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
+                call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
+                if call_counts[call_sig] >= _REPEAT_THRESHOLD:
                     repeated_tool_ids.add(tc.id)
+                    if required_tool:
+                        completion_only = True
 
             def _maybe_execute_anthropic(tc):
+                if completion_only_at_turn and required_tool and tc.name != required_tool:
+                    return json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
                 if tc.id in repeated_tool_ids:
-                    return json.dumps({"ok": False, "error": f"Tool {tc.name} called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable.", "error_kind": "repeated_call"})
+                    return json.dumps({"ok": False, "error": f"Tool {tc.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
                 return self._execute_tool(tc.name, tc.input, tool_map)
 
             if stream_callback:
@@ -239,15 +247,22 @@ class LLMProvider:
         required_tool_called = False
         reminder_sent = False
         last_nonempty_text = ""
-        recent_calls: list[tuple[str, str]] = []
+        call_counts: dict[tuple[str, str], int] = {}
+        completion_only = False
         _REPEAT_THRESHOLD = 3
+
+        terminal_api_tools = [
+            tool for tool in api_tools
+            if tool["function"]["name"] == required_tool
+        ]
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
+            active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
             try:
                 response = _call_with_retry(
                     self.client.chat.completions.create,
-                    model=self.model, messages=messages, tools=api_tools, max_tokens=max_tokens, parallel_tool_calls=False
+                    model=self.model, messages=messages, tools=active_api_tools, max_tokens=max_tokens, parallel_tool_calls=False
                 )
             except Exception as exc:
                 # MiniMax (and some OpenAI-compatible APIs) return 400 when the conversation
@@ -303,7 +318,7 @@ class LLMProvider:
                 last_nonempty_text = message.content
 
             if not message.tool_calls:
-                if required_tool and not required_tool_called and not reminder_sent:
+                if required_tool and not required_tool_called and (completion_only or not reminder_sent):
                     messages.append({"role": "assistant", "content": message.content or ""})
                     messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
                     reminder_sent = True
@@ -343,16 +358,23 @@ class LLMProvider:
             messages.append(message)
 
             terminate_now = False
+            completion_only_at_turn = completion_only
             for tc in message.tool_calls:
                 try: args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except: args = {}
                 if stream_callback: stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
-                call_sig = (tc.function.name, tc.function.arguments or "")
-                recent_calls.append(call_sig)
-                if (len(recent_calls) >= _REPEAT_THRESHOLD
-                        and len(set(recent_calls[-_REPEAT_THRESHOLD:])) == 1):
-                    res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments. Change approach or call save_deliverable.", "error_kind": "repeated_call"})
+                canonical_args = json.dumps(
+                    args, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                )
+                call_sig = (tc.function.name, canonical_args)
+                call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
+                if completion_only_at_turn and required_tool and tc.function.name != required_tool:
+                    res = json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
+                elif call_counts[call_sig] >= _REPEAT_THRESHOLD:
+                    res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
+                    if required_tool:
+                        completion_only = True
                 else:
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
