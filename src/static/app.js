@@ -2251,6 +2251,8 @@ function renderBenchmarkTable() {
         tooltip += `\nTP/FP/FN: ${Number(llmData.true_positives || 0)}/${Number(llmData.false_positives || 0)}/${Number(llmData.false_negatives || 0)}`;
         if (llmData.duplicate_findings) tooltip += `\nDoublons: ${Number(llmData.duplicate_findings)}`;
         if (llmData.prompt_version) tooltip += `\nPrompt: v${escapeHtml(llmData.prompt_version)}`;
+        if (llmData.judge_attempts) tooltip += `\nTentatives: ${Number(llmData.judge_attempts)}`;
+        if (llmData.finish_reason) tooltip += `\nArrêt: ${escapeHtml(llmData.finish_reason)}`;
         if (llmData.input_tokens != null) tooltip += `\nTokens: ${Number(llmData.input_tokens || 0) + Number(llmData.output_tokens || 0)}`;
         if (llmData.cost_usd != null) tooltip += `\nCoût juge: $${Number(llmData.cost_usd).toFixed(6)}`;
         let extra = '';

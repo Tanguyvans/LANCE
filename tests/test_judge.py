@@ -188,3 +188,89 @@ def test_evaluate_sends_evidence_and_records_provenance(tmp_path, monkeypatch):
     assert result["input_tokens"] == 100
     assert result["output_tokens"] == 20
     assert result["cost_usd"] == pytest.approx(0.00045)
+
+
+def test_extract_json_accepts_literal_newline_inside_string():
+    content = (
+        '{"assessments":[{"llm_finding_id":0,"verdict":"false_positive",'
+        '"gt_vuln_id":null,"reasoning":"first line\nsecond line",'
+        '"clarity_score":3,"remediation_score":null}]}'
+    )
+
+    parsed = judge._extract_json(content)
+
+    assert parsed["assessments"][0]["reasoning"] == "first line\nsecond line"
+
+
+def test_invalid_first_response_is_regenerated_once(tmp_path, monkeypatch):
+    gt_file = tmp_path / "gt.yaml"
+    gt_file.write_text(yaml.safe_dump({
+        "scenario_id": "1",
+        "vulnerabilities": [{"id": "V1", "title": "MQTT anonymous"}],
+    }))
+    (tmp_path / "03_vuln_analysis.json").write_text(json.dumps({
+        "vulnerabilities": [{
+            "id": "F1", "type": "no_auth", "details": "Anonymous MQTT",
+            "evidence": "CONNACK return_code=0",
+        }]
+    }))
+
+    valid = json.dumps({"assessments": [assessment(0, "match", 0)]})
+    responses = [
+        SimpleNamespace(
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content='{"assessments": ['),
+                finish_reason="length",
+            )],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+        ),
+        SimpleNamespace(
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content=valid),
+                finish_reason="stop",
+            )],
+            usage=SimpleNamespace(prompt_tokens=20, completion_tokens=7),
+        ),
+    ]
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return responses.pop(0)
+
+    class FakeProvider:
+        provider = "openrouter"
+        model = "openai/gpt-4o"
+        client = SimpleNamespace(
+            chat=SimpleNamespace(completions=FakeCompletions())
+        )
+
+        def __init__(self, provider, model):
+            pass
+
+    monkeypatch.setattr(judge, "LLMProvider", FakeProvider)
+    result = judge.evaluate_with_llm(
+        tmp_path, gt_file, "openai/gpt-4o", "openrouter"
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "RETRY:" in calls[1]["messages"][0]["content"]
+    assert result["true_positives"] == 1
+    assert result["judge_attempts"] == 2
+    assert result["finish_reason"] == "stop"
+    assert result["input_tokens"] == 30
+    assert result["output_tokens"] == 12
+    assert result["cost_usd"] == pytest.approx(0.000195)
+
+
+def test_json_mode_falls_back_only_for_unsupported_parameter_errors():
+    class UnsupportedJsonMode(Exception):
+        status_code = 400
+
+    class ServerFailure(Exception):
+        status_code = 500
+
+    assert judge._json_mode_unsupported(UnsupportedJsonMode("response_format unsupported"))
+    assert not judge._json_mode_unsupported(ServerFailure("response_format failure"))

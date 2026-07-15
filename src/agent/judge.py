@@ -29,6 +29,8 @@ MATCHING POLICY:
 - Return exactly one assessment for every LLM finding index, ordered by index.
 - A match requires the correct target and flaw, supported by meaningful details or evidence.
 - CVE IDs, titles, or keywords alone are insufficient.
+- Keep each reasoning under 40 words and on a single line.
+- Escape every quote, backslash, newline, and control character required by JSON.
 - Contradictory, impossible, generic, or non-probative evidence means false_positive.
 - Matching is one-to-one: at most one "match" per ground-truth vulnerability.
 - Further valid findings for an already matched vulnerability are "duplicate".
@@ -181,6 +183,8 @@ def _build_result(
     input_tokens: int = 0,
     output_tokens: int = 0,
     cost_usd: float | None = 0.0,
+    judge_attempts: int = 0,
+    finish_reason: str | None = None,
 ) -> dict:
     matches = [item for item in assessments if item["verdict"] == "match"]
     rejected = [item for item in assessments if item["verdict"] != "match"]
@@ -235,6 +239,8 @@ def _build_result(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cost_usd": round(cost_usd, 6) if cost_usd is not None else None,
+        "judge_attempts": judge_attempts,
+        "finish_reason": finish_reason,
         "total_gt_vulns": len(gt),
         "total_llm_findings": total,
         "true_positives": tp,
@@ -267,8 +273,13 @@ def _extract_json(content: str) -> Any:
             content = "\n".join(lines[1:-1]).strip()
     try:
         return json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM Judge did not return valid JSON: {content[:200]}") from exc
+    except json.JSONDecodeError:
+        # Some models emit literal newlines or control characters inside JSON
+        # strings. The parsed object still undergoes full schema validation.
+        try:
+            return json.loads(content, strict=False)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"LLM Judge did not return valid JSON: {content[:200]}") from exc
 
 
 def _usage_tokens(response: Any, anthropic: bool) -> tuple[int, int]:
@@ -305,6 +316,15 @@ def _estimate_cost(model: str, provider: str, input_tokens: int, output_tokens: 
     ) / 1_000_000
 
 
+def _json_mode_unsupported(exc: Exception) -> bool:
+    code = getattr(exc, "status_code", None)
+    if code is None and getattr(exc, "response", None) is not None:
+        code = getattr(exc.response, "status_code", None)
+    message = str(exc).lower()
+    markers = ("response_format", "json mode", "json_object")
+    return code in {400, 404, 422} and any(marker in message for marker in markers)
+
+
 def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: str) -> dict:
     gt_data = yaml.safe_load(gt_file.read_text(encoding="utf-8")) or {}
     if not isinstance(gt_data, dict):
@@ -329,31 +349,66 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
     )
 
     provider = LLMProvider(provider=provider_name, model=model)
-    max_tokens = min(8192, max(2048, 1024 + len(findings) * 240))
+    max_tokens = min(16384, max(4096, 1024 + len(findings) * 320))
     is_anthropic = provider.provider == "anthropic"
-    if is_anthropic:
-        response = provider.client.messages.create(
-            model=provider.model,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-            max_tokens=max_tokens,
-            temperature=0.0,
-        )
-        content = response.content[0].text.strip()
-    else:
-        response = provider.client.chat.completions.create(
-            model=provider.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            max_tokens=max_tokens,
-            temperature=0.0,
-        )
-        content = response.choices[0].message.content.strip()
+    input_tokens = output_tokens = 0
+    finish_reason = None
+    assessments = None
 
-    assessments = _validate_assessments(_extract_json(content), gt, findings)
-    input_tokens, output_tokens = _usage_tokens(response, is_anthropic)
+    for attempt in (1, 2):
+        system_prompt = SYSTEM_PROMPT
+        if attempt == 2:
+            system_prompt += (
+                "\n\nRETRY: The previous response was invalid or incomplete. "
+                "Regenerate the entire JSON object from scratch, keep reasoning concise, "
+                "and verify that every finding appears exactly once before responding."
+            )
+
+        if is_anthropic:
+            response = provider.client.messages.create(
+                model=provider.model,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+            content = response.content[0].text.strip()
+            finish_reason = getattr(response, "stop_reason", None)
+        else:
+            request_args = {
+                "model": provider.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": 0.0,
+                "response_format": {"type": "json_object"},
+            }
+            try:
+                response = provider.client.chat.completions.create(**request_args)
+            except Exception as exc:
+                if not _json_mode_unsupported(exc):
+                    raise
+                request_args.pop("response_format")
+                response = provider.client.chat.completions.create(**request_args)
+            content = response.choices[0].message.content.strip()
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
+
+        used_input, used_output = _usage_tokens(response, is_anthropic)
+        input_tokens += used_input
+        output_tokens += used_output
+        try:
+            assessments = _validate_assessments(_extract_json(content), gt, findings)
+            break
+        except ValueError as exc:
+            if attempt == 2:
+                raise ValueError(
+                    "LLM Judge returned invalid output after 2 attempts "
+                    f"(finish_reason={finish_reason!r}, response_chars={len(content)}): {exc}"
+                ) from exc
+
+    assert assessments is not None
     cost = _estimate_cost(provider.model, provider.provider, input_tokens, output_tokens)
     return _build_result(
         assessments,
@@ -364,4 +419,6 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_usd=cost,
+        judge_attempts=attempt,
+        finish_reason=finish_reason,
     )
