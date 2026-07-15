@@ -493,6 +493,49 @@ class TestRepeatingToolDetector:
         # Warning triggers on 3rd identical call — only 2 actual executions
         assert call_count["n"] == 2
 
+    def test_openai_loop_terminates_after_successful_tool(self):
+        """A successful terminal tool call must not trigger another model turn."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        save_call = MagicMock()
+        save_call.function.name = "save_deliverable"
+        save_call.function.arguments = '{"filename":"result.md","content":"done"}'
+        save_call.id = "call_save"
+
+        message = MagicMock()
+        message.content = "Saving the completed deliverable."
+        message.tool_calls = [save_call]
+        choice = MagicMock(finish_reason="tool_calls", message=message)
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.return_value = MagicMock(
+            choices=[choice], usage=None
+        )
+        save = MagicMock(return_value='{"status":"saved"}')
+        tools = [{
+            "name": "save_deliverable",
+            "description": "save",
+            "input_schema": {},
+            "function": save,
+        }]
+
+        result = provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=tools,
+            max_turns=10,
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+        )
+
+        assert result == "Saving the completed deliverable."
+        assert provider.client.chat.completions.create.call_count == 1
+        save.assert_called_once_with(filename="result.md", content="done")
+
 
 class TestStripCodeFences:
     """Tests for _strip_code_fences — the fallback content sanitizer."""
@@ -624,6 +667,10 @@ class TestPipelineRun:
 
         assert "graph_analysis" in results
         assert results["graph_analysis"] == "completed"
+        assert (
+            mock_provider.chat_with_tools.call_args.kwargs["terminate_after_tool"]
+            == "save_deliverable"
+        )
         # cost_summary.json should be saved
         assert (run_dir / "cost_summary.json").exists()
         cost_data = json.loads((run_dir / "cost_summary.json").read_text())

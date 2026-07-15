@@ -1131,6 +1131,7 @@ class Pipeline:
             cost_tracker=self.tracker,
             stream_callback=stream_callback,
             required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
         )
         # usage will be recorded after validation
 
@@ -1203,6 +1204,7 @@ class Pipeline:
                 cost_tracker=self.tracker,
                 stream_callback=stream_callback,
                 required_tool="save_deliverable",
+                terminate_after_tool="save_deliverable",
             )
             # Re-validate after reflector
             valid, msg = validator_fn(config.deliverable_file)
@@ -1477,6 +1479,7 @@ class Pipeline:
                 cost_tracker=self.tracker,
                 stream_callback=stream_callback,
                 required_tool="save_deliverable",
+                terminate_after_tool="save_deliverable",
             )
             usage = self.tracker.end_phase()
             if usage:
@@ -1868,6 +1871,7 @@ class Pipeline:
                     cost_tracker=self.tracker,
                     stream_callback=stream_callback,
                     required_tool="save_deliverable",
+                    terminate_after_tool="save_deliverable",
                 )
 
 
@@ -2149,6 +2153,7 @@ class Pipeline:
                 cost_tracker=self.tracker,
                 stream_callback=stream_callback,
                 required_tool="save_deliverable",
+                terminate_after_tool="save_deliverable",
             )
             self.tracker.end_phase()
             print(f"  [+] Followup done: {device_id}")
