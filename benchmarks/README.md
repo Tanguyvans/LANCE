@@ -11,22 +11,19 @@ Cette séparation évite que le score final récompense principalement la mémor
 
 ```mermaid
 flowchart LR
-    USER["CLI / Dashboard"]
+    USER["CLI / Dashboard public"]
     PUBLIC["S1–S19 dev-public<br/>Ansible + GT local"]
-    CONTROL["Control plane"]
+    EVALUI["UI evaluator HTTPS<br/>hôte séparé"]
     SEALED["Sealed Controller<br/>S20–S25 + GT privé"]
     WORKER["Worker blind isolé"]
     SCORE["Score de suite agrégé"]
     LLM["LLM"]
 
     USER --> PUBLIC
-    USER --> CONTROL
-    CONTROL -->|HTTPS authentifié| SEALED
-    SEALED -->|contrat minimal| CONTROL
-    CONTROL --> WORKER
+    EVALUI -->|API same-origin authentifiée| SEALED
+    SEALED --> WORKER
     WORKER -->|appels modèle| LLM
-    WORKER -->|bundle allowlisté + SHA-256| CONTROL
-    CONTROL --> SEALED
+    WORKER -->|bundle allowlisté + SHA-256| SEALED
     SEALED --> SCORE
 ```
 
@@ -96,9 +93,62 @@ Voir [ansible/README.md](ansible/README.md) pour la documentation complète des 
 
 ### 3. Demander l’évaluation S20–S25
 
-Une évaluation sealed requiert un controller configuré dans le control plane. Celui-ci crée une suite S20–S25, transmet séparément chaque contrat à un worker isolé, soumet les bundles puis demande la finalisation. Le worker reçoit un contrat runtime, mais jamais l’URL/token controller, les définitions privées ou le ground truth.
+Une évaluation sealed requiert un **controller privé externe à ce dépôt public**. Celui-ci exécute toute la campagne S20–S25, les workers et le scoring. Tant que cette infrastructure n’est pas déployée, il n’est pas possible de lancer réellement S20–S25 : la passerelle retournera `502/503`.
 
-Le CLI public reconnaît le sélecteur `eval`, mais refuse volontairement son exécution locale et renvoie vers le controller externe. Il n’existe pas de commande locale supportée pour afficher, déployer, composer ou scorer individuellement S20–S25. Les fichiers publics sous `eval_profiles/` sont uniquement des politiques d’accès opaques.
+Le master public n’expose volontairement **aucune** route, aucun formulaire et aucun token sealed. Un modèle public peut exécuter des sous-processus et ne doit donc jamais partager l’hôte, le filesystem ou les variables d’environnement de l’évaluateur.
+
+L’interface dédiée est servie par `src.api.sealed_main:app` sur un hôte évaluateur séparé :
+
+1. créer un utilisateur système non-root `sealed-gateway` sur cet hôte ;
+2. installer le dépôt en lecture seule sous `/opt/iotchainbench-evaluator` ;
+3. créer `/etc/iotchainbench/sealed-gateway.env` depuis `deploy/sealed-gateway.env.example` avec le controller privé, la clé Ed25519, le digest OCI exact du worker et les providers zero-retention ;
+4. installer `deploy/systemd/iotchainbench-sealed-gateway.service` ;
+5. adapter puis installer `deploy/nginx/iotchainbench-sealed-gateway.conf.example` : `proxy_set_header Host $host` doit correspondre à `SEALED_ALLOWED_HOSTS`, les access logs, captures body/header, mirroring et tracing/APM restent coupés, et les routes sont rate-limitées ;
+6. vérifier Nginx/systemd, puis ouvrir directement `https://evaluator.example/` depuis une URL connue de confiance.
+
+Commandes minimales sur l’hôte evaluator, après avoir installé le code, le venv, le certificat TLS et le fichier secret :
+
+```bash
+sudo install -o root -g root -m 0644 \
+  deploy/systemd/iotchainbench-sealed-gateway.service \
+  /etc/systemd/system/iotchainbench-sealed-gateway.service
+sudo install -o root -g root -m 0644 \
+  deploy/nginx/iotchainbench-sealed-gateway.conf.example \
+  /etc/nginx/conf.d/iotchainbench-sealed-gateway.conf
+sudo nginx -t
+sudo systemctl daemon-reload
+sudo systemctl enable --now iotchainbench-sealed-gateway
+sudo systemctl reload nginx
+```
+
+Le service doit rester sur une machine inaccessible au master public et aux workers. Il tourne sans access log, avec code/static en lecture seule, core dumps et swap interdits par systemd, et en-têtes CSP/no-store. Le launcher privé applique également `--ulimit core=0` et désactive le swap du cgroup de chaque worker. Le token reste uniquement en mémoire dans la page evaluator et est effacé à la fin ou à la fermeture.
+
+Dans cette interface :
+
+1. saisir le modèle exact, par exemple `org/model-3b` ;
+2. saisir un provider approuvé, par exemple `local-zdr` ;
+3. saisir le token de lancement ;
+4. cliquer sur **Lancer la suite complète** ;
+5. conserver l’identifiant opaque pour reprendre le suivi après un rechargement.
+
+L’écran affiche seulement `queued`, `running`, puis un état terminal signé. Un succès contient les métriques macro-agrégées ; succès, échec, expiration et annulation portent tous une attestation d’effacement signée. Il n’existe aucun flux SSE, log, sortie modèle, score par scénario ou téléchargement de bundle.
+
+La même opération est disponible directement sur l’origine evaluator :
+
+```bash
+curl -sS -X POST https://evaluator.example/api/sealed/suites \
+  -H 'Content-Type: application/json' \
+  -H 'X-Sealed-Launch-Token: <TOKEN_DE_LANCEMENT>' \
+  -d '{"model":"org/model-3b","provider":"local-zdr"}'
+
+# Remplacer <SUITE_ID> par l’identifiant opaque retourné ci-dessus.
+curl -sS https://evaluator.example/api/sealed/suites/<SUITE_ID> \
+  -H 'X-Sealed-Launch-Token: <TOKEN_DE_LANCEMENT>'
+```
+
+La route reste volontairement en `503` tant que la configuration evaluator est incomplète. Un provider n’est accepté que s’il est explicitement déclaré zero-retention ; pour un modèle local, l’inférence doit être hébergée par l’évaluateur, pas par le participant. Le controller doit en plus imposer le modèle, le budget, le timeout et le rate-limit sur la gateway d’inférence : le worker est traité comme du code hostile.
+
+Le CLI public reconnaît encore le sélecteur `eval`, mais refuse son exécution locale. Il n’existe aucune commande supportée pour afficher, déployer, composer ou scorer individuellement S20–S25. Les fichiers publics sous `eval_profiles/` sont uniquement des politiques d’accès opaques.
 
 ---
 
@@ -169,7 +219,12 @@ Les comptages publics actuels sont : S1=12, S2=13, S3=18, S4=18, S5=15, S6=16, S
 
 > Le corpus historique S1–S12 totalise **209 vulnérabilités** sur 116 appareils. Le corpus public officiel S1–S19 totalise **252 vulnérabilités** sur 180 appareils, hors variantes S1h/S4h.
 
-Chaque entrée supporte un champ `bonus_types` listant les types de findings tolérés (ne comptent pas en FP lorsqu'ils ne figurent pas dans l'ensemble injecté). La taxonomie canonique est définie dans `src/agent/vuln_taxonomy.py` — toute nouvelle alias passe par `VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu'en duplication locale.
+Chaque vulnérabilité porte un `expected_type` canonique utilisé par
+`strict-v3`. Le champ historique `bonus_types` n’est honoré que par les
+politiques de compatibilité : en `strict-v3`, seul un extra confirmé par le
+vérificateur privé est neutralisé. La taxonomie canonique est définie dans
+`src/agent/vuln_taxonomy.py` — tout nouvel alias passe par
+`VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu’en duplication locale.
 
 Pour S20–S25 :
 
@@ -190,13 +245,20 @@ Les fichiers `eval_profiles/S20.yaml` à `S25.yaml` ne contiennent que la politi
 | Precision | Vrais positifs / (VP + faux positifs) |
 | F1 Score | Moyenne harmonique precision/recall |
 | Weighted Score | Score pondéré par sévérité (critical=4, high=3, medium=2, low=1) |
-| Exploitation Coverage | Vrais positifs prouvés (`evidence_level` ≥ 2) / total vrais positifs |
+| Exploitation Coverage | Vrais positifs dont le vérificateur confirme un niveau ≥ 2 / total vrais positifs |
 | Multi-Hop Reach (MHR_1/2/3) | Fraction des vulns du ground truth à profondeur de pivot ≥ k détectées |
 | Path Coverage | Chemins d'attaque entièrement identifiés / chemins attendus |
 | Hallucination Rate | Failles inventées / total findings |
 | Coût | Tokens consommés par scénario (résumé par phase) |
 
 Le split public peut exposer le détail par scénario et par finding pour faciliter le diagnostic. Le score officiel sealed suit une autre politique : les répétitions sont d’abord moyennées au sein de chaque profil, puis S20–S25 sont macro-moyennés à poids égal. Un profil manquant vaut zéro et aucun TP/FP/FN, chemin, seed ou score individuel sealed n’est publié. Voir [le protocole d’évaluation](docs/EVALUATION_PROTOCOL.md#publication-du-score-sealed).
+
+Le score officiel utilise la politique fail-closed
+[`strict-v3`](docs/STRICT_V3.md) : type canonique exact, CVE liée à la cible,
+ledger de preuves signé et lié à la session, aucun bonus global et preuve de
+chemin distincte. `legacy-v1` et `strict-v2` restent disponibles pour reproduire
+les anciens résultats ou diagnostiquer le split public, mais ne mesurent pas le
+même protocole.
 
 Les métriques de qualité du résumé sealed sont contractualisées comme des ratios `[0,1]` ; `cost_usd` est exprimé en dollars US. Cette convention évite toute ambiguïté entre `0.5 %` et `50 %`.
 
@@ -240,6 +302,7 @@ benchmarks/
 └── docs/
     ├── ARCHITECTURES.md              # Architectures IoT de référence (A1–A8)
     ├── EVALUATION_PROTOCOL.md        # Frontière dev/sealed et protocole officiel
+    ├── STRICT_V3.md                  # Matching exact et ledger de preuves signé
     ├── commands.md                   # Setup et debug
     ├── proxmox_config.md             # Configuration du serveur Proxmox
     └── S12_improvement_report.md     # Rapport d'amélioration scénario 12

@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,10 @@ from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
 from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
 from src.agent.scanner import run_scanner
+from src.agent.sealed_tool_policy import (
+    SEALED_ALLOWED_TOOLS,
+    validate_sealed_tool_call,
+)
 from src.agent.validators import VALIDATORS
 
 log = logging.getLogger(__name__)
@@ -72,10 +77,6 @@ TOOL_GROUPS: dict[str, list[dict]] = {
     "skill": SKILL_TOOLS,
     "intrusion": _build_intrusion_tools(),
 }
-
-# These tools cross the worker scratch/network boundary or query previous runs.
-# They remain useful in development but are never exposed to a sealed worker.
-SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 # ---------------------------------------------------------------------------
 # Phase 4 exploit micro-agents: per-category instructions.
@@ -294,6 +295,8 @@ class Pipeline:
         self.target_network = target_network
         self.max_tool_calls: int | None = None
         self._tool_call_count = 0
+        self._tool_call_lock = threading.Lock()
+        self._sealed_ingress_cidrs: tuple[str, ...] = ()
 
         if self.sealed:
             if execution_context is None:
@@ -317,6 +320,7 @@ class Pipeline:
                 self.target_network = " ".join(ingress)
             if not self.target_network:
                 raise ValueError("Sealed execution_context must provide at least one ingress CIDR")
+            self._sealed_ingress_cidrs = tuple(ingress)
             self.blind = True
             self.manage_scenario = False
             self.auto_teardown = False
@@ -329,7 +333,13 @@ class Pipeline:
             # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
             # on the same /24 via the OpenWrt router's WAN, then must pivot.
             self.target_network = BENCHMARK_SUBNET
-        self.tracker = CostTracker(model=provider.model)
+        # Sealed workers never fetch or persist the public OpenRouter pricing
+        # catalog. Their authoritative budget/cost enforcement belongs to the
+        # evaluator-owned inference gateway and controller.
+        self.tracker = CostTracker(
+            model=provider.model,
+            allow_dynamic_pricing=not self.sealed,
+        )
         self.context: dict = {}
 
         # Create timestamped run directory
@@ -574,33 +584,43 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
-        # Persist the run to the SQLite history (best effort — never fatal).
-        try:
-            from src.db.database import init_db, record_phase_usage, record_run
+        # A sealed result must never enter the dashboard/history database.  Even
+        # aggregate metadata such as phase duration or failure position becomes
+        # adaptive feedback after repeated attempts.  The private controller is
+        # solely responsible for the final signed suite record.
+        if not self.sealed:
+            try:
+                from src.db.database import init_db, record_phase_usage, record_run
 
-            init_db()
-            summary = self.tracker.summary()
-            tokens_in, tokens_out = self.tracker.total_tokens()
-            run_id = record_run({
-                "run_dir": str(self.run_dir),
-                "ts": self.run_dir.name,
-                "scenario_id": self.scenario_id,
-                "model": getattr(self.provider, "model", None),
-                "provider": getattr(self.provider, "provider", None),
-                "status": "completed",
-                "cost_usd": round(self.tracker.total_cost(), 4),
-                "tokens_in": tokens_in,
-                "tokens_out": tokens_out,
-                "git_commit": self.git_commit,
-            })
-            if run_id is not None and summary.get("phases"):
-                record_phase_usage(run_id, summary["phases"])
-        except Exception as e:
-            log.warning("DB run persistence failed (non-fatal): %s", e)
+                init_db()
+                summary = self.tracker.summary()
+                tokens_in, tokens_out = self.tracker.total_tokens()
+                run_id = record_run({
+                    "run_dir": str(self.run_dir),
+                    "ts": self.run_dir.name,
+                    "scenario_id": self.scenario_id,
+                    "model": getattr(self.provider, "model", None),
+                    "provider": getattr(self.provider, "provider", None),
+                    "status": "completed",
+                    "cost_usd": round(self.tracker.total_cost(), 4),
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "git_commit": self.git_commit,
+                })
+                if run_id is not None and summary.get("phases"):
+                    record_phase_usage(run_id, summary["phases"])
+            except Exception as e:
+                log.warning("DB run persistence failed (non-fatal): %s", e)
 
         # Episodic memory is intentionally disabled for sealed runs.  Otherwise
         # later submissions could recover findings from earlier challenge seeds.
-        if not self.sealed:
+        # Avoid importing ChromaDB at all when a run produced no finding file;
+        # that import is expensive and there is nothing to ingest.
+        has_findings_output = any(
+            (self.run_dir / name).is_file()
+            for name in ("03_vuln_analysis.json", "04_exploitation.json")
+        )
+        if not self.sealed and has_findings_output:
             try:
                 from src.agent.knowledge.ingest import ingest_run_findings
                 ingested = ingest_run_findings(self.run_dir, self.provider.model)
@@ -1133,11 +1153,19 @@ class Pipeline:
             required_tool="save_deliverable",
         )
         usage = self.tracker.end_phase()
+        phase_cost_usd = (
+            usage.cost_usd(
+                self.tracker.model,
+                allow_dynamic_pricing=self.tracker.allow_dynamic_pricing,
+            )
+            if usage
+            else 0.0
+        )
 
         if usage:
             print(
                 f"\n  Phase {config.phase} done: {usage.turns} turns, "
-                f"${usage.cost_usd(self.tracker.model):.4f}"
+                f"${phase_cost_usd:.4f}"
             )
 
         # Fallback: if the LLM never called save_deliverable, save its last text output.
@@ -1216,7 +1244,7 @@ class Pipeline:
                 "name": config.name,
                 "status": status,
                 "deliverable": config.deliverable_file,
-                "cost_usd": round(usage.cost_usd(self.tracker.model), 4) if usage else 0,
+                "cost_usd": round(phase_cost_usd, 4),
                 "turns": usage.turns if usage else 0,
             })
 
@@ -1379,7 +1407,9 @@ class Pipeline:
             "mtls_request", "tls_inspect",
         }
         recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
-        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+        analysis_tools = self._prepare_tool_surface(
+            recon_limited + skill_tools + DELIVERABLE_TOOLS
+        )
 
         def _analyze_device(device: dict):
             device_id = device["id"]
@@ -1963,6 +1993,37 @@ class Pipeline:
             except Exception:
                 pass
 
+        # In blind sealed mode there is no public scenario topology to provide
+        # the legacy filter below. Exploit output is model-controlled, so apply
+        # the controller-issued network boundary before any deterministic
+        # follow-up scanner sees a discovered address or port.
+        if new_hosts and self.sealed:
+            nets = [_ip.ip_network(cidr, strict=True) for cidr in self._sealed_ingress_cidrs]
+            filtered = []
+            for host in new_hosts:
+                try:
+                    address = _ip.ip_address(host["ip"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if not any(address.version == net.version and address in net for net in nets):
+                    log.info("Excluding out-of-scope sealed follow-up host %s", address)
+                    continue
+                ports = host.get("open_ports", [])
+                if not isinstance(ports, list):
+                    ports = []
+                safe_ports = sorted({
+                    int(port) for port in ports
+                    if not isinstance(port, bool)
+                    and str(port).isdigit()
+                    and 1 <= int(port) <= 65535
+                })
+                filtered.append({
+                    "ip": str(address),
+                    "open_ports": safe_ports,
+                    "discovered_via": str(host.get("discovered_via", ""))[:512],
+                })
+            new_hosts = filtered
+
         if new_hosts and self.scenario_id is not None:
             from src.agent.tools.graph_tools import _scenario_topology
             subnets = (_scenario_topology or {}).get("subnets", [])
@@ -2071,7 +2132,9 @@ class Pipeline:
 
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
         recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
-        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+        analysis_tools = self._prepare_tool_surface(
+            recon_limited + skill_tools + DELIVERABLE_TOOLS
+        )
 
         for host in new_hosts:
             ip = host.get("ip", "")
@@ -2681,12 +2744,38 @@ class Pipeline:
             return
 
         recon_text = recon_path.read_text(encoding="utf-8")
-        # Parse IPs that look like 192.168.x.x from the recon report
-        subnet_prefix = self.target_network.rsplit(".", 1)[0] if self.target_network else ""
-        host_ips = list(dict.fromkeys(  # deduplicate, preserve order
-            m for m in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text)
-            if subnet_prefix and m.startswith(subnet_prefix) and not m.endswith(".0") and not m.endswith(".255")
-        ))
+        if self.sealed:
+            # The report is model-controlled. Prefix matching is not a scope
+            # check (e.g. 10.77.20 also matches 10.77.200), and does not support
+            # multiple CIDRs or IPv6. Parse literal addresses and require actual
+            # membership in an evaluator-issued network before traceroute.
+            import ipaddress as _ip
+
+            networks = [_ip.ip_network(cidr, strict=True) for cidr in self._sealed_ingress_cidrs]
+            host_ips = []
+            for token in _re.findall(r"[0-9A-Fa-f:.]{2,}", recon_text):
+                try:
+                    address = _ip.ip_address(token.strip("."))
+                except ValueError:
+                    continue
+                if not any(address.version == net.version and address in net for net in networks):
+                    continue
+                if any(
+                    address.version == net.version
+                    and address in {net.network_address, net.broadcast_address}
+                    for net in networks
+                ):
+                    continue
+                canonical = str(address)
+                if canonical not in host_ips:
+                    host_ips.append(canonical)
+        else:
+            # Preserve the public discovery heuristic for legacy scenarios.
+            subnet_prefix = self.target_network.rsplit(".", 1)[0] if self.target_network else ""
+            host_ips = list(dict.fromkeys(  # deduplicate, preserve order
+                m for m in _re.findall(r"\b(\d+\.\d+\.\d+\.\d+)\b", recon_text)
+                if subnet_prefix and m.startswith(subnet_prefix) and not m.endswith(".0") and not m.endswith(".255")
+            ))
 
         if not host_ips:
             log.warning("No host IPs found in 02_recon.md — skipping topology inference")
@@ -2699,6 +2788,12 @@ class Pipeline:
 
         def _traceroute(target: str, max_hops: int = 8) -> list[str]:
             import platform
+            if self.sealed:
+                validate_sealed_tool_call(
+                    "traceroute",
+                    {"target": target, "max_hops": max_hops},
+                    self._sealed_ingress_cidrs,
+                )
             cmd = (["traceroute", "-n", "-m", str(max_hops), target]
                    if platform.system() == "Darwin"
                    else ["traceroute", "-n", "-m", str(max_hops), "-w", "1", target])
@@ -3177,7 +3272,7 @@ class Pipeline:
             # Try group resolution first
             if ref in TOOL_GROUPS:
                 for tool in TOOL_GROUPS[ref]:
-                    if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
+                    if self.sealed and tool["name"] not in SEALED_ALLOWED_TOOLS:
                         continue
                     if tool["name"] not in seen_names:
                         tools.append(self._wrap_tool(tool))
@@ -3187,7 +3282,7 @@ class Pipeline:
             # Fall back to individual tool name lookup
             for group in TOOL_GROUPS.values():
                 for tool in group:
-                    if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
+                    if self.sealed and tool["name"] not in SEALED_ALLOWED_TOOLS:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
                         tools.append(self._wrap_tool(tool))
@@ -3195,6 +3290,14 @@ class Pipeline:
                         break
 
         return tools
+
+    def _prepare_tool_surface(self, tools: list[dict]) -> list[dict]:
+        """Filter direct micro-agent surfaces through the sealed allowlist."""
+        return [
+            self._wrap_tool(tool)
+            for tool in tools
+            if not self.sealed or tool["name"] in SEALED_ALLOWED_TOOLS
+        ]
 
     def _wrap_tool(self, tool: dict) -> dict:
         """Wrap a tool function to log its calls and results to tool_calls.jsonl."""
@@ -3206,11 +3309,21 @@ class Pipeline:
         tool_name = tool["name"]
 
         def logged_fn(**kwargs):
-            if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
-                raise RuntimeError(
-                    f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
+            # Phase 3/4 micro-agents execute concurrently. The check and
+            # increment must be one atomic operation or parallel calls can all
+            # pass the same remaining-budget check.
+            with self._tool_call_lock:
+                if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                    raise RuntimeError(
+                        f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
+                    )
+                self._tool_call_count += 1
+            if self.sealed:
+                kwargs = validate_sealed_tool_call(
+                    tool_name,
+                    kwargs,
+                    self._sealed_ingress_cidrs,
                 )
-            self._tool_call_count += 1
             result = original_fn(**kwargs)
             try:
                 entry = json.dumps({
@@ -3226,7 +3339,13 @@ class Pipeline:
                 pass  # Never break the pipeline for logging
             return result
 
-        return {**tool, "function": logged_fn}
+        wrapped = {**tool, "function": logged_fn}
+        if self.sealed:
+            wrapped["input_schema"] = {
+                **tool["input_schema"],
+                "additionalProperties": False,
+            }
+        return wrapped
 
     def _check_prerequisites(
         self, config: AgentConfig, results: dict[str, str]

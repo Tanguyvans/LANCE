@@ -45,7 +45,7 @@ Live run view (topology, per-phase events) and cross-model benchmark comparison:
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 
-## Results
+## Historical results (`legacy-v1`)
 
 | System | F1 | CVSS-weighted |
 |--------|----|--------------|
@@ -55,3 +55,7 @@ Live run view (topology, per-phase events) and cross-model benchmark comparison:
 | VulnBot adapter | 0.323 | — |
 
 Full per-scenario breakdown in the paper.
+
+These values were produced with the historical diagnostic evaluator. They are
+not `strict-v3` scores; the controller-verified benchmark must be rerun before
+publishing results under the stricter policy.

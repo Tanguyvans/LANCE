@@ -14,6 +14,12 @@ import yaml
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.benchmark.evaluator import expected_type_for_vulnerability
+
 TOPO_DIR = ROOT / "topologies"
 PACKS_DIR = ROOT / "packs" / "definitions"
 SCENARIOS_DIR = ROOT / "scenarios"
@@ -118,6 +124,8 @@ def _materialize_template(template: dict, service: dict, scenario_id: str,
             item[key] = str(value).replace("{ip}", ip)
         else:
             item[key] = value
+    if prefix == "V":
+        item["expected_type"] = expected_type_for_vulnerability(item)
     return item
 
 

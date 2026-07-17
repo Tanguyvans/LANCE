@@ -56,6 +56,7 @@ vulnerabilities:
   title: Provisioning endpoint exposes the device CA private key
   severity: critical
   category: data_exposure
+  expected_type: data_exposure
   hop_depth: 0
   owasp_iot: I7 - Insecure Data Transfer and Storage
   description: The simulated CA status endpoint serves a PEM private key without authentication.
@@ -73,6 +74,7 @@ vulnerabilities:
   title: One-time device enrollment token can be replayed
   severity: high
   category: misconfiguration
+  expected_type: misconfiguration
   hop_depth: 1
   owasp_iot: I8 - Lack of Device Management
   description: The same bootstrap token issues a bundle more than once.
@@ -90,6 +92,7 @@ vulnerabilities:
   title: Revoked client certificate remains accepted by mTLS API
   severity: high
   category: weak_crypto
+  expected_type: weak_cipher
   hop_depth: 3
   owasp_iot: I8 - Lack of Device Management
   description: TLS validates the lab CA but the service does not load or check the
@@ -108,6 +111,7 @@ vulnerabilities:
   title: Device identity private key is cloned across devices
   severity: critical
   category: weak_crypto
+  expected_type: weak_cipher
   hop_depth: 2
   owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
   description: The device-b fixture reuses device-a key material, allowing identity

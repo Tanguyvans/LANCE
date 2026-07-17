@@ -61,6 +61,7 @@ vulnerabilities:
   title: OPC UA endpoint advertises SecurityPolicy None
   severity: high
   category: weak_crypto
+  expected_type: weak_cipher
   hop_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: The deterministic OPC UA simulator accepts a no-signing, no-encryption
@@ -80,6 +81,7 @@ vulnerabilities:
   title: Anonymous OPC UA client can modify disposable process value
   severity: critical
   category: no_authentication
+  expected_type: no_auth
   hop_depth: 1
   owasp_iot: I2 - Insecure Network Services
   description: The anonymous write operation changes only the simulator BenchPoint
@@ -98,6 +100,7 @@ vulnerabilities:
   title: BACnet Who-Is exposes controller identity and objects
   severity: medium
   category: info_disclosure
+  expected_type: info_disclosure
   hop_depth: 1
   owasp_iot: I2 - Insecure Network Services
   description: The BACnet/IP simulator answers unauthenticated discovery with its
@@ -116,6 +119,7 @@ vulnerabilities:
   title: BACnet client can write disposable analog value without authorization
   severity: high
   category: no_authentication
+  expected_type: no_auth
   hop_depth: 2
   owasp_iot: I2 - Insecure Network Services
   description: The simulator accepts an unauthenticated write to the BenchPoint analog
@@ -134,6 +138,7 @@ vulnerabilities:
   title: Modbus/TCP permits unauthenticated write to test register
   severity: high
   category: no_authentication
+  expected_type: no_auth
   hop_depth: 3
   owasp_iot: I2 - Insecure Network Services
   description: Function code 6 changes the simulator-only holding register without

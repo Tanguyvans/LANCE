@@ -1,0 +1,40 @@
+[Unit]
+Description=IoTChainBench sealed evaluator gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sealed-gateway
+Group=sealed-gateway
+WorkingDirectory=/opt/iotchainbench-evaluator
+EnvironmentFile=/etc/iotchainbench/sealed-gateway.env
+ExecStart=/opt/iotchainbench-evaluator/venv/bin/uvicorn src.api.sealed_main:app --host 127.0.0.1 --port 8502 --workers 1 --no-access-log --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+StandardOutput=null
+StandardError=null
+LimitCORE=0
+MemorySwapMax=0
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

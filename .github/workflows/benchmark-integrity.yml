@@ -31,7 +31,9 @@ jobs:
           ansible-galaxy collection install -r benchmarks/ansible/requirements.yml
 
       - name: Validate generated ground truths
-        run: python benchmarks/tools/compose_gt.py --validate
+        run: |
+          python benchmarks/tools/annotate_expected_types.py
+          python benchmarks/tools/compose_gt.py --validate
 
       - name: Validate benchmark deployment syntax
         working-directory: benchmarks/ansible
@@ -55,7 +57,7 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: python -m pytest -q
+        run: python -m pytest -q --durations=20
 
       - name: Reject whitespace errors
         run: git diff --check HEAD^ HEAD

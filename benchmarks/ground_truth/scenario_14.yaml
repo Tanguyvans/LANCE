@@ -70,6 +70,7 @@ vulnerabilities:
   title: Anonymous MQTT subscription exposes retained operational secrets
   severity: high
   category: no_authentication
+  expected_type: no_auth
   owasp_iot: I3 - Insecure Ecosystem Interfaces
   description: The broker accepts an unauthenticated wildcard subscription and publishes
     retained secrets.
@@ -87,6 +88,7 @@ vulnerabilities:
   title: Public web backup contains database credentials
   severity: high
   category: data_exposure
+  expected_type: data_exposure
   owasp_iot: I2 - Insecure Network Services
   description: Directory listing exposes a SQL backup and an application configuration
     file.
@@ -104,6 +106,7 @@ vulnerabilities:
   title: Default administrative SSH credentials remain enabled
   severity: critical
   category: default_credentials
+  expected_type: default_credentials
   owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
   description: The administrative account accepts the vendor-style admin/admin credential
     pair.
@@ -121,6 +124,7 @@ vulnerabilities:
   title: Redis accepts commands without authentication
   severity: high
   category: no_authentication
+  expected_type: no_auth
   owasp_iot: I2 - Insecure Network Services
   description: Redis is bound to all interfaces with protected mode and authentication
     disabled.

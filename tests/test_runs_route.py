@@ -1,6 +1,5 @@
 """Tests for src/api/routes/runs.py helper functions."""
 import json
-from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -8,7 +7,6 @@ from fastapi import HTTPException
 from src.api.routes import runs
 from src.api.routes.runs import (
     _extract_commit,
-    _load_sealed_summary,
     _resolve_run_dir,
     _visible_files,
     download_run,
@@ -48,19 +46,6 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
-def _sealed_summary(scenario_id="20", benchmark_version="2.0.0"):
-    return {
-        "schema_version": "1",
-        "submission_id": str(uuid4()),
-        "scenario_id": scenario_id,
-        "benchmark_version": benchmark_version,
-        "status": "complete",
-        "score_visibility": "aggregate",
-        "metrics": {"overall_score": 0.875},
-        "signature": "controller-signature",
-    }
-
-
 class TestRunVisibility:
     def test_public_listing_hides_ground_truth_and_symlinks(self, tmp_path):
         (tmp_path / "scenario_meta.json").write_text(json.dumps({"scenario_id": "1"}))
@@ -93,42 +78,6 @@ class TestRunVisibility:
         assert _visible_files(tmp_path) == []
 
 
-class TestSealedSummaryTrustBoundary:
-    def test_run_local_summary_is_ignored(self, tmp_path, monkeypatch):
-        run_dir = tmp_path / "run-1"
-        run_dir.mkdir()
-        (run_dir / "evaluation_summary.json").write_text(json.dumps(_sealed_summary()))
-        monkeypatch.delenv("SEALED_EVALUATION_DIR", raising=False)
-
-        assert _load_sealed_summary(run_dir, "20") is None
-
-    def test_trusted_summary_is_validated_and_signature_not_exposed(self, tmp_path, monkeypatch):
-        run_dir = tmp_path / "run-1"
-        trusted_dir = tmp_path / "trusted"
-        run_dir.mkdir()
-        trusted_dir.mkdir()
-        (trusted_dir / "run-1.json").write_text(json.dumps(_sealed_summary()))
-        monkeypatch.setenv("SEALED_EVALUATION_DIR", str(trusted_dir))
-
-        summary = _load_sealed_summary(run_dir, "20")
-
-        assert summary["metrics"] == {"overall_score": 0.875}
-        assert "signature" not in summary
-
-    def test_trusted_summary_rejects_wrong_benchmark_version(self, tmp_path, monkeypatch):
-        run_dir = tmp_path / "run-1"
-        trusted_dir = tmp_path / "trusted"
-        run_dir.mkdir()
-        trusted_dir.mkdir()
-        (trusted_dir / "run-1.json").write_text(
-            json.dumps(_sealed_summary(benchmark_version="old"))
-        )
-        monkeypatch.setenv("SEALED_EVALUATION_DIR", str(trusted_dir))
-
-        with pytest.raises(ValueError, match="benchmark version mismatch"):
-            _load_sealed_summary(run_dir, "20")
-
-
 class TestRunEndpoints:
     def test_run_id_cannot_escape_output_directory(self, tmp_path, monkeypatch):
         monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
@@ -154,10 +103,10 @@ class TestRunEndpoints:
         with pytest.raises(HTTPException) as zip_exc:
             download_run("sealed-run")
 
-        assert file_exc.value.status_code == 403
-        assert zip_exc.value.status_code == 403
+        assert file_exc.value.status_code == 404
+        assert zip_exc.value.status_code == 404
 
-    def test_sealed_run_is_explicitly_marked_in_list_and_detail(self, tmp_path, monkeypatch):
+    def test_sealed_run_is_absent_from_history_and_detail(self, tmp_path, monkeypatch):
         run_dir = tmp_path / "sealed-run"
         run_dir.mkdir()
         (run_dir / "scenario_meta.json").write_text(
@@ -167,39 +116,23 @@ class TestRunEndpoints:
         (run_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 999.0}))
         monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
 
-        listed = list_runs()
-        detail = get_run("sealed-run")
+        assert list_runs() == []
+        with pytest.raises(HTTPException) as exc:
+            get_run("sealed-run")
+        assert exc.value.status_code == 404
 
-        assert listed[0]["sealed"] is True
-        assert listed[0]["files"] == []
-        assert listed[0]["cost"] is None
-        assert detail["sealed"] is True
-        assert detail["files"] == []
-        assert detail["cost"] is None
-
-    def test_sealed_benchmark_row_is_marked_and_aggregate_only(self, tmp_path, monkeypatch):
+    def test_sealed_run_is_absent_from_benchmark(self, tmp_path, monkeypatch):
         output_dir = tmp_path / "output"
         run_dir = output_dir / "sealed-run"
-        trusted_dir = tmp_path / "trusted"
         run_dir.mkdir(parents=True)
-        trusted_dir.mkdir()
         (run_dir / "scenario_meta.json").write_text(
             json.dumps({"scenario_id": "20", "split": "eval-sealed"})
         )
         (run_dir / "03_vuln_analysis.json").write_text("{}")
         (run_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 999.0}))
-        summary = _sealed_summary()
-        summary["metrics"]["cost_usd"] = 1.25
-        (trusted_dir / "sealed-run.json").write_text(json.dumps(summary))
         monkeypatch.setattr(runs, "OUTPUT_DIR", output_dir)
-        monkeypatch.setenv("SEALED_EVALUATION_DIR", str(trusted_dir))
 
-        row = get_benchmark()[0]
-
-        assert row["sealed"] is True
-        assert row["cost"] is None
-        assert row["score"]["metrics"] == {"overall_score": 0.875, "cost_usd": 1.25}
-        assert "signature" not in row["score"]
+        assert get_benchmark() == []
 
     def test_forged_local_sealed_score_is_not_returned(self, tmp_path, monkeypatch):
         output_dir = tmp_path / "output"
@@ -208,9 +141,10 @@ class TestRunEndpoints:
         (run_dir / "scenario_meta.json").write_text(
             json.dumps({"scenario_id": "20", "split": "eval-sealed"})
         )
-        (run_dir / "evaluation_summary.json").write_text(json.dumps(_sealed_summary()))
+        (run_dir / "evaluation_summary.json").write_text(
+            json.dumps({"metrics": {"overall_score": 1.0}, "signature": "forged"})
+        )
         monkeypatch.setattr(runs, "OUTPUT_DIR", output_dir)
-        monkeypatch.delenv("SEALED_EVALUATION_DIR", raising=False)
 
         with pytest.raises(HTTPException) as exc:
             score_run("sealed-run")

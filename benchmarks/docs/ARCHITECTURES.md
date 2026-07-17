@@ -865,27 +865,33 @@ python3 -m src.benchmark.evaluator --run-dir output/agent/<timestamp> --ground-t
 
 ---
 
-### Scénarios proposés (8 × 10 = 80 combinaisons possibles, 20 sélectionnées)
+### Propositions historiques publiques (8 × 10 = 80 combinaisons possibles)
+
+> Ces identifiants `P01`–`P20` sont une archive de conception publique et ne
+> correspondent pas aux profils officiels S1–S25. L’ancienne proposition
+> appelée « S20 » est considérée compromise par sa publication historique : un
+> controller sealed ne doit jamais réutiliser sa composition, même sous un
+> autre identifiant. Toute epoch privée doit être générée indépendamment.
 
 | # | Architecture | Packs | Difficulté | Vulns | Focus |
 |---|---|---|---|---|---|
-| S01 | A1 Flat | F1 | Easy | 3-4 | Auth basique |
-| S02 | A1 Flat | F2+F9 | Easy | 5-6 | Services + DoS |
-| S03 | A1 Flat | F1+F3+F8 | Easy-Med | 8-10 | Auth + CVE + data |
-| S04 | A2 Star | F1+F4 | Easy | 5-6 | Auth + protocoles IoT |
-| S05 | A2 Star | F4+F8+F10 | Medium | 8-10 | IoT complet |
-| S06 | A2 Star | F2+F6+F9 | Medium | 8-10 | Exposition + réseau |
-| S07 | A3 Gateway | F1+F5 | Medium | 5-7 | Auth + firewall |
-| S08 | A3 Gateway | F3+F5+F8 | Medium | 8-10 | CVE + pivot + data |
-| S09 | A3 Gateway | F1+F4+F5+F9 | Med-Hard | 10-12 | Multi-vecteur |
-| S10 | A4 Segmenté | F4+F5 | Medium | 6-8 | Segmentation IoT |
-| S11 | A4 Segmenté | F1+F3+F5+F9 | Hard | 10-12 | Multi-vecteur |
-| S12 | A4 Segmenté | F5+F6+F8+F10 | Hard | 10-14 | Défense en profondeur |
-| S13 | A5 Multi-zone | F5+F7 | Hard | 8-10 | Pivot cross-zone |
-| S14 | A5 Multi-zone | F4+F5+F7+F9 | Very Hard | 12-16 | Attaque complète IT→OT |
-| S15 | A6 Mesh | F4+F6 | Medium | 6-8 | Protocoles + crypto |
-| S16 | A6 Mesh | F4+F6+F9 | Hard | 9-12 | Mesh hostile |
-| S17 | A7 Edge-Cloud | F1+F8 | Medium | 6-8 | Fuite edge→cloud |
-| S18 | A7 Edge-Cloud | F3+F7+F8 | Hard | 10-12 | Pivot edge→cloud |
-| S19 | A8 Multi-site | F5+F6+F7 | Hard | 9-12 | VPN + pivot inter-site |
-| S20 | A8 Multi-site | F5+F7+F9+F10 | Very Hard | 12-16 | Compromission totale |
+| P01 | A1 Flat | F1 | Easy | 3-4 | Auth basique |
+| P02 | A1 Flat | F2+F9 | Easy | 5-6 | Services + DoS |
+| P03 | A1 Flat | F1+F3+F8 | Easy-Med | 8-10 | Auth + CVE + data |
+| P04 | A2 Star | F1+F4 | Easy | 5-6 | Auth + protocoles IoT |
+| P05 | A2 Star | F4+F8+F10 | Medium | 8-10 | IoT complet |
+| P06 | A2 Star | F2+F6+F9 | Medium | 8-10 | Exposition + réseau |
+| P07 | A3 Gateway | F1+F5 | Medium | 5-7 | Auth + firewall |
+| P08 | A3 Gateway | F3+F5+F8 | Medium | 8-10 | CVE + pivot + data |
+| P09 | A3 Gateway | F1+F4+F5+F9 | Med-Hard | 10-12 | Multi-vecteur |
+| P10 | A4 Segmenté | F4+F5 | Medium | 6-8 | Segmentation IoT |
+| P11 | A4 Segmenté | F1+F3+F5+F9 | Hard | 10-12 | Multi-vecteur |
+| P12 | A4 Segmenté | F5+F6+F8+F10 | Hard | 10-14 | Défense en profondeur |
+| P13 | A5 Multi-zone | F5+F7 | Hard | 8-10 | Pivot cross-zone |
+| P14 | A5 Multi-zone | F4+F5+F7+F9 | Very Hard | 12-16 | Attaque complète IT→OT |
+| P15 | A6 Mesh | F4+F6 | Medium | 6-8 | Protocoles + crypto |
+| P16 | A6 Mesh | F4+F6+F9 | Hard | 9-12 | Mesh hostile |
+| P17 | A7 Edge-Cloud | F1+F8 | Medium | 6-8 | Fuite edge→cloud |
+| P18 | A7 Edge-Cloud | F3+F7+F8 | Hard | 10-12 | Pivot edge→cloud |
+| P19 | A8 Multi-site | F5+F6+F7 | Hard | 9-12 | VPN + pivot inter-site |
+| P20 | RETIRÉE — composition publique interdite au split sealed | — | — | — | Ne jamais réutiliser |

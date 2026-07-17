@@ -37,6 +37,7 @@ vulnerabilities:
       telnetd actif sur OpenWrt. Protocole en clair, accès shell sans authentification.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -56,6 +57,7 @@ vulnerabilities:
       Permet l'accès en lecture à des fichiers potentiellement sensibles.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -77,6 +79,7 @@ vulnerabilities:
       accès complet au broker.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -99,6 +102,7 @@ vulnerabilities:
       accessibles avec les credentials faibles test:test.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -120,6 +124,7 @@ vulnerabilities:
       /api/exec permet l'exécution de commandes arbitraires (RCE).
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution, Collection"
     cve: null
@@ -142,6 +147,7 @@ vulnerabilities:
       authentification. Compromission complète du serveur.
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution"
     cve: null
@@ -161,6 +167,7 @@ vulnerabilities:
       leurs mots de passe en clair et leurs rôles.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -181,6 +188,7 @@ vulnerabilities:
       mots de passe, et un firmware non signé.
     severity: high
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -204,6 +212,7 @@ vulnerabilities:
       MQTT (bridge/br1dg3_s3cret) et DB (root/P@ssw0rd123).
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -225,6 +234,7 @@ vulnerabilities:
       avec des nœuds exec (RCE) et l'accès aux variables d'environnement.
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces / I9 - Insecure Default Settings"
     mitre_ics: "Execution, Initial Access"
     cve: null
@@ -247,6 +257,7 @@ vulnerabilities:
       arbitraire via l'éditeur sans authentification.
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution"
     cve: null
@@ -268,6 +279,7 @@ vulnerabilities:
       ed25519 de l'utilisateur iot-admin est en mode 644 (world-readable).
     severity: high
     category: misconfiguration
+    expected_type: data_exposure
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access, Lateral Movement"
     cve: null
@@ -288,6 +300,7 @@ vulnerabilities:
       /etc/iot/config.json contient les credentials MQTT, DB et API en clair (mode 644).
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

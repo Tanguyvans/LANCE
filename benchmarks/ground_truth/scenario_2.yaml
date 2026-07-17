@@ -34,6 +34,7 @@ vulnerabilities:
       LuCI accessible depuis le WAN (port 80). Pas d'authentification supplémentaire.
     severity: critical
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Initial Access"
     cve: null
@@ -54,6 +55,7 @@ vulnerabilities:
       Protocole non chiffré, credentials transmis en clair.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -73,6 +75,7 @@ vulnerabilities:
       à tous les topics, y compris smartcity/admin/credentials.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -95,6 +98,7 @@ vulnerabilities:
       pour downgrader les algorithmes de chiffrement.
     severity: high
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"
@@ -117,6 +121,7 @@ vulnerabilities:
       sans authentification. Retourne des informations système.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Collection"
     cve: null
@@ -140,6 +145,7 @@ vulnerabilities:
       La base smartcity contient des credentials en clair dans la table users.
     severity: critical
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak Passwords"
     mitre_ics: "Collection, Impact"
     cve: null
@@ -161,6 +167,7 @@ vulnerabilities:
       MaxAuthTries 10 (brute-force facilité). Root accessible avec 'root'.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -182,6 +189,7 @@ vulnerabilities:
       des dumps SQL et fichiers de configuration avec credentials.
     severity: high
     category: data_exposure
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -203,6 +211,7 @@ vulnerabilities:
       en clair, accessibles à toute personne connectée anonymement au broker.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
     mitre_ics: "Collection"
     cve: null
@@ -224,6 +233,7 @@ vulnerabilities:
       firmware binaire sans fichier de signature (.sha256 ou .sig).
     severity: medium
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
     mitre_ics: "T0839 - Module Firmware"
     cve: null
@@ -244,6 +254,7 @@ vulnerabilities:
       Le serveur nginx ne retourne aucun header de sécurité HTTP.
     severity: low
     category: missing_header
+    expected_type: missing_header
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -262,6 +273,7 @@ vulnerabilities:
       Le header HTTP Server révèle la version exacte de nginx.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -281,6 +293,7 @@ vulnerabilities:
       un dump SQL et /config/app.config expose des credentials.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

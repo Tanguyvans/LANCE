@@ -47,6 +47,7 @@ vulnerabilities:
       vers le réseau industriel.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "T0822 - External Remote Services"
     cve: null
@@ -71,6 +72,7 @@ vulnerabilities:
       (shell.php) y est déjà présent, ainsi que config_backup.json avec les credentials réseau.
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "T0866 - Exploitation of Remote Services"
     cve: null
@@ -95,6 +97,7 @@ vulnerabilities:
       Un attaquant peut publier des commandes malveillantes ou écouter les données process.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "T0830 - Man in the Middle, T0836 - Modify Parameter"
     cve: null
@@ -116,6 +119,7 @@ vulnerabilities:
       et interface HTTP admin accessible sans authentification.
     severity: medium
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "T0822 - External Remote Services"
     cve: "CVE-2023-48795"
@@ -139,6 +143,7 @@ vulnerabilities:
       Lecture des programmes PLC dans /opt/plc/programs/main.st.
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "T0836 - Modify Parameter, T0831 - Manipulation of Control"
     cve: null
@@ -162,6 +167,7 @@ vulnerabilities:
       Directory listing activé : expose les fichiers de configuration SCADA et les données process.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "T0832 - Manipulation of View"
     cve: null
@@ -184,6 +190,7 @@ vulnerabilities:
       historiques process, les credentials utilisateurs en clair et les configurations réseau.
     severity: critical
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak Passwords"
     mitre_ics: "T0801 - Monitor Process State, Collection"
     cve: null
@@ -206,6 +213,7 @@ vulnerabilities:
       web LuCI est accessible depuis le WAN (port 80).
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -228,6 +236,7 @@ vulnerabilities:
       et l'HMI SCADA sans traverser de contrôle d'accès réseau.
     severity: critical
     category: misconfiguration
+    expected_type: misconfiguration
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "T0817 - Drive-by Compromise, Lateral Movement"
     cve: null
@@ -250,6 +259,7 @@ vulnerabilities:
       affaiblit la sécurité de la porte d'entrée vers le réseau industriel.
     severity: low
     category: weak_crypto
+    expected_type: weak_cipher
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -273,6 +283,7 @@ vulnerabilities:
       des capteurs LoRa connectés au réseau industriel.
     severity: medium
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
     mitre_ics: "T0839 - Module Firmware"
     cve: null
@@ -294,6 +305,7 @@ vulnerabilities:
       (http://192.168.100.17:3306/) pour scanner le réseau OT depuis le serveur web IT.
     severity: high
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "T1190 - Exploit Public-Facing Application"
     cve: null
@@ -314,6 +326,7 @@ vulnerabilities:
       (/admin/, /api/internal/, /backup/, /config/, /.env).
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -332,6 +345,7 @@ vulnerabilities:
       Le banner SSH révèle l'OS exact et la version OpenSSH.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -351,6 +365,7 @@ vulnerabilities:
       sensibles (/admin/, /api/internal/, /backup/, /config/, /.env).
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -370,6 +385,7 @@ vulnerabilities:
       /config/app.config contenant des credentials en clair (DB, API, SMTP).
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -389,6 +405,7 @@ vulnerabilities:
       Le topic smartcity/admin/credentials publie des credentials en clair.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -407,6 +424,7 @@ vulnerabilities:
       Dropbear 2020.81 vulnérable à l'attaque Terrapin (prefix truncation).
     severity: medium
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"

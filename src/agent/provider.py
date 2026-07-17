@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 from src.config import API_TIMEOUT
 import time
@@ -76,6 +77,29 @@ OPENAI_PROVIDERS = {
 }
 
 
+def _sealed_gateway_config() -> dict:
+    """Return the evaluator-owned, credential-free inference gateway config.
+
+    Sealed workers must not receive upstream provider credentials: several
+    reconnaissance tools legitimately execute subprocesses, so an API key in
+    the worker environment would be readable by those subprocesses.  The
+    private evaluator instead exposes a network-restricted OpenAI-compatible
+    gateway and keeps the upstream key outside the worker namespace.
+    """
+
+    base_url = os.environ.get("SEALED_INFERENCE_BASE_URL", "").strip()
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("SEALED_INFERENCE_BASE_URL must be an absolute HTTP(S) URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("SEALED_INFERENCE_BASE_URL must not contain credentials, query parameters or fragments")
+    return {
+        "base_url": base_url.rstrip("/"),
+        "api_key_env": "",
+        "default_model": "",
+    }
+
+
 def _resolve_provider_cfg(provider: str) -> dict | None:
     """Provider config (base_url, api_key_env, default_model), DB first.
 
@@ -104,7 +128,7 @@ class LLMProvider:
             self.client = anthropic.Anthropic()
             self.model = model or "claude-sonnet-4-20250514"
         else:
-            cfg = _resolve_provider_cfg(provider)
+            cfg = _sealed_gateway_config() if provider == "sealed-gateway" else _resolve_provider_cfg(provider)
             if cfg is None:
                 known = ", ".join(["anthropic", *OPENAI_PROVIDERS])
                 raise ValueError(f"Unknown provider: {provider}. Available: {known}")

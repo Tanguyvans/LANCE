@@ -10,6 +10,8 @@ from typing import Any, Iterator
 import pytest
 import yaml
 
+from src.agent.vuln_taxonomy import CANONICAL_TYPES
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARKS = REPO_ROOT / "benchmarks"
@@ -108,6 +110,19 @@ def test_every_public_scenario_references_existing_topology_and_packs():
             assert (PACKS / f"{pack_id}.yaml").is_file(), (
                 f"{scenario_path.name} references missing pack {pack_id}"
             )
+
+
+def test_every_public_gt_vulnerability_has_one_canonical_expected_type():
+    total = 0
+    for gt_path in sorted(GROUND_TRUTH.glob("scenario_*.yaml")):
+        ground_truth = _load_yaml(gt_path)
+        for vulnerability in ground_truth.get("vulnerabilities", []):
+            assert vulnerability.get("expected_type") in CANONICAL_TYPES, (
+                f"{gt_path.name}:{vulnerability.get('id')} has no canonical "
+                "expected_type"
+            )
+            total += 1
+    assert total == 252
 
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)

@@ -36,6 +36,7 @@ vulnerabilities:
       depuis le WAN sans restriction réseau. Permet la reconfiguration complète du routeur.
     severity: critical
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Initial Access"
     cve: null
@@ -56,6 +57,7 @@ vulnerabilities:
       Protocole non chiffré, credentials transmis en clair.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -76,6 +78,7 @@ vulnerabilities:
       /api/status expose les connexions actives vers MQTT et DB.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces / I9 - Insecure Default Settings"
     mitre_ics: "Discovery, Collection"
     cve: null
@@ -99,6 +102,7 @@ vulnerabilities:
       du réseau interne depuis n'importe quelle IP.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Discovery, Collection"
     cve: null
@@ -120,6 +124,7 @@ vulnerabilities:
       Accès en lecture/écriture à tous les topics depuis tout le réseau.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -142,6 +147,7 @@ vulnerabilities:
       home/alarm/code (code PIN en clair), home/camera/stream (URL RTSP avec creds).
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
     mitre_ics: "Collection"
     cve: null
@@ -163,6 +169,7 @@ vulnerabilities:
       La base smartcity contient les profils utilisateurs, historique des accès et tokens API.
     severity: critical
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak Passwords"
     mitre_ics: "Collection, Impact"
     cve: null
@@ -185,6 +192,7 @@ vulnerabilities:
       sans login.
     severity: medium
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces / I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -207,6 +215,7 @@ vulnerabilities:
       /config/app.config expose les credentials DB, API key et SMTP.
     severity: high
     category: data_exposure
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -229,6 +238,7 @@ vulnerabilities:
       le firmware du hub pour prendre le contrôle de tous les actionneurs domotiques.
     severity: medium
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
     mitre_ics: "T0839 - Module Firmware"
     cve: null
@@ -250,6 +260,7 @@ vulnerabilities:
       et la clé secrète Django en clair.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection, Credential Access"
     cve: null
@@ -270,6 +281,7 @@ vulnerabilities:
       Permet l'interaction depuis un navigateur web, contournant les firewalls.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -289,6 +301,7 @@ vulnerabilities:
       Le fichier robots.txt révèle l'existence de répertoires sensibles sur le hub IoT.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -308,6 +321,7 @@ vulnerabilities:
       sensibles (/admin/, /api/internal/, /backup/, /config/, /.env).
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -326,6 +340,7 @@ vulnerabilities:
       Dropbear 2020.81 vulnérable à l'attaque Terrapin (prefix truncation).
     severity: medium
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"
@@ -345,6 +360,7 @@ vulnerabilities:
       nginx configuré avec autoindex on sur le portail web domotique.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

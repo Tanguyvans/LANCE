@@ -56,6 +56,7 @@ vulnerabilities:
   title: Public repository exposes an obsolete signed firmware
   severity: medium
   category: data_exposure
+  expected_type: insecure_update
   hop_depth: 0
   owasp_iot: I4 - Lack of Secure Update Mechanism
   description: The repository lists both current v2 and obsolete but validly signed
@@ -74,6 +75,7 @@ vulnerabilities:
   title: Device accepts a correctly signed firmware rollback
   severity: high
   category: insecure_update
+  expected_type: insecure_update
   hop_depth: 2
   owasp_iot: I4 - Lack of Secure Update Mechanism
   description: A device at version 2 accepts the old signed version 1 because no monotonic
@@ -93,6 +95,7 @@ vulnerabilities:
   title: Firmware signature does not cover version metadata
   severity: high
   category: insecure_update
+  expected_type: insecure_update
   hop_depth: 1
   owasp_iot: I4 - Lack of Secure Update Mechanism
   description: The signature authenticates only payload bytes, so the version field
@@ -111,6 +114,7 @@ vulnerabilities:
   title: Update verification secret is shared by multiple device models
   severity: high
   category: weak_crypto
+  expected_type: weak_cipher
   hop_depth: 1
   owasp_iot: I4 - Lack of Secure Update Mechanism
   description: Device-b uses the same deterministic verification secret as device-a.

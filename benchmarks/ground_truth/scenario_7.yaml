@@ -44,6 +44,7 @@ vulnerabilities:
       Protocole non chiffré, credentials transmis en clair.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -64,6 +65,7 @@ vulnerabilities:
       downgrader les algorithmes de chiffrement de la session SSH.
     severity: high
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"
@@ -87,6 +89,7 @@ vulnerabilities:
       L'endpoint /api/status expose les connexions MQTT et DB actives.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Discovery, Collection"
     cve: null
@@ -111,6 +114,7 @@ vulnerabilities:
       Ces informations permettent l'accès au cloud depuis l'extérieur.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer / I1 - Weak Passwords"
     mitre_ics: "Collection, Lateral Movement"
     cve: null
@@ -133,6 +137,7 @@ vulnerabilities:
       lecture des configs et pivot vers les services internes.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -156,6 +161,7 @@ vulnerabilities:
       le serveur cloud.
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution, Lateral Movement"
     cve: null
@@ -178,6 +184,7 @@ vulnerabilities:
       (noms, emails, tokens d'authentification) et les credentials DB en clair.
     severity: high
     category: data_exposure
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -199,6 +206,7 @@ vulnerabilities:
       tokens d'accès, historique des événements) dans les tables users et access_events.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I6 - Insufficient Privacy Protection / I1 - Weak Passwords"
     mitre_ics: "Collection"
     cve: null
@@ -221,6 +229,7 @@ vulnerabilities:
       d'administration vers l'infrastructure de traitement locale.
     severity: low
     category: weak_crypto
+    expected_type: weak_cipher
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -244,6 +253,7 @@ vulnerabilities:
       leur remontée vers le cloud.
     severity: medium
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism / I8 - Lack of Device Management"
     mitre_ics: "T0839 - Module Firmware"
     cve: null
@@ -265,6 +275,7 @@ vulnerabilities:
       du routeur edge et l'exposition de tous les services internes.
     severity: critical
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Initial Access"
     cve: null
@@ -285,6 +296,7 @@ vulnerabilities:
       Contient les credentials de la base de données cloud, du broker MQTT, l'API key.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection, Credential Access"
     cve: null
@@ -305,6 +317,7 @@ vulnerabilities:
       /opt/iot/maintenance.sh (exécuté par cron root) est writable par tous.
     severity: high
     category: privilege_escalation
+    expected_type: privilege_escalation
     owasp_iot: "I1 - Weak Passwords"
     mitre_ics: "T0890 - Exploitation for Privilege Escalation"
     cve: null
@@ -325,6 +338,7 @@ vulnerabilities:
       publier ou s'abonner à tous les topics du broker edge.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null

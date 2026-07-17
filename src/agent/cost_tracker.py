@@ -72,10 +72,11 @@ class PhaseUsage:
     duration_s: float = 0.0
     model: str = ""
 
-    def cost_usd(self, model: str = "") -> float:
+    def cost_usd(self, model: str = "", *, allow_dynamic_pricing: bool = True) -> float:
         m = model or self.model
         # Try dynamic pricing from OpenRouter first (up to date), then hardcoded fallback
-        pricing = get_dynamic_pricing(m) or PRICING.get(m, DEFAULT_PRICING)
+        dynamic = get_dynamic_pricing(m) if allow_dynamic_pricing else None
+        pricing = dynamic or PRICING.get(m, DEFAULT_PRICING)
         return (
             self.input_tokens * pricing["input"]
             + self.output_tokens * pricing["output"]
@@ -85,6 +86,7 @@ class PhaseUsage:
 @dataclass
 class CostTracker:
     model: str = ""
+    allow_dynamic_pricing: bool = True
     phases: list[PhaseUsage] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
@@ -119,7 +121,13 @@ class CostTracker:
 
     def total_cost(self) -> float:
         with self._lock:
-            return sum(p.cost_usd(self.model) for p in self.phases)
+            return sum(
+                p.cost_usd(
+                    self.model,
+                    allow_dynamic_pricing=self.allow_dynamic_pricing,
+                )
+                for p in self.phases
+            )
 
     def total_tokens(self) -> tuple[int, int]:
         with self._lock:
@@ -132,7 +140,13 @@ class CostTracker:
         with self._lock:
             in_tok = sum(p.input_tokens for p in self.phases)
             out_tok = sum(p.output_tokens for p in self.phases)
-            total_cost = sum(p.cost_usd(self.model) for p in self.phases)
+            total_cost = sum(
+                p.cost_usd(
+                    self.model,
+                    allow_dynamic_pricing=self.allow_dynamic_pricing,
+                )
+                for p in self.phases
+            )
             return {
                 "model": self.model,
                 "total_cost_usd": round(total_cost, 4),
@@ -147,7 +161,13 @@ class CostTracker:
                         "input_tokens": p.input_tokens,
                         "output_tokens": p.output_tokens,
                         "tool_calls": p.tool_calls,
-                        "cost_usd": round(p.cost_usd(self.model), 4),
+                        "cost_usd": round(
+                            p.cost_usd(
+                                self.model,
+                                allow_dynamic_pricing=self.allow_dynamic_pricing,
+                            ),
+                            4,
+                        ),
                         "duration_s": round(p.duration_s, 1),
                     }
                     for p in self.phases
@@ -170,7 +190,10 @@ class CostTracker:
         with self._lock:
             phases_copy = list(self.phases)
         for p in phases_copy:
-            cost = p.cost_usd(self.model)
+            cost = p.cost_usd(
+                self.model,
+                allow_dynamic_pricing=self.allow_dynamic_pricing,
+            )
             print(
                 f"{p.agent_name:<22} {p.turns:>6} {p.input_tokens:>11,} "
                 f"{p.output_tokens:>11,} {cost:>9.4f} {p.duration_s:>8.0f}s"

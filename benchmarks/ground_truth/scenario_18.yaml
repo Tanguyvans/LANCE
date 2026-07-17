@@ -56,6 +56,7 @@ vulnerabilities:
   title: Server-side request forgery reaches isolated metadata service
   severity: critical
   category: code_injection
+  expected_type: code_injection
   hop_depth: 0
   owasp_iot: I3 - Insecure Ecosystem Interfaces
   description: The fetch endpoint permits requests to the metadata service even though
@@ -74,6 +75,7 @@ vulnerabilities:
   title: Workload metadata issues an over-privileged cloud role token
   severity: high
   category: privilege_escalation
+  expected_type: privilege_escalation
   hop_depth: 1
   owasp_iot: I9 - Insecure Default Settings
   description: Metadata returns a bearer token with object-store administrative scope.
@@ -92,6 +94,7 @@ vulnerabilities:
   title: Stolen workload role can read city secrets bucket
   severity: critical
   category: data_exposure
+  expected_type: data_exposure
   hop_depth: 2
   owasp_iot: I7 - Insecure Data Transfer and Storage
   description: The metadata role token authorizes retrieval of sensitive simulated

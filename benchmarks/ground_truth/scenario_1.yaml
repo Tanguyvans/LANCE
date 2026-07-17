@@ -34,6 +34,7 @@ vulnerabilities:
       y compris smartcity/admin/credentials qui contient des credentials en clair.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -56,6 +57,7 @@ vulnerabilities:
       expose l'API key, le mot de passe DB et les credentials SMTP.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -78,6 +80,7 @@ vulnerabilities:
       sont accessibles sans authentification via le serveur web.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -99,6 +102,7 @@ vulnerabilities:
       Le fichier /etc/iot/config.json expose tous les credentials du réseau.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -122,6 +126,7 @@ vulnerabilities:
       Telnet transmet les credentials en clair sur le réseau.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -142,6 +147,7 @@ vulnerabilities:
       en clair, accessibles à toute personne connectée anonymement au broker.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection / I7 - Insecure Data Transfer"
     mitre_ics: "Collection"
     cve: null
@@ -162,6 +168,7 @@ vulnerabilities:
       de downgrade de chiffrement et l'interception de sessions.
     severity: low
     category: weak_crypto
+    expected_type: weak_cipher
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -184,6 +191,7 @@ vulnerabilities:
       les firewalls qui filtrent uniquement le port 1883.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -205,6 +213,7 @@ vulnerabilities:
       Facilite les attaques clickjacking et XSS.
     severity: low
     category: missing_header
+    expected_type: missing_header
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -226,6 +235,7 @@ vulnerabilities:
       Facilite le ciblage de CVE spécifiques par un attaquant.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -245,6 +255,7 @@ vulnerabilities:
       nombre de clients connectés, messages/s, uptime. Permet le profilage du broker.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Discovery"
     cve: null
@@ -265,6 +276,7 @@ vulnerabilities:
       et la version OpenSSH. Différent de la faiblesse des ciphers (V7).
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null

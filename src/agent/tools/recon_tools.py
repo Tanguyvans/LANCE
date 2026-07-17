@@ -26,7 +26,7 @@ from src.cve_lookup import query_nvd
 _ANSI_ESC = re.compile(r'\x1b\[[0-9;]*[mK]')
 
 
-def _run(cmd: list[str], timeout: int = 30) -> dict:
+def _run(cmd: list[str], timeout: int = 30, input_text: str | None = None) -> dict:
     """Run a command and return structured output (ANSI codes stripped)."""
     try:
         result = subprocess.run(
@@ -34,6 +34,7 @@ def _run(cmd: list[str], timeout: int = 30) -> dict:
             capture_output=True,
             text=True,
             timeout=timeout,
+            input=input_text,
         )
         return {
             "stdout": _ANSI_ESC.sub('', result.stdout),
@@ -260,11 +261,10 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
 
     if service == "telnet":
         p = port or 23
-        # Use netcat to send credentials and check response
-        cmd = ["bash", "-c",
-               f"(echo '{user}'; sleep 0.5; echo '{password}'; sleep 1; echo 'id') | "
-               f"nc -w 5 {ip} {p} 2>/dev/null"]
-        result = _run(cmd, timeout=12)
+        # Pass model-controlled values only as argv/stdin, never through a
+        # shell command string. A sealed worker must be treated as hostile.
+        cmd = ["nc", "-w", "5", ip, str(p)]
+        result = _run(cmd, timeout=12, input_text=f"{user}\n{password}\nid\n")
         stdout = result["stdout"]
         success = "uid=" in stdout or "$" in stdout or "#" in stdout
         return json.dumps({"success": success, "service": "telnet", "port": p,
@@ -272,11 +272,13 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
 
     if service == "redis":
         p = port or 6379
-        # Try AUTH then PING
-        cmd = ["bash", "-c",
-               f"(echo 'AUTH {password}'; echo 'PING'; echo 'KEYS *') | "
-               f"nc -w 5 {ip} {p} 2>/dev/null"]
-        result = _run(cmd, timeout=10)
+        # Redis inline protocol over stdin avoids shell interpolation.
+        cmd = ["nc", "-w", "5", ip, str(p)]
+        result = _run(
+            cmd,
+            timeout=10,
+            input_text=f"AUTH {password}\r\nPING\r\nKEYS *\r\n",
+        )
         stdout = result["stdout"]
         success = "+OK" in stdout or "+PONG" in stdout
         return json.dumps({"success": success, "service": "redis", "port": p,

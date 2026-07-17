@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import re
 import zipfile
 from dataclasses import asdict
@@ -128,55 +127,6 @@ def _visible_files(run_dir: Path) -> list[str]:
     )
 
 
-def _load_sealed_summary(run_dir: Path, expected_scenario_id: str) -> dict | None:
-    """Load a controller-owned summary, never a run-local agent artifact.
-
-    The controller (or deployment glue) may publish summaries in the directory
-    named by SEALED_EVALUATION_DIR, keyed as ``<run_id>.json``. The directory is
-    deliberately outside OUTPUT_DIR so an evaluated agent cannot forge a score.
-    """
-    trusted_raw = os.environ.get("SEALED_EVALUATION_DIR")
-    if not trusted_raw:
-        return None
-    trusted_dir = Path(trusted_raw)
-    if not trusted_dir.is_absolute() or trusted_dir.is_symlink() or not trusted_dir.is_dir():
-        raise ValueError("SEALED_EVALUATION_DIR must be an absolute trusted directory")
-    trusted_resolved = trusted_dir.resolve()
-    try:
-        trusted_resolved.relative_to(OUTPUT_DIR.resolve())
-    except ValueError:
-        pass
-    else:
-        raise ValueError("SEALED_EVALUATION_DIR must be outside the agent output directory")
-
-    run_id = run_dir.name
-    if not _RUN_ID_RE.fullmatch(run_id):
-        raise ValueError("invalid sealed run ID")
-    summary_path = trusted_dir / f"{run_id}.json"
-    if not summary_path.exists():
-        return None
-    if summary_path.is_symlink() or not summary_path.is_file():
-        raise ValueError("sealed evaluation summary must be a regular file")
-    try:
-        summary_path.resolve().relative_to(trusted_resolved)
-    except ValueError as exc:
-        raise ValueError("sealed evaluation summary escapes the trusted directory") from exc
-
-    from src.benchmark.contracts import EvaluationSummary
-    from src.benchmark.catalog import load_catalog
-
-    summary = EvaluationSummary.from_dict(
-        json.loads(summary_path.read_text(encoding="utf-8"))
-    )
-    if summary.scenario_id != expected_scenario_id:
-        raise ValueError("sealed evaluation summary scenario mismatch")
-    if summary.benchmark_version != load_catalog().benchmark_version:
-        raise ValueError("sealed evaluation summary benchmark version mismatch")
-    public_summary = asdict(summary)
-    public_summary.pop("signature", None)
-    return public_summary
-
-
 def _extract_cost(run_dir: Path) -> float | None:
     """Extract total cost from cost_summary.json, falling back to markdown scan."""
     cost_file = run_dir / "cost_summary.json"
@@ -246,16 +196,19 @@ def list_runs():
     for d in sorted(OUTPUT_DIR.iterdir(), reverse=True):
         if not _is_safe_run_dir(d):
             continue
-        sealed = _is_sealed_run(d)
+        # Sealed output is controller-internal and must never become a public
+        # run-history row.  The only supported surface is /api/sealed/suites.
+        if _is_sealed_run(d):
+            continue
         files = _visible_files(d)
         runs.append({
             "id": d.name,
             "files": files,
-            "cost": None if sealed else _extract_cost(d),
+            "cost": _extract_cost(d),
             "scenario": _detect_scenario(d),
             "status": _run_status(d),
             "commit": _extract_commit(d),
-            "sealed": sealed,
+            "sealed": False,
         })
     return runs
 
@@ -273,17 +226,18 @@ def get_benchmark():
         scenario = _detect_scenario(d)
         if not scenario:
             continue  # Only include scenario runs in benchmark view
-        sealed = _is_sealed_run(d)
+        if _is_sealed_run(d):
+            continue
 
         entry = {
             "id": d.name,
             "scenario": scenario,
-            "cost": None if sealed else _extract_cost(d),
+            "cost": _extract_cost(d),
             "status": _run_status(d),
             "model": None,
             "score": None,
             "commit": _extract_commit(d),
-            "sealed": sealed,
+            "sealed": False,
         }
 
         try:
@@ -295,12 +249,7 @@ def get_benchmark():
 
         vuln_file = d / "03_vuln_analysis.json"
         sid = scenario.removeprefix("S")
-        if sealed:
-            try:
-                entry["score"] = _load_sealed_summary(d, sid)
-            except Exception:
-                pass
-        elif vuln_file.exists():
+        if vuln_file.exists():
             gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{sid}.yaml"
             if gt_path.exists():
                 try:
@@ -319,16 +268,17 @@ def get_benchmark():
 def get_run(run_id: str):
     """Return metadata and file list for a specific run."""
     run_dir = _resolve_run_dir(run_id)
-    sealed = _is_sealed_run(run_dir)
+    if _is_sealed_run(run_dir):
+        raise HTTPException(status_code=404, detail="Run not found")
     files = _visible_files(run_dir)
     return {
         "id": run_id,
         "files": files,
-        "cost": None if sealed else _extract_cost(run_dir),
+        "cost": _extract_cost(run_dir),
         "scenario": _detect_scenario(run_dir),
         "status": _run_status(run_dir),
         "commit": _extract_commit(run_dir),
-        "sealed": sealed,
+        "sealed": False,
     }
 
 
@@ -353,15 +303,7 @@ def score_run(run_id: str):
     # trusted, so setting custom_config must never switch a sealed run back to a
     # run-local ground truth.
     if _is_sealed_run(run_dir):
-        if not scenario_id.isdigit() or not 20 <= int(scenario_id) <= 25:
-            raise HTTPException(status_code=500, detail="Invalid sealed scenario metadata")
-        try:
-            summary = _load_sealed_summary(run_dir, scenario_id)
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Invalid sealed evaluation summary: {exc}") from exc
-        if summary is None:
-            raise HTTPException(status_code=404, detail="Sealed evaluation is not available yet")
-        return summary
+        raise HTTPException(status_code=404, detail="Run not found")
 
     if meta.get("custom_config"):
         gt_path = run_dir / "ground_truth.yaml"
@@ -416,10 +358,7 @@ def download_run(run_id: str):
     """Download all deliverables for a run as a zip archive."""
     run_dir = _resolve_run_dir(run_id)
     if _is_sealed_run(run_dir):
-        raise HTTPException(
-            status_code=403,
-            detail="Sealed runs expose aggregate evaluation summaries only",
-        )
+        raise HTTPException(status_code=404, detail="Run not found")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -454,10 +393,7 @@ def get_run_file(run_id: str, filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     run_dir = _resolve_run_dir(run_id)
     if _is_sealed_run(run_dir):
-        raise HTTPException(
-            status_code=403,
-            detail="Sealed runs expose aggregate evaluation summaries only",
-        )
+        raise HTTPException(status_code=404, detail="Run not found")
     filepath = run_dir / filename
     if not filepath.is_file() or filepath.is_symlink():
         raise HTTPException(status_code=404, detail="File not found")

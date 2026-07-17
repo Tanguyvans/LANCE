@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoTChainBench — Évaluation scellée</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="eyebrow">IoTChainBench · zone évaluateur</p>
+      <h1>Évaluation scellée</h1>
+      <p class="lede">
+        Lance la campagne S20–S25 complète. Cette interface n’affiche ni logs,
+        ni détail par scénario, ni sortie du modèle : uniquement l’état global
+        et les métriques agrégées attestées.
+      </p>
+    </header>
+
+    <section class="card" aria-labelledby="launch-title">
+      <div class="card-head">
+        <div>
+          <p class="step">01</p>
+          <h2 id="launch-title">Lancer un modèle</h2>
+        </div>
+        <span class="security-chip">Origine évaluateur</span>
+      </div>
+
+      <form id="launch-form" autocomplete="off">
+        <div class="field-grid">
+          <label>
+            <span>Modèle</span>
+            <input id="model" name="model" type="text" maxlength="256"
+                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                   placeholder="org/model-3b" required>
+          </label>
+          <label>
+            <span>Provider zero-retention</span>
+            <input id="provider" name="provider" type="text" maxlength="64"
+                   autocomplete="off" autocapitalize="none" spellcheck="false"
+                   placeholder="local-zdr" required>
+          </label>
+        </div>
+        <label>
+          <span>Token de lancement</span>
+          <input id="token" name="token" type="password" maxlength="512"
+                 autocomplete="off" autocapitalize="none" spellcheck="false"
+                 data-lpignore="true" required>
+          <small>Gardé uniquement en mémoire jusqu’à la fin de cette page.</small>
+        </label>
+        <div class="actions">
+          <button id="launch" type="submit">Lancer la suite complète</button>
+          <button id="cancel" class="secondary danger" type="button" hidden>Annuler la suite</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="resume-title">
+      <div class="card-head compact">
+        <div>
+          <p class="step">02</p>
+          <h2 id="resume-title">Reprendre le suivi</h2>
+        </div>
+      </div>
+      <p class="muted">Après un rechargement, ressaisis le token et l’identifiant opaque.</p>
+      <form id="resume-form" class="resume-row" autocomplete="off">
+        <input id="resume-suite-id" type="text" maxlength="36" autocomplete="off"
+               autocapitalize="none" spellcheck="false" aria-label="Identifiant de suite"
+               placeholder="00000000-0000-0000-0000-000000000000" required>
+        <button class="secondary" type="submit">Suivre</button>
+      </form>
+    </section>
+
+    <section id="result-card" class="card result" data-state="idle" aria-labelledby="result-title">
+      <div class="card-head">
+        <div>
+          <p class="step">03</p>
+          <h2 id="result-title">Résultat agrégé</h2>
+        </div>
+        <span id="status-badge" class="status-badge">Prêt</span>
+      </div>
+      <p id="status-text" class="status-text" role="status" aria-live="polite">
+        Renseigne le modèle, le provider et le token pour démarrer.
+      </p>
+      <dl id="identity" class="identity" hidden></dl>
+      <div id="metrics" class="metrics" hidden></div>
+      <p id="suite-reference" class="suite-reference" hidden></p>
+    </section>
+
+    <aside class="policy">
+      <strong>Frontière de confidentialité</strong>
+      <span>Les prompts, réponses, tool calls, findings, bundles et erreurs internes ne sont jamais publiés ici et ne doivent pas être conservés pour entraîner ou ajuster le harness.</span>
+    </aside>
+  </main>
+</body>
+</html>

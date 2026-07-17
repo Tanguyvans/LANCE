@@ -11,3 +11,7 @@ vault_minimax_api_key: "xxxxxxxxxxxx"                 # optionnel — MiniMax Co
 vault_voyage_api_key: "pa-xxxxxxxxxxxx"               # optionnel (knowledge store)
 vault_github_token: "ghp_xxxxxxxxxxxx"                # Personal Access Token (read:repo) — https://github.com/settings/tokens
 vault_github_runner_token: "AXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Runner registration token — https://github.com/Tanguyvans/LANCE/settings/actions/runners/new
+
+# Aucun token, credential controller ou secret d'inférence sealed ne doit être
+# placé dans le vault de la VM maître publique. Ils appartiennent exclusivement
+# à une infrastructure d'évaluation séparée.

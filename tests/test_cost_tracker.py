@@ -47,6 +47,18 @@ class TestCostTracker:
         # $3 input + $15 output = $18
         assert tracker.total_cost() == 18.0
 
+    @patch("src.agent.cost_tracker.get_dynamic_pricing")
+    def test_dynamic_pricing_can_be_disabled_for_sealed_workers(self, dynamic):
+        tracker = CostTracker(model="test-model", allow_dynamic_pricing=False)
+        tracker.start_phase("sealed")
+        tracker.record_turn(1_000_000, 0)
+        tracker.end_phase()
+
+        assert tracker.total_cost() == 1.0
+        assert tracker.summary()["total_cost_usd"] == 1.0
+        tracker.print_summary()
+        dynamic.assert_not_called()
+
     def test_total_tokens(self):
         tracker = CostTracker()
         tracker.start_phase("a")

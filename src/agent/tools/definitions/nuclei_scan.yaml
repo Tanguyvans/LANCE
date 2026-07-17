@@ -1,6 +1,6 @@
 name: "nuclei_scan"
 command: "nuclei"
-args: ["-silent", "-no-color", "-stats=false", "-rate-limit", "30", "-timeout", "10"]
+args: ["-silent", "-no-color", "-stats=false", "-disable-update-check", "-rate-limit", "30", "-timeout", "10"]
 enabled: true
 timeout: 600
 max_output: 8000

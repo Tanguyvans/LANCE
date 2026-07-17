@@ -68,6 +68,28 @@ class TestResolveTools:
         assert recon_names.isdisjoint(resolved_names)
 
 
+class TestSealedPricingIsolation:
+    def test_phase_reporting_never_fetches_dynamic_pricing(
+        self, mock_provider, output_dir,
+    ):
+        pipeline = Pipeline(provider=mock_provider, phases=[99])
+        pipeline.tracker.allow_dynamic_pricing = False
+        pipeline.context = {}
+        config = AgentConfig(
+            name="pricing_isolation",
+            phase=99,
+            prompt_template="unused",
+            deliverable_file="pricing.md",
+            tools=[],
+        )
+
+        with patch("src.agent.pipeline.load_prompt", return_value="prompt"), \
+             patch("src.agent.cost_tracker.get_dynamic_pricing") as dynamic_pricing:
+            pipeline._run_agent(config, stream_callback=lambda _event: None)
+
+        dynamic_pricing.assert_not_called()
+
+
 class TestPrerequisites:
     def test_no_prerequisites(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)
@@ -224,7 +246,9 @@ class TestGitCommit:
 
     def test_run_meta_written_on_init(self, mock_provider, output_dir):
         with patch("src.agent.pipeline._get_git_commit", return_value="deadbeef"):
-            pipeline = Pipeline(provider=mock_provider)
+            # This test verifies metadata only; avoid executing all six agent
+            # phases and importing the heavyweight ChromaDB history stack.
+            pipeline = Pipeline(provider=mock_provider, phases=[99])
         # run_meta.json is written during run(), not __init__ — verify after run
         with patch("src.agent.pipeline.load_lab_context", return_value={
             "device_count": 1, "link_count": 1, "cve_count": 0, "top_risk": "none",
@@ -261,7 +285,7 @@ class TestBlindMode:
         the agent would receive a list of all target IPs through the prompt."""
         pipeline = Pipeline(
             provider=mock_provider, scenario_id=1, blind=True, dry_run=True,
-            phases=[],  # don't run any agents
+            phases=[99],  # use a nonexistent phase; [] means the default phases
         )
         with patch("src.agent.tools.graph_tools.load_discovery_context", return_value={
             "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
@@ -274,7 +298,7 @@ class TestBlindMode:
         """Sanity check: without blind, the scenario context is loaded."""
         pipeline = Pipeline(
             provider=mock_provider, scenario_id=1, blind=False, dry_run=True,
-            phases=[],
+            phases=[99],
         )
         with patch("src.agent.tools.graph_tools.load_scenario_topology", return_value={
             "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
@@ -362,7 +386,11 @@ class TestDeviceAgents:
             validator="json_vuln_queue",
         )
 
-        status = pipeline._run_agent(config)
+        # This is an orchestration unit test; avoid invoking the real network
+        # scanner for the two synthetic devices.
+        with patch("src.agent.pipeline.run_scanner", return_value={}), \
+             patch("time.sleep"):
+            status = pipeline._run_agent(config)
 
         # 2 device agents (no reflector) + 1 aggregator = 3 total calls
         assert mock_provider.chat_with_tools.call_count == 3
@@ -551,7 +579,8 @@ class TestPhase5Context:
         }
         (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_data))
 
-        pipeline._generate_intrusion_context()
+        with patch("src.agent.pipeline.get_attack_surface", return_value="[]"):
+            pipeline._generate_intrusion_context()
 
         ctx_path = run_dir / "05_intrusion_context.json"
         assert ctx_path.exists()
@@ -571,7 +600,8 @@ class TestPhase5Context:
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
-        pipeline._generate_intrusion_context()
+        with patch("src.agent.pipeline.get_attack_surface", return_value="[]"):
+            pipeline._generate_intrusion_context()
 
         ctx_path = run_dir / "05_intrusion_context.json"
         assert ctx_path.exists()
@@ -591,7 +621,8 @@ class TestPhase5Context:
         ]
         (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_list))
 
-        pipeline._generate_intrusion_context()
+        with patch("src.agent.pipeline.get_attack_surface", return_value="[]"):
+            pipeline._generate_intrusion_context()
 
         ctx = json.loads((run_dir / "05_intrusion_context.json").read_text())
         assert ctx["confirmed_exploits"] == 1

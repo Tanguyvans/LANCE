@@ -89,6 +89,7 @@ vulnerabilities:
     title: "Admin LuCI accessible depuis toutes les zones (règle iptables manquante)"
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Initial Access"
     cve: null
@@ -103,6 +104,7 @@ vulnerabilities:
     title: "Règle iptables IoT->OT bloque TCP seulement — UDP non filtré"
     severity: high
     category: misconfiguration
+    expected_type: misconfiguration
     owasp_iot: "I8 - Lack of Device Management"
     mitre_ics: "Lateral Movement"
     cve: null
@@ -117,6 +119,7 @@ vulnerabilities:
     title: "SSH router credentials faibles (root:password)"
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -132,6 +135,7 @@ vulnerabilities:
     title: "SSH credentials faibles (admin:admin) sur jumphost IT"
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -146,6 +150,7 @@ vulnerabilities:
     title: "Clé SSH privée world-readable (644) sur jumphost"
     severity: high
     category: misconfiguration
+    expected_type: misconfiguration
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Lateral Movement"
     cve: null
@@ -160,6 +165,7 @@ vulnerabilities:
     title: "LDAP sans TLS (port 389) + bind anonyme"
     severity: medium
     category: weak_crypto
+    expected_type: weak_cipher
     owasp_iot: "I7 - Insecure Data Transfer"
     mitre_ics: "Collection"
     cve: null
@@ -174,6 +180,7 @@ vulnerabilities:
     title: "API monitoring REST sans auth + RCE via POST /api/exec"
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution"
     cve: null
@@ -188,6 +195,7 @@ vulnerabilities:
     title: "SSH port forwarding non restreint — tunnel IT->OT non filtré"
     severity: high
     category: misconfiguration
+    expected_type: misconfiguration
     owasp_iot: "I8 - Lack of Device Management"
     mitre_ics: "Lateral Movement"
     cve: null
@@ -203,6 +211,7 @@ vulnerabilities:
     title: "MQTT sans authentification + credentials OT dans les topics"
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -217,6 +226,7 @@ vulnerabilities:
     title: "Credentials OT en clair dans les topics MQTT"
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -231,6 +241,7 @@ vulnerabilities:
     title: "Gateway HTTP admin sans auth — expose topologie OT interne"
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Discovery"
     cve: null
@@ -245,6 +256,7 @@ vulnerabilities:
     title: "Node-RED sans auth + MQTT bridge IoT->OT (bypass règle iptables TCP DROP)"
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution, Lateral Movement"
     cve: null
@@ -259,6 +271,7 @@ vulnerabilities:
     title: "Caméra IP sans authentification"
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Collection"
     cve: null
@@ -274,6 +287,7 @@ vulnerabilities:
     title: "Modbus TCP sans auth (port 502) — PLC OT"
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Impair Process Control"
     cve: null
@@ -288,6 +302,7 @@ vulnerabilities:
     title: "HMI web API sans auth + RCE POST /api/exec"
     severity: critical
     category: no_authentication
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution"
     cve: null
@@ -302,6 +317,7 @@ vulnerabilities:
     title: "MariaDB root sans mot de passe — base OT"
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Collection"
     cve: null
@@ -316,6 +332,7 @@ vulnerabilities:
     title: "Redis sans auth (port 6379) accessible depuis IT — règle iptables IT->OT incomplète"
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Collection"
     cve: null
@@ -330,6 +347,7 @@ vulnerabilities:
     title: "Données OT sensibles en clair dans Redis"
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer"
     mitre_ics: "Collection"
     cve: null
@@ -344,6 +362,7 @@ vulnerabilities:
     title: "FTP anonyme OT avec fichiers de configuration PLC"
     severity: high
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Collection"
     cve: null
@@ -358,6 +377,7 @@ vulnerabilities:
     title: "CoAP sans DTLS (port 5683/UDP) — bypass règle UDP manquante IoT->OT"
     severity: medium
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Collection"
     cve: null

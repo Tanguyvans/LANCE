@@ -21,6 +21,8 @@ from src.benchmark.contracts import (
     ChallengeContract,
     ContractError,
     EvaluationSummary,
+    SealedDataPolicy,
+    SealedSuiteSummary,
     SubmissionManifest,
     SubmissionReceipt,
 )
@@ -53,9 +55,27 @@ def _canonical_uuid(value: str, where: str) -> str:
 def _safe_optional_text(value: str | None, where: str, *, max_length: int = 256) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or not value or value != value.strip() or len(value) > max_length:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > max_length
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
         raise ControllerError(f"{where} must be a non-empty trimmed string of at most {max_length} characters")
     return value
+
+
+def _oci_sha256_digest(value: str | None, where: str) -> str:
+    digest = _safe_optional_text(value, where, max_length=71)
+    if (
+        digest is None
+        or not digest.startswith("sha256:")
+        or len(digest) != 71
+        or any(char not in "0123456789abcdef" for char in digest[7:])
+    ):
+        raise ControllerError(f"{where} must be an OCI sha256 digest")
+    return digest
 
 
 def _exact_mapping(raw: object, *, keys: frozenset[str], where: str) -> Mapping[str, object]:
@@ -100,6 +120,10 @@ class SealedControllerClient:
         self.timeout = float(timeout)
         self.verify_tls = verify_tls
         self._session = session or requests.Session()
+        if hasattr(self._session, "trust_env"):
+            # Controller credentials must never transit through ambient
+            # HTTP(S)_PROXY/.netrc configuration inherited from a host.
+            self._session.trust_env = False
         self._catalog = catalog or load_catalog()
 
     def __repr__(self) -> str:
@@ -142,7 +166,15 @@ class SealedControllerClient:
         **kwargs,
     ) -> requests.Response:
         headers = dict(kwargs.pop("headers", {}))
-        headers.update({"Accept": "application/json", "Authorization": f"Bearer {self._token}"})
+        headers.update(
+            {
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self._token}",
+                "Cache-Control": "no-store",
+            }
+        )
+        # Never forward the bearer token or launch payload to a redirect target.
+        kwargs["allow_redirects"] = False
         try:
             response = self._session.request(
                 method,
@@ -277,5 +309,89 @@ class SealedControllerClient:
         self._request(
             "DELETE",
             f"v1/sessions/{canonical_id}",
+            expected_status=frozenset({202, 204}),
+        )
+
+    def create_suite(
+        self,
+        *,
+        model: str,
+        provider: str,
+        runner_image_digest: str,
+        benchmark_version: str | None = None,
+        git_commit: str | None = None,
+    ) -> SealedSuiteSummary:
+        """Ask the private controller to execute the complete sealed suite.
+
+        Worker lifecycle and provider credentials remain controller-owned.  The
+        trusted dashboard process sends only the immutable runner identity and
+        policies; it never receives contracts, worker output or submissions.
+        """
+
+        version = benchmark_version or self._catalog.benchmark_version
+        validated_model = _safe_optional_text(model, "model")
+        validated_provider = _safe_optional_text(provider, "provider")
+        if validated_model is None or validated_provider is None:
+            raise ControllerError("model and provider are required")
+        runner: dict[str, str] = {
+            "model": validated_model,
+            "provider": validated_provider,
+        }
+        commit = _safe_optional_text(git_commit, "git_commit", max_length=64)
+        if commit is None:
+            raise ControllerError("git_commit is required for a sealed suite")
+        runner["git_commit"] = commit
+        image_digest = _oci_sha256_digest(runner_image_digest, "runner_image_digest")
+        runner["runner_image_digest"] = image_digest
+        data_policy = SealedDataPolicy()
+        payload = {
+            "benchmark_version": version,
+            "runner": runner,
+            "score_visibility": "suite-aggregate",
+            "data_policy": data_policy.to_dict(),
+        }
+        response = self._request(
+            "POST",
+            "v1/suites",
+            expected_status=frozenset({201, 202}),
+            json=payload,
+        )
+        try:
+            summary = SealedSuiteSummary.from_dict(self._json(response, "sealed suite creation"))
+        except ContractError as exc:
+            raise ControllerError("controller returned an invalid sealed suite summary") from exc
+        if summary.benchmark_version != version or summary.status not in {"queued", "running"}:
+            raise ControllerError("controller returned an invalid initial sealed suite state")
+        if summary.data_policy != data_policy:
+            raise ControllerError("controller returned a mismatched sealed data policy")
+        if (
+            summary.runner.model != validated_model
+            or summary.runner.provider != validated_provider
+            or summary.runner.git_commit != commit
+            or summary.runner.runner_image_digest != image_digest
+        ):
+            raise ControllerError("controller returned a mismatched sealed runner identity")
+        return summary
+
+    def get_suite(self, suite_id: str) -> SealedSuiteSummary:
+        canonical_id = _canonical_uuid(suite_id, "suite_id")
+        response = self._request(
+            "GET",
+            f"v1/suites/{canonical_id}",
+            expected_status=frozenset({200}),
+        )
+        try:
+            summary = SealedSuiteSummary.from_dict(self._json(response, "sealed suite status"))
+        except ContractError as exc:
+            raise ControllerError("controller returned an invalid sealed suite summary") from exc
+        if summary.suite_id != canonical_id:
+            raise ControllerError("sealed suite summary suite_id mismatch")
+        return summary
+
+    def cancel_suite(self, suite_id: str) -> None:
+        canonical_id = _canonical_uuid(suite_id, "suite_id")
+        self._request(
+            "DELETE",
+            f"v1/suites/{canonical_id}",
             expected_status=frozenset({202, 204}),
         )

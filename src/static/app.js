@@ -245,10 +245,6 @@ const FALLBACK_SCENARIOS = {
     { id: '17', name: 'Stateful Signed OTA', difficulty: 'expert', posture: 'mixed', topology: 'ota_lifecycle', packs: ['f13_ota_advanced'] },
     { id: '18', name: 'Simulated Cloud IAM and SSRF', difficulty: 'expert', posture: 'mixed', topology: 'cloud_iam_ssrf', packs: ['f14_cloud_iam'] },
     { id: '19', name: 'Safe Multi-Protocol OT Cell', difficulty: 'expert', posture: 'mixed', topology: 'ot_multiprotocol', packs: ['f15_ot_protocols'] },
-    ...Array.from({length: 6}, (_, i) => ({
-      id: String(20 + i), name: `Évaluation scellée S${20 + i}`, difficulty: 'sealed',
-      posture: 'unknown', topology: null, packs: [], split: 'eval-sealed', sealed: true,
-    })),
     { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
     { id: '4h', name: 'ICS/SCADA (hardened)', difficulty: 'control', posture: 'hardened', topology: 'ics_scada', packs: ['f0_hardened'] },
   ],
@@ -359,24 +355,18 @@ async function loadScenariosConfig() {
   vulnGroup.label = 'Vulnerable';
   const hardGroup = document.createElement('optgroup');
   hardGroup.label = 'Hardened (contrôle)';
-  const sealedGroup = document.createElement('optgroup');
-  sealedGroup.label = 'Évaluation scellée (controller requis)';
-
   for (const s of _scenariosData.scenarios) {
+    // Sealed profiles are evaluated only as one complete suite from the
+    // dedicated mode below; individual profile selectors are never rendered.
+    if (isSealedScenario(s)) continue;
     const opt = document.createElement('option');
     opt.value = s.id;
     opt.textContent = `S${s.id} · ${s.name}`;
-    if (isSealedScenario(s)) {
-      opt.disabled = true;
-      opt.textContent += ' · indisponible localement';
-      sealedGroup.appendChild(opt);
-    }
-    else if (s.posture === 'hardened') hardGroup.appendChild(opt);
+    if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
   }
   if (vulnGroup.children.length) sel.appendChild(vulnGroup);
   if (hardGroup.children.length) sel.appendChild(hardGroup);
-  if (sealedGroup.children.length) sel.appendChild(sealedGroup);
   populateBenchmarkScenarioFilter();
 
   // Populate batch checkboxes (all non-hardened scenarios)
@@ -581,7 +571,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('cb-multi-model').addEventListener('change', function() {
     document.getElementById('multi-model-config').hidden = !this.checked;
   });
-
   // View nav (Dashboard / Benchmark)
   document.querySelectorAll('.view-btn').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
@@ -1793,14 +1782,14 @@ async function loadRuns() {
     list.innerHTML = '<div style="padding:12px;color:var(--red,#ff6b6b);font-size:11px">Serveur inaccessible</div>';
     return;
   }
-  if (runs.length === 0) {
+  // Historical per-profile sealed runs are intentionally absent from the
+  // classic history. Official sealed feedback lives only in the suite card.
+  const publicRuns = Array.isArray(runs) ? runs.filter(run => !isSealedRun(run)) : [];
+  if (publicRuns.length === 0) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:11px">Aucun run</div>';
     return;
   }
-  _allRuns = runs;
-  for (const run of runs) {
-    if (isSealedRun(run)) _compareSet.delete(run.id);
-  }
+  _allRuns = publicRuns;
   _updateCompareButton();
   _runsShown = RUNS_PER_PAGE;
   _renderRunList();
@@ -1818,6 +1807,15 @@ async function viewRun(runId) {
   if (!run) return;
 
   const sealed = isSealedRun(run);
+  if (sealed) {
+    // Never open a historical per-profile sealed result. The only supported
+    // feedback surface is the aggregate suite response rendered above.
+    activeRunId = null;
+    activeRunIsSealed = false;
+    showSealedTopologyPlaceholder();
+    hideDetail();
+    return;
+  }
   activeRunIsSealed = sealed;
   const eRunId = escapeHtml(runId);
   const scenarioId = run.scenario ? run.scenario.replace(/^S/i, '') : null;
@@ -2136,7 +2134,10 @@ async function loadBenchmark() {
   document.getElementById('bm-body').insertAdjacentHTML('afterbegin',
     '<div id="bm-loading" style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Chargement…</div>');
 
-  _bmData = await fetchJSON('/api/runs/benchmark');
+  const benchmarkRuns = await fetchJSON('/api/runs/benchmark');
+  _bmData = Array.isArray(benchmarkRuns)
+    ? benchmarkRuns.filter(run => !isSealedRun(run))
+    : null;
 
   const loading = document.getElementById('bm-loading');
   if (loading) loading.remove();

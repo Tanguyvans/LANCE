@@ -74,6 +74,7 @@ vulnerabilities:
       Protocole en clair, accès shell direct sans authentification.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -93,6 +94,7 @@ vulnerabilities:
       LuCI est directement accessible depuis le WAN sans restriction réseau.
     severity: critical
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services / I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Initial Access"
     cve: null
@@ -114,6 +116,7 @@ vulnerabilities:
       /etc/iot/config.json expose les credentials du réseau interne.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -134,6 +137,7 @@ vulnerabilities:
       et des MACs faibles (hmac-sha1). Détectable par ssh-audit.
     severity: low
     category: weak_crypto
+    expected_type: weak_cipher
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -154,6 +158,7 @@ vulnerabilities:
       à tous les services configurés dans authorized_keys.
     severity: high
     category: misconfiguration
+    expected_type: data_exposure
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Lateral Movement"
     cve: null
@@ -174,6 +179,7 @@ vulnerabilities:
       lisible par tout utilisateur local (mode 644).
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -195,6 +201,7 @@ vulnerabilities:
       POST /api/exec permet l'exécution de commandes arbitraires (RCE).
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Discovery, Collection"
     cve: null
@@ -215,6 +222,7 @@ vulnerabilities:
       sans authentification. Permet la compromission complète du serveur de monitoring.
     severity: critical
     category: code_injection
+    expected_type: code_injection
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution"
     cve: null
@@ -235,6 +243,7 @@ vulnerabilities:
       qui contient des credentials en clair.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -255,6 +264,7 @@ vulnerabilities:
       en clair, accessibles à toute personne connectée anonymement au broker.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -274,6 +284,7 @@ vulnerabilities:
       permet l'accès complet au broker et aux topics sensibles.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -294,6 +305,7 @@ vulnerabilities:
       permettant un prefix truncation sur les paquets SSH chiffrés.
     severity: medium
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"
@@ -314,6 +326,7 @@ vulnerabilities:
       Un attaquant peut remplacer le firmware par un binaire malveillant.
     severity: high
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism"
     mitre_ics: "Impair Process Control"
     cve: null
@@ -333,6 +346,7 @@ vulnerabilities:
       /api/devices révèle les IPs de tous les devices du réseau interne.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Discovery"
     cve: null
@@ -354,6 +368,7 @@ vulnerabilities:
       injecter des nodes 'exec' et exécuter des commandes arbitraires sur le serveur.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Execution, Lateral Movement"
     cve: null
@@ -376,6 +391,7 @@ vulnerabilities:
       Compromission directe des actionneurs et capteurs physiques.
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Impair Process Control, Inhibit Response Function"
     cve: null
@@ -396,6 +412,7 @@ vulnerabilities:
       Contrôle un segment différent des actionneurs physiques.
     severity: critical
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Impair Process Control"
     cve: null
@@ -416,6 +433,7 @@ vulnerabilities:
       et mots de passe de base de données.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -436,6 +454,7 @@ vulnerabilities:
       sont accessibles sans authentification via le serveur HMI.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -456,6 +475,7 @@ vulnerabilities:
       dumps SQL avec mots de passe utilisateurs en clair.
     severity: high
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services / I7 - Insecure Data Transfer"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -478,6 +498,7 @@ vulnerabilities:
       les credentials de l'ensemble du réseau.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Collection"
     cve: null
@@ -498,6 +519,7 @@ vulnerabilities:
       Contient des credentials DB, API keys, sessions admin et secrets IoT.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Collection"
     cve: null
@@ -518,6 +540,7 @@ vulnerabilities:
       et des secrets IoT en clair, accessibles sans authentification.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

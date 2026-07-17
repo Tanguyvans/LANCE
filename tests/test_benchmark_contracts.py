@@ -66,6 +66,38 @@ def test_challenge_contract_accepts_missing_optional_entrypoint_hints():
     assert json.loads(contract.to_json())["scope"]["entrypoints"] == []
 
 
+def test_challenge_contract_accepts_bounded_ipv6_ula_scope():
+    raw = _valid_contract_dict()
+    raw["scope"]["ingress_cidrs"] = ["fd77:20::/64"]
+
+    contract = ChallengeContract.from_dict(raw)
+
+    assert contract.scope.ingress_cidrs == ("fd77:20::/64",)
+
+
+@pytest.mark.parametrize(
+    "cidr",
+    [
+        "0.0.0.0/0",
+        "10.0.0.0/8",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "224.0.0.0/4",
+        "8.8.8.0/24",
+        "::/0",
+        "fe80::/64",
+        "ff00::/8",
+        "2001:db8::/64",
+    ],
+)
+def test_challenge_contract_rejects_unsafe_or_unbounded_network_scopes(cidr):
+    raw = _valid_contract_dict()
+    raw["scope"]["ingress_cidrs"] = [cidr]
+
+    with pytest.raises(ContractError, match="bounded RFC1918 or IPv6 ULA"):
+        ChallengeContract.from_dict(raw)
+
+
 @pytest.mark.parametrize(
     ("mutator", "message"),
     [
@@ -95,6 +127,7 @@ def test_artifact_allowlist_rejects_traversal_and_oracle_files():
     assert is_allowed_artifact("06_report.md") is True
     assert is_allowed_artifact("scenario_meta.json") is True
     assert is_allowed_artifact("ground_truth.yaml") is False
+    assert is_allowed_artifact("trusted_proof_ledger.json") is False
     assert is_allowed_artifact("ansible_06_verify.log") is False
     assert is_allowed_artifact("04_exploits/too/deep/v1.json") is False
     with pytest.raises(ArtifactError, match="unsafe"):

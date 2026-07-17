@@ -49,6 +49,7 @@ vulnerabilities:
       les credentials de connexion au NVR (ubnt/ubnt).
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "T0801 - Monitor Process State"
     cve: null
@@ -71,6 +72,7 @@ vulnerabilities:
       Interface HTTP sans auth, API expose credentials RTSP et NVR.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "T0801 - Monitor Process State"
     cve: null
@@ -94,6 +96,7 @@ vulnerabilities:
       et les credentials SMTP pour les alertes.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "T0822 - External Remote Services"
     cve: null
@@ -117,6 +120,7 @@ vulnerabilities:
       exposent les données des badges et les credentials des systèmes connectés.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "T0832 - Manipulation of View, T0831 - Manipulation of Control"
     cve: null
@@ -139,6 +143,7 @@ vulnerabilities:
       de consommation énergétique du bâtiment.
     severity: medium
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "T0831 - Manipulation of Control"
     cve: null
@@ -161,6 +166,7 @@ vulnerabilities:
       et le topic admin/credentials expose les credentials en clair.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "T0830 - Man in the Middle, Collection"
     cve: null
@@ -183,6 +189,7 @@ vulnerabilities:
       web LuCI accessible depuis le WAN (port 80).
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -205,6 +212,7 @@ vulnerabilities:
       pour les bâtiments intelligents, sans mécanisme d'auth natif.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "T0831 - Manipulation of Control, T0836 - Modify Parameter"
     cve: null
@@ -225,6 +233,7 @@ vulnerabilities:
       Le header HTTP Server révèle la version exacte de nginx sur la caméra.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -243,6 +252,7 @@ vulnerabilities:
       Le portail web du bâtiment ne retourne aucun header de sécurité HTTP.
     severity: low
     category: missing_header
+    expected_type: missing_header
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -262,6 +272,7 @@ vulnerabilities:
       contenant des credentials en clair.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -282,6 +293,7 @@ vulnerabilities:
       contenant des credentials en clair.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -302,6 +314,7 @@ vulnerabilities:
       contenant des credentials en clair.
     severity: high
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -321,6 +334,7 @@ vulnerabilities:
       Le topic smartcity/admin/credentials publie des credentials en clair.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -340,6 +354,7 @@ vulnerabilities:
       exposent des fichiers sensibles.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

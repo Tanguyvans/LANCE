@@ -38,6 +38,7 @@ vulnerabilities:
       par défaut sur les versions OpenWrt sans mot de passe root configuré.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -57,6 +58,7 @@ vulnerabilities:
       FTP sans credentials, accès potentiel aux fichiers de configuration.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -78,6 +80,7 @@ vulnerabilities:
       Simule la WisGate Edge du lab réel.
     severity: high
     category: cve
+    expected_type: terrapin
     owasp_iot: "I5 - Insecure/Outdated Components"
     mitre_ics: "Initial Access"
     cve: "CVE-2023-48795"
@@ -101,6 +104,7 @@ vulnerabilities:
       Simule l'interface admin HTTP de la WisGate Edge réelle.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Collection, Discovery"
     cve: null
@@ -124,6 +128,7 @@ vulnerabilities:
       Topics actifs : capteurs T°, humidité, accès bâtiment, caméras.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -146,6 +151,7 @@ vulnerabilities:
       Même vulnérabilité que V5 mais sur un device distinct.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -167,6 +173,7 @@ vulnerabilities:
       Le fichier /etc/iot/config.json expose les credentials de tous les services.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -188,6 +195,7 @@ vulnerabilities:
       Simule l'AP WiFi du lab avec interface web non sécurisée.
     severity: medium
     category: data_exposure
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -209,6 +217,7 @@ vulnerabilities:
       /backup/ expose un dump SQL avec credentials utilisateurs en clair.
     severity: medium
     category: data_exposure
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -230,6 +239,7 @@ vulnerabilities:
       /opt/nvr/config/system.json expose admin_password et la liste des caméras.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access"
     cve: null
@@ -253,6 +263,7 @@ vulnerabilities:
       permettant l'injection de commandes root.
     severity: high
     category: privilege_escalation
+    expected_type: privilege_escalation
     owasp_iot: "I1 - Weak Passwords"
     mitre_ics: "T0890 - Exploitation for Privilege Escalation"
     cve: null
@@ -273,6 +284,7 @@ vulnerabilities:
       Mosquitto publie des métriques internes sur $SYS/# : version, clients, messages/s.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Discovery"
     cve: null
@@ -291,6 +303,7 @@ vulnerabilities:
       Le header HTTP Server révèle la version exacte de nginx.
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Discovery"
     cve: null
@@ -310,6 +323,7 @@ vulnerabilities:
       Le répertoire /firmware/ expose le binaire sans .sha256 ni .sig.
     severity: medium
     category: insecure_update
+    expected_type: insecure_update
     owasp_iot: "I4 - Lack of Secure Update Mechanism"
     mitre_ics: "Impair Process Control"
     cve: null
@@ -330,6 +344,7 @@ vulnerabilities:
       en clair, accessibles anonymement.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -349,6 +364,7 @@ vulnerabilities:
       en clair, accessibles anonymement.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -368,6 +384,7 @@ vulnerabilities:
       exposent des fichiers sensibles.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null
@@ -388,6 +405,7 @@ vulnerabilities:
       exposent des fichiers sensibles.
     severity: medium
     category: misconfiguration
+    expected_type: directory_listing
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection"
     cve: null

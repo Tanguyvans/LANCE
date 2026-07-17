@@ -56,6 +56,7 @@ vulnerabilities:
   title: Authenticated tenant can read another tenant's device
   severity: high
   category: broken_access_control
+  expected_type: broken_access_control
   hop_depth: 1
   owasp_iot: I3 - Insecure Ecosystem Interfaces
   description: A valid tenant-a bearer token can retrieve device-b by changing the
@@ -74,6 +75,7 @@ vulnerabilities:
   title: Device update accepts privileged ownership fields
   severity: high
   category: broken_access_control
+  expected_type: broken_access_control
   hop_depth: 2
   owasp_iot: I3 - Insecure Ecosystem Interfaces
   description: PATCH accepts owner_id and role fields that should be server controlled.
@@ -92,6 +94,7 @@ vulnerabilities:
   title: Administrative export ignores JWT scope
   severity: critical
   category: broken_access_control
+  expected_type: broken_access_control
   hop_depth: 3
   owasp_iot: I9 - Insecure Default Settings
   description: A valid read-only token is accepted by the administrative export route.

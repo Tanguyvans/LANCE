@@ -43,6 +43,7 @@ vulnerabilities:
       telnetd actif sur OpenWrt. Protocole en clair, accès shell sans authentification.
     severity: medium
     category: misconfiguration
+    expected_type: insecure_protocol
     owasp_iot: "I2 - Insecure Network Services"
     mitre_ics: "Initial Access"
     cve: null
@@ -62,6 +63,7 @@ vulnerabilities:
       tous les topics IoT du secteur Nord sans contrôle d'accès.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -83,6 +85,7 @@ vulnerabilities:
       en clair, accessibles à toute personne connectée anonymement.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -102,6 +105,7 @@ vulnerabilities:
       Nœud mesh central — les messages des 2 autres brokers transitent par celui-ci.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -123,6 +127,7 @@ vulnerabilities:
       avec les credentials faibles test:test.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -143,6 +148,7 @@ vulnerabilities:
       sans contrôle. Créé un réseau entièrement ouvert par effet de chaîne.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I1 - Weak Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Initial Access, Collection"
     cve: null
@@ -162,6 +168,7 @@ vulnerabilities:
       Topics sensibles accessibles sans authentification sur le troisième nœud mesh.
     severity: medium
     category: data_exposure
+    expected_type: data_exposure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Collection"
     cve: null
@@ -182,6 +189,7 @@ vulnerabilities:
       (api_key, mqtt_broker). L'endpoint /actuator/valve permet le contrôle d'actionneurs.
     severity: high
     category: misconfiguration
+    expected_type: no_auth
     owasp_iot: "I7 - Insecure Data Transfer and Storage"
     mitre_ics: "Collection, Impair Process Control"
     cve: null
@@ -204,6 +212,7 @@ vulnerabilities:
       physiques sans aucune authentification ni autorisation.
     severity: high
     category: no_authentication
+    expected_type: no_auth
     owasp_iot: "I3 - Insecure Ecosystem Interfaces"
     mitre_ics: "Impair Process Control"
     cve: null
@@ -224,6 +233,7 @@ vulnerabilities:
       et potentiellement la modification de la configuration via SNMP SET.
     severity: high
     category: default_credentials
+    expected_type: default_credentials
     owasp_iot: "I1 - Weak/Hardcoded Passwords / I9 - Insecure Default Settings"
     mitre_ics: "Discovery, Collection"
     cve: null
@@ -245,6 +255,7 @@ vulnerabilities:
       (sysLocation), contact admin (sysContact), nom du système (sysName).
     severity: low
     category: info_disclosure
+    expected_type: info_disclosure
     owasp_iot: "I6 - Insufficient Privacy Protection"
     mitre_ics: "Discovery"
     cve: null
