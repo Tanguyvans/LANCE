@@ -743,7 +743,20 @@ class TestDeviceAgents:
                     return "Done."
             # aggregator call
             (run_dir / "03_vuln_analysis.json").write_text(
-                json.dumps({"vulnerabilities": [{"id": "VULN-001"}], "summary": {"total": 1, "high": 1, "medium": 0, "low": 0, "info": 0}})
+                json.dumps({
+                    "vulnerabilities": [{
+                        "id": "VULN-001",
+                        "service": "http",
+                        "port": 80,
+                        "protocol": "tcp",
+                        "endpoint": "/",
+                        "product": "RouterOS",
+                        "version": "7.18.2",
+                    }],
+                    "summary": {
+                        "total": 1, "high": 1, "medium": 0, "low": 0, "info": 0,
+                    },
+                })
             )
             return "Done."
         mock_provider.chat_with_tools.side_effect = side_effect
