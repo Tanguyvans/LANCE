@@ -22,6 +22,8 @@ if str(ROOT) not in sys.path:
 # Global pipeline state (single concurrent run)
 _state: dict[str, Any] = {
     "running": False,
+    "stopping": False,
+    "teardown_running": False,
     "phase": 0,
     "phase_name": "",
     "cost": 0.0,
@@ -40,6 +42,7 @@ _state: dict[str, Any] = {
     "deploy_status": None,    # "deploying" | "deployed" | "failed" | None
     "recent_events": [],      # last 200 events, replayed on page reload
 }
+_state_lock = threading.Lock()
 
 _MAX_RECENT_EVENTS = 200
 
@@ -143,6 +146,8 @@ def _pipeline_thread(req: StartRequest):
                 _state["deploy_status"] = "deploying"
             elif t == "deploy_done":
                 _state["deploy_status"] = "deployed" if event.get("success") else "failed"
+            elif t in {"inject_done", "verify_done"} and not event.get("success"):
+                _state["deploy_status"] = "failed"
             elif t == "pipeline_done":
                 _state["run_dir"] = event.get("run_dir")
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
@@ -158,7 +163,9 @@ def _pipeline_thread(req: StartRequest):
         if loop and q:
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
     finally:
-        _state["running"] = False
+        with _state_lock:
+            _state["running"] = False
+            _state["stopping"] = False
         # Signal stream end
         q = _state["queue"]
         loop = _state["loop"]
@@ -169,8 +176,6 @@ def _pipeline_thread(req: StartRequest):
 @router.post("/start")
 async def start_pipeline(req: StartRequest):
     """Start the pipeline. Returns 409 if already running."""
-    if _state["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline already running")
     if req.scenario_id is not None:
         from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
         try:
@@ -187,7 +192,13 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     from datetime import datetime
-    _state["running"] = True
+    with _state_lock:
+        if _state["running"]:
+            raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
+        if _state["teardown_running"]:
+            raise HTTPException(status_code=409, detail="Scenario teardown is still running")
+        _state["running"] = True
+        _state["stopping"] = False
     _state["phase"] = 0
     _state["phase_name"] = ""
     _state["cost"] = 0.0
@@ -214,10 +225,11 @@ async def stop_pipeline():
     """Request graceful stop of the running pipeline (stops between phases)."""
     if not _state["running"]:
         raise HTTPException(status_code=400, detail="No pipeline running")
-    ev = _state.get("stop_event")
-    if ev:
-        ev.set()
-    _state["running"] = False
+    with _state_lock:
+        ev = _state.get("stop_event")
+        if ev:
+            ev.set()
+        _state["stopping"] = True
     return {"status": "stopping"}
 
 
@@ -226,6 +238,8 @@ def get_status():
     """Return full pipeline state — used by frontend on load to sync UI."""
     return {
         "running": _state["running"],
+        "stopping": _state.get("stopping", False),
+        "teardown_running": _state.get("teardown_running", False),
         "phase": _state["phase"],
         "phase_name": _state.get("phase_name", ""),
         "cost": round(_state["cost"], 4),
@@ -399,7 +413,9 @@ def _batch_thread(req: BatchRequest):
         if loop and q:
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "message": str(exc)})
     finally:
-        _state["running"] = False
+        with _state_lock:
+            _state["running"] = False
+            _state["stopping"] = False
         q = _state["queue"]
         loop = _state["loop"]
         if loop and q:
@@ -409,9 +425,6 @@ def _batch_thread(req: BatchRequest):
 @router.post("/batch")
 async def start_batch(req: BatchRequest):
     """Start a batch run of multiple scenarios sequentially. Returns 409 if already running."""
-    if _state["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline already running")
-
     from src.agent.batch import SealedScenarioError, _parse_scenario_ids
     try:
         selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
@@ -423,7 +436,13 @@ async def start_batch(req: BatchRequest):
     req.batch_ids = selected_ids
 
     from datetime import datetime
-    _state["running"] = True
+    with _state_lock:
+        if _state["running"]:
+            raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
+        if _state["teardown_running"]:
+            raise HTTPException(status_code=409, detail="Scenario teardown is still running")
+        _state["running"] = True
+        _state["stopping"] = False
     _state["phase"] = 0
     _state["phase_name"] = ""
     _state["cost"] = 0.0
@@ -452,8 +471,6 @@ class TeardownRequest(BaseModel):
 @router.post("/teardown")
 async def teardown_scenario(req: TeardownRequest):
     """Run 99_teardown.yml for the given scenario in a background thread."""
-    if _state["running"]:
-        raise HTTPException(status_code=409, detail="Pipeline is running — wait for it to finish before teardown")
     from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
     try:
         req.scenario_id = _parse_single_scenario_id(req.scenario_id)
@@ -465,11 +482,21 @@ async def teardown_scenario(req: TeardownRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Ensure the SSE queue exists so `teardown_done` reaches a dashboard that
-    # has not started a run yet (a fresh page never created the queue).
-    if _state.get("queue") is None:
-        _state["queue"] = asyncio.Queue()
-        _state["loop"] = asyncio.get_running_loop()
+    with _state_lock:
+        if _state["running"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Pipeline is running or stopping — wait for it to finish before teardown",
+            )
+        if _state["teardown_running"]:
+            raise HTTPException(status_code=409, detail="Scenario teardown is already running")
+        _state["teardown_running"] = True
+
+    # A completed pipeline may have left its __done__ marker in the old queue
+    # after the browser consumed pipeline_done and closed SSE. Always isolate a
+    # manual teardown in a fresh queue so its teardown_done event cannot be lost.
+    _state["queue"] = asyncio.Queue()
+    _state["loop"] = asyncio.get_running_loop()
 
     def _run():
         cmd = [
@@ -480,25 +507,30 @@ async def teardown_scenario(req: TeardownRequest):
             "--extra-vars", f"scenario_id={req.scenario_id}",
         ]
         try:
-            result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
-            success = result.returncode == 0
-            output = (result.stdout + result.stderr).strip()
-        except subprocess.TimeoutExpired:
-            success = False
-            output = "Teardown timeout (300s)"
-        except FileNotFoundError:
-            success = False
-            output = "ansible-playbook not found"
+            try:
+                result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+                success = result.returncode == 0
+                output = (result.stdout + result.stderr).strip()
+            except subprocess.TimeoutExpired:
+                success = False
+                output = "Teardown timeout (300s)"
+            except FileNotFoundError:
+                success = False
+                output = "ansible-playbook not found"
 
-        loop = _state.get("loop")
-        q = _state.get("queue")
-        if loop and q:
-            loop.call_soon_threadsafe(q.put_nowait, {
-                "type": "teardown_done",
-                "scenario_id": req.scenario_id,
-                "success": success,
-                "output": output,
-            })
+            loop = _state.get("loop")
+            q = _state.get("queue")
+            if loop and q:
+                loop.call_soon_threadsafe(q.put_nowait, {
+                    "type": "teardown_done",
+                    "scenario_id": req.scenario_id,
+                    "success": success,
+                    "manual": True,
+                    "output": output,
+                })
+        finally:
+            with _state_lock:
+                _state["teardown_running"] = False
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()

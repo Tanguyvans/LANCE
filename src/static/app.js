@@ -1369,12 +1369,26 @@ async function startBatch() {
 }
 
 async function stopRun() {
-  await fetch('/api/pipeline/stop', { method: 'POST' }).catch(() => {});
-  if (eventSource) { eventSource.close(); eventSource = null; }
-  document.getElementById('btn-start').disabled = false;
-  document.getElementById('btn-batch-start').disabled = false;
-  document.getElementById('btn-stop').style.display = 'none';
-  addLog({type:'error', message:"Run interrompu par l'utilisateur"});
+  const btn = document.getElementById('btn-stop');
+  btn.disabled = true;
+  btn.textContent = 'Arrêt…';
+  try {
+    const response = await fetch('/api/pipeline/stop', { method: 'POST' });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({detail: response.statusText}));
+      addLog({type:'error', message:`Arrêt refusé : ${_formatErrDetail(err.detail)}`});
+      btn.disabled = false;
+      btn.textContent = 'Arrêter';
+      return;
+    }
+    // Keep the SSE stream and all start/deploy controls locked until the worker
+    // emits pipeline_done (after its current phase and teardown have finished).
+    addLog({type:'warn', message:"Arrêt demandé — attente de la fin de l'opération en cours"});
+  } catch (error) {
+    addLog({type:'error', message:`Arrêt erreur réseau : ${error}`});
+    btn.disabled = false;
+    btn.textContent = 'Arrêter';
+  }
 }
 
 async function deployScenario() {
@@ -1427,6 +1441,7 @@ async function teardownScenario() {
     return;
   }
   const btn = document.getElementById('btn-teardown');
+  let started = false;
   btn.disabled = true;
   btn.textContent = 'Teardown…';
   addLog({type:'info', message:`Teardown S${scenarioId} en cours…`});
@@ -1440,13 +1455,19 @@ async function teardownScenario() {
       const err = await r.json().catch(() => ({detail: r.statusText}));
       addLog({type:'error', message:`Teardown échoué : ${_formatErrDetail(err.detail)}`});
     } else {
+      started = true;
+      document.getElementById('btn-start').disabled = true;
+      document.getElementById('btn-batch-start').disabled = true;
       addLog({type:'info', message:`Teardown S${scenarioId} lancé`});
+      startSSE();
     }
   } catch (e) {
     addLog({type:'error', message:`Teardown erreur réseau : ${e}`});
   } finally {
-    btn.textContent = 'Teardown';
-    btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+    if (!started) {
+      btn.textContent = 'Teardown';
+      btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+    }
   }
 }
 
@@ -1465,15 +1486,23 @@ function startSSE() {
     catch(err) { console.warn('SSE parse error', err); }
   };
 
-  eventSource.onerror = () => {
-    addLog({type:'error', message:`Connexion SSE perdue — reconnexion dans ${_sseRetryDelay / 1000}s`});
+  eventSource.onerror = async () => {
     eventSource.close();
     eventSource = null;
+    const status = await fetchJSON('/api/pipeline/status');
+    if (status?.running || status?.teardown_running) {
+      addLog({type:'error', message:`Connexion SSE perdue — reconnexion dans ${_sseRetryDelay / 1000}s`});
+      _sseRetryTimer = setTimeout(() => { startSSE(); }, _sseRetryDelay);
+      _sseRetryDelay = Math.min(_sseRetryDelay * 2, 16000); // 1s → 2s → 4s → 8s → 16s max
+      return;
+    }
     document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
+    document.getElementById('btn-batch-start').disabled = false;
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.style.display = 'none';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Arrêter';
     loadRuns();
-    _sseRetryTimer = setTimeout(() => { startSSE(); }, _sseRetryDelay);
-    _sseRetryDelay = Math.min(_sseRetryDelay * 2, 16000); // 1s → 2s → 4s → 8s → 16s max
   };
 }
 
@@ -1521,7 +1550,10 @@ function handleEvent(ev) {
     if (ev.batch_scenario_id !== undefined) return;
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.style.display = 'none';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
     loadRuns();
   }
@@ -1561,7 +1593,10 @@ function handleEvent(ev) {
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.style.display = 'none';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
     if (agg.avg_f1 !== undefined) {
       addLog({type:'info', message:`Batch terminé — Avg F1=${agg.avg_f1.toFixed(3)} Recall=${agg.avg_recall.toFixed(3)} Score=${agg.avg_score_pct.toFixed(1)}% — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
@@ -1572,11 +1607,20 @@ function handleEvent(ev) {
   }
 
   else if (t === 'error') {
-    document.getElementById('btn-start').disabled = false;
-    document.getElementById('btn-batch-start').disabled = false;
-    document.getElementById('btn-stop').style.display = 'none';
-    if (eventSource) { eventSource.close(); eventSource = null; }
-    loadRuns();
+    // An error may be followed by cleanup/teardown. The worker remains the
+    // authority for lifecycle completion and will emit pipeline_done or close SSE.
+  }
+
+  else if (t === 'teardown_done') {
+    const scenarioId = document.getElementById('sel-scenario').value;
+    const teardownBtn = document.getElementById('btn-teardown');
+    teardownBtn.textContent = 'Teardown';
+    teardownBtn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+    if (ev.manual === true) {
+      document.getElementById('btn-start').disabled = false;
+      document.getElementById('btn-batch-start').disabled = false;
+      if (eventSource) { eventSource.close(); eventSource = null; }
+    }
   }
 
   else if (t === 'tool_result' && ev.name === 'nmap_scan') {
@@ -2538,11 +2582,23 @@ async function pollStatus() {
 
   setCost(status.cost);
 
+  if (status.teardown_running) {
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-batch-start').disabled = true;
+    document.getElementById('btn-teardown').disabled = true;
+    startSSE();
+    return;
+  }
   if (!status.running) return;
 
   // — UI state —
   document.getElementById('btn-start').disabled = true;
   document.getElementById('btn-stop').style.display = 'block';
+  if (status.stopping) {
+    const stopBtn = document.getElementById('btn-stop');
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Arrêt…';
+  }
 
   // — Phase pills —
   for (const p of (status.phases_done || [])) {

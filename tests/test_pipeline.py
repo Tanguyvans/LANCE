@@ -643,6 +643,41 @@ class TestBlindMode:
         mock_ctx.assert_called_once_with(1)
 
 
+class TestScenarioDeployment:
+    def test_failed_injection_aborts_and_cleans_scenario(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider, scenario_id=1)
+        events = []
+        with (
+            patch.object(pipeline, "_teardown_all_running_scenarios") as pre_teardown,
+            patch.object(pipeline, "_run_playbook", side_effect=[True, False]) as playbook,
+            patch.object(pipeline, "_run_teardown") as cleanup,
+        ):
+            success = pipeline._run_scenario_deploy(events.append)
+
+        assert success is False
+        pre_teardown.assert_called_once()
+        assert [call.args[0] for call in playbook.call_args_list] == [
+            "03_deploy_scenario.yml", "04_inject_vulns.yml",
+        ]
+        cleanup.assert_called_once_with(events.append)
+
+    def test_failed_verification_aborts_and_cleans_scenario(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider, scenario_id=1)
+        with (
+            patch.object(pipeline, "_teardown_all_running_scenarios"),
+            patch.object(pipeline, "_run_playbook", side_effect=[True, True, False]),
+            patch.object(pipeline, "_run_teardown") as cleanup,
+        ):
+            success = pipeline._run_scenario_deploy()
+
+        assert success is False
+        cleanup.assert_called_once_with(None)
+
+
 class TestDeviceAgents:
     """Tests for the per-device sub-agent flow."""
 

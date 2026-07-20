@@ -141,6 +141,47 @@ def test_dashboard_start_rejects_sealed_scenario(monkeypatch):
     assert exc.value.status_code == 503
 
 
+def test_dashboard_stop_keeps_run_locked_until_worker_finishes():
+    from src.api.routes import pipeline as route
+
+    snapshot = dict(route._state)
+    stop_event = route.threading.Event()
+    route._state.update({
+        "running": True,
+        "stopping": False,
+        "teardown_running": False,
+        "stop_event": stop_event,
+    })
+    try:
+        response = asyncio.run(route.stop_pipeline())
+        assert response == {"status": "stopping"}
+        assert stop_event.is_set()
+        assert route._state["running"] is True
+        assert route._state["stopping"] is True
+    finally:
+        route._state.clear()
+        route._state.update(snapshot)
+
+
+def test_dashboard_rejects_start_while_teardown_is_running():
+    from src.api.routes import pipeline as route
+
+    snapshot = dict(route._state)
+    route._state.update({
+        "running": False,
+        "stopping": False,
+        "teardown_running": True,
+    })
+    try:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(route.start_pipeline(route.StartRequest()))
+        assert exc.value.status_code == 409
+        assert "teardown" in str(exc.value.detail).lower()
+    finally:
+        route._state.clear()
+        route._state.update(snapshot)
+
+
 def test_cli_rejects_sealed_before_provider_construction(monkeypatch):
     from src.agent import __main__ as agent_main
 

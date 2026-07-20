@@ -792,15 +792,21 @@ class Pipeline:
         ok = self._run_playbook("03_deploy_scenario.yml", stream_callback, "deploy_start", "deploy_done")
         if not ok:
             log.error("Scenario deploy failed — aborting pipeline")
+            self._run_teardown(stream_callback)
             return False
         # 04 — inject vulnerabilities
         ok = self._run_playbook("04_inject_vulns.yml", stream_callback, "inject_start", "inject_done")
         if not ok:
-            log.warning("Vuln injection failed — continuing anyway")
-        # 06 — verify all vulns are present before running LLM (non-blocking: warn only)
+            log.error("Vuln injection failed — aborting pipeline and cleaning scenario")
+            self._run_teardown(stream_callback)
+            return False
+        # 06 — verify all vulns are present before running the LLM. Benchmark
+        # scoring is invalid when the expected vulnerable state is incomplete.
         ok_verify = self._run_playbook("06_verify.yml", stream_callback, "verify_start", "verify_done")
         if not ok_verify:
-            log.warning("Vuln verification found missing vulns — pipeline will run with degraded ground truth coverage")
+            log.error("Vuln verification failed — aborting pipeline and cleaning scenario")
+            self._run_teardown(stream_callback)
+            return False
         return True
 
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
