@@ -470,6 +470,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
     outstanding: list[dict[str, Any]] = []
     rejected_saves = 0
     last_error_kind = ""
+    recon_progress: dict[str, Any] = {}
 
     for message in messages:
         if message.role == "assistant":
@@ -488,6 +489,14 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
             str(message.tool_call_id or ""), (str(message.name or ""), {})
         )
         payload = _result_payload(message.content)
+        progress = payload.get("recon_progress")
+        has_authoritative_progress = isinstance(progress, dict)
+        if has_authoritative_progress:
+            recon_progress = progress
+            outstanding = [
+                item for item in progress.get("missing_requirements", [])
+                if isinstance(item, dict)
+            ]
         if _tool_result_failed(payload, message.content):
             last_error_kind = str(payload.get("error_kind", ""))
             if tool_name == "save_deliverable" and isinstance(
@@ -501,10 +510,11 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
             continue
         if tool_name:
             successful_counts[tool_name] = successful_counts.get(tool_name, 0) + 1
-            outstanding = [
-                item for item in outstanding
-                if not _requirement_satisfied(item, tool_name, arguments)
-            ]
+            if not has_authoritative_progress:
+                outstanding = [
+                    item for item in outstanding
+                    if not _requirement_satisfied(item, tool_name, arguments)
+                ]
             if not outstanding:
                 last_error_kind = ""
 
@@ -514,6 +524,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
         "outstanding_requirements": outstanding,
         "rejected_saves": rejected_saves,
         "last_error_kind": last_error_kind,
+        "recon_progress": recon_progress,
     }
 
 
@@ -528,6 +539,29 @@ def _runtime_state_text(state: dict[str, Any]) -> str:
         f"Rejected save attempts: {state.get('rejected_saves', 0)}.",
     ]
     outstanding = state.get("outstanding_requirements", [])
+    progress = state.get("recon_progress", {})
+    targets = progress.get("targets", []) if isinstance(progress, dict) else []
+    if targets:
+        lines.append("Per-target minimum coverage:")
+        for target in targets:
+            if not isinstance(target, dict):
+                continue
+            missing_ports = target.get("missing_ports", [])
+            failed_ports = target.get("failed_ports", [])
+            if missing_ports:
+                status = f"missing ports {','.join(str(port) for port in missing_ports)}"
+            elif failed_ports:
+                status = (
+                    "coverage attempted twice but probes failed on ports "
+                    + ",".join(str(port) for port in failed_ports)
+                    + "; document these failures"
+                )
+            else:
+                status = "complete"
+            lines.append(
+                f"- {target.get('target', 'unknown')} "
+                f"({target.get('device_id', 'unknown')}): {status}"
+            )
     if outstanding:
         lines.append("Outstanding requirements must be completed before saving:")
         for item in outstanding:
@@ -543,12 +577,18 @@ def _runtime_state_text(state: dict[str, Any]) -> str:
         lines.append("Do NOT call save_deliverable again until this list is empty.")
     else:
         lines.append("No contract requirement is currently known to be outstanding.")
+        if progress.get("ready_to_save") is True:
+            lines.append(
+                "Recon baseline is complete. Synthesize the evidence already collected "
+                "and call save_deliverable exactly once; do not run another baseline scan."
+            )
     return "\n".join(lines)
 
 
 def _select_model_tools(
     target_expert: str,
     tools: Optional[List[Dict[str, Any]]],
+    state: Optional[dict[str, Any]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
     """Expose the training-aligned core interface to the Recon adapter.
 
@@ -557,6 +597,14 @@ def _select_model_tools(
     """
     if target_expert != "recon" or not tools:
         return tools
+    progress = (state or {}).get("recon_progress", {})
+    if isinstance(progress, dict) and progress.get("ready_to_save") is True:
+        selected = [
+            tool for tool in tools
+            if str(tool.get("function", {}).get("name", "")) == "save_deliverable"
+        ]
+        log.info("Recon baseline complete: model tool schemas reduced to save-only")
+        return selected
     selected = [
         tool for tool in tools
         if str(tool.get("function", {}).get("name", "")) in _RECON_CORE_MODEL_TOOLS
@@ -863,7 +911,7 @@ def chat_completions(req: ChatCompletionRequest):
             return StreamingResponse(_stream_response(response), media_type="text/event-stream")
         return response
 
-    model_tools = _select_model_tools(target_expert, req.tools)
+    model_tools = _select_model_tools(target_expert, req.tools, execution_state)
     prompt, prepared_prompt_tokens, _compacted = _prepare_prompt(
         _TOKENIZER,
         req.messages,

@@ -116,6 +116,42 @@ def test_execution_state_tracks_rejected_save_and_missing_requirement() -> None:
     }]) == ("read_deliverable", {"filename": "01_graph_analysis.md"})
 
 
+def test_execution_state_uses_proactive_recon_progress_before_save() -> None:
+    messages = [
+        _assistant_call("arp-1", "arp_scan", {}),
+        Message(
+            role="tool",
+            tool_call_id="arp-1",
+            content=json.dumps({
+                "hosts": [{"ip": "192.168.100.12"}],
+                "recon_progress": {
+                    "ready_to_save": False,
+                    "missing_requirements": [{
+                        "requirement": "subnet_discovery",
+                        "tool": "nmap_discovery",
+                        "target": "192.168.100.0/24",
+                    }],
+                    "targets": [{
+                        "target": "192.168.100.12",
+                        "device_id": "s1-web",
+                        "missing_ports": [22, 80, 443],
+                    }],
+                },
+            }),
+        ),
+    ]
+
+    state = _build_execution_state(messages)
+
+    assert state["rejected_saves"] == 0
+    assert state["outstanding_requirements"][0]["requirement"] == "subnet_discovery"
+    assert state["recon_progress"]["targets"][0]["target"] == "192.168.100.12"
+    assert _forced_recovery_tool(state, [{
+        "type": "function",
+        "function": {"name": "nmap_discovery"},
+    }]) == ("nmap_discovery", {"target": "192.168.100.0/24"})
+
+
 def test_successful_recovery_clears_outstanding_requirement() -> None:
     messages = [
         _assistant_call("save-1", "save_deliverable", {"content": "draft"}),
@@ -157,6 +193,29 @@ def test_runtime_state_is_attached_to_latest_message() -> None:
     assert "RUNTIME EXECUTION STATE" in enriched[-1]["content"]
     assert "read_deliverable" in enriched[-1]["content"]
     assert "Do NOT call save_deliverable" in enriched[-1]["content"]
+
+
+def test_runtime_state_reports_target_coverage_and_ready_to_save() -> None:
+    enriched = _attach_runtime_state(
+        [{"role": "tool", "content": '{"status":"ok"}'}],
+        {
+            "successful_counts": {"nmap_scan": 4},
+            "rejected_saves": 0,
+            "outstanding_requirements": [],
+            "recon_progress": {
+                "ready_to_save": True,
+                "targets": [{
+                    "target": "192.168.100.12",
+                    "device_id": "s1-web",
+                    "missing_ports": [],
+                }],
+            },
+        },
+    )
+
+    assert "192.168.100.12 (s1-web): complete" in enriched[-1]["content"]
+    assert "call save_deliverable exactly once" in enriched[-1]["content"]
+    assert "do not run another baseline scan" in enriched[-1]["content"]
 
 
 def test_compaction_removes_large_rejected_draft_and_keeps_call_identity() -> None:
@@ -251,6 +310,10 @@ def test_recon_model_sees_only_core_tool_schemas() -> None:
         "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
         "save_deliverable",
     }
+    ready = _select_model_tools("recon", tools, {
+        "recon_progress": {"ready_to_save": True},
+    })
+    assert [tool["function"]["name"] for tool in ready] == ["save_deliverable"]
     assert _select_model_tools("exploit", tools) == tools
 
 

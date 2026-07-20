@@ -2173,7 +2173,10 @@ class Pipeline:
             item["target"]: item for item in plan
         }
         covered_ports: dict[str, set[int]] = {}
+        failed_ports: dict[str, set[int]] = {}
         completed_calls: set[str] = set()
+        scan_cache: dict[str, str] = {}
+        scan_failure_counts: dict[str, int] = {}
         target_subnets = [
             value for value in str(self.context.get("target_subnet", "")).split()
             if value
@@ -2298,8 +2301,80 @@ class Pipeline:
                     })
             return missing
 
+        def _progress() -> dict:
+            """Return the authoritative Recon ledger after every tool result."""
+            missing = _missing_requirements()
+            targets = []
+            for target, item in expected_scans.items():
+                required = _ports(item["ports"])
+                covered = covered_ports.get(target, set())
+                targets.append({
+                    "target": target,
+                    "device_id": item.get("device_id", target),
+                    "role": item.get("role", "unknown"),
+                    "required_ports": sorted(required),
+                    "covered_ports": sorted(required & covered),
+                    "failed_ports": sorted(required & failed_ports.get(target, set())),
+                    "missing_ports": sorted(required - covered),
+                })
+            return {
+                "schema_version": "1",
+                "completed": {
+                    "local_discovery": "arp_scan" in completed_calls,
+                    "subnet_discovery": all(
+                        f"nmap_discovery:{subnet}" in completed_calls
+                        for subnet in target_subnets
+                    ),
+                    "phase1_context": "read_phase1" in completed_calls,
+                },
+                "targets": targets,
+                "missing_requirements": missing,
+                "next_requirement": missing[0] if missing else None,
+                "ready_to_save": not missing,
+            }
+
+        def _with_progress(
+            result: str,
+            *,
+            cache_hit: bool = False,
+            cache_reason: str = "",
+        ) -> str:
+            """Attach machine-readable progress without discarding tool evidence."""
+            try:
+                payload = json.loads(result)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {"ok": True, "result": str(result)}
+            if not isinstance(payload, dict):
+                payload = {"ok": True, "result": payload}
+            else:
+                payload = dict(payload)
+            payload["recon_progress"] = _progress()
+            if cache_hit:
+                payload["recon_cache"] = {
+                    "hit": True,
+                    "reason": cache_reason or "equivalent successful scan already executed",
+                }
+            return json.dumps(payload, ensure_ascii=False, default=str)
+
+        def _scan_signature(kwargs: dict) -> str:
+            """Canonicalize an nmap request so argument ordering cannot evade cache."""
+            normalized = dict(kwargs)
+            normalized["target"] = str(kwargs.get("target", "")).strip()
+            normalized["ports"] = sorted(_ports(str(kwargs.get("ports", ""))))
+            scripts = kwargs.get("scripts")
+            if scripts is not None:
+                normalized["scripts"] = sorted({
+                    value.strip() for value in str(scripts).split(",") if value.strip()
+                })
+            for key in ("skip_discovery", "udp_scan", "service_detection"):
+                if key in normalized:
+                    normalized[key] = bool(normalized[key])
+            return json.dumps(normalized, sort_keys=True, ensure_ascii=False, default=str)
+
         def _error(kind: str, message: str, **extra) -> str:
-            return json.dumps({"ok": False, "error_kind": kind, "error": message, **extra})
+            return _with_progress(json.dumps({
+                "ok": False, "error_kind": kind, "error": message, **extra,
+            }))
 
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
@@ -2318,7 +2393,7 @@ class Pipeline:
                     if _succeeded(result):
                         completed_calls.add("arp_scan")
                     _discover_targets(result)
-                    return result
+                    return _with_progress(result)
 
                 if name == "nmap_discovery":
                     target = str(kwargs.get("target", ""))
@@ -2326,7 +2401,7 @@ class Pipeline:
                     if _succeeded(result) and target in target_subnets:
                         completed_calls.add(f"nmap_discovery:{target}")
                     _discover_targets(result)
-                    return result
+                    return _with_progress(result)
 
                 if name == "read_deliverable":
                     result = original_fn(**kwargs)
@@ -2335,16 +2410,37 @@ class Pipeline:
                         and _succeeded(result)
                     ):
                         completed_calls.add("read_phase1")
-                    return result
+                    return _with_progress(result)
 
                 if name == "nmap_scan":
                     target = str(kwargs.get("target", ""))
-                    result = original_fn(**kwargs)
-                    if _succeeded(result) and target in expected_scans:
-                        covered_ports.setdefault(target, set()).update(
-                            _ports(str(kwargs.get("ports", "")))
+                    signature = _scan_signature(kwargs)
+                    if signature in scan_cache:
+                        return _with_progress(
+                            scan_cache[signature],
+                            cache_hit=True,
+                            cache_reason=(
+                                "strictly equivalent target/ports/scripts/protocol "
+                                "scan already completed"
+                            ),
                         )
-                    return result
+                    result = original_fn(**kwargs)
+                    succeeded = _succeeded(result)
+                    requested_ports = _ports(str(kwargs.get("ports", "")))
+                    if succeeded and target in expected_scans:
+                        covered_ports.setdefault(target, set()).update(requested_ports)
+                    if succeeded:
+                        scan_cache[signature] = result
+                    elif target in expected_scans:
+                        attempts = scan_failure_counts.get(signature, 0) + 1
+                        scan_failure_counts[signature] = attempts
+                        if attempts >= 2:
+                            # Two identical failed probes are conclusive enough for
+                            # Recon completion: preserve them as failed evidence
+                            # instead of retrying forever or claiming an open port.
+                            covered_ports.setdefault(target, set()).update(requested_ports)
+                            failed_ports.setdefault(target, set()).update(requested_ports)
+                    return _with_progress(result)
 
                 if name == "save_deliverable":
                     missing = _missing_requirements()
@@ -2354,9 +2450,9 @@ class Pipeline:
                             "Recon cannot finish until all minimum evidence requirements are satisfied; strategy and call order remain free",
                             missing_requirements=missing,
                         )
-                    return original_fn(**kwargs)
+                    return _with_progress(original_fn(**kwargs))
 
-                return original_fn(**kwargs)
+                return _with_progress(original_fn(**kwargs))
 
             return guarded
 
