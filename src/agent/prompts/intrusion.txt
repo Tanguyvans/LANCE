@@ -24,7 +24,7 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 
 ## Absolute rules
 - NEVER call nmap_scan, ssh_audit, curl_headers, mqtt_listen — scanning is done
-- NEVER call read_deliverable more than 3 times total
+- Call read_deliverable EXACTLY ONCE: read only 05_intrusion_context.json
 - Call save_deliverable EXACTLY ONCE — at the end, with full results
 - TURN BUDGET: 80 turns. Call save_deliverable by turn 72.
 - Do NOT destroy data, reconfigure services, or cause denial of service
@@ -34,10 +34,8 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 ## Phase A — Load context (turns 1-2)
 
 1. read_deliverable("05_intrusion_context.json")
-   → gives you: entry_points, all_targets, recovered_credentials, attack_chains
-
-2. read_deliverable("04_exploitation.json")
-   → gives you: confirmed exploits with raw evidence (passwords, keys, banners)
+   → gives you the bounded, complete campaign source: entry_points, all_targets, recovered_credentials, and attack_chains.
+   Do NOT read 04_exploitation.json; its useful evidence has already been extracted into this context.
 
 Build your internal state:
 - `compromised`: set of {ip, user, password, device_id} — devices you have access to

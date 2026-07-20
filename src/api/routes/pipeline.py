@@ -360,7 +360,7 @@ def _batch_thread(req: BatchRequest):
             evaluation_error = None
             if gt_file.exists():
                 try:
-                    ev_result = evaluate(run_dir, gt_file, policy="strict-v2")
+                    ev_result = evaluate(run_dir, gt_file, policy="strict-v3")
                     ev_result.split = "dev-public"
                     evaluation_results.append(ev_result)
                     metrics = _evaluation_metrics(ev_result)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from statistics import fmean
+from statistics import fmean, pstdev
 from typing import Any
 
 from src.benchmark.evaluator import EvaluationResult
@@ -66,6 +66,46 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "macro_positive_f1": _round_optional(
             _mean(float(s["f1_score"]) for s in positive)
         ),
+        "macro_detection_f1": _round_optional(_mean(
+            float(s["detection_f1"]) for s in positive
+            if s.get("detection_f1") is not None
+        )),
+        "macro_quality_adjusted_f1": _round_optional(_mean(
+            float(s["quality_adjusted_f1"]) for s in positive
+            if s.get("quality_adjusted_f1") is not None
+        )),
+        "macro_verified_f1": _round_optional(_mean(
+            float(s["verified_f1"]) for s in positive
+            if s.get("verified_f1") is not None
+        )),
+        "macro_phase4_completion_rate": _round_optional(_mean(
+            float(s["phase4_completion_rate"]) for s in positive
+            if s.get("phase4_completion_rate") is not None
+        )),
+        "macro_quality_path_coverage": _round_optional(_mean(
+            float(s["quality_path_coverage"]) for s in positive
+            if s.get("quality_path_coverage") is not None
+        )),
+        "macro_verified_path_coverage": _round_optional(_mean(
+            float(s["verified_path_coverage"]) for s in positive
+            if s.get("verified_path_coverage") is not None
+        )),
+        **{
+            f"macro_{name}": _round_optional(_mean(
+                float(s[name]) for s in positive if s.get(name) is not None
+            ))
+            for name in (
+                "mhr_1", "mhr_2", "mhr_3",
+                "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
+                "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
+            )
+        },
+        "macro_positive_precision": _round_optional(
+            _mean(float(s["precision"]) for s in positive)
+        ),
+        "macro_positive_recall": _round_optional(
+            _mean(float(s["recall"]) for s in positive)
+        ),
         "macro_zero_gt_specificity": _round_optional(
             _mean(float(s["specificity"]) for s in controls)
         ),
@@ -112,7 +152,27 @@ def aggregate_evaluations(
                 "is_zero_gt": None,
                 "scenario_score_pct": 0.0,
                 "f1_score": None,
+                "precision": None,
+                "recall": None,
                 "specificity": None,
+                "detection_f1": None,
+                "quality_adjusted_f1": None,
+                "verified_f1": None,
+                "phase4_completion_rate": None,
+                "quality_path_coverage": None,
+                "verified_path_coverage": None,
+                "mhr_1": None,
+                "mhr_2": None,
+                "mhr_3": None,
+                "mhr_1_credited": None,
+                "mhr_2_credited": None,
+                "mhr_3_credited": None,
+                "mhr_1_verified": None,
+                "mhr_2_verified": None,
+                "mhr_3_verified": None,
+                "run_score_stddev_pct": None,
+                "run_score_min_pct": None,
+                "run_score_max_pct": None,
             })
             continue
 
@@ -134,6 +194,27 @@ def aggregate_evaluations(
 
         scores = [_result_scenario_score(run, is_zero_gt) for run in runs]
         f1 = _mean(float(_get(run, "f1_score", 0.0)) for run in runs) if not is_zero_gt else None
+        precision = _mean(float(_get(run, "precision", 0.0)) for run in runs) if not is_zero_gt else None
+        recall = _mean(float(_get(run, "recall", 0.0)) for run in runs) if not is_zero_gt else None
+        detection_f1 = _mean(
+            float(_get(run, "detection_f1", _get(run, "f1_score", 0.0))) for run in runs
+        ) if not is_zero_gt else None
+        quality_adjusted_f1 = _mean(
+            float(_get(run, "quality_adjusted_f1", _get(run, "f1_score", 0.0))) for run in runs
+        ) if not is_zero_gt else None
+        verified_values = [
+            float(value) for value in (_get(run, "verified_f1") for run in runs)
+            if value is not None
+        ]
+        completion_values = [
+            float(value) for value in (_get(run, "phase4_completion_rate") for run in runs)
+            if value is not None
+        ]
+        def optional_run_mean(name: str) -> float | None:
+            return _mean(
+                float(value) for value in (_get(run, name) for run in runs)
+                if value is not None
+            )
         specificity = (
             _mean(
                 float(
@@ -155,7 +236,26 @@ def aggregate_evaluations(
             "is_zero_gt": is_zero_gt,
             "scenario_score_pct": round(fmean(scores), 3),
             "f1_score": _round_optional(f1),
+            "precision": _round_optional(precision),
+            "recall": _round_optional(recall),
             "specificity": _round_optional(specificity),
+            "detection_f1": _round_optional(detection_f1),
+            "quality_adjusted_f1": _round_optional(quality_adjusted_f1),
+            "verified_f1": _round_optional(_mean(verified_values)),
+            "phase4_completion_rate": _round_optional(_mean(completion_values)),
+            "quality_path_coverage": _round_optional(optional_run_mean("quality_path_coverage")),
+            "verified_path_coverage": _round_optional(optional_run_mean("verified_path_coverage")),
+            **{
+                name: _round_optional(optional_run_mean(name))
+                for name in (
+                    "mhr_1", "mhr_2", "mhr_3",
+                    "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
+                    "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
+                )
+            },
+            "run_score_stddev_pct": round(pstdev(scores), 3) if len(scores) > 1 else 0.0,
+            "run_score_min_pct": round(min(scores), 3),
+            "run_score_max_pct": round(max(scores), 3),
         })
 
     suite_summary = _summary_for_scenarios(scenario_rows)

@@ -1,9 +1,9 @@
 """Risk scoring module.
 
 Computes a risk score (0-10) per device by combining:
-- Vulnerability score (max CVSS from known CVEs)
-- Exposure score (number of services / distance from internet)
-- Centrality score (betweenness centrality in the network graph)
+- Vulnerability score (worst CVSS, mean CVSS, and CVE burden)
+- Exposure score (number of services / directed distance from internet)
+- Centrality score (normalized directed betweenness)
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ class DeviceRiskScore:
     cve_count: int = 0
     num_services: int = 0
     hops_from_internet: int = -1
+    reachable_from_internet: bool = False
     betweenness: float = 0.0
     details: dict = field(default_factory=dict)
 
@@ -34,24 +35,23 @@ class DeviceRiskScore:
 W_VULN = 0.4
 W_EXPOSURE = 0.3
 W_CENTRALITY = 0.3
+RISK_SCORE_POLICY = "directed-v2"
 
 
 def compute_hops_from_internet(backend: NetworkXBackend, device_id: str) -> int:
-    """Shortest-path length from 'internet' to *device_id* (undirected).
+    """Directed shortest-path length from 'internet' to *device_id*.
 
     Returns -1 if no path exists.
     """
-    undirected = backend.graph.to_undirected()
     try:
-        return nx.shortest_path_length(undirected, "internet", device_id)
-    except (nx.NetworkXError, nx.NodeNotFound):
+        return nx.shortest_path_length(backend.graph, "internet", device_id)
+    except nx.NetworkXException:
         return -1
 
 
 def compute_centrality(backend: NetworkXBackend) -> dict[str, float]:
-    """Betweenness centrality on the undirected view of the graph."""
-    undirected = backend.graph.to_undirected()
-    return nx.betweenness_centrality(undirected)
+    """Normalized directed betweenness centrality."""
+    return nx.betweenness_centrality(backend.graph, normalized=True)
 
 
 def _exposure_score(num_services: int, hops: int) -> float:
@@ -59,17 +59,22 @@ def _exposure_score(num_services: int, hops: int) -> float:
 
     More services + fewer hops from internet = higher score.
     """
-    if hops <= 0:
+    if hops < 0:
+        return 0.0
+    if hops == 0:
         hops = 1
     raw = num_services * (1.0 / hops)
     return min(raw * 10.0 / 6.0, 10.0)
 
 
-def _centrality_score(betweenness: float, max_betweenness: float) -> float:
-    """Centrality score (0-10), normalized to the graph's max betweenness."""
-    if max_betweenness <= 0:
-        return 0.0
-    return (betweenness / max_betweenness) * 10.0
+def _centrality_score(betweenness: float, max_betweenness: float | None = None) -> float:
+    """Centrality score (0-10) from NetworkX's graph-size normalization.
+
+    ``max_betweenness`` is accepted for source compatibility but intentionally
+    ignored: normalizing by each graph's maximum made scores incomparable and
+    forced one node to receive 10 in every topology.
+    """
+    return min(max(betweenness, 0.0) * 10.0, 10.0)
 
 
 def score_device(
@@ -90,7 +95,9 @@ def score_device(
     cve_count = len(cve_report.cves) if cve_report else 0
 
     # Component scores
-    vuln = max_cvss
+    # Preserve the worst CVE while also reflecting repeated vulnerability
+    # burden. A single maximum alone made one CVE indistinguishable from many.
+    vuln = min(0.7 * max_cvss + 0.2 * avg_cvss + 0.1 * min(cve_count, 10), 10.0)
     exposure = _exposure_score(len(services), hops)
     max_betweenness = max(centrality_map.values()) if centrality_map else 0.0
     betweenness = centrality_map.get(device_id, 0.0)
@@ -108,8 +115,10 @@ def score_device(
         cve_count=cve_count,
         num_services=len(services),
         hops_from_internet=hops,
+        reachable_from_internet=hops >= 0,
         betweenness=round(betweenness, 4),
         details={
+            "policy": RISK_SCORE_POLICY,
             "vuln_score": round(vuln, 2),
             "exposure_score": round(exposure, 2),
             "centrality_score": round(centrality, 2),

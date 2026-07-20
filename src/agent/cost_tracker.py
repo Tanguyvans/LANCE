@@ -113,18 +113,23 @@ class CostTracker:
     phases: list[PhaseUsage] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
+    _first_phase_start: float | None = field(default=None, repr=False)
+    _last_phase_end: float | None = field(default=None, repr=False)
 
     def start_phase(self, agent_name: str) -> None:
         # Serialize pricing resolution so parallel agents share one catalog snapshot.
+        started_at = time.monotonic()
         with self._lock:
             pricing, pricing_source, estimated = _resolve_pricing(self.model)
+            if self._first_phase_start is None or started_at < self._first_phase_start:
+                self._first_phase_start = started_at
         self._thread_local.current = PhaseUsage(
             agent_name=agent_name, model=self.model,
             input_price_per_million=pricing["input"],
             output_price_per_million=pricing["output"],
             pricing_source=pricing_source, cost_is_estimate=estimated,
         )
-        self._thread_local.start_time = time.monotonic()
+        self._thread_local.start_time = started_at
 
     def record_turn(
         self, input_tokens: int, output_tokens: int, tool_call_count: int = 0
@@ -178,9 +183,12 @@ class CostTracker:
         start_time = getattr(self._thread_local, 'start_time', 0.0)
         if current is None:
             return None
-        current.duration_s = time.monotonic() - start_time
+        ended_at = time.monotonic()
+        current.duration_s = ended_at - start_time
         with self._lock:
             self.phases.append(current)
+            if self._last_phase_end is None or ended_at > self._last_phase_end:
+                self._last_phase_end = ended_at
         usage = current
         self._thread_local.current = None
         return usage
@@ -201,6 +209,12 @@ class CostTracker:
             in_tok = sum(p.input_tokens for p in self.phases)
             out_tok = sum(p.output_tokens for p in self.phases)
             total_cost = sum(p.cost_usd() for p in self.phases)
+            agent_duration = sum(p.duration_s for p in self.phases)
+            wall_duration = (
+                self._last_phase_end - self._first_phase_start
+                if self._first_phase_start is not None and self._last_phase_end is not None
+                else 0.0
+            )
             return {
                 "metrics_schema_version": METRICS_SCHEMA_VERSION,
                 "model": self.model,
@@ -211,7 +225,10 @@ class CostTracker:
                 "total_output_tokens": out_tok,
                 "total_turns": sum(p.turns for p in self.phases),
                 "total_tool_calls": sum(p.tool_calls for p in self.phases),
-                "total_duration_s": round(sum(p.duration_s for p in self.phases), 1),
+                # Historical total_duration_s is retained as agent-seconds.
+                "total_duration_s": round(agent_duration, 1),
+                "total_agent_duration_s": round(agent_duration, 1),
+                "wall_clock_duration_s": round(wall_duration, 1),
                 "total_format_fallbacks": sum(p.format_fallbacks for p in self.phases),
                 "total_format_attempts": sum(p.format_attempts for p in self.phases),
                 "total_validation_failures": sum(p.validation_failures for p in self.phases),

@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "source_role": "canonical-git-workspace",
+  "execution_role": "training-only-workspace",
+  "push_files": [
+    "requirements-training.txt",
+    "training/README_FEEDBACK_TRAINING.md",
+    "training/README_QWEN3B.md",
+    "training/configs/qlora_qwen2_5_3b.yaml",
+    "training/preflight_3b.py",
+    "training/prepare_3b_datasets.py",
+    "training/templates/qwen2_5_tools_assistant_mask.jinja",
+    "training/train_qlora_3b.py",
+    "training/workspace_sync.json"
+  ],
+  "pull_report_globs": [
+    "output/preflight_3b_report.json",
+    "output/training-source-manifest.json",
+    "output/adapters/lance-qlora_moe_3b/*/adapter_config.json",
+    "output/adapters/lance-qlora_moe_3b/*/tokenizer_config.json",
+    "output/adapters/lance-qlora_moe_3b/*/checkpoint-*/trainer_state.json"
+  ],
+  "blocked_roots": [
+    ".git",
+    "data",
+    "env",
+    "output",
+    "wandb"
+  ],
+  "max_report_size_bytes": 5242880,
+  "max_total_report_size_bytes": 52428800,
+  "pull_adapter_experts": [
+    "secretary",
+    "recon",
+    "vuln",
+    "exploit"
+  ],
+  "pull_adapter_files": [
+    "adapter_config.json",
+    "adapter_model.safetensors",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "chat_template.jinja"
+  ],
+  "max_adapter_file_size_bytes": 134217728,
+  "max_total_adapter_size_bytes": 1073741824
+}

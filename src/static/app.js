@@ -2272,11 +2272,15 @@ function renderBenchmarkTable() {
       const total = matched.length;
       if (total > 0) {
         const byCve  = matched.filter(m => m.match_method === 'cve').length;
-        const byType = matched.filter(m => m.match_method === 'ip+type').length;
-        const byIp   = matched.filter(m => m.match_method === 'ip+category').length;
+        const byStruct = matched.filter(m => m.match_method === 'exact-structural').length;
+        const byType = matched.filter(m => ['ip+type', 'exact-type'].includes(m.match_method)).length;
+        const byExplicit = matched.filter(m => m.match_method === 'explicit-category').length;
+        const byIp = matched.filter(m => m.match_method === 'ip+category').length;
         const parts = [];
         if (byCve)  parts.push(`<span title="CVE exact" style="color:var(--green)">CVE:${byCve}</span>`);
+        if (byStruct) parts.push(`<span title="Structure exacte" style="color:var(--green)">S:${byStruct}</span>`);
         if (byType) parts.push(`<span title="IP+type" style="color:var(--accent)">T:${byType}</span>`);
+        if (byExplicit) parts.push(`<span title="Équivalence explicite" style="color:var(--yellow,#d29922)">E:${byExplicit}</span>`);
         if (byIp)   parts.push(`<span title="IP seulement (loose)" style="color:var(--orange)">~:${byIp}</span>`);
         qualityCell = parts.join(' ');
       }
@@ -2286,6 +2290,8 @@ function renderBenchmarkTable() {
     let scorePct = noScore;
     if (sealed && aggregate?.overall_score != null) {
       scorePct = `<span title="Agrégat signé">${pct(toRatio(aggregate.overall_score))}</span>`;
+    } else if (s?.scenario_score_pct != null) {
+      scorePct = `<span title="Score officiel ${escapeHtml(s.scoring_policy || '')}">${s.scenario_score_pct.toFixed(1)}%</span>`;
     } else if (s?.score_pct != null) {
       scorePct = `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`;
     }

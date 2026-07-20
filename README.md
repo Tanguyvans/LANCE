@@ -27,6 +27,10 @@ The four QLoRA experts can be served behind one OpenAI-compatible API and expose
 five model IDs in OpenWebUI. See the [local HMoE deployment guide](docs/lance_hmoe_openwebui.md)
 for the systemd service, permissions, model registration, and troubleshooting steps.
 
+Training code is versioned only in this workspace and synchronized through a
+strict allowlist to the execution-only GPU workspace. See the
+[training workspace guide](docs/TRAINING_WORKSPACES.md).
+
 ## Key Directories
 
 | Path | Description |

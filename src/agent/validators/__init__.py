@@ -114,14 +114,50 @@ def _validate_json_with_key(
     return True, "OK"
 
 
+def _validate_unique_ids(filename: str, collection: str, id_field: str) -> tuple[bool, str]:
+    """Require stable, non-empty unique IDs for cross-phase correlation."""
+    ok, msg = _validate_json_with_key(filename, collection, expect_list=True)
+    if not ok:
+        return ok, msg
+    data = json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
+    seen: set[str] = set()
+    for index, item in enumerate(data[collection]):
+        if not isinstance(item, dict):
+            return False, f"'{collection}[{index}]' must be an object"
+        value = str(item.get(id_field, "")).strip()
+        if not value:
+            return False, f"'{collection}[{index}].{id_field}' must be non-empty"
+        if value in seen:
+            return False, f"Duplicate {id_field}: {value}"
+        seen.add(value)
+    return True, "OK"
+
+
 def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
-    """Check JSON file is valid and has a 'vulnerabilities' list."""
-    return _validate_json_with_key(filename, "vulnerabilities", expect_list=True)
+    """Check Phase 3 IDs and the strict-v3 structural artifact contract."""
+    ok, msg = _validate_unique_ids(filename, "vulnerabilities", "id")
+    if not ok:
+        return ok, msg
+    data = json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
+    required = {"service", "port", "protocol", "endpoint", "product", "version"}
+    for index, finding in enumerate(data["vulnerabilities"]):
+        missing = required - set(finding)
+        if missing:
+            return False, f"'vulnerabilities[{index}]' missing structural fields: {sorted(missing)}"
+        port = finding.get("port")
+        if port not in (None, "") and (isinstance(port, bool) or not isinstance(port, int) or not 0 < port <= 65535):
+            return False, f"'vulnerabilities[{index}].port' must be an integer in 1..65535 or null"
+        if str(finding.get("protocol", "")).casefold() not in {"", "tcp", "udp"}:
+            return False, f"'vulnerabilities[{index}].protocol' must be tcp, udp, or empty"
+        for field in ("service", "endpoint", "product", "version"):
+            if not isinstance(finding.get(field), str):
+                return False, f"'vulnerabilities[{index}].{field}' must be a string"
+    return True, "OK"
 
 
 def validate_json_exploitation(filename: str) -> tuple[bool, str]:
-    """Check JSON file is valid and has a 'tests' array."""
-    return _validate_json_with_key(filename, "tests", expect_list=True)
+    """Check Phase 4 tests have unique references to Phase 3 findings."""
+    return _validate_unique_ids(filename, "tests", "vuln_id")
 
 
 def validate_json_exploit_result(filename: str) -> tuple[bool, str]:
@@ -138,6 +174,8 @@ def validate_json_exploit_result(filename: str) -> tuple[bool, str]:
     missing = required_keys - set(data.keys())
     if missing:
         return False, f"Missing keys: {missing}"
+    if not str(data.get("vuln_id", "")).strip():
+        return False, "'vuln_id' must be non-empty"
     valid_statuses = {"EXPLOITED", "FAILED", "ERROR"}
     if data["status"] not in valid_statuses:
         return False, f"Invalid status '{data['status']}', expected one of {valid_statuses}"

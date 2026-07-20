@@ -15,11 +15,15 @@ def _evaluation(
     specificity: float | None = None,
     split: str | None = None,
     total_gt: int = 1,
+    precision: float | None = None,
+    recall: float | None = None,
 ) -> dict:
     return {
         "scenario_id": scenario_id,
         "scenario_score_pct": score,
         "f1_score": f1,
+        "precision": f1 if precision is None else precision,
+        "recall": f1 if recall is None else recall,
         "is_zero_gt": zero_gt,
         "specificity": specificity,
         "split": split,
@@ -54,6 +58,46 @@ class TestScenarioMacroAggregation:
         assert aggregate["per_scenario"]["1"]["run_count"] == 10
         assert aggregate["macro_scenario_score_pct"] == 50.0
         assert aggregate["macro_positive_f1"] == 0.5
+        assert aggregate["macro_positive_precision"] == 0.5
+        assert aggregate["macro_positive_recall"] == 0.5
+        assert aggregate["per_scenario"]["1"]["run_score_stddev_pct"] == 0.0
+
+    def test_quality_path_and_mhr_variants_are_macro_aggregated(self):
+        first = _evaluation("1", score=100.0, f1=1.0)
+        first.update({
+            "quality_path_coverage": 1.0,
+            "verified_path_coverage": 0.5,
+            "mhr_1": 1.0,
+            "mhr_1_credited": 0.75,
+            "mhr_1_verified": 0.5,
+        })
+        second = _evaluation("2", score=50.0, f1=0.5)
+        second.update({
+            "quality_path_coverage": 0.0,
+            "verified_path_coverage": 0.0,
+            "mhr_1": 0.5,
+            "mhr_1_credited": 0.25,
+            "mhr_1_verified": 0.0,
+        })
+
+        aggregate = aggregate_evaluations([first, second])
+
+        assert aggregate["macro_quality_path_coverage"] == 0.5
+        assert aggregate["macro_verified_path_coverage"] == 0.25
+        assert aggregate["macro_mhr_1"] == 0.75
+        assert aggregate["macro_mhr_1_credited"] == 0.5
+        assert aggregate["macro_mhr_1_verified"] == 0.25
+
+    def test_reports_run_dispersion_within_scenario(self):
+        aggregate = aggregate_evaluations([
+            _evaluation("1", score=100.0, f1=1.0),
+            _evaluation("1", score=0.0, f1=0.0),
+        ])
+
+        scenario = aggregate["per_scenario"]["1"]
+        assert scenario["run_score_stddev_pct"] == 50.0
+        assert scenario["run_score_min_pct"] == 0.0
+        assert scenario["run_score_max_pct"] == 100.0
 
     def test_zero_gt_specificity_contributes_as_scenario_score(self):
         results = [

@@ -94,10 +94,33 @@ class TestValidateJsonQueue:
         assert "vulnerabilities" in msg
 
     def test_valid_queue(self, clean_output):
-        data = {"vulnerabilities": [{"id": "VULN-001"}], "summary": {"total": 1}}
+        data = {"vulnerabilities": [{
+            "id": "VULN-001", "service": "http", "port": 80,
+            "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
+        }], "summary": {"total": 1}}
         (clean_output / "good.json").write_text(json.dumps(data))
         ok, msg = validate_json_vuln_queue("good.json")
         assert ok
+
+
+    def test_queue_rejects_missing_structural_fields(self, clean_output):
+        data = {"vulnerabilities": [{"id": "VULN-001"}]}
+        (clean_output / "missing-structure.json").write_text(json.dumps(data))
+        ok, msg = validate_json_vuln_queue("missing-structure.json")
+        assert not ok
+        assert "structural fields" in msg
+
+    def test_queue_rejects_duplicate_ids(self, clean_output):
+        finding = {
+            "id": "VULN-001", "service": "http", "port": 80,
+            "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
+        }
+        (clean_output / "duplicates.json").write_text(json.dumps({
+            "vulnerabilities": [finding, dict(finding)],
+        }))
+        ok, msg = validate_json_vuln_queue("duplicates.json")
+        assert not ok
+        assert "Duplicate" in msg
 
     def test_empty_queue(self, clean_output):
         data = {"vulnerabilities": []}

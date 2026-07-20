@@ -307,7 +307,7 @@ def get_benchmark():
             if gt_path.exists():
                 try:
                     from src.benchmark.evaluator import evaluate
-                    result = evaluate(d, gt_path, policy="strict-v2")
+                    result = evaluate(d, gt_path, policy="strict-v3")
                     score_dict = asdict(result)
                     
                     llm_file = d / "benchmark_llm.json"
@@ -383,7 +383,7 @@ def score_run(run_id: str):
             raise HTTPException(status_code=404, detail="03_vuln_analysis.json not found — run Phase 3 first")
         try:
             from src.benchmark.evaluator import evaluate
-            return asdict(evaluate(run_dir, gt_path, policy="strict-v2"))
+            return asdict(evaluate(run_dir, gt_path, policy="strict-v3"))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}") from exc
 
@@ -416,7 +416,7 @@ def score_run(run_id: str):
 
     try:
         from src.benchmark.evaluator import evaluate
-        result = evaluate(run_dir, gt_path, policy="strict-v2")
+        result = evaluate(run_dir, gt_path, policy="strict-v3")
         score_dict = asdict(result)
         
         llm_file = run_dir / "benchmark_llm.json"

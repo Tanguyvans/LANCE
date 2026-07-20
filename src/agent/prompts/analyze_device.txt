@@ -166,7 +166,7 @@ Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE wit
 }
 ```
 
-Each vulnerability must have: id, device_id, device_ip, type, severity, service, port, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools.
+Each vulnerability must have: id, device_id, device_ip, type, severity, service, port, protocol, endpoint, product, version, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools. Use an empty string only when a structural value was not observed; never invent it.
 
 IMPORTANT: Pass RAW JSON to save_deliverable — do NOT wrap in markdown code blocks.
 

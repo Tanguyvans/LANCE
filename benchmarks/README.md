@@ -171,6 +171,12 @@ Les comptages publics actuels sont : S1=12, S2=13, S3=18, S4=18, S5=15, S6=16, S
 
 Chaque entrée supporte un champ `bonus_types` listant les types de findings tolérés (ne comptent pas en FP lorsqu'ils ne figurent pas dans l'ensemble injecté). La taxonomie canonique est définie dans `src/agent/vuln_taxonomy.py` — toute nouvelle alias passe par `VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu'en duplication locale.
 
+Les verdicts Phase 4 sont résolus par finding : un succès enrichit la preuve,
+un échec conclusif réfute une simple suspicion Phase 3, et une erreur ou un
+test absent conserve le finding au niveau détection sans crédit
+d'exploitation. Une preuve Phase 3 déjà `confirmed` et non vide est conservée
+comme détection en cas de verdict contradictoire.
+
 Pour S20–S25 :
 
 - aucun ground truth, scénario, pack ou playbook privé n’est stocké dans ce dépôt ;
@@ -188,12 +194,20 @@ Les fichiers `eval_profiles/S20.yaml` à `S25.yaml` ne contiennent que la politi
 | --- | --- |
 | Recall | Vrais positifs / (VP + faux négatifs) |
 | Precision | Vrais positifs / (VP + faux positifs) |
+| Raw Precision | Vrais positifs / (VP + faux positifs + findings bonus), pour rendre visible l'effet des exclusions |
 | F1 Score | Moyenne harmonique precision/recall |
+| Credited F1 | F1 donnant 1.0 à une correspondance structurelle exacte, 0.75 au type exact incomplet et 0.5 à une compatibilité explicitement autorisée |
+| Quality-adjusted F1 | Credited F1 également pondéré par l'erreur de sévérité et la qualité de vérification ; score primaire de `strict-v3` |
+| Verified F1 | F1 limité aux findings soutenus par un appel d'outil lié et explicitement réussi |
 | Weighted Score | Score pondéré par sévérité (critical=4, high=3, medium=2, low=1) |
-| Exploitation Coverage | Vrais positifs prouvés (`evidence_level` ≥ 2) / total vrais positifs |
-| Multi-Hop Reach (MHR_1/2/3) | Fraction des vulns du ground truth à profondeur de pivot ≥ k détectées |
-| Path Coverage | Chemins d'attaque entièrement identifiés / chemins attendus |
-| Hallucination Rate | Failles inventées / total findings |
+| Exploitation Coverage | TP avec niveau recalculé ≥ 2 et résultat d'outil lié explicitement positif / total TP |
+| Multi-Hop Reach (MHR_1/2/3) | Recall conditionnel des vulns du ground truth à profondeur déclarée ≥ k ; variantes `_credited` (qualité du matching) et `_verified` (preuve d'outil) publiées séparément |
+| Quality / Verified Path Coverage | Crédit minimal de qualité par chaîne complète ; la variante vérifiée exige aussi tous les findings prouvés et une chaîne Phase 5 ordonnée |
+| Path Coverage | Chemins dont toutes les vulnérabilités attendues ont été détectées |
+| Verified Path Coverage | Chemins précédents dont les appareils apparaissent aussi dans l'ordre dans une chaîne Phase 5 |
+| Hallucination Rate | Faux positifs / (vrais positifs + faux positifs), hors bonus |
+| Unmatched Finding Rate | Faux positifs + bonus / total findings |
+| Phase 4 Completion Rate | Verdicts conclusifs Phase 4 / findings Phase 3 éligibles à l'exploitation |
 | Coût | Tokens consommés par scénario (résumé par phase) |
 
 Le split public peut exposer le détail par scénario et par finding pour faciliter le diagnostic. Le score officiel sealed suit une autre politique : les répétitions sont d’abord moyennées au sein de chaque profil, puis S20–S25 sont macro-moyennés à poids égal. Un profil manquant vaut zéro et aucun TP/FP/FN, chemin, seed ou score individuel sealed n’est publié. Voir [le protocole d’évaluation](docs/EVALUATION_PROTOCOL.md#publication-du-score-sealed).

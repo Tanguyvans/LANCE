@@ -71,6 +71,8 @@ class TestCostTracker:
         assert s["total_input_tokens"] == 100
         assert s["total_output_tokens"] == 50
         assert s["total_turns"] == 1
+        assert s["total_agent_duration_s"] >= s["wall_clock_duration_s"]
+        assert s["total_duration_s"] == s["total_agent_duration_s"]
         assert len(s["phases"]) == 1
         assert s["phases"][0]["agent"] == "agent1"
 

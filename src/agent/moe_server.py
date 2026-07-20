@@ -16,6 +16,7 @@ import re
 import json
 import uuid
 import time
+import gc
 import argparse
 import logging
 import threading
@@ -39,6 +40,18 @@ _MODEL = None
 _TOKENIZER = None
 _ADAPTERS = []
 _GENERATION_LOCK = threading.Lock()
+_CUDA_CLEANUP_LOCK = threading.Lock()
+_CUDA_CLEANUP_TIMER = None
+_CUDA_IDLE_CLEANUP_SECONDS = float(os.environ.get("MOE_CUDA_IDLE_CLEANUP_SECONDS", "120"))
+_ADAPTER_CONTEXT_TOKENS = int(os.environ.get("MOE_ADAPTER_CONTEXT_TOKENS", "6144"))
+
+_CONTRACT_RECOVERY_TOOLS = frozenset({
+    "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+})
+_RECON_CORE_MODEL_TOOLS = frozenset({
+    "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+    "save_deliverable",
+})
 
 _MODEL_IDS = [
     "lance-moe",
@@ -47,6 +60,66 @@ _MODEL_IDS = [
     "expert-exploit",
     "expert-secretary",
 ]
+
+
+def _release_cuda_memory(torch_module) -> None:
+    """Return unused PyTorch CUDA allocations to the driver."""
+    if not torch_module.cuda.is_available():
+        return
+
+    allocated_before = torch_module.cuda.memory_allocated()
+    reserved_before = torch_module.cuda.memory_reserved()
+    gc.collect()
+    torch_module.cuda.empty_cache()
+    allocated_after = torch_module.cuda.memory_allocated()
+    reserved_after = torch_module.cuda.memory_reserved()
+    log.info(
+        "CUDA idle cleanup: allocated %.1f -> %.1f MiB, reserved %.1f -> %.1f MiB",
+        allocated_before / 1024**2,
+        allocated_after / 1024**2,
+        reserved_before / 1024**2,
+        reserved_after / 1024**2,
+    )
+
+
+def _cancel_scheduled_cuda_cleanup() -> None:
+    """Cancel a pending idle cleanup when a new generation starts."""
+    global _CUDA_CLEANUP_TIMER
+    with _CUDA_CLEANUP_LOCK:
+        timer = _CUDA_CLEANUP_TIMER
+        _CUDA_CLEANUP_TIMER = None
+        if timer is not None:
+            timer.cancel()
+
+
+def _run_scheduled_cuda_cleanup(torch_module, timer) -> None:
+    """Clean CUDA only if this timer is still the latest idle timer."""
+    global _CUDA_CLEANUP_TIMER
+    with _GENERATION_LOCK:
+        with _CUDA_CLEANUP_LOCK:
+            if _CUDA_CLEANUP_TIMER is not timer:
+                return
+            _CUDA_CLEANUP_TIMER = None
+        _release_cuda_memory(torch_module)
+
+
+def _schedule_cuda_cleanup(torch_module) -> None:
+    """Release cached CUDA memory after a configurable idle period."""
+    global _CUDA_CLEANUP_TIMER
+    _cancel_scheduled_cuda_cleanup()
+    if _CUDA_IDLE_CLEANUP_SECONDS <= 0:
+        _release_cuda_memory(torch_module)
+        return
+
+    timer = threading.Timer(
+        _CUDA_IDLE_CLEANUP_SECONDS,
+        lambda: _run_scheduled_cuda_cleanup(torch_module, timer),
+    )
+    timer.daemon = True
+    with _CUDA_CLEANUP_LOCK:
+        _CUDA_CLEANUP_TIMER = timer
+    timer.start()
+    log.debug("CUDA cleanup scheduled after %.1f seconds of inactivity", _CUDA_IDLE_CLEANUP_SECONDS)
 
 # --- API Models ---
 class Message(BaseModel):
@@ -280,7 +353,12 @@ def _parse_qwen_tool_calls(text: str) -> tuple[str, list[dict]]:
 # --- Endpoints ---
 @app.get("/health")
 def health():
-    return {"status": "ok", "loaded_adapters": _ADAPTERS}
+    return {
+        "status": "ok",
+        "loaded_adapters": _ADAPTERS,
+        "adapter_context_tokens": _ADAPTER_CONTEXT_TOKENS,
+        "contract_recovery": True,
+    }
 
 
 @app.get("/v1/models")
@@ -317,6 +395,417 @@ def _format_hf_message(message: Message) -> dict[str, Any]:
     if message.name:
         formatted["name"] = message.name
     return formatted
+
+
+def _message_tool_calls(message: Message) -> list[dict[str, Any]]:
+    return message.tool_calls if isinstance(message.tool_calls, list) else []
+
+
+def _tool_call_details(tool_call: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    function = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
+    name = str(function.get("name") or tool_call.get("name") or "").strip()
+    arguments = function.get("arguments", tool_call.get("arguments", {}))
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            arguments = {}
+    return name, arguments if isinstance(arguments, dict) else {}
+
+
+def _result_payload(content: object) -> dict[str, Any]:
+    if isinstance(content, list):
+        content = json.dumps(content)
+    if not isinstance(content, str):
+        return {}
+    try:
+        value = json.loads(content)
+    except json.JSONDecodeError:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _tool_result_failed(payload: dict[str, Any], raw_content: object) -> bool:
+    if payload:
+        return bool(
+            payload.get("ok") is False
+            or payload.get("error")
+            or payload.get("error_kind")
+            or str(payload.get("status", "")).upper() == "ERROR"
+            or payload.get("return_code") not in (None, 0)
+        )
+    return isinstance(raw_content, str) and raw_content.startswith("Error")
+
+
+def _ports_from_arguments(arguments: dict[str, Any]) -> set[int]:
+    values = arguments.get("ports", arguments.get("port", ""))
+    return {
+        int(value) for value in re.findall(r"\d{1,5}", str(values))
+        if 0 < int(value) <= 65535
+    }
+
+
+def _requirement_satisfied(
+    requirement: dict[str, Any], tool_name: str, arguments: dict[str, Any]
+) -> bool:
+    expected_tool = requirement.get("tool") or requirement.get("suggested_tool")
+    if expected_tool != tool_name:
+        return False
+    if requirement.get("filename") and arguments.get("filename") != requirement["filename"]:
+        return False
+    if requirement.get("target") and arguments.get("target") != requirement["target"]:
+        return False
+    missing_ports = {
+        int(value) for value in requirement.get("missing_ports", [])
+        if str(value).isdigit()
+    }
+    return not missing_ports or missing_ports.issubset(_ports_from_arguments(arguments))
+
+
+def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
+    """Reconstruct tool progress from one stateless OpenAI conversation."""
+    calls_by_id: dict[str, tuple[str, dict[str, Any]]] = {}
+    tool_counts: dict[str, int] = {}
+    successful_counts: dict[str, int] = {}
+    outstanding: list[dict[str, Any]] = []
+    rejected_saves = 0
+    last_error_kind = ""
+
+    for message in messages:
+        if message.role == "assistant":
+            for tool_call in _message_tool_calls(message):
+                name, arguments = _tool_call_details(tool_call)
+                if not name:
+                    continue
+                call_id = str(tool_call.get("id", ""))
+                if call_id:
+                    calls_by_id[call_id] = (name, arguments)
+                tool_counts[name] = tool_counts.get(name, 0) + 1
+            continue
+        if message.role != "tool":
+            continue
+        tool_name, arguments = calls_by_id.get(
+            str(message.tool_call_id or ""), (str(message.name or ""), {})
+        )
+        payload = _result_payload(message.content)
+        if _tool_result_failed(payload, message.content):
+            last_error_kind = str(payload.get("error_kind", ""))
+            if tool_name == "save_deliverable" and isinstance(
+                payload.get("missing_requirements"), list
+            ):
+                rejected_saves += 1
+                outstanding = [
+                    item for item in payload["missing_requirements"]
+                    if isinstance(item, dict)
+                ]
+            continue
+        if tool_name:
+            successful_counts[tool_name] = successful_counts.get(tool_name, 0) + 1
+            outstanding = [
+                item for item in outstanding
+                if not _requirement_satisfied(item, tool_name, arguments)
+            ]
+            if not outstanding:
+                last_error_kind = ""
+
+    return {
+        "tool_counts": tool_counts,
+        "successful_counts": successful_counts,
+        "outstanding_requirements": outstanding,
+        "rejected_saves": rejected_saves,
+        "last_error_kind": last_error_kind,
+    }
+
+
+def _runtime_state_text(state: dict[str, Any]) -> str:
+    completed = state.get("successful_counts", {})
+    completed_text = ", ".join(
+        f"{name}×{count}" for name, count in sorted(completed.items())
+    ) or "none"
+    lines = [
+        "[RUNTIME EXECUTION STATE — authoritative]",
+        f"Successful tool calls: {completed_text}.",
+        f"Rejected save attempts: {state.get('rejected_saves', 0)}.",
+    ]
+    outstanding = state.get("outstanding_requirements", [])
+    if outstanding:
+        lines.append("Outstanding requirements must be completed before saving:")
+        for item in outstanding:
+            tool = item.get("tool") or item.get("suggested_tool") or "unknown"
+            args = {
+                key: item[key] for key in ("filename", "target", "missing_ports")
+                if item.get(key) not in (None, "", [])
+            }
+            lines.append(
+                f"- {item.get('requirement', 'requirement')}: call {tool} with "
+                f"{json.dumps(args, ensure_ascii=False, sort_keys=True)}"
+            )
+        lines.append("Do NOT call save_deliverable again until this list is empty.")
+    else:
+        lines.append("No contract requirement is currently known to be outstanding.")
+    return "\n".join(lines)
+
+
+def _select_model_tools(
+    target_expert: str,
+    tools: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Expose the training-aligned core interface to the Recon adapter.
+
+    The caller retains its complete executable tool map. Only the verbose JSON
+    schemas rendered into the 3B model prompt are reduced.
+    """
+    if target_expert != "recon" or not tools:
+        return tools
+    selected = [
+        tool for tool in tools
+        if str(tool.get("function", {}).get("name", "")) in _RECON_CORE_MODEL_TOOLS
+    ]
+    missing = _RECON_CORE_MODEL_TOOLS - {
+        str(tool.get("function", {}).get("name", "")) for tool in selected
+    }
+    if missing:
+        log.warning("Recon core tool schemas missing from request: %s", sorted(missing))
+    log.info("Recon model tool schemas: %d -> %d", len(tools), len(selected))
+    return selected
+
+
+def _forced_recovery_tool(
+    state: dict[str, Any], tools: Optional[List[Dict[str, Any]]]
+) -> tuple[str, dict[str, Any]] | None:
+    """Turn a structured contract rejection into the exact missing tool call."""
+    available = {
+        str(tool.get("function", {}).get("name", ""))
+        for tool in (tools or []) if isinstance(tool, dict)
+    }
+    for item in state.get("outstanding_requirements", []):
+        name = str(item.get("tool") or item.get("suggested_tool") or "")
+        if not name or name not in available or name not in _CONTRACT_RECOVERY_TOOLS:
+            continue
+        arguments: dict[str, Any] = {}
+        if item.get("filename"):
+            arguments["filename"] = item["filename"]
+        if item.get("target"):
+            arguments["target"] = item["target"]
+        if item.get("missing_ports"):
+            arguments["ports"] = ",".join(str(value) for value in item["missing_ports"])
+            arguments["skip_discovery"] = True
+        return name, arguments
+    return None
+
+
+def _summarize_tool_content(content: str, limit: int = 1600) -> str:
+    payload = _result_payload(content)
+    if payload.get("error_kind") or payload.get("missing_requirements"):
+        rendered = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return rendered[:limit]
+    if isinstance(payload.get("hosts"), list):
+        compact = {"hosts": payload["hosts"]}
+        return json.dumps(compact, ensure_ascii=False, separators=(",", ":"))[:limit]
+    stdout = str(payload.get("stdout", ""))
+    if stdout:
+        useful = [
+            line for line in stdout.splitlines()
+            if re.search(
+                r"Nmap scan report|Host is up|^\d+/(?:tcp|udp)\s+open|MAC Address|Service Info",
+                line,
+                re.IGNORECASE,
+            )
+        ]
+        compact = {key: value for key, value in payload.items() if key != "stdout"}
+        compact["stdout_summary"] = useful[:80]
+        return json.dumps(compact, ensure_ascii=False, separators=(",", ":"))[:limit]
+    if len(content) <= limit:
+        return content
+    half = max(1, (limit - 48) // 2)
+    return content[:half] + "\n[... compacted by MoE runtime ...]\n" + content[-half:]
+
+
+def _compact_hf_messages(
+    messages: list[dict[str, Any]], *, aggressive: bool = False
+) -> list[dict[str, Any]]:
+    """Compact rejected drafts and old tool output without breaking call/result IDs."""
+    compacted = json.loads(json.dumps(messages))
+    latest_index = len(compacted) - 1
+    for index, message in enumerate(compacted):
+        if message.get("role") == "assistant":
+            for tool_call in message.get("tool_calls", []) or []:
+                function = tool_call.get("function", {})
+                if function.get("name") != "save_deliverable":
+                    continue
+                arguments = function.get("arguments")
+                if isinstance(arguments, dict) and len(str(arguments.get("content", ""))) > 400:
+                    size = len(str(arguments["content"]))
+                    arguments["content"] = f"[rejected draft compacted: {size} characters]"
+        if message.get("role") != "tool":
+            continue
+        content = str(message.get("content", ""))
+        payload = _result_payload(content)
+        preserve_latest_contract_error = (
+            index == latest_index
+            and bool(payload.get("error_kind") or payload.get("missing_requirements"))
+        )
+        if preserve_latest_contract_error:
+            continue
+        if (
+            (aggressive and (index != latest_index or len(content) > 4000))
+            or index < len(compacted) - 6
+            or len(content) > 4000
+        ):
+            message["content"] = _summarize_tool_content(content)
+    return compacted
+
+
+def _fold_old_history(
+    messages: list[dict[str, Any]], *, keep_recent: int = 6
+) -> list[dict[str, Any]]:
+    """Fold old tool turns into a compact ledger while keeping recent pairs intact."""
+    if len(messages) <= keep_recent + 2:
+        return messages
+    prefix_end = 0
+    while prefix_end < len(messages) and messages[prefix_end].get("role") == "system":
+        prefix_end += 1
+    if prefix_end < len(messages) and messages[prefix_end].get("role") == "user":
+        prefix_end += 1
+
+    start = max(prefix_end, len(messages) - keep_recent)
+    if start < len(messages) and messages[start].get("role") == "tool":
+        tool_call_id = messages[start].get("tool_call_id")
+        for index in range(start - 1, prefix_end - 1, -1):
+            calls = messages[index].get("tool_calls", []) or []
+            if any(call.get("id") == tool_call_id for call in calls):
+                start = index
+                break
+
+    dropped = messages[prefix_end:start]
+    if not dropped:
+        return messages
+    ledger: list[dict[str, Any]] = []
+    call_names: dict[str, tuple[str, dict[str, Any]]] = {}
+    for message in dropped:
+        if message.get("role") == "assistant":
+            for call in message.get("tool_calls", []) or []:
+                name, arguments = _tool_call_details(call)
+                call_id = str(call.get("id", ""))
+                if call_id:
+                    call_names[call_id] = (name, arguments)
+        elif message.get("role") == "tool":
+            call_id = str(message.get("tool_call_id", ""))
+            name, arguments = call_names.get(call_id, (str(message.get("name", "")), {}))
+            ledger.append({
+                "tool": name,
+                "arguments": arguments,
+                "result": _summarize_tool_content(str(message.get("content", "")), limit=500),
+            })
+    summary = (
+        "[COMPACTED TOOL HISTORY — deterministic runtime ledger]\n"
+        + json.dumps(ledger[-20:], ensure_ascii=False, separators=(",", ":"))
+    )
+    return messages[:prefix_end] + [{"role": "user", "content": summary}] + messages[start:]
+
+
+def _attach_runtime_state(
+    messages: list[dict[str, Any]], state: dict[str, Any]
+) -> list[dict[str, Any]]:
+    enriched = json.loads(json.dumps(messages))
+    state_text = _runtime_state_text(state)
+    if enriched:
+        content = str(enriched[-1].get("content", ""))
+        enriched[-1]["content"] = content + "\n\n" + state_text
+    else:
+        enriched.append({"role": "system", "content": state_text})
+    return enriched
+
+
+def _render_prompt(
+    tokenizer, messages: list[dict[str, Any]], tools: Optional[List[Dict[str, Any]]]
+) -> str:
+    try:
+        return tokenizer.apply_chat_template(
+            messages, tools=tools, tokenize=False, add_generation_prompt=True,
+        )
+    except Exception as exc:
+        log.warning("Tokenizer tool formatting failed, falling back to basic template: %s", exc)
+        return tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True,
+        )
+
+
+def _prompt_token_count(tokenizer, prompt: str) -> int:
+    encoded = tokenizer(prompt, add_special_tokens=False)
+    input_ids = encoded.get("input_ids", [])
+    return len(input_ids)
+
+
+def _prepare_prompt(
+    tokenizer,
+    messages: List[Message],
+    tools: Optional[List[Dict[str, Any]]],
+    state: dict[str, Any],
+    context_budget: int,
+) -> tuple[str, int, bool]:
+    formatted = [_format_hf_message(message) for message in messages]
+    formatted = _attach_runtime_state(formatted, state)
+    prompt = _render_prompt(tokenizer, formatted, tools)
+    original_tokens = _prompt_token_count(tokenizer, prompt)
+    if original_tokens <= context_budget:
+        return prompt, original_tokens, False
+
+    compacted = _compact_hf_messages(formatted)
+    prompt = _render_prompt(tokenizer, compacted, tools)
+    compacted_tokens = _prompt_token_count(tokenizer, prompt)
+    if compacted_tokens > context_budget:
+        compacted = _compact_hf_messages(compacted, aggressive=True)
+        prompt = _render_prompt(tokenizer, compacted, tools)
+        compacted_tokens = _prompt_token_count(tokenizer, prompt)
+    log.info(
+        "Context compaction: %d -> %d tokens (adapter budget=%d)",
+        original_tokens, compacted_tokens, context_budget,
+    )
+    if compacted_tokens > context_budget:
+        for keep_recent in (6, 4, 2):
+            compacted = _fold_old_history(compacted, keep_recent=keep_recent)
+            prompt = _render_prompt(tokenizer, compacted, tools)
+            compacted_tokens = _prompt_token_count(tokenizer, prompt)
+            if compacted_tokens <= context_budget:
+                break
+    if compacted_tokens > context_budget:
+        log.warning(
+            "Prompt remains above adapter training budget after safe compaction: %d > %d",
+            compacted_tokens, context_budget,
+        )
+    return prompt, compacted_tokens, True
+
+
+def _forced_tool_response(
+    req: ChatCompletionRequest,
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    response = {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": req.model,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": f"call_{uuid.uuid4().hex[:8]}",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(arguments),
+                    },
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+    log.warning("Contract recovery forced tool call: %s(%s)", name, arguments)
+    return response
 
 
 def _stream_response(response: dict[str, Any]):
@@ -366,48 +855,70 @@ def chat_completions(req: ChatCompletionRequest):
         target_expert = req.model.replace("expert-", "")
         log.info(f"[ROUTER] Manual standalone expert requested: {target_expert}")
         
-    # Format messages for the tokenizer
-    hf_messages = [_format_hf_message(message) for message in req.messages]
-        
-    # Render prompt with chat template (handling tools if supported)
-    try:
-        # Qwen2.5-Instruct supports tools in apply_chat_template
-        prompt = _TOKENIZER.apply_chat_template(
-            hf_messages,
-            tools=req.tools,
-            tokenize=False,
-            add_generation_prompt=True
-        )
-    except Exception as e:
-        log.warning(f"Tokenizer tool formatting failed, falling back to basic template: {e}")
-        prompt = _TOKENIZER.apply_chat_template(hf_messages, tokenize=False, add_generation_prompt=True)
-        
-    with _GENERATION_LOCK:
-        adapter_context = nullcontext()
-        if target_expert in _ADAPTERS:
-            _MODEL.set_adapter(target_expert)
-            log.info(f"Active Adapter: {target_expert}")
-        else:
-            if target_expert != "base":
-                log.warning(f"Expert {target_expert} not found. Falling back to the base model.")
-            adapter_context = _MODEL.disable_adapter()
-            log.info("Active Adapter: BASE")
+    execution_state = _build_execution_state(req.messages)
+    forced_recovery = _forced_recovery_tool(execution_state, req.tools)
+    if forced_recovery is not None:
+        response = _forced_tool_response(req, *forced_recovery)
+        if req.stream:
+            return StreamingResponse(_stream_response(response), media_type="text/event-stream")
+        return response
 
-        inputs = _TOKENIZER(prompt, return_tensors="pt").to(_MODEL.device)
-        t0 = time.time()
-        with adapter_context, torch.no_grad():
-            outputs = _MODEL.generate(
-                **inputs,
-                max_new_tokens=req.max_tokens,
-                temperature=req.temperature if req.temperature > 0 else 0.01,
-                do_sample=req.temperature > 0,
-                pad_token_id=_TOKENIZER.eos_token_id
-            )
-        t1 = time.time()
-    
-    # Extract only the newly generated tokens
-    generated_ids = outputs[0][inputs.input_ids.shape[-1]:]
-    response_text = _TOKENIZER.decode(generated_ids, skip_special_tokens=True)
+    model_tools = _select_model_tools(target_expert, req.tools)
+    prompt, prepared_prompt_tokens, _compacted = _prepare_prompt(
+        _TOKENIZER,
+        req.messages,
+        model_tools,
+        execution_state,
+        _ADAPTER_CONTEXT_TOKENS,
+    )
+
+    with _GENERATION_LOCK:
+        _cancel_scheduled_cuda_cleanup()
+        inputs = None
+        outputs = None
+        generated_ids = None
+        try:
+            adapter_context = nullcontext()
+            if target_expert in _ADAPTERS:
+                _MODEL.set_adapter(target_expert)
+                log.info(f"Active Adapter: {target_expert}")
+            else:
+                if target_expert != "base":
+                    log.warning(f"Expert {target_expert} not found. Falling back to the base model.")
+                adapter_context = _MODEL.disable_adapter()
+                log.info("Active Adapter: BASE")
+
+            inputs = _TOKENIZER(prompt, return_tensors="pt").to(_MODEL.device)
+            input_tokens = inputs.input_ids.shape[-1]
+            if abs(input_tokens - prepared_prompt_tokens) > 2:
+                log.debug(
+                    "Rendered/tokenized prompt count differs: prepared=%d actual=%d",
+                    prepared_prompt_tokens, input_tokens,
+                )
+            t0 = time.time()
+            with adapter_context, torch.inference_mode():
+                requested_tokens = int(req.max_tokens or 4096)
+                if target_expert == "recon":
+                    remaining_training_window = max(256, _ADAPTER_CONTEXT_TOKENS - input_tokens)
+                    requested_tokens = min(requested_tokens, 1536, remaining_training_window)
+                outputs = _MODEL.generate(
+                    **inputs,
+                    max_new_tokens=requested_tokens,
+                    temperature=req.temperature if req.temperature > 0 else 0.01,
+                    do_sample=req.temperature > 0,
+                    pad_token_id=_TOKENIZER.eos_token_id
+                )
+            t1 = time.time()
+
+            # Decode before releasing all request-scoped CUDA tensors.
+            generated_ids = outputs[0][input_tokens:]
+            output_tokens = len(generated_ids)
+            response_text = _TOKENIZER.decode(generated_ids, skip_special_tokens=True)
+        finally:
+            generated_ids = None
+            outputs = None
+            inputs = None
+            _schedule_cuda_cleanup(torch)
     
     # Parse potential tool calls
     content, tool_calls = _parse_qwen_tool_calls(response_text)
@@ -419,9 +930,6 @@ def chat_completions(req: ChatCompletionRequest):
     if tool_calls:
         res_msg["tool_calls"] = tool_calls
         
-    input_tokens = inputs.input_ids.shape[-1]
-    output_tokens = len(generated_ids)
-    
     log.info(f"Generated {output_tokens} tokens in {t1-t0:.2f}s ({output_tokens/(t1-t0):.1f} t/s)")
     
     response = {
@@ -501,13 +1009,15 @@ def load_models(base_model_path: str, adapters_dir: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-model", default="Qwen/Qwen2.5-0.5B-Instruct", help="Path or HF hub ID for the base model")
-    parser.add_argument("--adapters-dir", default="output/adapters/lance-qlora_moe", help="Directory containing the expert adapters")
+    parser.add_argument("--base-model", default="Qwen/Qwen2.5-3B-Instruct", help="Path or HF hub ID for the base model")
+    parser.add_argument("--adapters-dir", default="output/adapters/lance-qlora_moe_3b", help="Directory containing the expert adapters")
+    parser.add_argument("--adapter-context-tokens", type=int, default=_ADAPTER_CONTEXT_TOKENS, help="Training-aligned prompt budget before safe compaction")
     parser.add_argument("--port", type=int, default=8001, help="Port to run the API server on")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     args = parser.parse_args()
     
     # Load model synchronously before starting server
+    _ADAPTER_CONTEXT_TOKENS = args.adapter_context_tokens
     load_models(args.base_model, args.adapters_dir)
     
     uvicorn.run(app, host=args.host, port=args.port)

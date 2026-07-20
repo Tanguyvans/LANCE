@@ -10,6 +10,7 @@ from src.risk_scorer import (
     DeviceRiskScore,
     compute_centrality,
     compute_hops_from_internet,
+    _exposure_score,
     score_all_devices,
     score_device,
 )
@@ -37,6 +38,8 @@ def _make_report(device_id, cves=None):
 
 
 class TestHopsFromInternet:
+    def test_unreachable_device_has_zero_exposure(self):
+        assert _exposure_score(num_services=12, hops=-1) == 0.0
     def test_mikrotik_is_closest(self, backend):
         hops = compute_hops_from_internet(backend, "mikrotik")
         assert hops == 1
@@ -49,10 +52,9 @@ class TestHopsFromInternet:
         hops = compute_hops_from_internet(backend, "jetson")
         assert hops == 3
 
-    def test_sensor_further_than_gateway(self, backend):
+    def test_sensor_with_only_outbound_telemetry_is_not_internet_reachable(self, backend):
         sensor_hops = compute_hops_from_internet(backend, "em310")
-        gateway_hops = compute_hops_from_internet(backend, "wisgate")
-        assert sensor_hops > gateway_hops
+        assert sensor_hops == -1
 
 
 # ------------------------------------------------------------------
@@ -65,7 +67,7 @@ class TestCentrality:
         centrality = compute_centrality(backend)
         netgear = centrality["netgear"]
         # Netgear is the switch connecting everything
-        assert netgear > 0.1
+        assert netgear > 0.05
 
     def test_sensor_has_low_centrality(self, backend):
         centrality = compute_centrality(backend)

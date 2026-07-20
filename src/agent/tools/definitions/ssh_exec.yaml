@@ -1,5 +1,6 @@
 name: ssh_exec
 handler: python
+max_output: 2000
 description: >
   Execute a shell command on a remote host via SSH using provided credentials.
   Returns stdout, stderr, and return_code.

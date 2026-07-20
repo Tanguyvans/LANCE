@@ -12,6 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -262,8 +263,15 @@ def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]
 def _make_finding(device: dict, vuln_type: str, severity: str, service: str,
                   port: int, details: str, evidence: str,
                   status: str = "confirmed", technique: str = "",
-                  tools: list[str] | None = None) -> dict:
-    """Build a finding dict in the standard schema."""
+                  tools: list[str] | None = None, *, protocol: str | None = None,
+                  endpoint: str = "", product: str = "", version: str = "") -> dict:
+    """Build a finding dict in the strict-v3-compatible standard schema."""
+    if protocol is None:
+        protocol = "udp" if service.casefold() in {"coap", "snmp", "bacnet"} else "tcp"
+    if not endpoint:
+        match = re.search(r"https?://[^\s,]+", f"{details} {evidence}")
+        if match:
+            endpoint = urlsplit(match.group(0).rstrip(".)")).path or "/"
     return {
         "id": "",  # renumbered during aggregation
         "device_id": device.get("id", ""),
@@ -272,6 +280,10 @@ def _make_finding(device: dict, vuln_type: str, severity: str, service: str,
         "severity": severity,
         "service": service,
         "port": port,
+        "protocol": protocol,
+        "endpoint": endpoint,
+        "product": product,
+        "version": version,
         "details": details,
         "evidence": evidence,
         "cve_ids": [],

@@ -31,7 +31,7 @@ The current installation uses:
 ```text
 Code:     /home/tanguy/LANCE
 Python:   /home/leo/LANCE/env/bin/python
-Adapters: /home/leo/LANCE/output/adapters/lance-qlora_moe
+Adapters: /home/tanguy/LANCE/output/adapters/lance-qlora_moe_3b
 API:      http://172.17.0.1:8001/v1
 WebUI:    http://100.66.221.22:3000
 ```
@@ -50,14 +50,14 @@ sudo setfacl -m u:tanguy:--x /home/leo
 sudo setfacl -m u:tanguy:--x /home/leo/LANCE
 sudo setfacl -m u:tanguy:--x /home/leo/LANCE/output
 sudo setfacl -m u:tanguy:--x /home/leo/LANCE/output/adapters
-sudo setfacl -R -m u:tanguy:rX /home/leo/LANCE/output/adapters/lance-qlora_moe
+sudo setfacl -R -m u:tanguy:rX /home/tanguy/LANCE/output/adapters/lance-qlora_moe_3b
 ```
 
 Verify access without changing the files:
 
 ```bash
 for expert in recon vuln exploit secretary; do
-  test -r "/home/leo/LANCE/output/adapters/lance-qlora_moe/$expert/adapter_model.safetensors" \
+  test -r "/home/tanguy/LANCE/output/adapters/lance-qlora_moe_3b/$expert/adapter_model.safetensors" \
     && echo "$expert: readable" \
     || echo "$expert: inaccessible"
 done
@@ -90,14 +90,30 @@ On this host the address is `172.17.0.1`:
 cd /home/tanguy/LANCE
 PYTHONPATH=/home/tanguy/.local/share/lance-hmoe/site-packages \
   /home/leo/LANCE/env/bin/python src/agent/moe_server.py \
-  --base-model Qwen/Qwen2.5-0.5B-Instruct \
-  --adapters-dir /home/leo/LANCE/output/adapters/lance-qlora_moe \
+  --base-model Qwen/Qwen2.5-3B-Instruct \
+  --adapters-dir /home/tanguy/LANCE/output/adapters/lance-qlora_moe_3b \
   --host 172.17.0.1 \
+  --adapter-context-tokens 6144 \
   --port 8001
 ```
 
 Do not bind this unauthenticated API to `0.0.0.0` unless authentication and
 firewall rules are added first.
+
+## Context and tool-loop safeguards for the 3B adapters
+
+The server aligns its safe-compaction threshold with the 6144-token training
+window. It reconstructs completed tool calls and outstanding structured
+requirements from every request, injects a compact runtime state into the most
+recent tool result, and removes large rejected deliverable drafts from the
+model-visible history. When a tool contract returns `missing_requirements`, the
+server emits the corresponding missing tool call deterministically before
+allowing another completion attempt. The mechanism is stateless across requests
+and therefore does not mix concurrent pipeline runs. For the Recon adapter, only
+the five Phase-2 contract schemas are rendered into the model prompt
+(`arp_scan`, `nmap_discovery`, `nmap_scan`, `read_deliverable`, and
+`save_deliverable`); the caller keeps its complete executable tool registry.
+Recon generation is also capped by the remaining 6144-token training window.
 
 ## Persistent systemd service
 

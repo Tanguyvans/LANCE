@@ -62,11 +62,15 @@ def test_validated_one_to_one_metrics_penalize_duplicates():
     assert result["false_positives"] == 2
     assert result["false_negatives"] == 1
     assert result["duplicate_findings"] == 1
+    assert result["semantic_false_positives"] == 1
+    assert result["duplicate_rate"] == pytest.approx(1 / 3)
     assert result["precision"] == pytest.approx(1 / 3)
     assert result["recall"] == 0.5
     assert result["f1_score"] == pytest.approx(0.4)
     assert result["clarity_score"] == 3.0
     assert result["remediation_score"] == 5.0
+    assert result["matched_clarity_score"] == 4.0
+    assert result["matched_remediation_score"] == 5.0
     assert result["false_negatives_list"][0]["gt_vuln_id"] == 1
 
 

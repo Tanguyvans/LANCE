@@ -1,0 +1,71 @@
+model:
+  name_or_path: "Qwen/Qwen2.5-3B-Instruct"
+  torch_dtype: "bfloat16"
+  attn_implementation: "sdpa"
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+bitsandbytes:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "bfloat16"
+
+training:
+  output_root: "output/adapters/lance-qlora_moe_3b"
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 32
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  learning_rate: 0.0001
+  weight_decay: 0.001
+  max_grad_norm: 0.3
+  warmup_ratio: 0.03
+  lr_scheduler_type: "cosine"
+  logging_steps: 5
+  save_strategy: "steps"
+  save_steps: 250
+  eval_strategy: "steps"
+  eval_steps: 250
+  prediction_loss_only: true
+  save_total_limit: 2
+  seed: 42
+  optim: "paged_adamw_32bit"
+  max_seq_length: 6144
+  expert_max_seq_length:
+    secretary: 6144
+    recon: 6144
+    vuln: 4096
+    exploit: 6144
+  packing: false
+  assistant_only_loss: true
+  dataset_num_proc: 4
+  dataloader_num_workers: 2
+  report_to: "none"
+
+data:
+  dataset_template: "data/finetuning/{expert}/{expert}_moe_dataset_3b.jsonl"
+  feedback_dataset_template: "data/finetuning/{expert}/{expert}_feedback_accepted_20260716.jsonl"
+  feedback_repeat: 8
+  feedback_repeat_by_expert:
+    secretary: 8
+    recon: 0
+    vuln: 8
+    exploit: 8
+  validation_split: 0.02
+  chat_template_path: "training/templates/qwen2_5_tools_assistant_mask.jinja"

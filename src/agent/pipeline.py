@@ -9,6 +9,8 @@ import subprocess
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -228,6 +230,21 @@ def _exploit_relpath(device_id: str, vuln_type: str, vuln_id: str) -> Path:
     return Path("04_exploits") / device_id / f"{vuln_type}_{safe_vuln_id}.json"
 
 
+def _enrich_finding_structure(finding: dict) -> dict:
+    """Fill deterministic strict-v3 structure without inventing observations."""
+    service = str(finding.get("service", "")).strip().casefold()
+    if service and not str(finding.get("protocol", "")).strip():
+        finding["protocol"] = "udp" if service in {"coap", "snmp", "bacnet"} else "tcp"
+    if not str(finding.get("endpoint", "")).strip():
+        text = f"{finding.get('details', '')} {finding.get('evidence', '')}"
+        match = re.search(r"https?://[^\s,]+", text)
+        if match:
+            finding["endpoint"] = urlsplit(match.group(0).rstrip(".)'\"")).path or "/"
+    finding.setdefault("product", "")
+    finding.setdefault("version", "")
+    return finding
+
+
 def _make_test_entry(
     vuln: dict,
     *,
@@ -250,6 +267,16 @@ def _make_test_entry(
         "device_ip": result.get("device_ip") or vuln.get("device_ip", ""),
         "vuln_type": result.get("vuln_type") or vuln.get("type", ""),
         "severity": result.get("severity") or vuln.get("severity", "MEDIUM"),
+        "service": result.get("service") or vuln.get("service", ""),
+        "port": (
+            result.get("port")
+            if result.get("port") is not None
+            else vuln.get("port")
+        ),
+        "protocol": result.get("protocol") or vuln.get("protocol", ""),
+        "endpoint": result.get("endpoint") or vuln.get("endpoint", ""),
+        "product": result.get("product") or vuln.get("product", ""),
+        "version": result.get("version") or vuln.get("version", ""),
         "status": status,
         "evidence": (
             evidence if evidence is not None
@@ -260,6 +287,16 @@ def _make_test_entry(
             else result.get("evidence_level", 1)
         ),
         "tool_used": result.get("tool_used", ""),
+        "tools_used": list(dict.fromkeys(
+            str(value).strip()
+            for value in (result.get("tools_used") or [])
+            if str(value).strip()
+        )),
+        "evidence_refs": list(dict.fromkeys(
+            str(value).strip()
+            for value in (result.get("evidence_refs") or [])
+            if str(value).strip()
+        )),
         "data_extracted": result.get("data_extracted", []),
         "description": result.get("description") or vuln.get("details", ""),
         "cve_ids": vuln.get("cve_ids", []),
@@ -1673,9 +1710,10 @@ class Pipeline:
                     except Exception as e2:
                         log.error("Scanner fallback also failed for %s: %s", device_id, e2)
 
-        # Normalize non-standard vuln types to canonical names before dedup
+        # Normalize taxonomy and deterministically enrich strict-v3 structure.
         for v in all_vulns:
             v["type"] = canonicalize(v.get("type", ""))
+            _enrich_finding_structure(v)
 
         # Normalize port to int so that port=22 and port="22" share the same dedup key
         for v in all_vulns:
@@ -1737,7 +1775,11 @@ class Pipeline:
 
         best_by_key: dict[tuple, dict] = {}
         for v in all_vulns:
-            key = (v.get("device_ip", ""), v.get("type", ""), v.get("port"))
+            key = (
+                v.get("device_ip", ""), v.get("type", ""), v.get("service", ""),
+                v.get("port"), v.get("protocol", ""), v.get("endpoint", ""),
+                v.get("product", ""),
+            )
             existing = best_by_key.get(key)
             if existing is None:
                 best_by_key[key] = v
@@ -1833,6 +1875,7 @@ class Pipeline:
             self._aggregate_exploit_results()
             return
 
+        self._exploit_tool_context = threading.local()
         tools = self._resolve_tools(config)
 
         print(f"\n{'=' * 60}")
@@ -1909,22 +1952,36 @@ class Pipeline:
             # Acquire per-device lock to avoid concurrent connections
             lock = _get_device_lock(device_ip)
             with lock:
+                self._exploit_tool_context.vulnerability = {
+                    "vuln_id": vuln_id,
+                    "device_id": device_id,
+                    "device_ip": device_ip,
+                    "vuln_type": vuln_type,
+                    "service": service,
+                    "port": port,
+                    "protocol": vuln.get("protocol", ""),
+                    "endpoint": vuln.get("endpoint", ""),
+                    "product": vuln.get("product", ""),
+                }
                 self.tracker.start_phase(phase_name)
-                result_text = self.provider.chat_with_tools(
-                    system_prompt=system_prompt,
-                    user_message=(
-                        f"Exploit {vuln_type} on {device_id} ({device_ip}). "
-                        f"Service: {service} port {port}. "
-                        f"Call save_deliverable('{deliverable_file}', json_content) when done."
-                    ),
-                    tools=tools,
-                    max_turns=INTRUSION_MAX_TURNS,
-                    max_tokens=INTRUSION_MAX_TOKENS,
-                    cost_tracker=self.tracker,
-                    stream_callback=stream_callback,
-                    required_tool="save_deliverable",
-                    terminate_after_tool="save_deliverable",
-                )
+                try:
+                    result_text = self.provider.chat_with_tools(
+                        system_prompt=system_prompt,
+                        user_message=(
+                            f"Exploit {vuln_type} on {device_id} ({device_ip}). "
+                            f"Service: {service} port {port}. "
+                            f"Call save_deliverable('{deliverable_file}', json_content) when done."
+                        ),
+                        tools=tools,
+                        max_turns=INTRUSION_MAX_TURNS,
+                        max_tokens=INTRUSION_MAX_TOKENS,
+                        cost_tracker=self.tracker,
+                        stream_callback=stream_callback,
+                        required_tool="save_deliverable",
+                        terminate_after_tool="save_deliverable",
+                    )
+                finally:
+                    self._exploit_tool_context.vulnerability = None
 
 
             # Fallback: if save_deliverable was never called, try to extract JSON from the text
@@ -2456,6 +2513,27 @@ class Pipeline:
 
         all_vulns = json.loads(vuln_path.read_text(encoding="utf-8")).get("vulnerabilities", [])
         tests: list[dict] = []
+        refs_by_vuln: dict[str, list[str]] = {}
+        tools_by_vuln: dict[str, list[str]] = {}
+        tool_log = self.run_dir / "tool_calls.jsonl"
+        if tool_log.is_file():
+            try:
+                tool_lines = tool_log.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeError) as exc:
+                log.warning("Unable to read Phase 4 tool provenance: %s", exc)
+                tool_lines = []
+            for line in tool_lines:
+                try:
+                    record = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                vuln_id = str(record.get("vuln_id", "")).strip()
+                evidence_ref = str(record.get("evidence_ref", "")).strip()
+                tool_name = str(record.get("tool", "")).strip()
+                if vuln_id and evidence_ref:
+                    refs_by_vuln.setdefault(vuln_id, []).append(evidence_ref)
+                if vuln_id and tool_name and tool_name != "save_deliverable":
+                    tools_by_vuln.setdefault(vuln_id, []).append(tool_name)
 
         for vuln in all_vulns:
             exploit_file = self.run_dir / _exploit_relpath(
@@ -2463,7 +2541,11 @@ class Pipeline:
                 vuln.get("type", ""),
                 vuln.get("id", "VULN-???"),
             )
-            tests.append(self._resolve_exploit_verdict(vuln, exploit_file))
+            tests.append(self._resolve_exploit_verdict(
+                vuln, exploit_file,
+                evidence_refs=refs_by_vuln.get(str(vuln.get("id", "")), []),
+                tools_used=tools_by_vuln.get(str(vuln.get("id", "")), []),
+            ))
 
         confirmed = sum(1 for t in tests if t["status"] == "CONFIRMED")
         failed = sum(1 for t in tests if t["status"] == "FAILED")
@@ -2490,7 +2572,14 @@ class Pipeline:
         print(f"  Aggregated: {len(tests)} results → 04_exploitation.json "
               f"({confirmed} confirmed, {failed} failed, {errors} errors)")
 
-    def _resolve_exploit_verdict(self, vuln: dict, exploit_file: Path) -> dict:
+    def _resolve_exploit_verdict(
+        self,
+        vuln: dict,
+        exploit_file: Path,
+        *,
+        evidence_refs: list[str] | None = None,
+        tools_used: list[str] | None = None,
+    ) -> dict:
         """Return a single aggregated test entry for one Phase 3 finding."""
         if not exploit_file.exists():
             # Fallback: the exploit agent may have saved with a different VULN-ID.
@@ -2531,6 +2620,15 @@ class Pipeline:
                 evidence_level=0,
             )
 
+        result = dict(result)
+        result["evidence_refs"] = list(dict.fromkeys([
+            *(str(value).strip() for value in (result.get("evidence_refs") or [])),
+            *(str(value).strip() for value in (evidence_refs or [])),
+        ]))
+        result["tools_used"] = list(dict.fromkeys([
+            *(str(value).strip() for value in (result.get("tools_used") or [])),
+            *(str(value).strip() for value in (tools_used or [])),
+        ]))
         status = str(result.get("status", "ERROR")).upper()
         if status == "EXPLOITED" and not _has_positive_exploit_evidence(result):
             log.warning("Downgrading unsupported EXPLOITED verdict for %s", vuln.get("id"))
@@ -3504,6 +3602,7 @@ class Pipeline:
         tool_name = tool["name"]
 
         def logged_fn(**kwargs):
+            evidence_ref = f"tc-{uuid4().hex}"
             if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
                 raise RuntimeError(
                     f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
@@ -3511,12 +3610,18 @@ class Pipeline:
             self._tool_call_count += 1
             result = original_fn(**kwargs)
             try:
+                exploit_context = getattr(
+                    getattr(self, "_exploit_tool_context", None),
+                    "vulnerability", None,
+                ) or {}
                 entry = json.dumps({
                     "timestamp": datetime.now().astimezone().isoformat(),
                     "sequence": self._tool_call_count,
                     "tool": tool_name,
                     "args": kwargs,
                     "result": result[:5000] if isinstance(result, str) else str(result)[:5000],
+                    "evidence_ref": evidence_ref,
+                    **exploit_context,
                 }, ensure_ascii=False, default=str)
                 with open(log_path, "a", encoding="utf-8") as f:
                     f.write(entry + "\n")

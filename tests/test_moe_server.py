@@ -3,7 +3,16 @@ from __future__ import annotations
 
 import json
 
-from src.agent.moe_server import _parse_qwen_tool_calls
+from src.agent.moe_server import (
+    Message,
+    _attach_runtime_state,
+    _build_execution_state,
+    _compact_hf_messages,
+    _forced_recovery_tool,
+    _parse_qwen_tool_calls,
+    _prepare_prompt,
+    _select_model_tools,
+)
 
 
 def _first_call(text: str) -> tuple[str, dict]:
@@ -63,3 +72,211 @@ def test_parses_multiple_calls_and_preserves_prose() -> None:
     )
     assert content == "Starting."
     assert [call["function"]["name"] for call in calls] == ["a", "b"]
+
+
+
+def _assistant_call(call_id: str, name: str, arguments: dict) -> Message:
+    return Message(
+        role="assistant",
+        tool_calls=[{
+            "id": call_id,
+            "type": "function",
+            "function": {"name": name, "arguments": json.dumps(arguments)},
+        }],
+    )
+
+
+def test_execution_state_tracks_rejected_save_and_missing_requirement() -> None:
+    messages = [
+        _assistant_call("save-1", "save_deliverable", {
+            "filename": "02_recon.md", "content": "draft",
+        }),
+        Message(
+            role="tool",
+            tool_call_id="save-1",
+            content=json.dumps({
+                "ok": False,
+                "error_kind": "recon_contract_incomplete",
+                "missing_requirements": [{
+                    "requirement": "phase1_context",
+                    "tool": "read_deliverable",
+                    "filename": "01_graph_analysis.md",
+                }],
+            }),
+        ),
+    ]
+
+    state = _build_execution_state(messages)
+
+    assert state["rejected_saves"] == 1
+    assert state["outstanding_requirements"][0]["requirement"] == "phase1_context"
+    assert _forced_recovery_tool(state, [{
+        "type": "function",
+        "function": {"name": "read_deliverable"},
+    }]) == ("read_deliverable", {"filename": "01_graph_analysis.md"})
+
+
+def test_successful_recovery_clears_outstanding_requirement() -> None:
+    messages = [
+        _assistant_call("save-1", "save_deliverable", {"content": "draft"}),
+        Message(role="tool", tool_call_id="save-1", content=json.dumps({
+            "ok": False,
+            "error_kind": "recon_contract_incomplete",
+            "missing_requirements": [{
+                "requirement": "phase1_context",
+                "tool": "read_deliverable",
+                "filename": "01_graph_analysis.md",
+            }],
+        })),
+        _assistant_call("read-1", "read_deliverable", {
+            "filename": "01_graph_analysis.md",
+        }),
+        Message(role="tool", tool_call_id="read-1", content='{"content":"graph"}'),
+    ]
+
+    state = _build_execution_state(messages)
+
+    assert state["outstanding_requirements"] == []
+    assert state["successful_counts"] == {"read_deliverable": 1}
+    assert _forced_recovery_tool(state, []) is None
+
+
+def test_runtime_state_is_attached_to_latest_message() -> None:
+    enriched = _attach_runtime_state(
+        [{"role": "tool", "content": '{"ok":false}'}],
+        {
+            "successful_counts": {"arp_scan": 1},
+            "rejected_saves": 1,
+            "outstanding_requirements": [{
+                "requirement": "phase1_context",
+                "tool": "read_deliverable",
+                "filename": "01_graph_analysis.md",
+            }],
+        },
+    )
+    assert "RUNTIME EXECUTION STATE" in enriched[-1]["content"]
+    assert "read_deliverable" in enriched[-1]["content"]
+    assert "Do NOT call save_deliverable" in enriched[-1]["content"]
+
+
+def test_compaction_removes_large_rejected_draft_and_keeps_call_identity() -> None:
+    messages = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "save-1",
+                "type": "function",
+                "function": {
+                    "name": "save_deliverable",
+                    "arguments": {"filename": "02_recon.md", "content": "x" * 5000},
+                },
+            }],
+        },
+        {"role": "tool", "tool_call_id": "save-1", "content": '{"ok":false}'},
+    ]
+
+    compacted = _compact_hf_messages(messages, aggressive=True)
+
+    arguments = compacted[0]["tool_calls"][0]["function"]["arguments"]
+    assert arguments["content"].startswith("[rejected draft compacted:")
+    assert compacted[0]["tool_calls"][0]["id"] == "save-1"
+    assert compacted[1]["tool_call_id"] == "save-1"
+
+
+
+def test_contract_recovery_refuses_non_recon_or_mutating_tool() -> None:
+    state = {
+        "outstanding_requirements": [{
+            "requirement": "unexpected",
+            "tool": "ssh_exec",
+            "target": "192.0.2.1",
+        }],
+    }
+    tools = [{"type": "function", "function": {"name": "ssh_exec"}}]
+    assert _forced_recovery_tool(state, tools) is None
+
+
+def test_prepare_prompt_compacts_history_over_training_budget() -> None:
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, **kwargs):
+            return json.dumps(messages)
+
+        def __call__(self, prompt, **kwargs):
+            return {"input_ids": list(range(max(1, len(prompt) // 10)))}
+
+    messages = []
+    for index in range(8):
+        call_id = f"scan-{index}"
+        messages.extend([
+            _assistant_call(call_id, "nmap_scan", {"target": f"192.0.2.{index}"}),
+            Message(
+                role="tool",
+                tool_call_id=call_id,
+                content=json.dumps({"stdout": "unimportant output\n" * 400}),
+            ),
+        ])
+
+    prompt, tokens, compacted = _prepare_prompt(
+        FakeTokenizer(),
+        messages,
+        tools=None,
+        state={
+            "successful_counts": {"nmap_scan": 8},
+            "rejected_saves": 0,
+            "outstanding_requirements": [],
+        },
+        context_budget=1000,
+    )
+
+    assert compacted is True
+    assert tokens < 1000
+    assert "stdout_summary" in prompt
+
+
+
+def test_recon_model_sees_only_core_tool_schemas() -> None:
+    names = [
+        "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+        "save_deliverable", "ssh_audit", "nuclei_scan", "list_skills",
+    ]
+    tools = [
+        {"type": "function", "function": {"name": name, "parameters": {}}}
+        for name in names
+    ]
+    selected = _select_model_tools("recon", tools)
+    assert {
+        tool["function"]["name"] for tool in selected
+    } == {
+        "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+        "save_deliverable",
+    }
+    assert _select_model_tools("exploit", tools) == tools
+
+
+
+def test_compaction_summarizes_large_latest_success_but_preserves_contract_error() -> None:
+    scan = [{
+        "role": "tool",
+        "tool_call_id": "scan-1",
+        "content": json.dumps({
+            "stdout": ("closed port detail\n" * 500) + "22/tcp open ssh OpenSSH 9.6\n",
+        }),
+    }]
+    compacted_scan = _compact_hf_messages(scan, aggressive=True)
+    assert len(compacted_scan[0]["content"]) < 1000
+    assert "22/tcp open ssh" in compacted_scan[0]["content"]
+
+    error_content = json.dumps({
+        "ok": False,
+        "error_kind": "recon_contract_incomplete",
+        "missing_requirements": [{
+            "requirement": "phase1_context",
+            "tool": "read_deliverable",
+        }],
+        "error": "x" * 5000,
+    })
+    compacted_error = _compact_hf_messages([{
+        "role": "tool", "tool_call_id": "save-1", "content": error_content,
+    }], aggressive=True)
+    assert compacted_error[0]["content"] == error_content

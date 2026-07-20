@@ -95,17 +95,32 @@ def _parse_single_scenario_id(value: int | str) -> str:
 
 
 def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
-    """Return stable per-run metrics with the strict-v2 scenario score as primary."""
+    """Return stable per-run metrics with the strict-v3 scenario score as primary."""
     specificity = evaluation.specificity
     return {
         "recall": round(evaluation.recall, 3),
         "precision": round(evaluation.precision, 3),
         "f1": round(evaluation.f1_score, 3),
+        "detection_f1": round(getattr(evaluation, "detection_f1", evaluation.f1_score), 3),
+        "credited_f1": round(getattr(evaluation, "credited_f1", evaluation.f1_score), 3),
+        "severity_adjusted_f1": round(getattr(evaluation, "severity_adjusted_f1", evaluation.f1_score), 3),
+        "quality_adjusted_f1": round(getattr(evaluation, "quality_adjusted_f1", evaluation.f1_score), 3),
+        "verified_f1": getattr(evaluation, "verified_f1", None),
+        "raw_precision": round(getattr(evaluation, "raw_precision", evaluation.precision), 3),
+        "raw_false_positives": getattr(evaluation, "raw_false_positives", evaluation.false_positives),
+        "hallucination_rate": getattr(evaluation, "hallucination_rate", 0.0),
+        "unmatched_finding_rate": getattr(evaluation, "unmatched_finding_rate", 0.0),
+        "bonus_finding_rate": getattr(evaluation, "bonus_finding_rate", 0.0),
+        "bonus_allowance": getattr(evaluation, "bonus_allowance", 0),
+        "bonus_overflow": getattr(evaluation, "bonus_overflow", 0),
+        "bonus_untraceable": getattr(evaluation, "bonus_untraceable", 0),
+        "bonus_cap_exceeded": getattr(evaluation, "bonus_cap_exceeded", 0),
+        "bonus_duplicates": getattr(evaluation, "bonus_duplicates", 0),
         "weighted_score": round(evaluation.weighted_score, 3),
         "max_weighted_score": evaluation.max_weighted_score,
-        # strict-v2 scores positive scenarios by F1 and zero-GT controls by
-        # specificity. Keep the legacy weighted percentage under an explicit
-        # name so a clean control is not displayed as a 0% run.
+        # strict-v3 uses quality-adjusted F1 (and control specificity) for
+        # positive scenarios; zero-GT controls retain binary specificity.
+        # Keep the weighted percentage under an explicit compatibility name.
         "score_pct": round(evaluation.scenario_score_pct, 1),
         "weighted_score_pct": round(evaluation.score_pct, 1),
         "scenario_score_pct": round(evaluation.scenario_score_pct, 1),
@@ -113,9 +128,59 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "fp": evaluation.false_positives,
         "fn": evaluation.false_negatives,
         "exploitation_coverage": round(evaluation.exploitation_coverage, 3),
+        "phase4_candidates": getattr(evaluation, "phase4_candidates", 0),
+        "phase4_conclusive": getattr(evaluation, "phase4_conclusive", 0),
+        "phase4_completion_rate": getattr(evaluation, "phase4_completion_rate", None),
+        "invalid_cve_claims": getattr(evaluation, "invalid_cve_claims", 0),
+        "malformed_cve_claims": getattr(evaluation, "malformed_cve_claims", 0),
+        "unknown_cve_claims": getattr(evaluation, "unknown_cve_claims", 0),
+        "inapplicable_cve_claims": getattr(evaluation, "inapplicable_cve_claims", 0),
+        "negative_controls_declared": getattr(evaluation, "negative_controls_declared", 0),
+        "negative_controls_total": getattr(evaluation, "negative_controls_total", 0),
+        "negative_controls_unevaluable": getattr(evaluation, "negative_controls_unevaluable", 0),
+        "negative_controls_unevaluable_list": getattr(evaluation, "negative_controls_unevaluable_list", []),
+        "negative_control_penalty_factor": getattr(evaluation, "negative_control_penalty_factor", 1.0),
+        "negative_control_violations": getattr(evaluation, "negative_control_violations", 0),
+        "negative_control_specificity": getattr(evaluation, "negative_control_specificity", None),
+        "evidence_metrics_available": getattr(evaluation, "evidence_metrics_available", False),
+        "evidence_provenance_available": getattr(evaluation, "evidence_provenance_available", False),
+        "findings_with_declared_evidence": getattr(evaluation, "findings_with_declared_evidence", 0),
+        "declared_evidence_coverage": getattr(evaluation, "declared_evidence_coverage", None),
+        "findings_with_execution_evidence": getattr(evaluation, "findings_with_execution_evidence", 0),
+        "execution_evidence_coverage": getattr(evaluation, "execution_evidence_coverage", None),
+        "findings_with_traceable_evidence": getattr(evaluation, "findings_with_traceable_evidence", 0),
+        "traceable_evidence_coverage": getattr(evaluation, "traceable_evidence_coverage", None),
+        "traceable_true_positives": getattr(evaluation, "traceable_true_positives", 0),
+        "traceable_false_positives": getattr(evaluation, "traceable_false_positives", 0),
+        "evidence_precision": getattr(evaluation, "evidence_precision", None),
+        "evidence_recall": getattr(evaluation, "evidence_recall", None),
+        "evidence_f1": getattr(evaluation, "evidence_f1", None),
+        "evidence_claims_total": getattr(evaluation, "evidence_claims_total", 0),
+        "evidence_claims_supported": getattr(evaluation, "evidence_claims_supported", 0),
+        "evidence_claims_contradicted": getattr(evaluation, "evidence_claims_contradicted", 0),
+        "evidence_claims_unverifiable": getattr(evaluation, "evidence_claims_unverifiable", 0),
+        "evidence_faithfulness": getattr(evaluation, "evidence_faithfulness", None),
+        "evidence_macro_faithfulness": getattr(evaluation, "evidence_macro_faithfulness", None),
+        "evidence_faithfulness_by_kind": getattr(evaluation, "evidence_faithfulness_by_kind", {}),
+        "ambiguous_evidence_refs": getattr(evaluation, "ambiguous_evidence_refs", 0),
+        "evidence_contradiction_rate": getattr(evaluation, "evidence_contradiction_rate", None),
         "path_coverage": round(getattr(evaluation, "path_coverage", 0.0), 3),
+        "quality_path_coverage": round(getattr(evaluation, "quality_path_coverage", 0.0), 3),
+        "quality_attack_path_credit": round(getattr(evaluation, "quality_attack_path_credit", 0.0), 3),
+        "verified_path_coverage": getattr(evaluation, "verified_path_coverage", None),
+        "verified_attack_paths": getattr(evaluation, "verified_attack_paths", 0),
+        "intrusion_paths_available": getattr(evaluation, "intrusion_paths_available", False),
         "attack_paths_detected": getattr(evaluation, "attack_paths_detected", 0),
         "total_attack_paths": getattr(evaluation, "total_attack_paths", 0),
+        "mhr_1": getattr(evaluation, "mhr_1", None),
+        "mhr_2": getattr(evaluation, "mhr_2", None),
+        "mhr_3": getattr(evaluation, "mhr_3", None),
+        "mhr_1_credited": getattr(evaluation, "mhr_1_credited", None),
+        "mhr_2_credited": getattr(evaluation, "mhr_2_credited", None),
+        "mhr_3_credited": getattr(evaluation, "mhr_3_credited", None),
+        "mhr_1_verified": getattr(evaluation, "mhr_1_verified", None),
+        "mhr_2_verified": getattr(evaluation, "mhr_2_verified", None),
+        "mhr_3_verified": getattr(evaluation, "mhr_3_verified", None),
         "specificity": round(specificity, 3) if specificity is not None else None,
         "is_zero_gt": evaluation.is_zero_gt,
         "scoring_policy": evaluation.scoring_policy,
@@ -127,6 +192,8 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "total_turns": getattr(evaluation, "total_turns", None),
         "total_tool_calls": getattr(evaluation, "total_tool_calls", None),
         "cost_per_tp": getattr(evaluation, "cost_per_tp", None),
+        "zero_tp": getattr(evaluation, "zero_tp", evaluation.true_positives == 0),
+        "cost_per_expected_vulnerability": getattr(evaluation, "cost_per_expected_vulnerability", None),
         "turns_per_tp": getattr(evaluation, "turns_per_tp", None),
         "format_fallbacks": getattr(evaluation, "format_fallbacks", None),
         "format_attempts": getattr(evaluation, "format_attempts", None),
@@ -171,15 +238,11 @@ def _aggregate_batch_results(
     tool_errors = _process_total("total_tool_errors")
     return {
         **official,
-        "avg_recall": round(
-            sum(result["metrics"]["recall"] for result in completed) / len(completed), 3
-        ) if completed else 0.0,
-        "avg_precision": round(
-            sum(result["metrics"]["precision"] for result in completed) / len(completed), 3
-        ) if completed else 0.0,
-        "avg_f1": round(
-            sum(result["metrics"]["f1"] for result in completed) / len(completed), 3
-        ) if completed else 0.0,
+        # Backward-compatible aliases now point to the scenario-macro metrics,
+        # so scenarios with more repetitions no longer receive more weight.
+        "avg_recall": official["macro_positive_recall"],
+        "avg_precision": official["macro_positive_precision"],
+        "avg_f1": official["macro_positive_f1"],
         "avg_score_pct": official["macro_scenario_score_pct"],
         "total_cost_usd": sum(float(metrics["total_cost_usd"]) for metrics in (result["metrics"] for result in completed) if metrics.get("total_cost_usd") is not None),
         "process_metrics_runs": len(process),
@@ -283,7 +346,7 @@ def run_batch(
         }
 
         try:
-            ev = evaluate(run_dir, gt_file, policy="strict-v2")
+            ev = evaluate(run_dir, gt_file, policy="strict-v3")
             ev.split = "dev-public"
             evaluation_results.append(ev)
             entry["metrics"] = _evaluation_metrics(ev)

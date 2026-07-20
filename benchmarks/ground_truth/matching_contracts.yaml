@@ -1,0 +1,3172 @@
+schema_version: strict-v3.2
+source_hashes:
+  '1': 471a7db294f15a823aa2635eee317c436133b143816349a374fe9a03665214af
+  '10': ba55a1c2febb74881380728a50a60df64a2d147187d4b9b603f65696378a7bf6
+  '11': 89324ef4042940c781500e6e2ccffa5315436675a01f3c3bf69a3d167f57a681
+  '12': 206e11a541738405c56537f15026390cf3dcf24ebaed30828cfc45456f26e0d9
+  '13': 53ed7e9e7298a2621ef4ac3568c223d3c338302c2b06a3c77a9780262a7617cc
+  '14': 91c6356a9ceabb4ccfa26837480a1b9443d130387ebc166592b4f282f6e86857
+  '15': f991e7032098e33fb40620a2233abf9af9834853413630b52950fd5dd6463f8c
+  '16': 05d4a033727c0e618bd1a4217d2de6c4baa7eebacea32bf89b966fc471cb9eeb
+  '17': f58a9b7afae0f9b9a9f8dda5047ae1fc26f043c4a43d6669fc7257fbad181876
+  '18': 619ff089b21d3688105af12e848469bd1cb64fe44f21ea4d61c840c927c8169b
+  '19': 75a9425f7e7570f8cb32e0a46ff253fec2b271ee71fdd68aca2dd3e23cad6819
+  1h: 1227ec22149f06b594b2d50148f63776605c524454e5839ff54b76dea5280bb8
+  '2': fdf6e91860a9ee8b327d8a3693ba0d579be6971321d76efc581150f136011286
+  '3': 196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e
+  '4': 6132f184038cccefbce650db166a8cd0df26207d65198000b3168eb486400838
+  4h: e366eafd81470c905103c24dd7615b3a3aca1708f3615eaf769b92353382f262
+  '5': 545a2a16d1e1be34a519a2152527c3a23e41e3e3af9ad90da7f6eaff9bc624e2
+  '6': ec50c0061b3432e0db89d4752b87b5903338961b85ee97ea8307fc84fdded92a
+  '7': 9bd66c0f91a9dd52b50f7ef57ae387fb3311bf41178346a082f5bde89cd340c2
+  '8': d4fa114c267e68d69b3112dc28db70834d582cd3c0c0ede00289a57d7f79f8b7
+  '9': 74b889887d49ebb2556dc49f3cafc1acf0e5a55ec242751f166a6005806b4502
+scenarios:
+  '1':
+    V1:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - weak_cipher
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      - mqtt-ws
+      ports:
+      - 9001
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - missing_header
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - info_disclosure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - info_disclosure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '10':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - default_credentials
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/exec
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - data_exposure
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /flows
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '11':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - weak_cipher
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/exec
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - default_credentials
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+    V13:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V16:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V17:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V18:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V19:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V20:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V21:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V22:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V23:
+      accepted_types:
+      - data_exposure
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '12':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - weak_cipher
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/exec
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V16:
+      accepted_types:
+      - default_credentials
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V17:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V18:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+    V19:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      products: []
+      versions: []
+    V20:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V21:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+    V22:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      products: []
+      versions: []
+    V23:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V24:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V25:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V26:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V27:
+      accepted_types:
+      - no_auth
+      services:
+      - coap
+      ports:
+      - 5683
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V28:
+      accepted_types:
+      - default_credentials
+      services:
+      - snmp
+      ports:
+      - 161
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V29:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V30:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V31:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V32:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V33:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V34:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V35:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V36:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V37:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V38:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V39:
+      accepted_types:
+      - data_exposure
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V40:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V41:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V42:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '13':
+    V1:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - misconfiguration
+      services: []
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - misconfiguration
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - weak_cipher
+      services:
+      - http
+      ports:
+      - 389
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/exec
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - misconfiguration
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 1880
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/status
+      products: []
+      versions: []
+    V16:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V17:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V18:
+      accepted_types:
+      - data_exposure
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V19:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V20:
+      accepted_types:
+      - no_auth
+      services:
+      - coap
+      ports:
+      - 5683
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+  '14':
+    F10-MQTT-ANON@s14-mqtt-open:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F10-WEB-BACKUP@s14-web-backup:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/db_backup_2024-01-15.sql
+      products: []
+      versions: []
+    F10-SSH-DEFAULT@s14-ssh-legacy:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F10-REDIS-NOAUTH@s14-redis-open:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '15':
+    F11-IDOR@s15-fleet-api:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /v1/devices/device-b
+      products: []
+      versions: []
+    F11-MASS-ASSIGNMENT@s15-fleet-api:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /v1/devices/device-a
+      products: []
+      versions: []
+    F11-JWT-SCOPE@s15-fleet-api:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /v1/admin/export
+      products: []
+      versions: []
+  '16':
+    F12-CA-KEY-EXPOSURE@s16-pki-ca:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /ca/private-key
+      products: []
+      versions: []
+    F12-ENROLL-REPLAY@s16-enrollment:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /enroll
+      products: []
+      versions: []
+    F12-REVOCATION-IGNORED@s16-device-api:
+      accepted_types:
+      - weak_cipher
+      services:
+      - https
+      ports:
+      - 8443
+      protocols:
+      - tcp
+      endpoints:
+      - /device/status
+      products: []
+      versions: []
+    F12-CLONED-IDENTITY@s16-device-b:
+      accepted_types:
+      - weak_cipher
+      services: []
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+  '17':
+    F13-OLD-FIRMWARE@s17-ota-repo:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware
+      products: []
+      versions: []
+    F13-ROLLBACK@s17-device-a:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /install
+      products: []
+      versions: []
+    F13-UNSIGNED-METADATA@s17-device-a:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /install
+      products: []
+      versions: []
+    F13-SHARED-UPDATE-KEY@s17-device-b:
+      accepted_types:
+      - weak_cipher
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /install
+      products: []
+      versions: []
+  '18':
+    F14-SSRF-METADATA@s18-cloud-web:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /fetch
+      - /credentials
+      products: []
+      versions: []
+    F14-OVERPRIV-ROLE@s18-metadata:
+      accepted_types:
+      - privilege_escalation
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F14-SECRET-BUCKET@s18-cloud-control:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /bucket/city-secrets
+      products: []
+      versions: []
+  '19':
+    F15-OPCUA-NONE@s19-opcua-open:
+      accepted_types:
+      - weak_cipher
+      services:
+      - opcua
+      ports:
+      - 4840
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F15-OPCUA-WRITE@s19-opcua-open:
+      accepted_types:
+      - no_auth
+      services:
+      - opcua
+      ports:
+      - 4840
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F15-BACNET-DISCLOSURE@s19-bacnet-open:
+      accepted_types:
+      - info_disclosure
+      services:
+      - bacnet
+      ports:
+      - 47808
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    F15-BACNET-WRITE@s19-bacnet-open:
+      accepted_types:
+      - no_auth
+      services:
+      - bacnet
+      ports:
+      - 47808
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    F15-MODBUS-WRITE@s19-modbus:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  1h: {}
+  '2':
+    V1:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 80
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      - /update
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - missing_header
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+  '3':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - ftp
+      ports:
+      - 21
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions: []
+    V4:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - privilege_escalation
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - info_disclosure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V16:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V17:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+    V18:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+  '4':
+    V1:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /uploads/shell.php
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products:
+      - dropbear
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - misconfiguration
+      services: []
+      ports: []
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - weak_cipher
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      - /update
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /check.php
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /robots.txt
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - info_disclosure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /robots.txt
+      products: []
+      versions: []
+    V16:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V17:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V18:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+  4h: {}
+  '5':
+    V1:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      - /api/info
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/info
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - no_auth
+      services:
+      - bacnet
+      ports:
+      - 47808
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - missing_header
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /config/app.config
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+  '6':
+    V1:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 80
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      - /api/devices
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /admin
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      - /config/app.config
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      - /update
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /.env
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      - mqtt-ws
+      ports:
+      - 9001
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /robots.txt
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - info_disclosure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /robots.txt
+      products: []
+      versions: []
+    V15:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+    V16:
+      accepted_types:
+      - directory_listing
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/
+      products: []
+      versions: []
+  '7':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions: []
+    V3:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /upload
+      - /uploads/shell.php
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/cloud_db_backup.sql
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - weak_cipher
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      - /update
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 80
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /.env
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - privilege_escalation
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '8':
+    V1:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 80
+      protocols: []
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - default_credentials
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/devices
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - known_cve
+      - terrapin
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products:
+      - dropbear
+      versions:
+      - '2020.81'
+    V8:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - no_auth
+      services:
+      - modbus
+      ports:
+      - 502
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/users
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /api/exec
+      products: []
+      versions: []
+    V12:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V13:
+      accepted_types:
+      - data_exposure
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V14:
+      accepted_types:
+      - default_credentials
+      services:
+      - mysql
+      ports:
+      - 3306
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+  '9':
+    V1:
+      accepted_types:
+      - insecure_protocol
+      services:
+      - telnet
+      ports:
+      - 23
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V2:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V3:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V4:
+      accepted_types:
+      - default_credentials
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V5:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V6:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V7:
+      accepted_types:
+      - data_exposure
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    V8:
+      accepted_types:
+      - misconfiguration
+      services:
+      - coap
+      ports:
+      - 5683
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V9:
+      accepted_types:
+      - no_auth
+      services:
+      - coap
+      ports:
+      - 5683
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V10:
+      accepted_types:
+      - default_credentials
+      services:
+      - snmp
+      ports:
+      - 161
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    V11:
+      accepted_types:
+      - info_disclosure
+      services:
+      - snmp
+      ports:
+      - 161
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []

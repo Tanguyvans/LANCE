@@ -1,6 +1,8 @@
 *.pyc
 __pycache__/
 .pytest_cache/
+.codex-staging/
+*.bak-*
 *.egg-info/
 dist/
 wandb/
@@ -18,6 +20,7 @@ CLAUDE.md
 gha-creds-*.json
 texput.log
 report/
+*.lance-sync-tmp
 scripts/be.tanguy.*
 scripts/vulhub_monitor.py
 # LaTeX build artifacts

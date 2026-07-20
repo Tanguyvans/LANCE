@@ -188,6 +188,9 @@ def _build_result(
 ) -> dict:
     matches = [item for item in assessments if item["verdict"] == "match"]
     rejected = [item for item in assessments if item["verdict"] != "match"]
+    semantic_false_positives = [
+        item for item in assessments if item["verdict"] == "false_positive"
+    ]
     duplicates = [item for item in assessments if item["verdict"] == "duplicate"]
     matched_gt = {item["gt_vuln_id"] for item in matches}
     tp, fp = len(matches), len(rejected)
@@ -229,6 +232,11 @@ def _build_result(
         item["remediation_score"] for item in assessments
         if item["remediation_score"] is not None
     ]
+    matched_assessments = [item for item in assessments if item["verdict"] == "match"]
+    matched_remediation_scores = [
+        item["remediation_score"] for item in matched_assessments
+        if item["remediation_score"] is not None
+    ]
     return {
         "schema_version": "2",
         "prompt_version": PROMPT_VERSION,
@@ -245,8 +253,10 @@ def _build_result(
         "total_llm_findings": total,
         "true_positives": tp,
         "false_positives": fp,
+        "semantic_false_positives": len(semantic_false_positives),
         "false_negatives": fn,
         "duplicate_findings": len(duplicates),
+        "duplicate_rate": len(duplicates) / total if total else 0.0,
         "precision": precision,
         "recall": recall,
         "f1_score": f1,
@@ -255,6 +265,10 @@ def _build_result(
         "hallucination_rate": fp / total if total else 0.0,
         "clarity_score": _mean([item["clarity_score"] for item in assessments]),
         "remediation_score": _mean(remediation_scores),
+        "matched_clarity_score": _mean([
+            item["clarity_score"] for item in matched_assessments
+        ]),
+        "matched_remediation_score": _mean(matched_remediation_scores),
         "matches": matches,
         "false_positives_list": rejected,
         "duplicates_list": duplicates,
