@@ -886,6 +886,22 @@ def _stream_response(response: dict[str, Any]):
     yield "data: [DONE]\n\n"
 
 
+def _generation_token_budget(
+    target_expert: str,
+    requested_tokens: int,
+    input_tokens: int,
+    context_budget: int,
+) -> int:
+    """Bound local expert generations to their training-aligned operating window."""
+    requested = max(1, int(requested_tokens))
+    remaining = max(256, context_budget - input_tokens)
+    if target_expert == "recon":
+        return min(requested, 1536, remaining)
+    if target_expert == "vuln":
+        return min(requested, 1024, remaining)
+    return requested
+
+
 @app.post("/v1/chat/completions")
 def chat_completions(req: ChatCompletionRequest):
     import torch
@@ -945,10 +961,12 @@ def chat_completions(req: ChatCompletionRequest):
                 )
             t0 = time.time()
             with adapter_context, torch.inference_mode():
-                requested_tokens = int(req.max_tokens or 4096)
-                if target_expert == "recon":
-                    remaining_training_window = max(256, _ADAPTER_CONTEXT_TOKENS - input_tokens)
-                    requested_tokens = min(requested_tokens, 1536, remaining_training_window)
+                requested_tokens = _generation_token_budget(
+                    target_expert,
+                    int(req.max_tokens or 4096),
+                    input_tokens,
+                    _ADAPTER_CONTEXT_TOKENS,
+                )
                 outputs = _MODEL.generate(
                     **inputs,
                     max_new_tokens=requested_tokens,

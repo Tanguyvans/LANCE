@@ -9,6 +9,7 @@ from src.agent.validators import (
     validate_markdown_with_sections,
     validate_recon_markdown,
     validate_report_markdown,
+    validate_json_device_vulns,
     validate_json_vuln_queue,
     validate_json_exploitation,
     VALIDATORS,
@@ -158,6 +159,24 @@ class TestValidateJsonExploitation:
         assert ok
 
 
+class TestValidateDeviceVulns:
+    def test_requires_vulnerability_envelope(self, clean_output):
+        (clean_output / "fragment.json").write_text(json.dumps({
+            "id": "CVE-001", "type": "known_cve",
+        }))
+        ok, msg = validate_json_device_vulns("fragment.json")
+        assert not ok
+        assert "vulnerabilities" in msg
+
+    def test_accepts_scanner_fallback_envelope(self, clean_output):
+        (clean_output / "device.json").write_text(json.dumps({
+            "device_id": "device-a",
+            "vulnerabilities": [{"type": "missing_header"}],
+        }))
+        ok, msg = validate_json_device_vulns("device.json")
+        assert ok
+
+
 class TestValidatorsRegistry:
     def test_all_validators_callable(self):
         for name, fn in VALIDATORS.items():
@@ -168,6 +187,7 @@ class TestValidatorsRegistry:
         assert "markdown_with_sections" in VALIDATORS
         assert "recon_markdown" in VALIDATORS
         assert "report_markdown" in VALIDATORS
+        assert "json_device_vulns" in VALIDATORS
         assert "json_vuln_queue" in VALIDATORS
         assert "json_exploitation" in VALIDATORS
         assert "json_valid" in VALIDATORS

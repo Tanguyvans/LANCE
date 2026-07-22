@@ -1254,6 +1254,45 @@ class TestInformationPreservingArchitecture:
         ]
         assert [attempt["valid"] for attempt in attempts] == [False, True]
 
+    def test_phase3_prompt_projection_is_bounded_and_references_full_scan(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        scan_data = {
+            "scan_results": {
+                "http": [
+                    {
+                        "tool": "http_get",
+                        "kwargs": {"url": f"http://device/{index}"},
+                        "result": ("A" * 1800) + f" evidence-{index}",
+                    }
+                    for index in range(20)
+                ]
+            }
+        }
+
+        projection = pipeline._compact_phase3_scan_results(scan_data)
+
+        rendered = json.dumps(projection)
+        assert len(rendered) < 8000
+        assert projection["_evidence_projection"]["omitted_entries"] > 0
+        assert projection["_evidence_projection"]["full_scan_artifact"].startswith(
+            "03_scans/"
+        )
+
+    def test_local_moe_phase3_uses_one_worker(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider)
+
+        assert pipeline._phase3_worker_count(4) == 1
+
+        mock_provider.provider = "openrouter"
+        mock_provider.model = "large-model"
+        assert pipeline._phase3_worker_count(4) == 4
+
     def test_tool_log_preserves_full_result(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)
         payload = "x" * 7000

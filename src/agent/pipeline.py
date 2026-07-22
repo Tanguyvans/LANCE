@@ -20,6 +20,8 @@ from src.agent.provider import LLMProvider
 from src.config import (
     BENCHMARK_SUBNET,
     DEFAULT_PORTS,
+    DEVICE_ANALYSIS_MAX_TOKENS,
+    DEVICE_ANALYSIS_MAX_TURNS,
     DEVICE_DEFAULT_PORTS,
     EXPLOIT_MAX_TOKENS,
     EXPLOIT_MAX_TURNS,
@@ -1750,6 +1752,74 @@ class Pipeline:
             })
         return surface
 
+    def _phase3_worker_count(self, device_count: int) -> int:
+        """Avoid request queue amplification on the single-lock local GPU server."""
+        local_serial_inference = (
+            getattr(self.provider, "provider", "") == "local-moe"
+            or str(getattr(self.provider, "model", "")).startswith(
+                ("lance-moe", "expert-")
+            )
+        )
+        return 1 if local_serial_inference else max(1, min(device_count, 6))
+
+    @staticmethod
+    def _compact_phase3_scan_results(
+        scan_data: dict, *, max_chars: int = 5000, per_result_chars: int = 700
+    ) -> dict:
+        """Bound the small-model prompt while retaining full scans on disk."""
+        compact: dict[str, list[dict] | dict] = {}
+        used = 0
+        omitted = 0
+        scan_results = scan_data.get("scan_results", {})
+        if not isinstance(scan_results, dict):
+            scan_results = {}
+        for service_key, entries in scan_results.items():
+            if not isinstance(entries, list):
+                continue
+            compact_entries: list[dict] = []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    omitted += 1
+                    continue
+                raw_result = entry.get("result", "")
+                rendered = (
+                    raw_result if isinstance(raw_result, str)
+                    else json.dumps(raw_result, ensure_ascii=False, default=str)
+                )
+                if len(rendered) > per_result_chars:
+                    head = max(1, (per_result_chars - 64) * 2 // 3)
+                    tail = max(1, per_result_chars - 64 - head)
+                    rendered = (
+                        rendered[:head]
+                        + "\n[... prompt summary; full result retained in 03_scans ...]\n"
+                        + rendered[-tail:]
+                    )
+                candidate = {
+                    "tool": entry.get("tool", ""),
+                    "kwargs": entry.get("kwargs", {}),
+                    "result": rendered,
+                }
+                candidate_size = len(json.dumps(
+                    candidate, separators=(",", ":"), ensure_ascii=False
+                ))
+                if used + candidate_size > max_chars:
+                    omitted += 1
+                    continue
+                compact_entries.append(candidate)
+                used += candidate_size
+            if compact_entries:
+                compact[str(service_key)] = compact_entries
+
+        compact["_evidence_projection"] = {
+            "omitted_entries": omitted,
+            "full_scan_artifact": "03_scans/<device_id>.json",
+            "policy": (
+                "Prompt-sized projection only; deterministic findings and the full "
+                "scanner artifact remain available without truncation."
+            ),
+        }
+        return compact
+
     def _run_phase3(
         self,
         config: AgentConfig,
@@ -1814,19 +1884,12 @@ class Pipeline:
             scan_data = scanner_results.get(device_id, {})
             deliverable_file = f"03_device_{device_id}.json"
 
-            # Prepare scan results for prompt (truncate large outputs)
-            scan_for_prompt = {}
-            for svc_key, entries in scan_data.get("scan_results", {}).items():
-                scan_for_prompt[svc_key] = []
-                for entry in entries:
-                    result = entry.get("result", "")
-                    if isinstance(result, str) and len(result) > 2000:
-                        result = result[:2000] + "\n[truncated]"
-                    scan_for_prompt[svc_key].append({
-                        "tool": entry["tool"],
-                        "kwargs": entry.get("kwargs", {}),
-                        "result": result,
-                    })
+            # Give local/small models a bounded projection. Full results remain in
+            # 03_scans/<device_id>.json and deterministic findings are passed separately.
+            scan_for_prompt = self._compact_phase3_scan_results(scan_data)
+            scan_for_prompt["_evidence_projection"]["full_scan_artifact"] = (
+                f"03_scans/{device_id}.json"
+            )
 
             variables = {**self.context}
             variables["device_id"] = device_id
@@ -1872,16 +1935,48 @@ class Pipeline:
                     "device_ip": device_ip, "phase": 3,
                 })
 
+            service_names = {
+                str(service.get("name", "")).casefold()
+                for service in services if isinstance(service, dict)
+            }
+            service_ports = {
+                service.get("port")
+                for service in services if isinstance(service, dict)
+            }
+            allowed_tool_names = {"cve_search", "save_deliverable"}
+            if (
+                any("http" in name or "web" in name for name in service_names)
+                or service_ports.intersection({80, 443, 8080, 8443})
+            ):
+                allowed_tool_names.update({"http_get", "http_request"})
+            if service_ports.intersection({443, 8883, 8443}):
+                allowed_tool_names.update({"tls_inspect", "mtls_request"})
+            if any(
+                name in {"ssh", "mqtt", "redis", "mysql", "telnet"}
+                for name in service_names
+            ):
+                allowed_tool_names.add("tcp_send")
+            if any(
+                str(service.get("protocol", "tcp")).casefold() == "udp"
+                for service in services if isinstance(service, dict)
+            ):
+                allowed_tool_names.add("udp_send")
+
             device_config = AgentConfig(
                 name=f"analyze_{device_id}",
                 phase=3,
                 prompt_template="analyze_device",
                 deliverable_file=deliverable_file,
                 tools=[],
-                validator="json_valid",
+                validator="json_device_vulns",
             )
             device_tools = self._apply_deliverable_transaction(
-                analysis_tools, device_config, stream_callback
+                [
+                    tool for tool in analysis_tools
+                    if tool.get("name") in allowed_tool_names
+                ],
+                device_config,
+                stream_callback,
             )
             self.tracker.start_phase(f"analyze_{device_id}")
             result_text = self.provider.chat_with_tools(
@@ -1892,8 +1987,8 @@ class Pipeline:
                     f"Then call save_deliverable('{deliverable_file}', json_content)."
                 ),
                 tools=device_tools,
-                max_turns=EXPLOIT_MAX_TURNS,
-                max_tokens=EXPLOIT_MAX_TOKENS,
+                max_turns=DEVICE_ANALYSIS_MAX_TURNS,
+                max_tokens=DEVICE_ANALYSIS_MAX_TOKENS,
                 cost_tracker=self.tracker,
                 stream_callback=self._model_stream_callback(
                     stream_callback, phase=3, agent=f"analyze_{device_id}"
@@ -1917,14 +2012,21 @@ class Pipeline:
             if not deliverable_path.exists():
                 log.warning("LLM analysis for %s produced no output — trivial findings used as fallback", device_id)
 
+        worker_count = self._phase3_worker_count(len(surface))
+        if worker_count == 1 and len(surface) > 1:
+            log.info(
+                "Phase 3 local MoE detected: serializing device agents to avoid "
+                "GPU queue timeouts and duplicate retries"
+            )
+
         def _analyze_with_stagger(args):
             idx, device = args
-            if idx > 0:
+            if worker_count > 1 and idx > 0:
                 _time.sleep(min(idx * 2, 6))
             _analyze_device(device)
 
-        with ThreadPoolExecutor(max_workers=max(1, min(len(surface), 6))) as pool:
-            pool.map(_analyze_with_stagger, enumerate(surface))
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            list(pool.map(_analyze_with_stagger, enumerate(surface)))
 
         print(f"\n{'=' * 60}")
         print(f"  All {len(surface)} analysis agents finished.")

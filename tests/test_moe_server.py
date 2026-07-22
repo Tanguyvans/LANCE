@@ -9,6 +9,7 @@ from src.agent.moe_server import (
     _build_execution_state,
     _compact_hf_messages,
     _forced_recovery_tool,
+    _generation_token_budget,
     _parse_qwen_tool_calls,
     _prepare_prompt,
     _select_model_tools,
@@ -343,3 +344,11 @@ def test_compaction_summarizes_large_latest_success_but_preserves_contract_error
         "role": "tool", "tool_call_id": "save-1", "content": error_content,
     }], aggressive=True)
     assert compacted_error[0]["content"] == error_content
+
+
+
+def test_vuln_generation_budget_prevents_runaway_output() -> None:
+    assert _generation_token_budget("vuln", 4096, 4000, 6144) == 1024
+    assert _generation_token_budget("vuln", 768, 4000, 6144) == 768
+    assert _generation_token_budget("vuln", 4096, 7000, 6144) == 256
+    assert _generation_token_budget("secretary", 4096, 7000, 6144) == 4096

@@ -133,6 +133,18 @@ def _validate_unique_ids(filename: str, collection: str, id_field: str) -> tuple
     return True, "OK"
 
 
+def validate_json_device_vulns(filename: str) -> tuple[bool, str]:
+    """Require a per-device envelope instead of accepting any JSON object."""
+    ok, msg = _validate_json_with_key(filename, "vulnerabilities", expect_list=True)
+    if not ok:
+        return ok, msg
+    data = json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
+    for index, finding in enumerate(data["vulnerabilities"]):
+        if not isinstance(finding, dict):
+            return False, f"'vulnerabilities[{index}]' must be an object"
+    return True, "OK"
+
+
 def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
     """Check Phase 3 IDs and the strict-v3 structural artifact contract."""
     ok, msg = _validate_unique_ids(filename, "vulnerabilities", "id")
@@ -199,6 +211,7 @@ VALIDATORS = {
     "markdown_with_sections": validate_markdown_with_sections,
     "recon_markdown": validate_recon_markdown,
     "report_markdown": validate_report_markdown,
+    "json_device_vulns": validate_json_device_vulns,
     "json_vuln_queue": validate_json_vuln_queue,
     "json_exploitation": validate_json_exploitation,
     "json_exploit_result": validate_json_exploit_result,
