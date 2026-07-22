@@ -1293,6 +1293,65 @@ class TestInformationPreservingArchitecture:
         mock_provider.model = "large-model"
         assert pipeline._phase3_worker_count(4) == 4
 
+    @patch("src.agent.pipeline.get_device_info")
+    @patch("src.agent.pipeline.get_attack_surface")
+    @patch("src.agent.pipeline.load_prompt")
+    def test_local_phase3_preserves_memo_without_overwriting_scanner_json(
+        self, mock_load_prompt, mock_surface, mock_device_info, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        mock_provider.chat_with_tools.return_value = "Local memo: reject generic CVE claims."
+        mock_surface.return_value = json.dumps({"nodes": [{
+            "id": "s1-router",
+            "ip": "192.168.100.1",
+            "type": "router",
+            "role": "router",
+            "services": [{"name": "ssh", "port": 22}, {"name": "http", "port": 80}],
+        }]})
+        mock_device_info.return_value = json.dumps({"os_version": "OpenWrt"})
+        mock_load_prompt.return_value = "legacy json prompt should not control local path"
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        fallback = {
+            "device_id": "s1-router",
+            "device_ip": "192.168.100.1",
+            "vulnerabilities": [{
+                "type": "missing_header",
+                "severity": "LOW",
+                "service": "http",
+                "port": 80,
+            }],
+            "summary": {"total": 1},
+        }
+
+        def scanner_side_effect(run_dir_arg, devices, stream_callback=None):
+            (run_dir / "03_device_s1-router.json").write_text(json.dumps(fallback))
+            return {"s1-router": {"scan_results": {}, "findings": fallback["vulnerabilities"]}}
+
+        config = AgentConfig(
+            name="vuln_analysis",
+            phase=3,
+            prompt_template="vuln_analysis",
+            deliverable_file="03_vuln_analysis.json",
+            tools=[],
+            has_device_agents=True,
+        )
+        with patch("src.agent.pipeline.run_scanner", side_effect=scanner_side_effect), \
+             patch("src.agent.tools.graph_tools.get_network_neighbors", return_value={
+                 "upstream": [], "downstream": [], "role": "entrypoint",
+             }):
+            pipeline._run_phase3(config)
+
+        kwargs = mock_provider.chat_with_tools.call_args.kwargs
+        assert kwargs["tools"] == []
+        assert kwargs["max_turns"] == 1
+        assert "not JSON and not a tool call" in kwargs["system_prompt"]
+        assert json.loads((run_dir / "03_device_s1-router.json").read_text()) == fallback
+        assert (run_dir / "03_device_s1-router_analysis.md").read_text().strip() == "Local memo: reject generic CVE claims."
+        assert "Local memo" in (run_dir / "model_outputs.jsonl").read_text()
+        assert not (run_dir / "deliverable_attempts.jsonl").exists()
+
     def test_local_report_phase_is_one_shot_and_composes_final_report(
         self, mock_provider, output_dir
     ):

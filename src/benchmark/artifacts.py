@@ -44,7 +44,7 @@ _ALLOWED_ROOT_FILES = frozenset(
         "cost_summary.json",
     }
 )
-_ALLOWED_ROOT_PATTERNS = ("03_device_*.json",)
+_ALLOWED_ROOT_PATTERNS = ("03_device_*.json", "03_device_*_analysis.md")
 
 
 class ArtifactError(ContractError):

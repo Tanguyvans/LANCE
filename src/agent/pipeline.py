@@ -1940,6 +1940,71 @@ class Pipeline:
                     "device_ip": device_ip, "phase": 3,
                 })
 
+            if self._uses_local_moe():
+                local_context = {
+                    "device": {
+                        "id": device_id,
+                        "ip": device_ip,
+                        "type": device_type,
+                        "role": device_role,
+                        "os": device_os,
+                        "services": services,
+                        "neighbors": {
+                            "upstream": upstream_str,
+                            "downstream": downstream_str,
+                            "role": nbrs["role"],
+                        },
+                    },
+                    "scanner_projection": scan_for_prompt,
+                    "deterministic_findings": scan_data.get("findings", []),
+                    "canonical_json": deliverable_file,
+                    "full_scan_artifact": f"03_scans/{device_id}.json",
+                }
+                local_prompt = (
+                    "You are a Phase 3 device analyst for a local small model. "
+                    "Produce a concise evidence-based analyst memo, not JSON and not a tool call. "
+                    "Do not claim that you saved anything. The deterministic scanner has already "
+                    "written the canonical JSON file; your complete memo will be preserved as a "
+                    "sidecar artifact. Discuss likely vulnerabilities, rejected/uncertain CVEs, "
+                    "and any useful nuance. Only call a CVE applicable when both the detected "
+                    "product/version and vulnerable range are explicit in the supplied evidence. "
+                    "Never invent facts.\n\nEVIDENCE:\n"
+                    + json.dumps(local_context, ensure_ascii=False)
+                )
+                self.tracker.start_phase(f"analyze_{device_id}")
+                result_text = self.provider.chat_with_tools(
+                    system_prompt=local_prompt,
+                    user_message=f"Write the Phase 3 analyst memo for {device_id} now.",
+                    tools=[],
+                    max_turns=1,
+                    max_tokens=min(DEVICE_ANALYSIS_MAX_TOKENS, 1024),
+                    cost_tracker=self.tracker,
+                    stream_callback=self._model_stream_callback(
+                        stream_callback, phase=3, agent=f"analyze_{device_id}"
+                    ),
+                    repeat_guard=False,
+                )
+                if result_text and result_text.strip() not in {
+                    "(max turns reached)", "(malformed tool call JSON — max retries)",
+                }:
+                    analysis_text = result_text.strip()
+                    sidecar = self.run_dir / f"03_device_{device_id}_analysis.md"
+                    sidecar.write_text(analysis_text + "\n", encoding="utf-8")
+                    self._model_stream_callback(
+                        None, phase=3, agent=f"analyze_{device_id}_result"
+                    )({"type": "text_chunk", "text": analysis_text})
+                usage = self.tracker.end_phase()
+                if usage:
+                    print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
+                if stream_callback:
+                    stream_callback({
+                        "type": "device_done", "device_id": device_id,
+                        "device_ip": device_ip, "phase": 3,
+                        "turns": usage.turns if usage else 0,
+                        "run_dir": str(self.run_dir),
+                    })
+                return
+
             service_names = {
                 str(service.get("name", "")).casefold()
                 for service in services if isinstance(service, dict)

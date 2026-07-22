@@ -90,6 +90,7 @@ def test_challenge_contract_fails_closed(mutator, message):
 def test_artifact_allowlist_rejects_traversal_and_oracle_files():
     assert is_allowed_artifact("03_vuln_analysis.json") is True
     assert is_allowed_artifact("03_device_gateway.json") is True
+    assert is_allowed_artifact("03_device_gateway_analysis.md") is True
     assert is_allowed_artifact("03_scans/gateway.json") is True
     assert is_allowed_artifact("04_exploits/gateway/v1.json") is True
     assert is_allowed_artifact("06_report.md") is True
