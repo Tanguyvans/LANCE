@@ -6,6 +6,7 @@ import pytest
 
 from src.agent.validators import (
     validate_default,
+    validate_final_report_markdown,
     validate_markdown_with_sections,
     validate_recon_markdown,
     validate_report_markdown,
@@ -79,6 +80,29 @@ class TestValidateMarkdown:
         ok, msg = validate_report_markdown("report.md")
         assert not ok
         assert "sections" in msg
+
+    def test_final_report_accepts_assembled_report_without_placeholders(self, clean_output):
+        content = "# Pentest Report\n\n" + "\n\n".join(
+            f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
+            for number in range(1, 11)
+        )
+        (clean_output / "final.md").write_text(content)
+
+        ok, msg = validate_final_report_markdown("final.md")
+
+        assert ok, msg
+
+    def test_final_report_rejects_unresolved_placeholders(self, clean_output):
+        content = "# Pentest Report\n\n" + "\n\n".join(
+            f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
+            for number in range(1, 11)
+        ) + "\n{{SECTION_5_TABLE}}\n"
+        (clean_output / "final.md").write_text(content)
+
+        ok, msg = validate_final_report_markdown("final.md")
+
+        assert not ok
+        assert "Unresolved" in msg
 
 
 class TestValidateJsonQueue:
@@ -187,6 +211,7 @@ class TestValidatorsRegistry:
         assert "markdown_with_sections" in VALIDATORS
         assert "recon_markdown" in VALIDATORS
         assert "report_markdown" in VALIDATORS
+        assert "final_report_markdown" in VALIDATORS
         assert "json_device_vulns" in VALIDATORS
         assert "json_vuln_queue" in VALIDATORS
         assert "json_exploitation" in VALIDATORS

@@ -67,6 +67,8 @@ ARTIFACT_NAMES = (
     "05_intrusion.json",
     "06_report.md",
     "06_phase6_context.json",
+    "06_report_analysis_context.json",
+    "06_report_analysis.md",
     "tool_calls.jsonl",
     "deliverable_attempts.jsonl",
     "model_outputs.jsonl",

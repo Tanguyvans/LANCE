@@ -96,6 +96,8 @@ def test_artifact_allowlist_rejects_traversal_and_oracle_files():
     assert is_allowed_artifact("01_graph_evidence.json") is True
     assert is_allowed_artifact("02_recon_evidence.json") is True
     assert is_allowed_artifact("03_vuln_analysis_raw.json") is True
+    assert is_allowed_artifact("06_report_analysis_context.json") is True
+    assert is_allowed_artifact("06_report_analysis.md") is True
     assert is_allowed_artifact("deliverable_attempts.jsonl") is True
     assert is_allowed_artifact("model_outputs.jsonl") is True
     assert is_allowed_artifact(

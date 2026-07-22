@@ -35,6 +35,8 @@ _ALLOWED_ROOT_FILES = frozenset(
         "05_intrusion.json",
         "06_report.md",
         "06_phase6_context.json",
+        "06_report_analysis_context.json",
+        "06_report_analysis.md",
         "scenario_meta.json",
         "tool_calls.jsonl",
         "deliverable_attempts.jsonl",

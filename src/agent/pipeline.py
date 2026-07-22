@@ -611,7 +611,9 @@ class Pipeline:
                 self._pregenerate_report_sections()
 
             # Run the agent — catch Phase 6 errors so teardown always runs.
-            if agent_config.phase == 6:
+            if agent_config.phase == 6 and self._uses_local_moe():
+                status = self._run_local_report_phase(agent_config, stream_callback)
+            elif agent_config.phase == 6:
                 try:
                     status = self._run_agent(agent_config, stream_callback)
                     self._update_run_meta({"phase6_llm": "completed"})
@@ -1754,13 +1756,16 @@ class Pipeline:
 
     def _phase3_worker_count(self, device_count: int) -> int:
         """Avoid request queue amplification on the single-lock local GPU server."""
-        local_serial_inference = (
+        return 1 if self._uses_local_moe() else max(1, min(device_count, 6))
+
+    def _uses_local_moe(self) -> bool:
+        """Return whether the active model uses the bounded local MoE runtime."""
+        return (
             getattr(self.provider, "provider", "") == "local-moe"
             or str(getattr(self.provider, "model", "")).startswith(
                 ("lance-moe", "expert-")
             )
         )
-        return 1 if local_serial_inference else max(1, min(device_count, 6))
 
     @staticmethod
     def _compact_phase3_scan_results(
@@ -3946,6 +3951,123 @@ class Pipeline:
         edges_path.write_text(json.dumps({"edges": edges_data, "host_hops": host_hops}, indent=2))
         log.info("Topology inference complete: %d edges, saved to %s", len(edges_data), edges_path)
 
+    def _build_local_report_analysis_context(self) -> dict:
+        """Prepare compact authoritative evidence for a one-shot local analysis."""
+        def read_json(filename: str) -> dict:
+            path = self.run_dir / filename
+            if not path.exists():
+                return {}
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                return {}
+            return value if isinstance(value, dict) else {}
+
+        phase6 = read_json("06_phase6_context.json")
+        graph = read_json("01_graph_evidence.json")
+        recon = read_json("02_recon_evidence.json")
+        intrusion = read_json("05_intrusion.json")
+        return {
+            "phase6": phase6,
+            "graph": {
+                key: graph.get(key)
+                for key in (
+                    "scenario", "subnet", "node_count", "edge_count", "nodes",
+                    "service_count", "attack_path_count", "attack_paths",
+                    "attack_paths_note", "risk_scores", "risk_scores_note", "note",
+                )
+            },
+            "recon": {
+                "device_count": recon.get("device_count", 0),
+                "devices": recon.get("devices", []),
+                "note": recon.get("note", ""),
+            },
+            "intrusion": intrusion,
+            "full_evidence_references": [
+                "01_graph_evidence.json", "01_graph_analysis.md",
+                "02_recon_evidence.json", "02_recon.md",
+                "03_vuln_analysis_raw.json", "04_exploitation.json",
+                "05_intrusion.json", "tool_calls.jsonl", "model_outputs.jsonl",
+            ],
+        }
+
+    def _run_local_report_phase(
+        self,
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> str:
+        """Run one bounded local analysis, then compose and validate the report."""
+        if stream_callback:
+            stream_callback({
+                "type": "phase_start", "phase": config.phase, "name": config.name,
+                "description": config.description, "deliverable": config.deliverable_file,
+            })
+
+        context = self._build_local_report_analysis_context()
+        context_path = self.run_dir / "06_report_analysis_context.json"
+        context_path.write_text(
+            json.dumps(context, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        prompt = (
+            "You are the final security analyst. Produce a concise evidence-based "
+            "analyst memo, not a full report and not JSON. Identify the most important "
+            "recon discrepancies, attack paths, exploit/intrusion implications, and "
+            "prioritized remediations. Preserve useful uncertainty and nuance. Never "
+            "invent facts. The deterministic pipeline will embed your complete memo "
+            "verbatim in section 10.3 of the final report. You have no tools because "
+            "all authoritative evidence is supplied below.\n\nEVIDENCE:\n"
+            + json.dumps(context, ensure_ascii=False)
+        )
+
+        self.tracker.start_phase(config.name)
+        analysis_error = ""
+        try:
+            result_text = self.provider.chat_with_tools(
+                system_prompt=prompt,
+                user_message="Write the analyst memo now.",
+                tools=[],
+                max_turns=1,
+                max_tokens=min(config.max_tokens, 1536),
+                cost_tracker=self.tracker,
+                stream_callback=self._model_stream_callback(
+                    stream_callback, phase=config.phase, agent="report_local_analysis"
+                ),
+                repeat_guard=False,
+            )
+            if result_text and result_text.strip() not in {
+                "(max turns reached)", "(malformed tool call JSON — max retries)",
+            }:
+                analysis_text = result_text.strip()
+                (self.run_dir / "06_report_analysis.md").write_text(
+                    analysis_text + "\n", encoding="utf-8"
+                )
+                self._model_stream_callback(
+                    None, phase=config.phase, agent="report_local_analysis_result"
+                )({"type": "text_chunk", "text": analysis_text})
+        except Exception as exc:
+            analysis_error = str(exc)
+            log.warning("Local Phase 6 analysis failed; composing from evidence: %s", exc)
+
+        self._merge_report_with_prefill()
+        valid, msg = VALIDATORS["final_report_markdown"](config.deliverable_file)
+        status = "completed" if valid else f"failed:{msg}"
+        self.tracker.record_validation_result(success=valid)
+        usage = self.tracker.end_phase()
+        self._update_run_meta({
+            "phase6_llm": "local_bounded" if not analysis_error else "local_fallback",
+            "phase6_error": analysis_error or None,
+            "phase6_analysis": "06_report_analysis.md",
+            "phase6_report_validation": msg,
+        })
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done", "phase": config.phase, "name": config.name,
+                "status": status, "deliverable": config.deliverable_file,
+                "cost_usd": round(usage.cost_usd(), 4) if usage else 0,
+                "turns": usage.turns if usage else 0,
+            })
+        return status
+
     # ------------------------------------------------------------------
     # Phase 6 context compaction
     # ------------------------------------------------------------------
@@ -4250,6 +4372,10 @@ class Pipeline:
         ctx: dict = {}
         if context_path.exists():
             ctx = json.loads(context_path.read_text(encoding="utf-8"))
+        analysis_context = self._build_local_report_analysis_context()
+        graph_context = analysis_context.get("graph", {})
+        recon_context = analysis_context.get("recon", {})
+        intrusion_context = analysis_context.get("intrusion", {})
 
         run_date = datetime.now().astimezone().date().isoformat()
         n_devices = ctx.get("device_count", "?")
@@ -4274,11 +4400,28 @@ class Pipeline:
             f"| {f.get('title','?')[:70]} |"
             for f in critical_findings[:10]
         )
+        intrusion_summary = intrusion_context.get("summary", {})
+        compromised = intrusion_context.get("compromised_devices", [])
+        sec73_rows = "\n".join(
+            f"| {device.get('device_id', device.get('device', '?'))} "
+            f"| {device.get('device_ip', device.get('ip', '?'))} "
+            f"| {device.get('access_method', device.get('service', '?'))} |"
+            for device in compromised
+            if isinstance(device, dict)
+        )
         sec7 = (
             "## 7. Attack Paths\n\n"
             "| Device | Vuln Type | Service | Description |\n"
             "|--------|-----------|---------|-------------|\n"
             + (sec7_rows if sec7_rows else "| — | — | — | No critical findings |\n")
+            + "\n\n### 7.3 Infiltration Campaign\n\n"
+            + "| Metric | Value |\n|--------|-------|\n"
+            + f"| Devices attempted | {intrusion_summary.get('devices_attempted', intrusion_summary.get('devices_targeted', 0))} |\n"
+            + f"| Devices compromised | {intrusion_summary.get('devices_compromised', len(compromised))} |\n"
+            + f"| Credentials harvested | {intrusion_summary.get('credentials_harvested', 0)} |\n"
+            + f"| Crown jewels reached | {intrusion_summary.get('crown_jewels_reached', 0)} |\n\n"
+            + "| Compromised device | IP | Access |\n|--------------------|----|--------|\n"
+            + (sec73_rows if sec73_rows else "| — | — | No successful compromise recorded |")
         )
 
         # Section 8 — Top devices by risk score
@@ -4315,6 +4458,53 @@ class Pipeline:
         if cve_list:
             sec10 += "### CVEs identified\n\n" + "\n".join(f"- {c}" for c in sorted(cve_list)) + "\n\n"
         sec10 += "All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.\n"
+        analysis_path = self.run_dir / "06_report_analysis.md"
+        if analysis_path.exists():
+            model_analysis = analysis_path.read_text(encoding="utf-8").strip()
+            if model_analysis:
+                sec10 += (
+                    "\n### 10.3 Additional Model Analysis\n\n"
+                    + model_analysis
+                    + "\n"
+                )
+
+        topology_rows = "\n".join(
+            f"| {node.get('id', node.get('name', '?'))} | {node.get('ip', '?')} "
+            f"| {node.get('type', '?')} | {node.get('role', '?')} |"
+            for node in graph_context.get("nodes", [])
+            if isinstance(node, dict)
+        )
+        sec3 = (
+            "## 3. Topology and Attack Surface\n\n"
+            f"Declared topology: {graph_context.get('node_count', 0)} nodes, "
+            f"{graph_context.get('edge_count', 0)} edges and "
+            f"{graph_context.get('service_count', 0)} declared services.\n\n"
+            "| Device | IP | Type | Role |\n|--------|----|------|------|\n"
+            + (topology_rows if topology_rows else "| — | — | — | No graph evidence |")
+        )
+        recon_rows = "\n".join(
+            "| {device} | {ip} | {ports} | {services} |".format(
+                device=row.get("device") or "undocumented",
+                ip=row.get("ip", "?"),
+                ports=",".join(str(port) for port in row.get("open_ports", [])) or "none observed",
+                services=", ".join(
+                    f"{svc.get('service', '?')}:{svc.get('port', '?')}"
+                    + (f" {svc.get('version')}" if svc.get("version") else "")
+                    for svc in row.get("services", [])
+                    if isinstance(svc, dict)
+                ) or "none observed",
+            )
+            for row in recon_context.get("devices", [])
+            if isinstance(row, dict)
+        )
+        sec4 = (
+            "## 4. Reconnaissance Results\n\n"
+            f"Live reconnaissance discovered {recon_context.get('device_count', 0)} devices. "
+            "Observed services below come from the deterministic Phase 2 evidence projection.\n\n"
+            "| Device | IP | Open Ports | Observed Services |\n"
+            "|--------|----|------------|-------------------|\n"
+            + (recon_rows if recon_rows else "| — | — | — | No live service evidence |")
+        )
 
         fallback = (
             f"# Pentest Report — NATO Smart City IoT Lab\n\n"
@@ -4338,10 +4528,8 @@ class Pipeline:
             f"- **Target subnet:** {self.context.get('target_subnet', 'see topology')}\n"
             f"- **Phases executed:** 1 → 2 → 3 → 4 → 5 → 6\n"
             f"- **Tools used:** see tool_calls.jsonl for the authoritative executed-tool ledger\n\n"
-            f"## 3. Topology and Attack Surface\n\n"
-            f"*See 01_graph_analysis.md for full topology.*\n\n"
-            f"## 4. Reconnaissance Results\n\n"
-            f"*See 02_recon.md for full scan results.*\n\n"
+            f"{sec3}\n\n"
+            f"{sec4}\n\n"
             f"{prefill}\n\n"
             f"{sec7}\n\n"
             f"{sec8}\n\n"

@@ -30,6 +30,8 @@ IMPORTABLE_FILES = (
     "deliverable_attempts.jsonl",
     "model_outputs.jsonl",
     "06_report.md",
+    "06_report_analysis_context.json",
+    "06_report_analysis.md",
 )
 REQUIRED_FILES = frozenset({"scenario_meta.json", "03_vuln_analysis.json"})
 

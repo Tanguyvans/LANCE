@@ -95,6 +95,27 @@ def validate_report_markdown(filename: str) -> tuple[bool, str]:
     return True, "OK"
 
 
+def validate_final_report_markdown(filename: str) -> tuple[bool, str]:
+    """Validate the post-merge report rather than the LLM draft contract."""
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+    content = (OUTPUT_DIR / filename).read_text(encoding="utf-8")
+    required = [f"## {number}." for number in range(1, 11)]
+    missing = [prefix for prefix in required if prefix not in content]
+    if missing:
+        return False, f"Missing final report sections: {missing}"
+    unresolved = [
+        value for value in ("{{SECTION_5_TABLE}}", "{{SECTION_6_TABLES}}")
+        if value in content
+    ]
+    if unresolved:
+        return False, f"Unresolved report placeholders: {unresolved}"
+    if len(content.strip()) < 1500:
+        return False, f"Final report is implausibly short ({len(content.strip())} chars)"
+    return True, "OK"
+
+
 def _validate_json_with_key(
     filename: str, key: str, expect_list: bool = False
 ) -> tuple[bool, str]:
@@ -211,6 +232,7 @@ VALIDATORS = {
     "markdown_with_sections": validate_markdown_with_sections,
     "recon_markdown": validate_recon_markdown,
     "report_markdown": validate_report_markdown,
+    "final_report_markdown": validate_final_report_markdown,
     "json_device_vulns": validate_json_device_vulns,
     "json_vuln_queue": validate_json_vuln_queue,
     "json_exploitation": validate_json_exploitation,
