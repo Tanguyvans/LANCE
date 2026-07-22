@@ -1030,6 +1030,21 @@ class TestRepeatingToolDetector:
 
         assert execute.call_count == 4
 
+    def test_unadvertised_save_deliverable_returns_structured_rejection(self):
+        """A learned completion call must not become a KeyError in memo mode."""
+        from src.agent.provider import LLMProvider
+
+        result = json.loads(LLMProvider._execute_tool(
+            "save_deliverable",
+            {"filename": "04_exploits/result.json", "content": "{}"},
+            {"mqtt_listen": MagicMock()},
+        ))
+
+        assert result["ok"] is False
+        assert result["error_kind"] == "tool_not_available"
+        assert result["tool"] == "save_deliverable"
+        assert result["available_tools"] == ["mqtt_listen"]
+
     def test_openai_loop_terminates_after_successful_tool(self):
         """A successful terminal tool call must not trigger another model turn."""
         from src.agent.provider import LLMProvider

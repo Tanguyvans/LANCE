@@ -856,6 +856,38 @@ def _forced_tool_response(
     return response
 
 
+def _allowed_tool_names(tools: Optional[List[Dict[str, Any]]]) -> set[str]:
+    """Return the executable tool contract advertised by the caller."""
+    return {
+        str(tool.get("function", {}).get("name", ""))
+        for tool in (tools or [])
+        if isinstance(tool, dict) and tool.get("function", {}).get("name")
+    }
+
+
+def _filter_unavailable_tool_calls(
+    tool_calls: list[dict[str, Any]],
+    tools: Optional[List[Dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Drop model-emitted calls that are outside the request tool contract.
+
+    Small adapters can retain a strong learned tendency to call their historical
+    completion tool even in memo-only modes. The OpenAI tool contract is the
+    authoritative execution boundary: a tool absent from ``req.tools`` must not
+    be forwarded to the caller as if it were executable.
+    """
+    allowed = _allowed_tool_names(tools)
+    accepted: list[dict[str, Any]] = []
+    rejected: list[str] = []
+    for call in tool_calls:
+        name = str(call.get("function", {}).get("name", ""))
+        if name and name in allowed:
+            accepted.append(call)
+        else:
+            rejected.append(name or "<missing-name>")
+    return accepted, rejected
+
+
 def _stream_response(response: dict[str, Any]):
     response_id = response["id"]
     model = response["model"]
@@ -988,6 +1020,20 @@ def chat_completions(req: ChatCompletionRequest):
     
     # Parse potential tool calls
     content, tool_calls = _parse_qwen_tool_calls(response_text)
+    tool_calls, rejected_tool_calls = _filter_unavailable_tool_calls(
+        tool_calls, req.tools
+    )
+    if rejected_tool_calls:
+        log.warning(
+            "Discarded model tool call(s) outside request contract: %s; allowed=%s",
+            rejected_tool_calls,
+            sorted(_allowed_tool_names(req.tools)),
+        )
+        if not content:
+            content = (
+                "Verification complete; the requested completion tool is managed "
+                "by the orchestrator."
+            )
     
     # Format response for OpenAI compatibility
     res_msg = {"role": "assistant"}

@@ -58,6 +58,38 @@ def test_repairs_unterminated_deliverable_closed_with_wrong_tag() -> None:
     }
 
 
+def test_filters_save_deliverable_when_not_exposed_by_phase4_contract() -> None:
+    from src.agent.moe_server import _filter_unavailable_tool_calls
+
+    calls = [
+        {
+            "id": "call-save",
+            "type": "function",
+            "function": {
+                "name": "save_deliverable",
+                "arguments": '{"filename":"04_exploits/result.json"}',
+            },
+        },
+        {
+            "id": "call-mqtt",
+            "type": "function",
+            "function": {
+                "name": "mqtt_listen",
+                "arguments": '{"broker":"192.168.100.11"}',
+            },
+        },
+    ]
+    tools = [{
+        "type": "function",
+        "function": {"name": "mqtt_listen", "parameters": {}},
+    }]
+
+    accepted, rejected = _filter_unavailable_tool_calls(calls, tools)
+
+    assert [call["function"]["name"] for call in accepted] == ["mqtt_listen"]
+    assert rejected == ["save_deliverable"]
+
+
 def test_rejects_non_object_arguments() -> None:
     content, calls = _parse_qwen_tool_calls(
         '<tool_call>{"name":"nmap_scan","arguments":"192.0.2.1"}</tool_call>'

@@ -419,6 +419,14 @@ class LLMProvider:
 
     @staticmethod
     def _execute_tool(name: str, args: dict, tool_map: dict) -> str:
+        if name not in tool_map:
+            return json.dumps({
+                "ok": False,
+                "error_kind": "tool_not_available",
+                "error": f"Tool '{name}' was not exposed for this request.",
+                "tool": name,
+                "available_tools": sorted(tool_map),
+            }, ensure_ascii=False)
         try:
             result = tool_map[name](**args)
             return result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
