@@ -25,8 +25,12 @@ HARDWARE_KEYS = {"name", "description"}
 import hashlib
 
 # Cache for deduplicating tool outputs (Stateful Tooling)
-# Format: { "tool_name_target": set([hashes...]) }
-_TOOL_CACHE: dict[str, set[str]] = {}
+# Format: { "tool_name_target_context": {signature: original_line_or_response} }
+#
+# Important: cached repeats must replay the original evidence instead of
+# replacing it with a summary. Phase 4 aggregation depends on the concrete
+# tool output to decide whether a verdict is supported.
+_TOOL_CACHE: dict[str, dict[str, str]] = {}
 
 def _get_payload_signature(payload_str: str) -> str:
     """Generate a signature based on payload type/structure rather than exact content."""
@@ -148,24 +152,32 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         # --- Deduplication Cache Logic ---
         if tool_name == "mqtt_listen" and stdout:
             broker = kwargs.get("broker", "unknown")
-            cache_key = f"mqtt_{broker}"
+            topic = kwargs.get("topic", "#")
+            username = kwargs.get("username") or ""
+            password = kwargs.get("password") or ""
+            cache_key = f"mqtt_{broker}_{topic}_{username}_{password}"
             if cache_key not in _TOOL_CACHE:
-                _TOOL_CACHE[cache_key] = set()
+                _TOOL_CACHE[cache_key] = {}
 
             new_lines = []
+            replayed_lines = []
             for line in stdout.splitlines():
                 parts = line.split(" ", 1)
                 if len(parts) == 2:
                     topic, payload = parts
                     sig = f"{topic}::{_get_payload_signature(payload)}"
                     if sig not in _TOOL_CACHE[cache_key]:
-                        _TOOL_CACHE[cache_key].add(sig)
+                        _TOOL_CACHE[cache_key][sig] = line
                         new_lines.append(line)
+                    else:
+                        replayed_lines.append(_TOOL_CACHE[cache_key][sig])
                 else:
                     new_lines.append(line)  # Keep unparseable lines
 
             if not new_lines and stdout.strip():
-                result["stdout"] = "[CACHE] Only duplicate messages received. No new topics or payload structures discovered."
+                result["stdout"] = "\n".join(replayed_lines) if replayed_lines else stdout
+                result["cache_replayed"] = True
+                result["cache_note"] = "Duplicate MQTT payload structures replayed from the first observation."
             else:
                 result["stdout"] = "\n".join(new_lines)
 
@@ -175,12 +187,14 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
             sig = hashlib.sha256(stdout.encode("utf-8")).hexdigest()
 
             if cache_key not in _TOOL_CACHE:
-                _TOOL_CACHE[cache_key] = set()
+                _TOOL_CACHE[cache_key] = {}
 
             if sig in _TOOL_CACHE[cache_key]:
-                result["stdout"] = "[CACHE] Identical HTTP response to previous scan. No new information."
+                result["stdout"] = _TOOL_CACHE[cache_key][sig]
+                result["cache_replayed"] = True
+                result["cache_note"] = "Identical HTTP response replayed from the first observation."
             else:
-                _TOOL_CACHE[cache_key].add(sig)
+                _TOOL_CACHE[cache_key][sig] = stdout
         # ---------------------------------
 
         if filter_lines and result.get("stdout"):

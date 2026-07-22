@@ -149,14 +149,14 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     },
     "data_access": {
         "mqtt": "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) — capture messages, extract credentials/keys\n",
-        "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure.",
+        "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence.",
         "telnet": "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n",
         "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n",
         "ftp": "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n",
         "redis": "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n",
         "nodered": "For Node-RED (port 1880): http_get(\"http://{ip}:1880/admin\") then http_get(\"http://{ip}:1880/flows\") — confirm unauthenticated access\n",
         "coap": "For CoAP (port 5683): nmap_scan(target=\"{ip}\", ports=\"5683\", skip_discovery=True, udp_scan=True) — confirm port open\n",
-        "default": "Access the service and retrieve actual data to prove impact. Use the tool that matches the service in evidence. If the URL from evidence returns 404, mark as EXPLOITED anyway if Phase 3 already captured the sensitive content — do NOT mark as FAILED when Phase 3 proved the exposure."
+        "default": "Access the service and retrieve actual data to prove impact. Use the tool that matches the service in evidence. If the tested URL returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence."
     },
     "injection": {
         "http": (
@@ -326,13 +326,201 @@ def _has_positive_exploit_evidence(result: dict) -> bool:
         return True
     positive_markers = (
         "connack", "accepted", "authenticated", "login successful", "uid=",
-        "root:", "http 200", "status 200", "open port", "anonymous subscribe",
+        "root:", "http 200", "status 200", "anonymous subscribe",
         "payload", "topic", "keys *", "database", "directory listing",
         "command output", "access granted",
     )
     return bool(evidence) and int(result.get("evidence_level", 0) or 0) >= 2 and any(
         marker in combined for marker in positive_markers
     )
+
+
+def _decode_tool_result(record: dict) -> dict:
+    raw = record.get("result", {})
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {"stdout": raw}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {"stdout": raw}
+    return {"stdout": str(raw)}
+
+
+def _http_status(stdout: str) -> int | None:
+    matches = re.findall(r"HTTP/\S+\s+(\d{3})", stdout or "")
+    return int(matches[-1]) if matches else None
+
+
+def _text_has_sensitive_data(text: str) -> bool:
+    return bool(re.search(
+        r"(password|passwd|pass|secret|api[_-]?key|token|credential|db_user|db_pass|private[_ -]?key)",
+        text or "",
+        re.IGNORECASE,
+    ))
+
+
+def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:
+    tool_log = run_dir / "tool_calls.jsonl"
+    if not tool_log.is_file():
+        return []
+    records: list[dict] = []
+    try:
+        lines = tool_log.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if str(record.get("vuln_id", "")).strip() == str(vuln_id).strip():
+            records.append(record)
+    return records
+
+
+def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str = "") -> dict:
+    """Build a Phase 4 result from observed tool output only.
+
+    Local MoE models still decide which verification tools to call. This helper
+    only turns the archived tool evidence into the strict JSON verdict, which
+    prevents format loops and copied prompt examples from becoming findings.
+    """
+    vuln_id = vuln.get("id", "VULN-???")
+    vuln_type = vuln.get("type", "")
+    service = vuln.get("service", "")
+    port = vuln.get("port")
+    device_ip = str(vuln.get("device_ip", ""))
+    tools_used: list[str] = []
+    refs: list[str] = []
+    errors: list[str] = []
+    failures: list[str] = []
+    confirmations: list[dict] = []
+
+    for record in tool_records:
+        tool = str(record.get("tool", ""))
+        if not tool or tool == "save_deliverable":
+            continue
+        tools_used.append(tool)
+        ref = str(record.get("evidence_ref", "")).strip()
+        if ref:
+            refs.append(ref)
+        args = record.get("args") or {}
+        result = _decode_tool_result(record)
+        stdout = str(result.get("stdout", ""))
+        stderr = str(result.get("stderr", ""))
+        interp = str(result.get("interpretation", ""))
+        text = "\n".join(part for part in (stdout, stderr, interp) if part).strip()
+        lower = text.lower()
+        rc = result.get("return_code")
+
+        if tool == "mqtt_listen" and service == "mqtt-ws" and str(port) == "9001":
+            errors.append("mqtt_listen verifies MQTT/TCP, not MQTT WebSocket port 9001")
+            continue
+        if any(marker in lower for marker in ("timed out", "timeout")) or rc == 124:
+            errors.append(f"{tool} timed out")
+            continue
+        if any(marker in lower for marker in ("unable to negotiate", "connection refused", "no route to host")):
+            errors.append(f"{tool} did not reach a usable service: {text[:180]}")
+            continue
+
+        if tool in {"http_get", "curl_headers", "http_request"}:
+            status_code = _http_status(stdout)
+            if status_code == 404 or "not found" in lower:
+                failures.append(f"{tool} returned HTTP 404/Not Found")
+                continue
+            if status_code in (401, 403) or "www-authenticate" in lower:
+                failures.append(f"{tool} reached an authenticated or forbidden endpoint")
+                continue
+            if vuln_type == "directory_listing" and "index of" in lower:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{stdout[:800]}"})
+                continue
+            if vuln_type in {"data_exposure", "info_disclosure"} and status_code == 200 and _text_has_sensitive_data(stdout):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{stdout[:800]}"})
+                continue
+            if vuln_type == "no_auth" and status_code == 200:
+                login_challenge = any(marker in lower for marker in (
+                    "login", "sign in", "password", "unauthorized", "authentication required",
+                ))
+                privileged = any(marker in lower for marker in (
+                    "dashboard", "admin", "configuration", "devices", "flows", "logout", "luci",
+                ))
+                if privileged and not login_challenge:
+                    confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} reached admin content without an auth challenge:\n{stdout[:800]}"})
+                else:
+                    failures.append(f"{tool} did not prove unauthenticated admin access")
+                continue
+
+        if tool == "mqtt_listen":
+            broker = str(args.get("broker", ""))
+            username = args.get("username")
+            mqtt_ok = rc in (0, 27) and bool(stdout.strip())
+            if broker and device_ip and broker != device_ip:
+                errors.append(f"mqtt_listen targeted {broker}, expected {device_ip}")
+                continue
+            if vuln_type == "no_auth" and not username and mqtt_ok:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen anonymous subscription received messages:\n{stdout[:800]}"})
+                continue
+            if vuln_type == "data_exposure" and not username and mqtt_ok and _text_has_sensitive_data(stdout):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen captured sensitive MQTT messages:\n{stdout[:800]}"})
+                continue
+            if vuln_type == "default_credentials" and username and mqtt_ok:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen with username={username} received messages:\n{stdout[:800]}"})
+                continue
+            if rc == 5:
+                failures.append("MQTT broker required authentication")
+            elif not stdout.strip():
+                failures.append("mqtt_listen did not capture messages")
+            continue
+
+        if tool in {"ssh_login", "ssh_exec", "try_credential"}:
+            if (result.get("success") is True) or (rc == 0 and re.search(r"\buid=|login successful|welcome", lower)):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed command/login success:\n{text[:800]}"})
+            elif "permission denied" in lower or result.get("success") is False:
+                failures.append(f"{tool} authentication failed")
+            continue
+
+        if tool == "telnet_connect":
+            if rc == 0 and text:
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"telnet_connect reached the service:\n{text[:800]}"})
+            elif rc == 124:
+                errors.append("telnet_connect timed out")
+            else:
+                failures.append("telnet_connect did not establish useful interaction")
+            continue
+
+        if tool in {"mysql_query", "redis_cmd", "ftp_list"} and rc == 0 and text:
+            confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} returned data:\n{text[:800]}"})
+
+    base = {
+        "vuln_id": vuln_id,
+        "device_id": vuln.get("device_id", "unknown"),
+        "device_ip": vuln.get("device_ip", ""),
+        "vuln_type": vuln_type,
+        "severity": vuln.get("severity", "MEDIUM"),
+        "service": service,
+        "port": port,
+        "protocol": vuln.get("protocol", ""),
+        "endpoint": vuln.get("endpoint", ""),
+        "product": vuln.get("product", ""),
+        "version": vuln.get("version", ""),
+        "tools_used": list(dict.fromkeys(tools_used)),
+        "evidence_refs": list(dict.fromkeys(refs)),
+        "data_extracted": [],
+        "description": vuln.get("details", ""),
+    }
+    if confirmations:
+        best = max(confirmations, key=lambda item: item["level"])
+        return {**base, "status": "EXPLOITED", "evidence": best["evidence"], "evidence_level": best["level"], "tool_used": best["tool"]}
+    if failures:
+        return {**base, "status": "FAILED", "evidence": "; ".join(failures[:3]), "evidence_level": 1, "tool_used": tools_used[-1] if tools_used else ""}
+    if errors:
+        return {**base, "status": "ERROR", "evidence": "; ".join(errors[:3]), "evidence_level": 0, "tool_used": tools_used[-1] if tools_used else ""}
+    evidence = "No Phase 4 verification tool output was produced"
+    if memo.strip():
+        evidence += f". Model memo: {memo.strip()[:300]}"
+    return {**base, "status": "ERROR", "evidence": evidence, "evidence_level": 0, "tool_used": ""}
 
 
 class Pipeline:
@@ -2562,8 +2750,26 @@ class Pipeline:
         # 2. Filter vulns that need an exploit agent
         exploit_tasks: list[dict] = []
         skipped_candidates: list[dict] = []
+        anonymous_mqtt_ips = {
+            finding.get("device_ip")
+            for finding in all_vulns
+            if finding.get("type") == "no_auth"
+            and finding.get("service") == "mqtt"
+            and str(finding.get("exploitation_status", "")).casefold() == "confirmed"
+        }
         for vuln in all_vulns:
             vuln_type = vuln.get("type", "")
+            if (
+                vuln_type == "default_credentials"
+                and vuln.get("service") == "mqtt"
+                and vuln.get("device_ip") in anonymous_mqtt_ips
+            ):
+                skipped_candidates.append({
+                    "vuln_id": vuln.get("id", ""),
+                    "type": vuln_type,
+                    "reason": "redundant_after_anonymous_mqtt_access",
+                })
+                continue
             if vuln.get("accepted_for_scoring") is False:
                 skipped_candidates.append({
                     "vuln_id": vuln.get("id", ""),
@@ -2704,24 +2910,61 @@ class Pipeline:
                     "product": vuln.get("product", ""),
                 }
                 self.tracker.start_phase(phase_name)
+                result_text = ""
                 try:
-                    result_text = self.provider.chat_with_tools(
-                        system_prompt=system_prompt,
-                        user_message=(
-                            f"Exploit {vuln_type} on {device_id} ({device_ip}). "
-                            f"Service: {service} port {port}. "
-                            f"Call save_deliverable('{deliverable_file}', json_content) when done."
-                        ),
-                        tools=exploit_tools,
-                        max_turns=INTRUSION_MAX_TURNS,
-                        max_tokens=INTRUSION_MAX_TOKENS,
-                        cost_tracker=self.tracker,
-                        stream_callback=self._model_stream_callback(
-                            stream_callback, phase=4, agent=phase_name
-                        ),
-                        required_tool="save_deliverable",
-                        terminate_after_tool="save_deliverable",
-                    )
+                    if self._uses_local_moe():
+                        verification_tools = [
+                            tool for tool in exploit_tools
+                            if tool.get("name") != "save_deliverable"
+                        ]
+                        local_prompt = (
+                            system_prompt
+                            + "\n\nLOCAL MOE PHASE 4 MODE:\n"
+                            + "Use the available verification tools to test the vulnerability. "
+                            + "Do not write JSON and do not claim a final verdict. "
+                            + "Return a concise memo with what you tested; the orchestrator will "
+                            + "derive the strict JSON result from the archived tool outputs.\n"
+                        )
+                        result_text = self.provider.chat_with_tools(
+                            system_prompt=local_prompt,
+                            user_message=(
+                                f"Verify {vuln_type} on {device_id} ({device_ip}). "
+                                f"Service: {service} port {port}. Use tools if needed, then summarize."
+                            ),
+                            tools=verification_tools,
+                            max_turns=min(EXPLOIT_MAX_TURNS, 3),
+                            max_tokens=min(EXPLOIT_MAX_TOKENS, 1536),
+                            cost_tracker=self.tracker,
+                            stream_callback=self._model_stream_callback(
+                                stream_callback, phase=4, agent=phase_name
+                            ),
+                            repeat_guard=True,
+                        )
+                        records = _tool_records_for_vuln(self.run_dir, vuln_id)
+                        result = _synthesize_exploit_result(vuln, records, result_text)
+                        deliverable_path.parent.mkdir(parents=True, exist_ok=True)
+                        deliverable_path.write_text(
+                            json.dumps(result, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                    else:
+                        result_text = self.provider.chat_with_tools(
+                            system_prompt=system_prompt,
+                            user_message=(
+                                f"Exploit {vuln_type} on {device_id} ({device_ip}). "
+                                f"Service: {service} port {port}. "
+                                f"Call save_deliverable('{deliverable_file}', json_content) when done."
+                            ),
+                            tools=exploit_tools,
+                            max_turns=EXPLOIT_MAX_TURNS,
+                            max_tokens=EXPLOIT_MAX_TOKENS,
+                            cost_tracker=self.tracker,
+                            stream_callback=self._model_stream_callback(
+                                stream_callback, phase=4, agent=phase_name
+                            ),
+                            required_tool="save_deliverable",
+                            terminate_after_tool="save_deliverable",
+                        )
                 finally:
                     self._exploit_tool_context.vulnerability = None
 
@@ -3352,6 +3595,7 @@ class Pipeline:
         tests: list[dict] = []
         refs_by_vuln: dict[str, list[str]] = {}
         tools_by_vuln: dict[str, list[str]] = {}
+        records_by_vuln: dict[str, list[dict]] = {}
         tool_log = self.run_dir / "tool_calls.jsonl"
         if tool_log.is_file():
             try:
@@ -3367,6 +3611,8 @@ class Pipeline:
                 vuln_id = str(record.get("vuln_id", "")).strip()
                 evidence_ref = str(record.get("evidence_ref", "")).strip()
                 tool_name = str(record.get("tool", "")).strip()
+                if vuln_id:
+                    records_by_vuln.setdefault(vuln_id, []).append(record)
                 if vuln_id and evidence_ref:
                     refs_by_vuln.setdefault(vuln_id, []).append(evidence_ref)
                 if vuln_id and tool_name and tool_name != "save_deliverable":
@@ -3378,10 +3624,12 @@ class Pipeline:
                 vuln.get("type", ""),
                 vuln.get("id", "VULN-???"),
             )
+            vuln_id = str(vuln.get("id", ""))
             tests.append(self._resolve_exploit_verdict(
                 vuln, exploit_file,
-                evidence_refs=refs_by_vuln.get(str(vuln.get("id", "")), []),
-                tools_used=tools_by_vuln.get(str(vuln.get("id", "")), []),
+                evidence_refs=refs_by_vuln.get(vuln_id, []),
+                tools_used=tools_by_vuln.get(vuln_id, []),
+                tool_records=records_by_vuln.get(vuln_id, []),
             ))
 
         scheduled_ids = set(
@@ -3437,6 +3685,7 @@ class Pipeline:
         *,
         evidence_refs: list[str] | None = None,
         tools_used: list[str] | None = None,
+        tool_records: list[dict] | None = None,
     ) -> dict:
         """Return a single aggregated test entry for one Phase 3 finding."""
         if not exploit_file.exists():
@@ -3488,17 +3737,22 @@ class Pipeline:
             *(str(value).strip() for value in (tools_used or [])),
         ]))
         status = str(result.get("status", "ERROR")).upper()
-        if status == "EXPLOITED" and not _has_positive_exploit_evidence(result):
+        semantic_result = _synthesize_exploit_result(vuln, tool_records or [])
+        semantic_status = str(semantic_result.get("status", "ERROR")).upper()
+        if status == "EXPLOITED" and (
+            not _has_positive_exploit_evidence(result)
+            or semantic_status != "EXPLOITED"
+        ):
             log.warning("Downgrading unsupported EXPLOITED verdict for %s", vuln.get("id"))
             return _make_test_entry(
                 vuln,
-                status="ERROR",
-                result=result,
+                status=semantic_status if semantic_status in {"FAILED", "ERROR"} else "ERROR",
+                result={**result, **semantic_result},
                 evidence=(
-                    "Unsupported EXPLOITED verdict: no positive tool evidence. "
-                    + str(result.get("evidence", ""))
+                    "Unsupported EXPLOITED verdict: no matching positive tool evidence. "
+                    + str(semantic_result.get("evidence") or result.get("evidence", ""))
                 ),
-                evidence_level=0,
+                evidence_level=int(semantic_result.get("evidence_level", 0) or 0),
             )
         final_status = "CONFIRMED" if status == "EXPLOITED" else status
         if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
@@ -3684,7 +3938,7 @@ class Pipeline:
             # Extract credentials from evidence / description / data_extracted.
             # Tolerant of quotes and JSON punctuation so it matches all of:
             #   user=root pass=x  |  username='test', password='test'
-            #   "db_user":"root","db_pass":"P@ssw0rd123"
+            #   "db_user":"root","db_pass":"<observed-password>"
             _cred_pattern = _re.compile(
                 r'(?:user(?:name)?|login|db_user)\s*["\']?\s*[=:]\s*["\']?'
                 r'([a-zA-Z0-9_@.\-]+)["\']?[\s,;:"\'(){}]+'
@@ -4156,6 +4410,7 @@ class Pipeline:
         exploit_path = self.run_dir / "04_exploitation.json"
         exploit_by_vuln: dict[str, dict] = {}
         phase4_summary: dict = {}
+        phase4_tests: list[dict] = []
         if exploit_path.exists():
             data = json.loads(exploit_path.read_text(encoding="utf-8"))
             phase4_summary = data.get("summary", {})
@@ -4164,6 +4419,20 @@ class Pipeline:
                 vuln_id = t.get("vuln_id", "")
                 if vuln_id:
                     exploit_by_vuln[vuln_id] = t
+                phase4_tests.append({
+                    "vuln_id": vuln_id,
+                    "device_id": t.get("device_id", ""),
+                    "device_ip": t.get("device_ip", ""),
+                    "type": t.get("vuln_type", ""),
+                    "service": t.get("service", ""),
+                    "port": t.get("port"),
+                    "status": t.get("status", ""),
+                    "evidence_level": t.get("evidence_level", 0),
+                    "tool_used": t.get("tool_used", ""),
+                    "tools_used": t.get("tools_used", []),
+                    "evidence_refs": t.get("evidence_refs", []),
+                    "evidence_excerpt": str(t.get("evidence", ""))[:320],
+                })
 
         # --- Aggregate by device (compact — no per-vuln details, sections 5/6 are pre-generated) ---
         devices: dict[str, dict] = {}
@@ -4233,6 +4502,11 @@ class Pipeline:
             "total_vulnerabilities": total_vulns,
             "severity_breakdown": global_sev,
             "phase4_summary": phase4_summary,
+            "phase4_tests": phase4_tests[:120],
+            "phase4_tests_note": (
+                "Compact Phase 4 projection with evidence excerpts and refs; "
+                "full results remain in 04_exploitation.json and raw tool output in tool_calls.jsonl."
+            ),
             "top_critical_findings": top_critical,
             "top_devices_by_risk": [
                 {
@@ -4248,6 +4522,7 @@ class Pipeline:
             "information_sources": {
                 "graph_evidence": "01_graph_evidence.json",
                 "raw_findings": "03_vuln_analysis_raw.json",
+                "exploitation_results": "04_exploitation.json",
                 "raw_tool_outputs": "tool_calls.jsonl",
                 "model_outputs": "model_outputs.jsonl",
                 "recon_evidence": "02_recon_evidence.json",

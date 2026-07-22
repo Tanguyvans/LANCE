@@ -459,17 +459,17 @@ def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str
 
 
 def _extract_mqtt_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """mqtt_listen return_code 0 or 27 → no_auth HIGH confirmed."""
+    """mqtt_listen anonymous return_code 0 or 27 -> no_auth HIGH confirmed."""
     for entry in entries:
         if entry["tool"] != "mqtt_listen":
             continue
         kwargs = entry.get("kwargs", {})
-        if kwargs.get("topic") != "#":
+        if kwargs.get("topic") != "#" or kwargs.get("username"):
             continue
         result = _parse_result(entry)
         rc = result.get("return_code", -1)
-        if rc in (0, 27):
-            stdout = result.get("stdout", "")
+        stdout = result.get("stdout", "")
+        if rc in (0, 27) and stdout.strip():
             return [_make_finding(
                 device, "no_auth", "HIGH", "mqtt", 1883,
                 "MQTT broker allows anonymous connections",
@@ -500,19 +500,34 @@ def _extract_mqtt_data_exposure(entries: list[dict], device: dict, svc_name: str
 
 
 def _extract_mqtt_weak_creds(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """mqtt_listen with test:test returns rc 0 or 27 → default_credentials HIGH confirmed."""
+    """Weak MQTT credentials only count when anonymous access is denied first."""
+    anonymous_open = False
+    anonymous_denied = False
     for entry in entries:
         if entry["tool"] != "mqtt_listen":
             continue
         kwargs = entry.get("kwargs", {})
-        if kwargs.get("username") != "test":
-            continue
-        if kwargs.get("topic") != "#":
+        if kwargs.get("topic") != "#" or kwargs.get("username"):
             continue
         result = _parse_result(entry)
         rc = result.get("return_code", -1)
         if rc in (0, 27):
-            stdout = result.get("stdout", "")
+            anonymous_open = True
+        elif rc == 5:
+            anonymous_denied = True
+    if anonymous_open or not anonymous_denied:
+        return []
+
+    for entry in entries:
+        if entry["tool"] != "mqtt_listen":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if kwargs.get("username") != "test" or kwargs.get("topic") != "#":
+            continue
+        result = _parse_result(entry)
+        rc = result.get("return_code", -1)
+        stdout = result.get("stdout", "")
+        if rc in (0, 27) and stdout.strip():
             return [_make_finding(
                 device, "default_credentials", "HIGH", "mqtt", 1883,
                 "MQTT broker accepts weak credentials (test:test)",
@@ -545,7 +560,7 @@ def _extract_mqtt_sys(entries: list[dict], device: dict, svc_name: str) -> list[
 
 
 def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Port 9001 open on mqtt_broker → no_auth HIGH confirmed."""
+    """Port 9001 open is exposure, not proof of unauthenticated WebSocket use."""
     role = device.get("role", "")
     if "mqtt" not in role and "mqtt" not in svc_name:
         return []
@@ -559,9 +574,12 @@ def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) ->
         stdout = result.get("stdout", "")
         if "9001/tcp" in stdout and "open" in stdout:
             return [_make_finding(
-                device, "no_auth", "HIGH", "mqtt-ws", 9001,
-                "MQTT WebSocket exposed without authentication (port 9001)",
+                device, "network_exposure", "LOW", "mqtt-ws", 9001,
+                "MQTT WebSocket listener exposed on the network",
                 f"nmap port 9001: {stdout.strip()[:200]}",
+                status="suspected",
+                technique="Verify with an HTTP WebSocket upgrade request before claiming no_auth",
+                tools=["curl_headers"],
             )]
     return []
 
@@ -853,7 +871,14 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
         rc = result.get("return_code", -1)
-        if rc == 0 and ("200" in stdout[:50] or "403" in stdout[:50] or "302" in stdout[:50]):
+        status_match = re.search(r"HTTP/\S+\s+(\d{3})", stdout[:200])
+        status_code = int(status_match.group(1)) if status_match else None
+        lower = stdout.lower()
+        login_challenge = any(marker in lower for marker in (
+            "login", "sign in", "password", "unauthorized", "forbidden",
+            "www-authenticate", "authentication required",
+        ))
+        if rc == 0 and status_code == 200 and not login_challenge:
             if is_nodered:
                 findings = [
                     _make_finding(

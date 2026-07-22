@@ -10,6 +10,7 @@ from src.agent.pipeline import (
     TOOL_GROUPS,
     _has_positive_exploit_evidence,
     _resolve_model_provider,
+    _synthesize_exploit_result,
 )
 from src.agent.registry import AgentConfig, AGENTS
 
@@ -425,6 +426,87 @@ class TestExploitEvidenceGuard:
         )
         assert verdict["status"] == "ERROR"
         assert verdict["evidence_level"] == 0
+
+
+    def test_http_404_is_failed_not_exploited(self):
+        result = _synthesize_exploit_result(
+            {
+                "id": "VULN-004",
+                "device_id": "s1-router",
+                "device_ip": "192.168.100.1",
+                "type": "data_exposure",
+                "service": "http",
+                "port": 80,
+            },
+            [{
+                "tool": "http_get",
+                "args": {"url": "http://192.168.100.1/backup/db_backup.sql"},
+                "result": json.dumps({
+                    "stdout": "<h1>Not Found</h1>The requested URL was not found",
+                    "stderr": "",
+                    "return_code": 0,
+                }),
+                "evidence_ref": "tc-404",
+            }],
+        )
+
+        assert result["status"] == "FAILED"
+        assert "404" in result["evidence"] or "Not Found" in result["evidence"]
+
+    def test_mqtt_websocket_is_not_confirmed_by_plain_mqtt_tool(self):
+        result = _synthesize_exploit_result(
+            {
+                "id": "VULN-008",
+                "device_id": "s1-mqtt",
+                "device_ip": "192.168.100.11",
+                "type": "no_auth",
+                "service": "mqtt-ws",
+                "port": 9001,
+            },
+            [{
+                "tool": "mqtt_listen",
+                "args": {"broker": "192.168.100.11", "topic": "#"},
+                "result": json.dumps({
+                    "stdout": "sensors/temp {\"value\":22.5}",
+                    "return_code": 0,
+                }),
+                "evidence_ref": "tc-mqtt",
+            }],
+        )
+
+        assert result["status"] == "ERROR"
+        assert "WebSocket" in result["evidence"]
+
+    def test_exploited_verdict_is_downgraded_when_tool_evidence_contradicts_it(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        exploit_file = pipeline.run_dir / "result.json"
+        exploit_file.write_text(json.dumps({
+            "status": "EXPLOITED",
+            "evidence": "http_get returned HTTP 200 and exposed credentials",
+            "evidence_level": 3,
+        }))
+        verdict = pipeline._resolve_exploit_verdict(
+            {
+                "id": "VULN-004",
+                "device_id": "s1-router",
+                "device_ip": "192.168.100.1",
+                "type": "data_exposure",
+                "service": "http",
+                "port": 80,
+            },
+            exploit_file,
+            tool_records=[{
+                "tool": "http_get",
+                "args": {"url": "http://192.168.100.1/backup/db_backup.sql"},
+                "result": json.dumps({"stdout": "<h1>Not Found</h1>", "return_code": 0}),
+                "evidence_ref": "tc-404",
+            }],
+        )
+
+        assert verdict["status"] == "FAILED"
+        assert verdict["evidence_level"] == 1
 
 
 class TestPrerequisites:

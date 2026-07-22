@@ -59,8 +59,9 @@ Fill in the report template below with data from previous phases. Do NOT change 
 - Phase 1 narrative = declarative interpretation; it cannot override the graph evidence projection.
 - Phase 2 = REAL scans (nmap/arp). This is the SOURCE OF TRUTH for services and versions.
 - 06_phase6_context.json = Compact aggregate of Phase 3 and Phase 4. It contains
-  total counts, severity_breakdown, phase4_summary, top_critical_findings,
-  top_devices_by_risk, and cve_list. It intentionally does not duplicate raw evidence.
+  total counts, severity_breakdown, phase4_summary, phase4_tests with short
+  evidence excerpts and refs, top_critical_findings, top_devices_by_risk, and
+  cve_list. It intentionally does not duplicate raw tool output.
 - 03_vuln_analysis_raw.json and tool_calls.jsonl retain the complete information and
   provenance. Do not read them by default; mention their availability in the appendices.
 - In case of contradiction between Phase 1 and Phase 2, ALWAYS use Phase 2 data.

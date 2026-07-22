@@ -165,10 +165,15 @@ class LLMProvider:
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
             active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
-            response = _call_with_retry(
-                self.client.messages.create,
-                model=self.model, max_tokens=max_tokens, system=system_prompt, tools=active_api_tools, messages=messages
-            )
+            request_kwargs = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "system": system_prompt,
+                "messages": messages,
+            }
+            if active_api_tools:
+                request_kwargs["tools"] = active_api_tools
+            response = _call_with_retry(self.client.messages.create, **request_kwargs)
             text_parts = []
             tool_calls = []
             for block in response.content:
@@ -261,9 +266,17 @@ class LLMProvider:
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
             active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
             try:
+                request_kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                }
+                if active_api_tools:
+                    request_kwargs["tools"] = active_api_tools
+                    request_kwargs["parallel_tool_calls"] = False
                 response = _call_with_retry(
                     self.client.chat.completions.create,
-                    model=self.model, messages=messages, tools=active_api_tools, max_tokens=max_tokens, parallel_tool_calls=False
+                    **request_kwargs,
                 )
             except Exception as exc:
                 # MiniMax (and some OpenAI-compatible APIs) return 400 when the conversation
@@ -317,6 +330,12 @@ class LLMProvider:
 
             if message.content:
                 last_nonempty_text = message.content
+
+            if message.tool_calls and not tool_map:
+                if stream_callback and message.content:
+                    stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
+                    stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
+                return last_nonempty_text or "(unexpected tool call without available tools)"
 
             if not message.tool_calls:
                 if required_tool and not required_tool_called and (completion_only or not reminder_sent):
