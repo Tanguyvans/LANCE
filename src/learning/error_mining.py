@@ -56,15 +56,20 @@ FEEDBACK_TASKS = frozenset({
 LEARNING_SPLITS = frozenset({DEV_PUBLIC, "custom"})
 ARTIFACT_NAMES = (
     "01_graph_analysis.md",
+    "01_graph_evidence.json",
     "01_reconnaissance.json",
     "02_recon.md",
     "02_mapping.json",
+    "02_recon_evidence.json",
     "03_vuln_analysis.json",
+    "03_vuln_analysis_raw.json",
     "04_exploitation.json",
     "05_intrusion.json",
     "06_report.md",
     "06_phase6_context.json",
     "tool_calls.jsonl",
+    "deliverable_attempts.jsonl",
+    "model_outputs.jsonl",
 )
 
 

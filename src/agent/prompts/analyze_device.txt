@@ -146,7 +146,7 @@ Add findings that automated extraction CANNOT detect:
   Never change severity, type, or port of automated findings.
 
 ## Output
-Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE with:
+Call save_deliverable("{{expected_deliverable}}", json_content) when complete. If validation rejects it, repair and resubmit in the same conversation:
 
 ```json
 {
@@ -167,6 +167,13 @@ Call save_deliverable("{{expected_deliverable}}", json_content) EXACTLY ONCE wit
 ```
 
 Each vulnerability must have: id, device_id, device_ip, type, severity, service, port, protocol, endpoint, product, version, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools. Use an empty string only when a structural value was not observed; never invent it.
+
+For every known_cve finding, also include cve_validation with:
+- query: the exact product/version query sent to cve_search;
+- compatibility_status: compatible, conditional, indeterminate, or incompatible;
+- compatibility_reason: the tool-provided affected-range rationale;
+- observed_product and observed_version: copied from scan evidence.
+Indeterminate or incompatible candidates may still be described, but label them explicitly; the pipeline preserves them as candidates instead of silently deleting them.
 
 IMPORTANT: Pass RAW JSON to save_deliverable — do NOT wrap in markdown code blocks.
 

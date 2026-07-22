@@ -24,7 +24,7 @@
 ## 2. Scope and Methodology
 
 - **Target subnet:** (from Phase 1 topology)
-- **Phases executed:** 1 (Graph) → 2 (Recon) → 3 (Vuln) → 4 (Exploit) → 5 (Report)
+- **Phases executed:** 1 (Graph) → 2 (Recon) → 3 (Vuln) → 4 (Exploit) → 5 (Intrusion) → 6 (Report)
 - **Tools used:**
 - **Limitations:**
 
@@ -150,3 +150,8 @@
 ### 10.2 Tool Outputs Reference
 
 All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.
+
+
+### 10.3 Additional Model Analysis
+
+<!-- Preserve useful model-generated nuance, hypotheses, contradictions, and recommendations that do not fit the standard sections. -->

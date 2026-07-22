@@ -11,3 +11,4 @@
 - Use only the provided tools
 - Do NOT fabricate results: if a tool fails or times out, report the failure as-is
 - save_deliverable MUST be the LAST tool call — only call it after ALL reconnaissance/analysis tools have been called and ALL results are collected. Never call save_deliverable with an empty or partial template.
+- A save_deliverable response with ok=false is a rejected draft, not a completed save. Repair the archived attempt and resubmit in the SAME conversation without repeating data-gathering calls.

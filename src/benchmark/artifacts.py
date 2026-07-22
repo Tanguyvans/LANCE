@@ -25,14 +25,20 @@ _ALLOWED_ROOT_FILES = frozenset(
     {
         "run_meta.json",
         "01_graph_analysis.md",
+        "01_graph_evidence.json",
         "02_recon.md",
+        "02_recon_evidence.json",
         "02_topology_edges.json",
         "03_vuln_analysis.json",
+        "03_vuln_analysis_raw.json",
         "04_exploitation.json",
         "05_intrusion.json",
         "06_report.md",
+        "06_phase6_context.json",
         "scenario_meta.json",
         "tool_calls.jsonl",
+        "deliverable_attempts.jsonl",
+        "model_outputs.jsonl",
         "cost_summary.json",
     }
 )
@@ -69,6 +75,11 @@ def is_allowed_artifact(path: str | os.PathLike[str]) -> bool:
         return fnmatchcase(parts[1], "*.json")
     if len(parts) == 3 and parts[0] == "04_exploits":
         return fnmatchcase(parts[2], "*.json")
+    if len(parts) == 3 and parts[0] == ".attempts":
+        return (
+            parts[2].startswith("attempt-")
+            and (parts[2].endswith(".json") or parts[2].endswith(".md"))
+        )
     return False
 
 

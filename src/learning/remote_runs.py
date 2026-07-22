@@ -19,11 +19,16 @@ RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 IMPORTABLE_FILES = (
     "scenario_meta.json",
     "run_meta.json",
+    "01_graph_evidence.json",
+    "02_recon_evidence.json",
     "03_vuln_analysis.json",
+    "03_vuln_analysis_raw.json",
     "04_exploitation.json",
     "05_intrusion.json",
     "cost_summary.json",
     "tool_calls.jsonl",
+    "deliverable_attempts.jsonl",
+    "model_outputs.jsonl",
     "06_report.md",
 )
 REQUIRED_FILES = frozenset({"scenario_meta.json", "03_vuln_analysis.json"})

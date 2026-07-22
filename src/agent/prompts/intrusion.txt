@@ -20,12 +20,12 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 - read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context
 - ssh_exec(ip, user, password, command) — run a shell command on a compromised host
 - try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql
-- save_deliverable(filename, content) — save results (call EXACTLY ONCE at the end)
+- save_deliverable(filename, content) — save results; a rejected draft must be repaired in the same conversation
 
 ## Absolute rules
 - NEVER call nmap_scan, ssh_audit, curl_headers, mqtt_listen — scanning is done
 - Call read_deliverable EXACTLY ONCE: read only 05_intrusion_context.json
-- Call save_deliverable EXACTLY ONCE — at the end, with full results
+- Finish with one successful save_deliverable call. If it returns ok=false, repair the archived draft and retry without repeating data gathering
 - TURN BUDGET: 80 turns. Call save_deliverable by turn 72.
 - Do NOT destroy data, reconfigure services, or cause denial of service
 </constraints>
@@ -221,7 +221,7 @@ Build a tree of compromises, not just a linear chain. Example:
 
 ## Phase F — Save results (turn ≤ 72)
 
-Call save_deliverable("{{expected_deliverable}}", raw_json) EXACTLY ONCE.
+Call save_deliverable("{{expected_deliverable}}", raw_json). Completion requires one successful save; repair and retry any rejected draft.
 Pass RAW JSON — do NOT wrap in markdown code blocks.
 </instructions>
 

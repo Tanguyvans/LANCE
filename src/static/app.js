@@ -2484,15 +2484,20 @@ function addLog(ev) {
   }
   else if (t === 'tool_call') {
     fullText = `${ev.name}(${JSON.stringify(ev.args||{}, null, 2)})`;
-    text = `→ ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;
+    text = `[TOOL] → ${ev.name}(${_truncate(JSON.stringify(ev.args||{}), 80)})`;
   }
   else if (t === 'tool_result') {
     fullText = String(ev.result || '');
-    text = `← ${ev.name}: ${_truncate(fullText, 120)}`;
+    text = `[TOOL] ← ${ev.name}: ${_truncate(fullText, 120)}`;
   }
   else if (t === 'text_chunk') {
-    text = ev.text ? _truncate(ev.text, 200) : null;
+    text = ev.text ? `[MODEL] ${_truncate(ev.text, 200)}` : null;
     fullText = ev.text || '';
+  }
+  else if (t === 'deliverable_attempt') {
+    const verdict = ev.valid ? 'accepted' : `rejected: ${ev.validation_error || 'invalid'}`;
+    text = `[VALIDATION] ${ev.filename} attempt ${verdict}`;
+    fullText = ev.attempt_ref || '';
   }
   else if (t === 'device_start')   text = `  ▶ ${ev.device_id} (${ev.device_ip})`;
   else if (t === 'device_done')    text = `  ✓ ${ev.device_id} — ${ev.turns} turns`;
@@ -2619,7 +2624,7 @@ async function pollStatus() {
     'pipeline_start', 'phase_start', 'phase_done',
     'device_start', 'device_done', 'reflector_start', 'reflector_done',
     'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-    'inject_start', 'inject_done', 'error',
+    'inject_start', 'inject_done', 'deliverable_attempt', 'error',
   ]);
   for (const ev of (status.recent_events || [])) {
     if (replayTypes.has(ev.type)) addLog(ev);

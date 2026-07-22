@@ -93,6 +93,14 @@ def test_artifact_allowlist_rejects_traversal_and_oracle_files():
     assert is_allowed_artifact("03_scans/gateway.json") is True
     assert is_allowed_artifact("04_exploits/gateway/v1.json") is True
     assert is_allowed_artifact("06_report.md") is True
+    assert is_allowed_artifact("01_graph_evidence.json") is True
+    assert is_allowed_artifact("02_recon_evidence.json") is True
+    assert is_allowed_artifact("03_vuln_analysis_raw.json") is True
+    assert is_allowed_artifact("deliverable_attempts.jsonl") is True
+    assert is_allowed_artifact("model_outputs.jsonl") is True
+    assert is_allowed_artifact(
+        ".attempts/02_recon.md/attempt-abc.md"
+    ) is True
     assert is_allowed_artifact("scenario_meta.json") is True
     assert is_allowed_artifact("ground_truth.yaml") is False
     assert is_allowed_artifact("ansible_06_verify.log") is False

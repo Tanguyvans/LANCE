@@ -6,6 +6,7 @@ import ipaddress
 import logging
 import re
 import subprocess
+import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -374,6 +375,7 @@ class Pipeline:
         self.target_network = target_network
         self.max_tool_calls: int | None = None
         self._tool_call_count = 0
+        self._artifact_log_lock = threading.Lock()
 
         if self.sealed:
             if execution_context is None:
@@ -621,6 +623,11 @@ class Pipeline:
                 status = self._run_agent(agent_config, stream_callback)
 
             results[agent_config.name] = status
+
+            if agent_config.phase == 1:
+                self._build_graph_evidence_projection()
+            if agent_config.phase == 2:
+                self._build_recon_evidence_projection()
 
             # After Phase 2 in discovery mode, infer topology links via traceroute
             if agent_config.phase == 2 and self.target_network:
@@ -1102,6 +1109,360 @@ class Pipeline:
         text = re.sub(r'\n```\s*$', '', text)
         return text.strip()
 
+    def _model_stream_callback(
+        self,
+        downstream: Callable[[dict], None] | None,
+        *,
+        phase: int | str,
+        agent: str,
+    ) -> Callable[[dict], None]:
+        """Archive complete model text chunks while forwarding live events."""
+        def callback(event: dict) -> None:
+            if event.get("type") == "text_chunk" and event.get("text"):
+                record = {
+                    "timestamp": datetime.now().astimezone().isoformat(),
+                    "phase": phase,
+                    "agent": agent,
+                    "text": event["text"],
+                }
+                with self._artifact_log_lock:
+                    with (self.run_dir / "model_outputs.jsonl").open(
+                        "a", encoding="utf-8"
+                    ) as handle:
+                        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            if downstream:
+                downstream(event)
+        return callback
+
+    def _build_graph_evidence_projection(self) -> dict:
+        """Project graph-tool results into authoritative, model-independent facts."""
+        graph_tools = {
+            "get_network_topology", "get_attack_surface", "get_attack_paths",
+            "get_risk_scores", "get_device_info",
+        }
+        latest: dict[str, dict] = {}
+        device_details: list[dict] = []
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if log_path.exists():
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    entry = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                tool = entry.get("tool", "")
+                if tool not in graph_tools:
+                    continue
+                raw_result = entry.get("result", "")
+                try:
+                    payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    payload = {"unparsed_result": str(raw_result)}
+                observation = {
+                    "payload": payload,
+                    "evidence_ref": entry.get("evidence_ref", ""),
+                    "args": entry.get("args", {}) or {},
+                }
+                if tool == "get_device_info":
+                    device_details.append(observation)
+                else:
+                    latest[tool] = observation
+
+        topology = latest.get("get_network_topology", {}).get("payload", {})
+        if not isinstance(topology, dict):
+            topology = {}
+        nodes = topology.get("nodes", [])
+        edges = topology.get("edges", [])
+        nodes = nodes if isinstance(nodes, list) else []
+        edges = edges if isinstance(edges, list) else []
+
+        surface_payload = latest.get("get_attack_surface", {}).get("payload", [])
+        if isinstance(surface_payload, dict):
+            surface = surface_payload.get("nodes", surface_payload.get("devices", []))
+        else:
+            surface = surface_payload
+        surface = surface if isinstance(surface, list) else []
+        service_count = sum(
+            len(device.get("services", []))
+            for device in surface
+            if isinstance(device, dict) and isinstance(device.get("services", []), list)
+        )
+
+        paths_payload = latest.get("get_attack_paths", {}).get("payload", {})
+        if isinstance(paths_payload, list):
+            attack_paths = paths_payload
+            paths_note = ""
+        elif isinstance(paths_payload, dict):
+            candidate_paths = paths_payload.get(
+                "attack_paths", paths_payload.get("paths", [])
+            )
+            attack_paths = candidate_paths if isinstance(candidate_paths, list) else []
+            paths_note = str(paths_payload.get("note", ""))
+        else:
+            attack_paths = []
+            paths_note = ""
+
+        risk_payload = latest.get("get_risk_scores", {}).get("payload", {})
+        if isinstance(risk_payload, list):
+            risk_scores = risk_payload
+            risk_note = ""
+        elif isinstance(risk_payload, dict):
+            candidate_scores = risk_payload.get(
+                "devices", risk_payload.get("risk_scores", [])
+            )
+            risk_scores = candidate_scores if isinstance(candidate_scores, list) else []
+            risk_note = str(risk_payload.get("note", ""))
+        else:
+            risk_scores = []
+            risk_note = ""
+
+        projection = {
+            "schema_version": "1",
+            "source": "tool_calls.jsonl",
+            "scenario": topology.get("scenario", ""),
+            "subnet": topology.get("subnet", ""),
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "nodes": nodes,
+            "edges": edges,
+            "attack_surface": surface,
+            "service_count": service_count,
+            "attack_paths": attack_paths,
+            "attack_path_count": len(attack_paths),
+            "attack_paths_note": paths_note,
+            "risk_scores": risk_scores,
+            "risk_scores_note": risk_note,
+            "device_details": device_details,
+            "evidence_refs": {
+                tool: observation.get("evidence_ref", "")
+                for tool, observation in latest.items()
+            },
+            "note": (
+                "Deterministic graph-tool projection. Narrative conclusions in "
+                "01_graph_analysis.md must not override these factual counts."
+            ),
+        }
+        (self.run_dir / "01_graph_evidence.json").write_text(
+            json.dumps(projection, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return projection
+
+    def _build_recon_evidence_projection(self) -> dict:
+        """Project raw Recon tool evidence into a compact, lossless-sidecar ledger."""
+        devices: dict[str, dict] = {}
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if log_path.exists():
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    entry = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                tool = entry.get("tool", "")
+                args = entry.get("args", {}) or {}
+                raw_result = entry.get("result", "")
+                try:
+                    payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    payload = {}
+                stdout = str(payload.get("stdout", "")) if isinstance(payload, dict) else ""
+
+                if tool == "arp_scan" and isinstance(payload, dict):
+                    for host in payload.get("hosts", []):
+                        ip = str(host.get("ip", "")).strip()
+                        if not ip:
+                            continue
+                        row = devices.setdefault(ip, {
+                            "ip": ip, "device": "", "sources": [],
+                            "open_ports": [], "services": [], "failures": [],
+                        })
+                        row["mac"] = host.get("mac", "")
+                        row["vendor"] = host.get("vendor", "")
+                        row["sources"].append("arp_scan")
+
+                discovered_ips = []
+                if tool == "nmap_discovery":
+                    discovered_ips = re.findall(
+                        r"Nmap scan report for (?:[^\n(]+ \()?((?:\d{1,3}\.){3}\d{1,3})",
+                        stdout,
+                    )
+                for ip in discovered_ips:
+                    row = devices.setdefault(ip, {
+                        "ip": ip, "device": "", "sources": [],
+                        "open_ports": [], "services": [], "failures": [],
+                    })
+                    row["sources"].append("nmap_discovery")
+
+                if tool == "nmap_scan":
+                    target = str(args.get("target", "")).strip()
+                    if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", target):
+                        continue
+                    row = devices.setdefault(target, {
+                        "ip": target, "device": "", "sources": [],
+                        "open_ports": [], "services": [], "failures": [],
+                    })
+                    row["sources"].append("nmap_scan")
+                    for match in re.finditer(
+                        r"(?m)^(\d+)/(tcp|udp)\s+open\s+(\S+)(?:\s+(.*))?$",
+                        stdout,
+                    ):
+                        port = int(match.group(1))
+                        protocol = match.group(2)
+                        service = match.group(3)
+                        version = (match.group(4) or "").strip()
+                        if port not in row["open_ports"]:
+                            row["open_ports"].append(port)
+                        observation = {
+                            "port": port, "protocol": protocol,
+                            "service": service, "version": version,
+                        }
+                        if observation not in row["services"]:
+                            row["services"].append(observation)
+                    if isinstance(payload, dict) and payload.get("return_code") not in (None, 0):
+                        row["failures"].append(str(payload.get("stderr") or "scan failed"))
+
+        try:
+            from src.agent.tools.graph_tools import _scenario_topology
+            nodes = (_scenario_topology or {}).get("nodes", [])
+            names = {str(node.get("ip")): node.get("id", "") for node in nodes}
+        except Exception:
+            names = {}
+        for ip, row in devices.items():
+            row["device"] = names.get(ip, row.get("device", ""))
+            row["sources"] = sorted(set(row["sources"]))
+            row["open_ports"] = sorted(set(row["open_ports"]))
+
+        rows = sorted(devices.values(), key=lambda item: ipaddress.ip_address(item["ip"]))
+        markdown_rows = [
+            "| {device} | {ip} | {ports} | {services} |".format(
+                device=row.get("device") or "undocumented",
+                ip=row["ip"],
+                ports=",".join(str(port) for port in row["open_ports"]) or "unreachable",
+                services=", ".join(
+                    f"{service['service']}:{service['port']}"
+                    + (f" {service['version']}" if service["version"] else "")
+                    for service in row["services"]
+                ) or "none observed",
+            )
+            for row in rows
+        ]
+        projection = {
+            "schema_version": "1",
+            "source": "tool_calls.jsonl",
+            "device_count": len(rows),
+            "devices": rows,
+            "markdown_service_rows": markdown_rows,
+            "note": (
+                "Deterministic evidence projection; model narrative remains in "
+                "02_recon.md and raw outputs remain in tool_calls.jsonl."
+            ),
+        }
+        (self.run_dir / "02_recon_evidence.json").write_text(
+            json.dumps(projection, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return projection
+
+    def _apply_deliverable_transaction(
+        self,
+        tools: list[dict],
+        config: AgentConfig,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> list[dict]:
+        """Validate and archive every model submission before final promotion.
+
+        Invalid attempts remain immutable evidence and are returned to the model
+        as tool errors. The terminal tool therefore only ends the same
+        conversation after a structurally valid submission.
+        """
+        wrapped: list[dict] = []
+        for tool in tools:
+            if tool["name"] != "save_deliverable":
+                wrapped.append(tool)
+                continue
+
+            original = tool["function"]
+
+            def transactional_save(
+                filename: str | None = None,
+                content: str = "",
+                *,
+                _original=original,
+            ) -> str:
+                target = filename or config.deliverable_file
+                if target != config.deliverable_file:
+                    return json.dumps({
+                        "ok": False,
+                        "error_kind": "unexpected_deliverable",
+                        "error": (
+                            f"This phase must save '{config.deliverable_file}', "
+                            f"not '{target}'."
+                        ),
+                    })
+                if not isinstance(content, str) or not content.strip():
+                    return json.dumps({
+                        "ok": False,
+                        "error_kind": "empty_deliverable",
+                        "error": "Deliverable content must be non-empty.",
+                    })
+
+                normalized = _extract_json(content) if target.endswith(".json") else content
+                safe_name = target.replace("/", "__").replace("\\", "__")
+                attempt_dir = self.run_dir / ".attempts" / safe_name
+                attempt_dir.mkdir(parents=True, exist_ok=True)
+                suffix = Path(target).suffix or ".txt"
+                attempt_path = attempt_dir / f"attempt-{uuid4().hex}{suffix}"
+                attempt_path.write_text(normalized, encoding="utf-8")
+                attempt_ref = attempt_path.relative_to(self.run_dir).as_posix()
+
+                validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+                valid, validation_error = validator_fn(attempt_ref)
+                entry = {
+                    "timestamp": datetime.now().astimezone().isoformat(),
+                    "phase": config.phase,
+                    "agent": config.name,
+                    "filename": target,
+                    "attempt_ref": attempt_ref,
+                    "size": len(normalized),
+                    "valid": valid,
+                    "validation_error": None if valid else validation_error,
+                }
+                with self._artifact_log_lock:
+                    with (self.run_dir / "deliverable_attempts.jsonl").open(
+                        "a", encoding="utf-8"
+                    ) as handle:
+                        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                if stream_callback:
+                    stream_callback({"type": "deliverable_attempt", **entry})
+                if not valid:
+                    error_payload = {
+                        "ok": False,
+                        "error_kind": "deliverable_validation",
+                        "error": validation_error,
+                        "attempt_ref": attempt_ref,
+                        "instruction": (
+                            "Repair this archived draft and call save_deliverable "
+                            "again. Do not repeat reconnaissance calls."
+                        ),
+                    }
+                    if config.name == "recon":
+                        projection = self._build_recon_evidence_projection()
+                        error_payload["repair_context"] = {
+                            "device_count": projection["device_count"],
+                            "markdown_service_rows": projection["markdown_service_rows"],
+                        }
+                    return json.dumps(error_payload, ensure_ascii=False)
+
+                result = _original(filename=target, content=normalized)
+                try:
+                    payload = json.loads(result)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    return result
+                if isinstance(payload, dict):
+                    payload["attempt_ref"] = attempt_ref
+                    payload["validated"] = True
+                return json.dumps(payload, ensure_ascii=False)
+
+            wrapped.append({**tool, "function": transactional_save})
+        return wrapped
+
     def _run_agent(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
         # Set skill filter for this phase (hard filtering)
@@ -1109,6 +1470,7 @@ class Pipeline:
         set_skill_filter(filter_tags)
 
         tools = self._resolve_tools(config)
+        tools = self._apply_deliverable_transaction(tools, config, stream_callback)
 
         # Build prompt variables
         variables = {**self.context}
@@ -1127,7 +1489,7 @@ class Pipeline:
         template_path = Path(__file__).parent / "templates" / config.deliverable_file
         if template_path.exists():
             template = template_path.read_text(encoding="utf-8")
-            template = template.replace("{{run_date}}", self.run_dir.name)
+            template = template.replace("{{run_date}}", datetime.now().astimezone().date().isoformat())
             template = template.replace("{{model}}", self.provider.model)
             variables["deliverable_template"] = template
 
@@ -1193,7 +1555,10 @@ class Pipeline:
             # Deterministic aggregation already wrote 04_exploitation.json
             validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
             valid, msg = validator_fn(config.deliverable_file)
-            status = "completed" if valid else f"failed:{msg}"
+            if valid:
+                status = getattr(self, "_phase4_execution_status", None) or "completed"
+            else:
+                status = f"failed:{msg}"
             if valid:
                 log.info("Phase %d exploit aggregation validated: %s", config.phase, msg)
                 print(f"  Deliverable validated: {config.deliverable_file}")
@@ -1221,7 +1586,9 @@ class Pipeline:
             max_turns=config.max_turns,
             max_tokens=config.max_tokens,
             cost_tracker=self.tracker,
-            stream_callback=stream_callback,
+            stream_callback=self._model_stream_callback(
+                stream_callback, phase=config.phase, agent=config.name
+            ),
             required_tool="save_deliverable",
             terminate_after_tool="save_deliverable",
             # Recon has its own topology-aware progress contract.  The generic
@@ -1230,29 +1597,7 @@ class Pipeline:
         )
         # usage will be recorded after validation
 
-        # Fallback: if the LLM never called save_deliverable, save its last text output.
-        # Exclude sentinel strings returned by the provider loop when turns are exhausted.
-        _SENTINEL_OUTPUTS: frozenset[str] = frozenset({
-            "(max turns reached)",
-            "(malformed tool call JSON — max retries)",
-        })
         deliverable_path = self.run_dir / config.deliverable_file
-        if (not deliverable_path.exists()
-                and result_text
-                and result_text.strip()
-                and result_text.strip() not in _SENTINEL_OUTPUTS):
-            # Strip fences first — a fence-only output (```json\n```) collapses to
-            # empty, and writing it would create a 0-byte file that masks a clean
-            # "missing deliverable" state with a confusing "Invalid JSON (char 0)".
-            fallback_content = self._strip_code_fences(result_text)
-            if fallback_content.strip():
-                log.warning(
-                    "Phase %d: save_deliverable was never called — saving last LLM output as fallback",
-                    config.phase,
-                )
-                deliverable_path.write_text(fallback_content, encoding="utf-8")
-                print(f"  Fallback save: {config.deliverable_file}")
-                self.tracker.record_format_attempt(fallback_used=True)
 
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
@@ -1278,41 +1623,8 @@ class Pipeline:
             print(f"  Deliverable FAILED validation: {msg}")
             print(f"  LLM final output: {result_text[:500]}")
 
-            # Reflector retry for main agent
-            log.warning("Phase %d: reflector retry — prompting for save_deliverable", config.phase)
-            retry_msg = (
-                f"Your deliverable '{config.deliverable_file}' is missing or invalid.\n"
-                f"Validation error: {msg}\n\n"
-                f"Based on all the tool calls you already made in this session, "
-                f"call save_deliverable('{config.deliverable_file}', content) NOW with the complete content.\n"
-                f"Do NOT run any more tools. Write and save the deliverable immediately."
-            )
-            if result_text and result_text.strip():
-                retry_msg += f"\n\nYour last output was:\n{result_text[:2000]}"
-            self.tracker.start_phase(f"reflector_{config.name}")
-            self.provider.chat_with_tools(
-                system_prompt=system_prompt,
-                user_message=retry_msg,
-                tools=tools,
-                max_turns=5,
-                max_tokens=config.max_tokens,
-                cost_tracker=self.tracker,
-                stream_callback=stream_callback,
-                required_tool="save_deliverable",
-                terminate_after_tool="save_deliverable",
-            )
-            # Re-validate after reflector
-            valid, msg = validator_fn(config.deliverable_file)
-            if hasattr(self, "tracker") and self.tracker:
-                self.tracker.record_validation_result(success=valid)
-            self.tracker.end_phase()
-            
-            status = "completed" if valid else f"failed:{msg}"
-            if valid:
-                log.info("Phase %d reflector validated: %s", config.phase, msg)
-                print(f"  Reflector validated: {config.deliverable_file}")
-            else:
-                log.error("Phase %d reflector FAILED: %s", config.phase, msg)
+        if config.name == "recon":
+            self._build_recon_evidence_projection()
 
         if stream_callback:
             stream_callback({
@@ -1560,6 +1872,17 @@ class Pipeline:
                     "device_ip": device_ip, "phase": 3,
                 })
 
+            device_config = AgentConfig(
+                name=f"analyze_{device_id}",
+                phase=3,
+                prompt_template="analyze_device",
+                deliverable_file=deliverable_file,
+                tools=[],
+                validator="json_valid",
+            )
+            device_tools = self._apply_deliverable_transaction(
+                analysis_tools, device_config, stream_callback
+            )
             self.tracker.start_phase(f"analyze_{device_id}")
             result_text = self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -1568,11 +1891,13 @@ class Pipeline:
                     f"Add confirmed CVE, data exposure, authorization, identity, update, and protocol findings. "
                     f"Then call save_deliverable('{deliverable_file}', json_content)."
                 ),
-                tools=analysis_tools,
+                tools=device_tools,
                 max_turns=EXPLOIT_MAX_TURNS,
                 max_tokens=EXPLOIT_MAX_TOKENS,
                 cost_tracker=self.tracker,
-                stream_callback=stream_callback,
+                stream_callback=self._model_stream_callback(
+                    stream_callback, phase=3, agent=f"analyze_{device_id}"
+                ),
                 required_tool="save_deliverable",
                 terminate_after_tool="save_deliverable",
             )
@@ -1674,13 +1999,101 @@ class Pipeline:
 
     # ------------------------------------------------------------------
 
+    def _load_cve_search_evidence(self) -> dict[tuple[str, str], dict]:
+        """Index deterministic CVE compatibility results from the raw tool ledger."""
+        evidence: dict[tuple[str, str], dict] = {}
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if not log_path.exists():
+            return evidence
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(line)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if entry.get("tool") != "cve_search":
+                continue
+            query = str((entry.get("args") or {}).get("query", "")).strip()
+            if not query:
+                continue
+            raw_result = entry.get("result", "")
+            try:
+                results = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if not isinstance(results, list):
+                continue
+            for item in results:
+                if not isinstance(item, dict):
+                    continue
+                metadata = item.get("metadata")
+                metadata = metadata if isinstance(metadata, dict) else {}
+                cve_id = str(
+                    item.get("cve_id") or item.get("id")
+                    or metadata.get("cve_id") or metadata.get("id") or ""
+                ).upper()
+                if not re.fullmatch(r"CVE-\d{4}-\d{4,}", cve_id):
+                    continue
+                compatibility = item.get("compatibility")
+                compatibility = compatibility if isinstance(compatibility, dict) else {}
+                status = str(
+                    compatibility.get("status")
+                    or item.get("compatibility_status")
+                    or metadata.get("compatibility_status")
+                    or "indeterminate"
+                ).casefold()
+                reason = str(
+                    compatibility.get("reason")
+                    or item.get("compatibility_reason")
+                    or metadata.get("compatibility_reason")
+                    or ""
+                )
+                evidence[(query.casefold(), cve_id)] = {
+                    "status": status,
+                    "reason": reason,
+                    "evidence_ref": entry.get("evidence_ref", ""),
+                }
+        return evidence
+
     def _aggregate_device_vulns(
         self,
         config: AgentConfig,
         stream_callback: Callable[[dict], None] | None = None,
     ) -> None:
-        """Merge all 03_device_*.json files into 03_vuln_analysis.json deterministically."""
+        """Build a canonical queue without destroying model-produced findings.
+
+        03_vuln_analysis_raw.json is the append-only information layer:
+        every candidate and every normalization/filter/dedup decision remains
+        inspectable. 03_vuln_analysis.json stays backward-compatible and is
+        the canonical projection consumed by exploitation and evaluation.
+        """
         all_vulns: list[dict] = []
+        raw_records: list[dict] = []
+        candidate_seq = 0
+
+        def add_candidates(vulns: list, source_file: str, source_kind: str) -> None:
+            nonlocal candidate_seq
+            for source_index, raw in enumerate(vulns):
+                candidate_seq += 1
+                candidate_id = f"CAND-{candidate_seq:04d}"
+                record = {
+                    "candidate_id": candidate_id,
+                    "source_file": source_file,
+                    "source_kind": source_kind,
+                    "source_index": source_index,
+                    "raw_finding": raw,
+                    "accepted_for_canonical": False,
+                    "decision": "pending",
+                    "decision_reason": "",
+                    "canonical_finding_id": None,
+                }
+                raw_records.append(record)
+                if not isinstance(raw, dict):
+                    record["decision"] = "rejected_malformed"
+                    record["decision_reason"] = "finding is not an object"
+                    continue
+                working = json.loads(json.dumps(raw, ensure_ascii=False, default=str))
+                working["_candidate_id"] = candidate_id
+                all_vulns.append(working)
 
         for f in sorted(self.run_dir.glob("03_device_*.json")):
             try:
@@ -1692,17 +2105,18 @@ class Pipeline:
                     vulns = data
                 else:
                     vulns = []
-                all_vulns.extend(vulns)
-            except Exception as e:
-                log.warning("Failed to parse %s: %s — falling back to scanner findings", f.name, e)
-                # Fallback: regenerate trivial findings from 03_scans/{device_id}.json
+                add_candidates(vulns if isinstance(vulns, list) else [], f.name, "model")
+            except Exception as exc:
+                log.warning(
+                    "Failed to parse %s: %s — falling back to scanner findings",
+                    f.name, exc,
+                )
                 device_id = f.stem.replace("03_device_", "")
                 scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
                 if scan_path.exists():
                     try:
                         from src.agent.scanner import extract_findings
                         scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
-                        # Look up device info from attack surface to get the correct role
                         surface = json.loads(get_attack_surface())
                         if isinstance(surface, dict):
                             surface = surface.get("nodes", [])
@@ -1711,115 +2125,217 @@ class Pipeline:
                             {"id": device_id, "ip": "", "role": ""},
                         )
                         recovered = extract_findings(scan_data, fallback_device)
-                        log.warning("Recovered %d findings for %s from scanner", len(recovered), device_id)
-                        all_vulns.extend(recovered)
-                    except Exception as e2:
-                        log.error("Scanner fallback also failed for %s: %s", device_id, e2)
+                        add_candidates(recovered, scan_path.name, "scanner_fallback")
+                        log.warning(
+                            "Recovered %d findings for %s from scanner",
+                            len(recovered), device_id,
+                        )
+                    except Exception as fallback_exc:
+                        log.error(
+                            "Scanner fallback also failed for %s: %s",
+                            device_id, fallback_exc,
+                        )
 
-        # Normalize taxonomy and deterministically enrich strict-v3 structure.
-        for v in all_vulns:
-            v["type"] = canonicalize(v.get("type", ""))
-            _enrich_finding_structure(v)
+        records_by_id = {r["candidate_id"]: r for r in raw_records}
+        cve_search_evidence = self._load_cve_search_evidence()
 
-        # Normalize port to int so that port=22 and port="22" share the same dedup key
-        for v in all_vulns:
-            p = v.get("port")
-            if isinstance(p, str) and p.isdigit():
-                v["port"] = int(p)
+        for finding in all_vulns:
+            finding["type"] = canonicalize(finding.get("type", ""))
+            _enrich_finding_structure(finding)
+            port = finding.get("port")
+            if isinstance(port, str) and port.isdigit():
+                finding["port"] = int(port)
+            if finding.get("type") == "known_cve":
+                validation = finding.get("cve_validation")
+                validation = validation if isinstance(validation, dict) else {}
+                query = str(validation.get("query", "")).strip().casefold()
+                claimed_ids = [
+                    str(cve_id).upper()
+                    for cve_id in finding.get("cve_ids", [])
+                    if re.fullmatch(r"CVE-\d{4}-\d{4,}", str(cve_id).upper())
+                ]
+                assessments = {
+                    cve_id: cve_search_evidence.get((query, cve_id))
+                    for cve_id in claimed_ids
+                }
+                compatible_ids = [
+                    cve_id for cve_id, assessment in assessments.items()
+                    if assessment and assessment.get("status") == "compatible"
+                ]
+                observed_statuses = {
+                    assessment.get("status")
+                    for assessment in assessments.values()
+                    if assessment
+                }
+                if compatible_ids:
+                    claim_status = "validated"
+                    finding["cve_ids"] = compatible_ids
+                    finding["accepted_for_scoring"] = True
+                elif "conditional" in observed_statuses:
+                    claim_status = "conditional"
+                    finding["accepted_for_scoring"] = False
+                elif "indeterminate" in observed_statuses:
+                    claim_status = "uncertain"
+                    finding["accepted_for_scoring"] = False
+                elif observed_statuses and observed_statuses == {"incompatible"}:
+                    claim_status = "incompatible"
+                    finding["accepted_for_scoring"] = False
+                else:
+                    claim_status = "unverified"
+                    finding["accepted_for_scoring"] = False
+                finding["cve_claim_status"] = claim_status
+                finding["cve_tool_evidence"] = {
+                    cve_id: assessment
+                    for cve_id, assessment in assessments.items()
+                    if assessment
+                }
+            record = records_by_id[finding["_candidate_id"]]
+            record["normalized"] = {
+                key: finding.get(key)
+                for key in (
+                    "device_id", "device_ip", "type", "severity", "service",
+                    "port", "protocol", "endpoint", "product", "version",
+                )
+            }
 
-        # Remap device_id for "discovered-X-X-X-X" devices to their canonical s12 counterpart
-        # when both share the same IP — prevents duplicate findings with different device_ids.
         try:
             surface_raw = json.loads(get_attack_surface())
             surface_nodes = surface_raw.get("nodes", []) if isinstance(surface_raw, dict) else []
-            ip_to_s12_id: dict[str, str] = {
+            ip_to_s12_id = {
                 d["ip"]: d["id"]
                 for d in surface_nodes
                 if d.get("id", "").startswith("s12-") and d.get("ip")
             }
-            for v in all_vulns:
-                if v.get("device_id", "").startswith("discovered-"):
-                    canonical = ip_to_s12_id.get(v.get("device_ip", ""))
+            for finding in all_vulns:
+                if finding.get("device_id", "").startswith("discovered-"):
+                    canonical = ip_to_s12_id.get(finding.get("device_ip", ""))
                     if canonical:
-                        v["device_id"] = canonical
-        except Exception as e:
-            log.debug("device_id remap skipped: %s", e)
+                        finding["device_id"] = canonical
+        except Exception as exc:
+            log.debug("device_id remap skipped: %s", exc)
 
-        # Drop noise findings: categorically-non-vuln types (e.g. "no_applicable_cve",
-        # "cross_service_auth" — LLM over-reporting) and INFO severity (reserved for
-        # metadata, never a real finding).
-        filtered: list[dict] = []
-        for v in all_vulns:
-            vuln_type = v.get("type", "")
+        eligible: list[dict] = []
+        for finding in all_vulns:
+            record = records_by_id[finding["_candidate_id"]]
+            vuln_type = finding.get("type", "")
             if is_noise(vuln_type):
-                log.info(
-                    "Dropping noise type %s on %s (not a real vulnerability)",
-                    vuln_type, v.get("device_ip", "?"),
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = "taxonomy marks this as a non-finding/noise type"
+                continue
+            if (finding.get("severity") or "").upper() == "INFO":
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = "INFO is retained as metadata, not scored as a vulnerability"
+                continue
+            if (
+                vuln_type == "known_cve"
+                and finding.get("accepted_for_scoring") is not True
+            ):
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = (
+                    "CVE claim is not corroborated as compatible by the archived "
+                    f"cve_search result ({finding.get('cve_claim_status', 'unverified')})"
                 )
                 continue
-            if (v.get("severity") or "").upper() == "INFO":
-                log.info(
-                    "Dropping INFO severity finding %s on %s",
-                    vuln_type, v.get("device_ip", "?"),
-                )
-                continue
-            filtered.append(v)
-        all_vulns = filtered
+            eligible.append(finding)
 
-        # Deduplicate: same (device_ip, type, port) → keep the finding with the
-        # LOWEST severity. LLMs tend to inflate severity (e.g. HIGH for a finding
-        # the GT lists as MEDIUM), so the lower-severity finding is statistically
-        # closer to the ground truth. This avoids introducing severity mismatches
-        # when two LLM findings that describe the same vuln collide under an alias.
-        _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
+        severity_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
 
-        def _severity_rank(v: dict) -> int:
-            return _SEVERITY_RANK.get((v.get("severity") or "").lower(), 0)
-
-        def _is_confirmed(v: dict) -> bool:
-            return (v.get("exploitation_status") or "").lower() == "confirmed"
-
-        best_by_key: dict[tuple, dict] = {}
-        for v in all_vulns:
-            key = (
-                v.get("device_ip", ""), v.get("type", ""), v.get("service", ""),
-                v.get("port"), v.get("protocol", ""), v.get("endpoint", ""),
-                v.get("product", ""),
+        def finding_quality(finding: dict) -> tuple[int, int, int, int]:
+            """Prefer evidence and confirmation; severity is only a final tie-break."""
+            confirmed = int(
+                (finding.get("exploitation_status") or "").casefold() == "confirmed"
             )
-            existing = best_by_key.get(key)
-            if existing is None:
-                best_by_key[key] = v
-            elif _severity_rank(v) < _severity_rank(existing):
-                best_by_key[key] = v
-            elif _severity_rank(v) == _severity_rank(existing):
-                # Same severity: prefer confirmed over suspected to avoid Phase 4 FAILED
-                # excluding a finding that was legitimately confirmed by the LLM agent.
-                if _is_confirmed(v) and not _is_confirmed(existing):
-                    best_by_key[key] = v
-        deduped = list(best_by_key.values())
+            evidence = str(finding.get("evidence") or "")
+            traceability = int(bool(finding.get("evidence_ref") or finding.get("evidence_refs")))
+            detail_size = len(evidence) + len(str(finding.get("details") or ""))
+            severity = severity_rank.get((finding.get("severity") or "").casefold(), 0)
+            return confirmed, traceability, detail_size, severity
 
-        # Special dedup: if device has both directory_listing for /firmware/ and insecure_update → drop directory_listing
+        groups: dict[tuple, list[dict]] = {}
+        for finding in eligible:
+            key = (
+                finding.get("device_ip", ""), finding.get("type", ""),
+                finding.get("service", ""), finding.get("port"),
+                finding.get("protocol", ""), finding.get("endpoint", ""),
+                finding.get("product", ""),
+            )
+            groups.setdefault(key, []).append(finding)
+
+        deduped: list[dict] = []
+        for candidates in groups.values():
+            chosen = max(candidates, key=finding_quality)
+            candidate_ids = [item["_candidate_id"] for item in candidates]
+            chosen["_provenance"] = {
+                "selected_candidate_id": chosen["_candidate_id"],
+                "candidate_ids": candidate_ids,
+                "raw_projection": "03_vuln_analysis_raw.json",
+            }
+            deduped.append(chosen)
+            for item in candidates:
+                record = records_by_id[item["_candidate_id"]]
+                if item is chosen:
+                    record["accepted_for_canonical"] = True
+                    record["decision"] = "selected"
+                    record["decision_reason"] = (
+                        "best evidence/confirmation quality in canonical duplicate group"
+                    )
+                else:
+                    record["decision"] = "deduplicated"
+                    record["decision_reason"] = (
+                        f"represented by {chosen['_candidate_id']}; raw candidate preserved"
+                    )
+
         devices_with_insecure_update = {
-            v.get("device_ip") for v in deduped if v.get("type") == "insecure_update"
+            finding.get("device_ip")
+            for finding in deduped
+            if finding.get("type") == "insecure_update"
         }
         final: list[dict] = []
-        for v in deduped:
-            if (v.get("type") == "directory_listing"
-                    and v.get("device_ip") in devices_with_insecure_update
-                    and "/firmware" in v.get("details", "").lower()):
+        for finding in deduped:
+            if (
+                finding.get("type") == "directory_listing"
+                and finding.get("device_ip") in devices_with_insecure_update
+                and "/firmware" in str(finding.get("details", "")).casefold()
+            ):
+                record = records_by_id[finding["_candidate_id"]]
+                record["accepted_for_canonical"] = False
+                record["decision"] = "represented_by_stronger_finding"
+                record["decision_reason"] = (
+                    "firmware directory observation represented by insecure_update"
+                )
                 continue
-            final.append(v)
+            final.append(finding)
 
-        # Renumber IDs sequentially
-        for i, v in enumerate(final, 1):
-            v["id"] = f"VULN-{i:03d}"
+        for index, finding in enumerate(final, 1):
+            finding_id = f"VULN-{index:03d}"
+            finding["id"] = finding_id
+            for candidate_id in finding["_provenance"]["candidate_ids"]:
+                records_by_id[candidate_id]["canonical_finding_id"] = finding_id
+            finding.pop("_candidate_id", None)
 
-        # Compute summary
-        severity_counts = {"high": 0, "medium": 0, "low": 0, "info": 0, "critical": 0}
-        for v in final:
-            sev = (v.get("severity") or "").lower()
-            if sev in severity_counts:
-                severity_counts[sev] += 1
+        severity_counts = {
+            "high": 0, "medium": 0, "low": 0, "info": 0, "critical": 0,
+        }
+        for finding in final:
+            severity = (finding.get("severity") or "").casefold()
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+
+        raw_projection = {
+            "schema_version": "1",
+            "policy": (
+                "Information-preserving candidate registry. Exclusion from the "
+                "canonical queue never deletes the model output."
+            ),
+            "candidate_count": len(raw_records),
+            "canonical_count": len(final),
+            "candidates": raw_records,
+        }
+        raw_path = self.run_dir / "03_vuln_analysis_raw.json"
+        raw_path.write_text(
+            json.dumps(raw_projection, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         result = {
             "vulnerabilities": final,
@@ -1831,14 +2347,23 @@ class Pipeline:
                 "medium": severity_counts["medium"],
                 "low": severity_counts["low"],
                 "info": severity_counts["info"],
+                "raw_candidates": len(raw_records),
+                "raw_projection": raw_path.name,
             },
         }
 
         out_path = self.run_dir / "03_vuln_analysis.json"
-        out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"  Aggregated {len(all_vulns)} device vulns → {len(final)} after dedup → 03_vuln_analysis.json")
-        log.info("Deterministic aggregation: %d vulns → %d deduped → %s",
-                 len(all_vulns), len(final), out_path)
+        out_path.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        print(
+            f"  Aggregated {len(raw_records)} raw candidates → {len(final)} canonical "
+            "findings → 03_vuln_analysis.json"
+        )
+        log.info(
+            "Information-preserving aggregation: %d candidates → %d canonical → %s",
+            len(raw_records), len(final), out_path,
+        )
 
     # ------------------------------------------------------------------
     # Phase 4: per-vuln exploit micro-agents
@@ -1864,20 +2389,46 @@ class Pipeline:
 
         # 2. Filter vulns that need an exploit agent
         exploit_tasks: list[dict] = []
+        skipped_candidates: list[dict] = []
         for vuln in all_vulns:
             vuln_type = vuln.get("type", "")
+            if vuln.get("accepted_for_scoring") is False:
+                skipped_candidates.append({
+                    "vuln_id": vuln.get("id", ""),
+                    "type": vuln_type,
+                    "reason": "unvalidated_claim",
+                })
+                continue
             if is_config_only(vuln_type):
+                skipped_candidates.append({
+                    "vuln_id": vuln.get("id", ""),
+                    "type": vuln_type,
+                    "reason": "configuration_or_detection_only",
+                })
                 continue
             category = exploit_category(vuln_type)
             if not category:
+                skipped_candidates.append({
+                    "vuln_id": vuln.get("id", ""),
+                    "type": vuln_type,
+                    "reason": "no_safe_exploit_route",
+                })
                 continue
-            exploit_tasks.append({
-                "vuln": vuln,
-                "category": category,
-            })
+            exploit_tasks.append({"vuln": vuln, "category": category})
 
+        self._phase4_schedule = {
+            "candidate_count": len(all_vulns),
+            "scheduled_count": len(exploit_tasks),
+            "scheduled_vuln_ids": [
+                task["vuln"].get("id", "") for task in exploit_tasks
+            ],
+            "skipped_count": len(skipped_candidates),
+            "skipped_candidates": skipped_candidates,
+        }
+        self._phase4_execution_status = None
         if not exploit_tasks:
-            log.info("Phase 4: no exploitable vulns found — skipping exploit agents")
+            self._phase4_execution_status = "skipped:no_safely_exploitable_candidates"
+            log.info("Phase 4: no safely exploitable candidates — skipping agents")
             self._aggregate_exploit_results()
             return
 
@@ -1943,6 +2494,17 @@ class Pipeline:
 
             system_prompt = load_prompt("exploit_device_vuln", variables)
             phase_name = f"exploit_{device_id}_{vuln_type}"
+            exploit_config = AgentConfig(
+                name=phase_name,
+                phase=4,
+                prompt_template="exploit_device_vuln",
+                deliverable_file=deliverable_file,
+                tools=[],
+                validator="json_exploit_result",
+            )
+            exploit_tools = self._apply_deliverable_transaction(
+                tools, exploit_config, stream_callback
+            )
 
             print(f"  [+] Starting: {phase_name} ({device_ip})")
             if stream_callback:
@@ -1978,31 +2540,19 @@ class Pipeline:
                             f"Service: {service} port {port}. "
                             f"Call save_deliverable('{deliverable_file}', json_content) when done."
                         ),
-                        tools=tools,
+                        tools=exploit_tools,
                         max_turns=INTRUSION_MAX_TURNS,
                         max_tokens=INTRUSION_MAX_TOKENS,
                         cost_tracker=self.tracker,
-                        stream_callback=stream_callback,
+                        stream_callback=self._model_stream_callback(
+                            stream_callback, phase=4, agent=phase_name
+                        ),
                         required_tool="save_deliverable",
                         terminate_after_tool="save_deliverable",
                     )
                 finally:
                     self._exploit_tool_context.vulnerability = None
 
-
-            # Fallback: if save_deliverable was never called, try to extract JSON from the text
-            deliverable_path = self.run_dir / deliverable_file
-            if not deliverable_path.exists() and result_text and result_text.strip():
-                log.warning("Exploit %s: save_deliverable not called — saving fallback", phase_name)
-                deliverable_path.parent.mkdir(parents=True, exist_ok=True)
-                fallback = _extract_json(result_text)
-                # Only write if fallback is valid JSON, otherwise let the safety net handle it
-                try:
-                    json.loads(fallback)
-                    deliverable_path.write_text(fallback, encoding="utf-8")
-                    self.tracker.record_format_attempt(fallback_used=True)
-                except (json.JSONDecodeError, ValueError):
-                    log.warning("Exploit %s: fallback content is not valid JSON — letting safety net write ERROR", phase_name)
 
             usage = self.tracker.end_phase()
             if usage:
@@ -2577,6 +3127,17 @@ class Pipeline:
 
             system_prompt = load_prompt("analyze_device", variables)
             phase_name = f"followup_{device_id}"
+            followup_config = AgentConfig(
+                name=phase_name,
+                phase=3,
+                prompt_template="analyze_device",
+                deliverable_file=deliverable_file,
+                tools=[],
+                validator="json_valid",
+            )
+            followup_tools = self._apply_deliverable_transaction(
+                analysis_tools, followup_config, stream_callback
+            )
             self.tracker.start_phase(phase_name)
             self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -2584,11 +3145,13 @@ class Pipeline:
                     f"Analyze vulnerabilities for newly discovered host {ip}. "
                     f"MANDATORY: call save_deliverable('{deliverable_file}', json_content) before finishing."
                 ),
-                tools=analysis_tools,
+                tools=followup_tools,
                 max_turns=config.max_turns,
                 max_tokens=config.max_tokens,
                 cost_tracker=self.tracker,
-                stream_callback=stream_callback,
+                stream_callback=self._model_stream_callback(
+                    stream_callback, phase="3.5", agent=phase_name
+                ),
                 required_tool="save_deliverable",
                 terminate_after_tool="save_deliverable",
             )
@@ -2649,20 +3212,41 @@ class Pipeline:
                 tools_used=tools_by_vuln.get(str(vuln.get("id", "")), []),
             ))
 
-        confirmed = sum(1 for t in tests if t["status"] == "CONFIRMED")
-        failed = sum(1 for t in tests if t["status"] == "FAILED")
-        errors = len(tests) - confirmed - failed
+        scheduled_ids = set(
+            getattr(self, "_phase4_schedule", {}).get(
+                "scheduled_vuln_ids", [t.get("vuln_id", "") for t in tests]
+            )
+        )
+        executed_tests = [
+            test for test in tests if test.get("vuln_id", "") in scheduled_ids
+        ]
+        confirmed = sum(1 for test in executed_tests if test["status"] == "CONFIRMED")
+        failed = sum(1 for test in executed_tests if test["status"] == "FAILED")
+        errors = len(executed_tests) - confirmed - failed
 
         out_path = self.run_dir / "04_exploitation.json"
         out_path.write_text(
             json.dumps(
                 {
                     "summary": {
-                        "total_tested": len(tests),
+                        "total_tested": getattr(
+                            self, "_phase4_schedule", {}
+                        ).get("scheduled_count", len(tests)),
+                        "candidate_count": getattr(
+                            self, "_phase4_schedule", {}
+                        ).get("candidate_count", len(tests)),
+                        "skipped_count": getattr(
+                            self, "_phase4_schedule", {}
+                        ).get("skipped_count", 0),
+                        "execution_state": (
+                            getattr(self, "_phase4_execution_status", None)
+                            or "executed"
+                        ),
                         "confirmed": confirmed,
                         "not_exploitable": failed,
                         "errors": errors,
                     },
+                    "scheduling": getattr(self, "_phase4_schedule", {}),
                     "tests": tests,
                 },
                 indent=2,
@@ -3349,9 +3933,14 @@ class Pipeline:
 
         top_devices = sorted(device_list, key=_risk_score, reverse=True)[:12]
 
+        try:
+            assessed_device_count = int(self.context.get("device_count", len(device_list)))
+        except (TypeError, ValueError):
+            assessed_device_count = len(device_list)
         context = {
             "generated_for": "phase6_report",
-            "device_count": len(device_list),
+            "device_count": assessed_device_count,
+            "devices_with_findings": len(device_list),
             "total_vulnerabilities": total_vulns,
             "severity_breakdown": global_sev,
             "phase4_summary": phase4_summary,
@@ -3367,6 +3956,13 @@ class Pipeline:
                 for d in top_devices
             ],
             "cve_list": sorted(cve_set),
+            "information_sources": {
+                "graph_evidence": "01_graph_evidence.json",
+                "raw_findings": "03_vuln_analysis_raw.json",
+                "raw_tool_outputs": "tool_calls.jsonl",
+                "model_outputs": "model_outputs.jsonl",
+                "recon_evidence": "02_recon_evidence.json",
+            },
             "NOTE": "Sections 5 and 6 (vuln tables) are pre-generated in 06_report_prefill.md — do not re-list individual vulns.",
         }
 
@@ -3429,6 +4025,9 @@ class Pipeline:
                 "UNTESTED": "Potential (untested)",
             }
             status = status_map.get(status_raw, "Potential (untested)")
+            if v.get("type") == "known_cve" and status_raw == "UNTESTED":
+                claim_status = v.get("cve_claim_status", "unverified")
+                status = f"Potential (CVE-based; {claim_status})"
             evidence_level = exploit.get("evidence_level", 1)
             evidence_note = f"L{evidence_level}" if exploit else "-"
             title = (v.get("details") or "")[:80].replace("|", "/")
@@ -3550,7 +4149,7 @@ class Pipeline:
         if context_path.exists():
             ctx = json.loads(context_path.read_text(encoding="utf-8"))
 
-        run_date = self.run_dir.name
+        run_date = datetime.now().astimezone().date().isoformat()
         n_devices = ctx.get("device_count", "?")
         n_vulns = ctx.get("total_vulnerabilities", "?")
         sev = ctx.get("severity_breakdown", {})
@@ -3560,7 +4159,10 @@ class Pipeline:
         errors = p4.get("errors", 0)
         n_crit = sev.get("CRITICAL", 0)
         n_high = sev.get("HIGH", 0)
-        overall_risk = "CRITICAL" if n_crit > 5 else "HIGH"
+        overall_risk = (
+            "CRITICAL" if n_crit else "HIGH" if n_high else
+            "MEDIUM" if sev.get("MEDIUM", 0) else "LOW"
+        )
 
         # Section 7 — Top critical attack paths from context
         critical_findings = ctx.get("top_critical_findings", [])
@@ -3598,19 +4200,11 @@ class Pipeline:
         sec9 = (
             "## 9. Remediation Recommendations\n\n"
             "### 9.1 IMMEDIATE (CRITICAL)\n\n"
-            f"Address all {n_crit} CRITICAL findings immediately: "
-            "unauthenticated OT protocols (Modbus/S7comm/EtherNet-IP), "
-            "RCE endpoints (/api/exec, unrestricted upload), "
-            "router admin without authentication (LuCI).\n\n"
+            f"Address all {n_crit} CRITICAL findings immediately, following the evidence and affected assets listed in Section 5.\n\n"
             "### 9.2 SHORT TERM (HIGH)\n\n"
-            f"Address all {n_high} HIGH findings within 30 days: "
-            "default credentials (SSH, MQTT, cameras, NVR), "
-            "FTP anonymous access, Node-RED without auth, "
-            "MQTT anonymous access, Redis/MySQL without password.\n\n"
+            f"Address all {n_high} HIGH findings within 30 days, prioritised by confirmed exploitability and exposed assets.\n\n"
             "### 9.3 IMPROVEMENT (MEDIUM/LOW)\n\n"
-            "Enable SSH hardening (disable weak ciphers), "
-            "add HTTP security headers, disable SNMP public community, "
-            "enable DTLS for CoAP, rotate all credentials found in MQTT topics and FTP files.\n"
+            "Address MEDIUM and LOW findings according to the evidence in Section 5; apply service-specific hardening only to observed services and configurations.\n"
         )
 
         # Section 10 — CVE list
@@ -3634,15 +4228,14 @@ class Pipeline:
             f"| Not exploitable | {not_exploitable} |\n"
             f"| Errors | {errors} |\n"
             f"| Overall risk level | **{overall_risk}** |\n\n"
-            f"The assessment identified **{n_vulns} vulnerabilities** across {n_devices} devices, "
-            f"including {n_crit} CRITICAL findings. "
-            f"All {confirmed} findings were confirmed exploitable. "
-            f"OT protocols (Modbus, S7comm, EtherNet-IP) are exposed without authentication, "
-            f"representing an immediate risk to industrial operations.\n\n"
+            f"The assessment identified **{n_vulns} canonical findings** across "
+            f"{n_devices} assessed devices, including {n_crit} CRITICAL findings. "
+            f"Phase 4 confirmed {confirmed} findings. Consult the evidence-linked "
+            f"tables and raw candidate registry before remediation decisions.\n\n"
             f"## 2. Scope and Methodology\n\n"
             f"- **Target subnet:** {self.context.get('target_subnet', 'see topology')}\n"
-            f"- **Phases executed:** 1 → 2 → 3 → 4 → 5\n"
-            f"- **Tools used:** nmap, arp_scan, ssh-audit, mosquitto_sub, redis-cli, curl, ssh_login\n\n"
+            f"- **Phases executed:** 1 → 2 → 3 → 4 → 5 → 6\n"
+            f"- **Tools used:** see tool_calls.jsonl for the authoritative executed-tool ledger\n\n"
             f"## 3. Topology and Attack Surface\n\n"
             f"*See 01_graph_analysis.md for full topology.*\n\n"
             f"## 4. Reconnaissance Results\n\n"
@@ -3721,7 +4314,7 @@ class Pipeline:
                     "sequence": self._tool_call_count,
                     "tool": tool_name,
                     "args": kwargs,
-                    "result": result[:5000] if isinstance(result, str) else str(result)[:5000],
+                    "result": result if isinstance(result, str) else str(result),
                     "evidence_ref": evidence_ref,
                     **exploit_context,
                 }, ensure_ascii=False, default=str)
@@ -3739,7 +4332,9 @@ class Pipeline:
         """Check that all prerequisite deliverables exist or were skipped."""
         for prereq_name in config.prerequisites:
             status = results.get(prereq_name)
-            if status in ("completed", "skipped:conditional"):
+            if status == "completed" or (
+                isinstance(status, str) and status.startswith("skipped:")
+            ):
                 continue
             # If prerequisite wasn't run yet, check deliverable on disk
             prereq_config = AGENTS.get(prereq_name)

@@ -583,7 +583,7 @@ class TestGitCommit:
 
     def test_run_meta_written_on_init(self, mock_provider, output_dir):
         with patch("src.agent.pipeline._get_git_commit", return_value="deadbeef"):
-            pipeline = Pipeline(provider=mock_provider)
+            pipeline = Pipeline(provider=mock_provider, phases=[999])
         # run_meta.json is written during run(), not __init__ — verify after run
         with patch("src.agent.pipeline.load_lab_context", return_value={
             "device_count": 1, "link_count": 1, "cve_count": 0, "top_risk": "none",
@@ -769,7 +769,12 @@ class TestDeviceAgents:
             validator="json_vuln_queue",
         )
 
-        status = pipeline._run_agent(config)
+        scan_results = {
+            device_id: {"scan_results": {}, "findings": []}
+            for device_id in ("mikrotik", "rpi5")
+        }
+        with patch("src.agent.pipeline.run_scanner", return_value=scan_results):
+            status = pipeline._run_agent(config)
 
         # 2 device agents (no reflector) + 1 aggregator = 3 total calls
         assert mock_provider.chat_with_tools.call_count == 3
@@ -1207,3 +1212,368 @@ class TestPipelineRun:
 
         assert len(results) == 1
         assert "graph_analysis" in results
+
+
+class TestInformationPreservingArchitecture:
+    def test_transaction_rejects_without_overwrite_then_promotes_valid(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="graph_analysis",
+            phase=1,
+            prompt_template="graph_analysis",
+            deliverable_file="01_graph_analysis.md",
+            tools=["deliverable"],
+            validator="markdown_with_sections",
+        )
+        tools = pipeline._apply_deliverable_transaction(
+            pipeline._resolve_tools(config), config
+        )
+        save = next(tool["function"] for tool in tools if tool["name"] == "save_deliverable")
+
+        rejected = json.loads(save(
+            filename="01_graph_analysis.md",
+            content="## Only one section",
+        ))
+        assert rejected["ok"] is False
+        assert rejected["error_kind"] == "deliverable_validation"
+        assert not (pipeline.run_dir / "01_graph_analysis.md").exists()
+        assert (pipeline.run_dir / rejected["attempt_ref"]).read_text() == "## Only one section"
+
+        valid_content = "## Section one\nEvidence\n## Section two\nAnalysis"
+        accepted = json.loads(save(
+            filename="01_graph_analysis.md",
+            content=valid_content,
+        ))
+        assert accepted["validated"] is True
+        assert (pipeline.run_dir / "01_graph_analysis.md").read_text() == valid_content
+        attempts = [
+            json.loads(line)
+            for line in (pipeline.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()
+        ]
+        assert [attempt["valid"] for attempt in attempts] == [False, True]
+
+    def test_tool_log_preserves_full_result(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        payload = "x" * 7000
+        wrapped = pipeline._wrap_tool({
+            "name": "large_result",
+            "function": lambda: payload,
+        })
+
+        assert wrapped["function"]() == payload
+        record = json.loads(
+            (pipeline.run_dir / "tool_calls.jsonl").read_text().strip()
+        )
+        assert record["result"] == payload
+
+    def test_model_text_is_archived_without_diminution(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        forwarded = []
+        callback = pipeline._model_stream_callback(
+            forwarded.append, phase=2, agent="recon"
+        )
+        rich_text = "Unexpected service nuance with full model reasoning."
+        callback({"type": "text_chunk", "text": rich_text})
+
+        record = json.loads(
+            (pipeline.run_dir / "model_outputs.jsonl").read_text().strip()
+        )
+        assert record["text"] == rich_text
+        assert forwarded == [{"type": "text_chunk", "text": rich_text}]
+
+    def test_graph_projection_does_not_invent_precomputed_paths(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        records = [
+            {
+                "tool": "get_network_topology",
+                "args": {},
+                "result": json.dumps({
+                    "scenario": "Flat network",
+                    "subnet": "192.168.100.0/24",
+                    "nodes": [{"id": f"d{i}"} for i in range(4)],
+                    "edges": [{"source": "d0", "target": f"d{i}"} for i in range(1, 4)],
+                }),
+                "evidence_ref": "tc-topology",
+            },
+            {
+                "tool": "get_attack_surface",
+                "args": {},
+                "result": json.dumps([
+                    {"id": "d0", "services": [{"name": "ssh"}, {"name": "http"}]},
+                    {"id": "d1", "services": [{"name": "mqtt"}]},
+                ]),
+                "evidence_ref": "tc-surface",
+            },
+            {
+                "tool": "get_attack_paths",
+                "args": {},
+                "result": json.dumps({
+                    "note": "Attack paths not pre-computed; discover via active recon.",
+                    "subnet": "192.168.100.0/24",
+                }),
+                "evidence_ref": "tc-paths",
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n"
+        )
+
+        projection = pipeline._build_graph_evidence_projection()
+
+        assert projection["node_count"] == 4
+        assert projection["edge_count"] == 3
+        assert projection["service_count"] == 3
+        assert projection["attack_path_count"] == 0
+        assert "not pre-computed" in projection["attack_paths_note"]
+        assert (pipeline.run_dir / "01_graph_evidence.json").exists()
+
+    def test_recon_projection_keeps_raw_evidence_and_builds_rows(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        records = [
+            {
+                "tool": "arp_scan",
+                "args": {},
+                "result": json.dumps({
+                    "hosts": [{"ip": "192.0.2.10", "mac": "aa:bb", "vendor": "Lab"}]
+                }),
+            },
+            {
+                "tool": "nmap_scan",
+                "args": {"target": "192.0.2.10"},
+                "result": json.dumps({
+                    "stdout": "22/tcp open ssh OpenSSH 9.2",
+                    "return_code": 0,
+                }),
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n"
+        )
+
+        projection = pipeline._build_recon_evidence_projection()
+
+        assert projection["device_count"] == 1
+        assert projection["devices"][0]["open_ports"] == [22]
+        assert "OpenSSH 9.2" in projection["markdown_service_rows"][0]
+        assert (pipeline.run_dir / "02_recon_evidence.json").exists()
+
+    def test_aggregation_preserves_raw_candidates_and_uses_evidence_quality(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        pipeline = Pipeline(provider=mock_provider)
+
+        common = {
+            "device_id": "device-a",
+            "device_ip": "192.0.2.20",
+            "type": "known_cve",
+            "service": "ssh",
+            "port": 22,
+            "protocol": "tcp",
+            "endpoint": "",
+            "product": "OpenSSH",
+            "version": "9.2",
+            "cve_ids": ["CVE-2023-48795"],
+            "exploitation_status": "suspected",
+            "cve_validation": {"query": "OpenSSH 9.2"},
+        }
+        low = {**common, "id": "A", "severity": "LOW", "details": "short", "evidence": ""}
+        high = {
+            **common,
+            "id": "B",
+            "severity": "HIGH",
+            "details": "range checked",
+            "evidence": "ssh-audit observed the affected product and version",
+            "cve_validation": {
+                "compatibility_status": "compatible",
+                "query": "OpenSSH 9.2",
+                "compatibility_reason": "affected range",
+                "observed_product": "OpenSSH",
+                "observed_version": "9.2",
+            },
+        }
+        noise = {
+            **common,
+            "id": "C",
+            "type": "entry_point",
+            "severity": "INFO",
+            "details": "topology metadata",
+        }
+        (pipeline.run_dir / "03_device_a.json").write_text(json.dumps({
+            "vulnerabilities": [low, noise],
+        }))
+        (pipeline.run_dir / "03_device_b.json").write_text(json.dumps({
+            "vulnerabilities": [high],
+        }))
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            json.dumps({
+                "tool": "cve_search",
+                "args": {"query": "OpenSSH 9.2"},
+                "result": json.dumps([{
+                    "id": "CVE-2023-48795",
+                    "compatibility": {
+                        "status": "compatible",
+                        "reason": "affected range",
+                    },
+                }]),
+                "evidence_ref": "tc-compatible",
+            }) + "\n"
+        )
+
+        pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+        raw = json.loads(
+            (pipeline.run_dir / "03_vuln_analysis_raw.json").read_text()
+        )
+        canonical = json.loads(
+            (pipeline.run_dir / "03_vuln_analysis.json").read_text()
+        )
+        assert raw["candidate_count"] == 3
+        assert len(raw["candidates"]) == 3
+        assert canonical["summary"]["raw_candidates"] == 3
+        assert len(canonical["vulnerabilities"]) == 1
+        selected = canonical["vulnerabilities"][0]
+        assert selected["severity"] == "HIGH"
+        assert selected["cve_claim_status"] == "validated"
+        assert len(selected["_provenance"]["candidate_ids"]) == 2
+        assert any(
+            candidate["decision"] == "excluded_from_canonical"
+            for candidate in raw["candidates"]
+        )
+
+    def test_log_regression_unverified_cves_stay_raw_not_canonical(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        pipeline = Pipeline(provider=mock_provider)
+        claims = [
+            ("router", "Dropbear sshd (protocol 2.0)", "CVE-2023-48795"),
+            ("mqtt", "Mosquitto 2.0.21", "CVE-2024-99999"),
+            ("web", "nginx 1.22", "CVE-2023-48795"),
+            ("ssh", "ssh version 22", "CVE-2001-0572"),
+        ]
+        for index, (device_id, query, cve_id) in enumerate(claims, 1):
+            finding = {
+                "id": f"claim-{index}",
+                "device_id": device_id,
+                "device_ip": f"192.168.100.{index + 9}",
+                "type": "known_cve",
+                "severity": "HIGH",
+                "service": "ssh",
+                "port": 22,
+                "protocol": "tcp",
+                "endpoint": "",
+                "product": query.split()[0],
+                "version": query.split()[-1],
+                "details": "model claim",
+                "evidence": "banner only",
+                "cve_ids": [cve_id],
+                "exploitation_status": "suspected",
+                "cve_validation": {"query": query},
+            }
+            (pipeline.run_dir / f"03_device_{device_id}.json").write_text(
+                json.dumps({"vulnerabilities": [finding]})
+            )
+
+        searches = [
+            {
+                "tool": "cve_search",
+                "args": {"query": "Dropbear sshd (protocol 2.0)"},
+                "result": json.dumps([{
+                    "id": "CVE-2025-14282",
+                    "compatibility": {"status": "compatible", "reason": "different CVE"},
+                }]),
+                "evidence_ref": "tc-dropbear",
+            },
+            {
+                "tool": "cve_search",
+                "args": {"query": "Mosquitto 2.0.21"},
+                "result": "[]",
+                "evidence_ref": "tc-mqtt",
+            },
+            {
+                "tool": "cve_search",
+                "args": {"query": "nginx 1.22"},
+                "result": json.dumps([{
+                    "id": "CVE-2018-16843",
+                    "compatibility": {"status": "incompatible", "reason": "fixed before 1.22"},
+                }]),
+                "evidence_ref": "tc-nginx",
+            },
+            {
+                "tool": "cve_search",
+                "args": {"query": "ssh version 22"},
+                "result": json.dumps([{
+                    "id": "CVE-2001-0572",
+                    "compatibility": {"status": "incompatible", "reason": "version mismatch"},
+                }]),
+                "evidence_ref": "tc-ssh",
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in searches) + "\n"
+        )
+
+        pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+        canonical = json.loads(
+            (pipeline.run_dir / "03_vuln_analysis.json").read_text()
+        )
+        raw = json.loads(
+            (pipeline.run_dir / "03_vuln_analysis_raw.json").read_text()
+        )
+        assert canonical["vulnerabilities"] == []
+        assert canonical["summary"]["raw_candidates"] == 4
+        assert len(raw["candidates"]) == 4
+        assert all(
+            candidate["decision"] == "excluded_from_canonical"
+            for candidate in raw["candidates"]
+        )
+        reasons = " ".join(
+            candidate["decision_reason"] for candidate in raw["candidates"]
+        )
+        assert "not corroborated" in reasons
+
+    def test_phase4_empty_schedule_is_explicit_skip(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        finding = {
+            "id": "VULN-001",
+            "device_id": "device-a",
+            "device_ip": "192.0.2.20",
+            "type": "known_cve",
+            "severity": "HIGH",
+            "service": "ssh",
+            "port": 22,
+            "protocol": "tcp",
+            "endpoint": "",
+            "product": "OpenSSH",
+            "version": "9.2",
+            "evidence": "version evidence",
+            "exploitation_status": "suspected",
+            "cve_ids": ["CVE-2023-48795"],
+        }
+        (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+            "vulnerabilities": [finding],
+        }))
+
+        pipeline._run_exploit_agents(AGENTS["exploitation"])
+
+        aggregate = json.loads(
+            (pipeline.run_dir / "04_exploitation.json").read_text()
+        )
+        assert pipeline._phase4_execution_status == (
+            "skipped:no_safely_exploitable_candidates"
+        )
+        assert aggregate["summary"]["total_tested"] == 0
+        assert aggregate["summary"]["skipped_count"] == 1
+        assert aggregate["summary"]["errors"] == 0
