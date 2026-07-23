@@ -222,13 +222,13 @@ def validate_json_exploitation(filename: str) -> tuple[bool, str]:
     if not ok:
         return ok, msg
     data = json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
-    valid_statuses = {"CONFIRMED", "FAILED", "ERROR"}
+    valid_statuses = {"CONFIRMED", "FAILED", "ERROR", "SKIPPED"}
     for index, test in enumerate(data.get("tests", [])):
         status = str(test.get("status", "")).upper()
         if status not in valid_statuses:
             return False, f"'tests[{index}].status' must be one of {sorted(valid_statuses)}"
         evidence = str(test.get("evidence", ""))
-        if evidence == "No Phase 4 exploit result was produced":
+        if status != "SKIPPED" and evidence == "No Phase 4 exploit result was produced":
             return False, "Missing per-vulnerability Phase 4 exploit result"
     phase4_broken, phase4_msg = _phase4_summary_is_all_errors(filename)
     if phase4_broken:

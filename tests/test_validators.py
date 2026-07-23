@@ -203,6 +203,29 @@ class TestValidateJsonExploitation:
         ok, msg = validate_json_exploitation("good.json")
         assert ok
 
+    def test_exploitation_accepts_skipped_unscheduled_findings(self, clean_output):
+        data = {
+            "summary": {
+                "total_tested": 1,
+                "confirmed": 1,
+                "not_exploitable": 0,
+                "errors": 0,
+            },
+            "tests": [
+                {"vuln_id": "VULN-001", "status": "CONFIRMED"},
+                {
+                    "vuln_id": "VULN-002",
+                    "status": "SKIPPED",
+                    "evidence": "Skipped Phase 4 exploit agent: configuration_or_detection_only",
+                },
+            ],
+        }
+        (clean_output / "skipped.json").write_text(json.dumps(data))
+
+        ok, msg = validate_json_exploitation("skipped.json")
+
+        assert ok, msg
+
     def test_exploitation_rejects_all_error_results(self, clean_output):
         data = {
             "summary": {

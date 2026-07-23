@@ -9,6 +9,8 @@ from src.agent.pipeline import (
     Pipeline,
     TOOL_GROUPS,
     _has_positive_exploit_evidence,
+    _local_report_memo_contradicts_context,
+    _looks_unusable_model_memo,
     _resolve_model_provider,
     _synthesize_exploit_result,
 )
@@ -24,6 +26,25 @@ def test_resolve_model_provider_uses_registry(monkeypatch):
     assert _resolve_model_provider("lance-moe") == "local-moe"
     assert _resolve_model_provider("MiniMax-M2.7") == "minimax"
     assert _resolve_model_provider("openai/gpt-4o") == "openrouter"
+
+
+def test_local_memo_guard_rejects_placeholders_and_empty_evidence_blocks():
+    assert _looks_unusable_model_memo("Evidence:\n```json\n\n```\n")
+    assert _looks_unusable_model_memo("Prepared by: [Your Name]")
+
+
+def test_local_report_memo_guard_rejects_false_compromise_claim():
+    context = {
+        "intrusion": {
+            "summary": {"devices_compromised": 0},
+            "compromised_devices": [],
+        }
+    }
+
+    assert _local_report_memo_contradicts_context(
+        "The web server was confirmed to be compromised.",
+        context,
+    )
 
 
 @pytest.fixture
@@ -477,6 +498,32 @@ class TestExploitEvidenceGuard:
         assert result["status"] == "ERROR"
         assert "WebSocket" in result["evidence"]
 
+    def test_mqtt_payload_with_timeout_exit_code_is_confirmed(self):
+        result = _synthesize_exploit_result(
+            {
+                "id": "VULN-001",
+                "device_id": "s1-mqtt",
+                "device_ip": "192.168.100.11",
+                "type": "no_auth",
+                "service": "mqtt",
+                "port": 1883,
+            },
+            [{
+                "tool": "mqtt_listen",
+                "args": {"broker": "192.168.100.11", "topic": "#"},
+                "result": json.dumps({
+                    "stdout": "smartcity/admin/credentials {\"db_pass\":\"P@ssw0rd123\"}",
+                    "stderr": "Timed out\n",
+                    "return_code": 27,
+                    "interpretation": "anonymous_access_confirmed_broker_idle",
+                }),
+                "evidence_ref": "tc-mqtt",
+            }],
+        )
+
+        assert result["status"] == "EXPLOITED"
+        assert result["evidence_level"] == 3
+
     def test_exploited_verdict_is_downgraded_when_tool_evidence_contradicts_it(
         self, mock_provider, output_dir
     ):
@@ -576,6 +623,22 @@ class TestPrerequisites:
         )
         results = {}  # Not run, and no file on disk
         assert not pipeline._check_prerequisites(config, results)
+
+    def test_failed_prerequisite_status_is_not_overridden_by_disk_file(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        (pipeline.run_dir / "04_exploitation.json").write_text(json.dumps({"tests": []}))
+        config = AgentConfig(
+            name="intrusion", phase=5, prompt_template="t",
+            deliverable_file="05_intrusion.json", tools=["graph"],
+            prerequisites=["exploitation"],
+        )
+
+        assert not pipeline._check_prerequisites(
+            config,
+            {"exploitation": "failed:Missing per-vulnerability Phase 4 exploit result"},
+        )
 
     def test_prerequisite_on_disk(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)

@@ -371,6 +371,40 @@ def _looks_truncated_markdown(text: str) -> bool:
     return tail in {"and", "or", "with", "without", "because", "for", "to", "the"}
 
 
+def _looks_unusable_model_memo(text: str) -> bool:
+    stripped = (text or "").strip()
+    lower = stripped.lower()
+    if _looks_truncated_markdown(stripped):
+        return True
+    if re.search(r"```(?:[a-z0-9_-]+)?\s*```", stripped, re.IGNORECASE):
+        return True
+    return any(marker in lower for marker in (
+        "[your name]",
+        "[current date]",
+        "[omit this line",
+    ))
+
+
+def _local_report_memo_contradicts_context(text: str, context: dict) -> bool:
+    lower = (text or "").lower()
+    if "do not re-list individual vulns" in lower:
+        return True
+    intrusion = context.get("intrusion", {}) if isinstance(context, dict) else {}
+    summary = intrusion.get("summary", {}) if isinstance(intrusion, dict) else {}
+    compromised = intrusion.get("compromised_devices", []) if isinstance(intrusion, dict) else []
+    try:
+        compromised_count = int(summary.get("devices_compromised", len(compromised)) or 0)
+    except (TypeError, ValueError):
+        compromised_count = len(compromised) if isinstance(compromised, list) else 0
+    if compromised_count == 0 and any(marker in lower for marker in (
+        "confirmed compromise",
+        "confirmed to be compromised",
+        "compromised devices:",
+    )):
+        return True
+    return False
+
+
 def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:
     tool_log = run_dir / "tool_calls.jsonl"
     if not tool_log.is_file():
@@ -425,9 +459,31 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         lower = text.lower()
         rc = result.get("return_code")
 
-        if tool == "mqtt_listen" and service == "mqtt-ws" and str(port) == "9001":
-            errors.append("mqtt_listen verifies MQTT/TCP, not MQTT WebSocket port 9001")
+        if tool == "mqtt_listen":
+            broker = str(args.get("broker", ""))
+            username = args.get("username")
+            mqtt_ok = rc in (0, 27) and bool(stdout.strip())
+            if service == "mqtt-ws" and str(port) == "9001":
+                errors.append("mqtt_listen verifies MQTT/TCP, not MQTT WebSocket port 9001")
+                continue
+            if broker and device_ip and broker != device_ip:
+                errors.append(f"mqtt_listen targeted {broker}, expected {device_ip}")
+                continue
+            if vuln_type == "no_auth" and not username and mqtt_ok:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen anonymous subscription received messages:\n{stdout[:800]}"})
+                continue
+            if vuln_type == "data_exposure" and not username and mqtt_ok and _text_has_sensitive_data(stdout):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen captured sensitive MQTT messages:\n{stdout[:800]}"})
+                continue
+            if vuln_type == "default_credentials" and username and mqtt_ok:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen with username={username} received messages:\n{stdout[:800]}"})
+                continue
+            if rc == 5:
+                failures.append("MQTT broker required authentication")
+            elif not stdout.strip():
+                failures.append("mqtt_listen did not capture messages")
             continue
+
         if any(marker in lower for marker in ("timed out", "timeout")) or rc == 124:
             errors.append(f"{tool} timed out")
             continue
@@ -461,28 +517,6 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 else:
                     failures.append(f"{tool} did not prove unauthenticated admin access")
                 continue
-
-        if tool == "mqtt_listen":
-            broker = str(args.get("broker", ""))
-            username = args.get("username")
-            mqtt_ok = rc in (0, 27) and bool(stdout.strip())
-            if broker and device_ip and broker != device_ip:
-                errors.append(f"mqtt_listen targeted {broker}, expected {device_ip}")
-                continue
-            if vuln_type == "no_auth" and not username and mqtt_ok:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen anonymous subscription received messages:\n{stdout[:800]}"})
-                continue
-            if vuln_type == "data_exposure" and not username and mqtt_ok and _text_has_sensitive_data(stdout):
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen captured sensitive MQTT messages:\n{stdout[:800]}"})
-                continue
-            if vuln_type == "default_credentials" and username and mqtt_ok:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen with username={username} received messages:\n{stdout[:800]}"})
-                continue
-            if rc == 5:
-                failures.append("MQTT broker required authentication")
-            elif not stdout.strip():
-                failures.append("mqtt_listen did not capture messages")
-            continue
 
         if tool in {"ssh_login", "ssh_exec", "try_credential"}:
             if (result.get("success") is True) or (rc == 0 and re.search(r"\buid=|login successful|welcome", lower)):
@@ -2200,9 +2234,9 @@ class Pipeline:
                     "(max turns reached)", "(malformed tool call JSON — max retries)",
                 }:
                     analysis_text = result_text.strip()
-                    if _looks_truncated_markdown(analysis_text):
+                    if _looks_unusable_model_memo(analysis_text):
                         log.warning(
-                            "Phase 3 local memo for %s appears truncated; keeping canonical JSON only",
+                            "Phase 3 local memo for %s appears unusable; keeping canonical JSON only",
                             device_id,
                         )
                     else:
@@ -3689,6 +3723,17 @@ class Pipeline:
                 if vuln_id and tool_name and tool_name != "save_deliverable":
                     tools_by_vuln.setdefault(vuln_id, []).append(tool_name)
 
+        phase4_schedule = getattr(self, "_phase4_schedule", {})
+        if "scheduled_vuln_ids" in phase4_schedule:
+            scheduled_ids = set(phase4_schedule.get("scheduled_vuln_ids") or [])
+        else:
+            scheduled_ids = {str(vuln.get("id", "")) for vuln in all_vulns}
+        skipped_by_vuln = {
+            str(item.get("vuln_id", "")): str(item.get("reason", "not_scheduled"))
+            for item in phase4_schedule.get("skipped_candidates", [])
+            if str(item.get("vuln_id", ""))
+        }
+
         for vuln in all_vulns:
             exploit_file = self.run_dir / _exploit_relpath(
                 vuln.get("device_id", "unknown"),
@@ -3696,6 +3741,14 @@ class Pipeline:
                 vuln.get("id", "VULN-???"),
             )
             vuln_id = str(vuln.get("id", ""))
+            if vuln_id and vuln_id not in scheduled_ids:
+                tests.append(_make_test_entry(
+                    vuln,
+                    status="SKIPPED",
+                    evidence=f"Skipped Phase 4 exploit agent: {skipped_by_vuln.get(vuln_id, 'not_scheduled')}",
+                    evidence_level=0,
+                ))
+                continue
             tests.append(self._resolve_exploit_verdict(
                 vuln, exploit_file,
                 evidence_refs=refs_by_vuln.get(vuln_id, []),
@@ -3703,11 +3756,6 @@ class Pipeline:
                 tool_records=records_by_vuln.get(vuln_id, []),
             ))
 
-        scheduled_ids = set(
-            getattr(self, "_phase4_schedule", {}).get(
-                "scheduled_vuln_ids", [t.get("vuln_id", "") for t in tests]
-            )
-        )
         executed_tests = [
             test for test in tests if test.get("vuln_id", "") in scheduled_ids
         ]
@@ -4435,12 +4483,20 @@ class Pipeline:
                 "(max turns reached)", "(malformed tool call JSON — max retries)",
             }:
                 analysis_text = result_text.strip()
-                (self.run_dir / "06_report_analysis.md").write_text(
-                    analysis_text + "\n", encoding="utf-8"
-                )
-                self._model_stream_callback(
-                    None, phase=config.phase, agent="report_local_analysis_result"
-                )({"type": "text_chunk", "text": analysis_text})
+                if (
+                    _looks_unusable_model_memo(analysis_text)
+                    or _local_report_memo_contradicts_context(analysis_text, context)
+                ):
+                    log.warning(
+                        "Local Phase 6 analyst memo rejected as inconsistent with artifacts"
+                    )
+                else:
+                    (self.run_dir / "06_report_analysis.md").write_text(
+                        analysis_text + "\n", encoding="utf-8"
+                    )
+                    self._model_stream_callback(
+                        None, phase=config.phase, agent="report_local_analysis_result"
+                    )({"type": "text_chunk", "text": analysis_text})
         except Exception as exc:
             analysis_error = str(exc)
             log.warning("Local Phase 6 analysis failed; composing from evidence: %s", exc)
@@ -4664,6 +4720,7 @@ class Pipeline:
                 "CONFIRMED": "**Confirmed**",
                 "FAILED": "Not Exploitable",
                 "ERROR": "Inconclusive",
+                "SKIPPED": "Not tested",
                 "UNTESTED": "Potential (untested)",
             }
             status = status_map.get(status_raw, "Potential (untested)")
@@ -5047,10 +5104,12 @@ class Pipeline:
         """Check that all prerequisite deliverables exist or were skipped."""
         for prereq_name in config.prerequisites:
             status = results.get(prereq_name)
-            if status == "completed" or (
-                isinstance(status, str) and status.startswith("skipped:")
-            ):
-                continue
+            if status is not None:
+                if status == "completed" or (
+                    isinstance(status, str) and status.startswith("skipped:")
+                ):
+                    continue
+                return False
             # If prerequisite wasn't run yet, check deliverable on disk
             prereq_config = AGENTS.get(prereq_name)
             if prereq_config:
