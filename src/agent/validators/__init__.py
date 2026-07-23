@@ -55,6 +55,27 @@ def _table_data_rows(section: str) -> list[str]:
     return rows
 
 
+def _phase4_summary_is_all_errors(filename: str = "04_exploitation.json") -> tuple[bool, str]:
+    path = OUTPUT_DIR / filename
+    if not path.is_file():
+        return False, ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError) as exc:
+        return True, f"Phase 4 artifact is invalid: {exc}"
+    summary = data.get("summary", {}) if isinstance(data, dict) else {}
+    try:
+        total = int(summary.get("total_tested", 0) or 0)
+        confirmed = int(summary.get("confirmed", 0) or 0)
+        failed = int(summary.get("not_exploitable", 0) or 0)
+        errors = int(summary.get("errors", 0) or 0)
+    except (TypeError, ValueError):
+        return True, "Phase 4 summary contains non-numeric counters"
+    if total > 0 and confirmed == 0 and failed == 0 and errors >= total:
+        return True, "Phase 4 produced only ERROR results"
+    return False, ""
+
+
 def validate_recon_markdown(filename: str) -> tuple[bool, str]:
     """Require the complete Recon structure and at least two discovered devices."""
     ok, msg = validate_default(filename)
@@ -111,6 +132,13 @@ def validate_final_report_markdown(filename: str) -> tuple[bool, str]:
     ]
     if unresolved:
         return False, f"Unresolved report placeholders: {unresolved}"
+    if "[Omit this line" in content or "[omit this line" in content.lower():
+        return False, "Report contains unresolved analyst memo instructions"
+    phase4_broken, phase4_msg = _phase4_summary_is_all_errors()
+    if phase4_broken:
+        return False, phase4_msg
+    if "Phases executed:** 1 → 2 → 3 → 4 → 5 → 6" in content and not (OUTPUT_DIR / "05_intrusion.json").exists():
+        return False, "Report claims Phase 5 executed but 05_intrusion.json is missing"
     if len(content.strip()) < 1500:
         return False, f"Final report is implausibly short ({len(content.strip())} chars)"
     return True, "OK"
@@ -190,7 +218,22 @@ def validate_json_vuln_queue(filename: str) -> tuple[bool, str]:
 
 def validate_json_exploitation(filename: str) -> tuple[bool, str]:
     """Check Phase 4 tests have unique references to Phase 3 findings."""
-    return _validate_unique_ids(filename, "tests", "vuln_id")
+    ok, msg = _validate_unique_ids(filename, "tests", "vuln_id")
+    if not ok:
+        return ok, msg
+    data = json.loads((OUTPUT_DIR / filename).read_text(encoding="utf-8"))
+    valid_statuses = {"CONFIRMED", "FAILED", "ERROR"}
+    for index, test in enumerate(data.get("tests", [])):
+        status = str(test.get("status", "")).upper()
+        if status not in valid_statuses:
+            return False, f"'tests[{index}].status' must be one of {sorted(valid_statuses)}"
+        evidence = str(test.get("evidence", ""))
+        if evidence == "No Phase 4 exploit result was produced":
+            return False, "Missing per-vulnerability Phase 4 exploit result"
+    phase4_broken, phase4_msg = _phase4_summary_is_all_errors(filename)
+    if phase4_broken:
+        return False, phase4_msg
+    return True, "OK"
 
 
 def validate_json_exploit_result(filename: str) -> tuple[bool, str]:

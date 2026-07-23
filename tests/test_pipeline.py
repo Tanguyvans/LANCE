@@ -508,6 +508,35 @@ class TestExploitEvidenceGuard:
         assert verdict["status"] == "FAILED"
         assert verdict["evidence_level"] == 1
 
+    def test_missing_exploit_file_uses_archived_tool_records(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        verdict = pipeline._resolve_exploit_verdict(
+            {
+                "id": "VULN-001",
+                "device_id": "mqtt_broker",
+                "device_ip": "192.168.100.11",
+                "type": "no_auth",
+                "service": "mqtt",
+                "port": 1883,
+            },
+            pipeline.run_dir / "04_exploits" / "mqtt_broker" / "no_auth_VULN-001.json",
+            tool_records=[{
+                "tool": "mqtt_listen",
+                "args": {"broker": "192.168.100.11", "topic": "#"},
+                "result": json.dumps({
+                    "stdout": "sensors/temp {\"value\":22.5}",
+                    "return_code": 27,
+                }),
+                "evidence_ref": "tc-mqtt",
+            }],
+        )
+
+        assert verdict["status"] == "CONFIRMED"
+        assert verdict["evidence_level"] == 3
+        assert verdict["evidence_refs"] == ["tc-mqtt"]
+
 
 class TestPrerequisites:
     def test_no_prerequisites(self, mock_provider, output_dir):

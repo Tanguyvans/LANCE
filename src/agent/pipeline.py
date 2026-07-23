@@ -361,6 +361,16 @@ def _text_has_sensitive_data(text: str) -> bool:
     ))
 
 
+def _looks_truncated_markdown(text: str) -> bool:
+    stripped = (text or "").strip()
+    if not stripped:
+        return False
+    if stripped.count("```") % 2:
+        return True
+    tail = stripped.rsplit(None, 1)[-1].lower()
+    return tail in {"and", "or", "with", "without", "because", "for", "to", "the"}
+
+
 def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:
     tool_log = run_dir / "tool_calls.jsonl"
     if not tool_log.is_file():
@@ -788,7 +798,21 @@ class Pipeline:
                     "Skipping %s: conditional check failed (empty queue)",
                     agent_config.name,
                 )
-                results[agent_config.name] = "skipped:conditional"
+                skip_status = "skipped:conditional"
+                if agent_config.phase == 5:
+                    exploit_path = self.run_dir / "04_exploitation.json"
+                    try:
+                        exploit_data = json.loads(exploit_path.read_text(encoding="utf-8"))
+                        summary = exploit_data.get("summary", {})
+                        total = int(summary.get("total_tested", 0) or 0)
+                        confirmed = int(summary.get("confirmed", 0) or 0)
+                        failed = int(summary.get("not_exploitable", 0) or 0)
+                        errors = int(summary.get("errors", 0) or 0)
+                        if total > 0 and confirmed == 0 and failed == 0 and errors >= total:
+                            skip_status = "blocked:phase4_no_conclusive_results"
+                    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                        skip_status = "blocked:phase4_missing_or_invalid"
+                results[agent_config.name] = skip_status
                 continue
 
             # Pre-generate context files before certain phases
@@ -2165,7 +2189,7 @@ class Pipeline:
                     user_message=f"Write the Phase 3 analyst memo for {device_id} now.",
                     tools=[],
                     max_turns=1,
-                    max_tokens=min(DEVICE_ANALYSIS_MAX_TOKENS, 1024),
+                    max_tokens=max(DEVICE_ANALYSIS_MAX_TOKENS, 1536),
                     cost_tracker=self.tracker,
                     stream_callback=self._model_stream_callback(
                         stream_callback, phase=3, agent=f"analyze_{device_id}"
@@ -2176,11 +2200,17 @@ class Pipeline:
                     "(max turns reached)", "(malformed tool call JSON — max retries)",
                 }:
                     analysis_text = result_text.strip()
-                    sidecar = self.run_dir / f"03_device_{device_id}_analysis.md"
-                    sidecar.write_text(analysis_text + "\n", encoding="utf-8")
-                    self._model_stream_callback(
-                        None, phase=3, agent=f"analyze_{device_id}_result"
-                    )({"type": "text_chunk", "text": analysis_text})
+                    if _looks_truncated_markdown(analysis_text):
+                        log.warning(
+                            "Phase 3 local memo for %s appears truncated; keeping canonical JSON only",
+                            device_id,
+                        )
+                    else:
+                        sidecar = self.run_dir / f"03_device_{device_id}_analysis.md"
+                        sidecar.write_text(analysis_text + "\n", encoding="utf-8")
+                        self._model_stream_callback(
+                            None, phase=3, agent=f"analyze_{device_id}_result"
+                        )({"type": "text_chunk", "text": analysis_text})
                 usage = self.tracker.end_phase()
                 if usage:
                     print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
@@ -2822,6 +2852,12 @@ class Pipeline:
         from collections import defaultdict
         device_locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
         _locks_guard = threading.Lock()
+        worker_errors: list[str] = []
+        worker_error_lock = threading.Lock()
+
+        def _record_worker_error(message: str) -> None:
+            with worker_error_lock:
+                worker_errors.append(message)
 
         def _get_device_lock(device_ip: str) -> threading.Lock:
             with _locks_guard:
@@ -2841,6 +2877,7 @@ class Pipeline:
             evidence = vuln.get("evidence", "")
 
             deliverable_file = str(_exploit_relpath(device_id, vuln_type, vuln_id))
+            deliverable_path = self.run_dir / deliverable_file
 
             # Build exploit instructions with variable substitution
             cat_instructions = EXPLOIT_INSTRUCTIONS.get(category, {})
@@ -2965,6 +3002,32 @@ class Pipeline:
                             required_tool="save_deliverable",
                             terminate_after_tool="save_deliverable",
                         )
+                except Exception as exc:
+                    message = f"{phase_name}: {exc}"
+                    _record_worker_error(message)
+                    log.exception("Exploit agent failed: %s", phase_name)
+                    deliverable_path.parent.mkdir(parents=True, exist_ok=True)
+                    error_result = {
+                        "vuln_id": vuln_id,
+                        "device_id": device_id,
+                        "device_ip": device_ip,
+                        "vuln_type": vuln_type,
+                        "severity": severity,
+                        "service": service,
+                        "port": port,
+                        "status": "ERROR",
+                        "evidence": f"Exploit agent error: {exc}",
+                        "evidence_level": 0,
+                        "tool_used": "",
+                        "tools_used": [],
+                        "evidence_refs": [],
+                        "data_extracted": [],
+                        "description": "Exploit agent raised before producing a verdict",
+                    }
+                    deliverable_path.write_text(
+                        json.dumps(error_result, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
                 finally:
                     self._exploit_tool_context.vulnerability = None
 
@@ -3023,7 +3086,15 @@ class Pipeline:
             _run_single_exploit(task)
 
         with ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), 8))) as pool:
-            pool.map(_run_with_stagger, enumerate(exploit_tasks))
+            list(pool.map(_run_with_stagger, enumerate(exploit_tasks)))
+
+        if worker_errors and self._phase4_execution_status is None:
+            self._phase4_execution_status = "executed_with_worker_errors"
+            log.warning(
+                "Phase 4 completed with %d worker error(s): %s",
+                len(worker_errors),
+                "; ".join(worker_errors[:3]),
+            )
 
         print(f"\n{'=' * 60}")
         print(f"  All {len(exploit_tasks)} exploit agents finished.")
@@ -3709,6 +3780,13 @@ class Pipeline:
                         best = c
                 exploit_file = best
             else:
+                if tool_records:
+                    semantic_result = _synthesize_exploit_result(vuln, tool_records)
+                    semantic_status = str(semantic_result.get("status", "ERROR")).upper()
+                    final_status = "CONFIRMED" if semantic_status == "EXPLOITED" else semantic_status
+                    if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
+                        final_status = "ERROR"
+                    return _make_test_entry(vuln, status=final_status, result=semantic_result)
                 return _make_test_entry(
                     vuln,
                     status="ERROR",
@@ -4731,6 +4809,13 @@ class Pipeline:
             "CRITICAL" if n_crit else "HIGH" if n_high else
             "MEDIUM" if sev.get("MEDIUM", 0) else "LOW"
         )
+        executed_phases = ["1", "2", "3", "4"]
+        if (self.run_dir / "05_intrusion.json").exists():
+            executed_phases.append("5")
+        else:
+            executed_phases.append("5 skipped")
+        executed_phases.append("6")
+        executed_phase_text = " -> ".join(executed_phases)
 
         # Section 7 — Top critical attack paths from context
         critical_findings = ctx.get("top_critical_findings", [])
@@ -4866,7 +4951,7 @@ class Pipeline:
             f"tables and raw candidate registry before remediation decisions.\n\n"
             f"## 2. Scope and Methodology\n\n"
             f"- **Target subnet:** {self.context.get('target_subnet', 'see topology')}\n"
-            f"- **Phases executed:** 1 → 2 → 3 → 4 → 5 → 6\n"
+            f"- **Phases executed:** {executed_phase_text}\n"
             f"- **Tools used:** see tool_calls.jsonl for the authoritative executed-tool ledger\n\n"
             f"{sec3}\n\n"
             f"{sec4}\n\n"

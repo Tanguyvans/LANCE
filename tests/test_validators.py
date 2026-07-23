@@ -104,6 +104,27 @@ class TestValidateMarkdown:
         assert not ok
         assert "Unresolved" in msg
 
+    def test_final_report_rejects_phase4_all_errors(self, clean_output):
+        (clean_output / "04_exploitation.json").write_text(json.dumps({
+            "summary": {
+                "total_tested": 1,
+                "confirmed": 0,
+                "not_exploitable": 0,
+                "errors": 1,
+            },
+            "tests": [{"vuln_id": "VULN-001", "status": "ERROR"}],
+        }))
+        content = "# Pentest Report\n\n" + "\n\n".join(
+            f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
+            for number in range(1, 11)
+        )
+        (clean_output / "final.md").write_text(content)
+
+        ok, msg = validate_final_report_markdown("final.md")
+
+        assert not ok
+        assert "Phase 4" in msg
+
 
 class TestValidateJsonQueue:
     def test_invalid_json(self, clean_output):
@@ -181,6 +202,27 @@ class TestValidateJsonExploitation:
         (clean_output / "good.json").write_text(json.dumps(data))
         ok, msg = validate_json_exploitation("good.json")
         assert ok
+
+    def test_exploitation_rejects_all_error_results(self, clean_output):
+        data = {
+            "summary": {
+                "total_tested": 1,
+                "confirmed": 0,
+                "not_exploitable": 0,
+                "errors": 1,
+            },
+            "tests": [{
+                "vuln_id": "VULN-001",
+                "status": "ERROR",
+                "evidence": "No Phase 4 exploit result was produced",
+            }],
+        }
+        (clean_output / "all-errors.json").write_text(json.dumps(data))
+
+        ok, msg = validate_json_exploitation("all-errors.json")
+
+        assert not ok
+        assert "Missing per-vulnerability" in msg or "Phase 4" in msg
 
 
 class TestValidateDeviceVulns:
