@@ -584,6 +584,43 @@ class TestExploitEvidenceGuard:
         assert verdict["evidence_level"] == 3
         assert verdict["evidence_refs"] == ["tc-mqtt"]
 
+    def test_exploited_mqtt_result_is_not_downgraded_when_tools_confirm(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        exploit_file = pipeline.run_dir / "mqtt.json"
+        exploit_file.write_text(json.dumps({
+            "status": "EXPLOITED",
+            "evidence": "mqtt_listen anonymous subscription received messages",
+            "evidence_level": 3,
+            "tool_used": "mqtt_listen",
+        }))
+
+        verdict = pipeline._resolve_exploit_verdict(
+            {
+                "id": "VULN-001",
+                "device_id": "s1-mqtt",
+                "device_ip": "192.168.100.11",
+                "type": "no_auth",
+                "service": "mqtt",
+                "port": 1883,
+            },
+            exploit_file,
+            tool_records=[{
+                "tool": "mqtt_listen",
+                "args": {"broker": "192.168.100.11", "topic": "#"},
+                "result": json.dumps({
+                    "stdout": "smartcity/admin/credentials {\"db_user\":\"root\",\"db_pass\":\"P@ssw0rd123\"}",
+                    "stderr": "Timed out\n",
+                    "return_code": 27,
+                }),
+                "evidence_ref": "tc-mqtt",
+            }],
+        )
+
+        assert verdict["status"] == "CONFIRMED"
+        assert verdict["data_extracted"]
+
 
 class TestPrerequisites:
     def test_no_prerequisites(self, mock_provider, output_dir):
@@ -1343,6 +1380,40 @@ class TestPhase5Context:
 
         ctx = json.loads((run_dir / "05_intrusion_context.json").read_text())
         assert ctx["confirmed_exploits"] == 1
+
+    def test_mqtt_confirmed_exploit_feeds_recovered_credentials(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        exploit_data = {
+            "summary": {"total_tested": 1, "confirmed": 1, "not_exploitable": 0, "errors": 0},
+            "tests": [{
+                "vuln_id": "VULN-002",
+                "status": "CONFIRMED",
+                "device_id": "s1-mqtt",
+                "device_ip": "192.168.100.11",
+                "vuln_type": "data_exposure",
+                "service": "mqtt",
+                "port": 1883,
+                "evidence": "mqtt_listen captured sensitive MQTT messages",
+                "data_extracted": [
+                    "smartcity/admin/credentials {\"db_user\":\"root\",\"db_pass\":\"P@ssw0rd123\"}"
+                ],
+            }],
+        }
+        (run_dir / "04_exploitation.json").write_text(json.dumps(exploit_data))
+
+        pipeline._generate_intrusion_context()
+
+        ctx = json.loads((run_dir / "05_intrusion_context.json").read_text())
+        assert ctx["confirmed_exploits"] == 1
+        assert ctx["recovered_credentials"] == [{
+            "user": "root",
+            "password": "P@ssw0rd123",
+            "source_ip": "192.168.100.11",
+            "source_device": "s1-mqtt",
+        }]
 
 
 class TestPipelineRun:

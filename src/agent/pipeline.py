@@ -470,13 +470,28 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 errors.append(f"mqtt_listen targeted {broker}, expected {device_ip}")
                 continue
             if vuln_type == "no_auth" and not username and mqtt_ok:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen anonymous subscription received messages:\n{stdout[:800]}"})
+                confirmations.append({
+                    "tool": tool,
+                    "level": 3,
+                    "evidence": f"mqtt_listen anonymous subscription received messages:\n{stdout[:800]}",
+                    "data": stdout.strip().splitlines()[:10],
+                })
                 continue
             if vuln_type == "data_exposure" and not username and mqtt_ok and _text_has_sensitive_data(stdout):
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen captured sensitive MQTT messages:\n{stdout[:800]}"})
+                confirmations.append({
+                    "tool": tool,
+                    "level": 3,
+                    "evidence": f"mqtt_listen captured sensitive MQTT messages:\n{stdout[:800]}",
+                    "data": stdout.strip().splitlines()[:10],
+                })
                 continue
             if vuln_type == "default_credentials" and username and mqtt_ok:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"mqtt_listen with username={username} received messages:\n{stdout[:800]}"})
+                confirmations.append({
+                    "tool": tool,
+                    "level": 3,
+                    "evidence": f"mqtt_listen with username={username} received messages:\n{stdout[:800]}",
+                    "data": stdout.strip().splitlines()[:10],
+                })
                 continue
             if rc == 5:
                 failures.append("MQTT broker required authentication")
@@ -556,7 +571,14 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
     }
     if confirmations:
         best = max(confirmations, key=lambda item: item["level"])
-        return {**base, "status": "EXPLOITED", "evidence": best["evidence"], "evidence_level": best["level"], "tool_used": best["tool"]}
+        return {
+            **base,
+            "status": "EXPLOITED",
+            "evidence": best["evidence"],
+            "evidence_level": best["level"],
+            "tool_used": best["tool"],
+            "data_extracted": best.get("data") or [],
+        }
     if failures:
         return {**base, "status": "FAILED", "evidence": "; ".join(failures[:3]), "evidence_level": 1, "tool_used": tools_used[-1] if tools_used else ""}
     if errors:
@@ -3865,6 +3887,12 @@ class Pipeline:
         status = str(result.get("status", "ERROR")).upper()
         semantic_result = _synthesize_exploit_result(vuln, tool_records or [])
         semantic_status = str(semantic_result.get("status", "ERROR")).upper()
+        if status == "EXPLOITED" and semantic_status == "EXPLOITED":
+            return _make_test_entry(
+                vuln,
+                status="CONFIRMED",
+                result={**result, **semantic_result},
+            )
         if status == "EXPLOITED" and (
             not _has_positive_exploit_evidence(result)
             or semantic_status != "EXPLOITED"
