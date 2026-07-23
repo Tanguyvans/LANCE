@@ -152,6 +152,22 @@ def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
     assert result.phase4_completion_rate == 1.0
 
 
+def test_mqtt_rc27_with_payload_is_positive_tool_evidence():
+    record = {
+        "tool": "mqtt_listen",
+        "args": {"broker": "192.0.2.11", "topic": "#"},
+        "result": json.dumps({
+            "stdout": "smartcity/admin/credentials {\"db_pass\":\"secret\"}",
+            "stderr": "Timed out\n",
+            "return_code": 27,
+        }),
+    }
+
+    assert _tool_call_outcome(
+        record, _finding(type="no_auth", service="mqtt", port=1883)
+    ) is True
+
+
 def test_phase4_error_is_incomplete(tmp_path):
     run, gt = _write(tmp_path, [_finding(exploitation_status="suspected")])
     (run / "04_exploitation.json").write_text(json.dumps({

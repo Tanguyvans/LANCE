@@ -96,6 +96,58 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 # They remain useful in development but are never exposed to a sealed worker.
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
+PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
+    "decode_value", "list_skills", "load_skill", "search_knowledge",
+})
+
+PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
+    "credentials": frozenset({
+        "try_credential", "ssh_login", "mqtt_listen", "mysql_query",
+        "redis_cmd", "ftp_list", "nmap_scan", "telnet_connect",
+    }),
+    "data_access": frozenset({
+        "http_get", "http_request", "curl_headers", "mqtt_listen",
+        "mysql_query", "redis_cmd", "ftp_list", "telnet_connect",
+        "nmap_scan", "udp_send",
+    }),
+    "injection": frozenset({
+        "http_get", "http_request", "curl_headers", "sqlmap",
+        "tcp_send", "udp_send",
+    }),
+}
+
+PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
+    "ssh": frozenset({"ssh_login", "try_credential", "ssh_audit", "nmap_scan"}),
+    "mqtt": frozenset({"mqtt_listen", "try_credential", "nmap_scan"}),
+    "http": frozenset({"http_get", "http_request", "curl_headers", "nikto_scan", "whatweb", "wpscan", "sqlmap"}),
+    "https": frozenset({"http_get", "http_request", "curl_headers", "tls_inspect", "mtls_request", "openssl_inspect", "nikto_scan", "whatweb", "wpscan", "sqlmap"}),
+    "telnet": frozenset({"telnet_connect", "try_credential", "nmap_scan"}),
+    "mysql": frozenset({"mysql_query", "nmap_scan"}),
+    "mariadb": frozenset({"mysql_query", "nmap_scan"}),
+    "redis": frozenset({"redis_cmd", "nmap_scan"}),
+    "ftp": frozenset({"ftp_list", "try_credential", "nmap_scan"}),
+    "snmp": frozenset({"nmap_scan"}),
+    "coap": frozenset({"nmap_scan", "udp_send"}),
+    "modbus": frozenset({"modbus_scan", "modbus_write"}),
+    "opcua": frozenset({"tcp_send", "nmap_scan"}),
+    "bacnet": frozenset({"udp_send", "nmap_scan"}),
+}
+
+
+def _phase4_local_verification_tools(
+    tools: list[dict], *, category: str, service: str
+) -> list[dict]:
+    """Narrow local-MoE Phase 4 tools to the tested vuln family."""
+    allowed = set(PHASE4_LOCAL_COMMON_TOOL_NAMES)
+    service_allowed = PHASE4_LOCAL_SERVICE_TOOL_NAMES.get(
+        str(service or "").casefold(), frozenset()
+    )
+    if service_allowed:
+        allowed.update(service_allowed)
+    else:
+        allowed.update(PHASE4_LOCAL_CATEGORY_TOOL_NAMES.get(category, frozenset()))
+    return [tool for tool in tools if tool.get("name") in allowed]
+
 # ---------------------------------------------------------------------------
 # Phase 4 exploit micro-agents: per-category instructions.
 # Vuln-type taxonomy lives in src/agent/vuln_taxonomy.py so the evaluator
@@ -1771,6 +1823,17 @@ class Pipeline:
 
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
+        local_intrusion_memo = config.name == "intrusion" and self._uses_local_moe()
+        if local_intrusion_memo:
+            tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
+            system_prompt += (
+                "\n\nLOCAL MOE PHASE 5 MODE:\n"
+                "Use read_deliverable to inspect 05_intrusion_context.json, then use "
+                "try_credential and ssh_exec for the intrusion campaign. "
+                "Do not write the final JSON and do not call save_deliverable; "
+                "the orchestrator will derive 05_intrusion.json strictly from tool_calls.jsonl. "
+                "Return only a concise memo of tested credentials, hosts, and command results.\n"
+            )
 
         # Print header
         print(f"\n{'=' * 60}")
@@ -1861,8 +1924,8 @@ class Pipeline:
             stream_callback=self._model_stream_callback(
                 stream_callback, phase=config.phase, agent=config.name
             ),
-            required_tool="save_deliverable",
-            terminate_after_tool="save_deliverable",
+            required_tool=None if local_intrusion_memo else "save_deliverable",
+            terminate_after_tool=None if local_intrusion_memo else "save_deliverable",
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
@@ -2369,7 +2432,13 @@ class Pipeline:
                 if not query:
                     continue
                 evidence_ref = f"tc-{uuid4().hex}"
-                if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                with self._artifact_log_lock:
+                    if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                        sequence = None
+                    else:
+                        self._tool_call_count += 1
+                        sequence = self._tool_call_count
+                if sequence is None:
                     records.append({
                         **query_info,
                         "query": query,
@@ -2377,14 +2446,13 @@ class Pipeline:
                         "reason": f"tool-call budget exhausted ({self.max_tool_calls})",
                     })
                     continue
-                self._tool_call_count += 1
                 try:
                     raw_result = cve_search(query=query, top_k=5)
                 except Exception as exc:
                     raw_result = json.dumps({"error": str(exc)}, ensure_ascii=False)
                 entry = {
                     "timestamp": datetime.now().astimezone().isoformat(),
-                    "sequence": self._tool_call_count,
+                    "sequence": sequence,
                     "tool": "cve_search",
                     "args": {"query": query, "top_k": 5},
                     "result": raw_result if isinstance(raw_result, str) else str(raw_result),
@@ -2397,8 +2465,9 @@ class Pipeline:
                     "product": query_info.get("product", ""),
                     "version": query_info.get("version", ""),
                 }
-                with log_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+                with self._artifact_log_lock:
+                    with log_path.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
                 compatible_items = self._phase3_compatible_cve_items(raw_result)
                 for item in compatible_items:
                     device_changed = self._append_phase3_cve_finding(
@@ -2489,7 +2558,7 @@ class Pipeline:
             "mtls_request", "tls_inspect",
         }
         recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
-        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+        analysis_tools = [self._wrap_tool(t, phase=3, agent="vuln_analysis") for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
 
         def _analyze_device(device: dict):
             device_id = device["id"]
@@ -3356,14 +3425,14 @@ class Pipeline:
                 result_text = ""
                 try:
                     if self._uses_local_moe():
-                        verification_tools = [
-                            tool for tool in exploit_tools
-                            if tool.get("name") != "save_deliverable"
-                        ]
+                        verification_tools = _phase4_local_verification_tools(
+                            exploit_tools, category=category, service=service
+                        )
                         local_prompt = (
                             system_prompt
                             + "\n\nLOCAL MOE PHASE 4 MODE:\n"
                             + "Use the available verification tools to test the vulnerability. "
+                            + "Do not call save_deliverable; it is not available in this mode. "
                             + "Do not write JSON and do not claim a final verdict. "
                             + "Return a concise memo with what you tested; the orchestrator will "
                             + "derive the strict JSON result from the archived tool outputs.\n"
@@ -4280,7 +4349,32 @@ class Pipeline:
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
-            if valid:
+            if valid and not self._uses_local_moe():
+                return
+            if valid and self._uses_local_moe():
+                log.warning(
+                    "Phase 5 local MoE: reconciling valid model deliverable with tool evidence"
+                )
+                data = self._synthesize_intrusion_from_tools(
+                    note="Reconciled from tool_calls.jsonl — local MoE model output is treated as memo-only."
+                )
+                path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+                results[config.name] = "completed:synthesized"
+                print(
+                    f"  Reconciled intrusion deliverable from tool calls "
+                    f"({data['summary']['devices_compromised']} compromised, "
+                    f"{data['summary']['credentials_harvested']} creds)"
+                )
+                if stream_callback:
+                    stream_callback({
+                        "type": "phase_done",
+                        "phase": config.phase,
+                        "name": config.name,
+                        "status": "completed:synthesized",
+                        "deliverable": config.deliverable_file,
+                        "cost_usd": 0,
+                        "turns": 0,
+                    })
                 return
         log.warning(
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
@@ -4304,7 +4398,7 @@ class Pipeline:
                 "turns": 0,
             })
 
-    def _synthesize_intrusion_from_tools(self) -> dict:
+    def _synthesize_intrusion_from_tools(self, note: str | None = None) -> dict:
         """Reconstruct an intrusion deliverable from logged try_credential /
         ssh_exec calls (both are Phase-5-only tools)."""
         log_path = self.run_dir / "tool_calls.jsonl"
@@ -4324,6 +4418,23 @@ class Pipeline:
                     did, dip = entry.get("device_id"), entry.get("device_ip")
                     if dip and did and dip not in ip_to_id:
                         ip_to_id[dip] = did
+                for cred in ctx.get("recovered_credentials", []):
+                    if not isinstance(cred, dict):
+                        continue
+                    user = str(cred.get("user", ""))
+                    pwd = str(cred.get("password", ""))
+                    svc = str(cred.get("service", ""))
+                    source_ip = str(cred.get("source_ip", ""))
+                    ckey = (source_ip, user, pwd, svc)
+                    if user and ckey not in seen_cred:
+                        seen_cred.add(ckey)
+                        creds.append({
+                            "user": user,
+                            "password": pwd,
+                            "service": svc,
+                            "source_ip": source_ip,
+                            "source_device": cred.get("source_device", ""),
+                        })
             except Exception:
                 pass
 
@@ -4334,6 +4445,11 @@ class Pipeline:
                 try:
                     rec = json.loads(line)
                 except Exception:
+                    continue
+                record_phase = rec.get("phase")
+                if record_phase not in (None, 5, "5"):
+                    continue
+                if record_phase is None and rec.get("vuln_id"):
                     continue
                 tool = rec.get("tool")
                 args = rec.get("args") or {}
@@ -4402,7 +4518,7 @@ class Pipeline:
                 "credentials_harvested": len(creds),
                 "crown_jewels_reached": [],
                 "total_hops": len(devices),
-                "_note": "Synthesized from tool_calls.jsonl — model emitted no deliverable.",
+                "_note": note or "Synthesized from tool_calls.jsonl — model emitted no deliverable.",
             },
             "credential_pool": creds,
             "compromised_devices": devices,
@@ -5421,7 +5537,7 @@ class Pipeline:
                     if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
                         continue
                     if tool["name"] not in seen_names:
-                        tools.append(self._wrap_tool(tool))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
                         seen_names.add(tool["name"])
                 continue
 
@@ -5431,13 +5547,13 @@ class Pipeline:
                     if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
-                        tools.append(self._wrap_tool(tool))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
                         seen_names.add(ref)
                         break
 
         return tools
 
-    def _wrap_tool(self, tool: dict) -> dict:
+    def _wrap_tool(self, tool: dict, *, phase: int | str | None = None, agent: str | None = None) -> dict:
         """Wrap a tool function to log its calls and results to tool_calls.jsonl."""
         original_fn = tool["function"]
         if original_fn is None:
@@ -5448,11 +5564,13 @@ class Pipeline:
 
         def logged_fn(**kwargs):
             evidence_ref = f"tc-{uuid4().hex}"
-            if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
-                raise RuntimeError(
-                    f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
-                )
-            self._tool_call_count += 1
+            with self._artifact_log_lock:
+                if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                    raise RuntimeError(
+                        f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
+                    )
+                self._tool_call_count += 1
+                sequence = self._tool_call_count
             result = original_fn(**kwargs)
             try:
                 exploit_context = getattr(
@@ -5461,15 +5579,18 @@ class Pipeline:
                 ) or {}
                 entry = json.dumps({
                     "timestamp": datetime.now().astimezone().isoformat(),
-                    "sequence": self._tool_call_count,
+                    "sequence": sequence,
                     "tool": tool_name,
                     "args": kwargs,
                     "result": result if isinstance(result, str) else str(result),
+                    "phase": phase,
+                    "agent": agent,
                     "evidence_ref": evidence_ref,
                     **exploit_context,
                 }, ensure_ascii=False, default=str)
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(entry + "\n")
+                with self._artifact_log_lock:
+                    with open(log_path, "a", encoding="utf-8") as f:
+                        f.write(entry + "\n")
             except Exception:
                 pass  # Never break the pipeline for logging
             return result

@@ -95,6 +95,115 @@ class TestResolveTools:
         assert recon_names.isdisjoint(resolved_names)
 
 
+class TestPhase4LocalToolScope:
+    def test_telnet_scope_excludes_unrelated_exploit_tools(self):
+        from src.agent import pipeline as pipeline_mod
+
+        tools = [
+            {"name": name, "function": lambda: "{}"}
+            for name in (
+                "telnet_connect", "try_credential", "mqtt_listen",
+                "http_get", "exploit_iot_kit", "save_deliverable",
+                "search_knowledge",
+            )
+        ]
+
+        scoped = pipeline_mod._phase4_local_verification_tools(
+            tools, category="data_access", service="telnet"
+        )
+        names = {tool["name"] for tool in scoped}
+
+        assert "telnet_connect" in names
+        assert "try_credential" in names
+        assert "search_knowledge" in names
+        assert "mqtt_listen" not in names
+        assert "http_get" not in names
+        assert "exploit_iot_kit" not in names
+        assert "save_deliverable" not in names
+
+
+class TestScannerEvidenceExtraction:
+    def test_make_finding_infers_service_from_empty_standard_port(self):
+        from src.agent import scanner as scanner_mod
+
+        finding = scanner_mod._make_finding(
+            {"id": "router", "ip": "192.0.2.1"},
+            "insecure_protocol",
+            "MEDIUM",
+            "",
+            23,
+            "Telnet responds",
+            "open port 23",
+        )
+
+        assert finding["service"] == "telnet"
+        assert finding["protocol"] == "tcp"
+
+    def test_directory_listing_prefers_specific_paths_over_root(self):
+        from src.agent import scanner as scanner_mod
+
+        entries = [
+            {
+                "tool": "curl_headers",
+                "kwargs": {"url": "http://192.0.2.5/"},
+                "result": json.dumps({"stdout": "HTTP/1.1 200 OK\nIndex of /"}),
+            },
+            {
+                "tool": "curl_headers",
+                "kwargs": {"url": "http://192.0.2.5/backup/"},
+                "result": json.dumps({"stdout": "HTTP/1.1 200 OK\nIndex of /backup/"}),
+            },
+        ]
+
+        findings = scanner_mod._extract_directory_listing(
+            entries, {"id": "web", "ip": "192.0.2.5"}, "http"
+        )
+
+        assert len(findings) == 1
+        assert "/backup/" in findings[0]["endpoint"]
+        assert findings[0]["evidence"] == "'Index of' found at: http://192.0.2.5/backup/"
+
+    def test_ssh_port_forwarding_is_not_in_default_extractors(self):
+        from src.agent import scanner as scanner_mod
+
+        assert scanner_mod._extract_ssh_port_forwarding not in scanner_mod.FINDING_EXTRACTORS
+
+
+class TestPrepare3BDatasets:
+    def test_phase5_examples_remain_single_atomic_evidence_chain(self):
+        from training.prepare_3b_datasets import build_chunks
+
+        class Tokenizer:
+            def apply_chat_template(
+                self, messages, tools=None, tokenize=False, add_generation_prompt=False
+            ):
+                return "\n".join(str(message.get("content", "")) for message in messages)
+
+            def encode(self, text, add_special_tokens=False):
+                return text.split()
+
+        row = {
+            "metadata": {"phase": 5},
+            "tools": [],
+            "messages": [
+                {"role": "system", "content": "intrusion system"},
+                {"role": "user", "content": "use tool evidence"},
+                {"role": "assistant", "content": "try credential"},
+                {"role": "tool", "content": "try_credential success false"},
+                {"role": "assistant", "content": "final no compromise"},
+            ],
+        }
+
+        chunks, stats = build_chunks(Tokenizer(), row, max_length=100, distractors=0)
+
+        assert stats["chunks"] == 1
+        assert len(chunks) == 1
+        assert chunks[0]["metadata"]["evidence_chain_atomic"] is True
+        contents = [message.get("content") for message in chunks[0]["messages"]]
+        assert "try_credential success false" in contents
+        assert "final no compromise" in contents
+
+
 class TestReconToolContract:
     def test_requires_minimum_evidence_without_prescribing_call_order(
         self, mock_provider, output_dir, monkeypatch
@@ -1415,6 +1524,134 @@ class TestPhase5Context:
             "source_device": "s1-mqtt",
         }]
 
+    def test_local_moe_intrusion_rewrites_hallucinated_compromise(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
+            "all_targets": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
+            "recovered_credentials": [{
+                "user": "root",
+                "password": "P@ssw0rd123",
+                "service": "mqtt",
+                "source_ip": "192.168.100.11",
+                "source_device": "s1-mqtt",
+            }],
+        }))
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "tool": "try_credential",
+            "args": {
+                "ip": "192.168.100.1",
+                "service": "ssh",
+                "user": "admin",
+                "password": "admin",
+            },
+            "result": json.dumps({
+                "success": False,
+                "service": "ssh",
+                "port": 22,
+                "stderr": "Permission denied",
+            }),
+        }) + "\n")
+        with (run_dir / "tool_calls.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "phase": 4,
+                "vuln_id": "VULN-004",
+                "tool": "try_credential",
+                "args": {
+                    "ip": "192.168.100.1",
+                    "service": "ssh",
+                    "user": "operator",
+                    "password": "operator",
+                },
+                "result": json.dumps({
+                    "success": True,
+                    "service": "ssh",
+                    "port": 22,
+                    "stdout": "uid=1000(operator)",
+                }),
+            }) + "\n")
+        (run_dir / "05_intrusion.json").write_text(json.dumps({
+            "summary": {
+                "devices_attempted": 1,
+                "devices_compromised": 1,
+                "credentials_harvested": 1,
+                "crown_jewels_reached": [],
+                "total_hops": 1,
+            },
+            "credential_pool": [],
+            "compromised_devices": [{
+                "device_id": "s1-router",
+                "device_ip": "192.168.100.1",
+                "access_method": "hallucinated",
+            }],
+            "chains": [],
+        }))
+
+        results = {"intrusion": "completed"}
+        pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
+
+        final = json.loads((run_dir / "05_intrusion.json").read_text())
+        assert results["intrusion"] == "completed:synthesized"
+        assert final["summary"]["devices_compromised"] == 0
+        assert final["summary"]["devices_attempted"] == 1
+        assert final["compromised_devices"] == []
+        assert final["credential_pool"] == [{
+            "user": "root",
+            "password": "P@ssw0rd123",
+            "service": "mqtt",
+            "source_ip": "192.168.100.11",
+            "source_device": "s1-mqtt",
+        }]
+
+    def test_non_local_intrusion_keeps_valid_model_deliverable(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "openrouter"
+        mock_provider.model = "large-model"
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        model_output = {
+            "summary": {"devices_compromised": 1},
+            "compromised_devices": [{"device_ip": "192.0.2.10"}],
+        }
+        (run_dir / "05_intrusion.json").write_text(json.dumps(model_output))
+
+        results = {"intrusion": "completed"}
+        pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
+
+        assert json.loads((run_dir / "05_intrusion.json").read_text()) == model_output
+        assert results["intrusion"] == "completed"
+
+
+    def test_local_moe_intrusion_runs_as_tool_memo_without_save_requirement(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider)
+        (pipeline.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [],
+            "all_targets": [],
+            "recovered_credentials": [],
+        }))
+
+        status = pipeline._run_agent(AGENTS["intrusion"])
+
+        kwargs = mock_provider.chat_with_tools.call_args.kwargs
+        tool_names = {tool["name"] for tool in kwargs["tools"]}
+        assert status.startswith("failed:")
+        assert "try_credential" in tool_names
+        assert "ssh_exec" in tool_names
+        assert "save_deliverable" not in tool_names
+        assert kwargs["required_tool"] is None
+        assert kwargs["terminate_after_tool"] is None
+        assert "LOCAL MOE PHASE 5 MODE" in kwargs["system_prompt"]
+
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
@@ -1719,13 +1956,15 @@ class TestInformationPreservingArchitecture:
         wrapped = pipeline._wrap_tool({
             "name": "large_result",
             "function": lambda: payload,
-        })
+        }, phase=5, agent="intrusion")
 
         assert wrapped["function"]() == payload
         record = json.loads(
             (pipeline.run_dir / "tool_calls.jsonl").read_text().strip()
         )
         assert record["result"] == payload
+        assert record["phase"] == 5
+        assert record["agent"] == "intrusion"
 
     def test_model_text_is_archived_without_diminution(
         self, mock_provider, output_dir

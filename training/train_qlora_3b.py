@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 
@@ -26,6 +27,28 @@ def project_path(value: str | Path) -> Path:
 def load_config(path: str) -> dict:
     with open(path, encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def estimate_total_update_steps(
+    train_examples: int,
+    *,
+    per_device_batch_size: int,
+    gradient_accumulation_steps: int,
+    num_train_epochs: float,
+) -> int:
+    """Estimate Trainer update steps for single-GPU QLoRA runs."""
+    examples_per_update = max(1, per_device_batch_size) * max(
+        1, gradient_accumulation_steps
+    )
+    updates_per_epoch = max(1, math.ceil(train_examples / examples_per_update))
+    return max(1, math.ceil(updates_per_epoch * num_train_epochs))
+
+
+def effective_step_interval(configured_steps: int, total_update_steps: int) -> int:
+    """Keep step-based actions reachable on short training runs."""
+    configured_steps = max(1, int(configured_steps or 1))
+    total_update_steps = max(1, int(total_update_steps or 1))
+    return min(configured_steps, total_update_steps)
 
 
 def parse_args() -> argparse.Namespace:
@@ -192,6 +215,20 @@ def main() -> None:
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
+    total_update_steps = estimate_total_update_steps(
+        len(split["train"]),
+        per_device_batch_size=int(training["per_device_train_batch_size"]),
+        gradient_accumulation_steps=int(training["gradient_accumulation_steps"]),
+        num_train_epochs=float(training["num_train_epochs"]),
+    )
+    eval_strategy = training["eval_strategy"]
+    eval_steps = int(training.get("eval_steps", 1) or 1)
+    if eval_strategy == "steps" and len(split["test"]):
+        eval_steps = effective_step_interval(eval_steps, total_update_steps)
+    save_steps = effective_step_interval(
+        int(training.get("save_steps", 1) or 1), total_update_steps
+    )
+
     sft_config = SFTConfig(
         output_dir=str(output_path),
         num_train_epochs=training["num_train_epochs"],
@@ -205,9 +242,9 @@ def main() -> None:
         lr_scheduler_type=training["lr_scheduler_type"],
         logging_steps=training["logging_steps"],
         save_strategy=training["save_strategy"],
-        save_steps=training["save_steps"],
-        eval_strategy=training["eval_strategy"],
-        eval_steps=training["eval_steps"],
+        save_steps=save_steps,
+        eval_strategy=eval_strategy,
+        eval_steps=eval_steps,
         prediction_loss_only=training["prediction_loss_only"],
         save_total_limit=training["save_total_limit"],
         seed=training["seed"],
@@ -237,7 +274,8 @@ def main() -> None:
     print(
         f"Training {args.expert}: {len(split['train'])} train / "
         f"{len(split['test'])} eval examples, context={max_seq_length}, "
-        f"feedback={feedback_count}x{feedback_repeat}"
+        f"feedback={feedback_count}x{feedback_repeat}, "
+        f"updates={total_update_steps}, eval_steps={eval_steps}"
     )
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     trainer.model.save_pretrained(output_path)

@@ -266,6 +266,8 @@ def _make_finding(device: dict, vuln_type: str, severity: str, service: str,
                   tools: list[str] | None = None, *, protocol: str | None = None,
                   endpoint: str = "", product: str = "", version: str = "") -> dict:
     """Build a finding dict in the strict-v3-compatible standard schema."""
+    if not service:
+        service = {80: "http", 443: "https", 22: "ssh", 23: "telnet"}.get(port, "")
     if protocol is None:
         protocol = "udp" if service.casefold() in {"coap", "snmp", "bacnet"} else "tcp"
     if not endpoint:
@@ -372,6 +374,11 @@ def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str)
             url = entry.get("kwargs", {}).get("url", "")
             paths_found.append(url)
     if paths_found:
+        specific_paths = [
+            url for url in paths_found
+            if (urlsplit(url).path or "/") not in {"", "/"}
+        ]
+        paths_found = specific_paths or paths_found
         findings.append(_make_finding(
             device, "directory_listing", "MEDIUM", svc_name, 80,
             f"Directory listing enabled on: {', '.join(paths_found)}",
@@ -1142,7 +1149,6 @@ FINDING_EXTRACTORS = [
     _extract_snmp_default_community,
     _extract_coap_no_auth,
     _extract_ldap_no_tls,
-    _extract_ssh_port_forwarding,
 ]
 
 

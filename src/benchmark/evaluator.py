@@ -1147,17 +1147,27 @@ def _semantic_output_supports_finding(tool: str, result: dict, finding: dict | N
         stdout, stderr, body, received, str(headers),
         str(result.get("interpretation", "")),
     )).casefold()
+    return_code = result.get("return_code")
+    has_return_code = isinstance(return_code, int) and not isinstance(return_code, bool)
+
+    if tool == "mqtt_listen":
+        auth_failure = any(marker in text for marker in (
+            "connection refused", "permission denied", "access denied", "noauth",
+            "authentication required", "unauthorized",
+        ))
+        return (
+            not auth_failure
+            and has_return_code
+            and return_code in {0, 27}
+            and bool(stdout.strip())
+        )
+
     if any(marker in text for marker in (
         "connection refused", "permission denied", "access denied", "noauth",
         "authentication required", "unauthorized", "timed out", "timeout",
         "[cache] only duplicate",
     )):
         return False
-    return_code = result.get("return_code")
-    has_return_code = isinstance(return_code, int) and not isinstance(return_code, bool)
-
-    if tool == "mqtt_listen":
-        return has_return_code and return_code in {0, 27} and bool(text.strip())
     if has_return_code and return_code != 0:
         return False
     if tool in {"ssh_login", "ssh_exec"}:

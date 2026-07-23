@@ -9,7 +9,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from transformers import AutoTokenizer
+try:
+    from transformers import AutoTokenizer
+except ModuleNotFoundError:
+    AutoTokenizer = None
 
 EXPERTS = ("secretary", "recon", "vuln", "exploit")
 DEFAULT_LENGTHS = {"secretary": 6144, "recon": 6144, "vuln": 4096, "exploit": 6144}
@@ -200,6 +203,17 @@ def build_chunks(
         stats["max_tokens"] = max(stats["max_tokens"], length)
         return True
 
+    # Intrusion decisions must remain in the same training example as the
+    # tool evidence that supports them. Splitting Phase 5 creates completion
+    # windows that can contain a final claim without any preceding result.
+    metadata = row.get("metadata") or {}
+    if metadata.get("phase") == 5:
+        materialize(units, 0)
+        if chunks:
+            chunks[0]["metadata"]["evidence_chain_atomic"] = True
+        stats["chunks"] += len(chunks)
+        return chunks, stats
+
     for unit in units:
         candidate = active + [unit]
         probe_messages = copy.deepcopy(prefix)
@@ -260,6 +274,8 @@ def main() -> int:
     parser.add_argument("--max-length", type=int, help="Override all expert context limits")
     args = parser.parse_args()
 
+    if AutoTokenizer is None:
+        raise RuntimeError("transformers is required to run prepare_3b_datasets.py")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     failed = False
