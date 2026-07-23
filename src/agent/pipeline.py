@@ -43,7 +43,7 @@ from src.agent.tools.graph_tools import (
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
-from src.agent.tools.skill_tools import SKILL_TOOLS, get_skills_metadata, set_skill_filter
+from src.agent.tools.skill_tools import SKILL_TOOLS, cve_search, get_skills_metadata, set_skill_filter
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
 
@@ -2093,6 +2093,352 @@ class Pipeline:
         }
         return compact
 
+    @staticmethod
+    def _parse_phase3_tool_result(raw_result) -> dict:
+        if isinstance(raw_result, dict):
+            return raw_result
+        if isinstance(raw_result, str):
+            try:
+                parsed = json.loads(raw_result)
+                return parsed if isinstance(parsed, dict) else {"stdout": raw_result}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return {"stdout": raw_result}
+        return {"stdout": str(raw_result)}
+
+    @staticmethod
+    def _phase3_port_from_entry(entry: dict, text: str) -> int | None:
+        kwargs = entry.get("kwargs")
+        kwargs = kwargs if isinstance(kwargs, dict) else {}
+        ports = kwargs.get("ports")
+        if isinstance(ports, int):
+            return ports
+        if isinstance(ports, str):
+            match = re.search(r"\d+", ports)
+            if match:
+                return int(match.group(0))
+        match = re.search(r"\b(\d{1,5})/(?:tcp|udp)\b", text, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        return None
+
+    @staticmethod
+    def _extract_phase3_software_versions(text: str) -> list[dict[str, str]]:
+        """Extract explicit product/version observations suitable for CVE lookup."""
+        patterns = [
+            ("OpenSSH", r"\bOpenSSH[_\s-]+(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("Dropbear", r"\bDropbear(?:[_\s-]+sshd)?[_\s-]+(?P<version>\d{4}\.\d+(?:[A-Za-z0-9._~:+-]*))"),
+            ("Mosquitto", r"\bmosquitto(?:\s+version)?\s+(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("nginx", r"\bnginx(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("Apache httpd", r"\b(?:Apache(?:\s+httpd)?|httpd)(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("lighttpd", r"\blighttpd(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("Redis", r"\bredis_version[:=](?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("Redis", r"\bRedis(?:\s+server)?(?:\s+v=|/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("MySQL", r"\bMySQL(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("MariaDB", r"\bMariaDB(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("OpenWrt", r"\bOpenWrt(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("uHTTPd", r"\buHTTPd(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+            ("vsftpd", r"\bvsftpd(?:/|\s+)(?P<version>\d+(?:\.\d+)+(?:[A-Za-z0-9._~:+-]*))"),
+        ]
+        found: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for product, pattern in patterns:
+            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                version = match.group("version").strip().strip(";,)")
+                key = (product.casefold(), version.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                line_end = text.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(text)
+                excerpt = text[line_start:line_end].strip()
+                found.append({
+                    "product": product,
+                    "version": version,
+                    "query": f"{product} {version}",
+                    "evidence": excerpt[:300],
+                })
+        return found
+
+    def _phase3_version_queries_for_device(
+        self,
+        device: dict,
+        scan_data: dict,
+    ) -> list[dict]:
+        """Build deduplicated cve_search queries from explicit scanner versions."""
+        device_id = device.get("id", "")
+        services = device.get("services", [])
+        port_services = {
+            service.get("port"): service
+            for service in services
+            if isinstance(service, dict) and service.get("port") is not None
+        }
+        queries: list[dict] = []
+        seen: set[str] = set()
+        scan_results = scan_data.get("scan_results", {})
+        if not isinstance(scan_results, dict):
+            return queries
+        for service_key, entries in scan_results.items():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                parsed = self._parse_phase3_tool_result(entry.get("result", ""))
+                stdout = str(parsed.get("stdout") or "")
+                stderr = str(parsed.get("stderr") or "")
+                text = "\n".join(part for part in (stdout, stderr) if part)
+                if not text:
+                    continue
+                port = self._phase3_port_from_entry(entry, text)
+                svc_meta = port_services.get(port, {}) if port is not None else {}
+                service_name = (
+                    svc_meta.get("name")
+                    or svc_meta.get("service")
+                    or str(service_key).split(":", 1)[0]
+                )
+                protocol = svc_meta.get("protocol", "tcp")
+                for observation in self._extract_phase3_software_versions(text):
+                    query = observation["query"]
+                    dedupe_key = f"{device_id}:{service_name}:{port}:{query}".casefold()
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    queries.append({
+                        **observation,
+                        "device_id": device_id,
+                        "device_ip": device.get("ip", ""),
+                        "service": service_name,
+                        "port": port,
+                        "protocol": protocol,
+                        "source_tool": entry.get("tool", ""),
+                    })
+        return queries
+
+    @staticmethod
+    def _phase3_compatible_cve_items(raw_result) -> list[dict]:
+        try:
+            results = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        if not isinstance(results, list):
+            return []
+        compatible: list[dict] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            metadata = item.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            compatibility = item.get("compatibility")
+            compatibility = compatibility if isinstance(compatibility, dict) else {}
+            status = str(
+                compatibility.get("status")
+                or item.get("compatibility_status")
+                or metadata.get("compatibility_status")
+                or ""
+            ).casefold()
+            cve_id = str(
+                item.get("cve_id") or item.get("id")
+                or metadata.get("cve_id") or metadata.get("id") or ""
+            ).upper()
+            if status == "compatible" and re.fullmatch(r"CVE-\d{4}-\d{4,}", cve_id):
+                compatible.append(item)
+        return compatible
+
+    def _append_phase3_cve_finding(
+        self,
+        scanner_results: dict[str, dict],
+        query_info: dict,
+        cve_item: dict,
+        evidence_ref: str,
+    ) -> bool:
+        metadata = cve_item.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        compatibility = cve_item.get("compatibility")
+        compatibility = compatibility if isinstance(compatibility, dict) else {}
+        cve_id = str(
+            cve_item.get("cve_id") or cve_item.get("id")
+            or metadata.get("cve_id") or metadata.get("id")
+        ).upper()
+        severity = str(
+            cve_item.get("severity")
+            or metadata.get("severity")
+            or "MEDIUM"
+        ).upper()
+        description = str(
+            cve_item.get("description")
+            or metadata.get("description")
+            or cve_item.get("document")
+            or metadata.get("document")
+            or ""
+        )
+        reason = str(
+            compatibility.get("reason")
+            or cve_item.get("compatibility_reason")
+            or metadata.get("compatibility_reason")
+            or "version range classified as compatible"
+        )
+        device_id = str(query_info.get("device_id", ""))
+        findings = scanner_results.setdefault(device_id, {}).setdefault("findings", [])
+        finding = {
+            "id": f"{device_id}-cve-{cve_id}",
+            "device_id": device_id,
+            "device_ip": query_info.get("device_ip", ""),
+            "type": "known_cve",
+            "severity": severity,
+            "service": query_info.get("service", ""),
+            "port": query_info.get("port"),
+            "protocol": query_info.get("protocol", "tcp"),
+            "endpoint": "",
+            "product": query_info.get("product", ""),
+            "version": query_info.get("version", ""),
+            "details": f"{cve_id}: {description[:240]}".strip(),
+            "evidence": (
+                f"Detected {query_info.get('query')} in {query_info.get('source_tool')}; "
+                f"cve_search returned compatible: {reason}"
+            ),
+            "evidence_ref": evidence_ref,
+            "evidence_refs": [evidence_ref],
+            "cve_ids": [cve_id],
+            "cve_validation": {
+                "query": query_info.get("query", ""),
+                "observed_product": query_info.get("product", ""),
+                "observed_version": query_info.get("version", ""),
+                "compatibility_status": "compatible",
+                "compatibility_reason": reason,
+            },
+            "exploitation_status": "suspected",
+        }
+        if not any(
+            existing.get("type") == "known_cve"
+            and cve_id in [str(value).upper() for value in existing.get("cve_ids", [])]
+            and existing.get("service") == finding["service"]
+            and existing.get("port") == finding["port"]
+            for existing in findings
+            if isinstance(existing, dict)
+        ):
+            findings.append(finding)
+            return True
+        return False
+
+    def _persist_phase3_device_findings(
+        self,
+        device: dict,
+        scanner_results: dict[str, dict],
+    ) -> None:
+        device_id = device.get("id", "")
+        data = scanner_results.get(device_id, {})
+        findings = data.get("findings", [])
+        fallback_path = self.run_dir / f"03_device_{device_id}.json"
+        fallback = {
+            "device_id": device_id,
+            "device_ip": device.get("ip", ""),
+            "vulnerabilities": findings if isinstance(findings, list) else [],
+            "summary": {
+                "total": len(findings) if isinstance(findings, list) else 0,
+                "by_severity": {
+                    severity: sum(
+                        1 for finding in findings
+                        if isinstance(finding, dict)
+                        and str(finding.get("severity", "")).upper() == severity
+                    )
+                    for severity in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+                } if isinstance(findings, list) else {},
+            },
+        }
+        fallback_path.write_text(json.dumps(fallback, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _run_phase3_local_cve_validation(
+        self,
+        scanner_results: dict[str, dict],
+        surface: list[dict],
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> None:
+        """Deterministic local-MoE CVE/version pass with auditable tool ledger."""
+        records: list[dict] = []
+        log_path = self.run_dir / "tool_calls.jsonl"
+        for device in surface:
+            if not isinstance(device, dict):
+                continue
+            device_id = device.get("id", "")
+            scan_data = scanner_results.get(device_id, {})
+            device_changed = False
+            for query_info in self._phase3_version_queries_for_device(device, scan_data):
+                query = str(query_info.get("query", "")).strip()
+                if not query:
+                    continue
+                evidence_ref = f"tc-{uuid4().hex}"
+                if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
+                    records.append({
+                        **query_info,
+                        "query": query,
+                        "status": "skipped",
+                        "reason": f"tool-call budget exhausted ({self.max_tool_calls})",
+                    })
+                    continue
+                self._tool_call_count += 1
+                try:
+                    raw_result = cve_search(query=query, top_k=5)
+                except Exception as exc:
+                    raw_result = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                entry = {
+                    "timestamp": datetime.now().astimezone().isoformat(),
+                    "sequence": self._tool_call_count,
+                    "tool": "cve_search",
+                    "args": {"query": query, "top_k": 5},
+                    "result": raw_result if isinstance(raw_result, str) else str(raw_result),
+                    "evidence_ref": evidence_ref,
+                    "phase": 3,
+                    "device_id": query_info.get("device_id", ""),
+                    "device_ip": query_info.get("device_ip", ""),
+                    "service": query_info.get("service", ""),
+                    "port": query_info.get("port"),
+                    "product": query_info.get("product", ""),
+                    "version": query_info.get("version", ""),
+                }
+                with log_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")
+                compatible_items = self._phase3_compatible_cve_items(raw_result)
+                for item in compatible_items:
+                    device_changed = self._append_phase3_cve_finding(
+                        scanner_results, query_info, item, evidence_ref
+                    ) or device_changed
+                records.append({
+                    **query_info,
+                    "query": query,
+                    "status": "completed",
+                    "evidence_ref": evidence_ref,
+                    "compatible_cves": [
+                        str(
+                            item.get("cve_id") or item.get("id")
+                            or (item.get("metadata") or {}).get("cve_id")
+                            or (item.get("metadata") or {}).get("id")
+                        ).upper()
+                        for item in compatible_items
+                    ],
+                })
+                if stream_callback:
+                    stream_callback({
+                        "type": "phase3_cve_check",
+                        "phase": 3,
+                        "device_id": query_info.get("device_id", ""),
+                        "query": query,
+                        "compatible_cves": records[-1]["compatible_cves"],
+                    })
+            if device_changed or not (self.run_dir / f"03_device_{device_id}.json").exists():
+                self._persist_phase3_device_findings(device, scanner_results)
+
+        summary = {
+            "mode": "local_moe_deterministic",
+            "queries": len(records),
+            "compatible_cves": sum(len(r.get("compatible_cves", [])) for r in records),
+            "records": records,
+        }
+        (self.run_dir / "03_cve_validation.json").write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
     def _run_phase3(
         self,
         config: AgentConfig,
@@ -2125,6 +2471,10 @@ class Pipeline:
             return
 
         scanner_results = run_scanner(self.run_dir, surface, stream_callback)
+        if self._uses_local_moe():
+            self._run_phase3_local_cve_validation(
+                scanner_results, surface, stream_callback
+            )
 
         # --- Phase 3b: LLM analysis micro-agents (per device) ---
         print(f"\n{'=' * 60}")

@@ -1824,6 +1824,107 @@ class TestInformationPreservingArchitecture:
         assert "OpenSSH 9.2" in projection["markdown_service_rows"][0]
         assert (pipeline.run_dir / "02_recon_evidence.json").exists()
 
+    def test_local_moe_phase3_cve_validation_logs_and_feeds_aggregation(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        monkeypatch.setattr(
+            "src.agent.pipeline.cve_search",
+            lambda query, top_k=5: json.dumps([{
+                "id": "CVE-2023-48795",
+                "severity": "HIGH",
+                "description": "Terrapin affects this OpenSSH range",
+                "compatibility": {
+                    "status": "compatible",
+                    "reason": "OpenSSH 9.2 is in the affected range",
+                },
+            }]),
+        )
+        pipeline = Pipeline(provider=mock_provider)
+        device = {
+            "id": "ssh-1",
+            "ip": "192.0.2.10",
+            "services": [{"name": "ssh", "port": 22, "protocol": "tcp"}],
+        }
+        scanner_results = {
+            "ssh-1": {
+                "scan_results": {
+                    "ssh": [{
+                        "tool": "nmap_scan",
+                        "kwargs": {"target": "192.0.2.10", "ports": "22"},
+                        "result": json.dumps({
+                            "stdout": "22/tcp open ssh OpenSSH 9.2 Debian-2",
+                            "stderr": "",
+                            "return_code": 0,
+                        }),
+                    }],
+                },
+                "findings": [],
+            },
+        }
+
+        pipeline._run_phase3_local_cve_validation(scanner_results, [device])
+
+        validation = json.loads((pipeline.run_dir / "03_cve_validation.json").read_text())
+        assert validation["queries"] == 1
+        assert validation["compatible_cves"] == 1
+        assert validation["records"][0]["query"] == "OpenSSH 9.2"
+        tool_log = (pipeline.run_dir / "tool_calls.jsonl").read_text()
+        assert '"tool": "cve_search"' in tool_log
+        fallback = json.loads((pipeline.run_dir / "03_device_ssh-1.json").read_text())
+        finding = fallback["vulnerabilities"][0]
+        assert finding["type"] == "known_cve"
+        assert finding["cve_ids"] == ["CVE-2023-48795"]
+        assert finding["cve_validation"]["query"] == "OpenSSH 9.2"
+
+        pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+        canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+        assert len(canonical["vulnerabilities"]) == 1
+        assert canonical["vulnerabilities"][0]["cve_claim_status"] == "validated"
+
+    def test_local_moe_phase3_cve_validation_requires_explicit_version(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        calls = []
+        monkeypatch.setattr(
+            "src.agent.pipeline.cve_search",
+            lambda query, top_k=5: calls.append(query) or "[]",
+        )
+        pipeline = Pipeline(provider=mock_provider)
+        device = {
+            "id": "router-1",
+            "ip": "192.0.2.1",
+            "services": [
+                {"name": "ssh", "port": 22, "protocol": "tcp"},
+                {"name": "http", "port": 80, "protocol": "tcp"},
+            ],
+        }
+        scanner_results = {
+            "router-1": {
+                "scan_results": {
+                    "ssh": [{
+                        "tool": "nmap_scan",
+                        "kwargs": {"ports": "22"},
+                        "result": json.dumps({"stdout": "22/tcp open ssh Dropbear sshd (protocol 2.0)"}),
+                    }],
+                    "http": [{
+                        "tool": "curl_headers",
+                        "kwargs": {"url": "http://192.0.2.1/"},
+                        "result": json.dumps({"stdout": "HTTP/1.1 200 OK\nServer: nginx"}),
+                    }],
+                },
+                "findings": [],
+            },
+        }
+
+        pipeline._run_phase3_local_cve_validation(scanner_results, [device])
+
+        validation = json.loads((pipeline.run_dir / "03_cve_validation.json").read_text())
+        assert validation["queries"] == 0
+        assert calls == []
+        fallback = json.loads((pipeline.run_dir / "03_device_router-1.json").read_text())
+        assert fallback["vulnerabilities"] == []
+
     def test_aggregation_preserves_raw_candidates_and_uses_evidence_quality(
         self, mock_provider, output_dir, monkeypatch
     ):
