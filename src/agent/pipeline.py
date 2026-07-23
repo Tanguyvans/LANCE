@@ -1926,6 +1926,7 @@ class Pipeline:
             ),
             required_tool=None if local_intrusion_memo else "save_deliverable",
             terminate_after_tool=None if local_intrusion_memo else "save_deliverable",
+            terminate_on_unavailable_tools={"save_deliverable"} if local_intrusion_memo else None,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
@@ -3451,6 +3452,7 @@ class Pipeline:
                                 stream_callback, phase=4, agent=phase_name
                             ),
                             repeat_guard=True,
+                            terminate_on_unavailable_tools={"save_deliverable"},
                         )
                         records = _tool_records_for_vuln(self.run_dir, vuln_id)
                         result = _synthesize_exploit_result(vuln, records, result_text)

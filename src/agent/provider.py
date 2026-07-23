@@ -144,14 +144,16 @@ class LLMProvider:
         required_tool: str | None = None,
         terminate_after_tool: str | None = None,
         repeat_guard: bool = True,
+        terminate_on_unavailable_tools: set[str] | frozenset[str] | None = None,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
+        terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools)
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset()):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -195,6 +197,25 @@ class LLMProvider:
                     continue
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return "\n".join(text_parts)
+
+            terminal_unavailable = next(
+                (
+                    tc.name for tc in tool_calls
+                    if tc.name in terminate_on_unavailable_tools and tc.name not in tool_map
+                ),
+                None,
+            )
+            if terminal_unavailable:
+                log.info(
+                    "Terminating after unavailable legacy tool call in memo mode: %s",
+                    terminal_unavailable,
+                )
+                if stream_callback:
+                    stream_callback({
+                        "type": "turn_done", "turn": turn + 1, "final": True,
+                        "terminated_by": terminal_unavailable,
+                    })
+                return "\n".join(text_parts) or f"(terminated by unavailable {terminal_unavailable})"
 
             if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
             messages.append({"role": "assistant", "content": response.content})
@@ -246,7 +267,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset()):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -347,6 +368,28 @@ class LLMProvider:
                     stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return last_nonempty_text
+
+            terminal_unavailable = next(
+                (
+                    tc.function.name for tc in message.tool_calls
+                    if tc.function.name in terminate_on_unavailable_tools
+                    and tc.function.name not in tool_map
+                ),
+                None,
+            )
+            if terminal_unavailable:
+                log.info(
+                    "Terminating after unavailable legacy tool call in memo mode: %s",
+                    terminal_unavailable,
+                )
+                if message.content and stream_callback:
+                    stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
+                if stream_callback:
+                    stream_callback({
+                        "type": "turn_done", "turn": turn + 1, "final": True,
+                        "terminated_by": terminal_unavailable,
+                    })
+                return last_nonempty_text or f"(terminated by unavailable {terminal_unavailable})"
 
             if message.content and stream_callback:
                 stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})

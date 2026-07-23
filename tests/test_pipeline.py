@@ -1283,6 +1283,45 @@ class TestRepeatingToolDetector:
         assert result["tool"] == "save_deliverable"
         assert result["available_tools"] == ["mqtt_listen"]
 
+    def test_openai_loop_can_terminate_legacy_unavailable_save_without_tool_event(self):
+        """Local memo mode can stop old save calls without executing or streaming them."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        save_call = MagicMock()
+        save_call.function.name = "save_deliverable"
+        save_call.function.arguments = '{"filename":"05_intrusion.json","content":"{}"}'
+        save_call.id = "call_save"
+        message = MagicMock(content="Memo only.", tool_calls=[save_call])
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(finish_reason="tool_calls", message=message)],
+            usage=None,
+        )
+        stream_events = []
+        execute = MagicMock(return_value='{"ok": true}')
+
+        result = provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[{
+                "name": "try_credential", "description": "try",
+                "input_schema": {}, "function": execute,
+            }],
+            max_turns=10,
+            stream_callback=stream_events.append,
+            terminate_on_unavailable_tools={"save_deliverable"},
+        )
+
+        assert result == "Memo only."
+        execute.assert_not_called()
+        assert provider.client.chat.completions.create.call_count == 1
+        assert not [event for event in stream_events if event.get("type") == "tool_call"]
+        assert stream_events[-1]["terminated_by"] == "save_deliverable"
+
     def test_openai_loop_terminates_after_successful_tool(self):
         """A successful terminal tool call must not trigger another model turn."""
         from src.agent.provider import LLMProvider
@@ -1650,6 +1689,7 @@ class TestPhase5Context:
         assert "save_deliverable" not in tool_names
         assert kwargs["required_tool"] is None
         assert kwargs["terminate_after_tool"] is None
+        assert kwargs["terminate_on_unavailable_tools"] == {"save_deliverable"}
         assert "LOCAL MOE PHASE 5 MODE" in kwargs["system_prompt"]
 
 
