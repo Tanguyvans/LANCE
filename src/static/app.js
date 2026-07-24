@@ -632,7 +632,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // View nav (Dashboard / Benchmark)
-  document.querySelectorAll('.view-btn').forEach(btn => {
+  document.querySelectorAll('#view-nav .view-btn').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
@@ -2201,26 +2201,30 @@ function _renderInline(text) {
   return t;
 }
 
-// ── View switching (Dashboard / Benchmark) ─────────────────────────────────
+// ── View switching (Dashboard / Benchmark / Scenario Lab) ──────────────────
 
 let _bmData = null; // cached benchmark data
 
 function switchView(view) {
   const isMain = view === 'main';
+  const isBenchmark = view === 'benchmark';
+  const isScenarioLab = view === 'scenario-lab';
   const mainEl = document.getElementById('main');
   mainEl.style.display = isMain ? 'flex' : 'none';
-  document.getElementById('benchmark-view').hidden = isMain;
+  document.getElementById('benchmark-view').hidden = !isBenchmark;
+  document.getElementById('scenario-lab-view').hidden = !isScenarioLab;
   // Log panel belongs to the dashboard only
   document.getElementById('resize-log').style.display = isMain ? '' : 'none';
   document.getElementById('log-wrap').style.display = isMain ? '' : 'none';
 
-  document.querySelectorAll('.view-btn').forEach(btn => {
+  document.querySelectorAll('#view-nav .view-btn').forEach(btn => {
     const active = btn.dataset.view === view;
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   });
 
-  if (!isMain && !_bmData) loadBenchmark();
+  if (isBenchmark && !_bmData) loadBenchmark();
+  if (isScenarioLab && typeof openScenarioLab === 'function') openScenarioLab();
 }
 
 // ── Benchmark ──────────────────────────────────────────────────────────────
@@ -2262,7 +2266,11 @@ function renderBenchmarkTable() {
   );
 
   const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
-  const toRatio = v => v == null ? null : Number(v);
+  const toRatio = v => {
+    if (v == null) return null;
+    const numeric = Number(v);
+    return Number.isFinite(numeric) ? numeric : null;
+  };
   const barColor = v => {
     if (v == null) return 'var(--muted)';
     if (v >= 0.75) return 'var(--green)';
@@ -2277,11 +2285,132 @@ function renderBenchmarkTable() {
     const aggregate = sealed ? s?.metrics : null;
     const recall = sealed ? toRatio(aggregate?.recall) : s?.recall;
     const precision = sealed ? toRatio(aggregate?.precision) : s?.precision;
-    const f1 = sealed ? toRatio(aggregate?.f1) : s?.f1_score;
+    const f1 = sealed ? toRatio(aggregate?.f1) : toRatio(s?.f1_score);
     const llmData = s?.llm_judge_data;
-    const barW = f1 != null ? Math.max(0, Math.min(100, Math.round(f1 * 100))) : 0;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
+
+    // strict-v3 uses Q-F1 for positive scenarios and specificity for controls.
+    const isControlScenario = !sealed && s?.is_zero_gt === true;
+    const qualityF1 = !sealed && !isControlScenario
+      ? toRatio(s?.quality_adjusted_f1)
+      : null;
+    const controlSpecificity = isControlScenario ? toRatio(s?.specificity) : null;
+    const primaryQuality = qualityF1 ?? controlSpecificity;
+    const barMetric = primaryQuality ?? f1;
+    const barW = barMetric != null
+      ? Math.max(0, Math.min(100, Math.round(barMetric * 100)))
+      : 0;
+    const qualityF1Title = primaryQuality == null ? '' : isControlScenario
+      ? [
+          `Spécificité du contrôle: ${pct(controlSpecificity)}`,
+          `Violations: ${Number(s?.negative_control_violations || 0)}`,
+          `Contrôles évaluables: ${Number(s?.negative_controls_declared || 0) - Number(s?.negative_controls_unevaluable || 0)}`,
+          `Politique: ${s?.scoring_policy || 'inconnue'}`,
+        ].join('\n')
+      : [
+          `Détection: ${pct(toRatio(s?.detection_f1) ?? f1)}`,
+          `Matching crédité: ${pct(toRatio(s?.credited_f1))}`,
+          `Ajusté sévérité: ${pct(toRatio(s?.severity_adjusted_f1))}`,
+          `Qualité strict-v3: ${pct(qualityF1)}`,
+          `F1 vérifié: ${pct(toRatio(s?.verified_f1))}`,
+          `Politique: ${s?.scoring_policy || 'inconnue'}`,
+        ].join('\n');
+    const qualityF1Cell = primaryQuality == null
+      ? noScore
+      : `<span class="bm-metric-main" style="color:${barColor(primaryQuality)}" title="${escapeHtml(qualityF1Title)}">${isControlScenario ? 'Spec ' : ''}${pct(primaryQuality)}</span>`;
+
+    // Evidence diagnostics remain null when Phase 4/tool provenance is absent.
+    let evidenceCell = noScore;
+    if (!sealed && s?.evidence_metrics_available) {
+      const evidenceF1 = toRatio(s.evidence_f1);
+      const traceable = toRatio(s.traceable_evidence_coverage);
+      const faithfulness = toRatio(s.evidence_faithfulness);
+      const contradiction = toRatio(s.evidence_contradiction_rate);
+      const evidenceTitle = [
+        `Evidence precision: ${pct(toRatio(s.evidence_precision))}`,
+        `Evidence recall: ${pct(toRatio(s.evidence_recall))}`,
+        `Evidence F1: ${pct(evidenceF1)}`,
+        `Couverture traçable: ${pct(traceable)}`,
+        `Faithfulness: ${pct(faithfulness)}`,
+        `Contradictions: ${pct(contradiction)}`,
+        `Claims soutenus: ${Number(s.evidence_claims_supported || 0)}/${Number(s.evidence_claims_total || 0)}`,
+      ].join('\n');
+      const evidenceMain = evidenceF1 != null
+        ? `F1 ${pct(evidenceF1)}`
+        : `Trace ${pct(traceable)}`;
+      evidenceCell = `<span class="bm-metric" title="${evidenceTitle}">
+        <span class="bm-metric-main">${evidenceMain}</span>
+        <span class="bm-metric-sub">Trace ${pct(traceable)} · Fid. ${pct(faithfulness)}</span>
+      </span>`;
+    }
+
+    let exploitCell = noScore;
+    if (!sealed && s) {
+      const exploitation = toRatio(s.exploitation_coverage);
+      const phase4 = toRatio(s.phase4_completion_rate);
+      const verifiedF1 = toRatio(s.verified_f1);
+      const exploitTitle = [
+        `Couverture exploitation: ${pct(exploitation)}`,
+        `Phase 4 conclusive: ${Number(s.phase4_conclusive || 0)}/${Number(s.phase4_candidates || 0)} (${pct(phase4)})`,
+        `F1 vérifié: ${pct(verifiedF1)}`,
+        `TP exploités: ${Number(s.tp_exploited || 0)}/${Number(s.true_positives || 0)}`,
+      ].join('\n');
+      exploitCell = `<span class="bm-metric" title="${exploitTitle}">
+        <span class="bm-metric-main">${pct(exploitation)}</span>
+        <span class="bm-metric-sub">P4 ${pct(phase4)} · VF1 ${pct(verifiedF1)}</span>
+      </span>`;
+    }
+
+    let pathsCell = noScore;
+    const totalPaths = !sealed ? Number(s?.total_attack_paths || 0) : 0;
+    if (totalPaths > 0) {
+      const qualityPath = toRatio(s.quality_path_coverage);
+      const verifiedPath = toRatio(s.verified_path_coverage);
+      const mhr = [1, 2, 3].map(depth =>
+        toRatio(s[`mhr_${depth}_credited`] ?? s[`mhr_${depth}`])
+      );
+      const verifiedMhr = [1, 2, 3].map(depth =>
+        toRatio(s[`mhr_${depth}_verified`])
+      );
+      const pathTitle = [
+        `Chemins détectés: ${Number(s.attack_paths_detected || 0)}/${totalPaths}`,
+        `Couverture qualité: ${pct(qualityPath)}`,
+        `Couverture vérifiée: ${pct(verifiedPath)}`,
+        `MHR crédité 1/2/3: ${mhr.map(pct).join(' / ')}`,
+        `MHR vérifié 1/2/3: ${verifiedMhr.map(pct).join(' / ')}`,
+      ].join('\n');
+      pathsCell = `<span class="bm-metric" title="${pathTitle}">
+        <span class="bm-metric-main">Q ${pct(qualityPath)}</span>
+        <span class="bm-metric-sub">V ${pct(verifiedPath)} · M1 ${pct(mhr[0])}</span>
+      </span>`;
+    }
+
+    let efficiencyCell = noScore;
+    if (!sealed && s) {
+      const costPerTp = toRatio(s.cost_per_tp);
+      const costPerGt = toRatio(s.cost_per_expected_vulnerability);
+      const turnsPerTp = toRatio(s.turns_per_tp);
+      if (costPerTp != null || costPerGt != null || turnsPerTp != null) {
+        const efficiencyTitle = [
+          `Coût/TP: ${costPerTp != null ? '$' + costPerTp.toFixed(6) : '—'}`,
+          `Coût/vulnérabilité attendue: ${costPerGt != null ? '$' + costPerGt.toFixed(6) : '—'}`,
+          `Tours/TP: ${turnsPerTp != null ? turnsPerTp.toFixed(2) : '—'}`,
+          `Tokens: ${s.total_tokens != null ? Number(s.total_tokens).toLocaleString('fr-FR') : '—'}`,
+          `Appels outils: ${s.total_tool_calls != null ? Number(s.total_tool_calls) : '—'}`,
+          s.cost_is_estimate === true
+            ? 'Coût estimé'
+            : s.cost_is_estimate === false ? 'Coût mesuré' : 'Mode de coût indisponible',
+        ].join('\n');
+        const costLabel = costPerTp != null
+          ? `$${costPerTp.toFixed(4)}/TP`
+          : costPerGt != null ? `$${costPerGt.toFixed(4)}/GT` : 'Coût —';
+        efficiencyCell = `<span class="bm-metric" title="${efficiencyTitle}">
+          <span class="bm-metric-main">${costLabel}</span>
+          <span class="bm-metric-sub">${turnsPerTp != null ? turnsPerTp.toFixed(1) + ' tours/TP' : 'tours —'}</span>
+        </span>`;
+      }
+    }
 
     let scoreLlmCell = noScore;
     if (llmData) {
@@ -2380,19 +2509,24 @@ function renderBenchmarkTable() {
       <td>${commitCell}</td>
       <td><span class="run-badge ${escapeHtml(rowStatus)}">${escapeHtml(rowStatus)}</span></td>
       <td>${costValue != null ? '$'+Number(costValue).toFixed(4) : '—'}</td>
+      <td>${efficiencyCell}</td>
       <td>${recall != null ? pct(recall) : noScore}</td>
       <td>${precision != null ? pct(precision) : noScore}</td>
       <td>${f1 != null ? pct(f1) : noScore}</td>
+      <td>${qualityF1Cell}</td>
       <td>${weightedCell}</td>
       <td>${scorePct}</td>
       <td style="font-weight:600;color:${barColor(llmData ? (llmData.scenario_score ?? llmData.f1_score ?? llmData.specificity) : null)}">${scoreLlmCell}</td>
       <td style="font-size:11px">${qualityCell}</td>
       <td>${sevCell}</td>
+      <td>${evidenceCell}</td>
+      <td>${exploitCell}</td>
+      <td>${pathsCell}</td>
       <td>${hallucCell}</td>
       <td>${complianceCell}</td>
       <td>
-        <div class="bm-bar-wrap" title="${f1 != null ? pct(f1)+' F1' : 'pas de score'}">
-          <div class="bm-bar" style="width:${barW}%;background:${barColor(f1)}"></div>
+        <div class="bm-bar-wrap" title="${barMetric != null ? pct(barMetric)+(qualityF1 != null ? ' Q-F1' : ' F1') : 'pas de score'}">
+          <div class="bm-bar" style="width:${barW}%;background:${barColor(barMetric)}"></div>
         </div>
       </td>
     </tr>`;

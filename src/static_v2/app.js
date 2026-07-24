@@ -3,6 +3,7 @@
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   scenario: null,
+  generatedVariant: null,
   model: null,
   provider: 'openrouter',
   running: false,
@@ -244,9 +245,11 @@ function buildCyStyle() {
 
 // ── Topology loading ───────────────────────────────────────────────────────
 async function loadTopology() {
-  const url = state.scenario
-    ? `/api/topology?scenario=${state.scenario}`
-    : '/api/topology';
+  const url = state.generatedVariant
+    ? '/api/scenario-generator/' + encodeURIComponent(state.generatedVariant) + '/topology'
+    : state.scenario
+      ? '/api/topology?scenario=' + encodeURIComponent(state.scenario)
+      : '/api/topology';
   const data = await fetchJSON(url);
   cy.elements().remove();
   state.nodes = {};
@@ -298,7 +301,7 @@ async function loadTopology() {
   applyLayout();
   applyLayers();
   updateMetric('metricDevices', data.nodes?.length ?? '—');
-  const vulns = data.nodes?.reduce((acc, n) => acc + (n.data?.vuln_count || 0), 0);
+  const vulns = data.nodes?.reduce((acc, n) => acc + (n.vuln_count || 0), 0);
   if (vulns) updateMetric('metricVulns', vulns);
 }
 
@@ -703,6 +706,7 @@ function bindScenarioBtn(btn) {
     document.querySelectorAll('.s-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.scenario = btn.dataset.s || null;
+    state.generatedVariant = null;
     state.vulns = {};
     state.compromised = [];
     state.hopEdges = [];

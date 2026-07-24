@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static_v2/style.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <script src="/static/cytoscape.min.js"></script>
 </head>
 <body>
 
@@ -97,6 +97,9 @@
         <button class="run-btn secondary" id="btnBatch">BATCH</button>
         <button class="run-btn secondary" id="btnTeardown">TEARDOWN</button>
       </div>
+      <div class="run-controls" style="margin-top:8px">
+        <button class="run-btn secondary" id="btnGenerator">SCENARIO LAB</button>
+      </div>
     </div>
 
     <div class="panel-section">
@@ -135,6 +138,33 @@
     </div>
   </div>
 
+  <!-- Generated scenario workshop -->
+  <div id="generatorModal" class="modal hidden">
+    <div class="modal-box glass-panel generator-modal-box" role="dialog" aria-modal="true" aria-labelledby="generatorTitle">
+      <div class="generator-header">
+        <div><div class="panel-title" id="generatorTitle">SCENARIO LAB</div><div class="generator-state">PREVIEW ONLY</div></div>
+        <button id="btnGeneratorClose" class="rp-close" aria-label="Fermer">&#10005;</button>
+      </div>
+      <div class="generator-toolbar">
+        <label class="generator-field"><span>BLUEPRINT</span><select id="generatorBlueprint" class="glass-select"></select></label>
+        <label class="generator-field"><span>MUTATION INITIALE</span><select id="generatorOperation" class="glass-select"></select></label>
+        <label class="generator-field seed-field"><span>SEED</span><input id="generatorSeed" class="generator-input" type="number" min="0" max="2147483647"></label>
+        <button class="run-btn primary generator-command" id="btnGenerateScenario">GENERATE</button>
+      </div>
+      <div class="generator-body">
+        <section class="generator-variants"><div class="panel-title">VARIANTS</div><div id="generatorVariants" class="generator-variant-list"></div></section>
+        <section class="generator-details"><div class="panel-title">GROUND TRUTH</div><div id="generatorDetails" class="generator-detail-content"></div></section>
+      </div>
+      <div class="generator-actions">
+        <label class="generator-field"><span>MUTATION SUIVANTE</span><select id="mutationOperation" class="glass-select"></select></label>
+        <label class="generator-field seed-field"><span>SEED</span><input id="mutationSeed" class="generator-input" type="number" min="0" max="2147483647"></label>
+        <button class="run-btn secondary" id="btnMutateScenario" disabled>MUTATE</button>
+        <button class="run-btn primary" id="btnPreviewScenario" disabled>PREVIEW</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static_v2/app.js"></script>
+  <script src="/static_v2/generator.js"></script>
 </body>
 </html>

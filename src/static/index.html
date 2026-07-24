@@ -16,6 +16,7 @@
   <div id="view-nav" role="tablist" aria-label="Vue principale">
     <button class="view-btn active" data-view="main" role="tab" aria-selected="true" aria-controls="main">Dashboard</button>
     <button class="view-btn" data-view="benchmark" role="tab" aria-selected="false" aria-controls="benchmark-view">Benchmark</button>
+    <button class="view-btn" data-view="scenario-lab" role="tab" aria-selected="false" aria-controls="scenario-lab-view">Scenario Lab</button>
   </div>
   <div id="phase-bar" role="group" aria-label="Phases du pipeline">
     <button class="phase-pill" data-phase="1" aria-label="Phase 1 Graph">1 · Graph</button>
@@ -317,21 +318,85 @@
           <th>Commit</th>
           <th>Statut</th>
           <th>Coût</th>
+          <th title="Coût et nombre de tours rapportés aux vrais positifs">Effic. ⓘ</th>
           <th>Recall</th>
           <th>Precision</th>
           <th>F1</th>
+          <th title="Quality-adjusted F1 pour les scénarios positifs, spécificité pour les contrôles">Q-F1/Spec ⓘ</th>
           <th>Score</th>
           <th>Score%</th>
           <th>Score LLM</th>
           <th title="CVE : correspondance CVE exacte | T : IP + type | ~ : IP + catégorie (loose)" style="cursor:help">Qualité ⓘ</th>
           <th title="Sévérité globale trouvée vs attendue" style="cursor:help">Sévérité ⓘ</th>
+          <th title="F1 des preuves traçables, couverture et faithfulness">Preuves ⓘ</th>
+          <th title="Couverture d'exploitation, verdicts Phase 4 et F1 vérifié">Exploit. ⓘ</th>
+          <th title="Couverture qualité/vérifiée des chemins et Multi-Hop Reach">Chemins ⓘ</th>
           <th title="Taux de faux positifs (hallucinations LLM)" style="cursor:help">Halluc. ⓘ</th>
           <th title="V: validations réussies · F: fallbacks de format · O: erreurs outils" style="cursor:help">Qualité proc. ⓘ</th>
-          <th>F1 bar</th>
+          <th>Score qualité</th>
         </tr>
       </thead>
       <tbody id="bm-tbody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- ── Scenario Lab view ─────────────────────────────────────────────────── -->
+<div id="scenario-lab-view" hidden>
+  <div id="sl-toolbar">
+    <div>
+      <div id="sl-title">Scenario Lab</div>
+      <div id="sl-status">Prévisualisation uniquement · scénarios officiels inchangés</div>
+    </div>
+    <label class="sl-field">
+      <span>Blueprint</span>
+      <select id="sl-blueprint"></select>
+    </label>
+    <label class="sl-field">
+      <span>Altération initiale</span>
+      <select id="sl-operation"></select>
+    </label>
+    <label class="sl-field sl-seed-field">
+      <span>Seed</span>
+      <input id="sl-seed" type="number" min="0" max="2147483647">
+    </label>
+    <button id="sl-generate">Générer</button>
+  </div>
+
+  <div id="sl-body">
+    <section id="sl-variants-panel" aria-labelledby="sl-variants-title">
+      <div class="sl-panel-heading" id="sl-variants-title">Variantes générées</div>
+      <div id="sl-variants"></div>
+    </section>
+
+    <section id="sl-details-panel" aria-labelledby="sl-details-title">
+      <div class="sl-panel-heading" id="sl-details-title">Ground truth</div>
+      <div id="sl-details">
+        <div class="sl-empty">Sélectionnez ou générez une variante.</div>
+      </div>
+      <div id="sl-mutation-controls">
+        <label class="sl-field">
+          <span>Altération suivante</span>
+          <select id="sl-mutation-operation"></select>
+        </label>
+        <label class="sl-field sl-seed-field">
+          <span>Seed</span>
+          <input id="sl-mutation-seed" type="number" min="0" max="2147483647">
+        </label>
+        <button id="sl-mutate" disabled>Muter</button>
+      </div>
+    </section>
+
+    <section id="sl-preview-panel" aria-labelledby="sl-preview-title">
+      <div class="sl-panel-heading-row">
+        <div>
+          <div class="sl-panel-heading" id="sl-preview-title">Topologie</div>
+          <div id="sl-preview-meta">Aucune variante sélectionnée</div>
+        </div>
+        <button id="sl-fit" class="graph-btn" title="Ajuster la vue" aria-label="Ajuster la prévisualisation"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6V2h4"/><path d="M10 2h4v4"/><path d="M14 10v4h-4"/><path d="M6 14H2v-4"/></svg></button>
+      </div>
+      <div id="sl-cy"></div>
+    </section>
   </div>
 </div>
 
@@ -370,5 +435,6 @@
 </div>
 
 <script src="/static/app.js"></script>
+<script src="/static/scenario_generator.js"></script>
 </body>
 </html>
