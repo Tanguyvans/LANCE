@@ -2076,6 +2076,7 @@ async function viewFile(runId, filename) {
   } else {
     body.textContent = data.content;
   }
+  body.scrollTop = 0;
 
   const overlay = document.getElementById('modal-overlay');
   overlay._prevFocus = document.activeElement;
