@@ -6,6 +6,7 @@ Supports two providers:
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Literal
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from src.agent.pricing import _load_pricing
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _require_db():
@@ -194,9 +196,15 @@ def list_models() -> dict:
     # Preferred path: read curated models from the DB so they can be edited
     # without touching the code. Any failure falls back to the hardcoded list.
     try:
-        from src.db.database import list_models as db_list_models
-        rows = db_list_models(enabled_only=True)
-    except Exception:
+        from src.db import database as db
+
+        # The public selector is often the first DB-backed endpoint hit after a
+        # deployment. Ensure legacy databases are migrated before querying the
+        # profile metadata columns added to the models table.
+        db.init_db()
+        rows = db.list_models(enabled_only=True)
+    except Exception as exc:
+        log.warning("Model registry unavailable; using static fallback: %s", exc)
         rows = []
 
     # provider -> api_key_env, so a model is "available" when its key is set

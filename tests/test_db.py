@@ -131,6 +131,51 @@ def test_model_api_and_auto_profile_resolution(db):
     assert exc.value.status_code == 422
 
 
+def test_public_model_api_migrates_legacy_db_and_keeps_moe_router(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "legacy-model-api.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE providers ("
+            "name TEXT PRIMARY KEY, base_url TEXT, api_key_env TEXT, "
+            "default_model TEXT, kind TEXT NOT NULL DEFAULT 'cloud')"
+        )
+        conn.execute(
+            "CREATE TABLE models ("
+            "slug TEXT PRIMARY KEY, label TEXT, provider TEXT, "
+            "recommended INTEGER NOT NULL DEFAULT 0, "
+            "enabled INTEGER NOT NULL DEFAULT 1, input_per_mtok REAL, "
+            "output_per_mtok REAL, base_url TEXT, "
+            "subscription INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.execute(
+            "INSERT INTO providers VALUES (?, ?, ?, ?, ?)",
+            ("local-moe", "http://moe.test/v1", "LOCAL_API_KEY", "lance-moe", "local"),
+        )
+        conn.execute(
+            "INSERT INTO models (slug, label, provider, recommended, enabled) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", 1, 1),
+        )
+
+    monkeypatch.setenv("LANCE_DB_PATH", str(path))
+    from src.api.routes import models
+
+    monkeypatch.setattr(models, "_load_pricing", lambda: {})
+    response = models.list_models()
+
+    router = next(model for model in response["models"] if model["id"] == "lance-moe")
+    assert router["provider"] == "local-moe"
+    assert router["available"] is True
+
+    with sqlite3.connect(path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(models)")}
+    assert {
+        "parameter_count_b", "active_parameter_count_b", "profile_policy"
+    } <= columns
+
+
 def test_record_run_upsert_and_read(db):
     meta = {
         "run_dir": "output/agent/2026-01-01_000000",
