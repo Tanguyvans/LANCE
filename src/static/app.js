@@ -636,6 +636,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('#view-nav .view-btn').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
+  switchView(getStoredView());
 
   // Detail tabs
   document.getElementById('detail-tabs').addEventListener('click', e => {
@@ -2225,8 +2226,25 @@ function _renderInline(text) {
 // ── View switching (Dashboard / Benchmark / Scenario Lab) ──────────────────
 
 let _bmData = null; // cached benchmark data
+const VIEW_STORAGE_KEY = 'lance.activeView';
+const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab']);
+
+function getStoredView() {
+  try {
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    return VALID_VIEWS.has(stored) ? stored : 'main';
+  } catch (_) {
+    return 'main';
+  }
+}
+
+function storeActiveView(view) {
+  try { window.localStorage.setItem(VIEW_STORAGE_KEY, view); } catch (_) {}
+}
 
 function switchView(view) {
+  view = VALID_VIEWS.has(view) ? view : 'main';
+  storeActiveView(view);
   const isMain = view === 'main';
   const isBenchmark = view === 'benchmark';
   const isScenarioLab = view === 'scenario-lab';
