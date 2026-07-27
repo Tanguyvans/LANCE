@@ -34,6 +34,11 @@ def main() -> None:
     parser.add_argument("--contract", required=True, type=Path)
     parser.add_argument("--provider", default=os.environ.get("AGENT_PROVIDER", "openrouter"))
     parser.add_argument("--model", default=os.environ.get("AGENT_MODEL"))
+    parser.add_argument(
+        "--execution-profile",
+        choices=["auto", "compact", "full"],
+        default=os.environ.get("AGENT_EXECUTION_PROFILE", "auto"),
+    )
     parser.add_argument("--phases", nargs="+", type=int)
     parser.add_argument("--output-dir", type=Path, default=Path(os.environ.get("WORKER_OUTPUT_DIR", "/work/output")))
     parser.add_argument("--dry-run", action="store_true")
@@ -71,6 +76,7 @@ def main() -> None:
         benchmark_split=contract.split,
         manage_scenario=False,
         auto_teardown=False,
+        execution_profile=args.execution_profile,
     )
     results = pipeline.run()
 

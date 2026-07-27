@@ -36,21 +36,29 @@ def upsert_model(
     recommended: bool = False,
     enabled: bool = True,
     subscription: bool = False,
+    parameter_count_b: float | None = None,
+    active_parameter_count_b: float | None = None,
+    profile_policy: str = "auto",
 ) -> None:
     query = """
-        INSERT INTO models (slug, label, provider, recommended, enabled, subscription)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO models (slug, label, provider, recommended, enabled, subscription,
+                            parameter_count_b, active_parameter_count_b, profile_policy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
             label = excluded.label,
             provider = excluded.provider,
             recommended = excluded.recommended,
             enabled = excluded.enabled,
-            subscription = excluded.subscription
+            subscription = excluded.subscription,
+            parameter_count_b = excluded.parameter_count_b,
+            active_parameter_count_b = excluded.active_parameter_count_b,
+            profile_policy = excluded.profile_policy
     """
     with get_conn() as conn:
         conn.execute(
             query,
-            (slug, label, provider, int(recommended), int(enabled), int(subscription)),
+            (slug, label, provider, int(recommended), int(enabled), int(subscription),
+             parameter_count_b, active_parameter_count_b, profile_policy),
         )
 
 
@@ -81,12 +89,27 @@ def main(argv: Sequence[str] | None = None) -> None:
         kind="local"
     )
 
-    upsert_model("lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", True, True)
+    upsert_model(
+        "lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", True, True,
+        active_parameter_count_b=3.0,
+    )
     if args.include_experts:
-        upsert_model("expert-recon", "Expert (Recon)", "local-moe", False, True)
-        upsert_model("expert-vuln", "Expert (Vuln)", "local-moe", False, True)
-        upsert_model("expert-exploit", "Expert (Exploit)", "local-moe", False, True)
-        upsert_model("expert-secretary", "Expert (Secretary)", "local-moe", False, True)
+        upsert_model(
+            "expert-recon", "Expert (Recon)", "local-moe", False, True,
+            parameter_count_b=3.0,
+        )
+        upsert_model(
+            "expert-vuln", "Expert (Vuln)", "local-moe", False, True,
+            parameter_count_b=3.0,
+        )
+        upsert_model(
+            "expert-exploit", "Expert (Exploit)", "local-moe", False, True,
+            parameter_count_b=3.0,
+        )
+        upsert_model(
+            "expert-secretary", "Expert (Secretary)", "local-moe", False, True,
+            parameter_count_b=3.0,
+        )
 
     print(
         "Successfully injected 'local-moe' provider and HMoE model(s) "

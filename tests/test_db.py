@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import sqlite3
 
 import pytest
 
@@ -24,6 +25,25 @@ def test_init_db_idempotent(db):
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
     assert {"providers", "models", "runs", "run_scores", "phase_usage"} <= names
+
+
+def test_init_db_migrates_legacy_model_table(tmp_path, monkeypatch):
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE models (slug TEXT PRIMARY KEY)")
+    monkeypatch.setenv("LANCE_DB_PATH", str(path))
+
+    from src.db import database
+
+    database.init_db()
+    with database.get_conn() as conn:
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(models)")
+        }
+
+    assert {
+        "parameter_count_b", "active_parameter_count_b", "profile_policy"
+    } <= columns
 
 
 def test_upsert_and_get_provider(db):
@@ -57,6 +77,58 @@ def test_upsert_model_and_list(db):
     assert flash["recommended"] == 1
 
     assert len(db.list_models(enabled_only=False)) == 2
+
+
+def test_model_parameter_metadata_round_trip(db):
+    db.upsert_provider("local", kind="local")
+    db.upsert_model(
+        "moe/model",
+        provider="local",
+        parameter_count_b=30,
+        active_parameter_count_b=3,
+        profile_policy="auto",
+    )
+
+    row = db.get_model("moe/model")
+    assert row["parameter_count_b"] == 30
+    assert row["active_parameter_count_b"] == 3
+    assert row["profile_policy"] == "auto"
+
+
+def test_model_api_and_auto_profile_resolution(db):
+    from fastapi import HTTPException
+    from src.agent.execution_profiles import resolve_execution_profile_for_model
+    from src.api.routes.models import ModelCreate, ModelPatch, create_model, update_model
+
+    db.upsert_provider("local", kind="local")
+    created = create_model(ModelCreate(
+        slug="moe/api-model",
+        provider="local",
+        parameter_count_b=30,
+        active_parameter_count_b=3,
+    ))
+    resolution = resolve_execution_profile_for_model("auto", "moe/api-model")
+
+    assert created["active_parameter_count_b"] == 3
+    assert created["effective_profile"] == "compact"
+    assert resolution.profile.name == "compact"
+    assert resolution.resolution_basis == "active_parameters"
+
+    updated = update_model("moe/api-model", ModelPatch(profile_policy="full"))
+    assert updated["profile_policy"] == "full"
+    assert updated["effective_profile"] == "full"
+    assert resolve_execution_profile_for_model(
+        "auto", "moe/api-model"
+    ).profile.name == "full"
+
+    with pytest.raises(HTTPException) as exc:
+        create_model(ModelCreate(
+            slug="invalid/moe",
+            provider="local",
+            parameter_count_b=3,
+            active_parameter_count_b=4,
+        ))
+    assert exc.value.status_code == 422
 
 
 def test_record_run_upsert_and_read(db):

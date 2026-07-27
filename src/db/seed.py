@@ -17,6 +17,7 @@ from pathlib import Path
 
 from src.db.database import (
     get_conn,
+    get_model,
     init_db,
     record_phase_usage,
     record_run,
@@ -51,6 +52,30 @@ _LOCAL_MODELS: list[tuple[str, str, bool]] = [
     ("qwen3.5-9b-32k:latest",  "Qwen3.5 9B local (32k)",           False),
     ("qwen3.5-27b-32k:latest", "Qwen3.5 27B local (32k, offload)", False),
 ]
+
+_MODEL_PARAMETERS: dict[str, tuple[float, float | None]] = {
+    "meta-llama/llama-3.3-70b-instruct": (70.0, None),
+    "google/gemma-4-31b-it": (31.0, None),
+    "google/gemma-4-26b-a4b-it": (26.0, 4.0),
+    "qwen/qwen3-30b-a3b": (30.0, 3.0),
+    "qwen3-14b-32k:latest": (14.0, None),
+    "gemma4-12b-32k:latest": (12.0, None),
+    "qwen3.5-9b-32k:latest": (9.0, None),
+    "qwen3.5-27b-32k:latest": (27.0, None),
+}
+
+
+def _parameter_metadata(slug: str) -> dict:
+    existing = get_model(slug) or {}
+    known_total, known_active = _MODEL_PARAMETERS.get(slug, (None, None))
+    return {
+        "parameter_count_b": known_total or existing.get("parameter_count_b"),
+        "active_parameter_count_b": (
+            known_active or existing.get("active_parameter_count_b")
+        ),
+        "profile_policy": existing.get("profile_policy") or "auto",
+    }
+
 
 # Local OpenAI-compatible inference endpoint (ollama / vLLM). Override per host.
 _OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -106,15 +131,22 @@ def seed_models() -> int:
             provider=provider,
             recommended=recommended,
             subscription=(provider == "minimax"),
+            **_parameter_metadata(slug),
         )
         seen.add(slug)
 
     for slug, label, recommended in _EXTRA_MODELS:
-        upsert_model(slug=slug, label=label, provider="openrouter", recommended=recommended)
+        upsert_model(
+            slug=slug, label=label, provider="openrouter",
+            recommended=recommended, **_parameter_metadata(slug),
+        )
         seen.add(slug)
 
     for slug, label, recommended in _LOCAL_MODELS:
-        upsert_model(slug=slug, label=label, provider="local", recommended=recommended)
+        upsert_model(
+            slug=slug, label=label, provider="local",
+            recommended=recommended, **_parameter_metadata(slug),
+        )
         seen.add(slug)
 
     return len(seen)

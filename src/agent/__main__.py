@@ -27,6 +27,12 @@ def main():
         default=os.environ.get("AGENT_MODEL"),
     )
     parser.add_argument(
+        "--execution-profile",
+        choices=["auto", "compact", "full"],
+        default=os.environ.get("AGENT_EXECUTION_PROFILE", "auto"),
+        help="Tool orchestration profile (default: auto).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Graph tools only, no network recon tools",
@@ -119,6 +125,7 @@ def main():
             dry_run=args.dry_run,
             phases=args.phases,
             blind=args.blind,
+            execution_profile=args.execution_profile,
         )
         return
 
@@ -128,6 +135,7 @@ def main():
         blind=args.blind,
         target_network=args.target_network,
         benchmark_split=resolved_split,
+        execution_profile=args.execution_profile,
     )
     results = pipeline.run()
 

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -34,6 +34,8 @@ _state: dict[str, Any] = {
     # Run metadata
     "scenario_id": None,
     "model": None,
+    "execution_profile": None,
+    "execution_profile_policy": None,
     "started_at": None,
     # Progress tracking
     "phases_done": [],        # [{"phase": 1, "name": "graph_analysis", "cost": 0.01, "duration_s": 42}]
@@ -66,6 +68,7 @@ class StartRequest(BaseModel):
     posture: str | None = None       # "vulnerable" | "hardened"
     selected_packs: list[str] | None = None
     excluded_vulns: list[str] | None = None  # vuln IDs to exclude from GT
+    execution_profile: Literal["auto", "compact", "full"] = "auto"
 
 
 def _pipeline_thread(req: StartRequest):
@@ -105,6 +108,7 @@ def _pipeline_thread(req: StartRequest):
             custom_config=custom_config,
             target_network=req.target_network,
             blind=req.blind,
+            execution_profile=req.execution_profile,
         )
 
         def callback(event: dict):
@@ -192,6 +196,10 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     from datetime import datetime
+    from src.agent.execution_profiles import resolve_execution_profile_for_model
+    profile_resolution = resolve_execution_profile_for_model(
+        req.execution_profile, req.model
+    )
     with _state_lock:
         if _state["running"]:
             raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
@@ -208,6 +216,8 @@ async def start_pipeline(req: StartRequest):
     _state["stop_event"] = threading.Event()
     _state["scenario_id"] = req.scenario_id
     _state["model"] = req.model
+    _state["execution_profile"] = profile_resolution.profile.name
+    _state["execution_profile_policy"] = req.execution_profile
     _state["started_at"] = datetime.now().isoformat()
     _state["phases_done"] = []
     _state["current_devices"] = []
@@ -245,6 +255,8 @@ def get_status():
         "cost": round(_state["cost"], 4),
         "scenario_id": _state.get("scenario_id"),
         "model": _state.get("model"),
+        "execution_profile": _state.get("execution_profile"),
+        "execution_profile_policy": _state.get("execution_profile_policy"),
         "started_at": _state.get("started_at"),
         "deploy_status": _state.get("deploy_status"),
         "phases_done": _state.get("phases_done", []),
@@ -261,6 +273,7 @@ class BatchRequest(BaseModel):
     provider: str = "openrouter"
     phases: list[int] | None = None
     blind: bool = False        # Deploy each scenario but hide topology from agent
+    execution_profile: Literal["auto", "compact", "full"] = "auto"
 
 
 def _batch_thread(req: BatchRequest):
@@ -300,7 +313,8 @@ def _batch_thread(req: BatchRequest):
         evaluation_results = []
         total = len(batch_ids)
 
-        _push({"type": "batch_start", "total": total, "ids": batch_ids})
+        profile_resolution = resolve_execution_profile_for_model(req.execution_profile, req.model)
+        _push({"type": "batch_start", "total": total, "ids": batch_ids, "execution_profile": profile_resolution.profile.name, "execution_profile_policy": req.execution_profile})
 
         for idx, sid in enumerate(batch_ids, 1):
             if _state.get("stop_event") and _state["stop_event"].is_set():
@@ -336,6 +350,7 @@ def _batch_thread(req: BatchRequest):
                     auto_teardown=True,
                     blind=req.blind,
                     benchmark_split="dev-public",
+                    execution_profile=req.execution_profile,
                 )
                 pipeline.run(
                     stream_callback=make_callback(sid),
@@ -436,6 +451,10 @@ async def start_batch(req: BatchRequest):
     req.batch_ids = selected_ids
 
     from datetime import datetime
+    from src.agent.execution_profiles import resolve_execution_profile_for_model
+    profile_resolution = resolve_execution_profile_for_model(
+        req.execution_profile, req.model
+    )
     with _state_lock:
         if _state["running"]:
             raise HTTPException(status_code=409, detail="Pipeline already running or stopping")
@@ -452,6 +471,8 @@ async def start_batch(req: BatchRequest):
     _state["stop_event"] = threading.Event()
     _state["scenario_id"] = None
     _state["model"] = req.model
+    _state["execution_profile"] = profile_resolution.profile.name
+    _state["execution_profile_policy"] = req.execution_profile
     _state["started_at"] = datetime.now().isoformat()
     _state["phases_done"] = []
     _state["current_devices"] = []

@@ -1286,7 +1286,8 @@ async function startRun() {
   const budgetRaw = document.getElementById('inp-budget').value;
   const maxCost = budgetRaw ? parseFloat(budgetRaw) : null;
 
-  const blindMode = !!(document.getElementById('cb-blind-mode')?.checked && mode === 'preset' && scenario);
+  const blindMode = !!(document.getElementById("cb-blind-mode")?.checked && mode === "preset" && scenario);
+  const executionProfile = document.querySelector("input[name=execution-profile]:checked")?.value || "auto";
 
   const body = {
     model,
@@ -1297,6 +1298,7 @@ async function startRun() {
     auto_teardown: teardown,
     max_cost_usd: maxCost,
     phase_models: phaseModels,
+    execution_profile: executionProfile,
   };
 
   // Add custom mode fields
@@ -1351,11 +1353,12 @@ async function startBatch() {
   setCost(0);
   clearPhasePills();
 
-  const blind = document.getElementById('cb-batch-blind-mode')?.checked || false;
+  const blind = document.getElementById("cb-batch-blind-mode")?.checked || false;
+  const executionProfile = document.querySelector("input[name=execution-profile]:checked")?.value || "auto";
   const res = await fetch('/api/pipeline/batch', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null, blind }),
+    body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null, blind, execution_profile: executionProfile }),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -2289,6 +2292,9 @@ function renderBenchmarkTable() {
     const llmData = s?.llm_judge_data;
     const noScore = `<span class="bm-no-score">—</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
+    const profileShort = r.execution_profile
+      ? `<span class="run-badge done">${escapeHtml(r.execution_profile)}</span>`
+      : '';
 
     // strict-v3 uses Q-F1 for positive scenarios and specificity for controls.
     const isControlScenario = !sealed && s?.is_zero_gt === true;
@@ -2505,7 +2511,7 @@ function renderBenchmarkTable() {
     return `<tr>
       <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
       <td><span class="run-badge done">${escapeHtml(scenarioLabel)}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${modelShort}</td>
+      <td style="font-size:11px;color:var(--muted)">${modelShort}${profileShort ? `<br>${profileShort}` : ''}</td>
       <td>${commitCell}</td>
       <td><span class="run-badge ${escapeHtml(rowStatus)}">${escapeHtml(rowStatus)}</span></td>
       <td>${costValue != null ? '$'+Number(costValue).toFixed(4) : '—'}</td>
@@ -2865,6 +2871,9 @@ function _renderManager() {
       <td style="font-family:monospace;font-size:11px">${escapeHtml(m.slug)}</td>
       <td>${escapeHtml(m.provider || '—')}</td>
       <td>${escapeHtml(m.label || '')}</td>
+      <td style="text-align:right">${m.parameter_count_b == null ? '—' : Number(m.parameter_count_b).toFixed(1) + 'B'}</td>
+      <td style="text-align:right">${m.active_parameter_count_b == null ? '—' : Number(m.active_parameter_count_b).toFixed(1) + 'B'}</td>
+      <td>${escapeHtml(m.profile_policy || 'auto')} → ${escapeHtml(m.effective_profile || 'full')}</td>
       <td style="text-align:center"><button class="mgr-icon" data-act="star" title="Basculer recommandé">${m.recommended ? '★' : '☆'}</button></td>
       <td style="text-align:center"><input type="checkbox" data-act="toggle"${m.enabled ? ' checked' : ''} aria-label="Activé"></td>
       <td style="text-align:right">${_mgrPrice(m.input_per_mtok)}</td>
@@ -2904,11 +2913,12 @@ function _renderManager() {
       <table ${tableStyle}>
         <thead><tr>
           <th ${th}>Slug</th><th ${th}>Provider</th><th ${th}>Label</th>
+          <th ${th} style="text-align:right">Params</th><th ${th} style="text-align:right">Actifs</th><th ${th}>Profil</th>
           <th ${th} style="text-align:center">★</th><th ${th} style="text-align:center">Activé</th>
           <th ${th} style="text-align:right">$in/M</th><th ${th} style="text-align:right">$out/M</th>
           <th ${th}>base_url</th><th ${th}>Actions</th>
         </tr></thead>
-        <tbody>${modelRows || '<tr><td colspan="9" style="color:var(--muted)">Aucun modèle</td></tr>'}</tbody>
+        <tbody>${modelRows || '<tr><td colspan="12" style="color:var(--muted)">Aucun modèle</td></tr>'}</tbody>
       </table>
     </div>
 
@@ -2920,6 +2930,13 @@ function _renderManager() {
       <label>base_url (override, optionnel)<input id="mgr-m-baseurl" ${inp} value="${em ? escapeHtml(em.base_url || '') : ''}" placeholder="hérité du provider si vide"></label>
       <label>Prix $/M input<input id="mgr-m-in" type="number" step="0.01" ${inp} value="${em && em.input_per_mtok != null ? em.input_per_mtok : ''}"></label>
       <label>Prix $/M output<input id="mgr-m-out" type="number" step="0.01" ${inp} value="${em && em.output_per_mtok != null ? em.output_per_mtok : ''}"></label>
+      <label>Paramètres totaux (B)<input id="mgr-m-params" type="number" min="0.1" step="0.1" ${inp} value="${em && em.parameter_count_b != null ? em.parameter_count_b : ''}"></label>
+      <label>Paramètres actifs MoE (B)<input id="mgr-m-active-params" type="number" min="0.1" step="0.1" ${inp} value="${em && em.active_parameter_count_b != null ? em.active_parameter_count_b : ''}"></label>
+      <label>Politique de profil<select id="mgr-m-profile" ${inp}>
+        <option value="auto"${!em || (em.profile_policy || 'auto') === 'auto' ? ' selected' : ''}>auto</option>
+        <option value="compact"${em && em.profile_policy === 'compact' ? ' selected' : ''}>compact</option>
+        <option value="full"${em && em.profile_policy === 'full' ? ' selected' : ''}>full</option>
+      </select></label>
       <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-rec" ${em && em.recommended ? 'checked' : ''}> Recommandé</label>
       <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="mgr-m-en" ${!em || em.enabled ? 'checked' : ''}> Activé</label>
       <div class="full" style="display:flex;gap:8px">
@@ -3016,6 +3033,9 @@ async function _mgrOnSubmit(e) {
       base_url: document.getElementById('mgr-m-baseurl').value.trim() || null,
       input_per_mtok: _num('mgr-m-in'),
       output_per_mtok: _num('mgr-m-out'),
+      parameter_count_b: _num('mgr-m-params'),
+      active_parameter_count_b: _num('mgr-m-active-params'),
+      profile_policy: document.getElementById('mgr-m-profile').value,
       recommended: document.getElementById('mgr-m-rec').checked,
       enabled: document.getElementById('mgr-m-en').checked,
     };

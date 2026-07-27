@@ -166,6 +166,8 @@ class LLMProvider:
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
+            if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
+                completion_only = True
             active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
             request_kwargs = {
                 "model": self.model,
@@ -285,6 +287,8 @@ class LLMProvider:
 
         for turn in range(max_turns):
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
+            if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
+                completion_only = True
             active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
             try:
                 request_kwargs = {

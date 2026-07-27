@@ -266,15 +266,20 @@ def run_batch(
     dry_run: bool = False,
     phases: list[int] | None = None,
     blind: bool = False,
+    execution_profile: str = "auto",
 ) -> Path:
     """Run scenarios sequentially and save batch_summary.json.
 
     Returns the path to the batch summary JSON file.
     """
     from src.agent.pipeline import Pipeline
+    from src.agent.execution_profiles import resolve_execution_profile_for_model
     from src.benchmark.evaluator import evaluate
 
     scenario_ids = _parse_scenario_ids(batch_arg)
+    profile_resolution = resolve_execution_profile_for_model(
+        execution_profile, getattr(provider, "model", None)
+    )
     if not scenario_ids:
         raise ValueError(f"No valid scenario IDs found in --batch '{batch_arg}'")
 
@@ -285,6 +290,10 @@ def run_batch(
     print(f"\n{'=' * 60}")
     print(f"BATCH RUN — {len(scenario_ids)} scenario(s): {', '.join(f'S{s}' for s in scenario_ids)}")
     print(f"Model : {getattr(provider, 'model', 'unknown')}")
+    print(
+        f"Profile: {profile_resolution.profile.name} "
+        f"({profile_resolution.resolution_basis})"
+    )
     print(f"Output: {batch_dir}")
     print(f"{'=' * 60}\n")
 
@@ -316,6 +325,7 @@ def run_batch(
                 auto_teardown=True,
                 blind=blind,
                 benchmark_split="dev-public",
+                execution_profile=execution_profile,
             )
             run_results = pipeline.run()
         except Exception as exc:
@@ -363,6 +373,7 @@ def run_batch(
     summary = {
         "batch_timestamp": timestamp,
         "model": getattr(provider, "model", None),
+        **profile_resolution.metadata(),
         "scenarios": results,
         "aggregate": aggregate,
     }

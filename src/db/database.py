@@ -53,7 +53,11 @@ CREATE TABLE IF NOT EXISTS models (
     input_per_mtok  REAL,
     output_per_mtok REAL,
     base_url        TEXT,                          -- per-model override (local endpoints)
-    subscription    INTEGER NOT NULL DEFAULT 0
+    subscription    INTEGER NOT NULL DEFAULT 0,
+    parameter_count_b        REAL CHECK (parameter_count_b > 0),
+    active_parameter_count_b REAL CHECK (active_parameter_count_b > 0),
+    profile_policy           TEXT NOT NULL DEFAULT 'auto'
+                             CHECK (profile_policy IN ('auto', 'compact', 'full'))
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -101,6 +105,16 @@ CREATE TABLE IF NOT EXISTS phase_usage (
 """
 
 
+_MODEL_COLUMN_MIGRATIONS = {
+    "parameter_count_b": "REAL CHECK (parameter_count_b > 0)",
+    "active_parameter_count_b": "REAL CHECK (active_parameter_count_b > 0)",
+    "profile_policy": (
+        "TEXT NOT NULL DEFAULT 'auto' "
+        "CHECK (profile_policy IN ('auto', 'compact', 'full'))"
+    ),
+}
+
+
 def get_conn() -> sqlite3.Connection:
     """Open a connection to the LANCE DB (creates the parent dir if needed)."""
     path = _db_path()
@@ -112,9 +126,15 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create all tables if absent. Idempotent."""
+    """Create tables and add backward-compatible model metadata columns."""
     with get_conn() as conn:
         conn.executescript(_SCHEMA)
+        existing = {
+            row["name"] for row in conn.execute("PRAGMA table_info(models)")
+        }
+        for name, declaration in _MODEL_COLUMN_MIGRATIONS.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE models ADD COLUMN {name} {declaration}")
 
 
 # ── Providers / models ───────────────────────────────────────────────────────
@@ -151,14 +171,32 @@ def upsert_model(
     output_per_mtok: float | None = None,
     base_url: str | None = None,
     subscription: bool = False,
+    parameter_count_b: float | None = None,
+    active_parameter_count_b: float | None = None,
+    profile_policy: str = "auto",
 ) -> None:
+    if profile_policy not in {"auto", "compact", "full"}:
+        raise ValueError(f"invalid model profile policy: {profile_policy}")
+    for field, value in (
+        ("parameter_count_b", parameter_count_b),
+        ("active_parameter_count_b", active_parameter_count_b),
+    ):
+        if value is not None and float(value) <= 0:
+            raise ValueError(f"{field} must be positive")
+    if (
+        parameter_count_b is not None
+        and active_parameter_count_b is not None
+        and float(active_parameter_count_b) > float(parameter_count_b)
+    ):
+        raise ValueError("active_parameter_count_b cannot exceed parameter_count_b")
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO models
                 (slug, label, provider, recommended, enabled,
-                 input_per_mtok, output_per_mtok, base_url, subscription)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 input_per_mtok, output_per_mtok, base_url, subscription,
+                 parameter_count_b, active_parameter_count_b, profile_policy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(slug) DO UPDATE SET
                 label           = excluded.label,
                 provider        = excluded.provider,
@@ -167,10 +205,14 @@ def upsert_model(
                 input_per_mtok  = excluded.input_per_mtok,
                 output_per_mtok = excluded.output_per_mtok,
                 base_url        = excluded.base_url,
-                subscription    = excluded.subscription
+                subscription    = excluded.subscription,
+                parameter_count_b = excluded.parameter_count_b,
+                active_parameter_count_b = excluded.active_parameter_count_b,
+                profile_policy   = excluded.profile_policy
             """,
             (slug, label, provider, int(recommended), int(enabled),
-             input_per_mtok, output_per_mtok, base_url, int(subscription)),
+             input_per_mtok, output_per_mtok, base_url, int(subscription),
+             parameter_count_b, active_parameter_count_b, profile_policy),
         )
 
 
@@ -179,6 +221,7 @@ def list_models(enabled_only: bool = True) -> list[dict[str, Any]]:
     sql = """
         SELECT m.slug, m.label, m.provider, m.recommended, m.enabled,
                m.input_per_mtok, m.output_per_mtok,
+               m.parameter_count_b, m.active_parameter_count_b, m.profile_policy,
                COALESCE(m.base_url, p.base_url) AS base_url,
                m.subscription, p.kind AS provider_kind
         FROM models m
@@ -201,7 +244,8 @@ def list_models_admin() -> list[dict[str, Any]]:
         with get_conn() as conn:
             rows = conn.execute(
                 "SELECT slug, label, provider, recommended, enabled, "
-                "input_per_mtok, output_per_mtok, base_url, subscription "
+                "input_per_mtok, output_per_mtok, base_url, subscription, "
+                "parameter_count_b, active_parameter_count_b, profile_policy "
                 "FROM models ORDER BY provider, slug"
             ).fetchall()
             return [dict(r) for r in rows]
@@ -245,7 +289,8 @@ def get_model(slug: str) -> dict[str, Any] | None:
         with get_conn() as conn:
             row = conn.execute(
                 "SELECT slug, label, provider, recommended, enabled, "
-                "input_per_mtok, output_per_mtok, base_url, subscription "
+                "input_per_mtok, output_per_mtok, base_url, subscription, "
+                "parameter_count_b, active_parameter_count_b, profile_policy "
                 "FROM models WHERE slug = ?",
                 (slug,),
             ).fetchone()

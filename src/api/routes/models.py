@@ -7,9 +7,11 @@ Supports two providers:
 from __future__ import annotations
 
 import os
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
 
 from src.agent.pricing import _load_pricing
 
@@ -32,6 +34,11 @@ def _require_db():
 
 def _model_out(row: dict) -> dict:
     """Normalise a raw model row (int flags → bool) for JSON responses."""
+    from src.agent.execution_profiles import resolve_execution_profile_for_model
+
+    resolution = resolve_execution_profile_for_model(
+        "auto", row.get("slug"), model_metadata=row
+    )
     return {
         "slug": row["slug"],
         "label": row.get("label"),
@@ -42,6 +49,12 @@ def _model_out(row: dict) -> dict:
         "output_per_mtok": row.get("output_per_mtok"),
         "base_url": row.get("base_url"),
         "subscription": bool(row.get("subscription")),
+        "parameter_count_b": row.get("parameter_count_b"),
+        "active_parameter_count_b": row.get("active_parameter_count_b"),
+        "profile_policy": row.get("profile_policy") or "auto",
+        "effective_profile": resolution.profile.name,
+        "profile_resolution_basis": resolution.resolution_basis,
+        "profile_threshold_b": resolution.threshold_b,
     }
 
 
@@ -56,6 +69,9 @@ class ModelCreate(BaseModel):
     output_per_mtok: float | None = None
     base_url: str | None = None
     subscription: bool = False
+    parameter_count_b: float | None = Field(default=None, gt=0)
+    active_parameter_count_b: float | None = Field(default=None, gt=0)
+    profile_policy: Literal["auto", "compact", "full"] = "auto"
 
 
 class ModelPatch(BaseModel):
@@ -67,6 +83,9 @@ class ModelPatch(BaseModel):
     output_per_mtok: float | None = None
     base_url: str | None = None
     subscription: bool | None = None
+    parameter_count_b: float | None = Field(default=None, gt=0)
+    active_parameter_count_b: float | None = Field(default=None, gt=0)
+    profile_policy: Literal["auto", "compact", "full"] | None = None
 
 
 # Curated list of models to show in the dashboard.
@@ -221,17 +240,29 @@ def model_registry() -> dict:
     }
 
 
+def _validate_parameter_counts(total: float | None, active: float | None) -> None:
+    if total is not None and active is not None and active > total:
+        raise HTTPException(
+            status_code=422,
+            detail="Les paramètres actifs ne peuvent pas dépasser les paramètres totaux",
+        )
+
+
 @router.post("")
 def create_model(body: ModelCreate) -> dict:
     """Create (or upsert) a model. The provider must already exist."""
     db = _require_db()
     if db.get_provider(body.provider) is None:
         raise HTTPException(status_code=400, detail=f"Provider inconnu : {body.provider}")
+    _validate_parameter_counts(body.parameter_count_b, body.active_parameter_count_b)
     db.upsert_model(
         slug=body.slug, label=body.label, provider=body.provider,
         recommended=body.recommended, enabled=body.enabled,
         input_per_mtok=body.input_per_mtok, output_per_mtok=body.output_per_mtok,
         base_url=body.base_url, subscription=body.subscription,
+        parameter_count_b=body.parameter_count_b,
+        active_parameter_count_b=body.active_parameter_count_b,
+        profile_policy=body.profile_policy,
     )
     return _model_out(db.get_model(body.slug))
 
@@ -247,11 +278,17 @@ def update_model(slug: str, body: ModelPatch) -> dict:
     merged = {**existing, **patch}
     if patch.get("provider") and db.get_provider(merged["provider"]) is None:
         raise HTTPException(status_code=400, detail=f"Provider inconnu : {merged['provider']}")
+    _validate_parameter_counts(
+        merged.get("parameter_count_b"), merged.get("active_parameter_count_b")
+    )
     db.upsert_model(
         slug=slug, label=merged.get("label"), provider=merged.get("provider"),
         recommended=bool(merged.get("recommended")), enabled=bool(merged.get("enabled")),
         input_per_mtok=merged.get("input_per_mtok"), output_per_mtok=merged.get("output_per_mtok"),
         base_url=merged.get("base_url"), subscription=bool(merged.get("subscription")),
+        parameter_count_b=merged.get("parameter_count_b"),
+        active_parameter_count_b=merged.get("active_parameter_count_b"),
+        profile_policy=merged.get("profile_policy") or "auto",
     )
     return _model_out(db.get_model(slug))
 

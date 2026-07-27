@@ -16,6 +16,11 @@ from urllib.parse import urlsplit
 import yaml
 
 from src.agent.registry import AGENTS, AgentConfig
+from src.agent.execution_profiles import (
+    filter_profile_tools,
+    phase3_tool_names,
+    resolve_execution_profile_for_model,
+)
 from src.agent.provider import LLMProvider
 from src.config import (
     BENCHMARK_SUBNET,
@@ -135,7 +140,7 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
 
 
 def _phase4_local_verification_tools(
-    tools: list[dict], *, category: str, service: str
+    tools: list[dict], *, category: str, service: str, include_deliverable: bool = False
 ) -> list[dict]:
     """Narrow local-MoE Phase 4 tools to the tested vuln family."""
     allowed = set(PHASE4_LOCAL_COMMON_TOOL_NAMES)
@@ -146,6 +151,8 @@ def _phase4_local_verification_tools(
         allowed.update(service_allowed)
     else:
         allowed.update(PHASE4_LOCAL_CATEGORY_TOOL_NAMES.get(category, frozenset()))
+    if include_deliverable:
+        allowed.add("save_deliverable")
     return [tool for tool in tools if tool.get("name") in allowed]
 
 # ---------------------------------------------------------------------------
@@ -659,8 +666,15 @@ class Pipeline:
         execution_context=None,  # Sealed benchmark contract (src.benchmark.contracts.ExecutionContext)
         benchmark_split: str | None = None,
         manage_scenario: bool = True,
+        execution_profile: str = "auto",
     ):
         self.provider = provider
+        self.execution_profile_resolution = resolve_execution_profile_for_model(
+            execution_profile, getattr(provider, "model", None)
+        )
+        self.execution_profile = self.execution_profile_resolution.profile
+        self.execution_profile_policy = self.execution_profile_resolution.requested_policy
+        self.phase_execution_profiles: dict[str, dict] = {}
         self.dry_run = dry_run
         self.phases = phases
         self.scenario_id = scenario_id
@@ -771,6 +785,7 @@ class Pipeline:
             "target_subnet": target_subnet,
             "scenario_context": "",
             "network_topology_edges": "",
+            "execution_profile": self.execution_profile.name,
         }
 
         # Build compact edge list from whatever topology is available
@@ -807,6 +822,8 @@ class Pipeline:
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
             "oracle_access": False,
+            **self.execution_profile_resolution.metadata(),
+            "execution_profile_config": self.execution_profile.metadata(),
         }
         contract_hash = getattr(self.execution_context, "contract_hash", None)
         if not contract_hash and self.execution_context is not None:
@@ -830,6 +847,8 @@ class Pipeline:
                 "link_count": lab["link_count"],
                 "cve_count": lab["cve_count"],
                 "top_risk": lab["top_risk"],
+                "execution_profile": self.execution_profile.name,
+                "execution_profile_policy": self.execution_profile_resolution.requested_policy,
             })
 
         # Load benchmark scenario context if specified.
@@ -852,6 +871,7 @@ class Pipeline:
                 "model": getattr(self.provider, "model", None),
                 "git_commit": self.git_commit,
                 "oracle_access": False,
+                **self.execution_profile_resolution.metadata(),
             }
             if session_id:
                 meta["session_id"] = session_id
@@ -886,6 +906,19 @@ class Pipeline:
                 log.info("Switching to phase %d specific model: %s (%s)", phase_num, target_model, target_provider)
                 self.provider = LLMProvider(provider=target_provider, model=target_model)
                 self.tracker.model = target_model
+
+            self.execution_profile_resolution = resolve_execution_profile_for_model(
+                self.execution_profile_policy, getattr(self.provider, "model", None)
+            )
+            self.execution_profile = self.execution_profile_resolution.profile
+            self.context["execution_profile"] = self.execution_profile.name
+            self.phase_execution_profiles[str(phase_num)] = {
+                "model": getattr(self.provider, "model", None),
+                **self.execution_profile_resolution.metadata(),
+            }
+            self._update_run_meta({
+                "phase_execution_profiles": self.phase_execution_profiles
+            })
 
             # Honour stop request between phases
             if stop_event and stop_event.is_set():
@@ -1054,7 +1087,7 @@ class Pipeline:
                 stream_callback({"type": "pipeline_done", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
             return
         if stream_callback:
-            stream_callback({"type": "pipeline_start", "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": None})
+            stream_callback({"type": "pipeline_start", "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": None, "execution_profile": self.execution_profile.name})
         success = self._run_scenario_deploy(stream_callback)
         if stream_callback:
             stream_callback({
@@ -1794,6 +1827,7 @@ class Pipeline:
         set_skill_filter(filter_tags)
 
         tools = self._resolve_tools(config)
+        tools = filter_profile_tools(self.execution_profile, config.phase, tools)
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
 
         # Build prompt variables
@@ -1913,13 +1947,21 @@ class Pipeline:
             return status
 
         # Run agent with cost tracking
+        max_turns = config.max_turns
+        max_tokens = config.max_tokens
+        if config.phase == 5:
+            max_turns = self.execution_profile.intrusion_max_turns
+            max_tokens = self.execution_profile.intrusion_max_tokens
+        elif config.phase == 6:
+            max_turns = self.execution_profile.report_max_turns
+            max_tokens = self.execution_profile.report_max_tokens
         self.tracker.start_phase(config.name)
         result_text = self.provider.chat_with_tools(
             system_prompt=system_prompt,
             user_message=config.user_message,
             tools=tools,
-            max_turns=config.max_turns,
-            max_tokens=config.max_tokens,
+            max_turns=max_turns,
+            max_tokens=max_tokens,
             cost_tracker=self.tracker,
             stream_callback=self._model_stream_callback(
                 stream_callback, phase=config.phase, agent=config.name
@@ -2555,7 +2597,7 @@ class Pipeline:
         # bounded application checks but cannot open a general shell.
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
         analysis_tool_names = {
-            "http_get", "http_request", "tcp_send", "udp_send",
+            "curl_headers", "http_get", "http_request", "tcp_send", "udp_send",
             "mtls_request", "tls_inspect",
         }
         recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
@@ -2699,32 +2741,9 @@ class Pipeline:
                     })
                 return
 
-            service_names = {
-                str(service.get("name", "")).casefold()
-                for service in services if isinstance(service, dict)
-            }
-            service_ports = {
-                service.get("port")
-                for service in services if isinstance(service, dict)
-            }
-            allowed_tool_names = {"cve_search", "save_deliverable"}
-            if (
-                any("http" in name or "web" in name for name in service_names)
-                or service_ports.intersection({80, 443, 8080, 8443})
-            ):
-                allowed_tool_names.update({"http_get", "http_request"})
-            if service_ports.intersection({443, 8883, 8443}):
-                allowed_tool_names.update({"tls_inspect", "mtls_request"})
-            if any(
-                name in {"ssh", "mqtt", "redis", "mysql", "telnet"}
-                for name in service_names
-            ):
-                allowed_tool_names.add("tcp_send")
-            if any(
-                str(service.get("protocol", "tcp")).casefold() == "udp"
-                for service in services if isinstance(service, dict)
-            ):
-                allowed_tool_names.add("udp_send")
+            allowed_tool_names = phase3_tool_names(
+                self.execution_profile, device, scan_data
+            )
 
             device_config = AgentConfig(
                 name=f"analyze_{device_id}",
@@ -2751,8 +2770,8 @@ class Pipeline:
                     f"Then call save_deliverable('{deliverable_file}', json_content)."
                 ),
                 tools=device_tools,
-                max_turns=DEVICE_ANALYSIS_MAX_TURNS,
-                max_tokens=DEVICE_ANALYSIS_MAX_TOKENS,
+                max_turns=self.execution_profile.phase3_max_turns,
+                max_tokens=self.execution_profile.phase3_max_tokens,
                 cost_tracker=self.tracker,
                 stream_callback=self._model_stream_callback(
                     stream_callback, phase=3, agent=f"analyze_{device_id}"
@@ -2771,10 +2790,14 @@ class Pipeline:
                     "run_dir": str(self.run_dir),
                 })
 
-            # Fallback: if LLM didn't save, the scanner already wrote the trivial findings
+            # Preserve scanner findings, but make a missing model save explicit.
             deliverable_path = self.run_dir / deliverable_file
-            if not deliverable_path.exists():
-                log.warning("LLM analysis for %s produced no output — trivial findings used as fallback", device_id)
+            if not deliverable_path.exists() or not usage or not usage.format_attempts:
+                log.warning(
+                    "Phase 3 analysis for %s did not save a deliverable; "
+                    "scanner findings remain canonical",
+                    device_id,
+                )
 
         worker_count = self._phase3_worker_count(len(surface))
         if worker_count == 1 and len(surface) > 1:
@@ -3425,10 +3448,15 @@ class Pipeline:
                 self.tracker.start_phase(phase_name)
                 result_text = ""
                 try:
-                    if self._uses_local_moe():
+                    local_moe = self._uses_local_moe()
+                    if local_moe or self.execution_profile.routed_tools:
                         verification_tools = _phase4_local_verification_tools(
-                            exploit_tools, category=category, service=service
+                            exploit_tools, category=category, service=service,
+                            include_deliverable=not local_moe,
                         )
+                    else:
+                        verification_tools = exploit_tools
+                    if local_moe:
                         local_prompt = (
                             system_prompt
                             + "\n\nLOCAL MOE PHASE 4 MODE:\n"
@@ -3469,9 +3497,9 @@ class Pipeline:
                                 f"Service: {service} port {port}. "
                                 f"Call save_deliverable('{deliverable_file}', json_content) when done."
                             ),
-                            tools=exploit_tools,
-                            max_turns=EXPLOIT_MAX_TURNS,
-                            max_tokens=EXPLOIT_MAX_TOKENS,
+                            tools=verification_tools,
+                            max_turns=self.execution_profile.phase4_max_turns,
+                            max_tokens=self.execution_profile.phase4_max_tokens,
                             cost_tracker=self.tracker,
                             stream_callback=self._model_stream_callback(
                                 stream_callback, phase=4, agent=phase_name

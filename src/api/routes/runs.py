@@ -216,6 +216,18 @@ def _extract_commit(run_dir: Path) -> str | None:
     return None
 
 
+def _extract_execution_profile(run_dir: Path) -> str | None:
+    """Read profile metadata without making legacy/corrupt runs unlistable."""
+    for reader in (_read_run_meta, _read_scenario_meta):
+        try:
+            metadata = reader(run_dir)
+        except Exception:
+            continue
+        if metadata and metadata.get("execution_profile"):
+            return str(metadata["execution_profile"])
+    return None
+
+
 def _detect_scenario(run_dir: Path) -> str | None:
     """Detect scenario ID from scenario_meta.json if present."""
     try:
@@ -257,6 +269,7 @@ def list_runs():
             "scenario": _detect_scenario(d),
             "status": _run_status(d),
             "commit": _extract_commit(d),
+            "execution_profile": _extract_execution_profile(d),
             "sealed": sealed,
         })
     return runs
@@ -285,6 +298,7 @@ def get_benchmark():
             "model": None,
             "score": None,
             "commit": _extract_commit(d),
+            "execution_profile": _extract_execution_profile(d),
             "sealed": sealed,
         }
 
