@@ -305,6 +305,38 @@ def test_http_request_and_raw_socket_results_receive_semantic_verdicts():
     assert _tool_call_outcome(tcp, finding) is True
 
 
+def test_extracted_json_text_is_found_inside_structured_tool_output(tmp_path):
+    extracted = 'smartcity/admin/credentials {"db_user":"root"}'
+    run, gt = _write(
+        tmp_path,
+        [_finding(type="data_exposure", service="mqtt", port=1883, endpoint="")],
+        [_gt(services=["mqtt"], ports=[1883], endpoints=[])],
+    )
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10",
+        "vuln_type": "data_exposure", "severity": "high",
+        "service": "mqtt", "port": 1883, "protocol": "tcp",
+        "status": "CONFIRMED", "evidence": "credentials returned",
+        "tool_used": "mqtt_listen", "data_extracted": [extracted],
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "evidence_ref": "tc-mqtt", "tool": "mqtt_listen",
+        "args": {"broker": "192.0.2.10", "port": 1883},
+        "result": json.dumps({
+            "stdout": extracted,
+            "stderr": "Timed out\n",
+            "return_code": 27,
+        }),
+    }) + "\n")
+
+    result = evaluate(run, gt, policy=STRICT_V3)
+
+    claims = result.evidence_claim_assessments[0]["claims"]
+    data_claim = next(claim for claim in claims if claim["kind"] == "data_extracted")
+    assert data_claim["verdict"] == "supported"
+    assert data_claim["evidence_refs"] == ["tc-mqtt"]
+
+
 def test_python_exec_return_code_alone_is_not_proof():
     record = {"tool": "python_exec", "result": {"return_code": 0, "stdout": "hello"}}
     assert _tool_call_outcome(record, _finding(type="code_injection")) is False

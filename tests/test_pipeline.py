@@ -2006,6 +2006,35 @@ class TestInformationPreservingArchitecture:
         assert record["phase"] == 5
         assert record["agent"] == "intrusion"
 
+    def test_tool_log_records_exception_before_reraising(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+
+        def fail():
+            raise RuntimeError("connection failed")
+
+        wrapped = pipeline._wrap_tool({
+            "name": "failing_tool",
+            "function": fail,
+        }, phase=3, agent="vuln_analysis")
+
+        with pytest.raises(RuntimeError, match="connection failed"):
+            wrapped["function"]()
+
+        record = json.loads(
+            (pipeline.run_dir / "tool_calls.jsonl").read_text().strip()
+        )
+        result = json.loads(record["result"])
+        assert record["sequence"] == 1
+        assert record["tool"] == "failing_tool"
+        assert record["phase"] == 3
+        assert record["agent"] == "vuln_analysis"
+        assert result == {
+            "error": "connection failed",
+            "exception_type": "RuntimeError",
+        }
+
     def test_model_text_is_archived_without_diminution(
         self, mock_provider, output_dir
     ):

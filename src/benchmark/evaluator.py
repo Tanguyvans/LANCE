@@ -1295,10 +1295,27 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
 
 def _tool_result_text(records: list[dict]) -> str:
     """Return normalized result text for literal extracted-data verification."""
-    return "\n".join(
-        json.dumps(_tool_result_data(record), ensure_ascii=False, default=str)
-        for record in records
-    ).casefold()
+    fragments: list[str] = []
+
+    def collect(value: object) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                fragments.append(str(key))
+                collect(item)
+            return
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                collect(item)
+            return
+        fragments.append(str(value))
+
+    for record in records:
+        result = _tool_result_data(record)
+        # Keep the serialized form for compatibility and add scalar leaves
+        # without JSON escaping so embedded JSON text remains searchable.
+        fragments.append(json.dumps(result, ensure_ascii=False, default=str))
+        collect(result)
+    return "\n".join(fragments).casefold()
 
 
 def _claim(

@@ -871,7 +871,7 @@ class Pipeline:
 
         # Get agents sorted by phase
         agents = sorted(AGENTS.values(), key=lambda a: a.phase)
-        if self.phases:
+        if self.phases is not None:
             agents = [a for a in agents if a.phase in self.phases]
 
         results: dict[str, str] = {}
@@ -5573,8 +5573,8 @@ class Pipeline:
                     )
                 self._tool_call_count += 1
                 sequence = self._tool_call_count
-            result = original_fn(**kwargs)
-            try:
+
+            def write_entry(result: object) -> None:
                 exploit_context = getattr(
                     getattr(self, "_exploit_tool_context", None),
                     "vulnerability", None,
@@ -5593,8 +5593,23 @@ class Pipeline:
                 with self._artifact_log_lock:
                     with open(log_path, "a", encoding="utf-8") as f:
                         f.write(entry + "\n")
+
+            try:
+                result = original_fn(**kwargs)
+            except Exception as exc:
+                try:
+                    write_entry(json.dumps({
+                        "error": str(exc),
+                        "exception_type": type(exc).__name__,
+                    }, ensure_ascii=False))
+                except Exception:
+                    pass  # Never mask the original tool exception with logging.
+                raise
+
+            try:
+                write_entry(result)
             except Exception:
-                pass  # Never break the pipeline for logging
+                pass  # Never break the pipeline for logging.
             return result
 
         return {**tool, "function": logged_fn}
