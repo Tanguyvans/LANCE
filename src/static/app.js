@@ -2051,6 +2051,17 @@ async function viewRun(runId) {
   }
 }
 
+function resetScrollPosition(element) {
+  if (!element) return;
+  const reset = () => {
+    element.scrollTop = 0;
+    element.scrollLeft = 0;
+  };
+
+  reset();
+  requestAnimationFrame(reset);
+}
+
 function switchDetailTab(tab) {
   document.querySelectorAll('.detail-tab').forEach(btn => {
     const active = btn.dataset.tab === tab;
@@ -2060,6 +2071,9 @@ function switchDetailTab(tab) {
   document.querySelectorAll('.detail-panel').forEach(panel => {
     panel.hidden = panel.id !== `detail-panel-${tab}`;
   });
+  if (tab === 'report') {
+    resetScrollPosition(document.getElementById('detail-panel-report'));
+  }
 }
 
 async function viewFile(runId, filename) {
@@ -2076,11 +2090,10 @@ async function viewFile(runId, filename) {
   } else {
     body.textContent = data.content;
   }
-  body.scrollTop = 0;
-
   const overlay = document.getElementById('modal-overlay');
   overlay._prevFocus = document.activeElement;
   overlay.classList.add('open');
+  resetScrollPosition(body);
   document.getElementById('modal-close').focus();
 }
 
@@ -2548,6 +2561,7 @@ function renderBenchmarkTable() {
 function closeModal(e) {
   if (e && e.target !== document.getElementById('modal-overlay')) return;
   const overlay = document.getElementById('modal-overlay');
+  resetScrollPosition(document.getElementById('modal-body'));
   overlay.classList.remove('open');
   if (overlay._prevFocus) { overlay._prevFocus.focus(); overlay._prevFocus = null; }
 }

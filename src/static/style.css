@@ -954,6 +954,7 @@ button:disabled { opacity: .35; cursor: default; }
 .detail-panel {
   padding: 12px;
   overflow-y: auto;
+  overflow-anchor: none;
   flex: 1;
 }
 
@@ -1228,6 +1229,7 @@ button:disabled { opacity: .35; cursor: default; }
 #modal-body {
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: 14px;
   font-family: monospace;
   font-size: 12px;
