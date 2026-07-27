@@ -5,6 +5,7 @@
 let cy = null;           // Cytoscape instance
 let eventSource = null;  // SSE connection
 let activeRunId = null;  // run being viewed in detail panel
+let activeRunFiles = []; // deliverables available for the selected historical run
 let activeRunIsSealed = false;
 let nodeVulns = {};      // { nodeId: [{id,type,severity,service,details,cve_ids}] }
 let nodeHosts = {};      // { ip: {hostname, ports, os} } from nmap
@@ -648,17 +649,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('bm-filter-model').addEventListener('change', renderBenchmarkTable);
 
   // Phase pills — naviguer vers le livrable si un run est sélectionné
-  const PHASE_FILE = {
-    1: '01_graph_analysis.md',
-    2: '02_recon.md',
-    3: '03_vuln_analysis.json',
-    4: '04_exploitation.json',
-    5: '05_report.md',
+  const PHASE_FILES = {
+    1: ['01_graph_analysis.md'],
+    2: ['02_recon.md'],
+    3: ['03_vuln_analysis.json'],
+    4: ['04_exploitation.json'],
+    5: ['05_intrusion.json', '05_report.md'],
+    6: ['06_report.md', '05_report.md'],
   };
   document.querySelectorAll('.phase-pill').forEach(pill => {
     pill.addEventListener('click', () => {
       if (!activeRunId || activeRunIsSealed) return;
-      const file = PHASE_FILE[pill.dataset.phase];
+      const candidates = PHASE_FILES[pill.dataset.phase] || [];
+      const file = candidates.find(candidate => activeRunFiles.includes(candidate));
       if (file) viewFile(activeRunId, file);
     });
   });
@@ -1914,6 +1917,7 @@ async function viewRun(runId) {
 
   const run = await fetchJSON(`/api/runs/${runId}`);
   if (!run) return;
+  activeRunFiles = Array.isArray(run.files) ? run.files : [];
 
   const sealed = isSealedRun(run);
   activeRunIsSealed = sealed;
