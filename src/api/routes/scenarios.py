@@ -8,6 +8,7 @@ import yaml
 from fastapi import APIRouter
 
 from src.benchmark.catalog import EVAL_SEALED, load_catalog, load_eval_profile
+from src.benchmark.scenario_exports import default_export_store
 
 router = APIRouter()
 
@@ -111,6 +112,17 @@ def list_scenarios():
             }
         elif descriptor.id in scenarios_by_id:
             scenarios_by_id[descriptor.id]["split"] = descriptor.split
+
+    # Scenario Lab publications live outside the immutable benchmark catalogue.
+    # Their trusted export manifest is the sole authority for the deletable flag.
+    for exported in default_export_store().list():
+        scenarios_by_id[exported["id"]] = {
+            **exported,
+            "split": "lab-export",
+            "sealed": False,
+            "kind": "scenario-lab-export",
+        }
+
 
     scenarios = sorted(scenarios_by_id.values(), key=_scenario_sort_key)
 

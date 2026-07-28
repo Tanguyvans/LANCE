@@ -9,6 +9,7 @@ import re
 from dataclasses import asdict
 from pathlib import Path
 
+from src.benchmark.scenario_exports import resolve_scenario_path, resolve_topology_path
 import yaml as _yaml
 
 from src.loader import build_graph, load_yaml
@@ -213,13 +214,13 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     _discovery_mode = None  # Discovery mode must not take precedence over scenario topology
 
     sid = str(scenario_id)
-    scenario_path = Path("benchmarks/scenarios") / f"S{sid}.yaml"
+    scenario_path = resolve_scenario_path(sid)
     if not scenario_path.exists():
         return load_lab_context()
 
     scenario = _yaml.safe_load(scenario_path.read_text()) or {}
     topology_id = scenario.get("topology")
-    topology_path = Path("benchmarks/topologies") / f"{topology_id}.yaml"
+    topology_path = resolve_topology_path(sid, str(topology_id or ""))
     if not topology_id or not topology_path.exists():
         return load_lab_context()
 

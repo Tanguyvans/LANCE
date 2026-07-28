@@ -7,6 +7,7 @@ import yaml
 from fastapi import APIRouter, HTTPException
 
 from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
+from src.benchmark.scenario_exports import resolve_scenario_path, resolve_topology_path
 
 router = APIRouter()
 
@@ -106,12 +107,12 @@ def _load_scenario(scenario_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    scenario_file = ROOT / "benchmarks" / "scenarios" / f"S{scenario_id}.yaml"
+    scenario_file = resolve_scenario_path(scenario_id)
     if not scenario_file.exists():
         raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
     scenario = yaml.safe_load(scenario_file.read_text()) or {}
     topology_id = scenario.get("topology")
-    topology_file = ROOT / "benchmarks" / "topologies" / f"{topology_id}.yaml"
+    topology_file = resolve_topology_path(scenario_id, str(topology_id or ""))
     if not topology_id or not topology_file.exists():
         raise HTTPException(status_code=404, detail=f"Public topology for scenario {scenario_id} not found")
     topo = yaml.safe_load(topology_file.read_text()) or {}

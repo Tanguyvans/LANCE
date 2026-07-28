@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from src.benchmark.scenario_exports import ScenarioExportError
 from src.benchmark.scenario_generator import ScenarioGenerator, ScenarioGeneratorError
 
 
@@ -28,7 +29,7 @@ class MutateRequest(BaseModel):
 def _call(action):
     try:
         return action()
-    except ScenarioGeneratorError as exc:
+    except (ScenarioGeneratorError, ScenarioExportError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -72,3 +73,20 @@ def mutate_generated_scenario(variant_id: str, request: MutateRequest):
             request.operation,
         )
     )
+
+@router.post("/{variant_id}/export", status_code=201)
+def export_generated_scenario(variant_id: str):
+    return _call(lambda: generator.export_variant(variant_id))
+
+
+@router.delete("/{variant_id}/export")
+def delete_exported_scenario(variant_id: str):
+    from src.api.routes import pipeline
+
+    if pipeline._state.get("running") and pipeline._state.get("scenario_id") == variant_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete an exported scenario while its dashboard run is active",
+        )
+    deleted = _call(lambda: generator.delete_export(variant_id))
+    return {"deleted": True, "scenario": deleted}

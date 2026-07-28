@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from src.benchmark.scenario_generator import (
     ScenarioGenerator,
     ScenarioGeneratorError,
 )
+from src.benchmark.scenario_exports import ScenarioExportError
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def generator(tmp_path: Path) -> ScenarioGenerator:
-    return ScenarioGenerator(REPO_ROOT, tmp_path / "generated")
+    return ScenarioGenerator(
+        REPO_ROOT,
+        tmp_path / "generated",
+        tmp_path / "exported",
+    )
 
 
 def _load(path: Path) -> dict:
@@ -177,6 +183,53 @@ def test_same_spec_returns_same_variant_without_overwrite(generator: ScenarioGen
 
     assert second["id"] == first["id"]
     assert manifest.read_bytes() == first_bytes
+
+
+def test_export_publishes_dashboard_bundle_and_preserves_source(generator: ScenarioGenerator):
+    generated = generator.generate("api-authorization", 78, "rotate_ips")
+
+    exported = generator.export_variant(generated["id"])
+    stored = generator.export_store.load(generated["id"])
+
+    assert exported["exported"] is True
+    assert exported["deletable"] is True
+    assert exported["deployment_supported"] is False
+    assert stored["scenario"]["topology"] == generated["id"]
+    assert (
+        stored["topology"]["router"]["name_template"]
+        == stored["topology"]["router"]["name"]
+    )
+    assert all(
+        item["name_template"] == item["name"]
+        for item in stored["topology"]["services"]
+    )
+    ground_truth_path = generator.export_store.artifact_path(generated["id"], "ground_truth")
+    contracts = _load(
+        generator.export_store.artifact_path(generated["id"], "matching_contracts")
+    )
+    assert contracts["source_hashes"][generated["id"]] == hashlib.sha256(
+        ground_truth_path.read_bytes()
+    ).hexdigest()
+    assert generator.list_variants()[0]["exported"] is True
+
+    deleted = generator.delete_export(generated["id"])
+
+    assert deleted["id"] == generated["id"]
+    assert generator.get_variant(generated["id"])["id"] == generated["id"]
+    assert generator.export_store.exists(generated["id"]) is False
+
+
+def test_export_delete_rejects_non_exports_and_tampered_exports(generator: ScenarioGenerator):
+    with pytest.raises(ScenarioExportError, match="Invalid Scenario Lab export identifier"):
+        generator.delete_export("15")
+
+    generated = generator.generate("ota-lifecycle", 79, "rename_hosts")
+    generator.export_variant(generated["id"])
+    scenario_path = generator.export_store.artifact_path(generated["id"], "scenario")
+    scenario_path.write_text("scenario_id: tampered\n", encoding="utf-8")
+
+    with pytest.raises(ScenarioExportError, match="was modified"):
+        generator.delete_export(generated["id"])
 
 
 def test_generator_router_is_registered_in_api_main():

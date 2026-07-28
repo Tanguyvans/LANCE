@@ -16,6 +16,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.benchmark.scenario_exports import resolve_ground_truth_path
+
 router = APIRouter()
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -317,7 +319,7 @@ def get_benchmark():
             except Exception:
                 pass
         elif vuln_file.exists():
-            gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{sid}.yaml"
+            gt_path = resolve_ground_truth_path(sid)
             if gt_path.exists():
                 try:
                     from src.benchmark.evaluator import evaluate
@@ -413,7 +415,7 @@ def score_run(run_id: str):
 
     # Public scores resolve the oracle only from the trusted evaluator store.
     # A run-local ground_truth.yaml is intentionally ignored.
-    gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+    gt_path = resolve_ground_truth_path(scenario_id)
     if not gt_path.exists():
         raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
 
@@ -474,7 +476,7 @@ def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
         if not gt_path.is_file() or gt_path.is_symlink():
             raise HTTPException(status_code=404, detail="Custom ground truth not generated")
     else:
-        gt_path = ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+        gt_path = resolve_ground_truth_path(scenario_id)
         if not gt_path.exists():
             raise HTTPException(status_code=404, detail=f"No ground truth file for scenario {scenario_id}")
         try:

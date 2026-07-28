@@ -13,6 +13,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
+
 router = APIRouter()
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -106,6 +108,7 @@ def _pipeline_thread(req: StartRequest):
             max_cost_usd=req.max_cost_usd,
             phase_models=req.phase_models,
             custom_config=custom_config,
+            manage_scenario=not default_export_store().exists(req.scenario_id or ""),
             target_network=req.target_network,
             blind=req.blind,
             execution_profile=req.execution_profile,
@@ -194,6 +197,11 @@ async def start_pipeline(req: StartRequest):
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if req.deploy_only and default_export_store().exists(req.scenario_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Scenario Lab exports support dashboard analysis, not Proxmox provisioning",
+            )
 
     from datetime import datetime
     from src.agent.execution_profiles import resolve_execution_profile_for_model
@@ -320,7 +328,7 @@ def _batch_thread(req: BatchRequest):
             if _state.get("stop_event") and _state["stop_event"].is_set():
                 break
 
-            gt_file = GT_DIR / f"scenario_{sid}.yaml"
+            gt_file = resolve_ground_truth_path(sid)
             _push({"type": "batch_scenario_start", "scenario_id": sid, "index": idx, "total": total})
             _state["scenario_id"] = sid
 
@@ -351,6 +359,7 @@ def _batch_thread(req: BatchRequest):
                     blind=req.blind,
                     benchmark_split="dev-public",
                     execution_profile=req.execution_profile,
+                    manage_scenario=not default_export_store().exists(sid),
                 )
                 pipeline.run(
                     stream_callback=make_callback(sid),
@@ -502,6 +511,12 @@ async def teardown_scenario(req: TeardownRequest):
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if default_export_store().exists(req.scenario_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Scenario Lab exports do not own Proxmox resources to tear down",
+        )
 
     with _state_lock:
         if _state["running"]:

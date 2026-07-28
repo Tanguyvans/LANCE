@@ -123,6 +123,7 @@
             <option value="">— Lab physique —</option>
           </select>
           <button id="btn-deploy" disabled title="Déployer les VMs du scénario sans lancer le pentest">Déployer</button>
+          <button id="btn-delete-exported-scenario" class="danger-btn" hidden title="Retirer ce scénario exporté du dashboard">Effacer l’export</button>
         </div>
         <label id="blind-mode-label" hidden style="margin-top:4px;font-size:12px;gap:6px;display:flex;align-items:center">
           <input type="checkbox" id="cb-blind-mode">
@@ -353,7 +354,7 @@
   <div id="sl-toolbar">
     <div>
       <div id="sl-title">Scenario Lab</div>
-      <div id="sl-status">Prévisualisation uniquement · scénarios officiels inchangés</div>
+      <div id="sl-status">Prévisualisez puis exportez vers le dashboard · scénarios officiels inchangés</div>
     </div>
     <label class="sl-field">
       <span>Blueprint</span>
@@ -390,6 +391,8 @@
           <span>Seed</span>
           <input id="sl-mutation-seed" type="number" min="0" max="2147483647">
         </label>
+        <button id="sl-export" disabled>Exporter vers le dashboard</button>
+        <button id="sl-delete-export" class="danger-btn" hidden>Effacer l’export</button>
         <button id="sl-mutate" disabled>Muter</button>
       </div>
     </section>

@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
+
 ROOT = Path(__file__).resolve().parents[2]
 GT_DIR = ROOT / "benchmarks" / "ground_truth"
 OUTPUT_DIR = ROOT / "output" / "agent"
@@ -25,6 +27,7 @@ def _available_scenarios() -> list[str]:
         for path in GT_DIR.glob("scenario_*.yaml")
         if not path.stem.removeprefix("scenario_").isdigit()
     ]
+    variants.extend(item["id"] for item in default_export_store().list())
 
     def sort_key(value: str) -> tuple[int, str]:
         number = "".join(ch for ch in value if ch.isdigit())
@@ -63,7 +66,7 @@ def _parse_scenario_ids(batch_arg: str) -> list[str]:
                         f"S{sid} must run through the external sealed controller"
                     )
                 resolved.append(descriptor.id)
-            elif (GT_DIR / f"scenario_{sid}.yaml").exists():
+            elif default_export_store().exists(sid) or (GT_DIR / f"scenario_{sid}.yaml").exists():
                 resolved.append(sid)
             else:
                 raise ValueError(f"Unknown public scenario variant: S{sid}")
@@ -302,7 +305,7 @@ def run_batch(
 
     for idx, sid in enumerate(scenario_ids, 1):
         scenario_id: int | str = int(sid) if sid.isdigit() else sid
-        gt_file = GT_DIR / f"scenario_{sid}.yaml"
+        gt_file = resolve_ground_truth_path(sid)
 
         if not gt_file.exists():
             print(f"[{idx}/{len(scenario_ids)}] S{sid} — SKIPPED (ground truth not found: {gt_file})")

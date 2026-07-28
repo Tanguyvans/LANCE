@@ -21,6 +21,7 @@ from typing import Any
 
 import yaml
 
+from src.benchmark.scenario_exports import ExportedScenarioStore
 from src.benchmark.strict_v3 import derive_matching_contract
 
 
@@ -84,16 +85,29 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 class ScenarioGenerator:
     """Generate and mutate preview bundles while preserving official inputs."""
 
-    def __init__(self, repo_root: Path | None = None, storage_root: Path | None = None):
+    def __init__(
+        self,
+        repo_root: Path | None = None,
+        storage_root: Path | None = None,
+        export_root: Path | None = None,
+    ):
         self.repo_root = (repo_root or Path(__file__).resolve().parents[2]).resolve()
         self.benchmarks_root = self.repo_root / "benchmarks"
         self.storage_root = (
             storage_root or self.repo_root / "output" / "generated_scenarios"
         ).resolve()
+        self.export_store = ExportedScenarioStore(
+            export_root or self.repo_root / "output" / "exported_scenarios"
+        )
         for protected in ("scenarios", "topologies", "ground_truth", "packs"):
             path = (self.benchmarks_root / protected).resolve()
-            if self.storage_root == path or path in self.storage_root.parents:
-                raise ScenarioGeneratorError("Generated storage must stay outside benchmarks/")
+            if any(
+                candidate == path or path in candidate.parents
+                for candidate in (self.storage_root, self.export_store.root)
+            ):
+                raise ScenarioGeneratorError(
+                    "Generated and exported storage must stay outside benchmarks/"
+                )
 
     def list_blueprints(self) -> list[dict[str, Any]]:
         return [
@@ -109,15 +123,28 @@ class ScenarioGenerator:
     def list_variants(self) -> list[dict[str, Any]]:
         if not self.storage_root.exists():
             return []
+        exported = {item["id"]: item for item in self.export_store.list()}
         variants = []
         for path in self.storage_root.iterdir():
             if path.is_symlink() or not path.is_dir() or not VARIANT_ID_RE.fullmatch(path.name):
                 continue
             try:
-                variants.append(self._summary(self._load_bundle(path.name)))
+                summary = self._summary(self._load_bundle(path.name))
+                export = exported.get(summary["id"])
+                summary["exported"] = export is not None
+                summary["exported_at"] = export.get("exported_at") if export else None
+                variants.append(summary)
             except ScenarioGeneratorError:
                 continue
         return sorted(variants, key=lambda item: (item["created_at"], item["id"]), reverse=True)
+
+    def export_variant(self, variant_id: str) -> dict[str, Any]:
+        """Publish one trusted preview bundle for use in the dashboard."""
+        return self.export_store.publish(self._load_bundle(variant_id))
+
+    def delete_export(self, variant_id: str) -> dict[str, Any]:
+        """Remove a dashboard export without deleting its Lab source variant."""
+        return self.export_store.delete(variant_id)
 
     def generate(self, blueprint_id: str, seed: int, operation: str) -> dict[str, Any]:
         blueprint = self._blueprint(blueprint_id)

@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 
 import yaml
 
+from src.benchmark.scenario_exports import resolve_ground_truth_path, resolve_scenario_path, resolve_topology_path
+
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.execution_profiles import (
     filter_profile_tools,
@@ -1303,7 +1305,7 @@ class Pipeline:
 
         # Legacy helper for explicit post-run development workflows only.  The
         # normal preset pipeline does not call this branch anymore.
-        gt_path = Path("benchmarks/ground_truth") / f"scenario_{self.scenario_id}.yaml"
+        gt_path = resolve_ground_truth_path(self.scenario_id)
         if gt_path.exists():
             shutil.copy2(gt_path, gt_dest)
             log.info("Ground truth copied to run dir: %s", gt_dest)
@@ -1415,13 +1417,13 @@ class Pipeline:
     def _load_scenario_context(self, scenario_id: int | str) -> str:
         """Build informed-mode context from public scenario/topology YAML only."""
         sid = str(scenario_id)
-        scenario_path = Path("benchmarks/scenarios") / f"S{sid}.yaml"
+        scenario_path = resolve_scenario_path(sid)
         if not scenario_path.exists():
             log.warning("Public scenario definition not found: %s", scenario_path)
             return ""
         scenario = yaml.safe_load(scenario_path.read_text()) or {}
         topology_id = scenario.get("topology")
-        topology_path = Path("benchmarks/topologies") / f"{topology_id}.yaml"
+        topology_path = resolve_topology_path(sid, str(topology_id or ""))
         if not topology_id or not topology_path.exists():
             log.warning("Public topology not found: %s", topology_path)
             return ""

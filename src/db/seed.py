@@ -207,7 +207,8 @@ def _backfill_scores(run_id: int, run_dir: Path, scenario_id) -> None:
     """Compute and store benchmark scores for a run (best effort)."""
     if scenario_id is None or not (run_dir / "03_vuln_analysis.json").exists():
         return
-    gt_path = _ROOT / "benchmarks" / "ground_truth" / f"scenario_{scenario_id}.yaml"
+    from src.benchmark.scenario_exports import resolve_ground_truth_path
+    gt_path = resolve_ground_truth_path(scenario_id)
     if not gt_path.exists():
         return
     try:

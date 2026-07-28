@@ -411,12 +411,18 @@ async function loadScenariosConfig() {
   hardGroup.label = 'Hardened (contrôle)';
   const sealedGroup = document.createElement('optgroup');
   sealedGroup.label = 'Évaluation scellée (controller requis)';
+  const exportedGroup = document.createElement('optgroup');
+  exportedGroup.label = 'Exports Scenario Lab';
 
   for (const s of _scenariosData.scenarios) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    opt.textContent = `S${s.id} · ${s.name}`;
-    if (isSealedScenario(s)) {
+    opt.textContent = s.exported ? `Lab · ${s.name}` : `S${s.id} · ${s.name}`;
+    if (s.exported) {
+      opt.textContent += ' · analyse';
+      exportedGroup.appendChild(opt);
+    }
+    else if (isSealedScenario(s)) {
       opt.disabled = true;
       opt.textContent += ' · indisponible localement';
       sealedGroup.appendChild(opt);
@@ -424,6 +430,7 @@ async function loadScenariosConfig() {
     else if (s.posture === 'hardened') hardGroup.appendChild(opt);
     else vulnGroup.appendChild(opt);
   }
+  if (exportedGroup.children.length) sel.appendChild(exportedGroup);
   if (vulnGroup.children.length) sel.appendChild(vulnGroup);
   if (hardGroup.children.length) sel.appendChild(hardGroup);
   if (sealedGroup.children.length) sel.appendChild(sealedGroup);
@@ -458,6 +465,7 @@ async function loadScenariosConfig() {
 
   // Build packs UI
   buildPacksUI();
+  updateSelectedScenarioActions();
 
   // When architecture changes, rebuild packs to show only applicable vulns
   archSel.addEventListener('change', () => buildPacksUI());
@@ -541,6 +549,56 @@ function buildPacksUI() {
   }
 }
 
+function selectedScenarioMetadata() {
+  const scenarioId = document.getElementById('sel-scenario').value;
+  return (_scenariosData.scenarios || []).find(s => String(s.id) === scenarioId) || null;
+}
+
+function updateSelectedScenarioActions() {
+  const scenario = selectedScenarioMetadata();
+  const scenarioId = scenario ? String(scenario.id) : '';
+  const provisionable = Boolean(
+    scenarioId && !isSealedScenario(scenario) && scenario.deployment_supported !== false
+  );
+  document.getElementById('btn-deploy').disabled = !provisionable;
+  document.getElementById('btn-teardown').disabled = !provisionable;
+
+  const remove = document.getElementById('btn-delete-exported-scenario');
+  const deletable = Boolean(scenario?.exported && scenario?.deletable);
+  remove.hidden = !deletable;
+  remove.disabled = !deletable;
+
+  const blindLabel = document.getElementById('blind-mode-label');
+  blindLabel.hidden = !scenarioId || Boolean(scenario?.exported);
+  if (blindLabel.hidden) document.getElementById('cb-blind-mode').checked = false;
+}
+
+async function deleteSelectedExportedScenario() {
+  const scenario = selectedScenarioMetadata();
+  if (!scenario?.exported || !scenario?.deletable) return;
+  if (!window.confirm(`Effacer l’export « ${scenario.name} » du dashboard ? La variante restera dans Scenario Lab.`)) {
+    return;
+  }
+  const button = document.getElementById('btn-delete-exported-scenario');
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      '/api/scenario-generator/' + encodeURIComponent(scenario.id) + '/export',
+      {method: 'DELETE'},
+    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(_formatErrDetail(payload.detail || `HTTP ${response.status}`));
+    await loadScenariosConfig();
+    await loadTopology(null);
+    if (typeof openScenarioLab === 'function') await openScenarioLab();
+    addLog({type: 'info', message: `Export effacé : ${scenario.id}`});
+  } catch (error) {
+    addLog({type: 'error', message: `Suppression impossible : ${error.message}`});
+  } finally {
+    updateSelectedScenarioActions();
+  }
+}
+
 function getSelectedScenarioId() {
   const mode = document.querySelector('input[name="run-mode"]:checked').value;
   if (mode === 'preset') {
@@ -603,15 +661,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sel-scenario').addEventListener('change', function () {
     if (isSealedScenarioId(this.value)) this.value = '';
     loadTopology(this.value || null);
-    document.getElementById('btn-teardown').disabled = !this.value;
-    document.getElementById('btn-deploy').disabled = !this.value;
-    document.getElementById('blind-mode-label').hidden = !this.value;
-    if (!this.value) document.getElementById('cb-blind-mode').checked = false;
+    updateSelectedScenarioActions();
   });
   document.getElementById('btn-deploy').addEventListener('click', deployScenario);
   document.getElementById('btn-start').addEventListener('click', startRun);
   document.getElementById('btn-batch-start').addEventListener('click', startBatch);
   document.getElementById('btn-stop').addEventListener('click', stopRun);
+  document.getElementById('btn-delete-exported-scenario').addEventListener('click', deleteSelectedExportedScenario);
   document.getElementById('btn-teardown').addEventListener('click', teardownScenario);
   document.getElementById('btn-batch-all').addEventListener('click', () => {
     document.querySelectorAll('.batch-cb').forEach(cb => cb.checked = true);
@@ -1406,6 +1462,10 @@ async function deployScenario() {
     return;
   }
   if (document.getElementById('btn-start').disabled) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
+  if (selectedScenarioMetadata()?.deployment_supported === false) {
+    addLog({type:'warn', message:'Cet export Scenario Lab est disponible pour analyse, sans provisionnement Proxmox automatique'});
+    return;
+  }
 
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
@@ -1436,7 +1496,7 @@ async function deployScenario() {
     addLog({type:'error', message:`Déploiement erreur réseau : ${e}`});
   } finally {
     btn.textContent = 'Déployer';
-    btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+    updateSelectedScenarioActions();
   }
 }
 
@@ -1445,6 +1505,10 @@ async function teardownScenario() {
   if (!scenarioId) return;
   if (isSealedScenarioId(scenarioId)) {
     addLog({type:'error', message:'Le teardown scellé est réservé au controller'});
+    return;
+  }
+  if (selectedScenarioMetadata()?.deployment_supported === false) {
+    addLog({type:'warn', message:'Cet export ne possède aucune ressource Proxmox à arrêter'});
     return;
   }
   const btn = document.getElementById('btn-teardown');
@@ -1473,7 +1537,7 @@ async function teardownScenario() {
   } finally {
     if (!started) {
       btn.textContent = 'Teardown';
-      btn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+      updateSelectedScenarioActions();
     }
   }
 }
@@ -1622,7 +1686,7 @@ function handleEvent(ev) {
     const scenarioId = document.getElementById('sel-scenario').value;
     const teardownBtn = document.getElementById('btn-teardown');
     teardownBtn.textContent = 'Teardown';
-    teardownBtn.disabled = !scenarioId || isSealedScenarioId(scenarioId);
+    updateSelectedScenarioActions();
     if (ev.manual === true) {
       document.getElementById('btn-start').disabled = false;
       document.getElementById('btn-batch-start').disabled = false;
