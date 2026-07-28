@@ -30,7 +30,12 @@ def _openai_tool_response(name: str, arguments: dict, call_id: str):
 
 def test_execution_profile_defaults_and_validation():
     assert resolve_execution_profile(None).name == "full"
-    assert resolve_execution_profile(" COMPACT ").routed_tools is True
+    compact = resolve_execution_profile(" COMPACT ")
+    assert compact.routed_tools is True
+    assert compact.limits_for_phase(1, 20, 4096) == (12, 2048)
+    assert compact.limits_for_phase(2, 50, 4096) == (50, 1536)
+    assert compact.limits_for_phase(5, 80, 16384) == (50, 2048)
+    assert compact.limits_for_phase(6, 25, 16384) == (12, 4096)
     assert StartRequest().execution_profile == "auto"
     assert (
         BatchRequest(batch_ids=["1"], execution_profile="compact").execution_profile
@@ -96,16 +101,31 @@ def test_compact_generic_phases_keep_required_tools_and_remove_noise():
     names = [
         "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
         "save_deliverable", "http_get", "mqtt_listen", "sqlmap", "nuclei_scan",
-        "searchsploit", "get_attack_paths", "get_risk_scores", "search_knowledge",
+        "searchsploit", "get_network_topology", "get_device_info",
+        "get_attack_surface", "get_attack_paths", "get_risk_scores",
+        "search_knowledge", "ssh_exec", "try_credential",
     ]
     tools = [{"name": name} for name in names]
 
     compact = resolve_execution_profile("compact")
+    compact_graph = {tool["name"] for tool in filter_profile_tools(compact, 1, tools)}
     compact_recon = {tool["name"] for tool in filter_profile_tools(compact, 2, tools)}
+    compact_intrusion = {tool["name"] for tool in filter_profile_tools(compact, 5, tools)}
     compact_report = {tool["name"] for tool in filter_profile_tools(compact, 6, tools)}
 
-    assert {"arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable", "save_deliverable"} <= compact_recon
+    assert compact_graph == {
+        "get_network_topology", "get_device_info", "get_attack_surface",
+        "get_attack_paths", "get_risk_scores", "read_deliverable",
+        "save_deliverable",
+    }
+    assert compact_recon == {
+        "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+        "save_deliverable",
+    }
     assert {"sqlmap", "nuclei_scan", "searchsploit"}.isdisjoint(compact_recon)
+    assert compact_intrusion == {
+        "read_deliverable", "save_deliverable", "ssh_exec", "try_credential",
+    }
     assert compact_report == {
         "read_deliverable", "save_deliverable",
     }

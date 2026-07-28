@@ -25,8 +25,13 @@ bitsandbytes:
   bnb_4bit_compute_dtype: "bfloat16"
 
 training:
-  output_root: "output/adapters/lance-qlora_moe_3b"
-  num_train_epochs: 1
+  output_root: "output/adapters/lance-qlora_moe_3b_20260724"
+  num_train_epochs: 2
+  num_train_epochs_by_expert:
+    secretary: 1
+    recon: 2
+    vuln: 2
+    exploit: 1
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 32
@@ -38,10 +43,12 @@ training:
   warmup_ratio: 0.03
   lr_scheduler_type: "cosine"
   logging_steps: 5
-  save_strategy: "steps"
-  save_steps: 250
-  eval_strategy: "steps"
-  eval_steps: 250
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  eval_on_start: true
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  greater_is_better: false
   prediction_loss_only: true
   save_total_limit: 2
   seed: 42

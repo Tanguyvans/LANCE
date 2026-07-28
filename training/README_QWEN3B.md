@@ -83,7 +83,14 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   PYTHONPATH= env/bin/python training/train_qlora_3b.py --expert recon
 ```
 
-Available experts are `secretary`, `recon`, `vuln`, and `exploit`. Adapters are written to `output/adapters/lance-qlora_moe_3b/<expert>`.
+Available experts are `secretary`, `recon`, `vuln`, and `exploit`. This refreshed
+run writes adapters to `output/adapters/lance-qlora_moe_3b_20260724/<expert>` so
+the previous `lance-qlora_moe_3b` adapters remain untouched.
+
+Recon and Vuln train for two epochs. Secretary and Exploit train for one epoch
+to keep their runs within the planned training window. Evaluation runs before
+training and after each epoch; the final adapter is restored from the checkpoint
+with the lowest `eval_loss` rather than blindly keeping the last epoch.
 
 Resume the latest checkpoint:
 
@@ -121,5 +128,5 @@ python3 scripts/training_workspace.py pull-adapters
 python3 scripts/training_workspace.py pull-adapters --apply
 ```
 
-The command writes to `output/adapters/lance-qlora_moe_3b/`; it excludes every
-checkpoint and trainer-state file.
+The command writes to `output/adapters/lance-qlora_moe_3b_20260724/`; it excludes
+every checkpoint and trainer-state file.

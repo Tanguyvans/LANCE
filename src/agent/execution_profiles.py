@@ -20,10 +20,18 @@ EXECUTION_PROFILE_POLICIES = frozenset({"auto", "compact", "full"})
 class ExecutionProfile:
     name: str
     routed_tools: bool
+    phase1_max_turns: int
+    phase1_max_tokens: int
+    phase2_max_turns: int
+    phase2_max_tokens: int
     phase3_max_turns: int
     phase3_max_tokens: int
+    phase3_local_max_turns: int
+    phase3_local_max_tokens: int
     phase4_max_turns: int
     phase4_max_tokens: int
+    phase4_local_max_turns: int
+    phase4_local_max_tokens: int
     intrusion_max_turns: int
     intrusion_max_tokens: int
     report_max_turns: int
@@ -34,6 +42,25 @@ class ExecutionProfile:
             "schema_version": EXECUTION_PROFILE_SCHEMA_VERSION,
             **asdict(self),
         }
+
+    def limits_for_phase(
+        self, phase: int, fallback_turns: int, fallback_tokens: int
+    ) -> tuple[int, int]:
+        """Return the effective orchestration window for a top-level phase."""
+        prefix = {
+            1: "phase1",
+            2: "phase2",
+            3: "phase3",
+            4: "phase4",
+            5: "intrusion",
+            6: "report",
+        }.get(int(phase))
+        if prefix is None:
+            return fallback_turns, fallback_tokens
+        return (
+            int(getattr(self, f"{prefix}_max_turns")),
+            int(getattr(self, f"{prefix}_max_tokens")),
+        )
 
 
 @dataclass(frozen=True)
@@ -69,22 +96,38 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
     "compact": ExecutionProfile(
         name="compact",
         routed_tools=True,
+        phase1_max_turns=12,
+        phase1_max_tokens=2048,
+        phase2_max_turns=50,
+        phase2_max_tokens=1536,
         phase3_max_turns=8,
         phase3_max_tokens=2048,
+        phase3_local_max_turns=1,
+        phase3_local_max_tokens=1536,
         phase4_max_turns=6,
-        phase4_max_tokens=3072,
+        phase4_max_tokens=1536,
+        phase4_local_max_turns=3,
+        phase4_local_max_tokens=1536,
         intrusion_max_turns=50,
-        intrusion_max_tokens=8192,
+        intrusion_max_tokens=2048,
         report_max_turns=12,
-        report_max_tokens=8192,
+        report_max_tokens=4096,
     ),
     "full": ExecutionProfile(
         name="full",
         routed_tools=False,
+        phase1_max_turns=20,
+        phase1_max_tokens=4096,
+        phase2_max_turns=50,
+        phase2_max_tokens=4096,
         phase3_max_turns=10,
         phase3_max_tokens=4096,
+        phase3_local_max_turns=1,
+        phase3_local_max_tokens=1536,
         phase4_max_turns=10,
         phase4_max_tokens=4096,
+        phase4_local_max_turns=3,
+        phase4_local_max_tokens=1536,
         intrusion_max_turns=80,
         intrusion_max_tokens=16384,
         report_max_turns=25,
@@ -101,12 +144,17 @@ PHASE3_FULL_TOOL_NAMES = frozenset({
 
 
 COMPACT_PHASE_TOOL_NAMES: dict[int, frozenset[str]] = {
+    1: frozenset({
+        "get_network_topology", "get_device_info", "get_attack_surface",
+        "get_attack_paths", "get_risk_scores", "list_deliverables",
+        "read_deliverable", "save_deliverable",
+    }),
     2: frozenset({
-        "arp_scan", "curl_headers", "cve_search", "dig_query", "ftp_list",
-        "get_attack_surface", "get_device_info", "http_get", "list_deliverables",
-        "modbus_scan", "mqtt_listen", "nmap_discovery", "nmap_scan",
-        "read_deliverable", "save_deliverable", "smbclient_list", "ssh_audit",
-        "tls_inspect",
+        "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
+        "save_deliverable",
+    }),
+    5: frozenset({
+        "read_deliverable", "save_deliverable", "ssh_exec", "try_credential",
     }),
     6: frozenset({
         "list_deliverables", "read_deliverable", "save_deliverable",

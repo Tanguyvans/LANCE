@@ -27,13 +27,7 @@ from src.agent.provider import LLMProvider
 from src.config import (
     BENCHMARK_SUBNET,
     DEFAULT_PORTS,
-    DEVICE_ANALYSIS_MAX_TOKENS,
-    DEVICE_ANALYSIS_MAX_TURNS,
     DEVICE_DEFAULT_PORTS,
-    EXPLOIT_MAX_TOKENS,
-    EXPLOIT_MAX_TURNS,
-    INTRUSION_MAX_TOKENS,
-    INTRUSION_MAX_TURNS,
     PHYSICAL_SUBNET,
 )
 from src.agent.prompt_manager import load_prompt
@@ -53,6 +47,7 @@ from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_e
 from src.agent.tools.skill_tools import SKILL_TOOLS, cve_search, get_skills_metadata, set_skill_filter
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
+from src.benchmark.metric_contract import metric_contract_metadata
 
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
@@ -118,7 +113,7 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
         "nmap_scan", "udp_send",
     }),
     "injection": frozenset({
-        "http_get", "http_request", "curl_headers", "sqlmap",
+        "http_get", "http_request", "curl_headers",
         "tcp_send", "udp_send",
     }),
 }
@@ -126,8 +121,8 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
 PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ssh": frozenset({"ssh_login", "try_credential", "ssh_audit", "nmap_scan"}),
     "mqtt": frozenset({"mqtt_listen", "try_credential", "nmap_scan"}),
-    "http": frozenset({"http_get", "http_request", "curl_headers", "nikto_scan", "whatweb", "wpscan", "sqlmap"}),
-    "https": frozenset({"http_get", "http_request", "curl_headers", "tls_inspect", "mtls_request", "openssl_inspect", "nikto_scan", "whatweb", "wpscan", "sqlmap"}),
+    "http": frozenset({"http_get", "http_request", "curl_headers"}),
+    "https": frozenset({"http_get", "http_request", "curl_headers", "mtls_request"}),
     "telnet": frozenset({"telnet_connect", "try_credential", "nmap_scan"}),
     "mysql": frozenset({"mysql_query", "nmap_scan"}),
     "mariadb": frozenset({"mysql_query", "nmap_scan"}),
@@ -135,7 +130,7 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ftp": frozenset({"ftp_list", "try_credential", "nmap_scan"}),
     "snmp": frozenset({"nmap_scan"}),
     "coap": frozenset({"nmap_scan", "udp_send"}),
-    "modbus": frozenset({"modbus_scan", "modbus_write"}),
+    "modbus": frozenset({"modbus_scan"}),
     "opcua": frozenset({"tcp_send", "nmap_scan"}),
     "bacnet": frozenset({"udp_send", "nmap_scan"}),
 }
@@ -515,10 +510,22 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         result = _decode_tool_result(record)
         stdout = str(result.get("stdout", ""))
         stderr = str(result.get("stderr", ""))
+        body = str(result.get("body", ""))
+        received = str(result.get("received_ascii", ""))
+        headers = result.get("headers", "")
+        if isinstance(headers, dict):
+            headers = "\n".join(f"{key}: {value}" for key, value in headers.items())
         interp = str(result.get("interpretation", ""))
-        text = "\n".join(part for part in (stdout, stderr, interp) if part).strip()
+        text = "\n".join(
+            part for part in (stdout, stderr, body, received, str(headers), interp) if part
+        ).strip()
         lower = text.lower()
         rc = result.get("return_code")
+        expected_port = None
+        try:
+            expected_port = int(port) if port not in (None, "") else None
+        except (TypeError, ValueError):
+            expected_port = None
 
         if tool == "mqtt_listen":
             broker = str(args.get("broker", ""))
@@ -567,21 +574,24 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             errors.append(f"{tool} did not reach a usable service: {text[:180]}")
             continue
 
-        if tool in {"http_get", "curl_headers", "http_request"}:
-            status_code = _http_status(stdout)
+        if tool in {"http_get", "curl_headers", "http_request", "mtls_request"}:
+            status_code = result.get("status_code")
+            if not isinstance(status_code, int) or isinstance(status_code, bool):
+                status_code = _http_status(text)
+            http_ok = 200 <= status_code < 300 if isinstance(status_code, int) else (rc == 0 and bool(text))
             if status_code == 404 or "not found" in lower:
                 failures.append(f"{tool} returned HTTP 404/Not Found")
                 continue
             if status_code in (401, 403) or "www-authenticate" in lower:
                 failures.append(f"{tool} reached an authenticated or forbidden endpoint")
                 continue
-            if vuln_type == "directory_listing" and "index of" in lower:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{stdout[:800]}"})
+            if vuln_type == "directory_listing" and http_ok and "index of" in lower:
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{text[:800]}"})
                 continue
-            if vuln_type in {"data_exposure", "info_disclosure"} and status_code == 200 and _text_has_sensitive_data(stdout):
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{stdout[:800]}"})
+            if vuln_type in {"data_exposure", "info_disclosure"} and http_ok and _text_has_sensitive_data(text):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{text[:800]}"})
                 continue
-            if vuln_type == "no_auth" and status_code == 200:
+            if vuln_type == "no_auth" and http_ok:
                 login_challenge = any(marker in lower for marker in (
                     "login", "sign in", "password", "unauthorized", "authentication required",
                 ))
@@ -589,7 +599,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     "dashboard", "admin", "configuration", "devices", "flows", "logout", "luci",
                 ))
                 if privileged and not login_challenge:
-                    confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} reached admin content without an auth challenge:\n{stdout[:800]}"})
+                    confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} reached admin content without an auth challenge:\n{text[:800]}"})
                 else:
                     failures.append(f"{tool} did not prove unauthenticated admin access")
                 continue
@@ -608,6 +618,45 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 errors.append("telnet_connect timed out")
             else:
                 failures.append("telnet_connect did not establish useful interaction")
+            continue
+
+        if tool in {"nmap_scan", "modbus_scan"}:
+            open_service = False
+            if tool == "modbus_scan":
+                open_service = "502/tcp" in lower and "open" in lower
+            elif expected_port:
+                open_service = bool(re.search(rf"\b{expected_port}/(?:tcp|udp)\s+open\b", lower))
+            vulnerable_marker = any(marker in lower for marker in (
+                "vulnerable", "vulners", "cve-", "anonymous login allowed",
+                "authentication disabled", "default credential", "terrapin",
+            ))
+            if rc == 0 and open_service and vuln_type in {"no_auth", "insecure_protocol", "info_disclosure"}:
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} confirmed an exposed service consistent with {vuln_type}:\n{text[:800]}"})
+            elif rc == 0 and open_service and vulnerable_marker:
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned vulnerability markers:\n{text[:800]}"})
+            else:
+                failures.append(f"{tool} did not prove a vulnerable open service")
+            continue
+
+        if tool == "ssh_audit":
+            if rc == 0 and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported weak SSH configuration:\n{text[:800]}"})
+            else:
+                failures.append("ssh_audit did not report an exploitable SSH weakness")
+            continue
+
+        if tool in {"tcp_send", "udp_send"}:
+            received_bytes = result.get("received_bytes")
+            received_hex = str(result.get("received_hex", ""))
+            if (
+                isinstance(received_bytes, int)
+                and not isinstance(received_bytes, bool)
+                and received_bytes > 0
+                and (received.strip() or received_hex.strip())
+            ):
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} received protocol data from the target:\n{text[:800] or received_hex[:800]}"})
+            else:
+                failures.append(f"{tool} did not receive a useful target response")
             continue
 
         if tool in {"mysql_query", "redis_cmd", "ftp_list"} and rc == 0 and text:
@@ -826,6 +875,7 @@ class Pipeline:
             "oracle_access": False,
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
+            **metric_contract_metadata(),
         }
         contract_hash = getattr(self.execution_context, "contract_hash", None)
         if not contract_hash and self.execution_context is not None:
@@ -1830,6 +1880,12 @@ class Pipeline:
 
         tools = self._resolve_tools(config)
         tools = filter_profile_tools(self.execution_profile, config.phase, tools)
+        max_turns, max_tokens = self.execution_profile.limits_for_phase(
+            config.phase, config.max_turns, config.max_tokens
+        )
+        local_intrusion_memo = config.name == "intrusion" and self._uses_local_moe()
+        if local_intrusion_memo:
+            tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
 
         # Build prompt variables
@@ -1838,6 +1894,26 @@ class Pipeline:
         variables["expected_deliverable"] = config.deliverable_file
         set_expected_deliverable(config.deliverable_file)
         variables["available_skills"] = self._filter_skills(config)
+        variables["turn_budget"] = max_turns
+        variables["intrusion_campaign_stop_turn"] = max(1, int(max_turns * 0.875))
+        variables["intrusion_completion_turn"] = max(1, int(max_turns * 0.9))
+        if config.name == "intrusion":
+            if local_intrusion_memo:
+                variables["intrusion_save_tool"] = ""
+                variables[
+                    "intrusion_completion_rule"
+                ] = "Finalise with a concise campaign memo; the orchestrator derives the JSON deliverable."
+                variables["intrusion_final_phase_title"] = "Return the campaign memo"
+                variables[
+                    "intrusion_final_instruction"
+                ] = "Return a concise campaign memo with confirmed results, evidence references, and the best next action."
+            else:
+                variables["intrusion_save_tool"] = "- save_deliverable(filename=\"05_intrusion.json\", content=<full JSON>)"
+                variables["intrusion_completion_rule"] = "Finish with one successful save_deliverable call. If it returns ok=false, repair the archived draft and retry without repeating data gathering."
+                variables["intrusion_final_phase_title"] = "Save results"
+                variables[
+                    "intrusion_final_instruction"
+                ] = "Call save_deliverable with the full JSON. Do not stop before the tool reports success."
 
         # Recon remains model-driven: the expert calls every tool itself.  The
         # contract only constrains its tool surface and prevents completion
@@ -1859,17 +1935,6 @@ class Pipeline:
 
         # Load and compose prompt
         system_prompt = load_prompt(config.prompt_template, variables)
-        local_intrusion_memo = config.name == "intrusion" and self._uses_local_moe()
-        if local_intrusion_memo:
-            tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
-            system_prompt += (
-                "\n\nLOCAL MOE PHASE 5 MODE:\n"
-                "Use read_deliverable to inspect 05_intrusion_context.json, then use "
-                "try_credential and ssh_exec for the intrusion campaign. "
-                "Do not write the final JSON and do not call save_deliverable; "
-                "the orchestrator will derive 05_intrusion.json strictly from tool_calls.jsonl. "
-                "Return only a concise memo of tested credentials, hosts, and command results.\n"
-            )
 
         # Print header
         print(f"\n{'=' * 60}")
@@ -1949,14 +2014,6 @@ class Pipeline:
             return status
 
         # Run agent with cost tracking
-        max_turns = config.max_turns
-        max_tokens = config.max_tokens
-        if config.phase == 5:
-            max_turns = self.execution_profile.intrusion_max_turns
-            max_tokens = self.execution_profile.intrusion_max_tokens
-        elif config.phase == 6:
-            max_turns = self.execution_profile.report_max_turns
-            max_tokens = self.execution_profile.report_max_tokens
         self.tracker.start_phase(config.name)
         result_text = self.provider.chat_with_tools(
             system_prompt=system_prompt,
@@ -2708,8 +2765,8 @@ class Pipeline:
                     system_prompt=local_prompt,
                     user_message=f"Write the Phase 3 analyst memo for {device_id} now.",
                     tools=[],
-                    max_turns=1,
-                    max_tokens=max(DEVICE_ANALYSIS_MAX_TOKENS, 1536),
+                    max_turns=self.execution_profile.phase3_local_max_turns,
+                    max_tokens=self.execution_profile.phase3_local_max_tokens,
                     cost_tracker=self.tracker,
                     stream_callback=self._model_stream_callback(
                         stream_callback, phase=3, agent=f"analyze_{device_id}"
@@ -3459,24 +3516,23 @@ class Pipeline:
                     else:
                         verification_tools = exploit_tools
                     if local_moe:
-                        local_prompt = (
-                            system_prompt
-                            + "\n\nLOCAL MOE PHASE 4 MODE:\n"
-                            + "Use the available verification tools to test the vulnerability. "
-                            + "Do not call save_deliverable; it is not available in this mode. "
-                            + "Do not write JSON and do not claim a final verdict. "
-                            + "Return a concise memo with what you tested; the orchestrator will "
-                            + "derive the strict JSON result from the archived tool outputs.\n"
-                        )
                         result_text = self.provider.chat_with_tools(
-                            system_prompt=local_prompt,
+                            system_prompt=load_prompt(
+                                "exploit_device_vuln_memo",
+                                {
+                                    **variables,
+                                    "device": device_id,
+                                    "vulnerability": vuln_type,
+                                    "exploit_instructions": self.exploit_instructions,
+                                },
+                            ),
                             user_message=(
                                 f"Verify {vuln_type} on {device_id} ({device_ip}). "
                                 f"Service: {service} port {port}. Use tools if needed, then summarize."
                             ),
                             tools=verification_tools,
-                            max_turns=min(EXPLOIT_MAX_TURNS, 3),
-                            max_tokens=min(EXPLOIT_MAX_TOKENS, 1536),
+                            max_turns=self.execution_profile.phase4_local_max_turns,
+                            max_tokens=self.execution_profile.phase4_local_max_tokens,
                             cost_tracker=self.tracker,
                             stream_callback=self._model_stream_callback(
                                 stream_callback, phase=4, agent=phase_name

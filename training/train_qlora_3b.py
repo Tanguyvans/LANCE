@@ -9,13 +9,23 @@ from pathlib import Path
 
 import torch
 import yaml
-from datasets import concatenate_datasets, load_dataset
+from datasets import (
+    Features,
+    Json,
+    List as DatasetList,
+    concatenate_datasets,
+    load_dataset,
+)
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTConfig, SFTTrainer
 
 EXPERTS = ("secretary", "recon", "vuln", "exploit")
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CHAT_FEATURES = Features({
+    "messages": DatasetList(Json()),
+    "tools": DatasetList(Json()),
+})
 
 
 def project_path(value: str | Path) -> Path:
@@ -27,6 +37,20 @@ def project_path(value: str | Path) -> Path:
 def load_config(path: str) -> dict:
     with open(path, encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def normalize_chat_features(dataset):
+    """Keep heterogeneous tool calls representable before feedback concatenation."""
+    if "messages" not in dataset.column_names:
+        raise ValueError("Dataset is missing the messages column")
+    if "tools" not in dataset.column_names:
+        dataset = dataset.add_column("tools", [[] for _ in range(len(dataset))])
+    extra_columns = [
+        column for column in dataset.column_names if column not in CHAT_FEATURES
+    ]
+    if extra_columns:
+        dataset = dataset.remove_columns(extra_columns)
+    return dataset.cast(CHAT_FEATURES)
 
 
 def estimate_total_update_steps(
@@ -42,6 +66,16 @@ def estimate_total_update_steps(
     )
     updates_per_epoch = max(1, math.ceil(train_examples / examples_per_update))
     return max(1, math.ceil(updates_per_epoch * num_train_epochs))
+
+
+def resolve_num_train_epochs(training: dict, expert: str) -> float:
+    """Resolve optional per-expert epoch overrides from the training config."""
+    by_expert = training.get("num_train_epochs_by_expert", {}) or {}
+    value = by_expert.get(expert, training["num_train_epochs"])
+    epochs = float(value)
+    if epochs <= 0:
+        raise ValueError(f"num_train_epochs for {expert} must be > 0")
+    return epochs
 
 
 def effective_step_interval(configured_steps: int, total_update_steps: int) -> int:
@@ -76,6 +110,7 @@ def main() -> None:
     model_config = config["model"]
 
     expert_lengths = training.get("expert_max_seq_length", {})
+    num_train_epochs = resolve_num_train_epochs(training, args.expert)
     max_seq_length = int(
         args.max_seq_length
         or expert_lengths.get(args.expert)
@@ -145,20 +180,21 @@ def main() -> None:
             "json",
             data_files=str(feedback_path),
             split="train",
-            features=dataset.features,
         )
         feedback_count = len(feedback)
         if not feedback_count:
             raise ValueError("Accepted feedback dataset is empty")
+        training_dataset = normalize_chat_features(split["train"])
+        feedback = normalize_chat_features(feedback)
         split["train"] = concatenate_datasets(
-            [split["train"], *[feedback for _ in range(feedback_repeat)]]
+            [training_dataset, *[feedback for _ in range(feedback_repeat)]]
         ).shuffle(seed=int(training.get("seed", 42)))
 
     if args.validate_only:
         print(
             f"Validated {args.expert}: {len(split['train'])} train / "
             f"{len(split['test'])} eval examples, context={max_seq_length}, "
-            f"feedback={feedback_count}x{feedback_repeat}"
+            f"epochs={num_train_epochs:g}, feedback={feedback_count}x{feedback_repeat}"
         )
         return
 
@@ -219,7 +255,7 @@ def main() -> None:
         len(split["train"]),
         per_device_batch_size=int(training["per_device_train_batch_size"]),
         gradient_accumulation_steps=int(training["gradient_accumulation_steps"]),
-        num_train_epochs=float(training["num_train_epochs"]),
+        num_train_epochs=num_train_epochs,
     )
     eval_strategy = training["eval_strategy"]
     eval_steps = int(training.get("eval_steps", 1) or 1)
@@ -231,7 +267,7 @@ def main() -> None:
 
     sft_config = SFTConfig(
         output_dir=str(output_path),
-        num_train_epochs=training["num_train_epochs"],
+        num_train_epochs=num_train_epochs,
         per_device_train_batch_size=training["per_device_train_batch_size"],
         per_device_eval_batch_size=training["per_device_eval_batch_size"],
         gradient_accumulation_steps=training["gradient_accumulation_steps"],
@@ -245,8 +281,12 @@ def main() -> None:
         save_steps=save_steps,
         eval_strategy=eval_strategy,
         eval_steps=eval_steps,
+        eval_on_start=training.get("eval_on_start", False),
         prediction_loss_only=training["prediction_loss_only"],
         save_total_limit=training["save_total_limit"],
+        load_best_model_at_end=training.get("load_best_model_at_end", False),
+        metric_for_best_model=training.get("metric_for_best_model"),
+        greater_is_better=training.get("greater_is_better"),
         seed=training["seed"],
         optim=training["optim"],
         report_to=training.get("report_to", "none"),
@@ -274,8 +314,8 @@ def main() -> None:
     print(
         f"Training {args.expert}: {len(split['train'])} train / "
         f"{len(split['test'])} eval examples, context={max_seq_length}, "
-        f"feedback={feedback_count}x{feedback_repeat}, "
-        f"updates={total_update_steps}, eval_steps={eval_steps}"
+        f"epochs={num_train_epochs:g}, feedback={feedback_count}x{feedback_repeat}, "
+        f"updates={total_update_steps}, eval_strategy={eval_strategy}"
     )
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     trainer.model.save_pretrained(output_path)

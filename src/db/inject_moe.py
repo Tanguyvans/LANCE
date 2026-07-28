@@ -92,23 +92,28 @@ def main(argv: Sequence[str] | None = None) -> None:
     upsert_model(
         "lance-moe", "LANCE HMoE (Auto-Router)", "local-moe", True, True,
         active_parameter_count_b=3.0,
+        profile_policy="compact",
     )
     if args.include_experts:
         upsert_model(
             "expert-recon", "Expert (Recon)", "local-moe", False, True,
             parameter_count_b=3.0,
+            profile_policy="compact",
         )
         upsert_model(
             "expert-vuln", "Expert (Vuln)", "local-moe", False, True,
             parameter_count_b=3.0,
+            profile_policy="compact",
         )
         upsert_model(
             "expert-exploit", "Expert (Exploit)", "local-moe", False, True,
             parameter_count_b=3.0,
+            profile_policy="compact",
         )
         upsert_model(
             "expert-secretary", "Expert (Secretary)", "local-moe", False, True,
             parameter_count_b=3.0,
+            profile_policy="compact",
         )
 
     print(

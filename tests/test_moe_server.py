@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import json
 
+import src.agent.moe_server as moe_server
 from src.agent.moe_server import (
     Message,
     _attach_runtime_state,
     _build_execution_state,
     _compact_hf_messages,
     _forced_recovery_tool,
+    _expert_context_budget,
     _generation_token_budget,
     _parse_qwen_tool_calls,
     _prepare_prompt,
@@ -379,8 +381,24 @@ def test_compaction_summarizes_large_latest_success_but_preserves_contract_error
 
 
 
-def test_vuln_generation_budget_prevents_runaway_output() -> None:
+def test_vuln_generation_budget_prevents_runaway_output(monkeypatch) -> None:
+    for expert in ("SECRETARY", "RECON", "VULN", "EXPLOIT"):
+        monkeypatch.delenv(f"MOE_{expert}_GENERATION_TOKENS", raising=False)
+
     assert _generation_token_budget("vuln", 4096, 4000, 6144) == 1024
     assert _generation_token_budget("vuln", 768, 4000, 6144) == 768
-    assert _generation_token_budget("vuln", 4096, 7000, 6144) == 256
-    assert _generation_token_budget("secretary", 4096, 7000, 6144) == 4096
+    assert _generation_token_budget("vuln", 4096, 7000, 6144) == 1
+    assert _generation_token_budget("secretary", 4096, 3000, 6144) == 3144
+    assert _generation_token_budget("secretary", 8192, 7000, 6144) == 1
+    assert _generation_token_budget("exploit", 8192, 3000, 6144) == 2048
+
+
+def test_expert_context_budget_tracks_training_window(monkeypatch) -> None:
+    for expert in ("SECRETARY", "RECON", "VULN", "EXPLOIT"):
+        monkeypatch.delenv(f"MOE_{expert}_CONTEXT_TOKENS", raising=False)
+    monkeypatch.setattr(moe_server, "_ADAPTER_CONTEXT_TOKENS", 6144)
+
+    assert _expert_context_budget("secretary") == 6144
+    assert _expert_context_budget("recon") == 6144
+    assert _expert_context_budget("vuln") == 4096
+    assert _expert_context_budget("exploit") == 6144

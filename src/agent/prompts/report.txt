@@ -24,7 +24,7 @@ Fill in the report template below with data from previous phases. Do NOT change 
    The 06_phase6_context.json file contains all the data you need from those files.
    WARNING: Do NOT call get_risk_scores, get_attack_paths, get_network_topology — their data is
    already included in 06_phase6_context.json and 01_graph_evidence.json. These calls waste turns.
-   TURN BUDGET: You have at most 25 turns. After the mandatory reads, write and save the report immediately.
+   TURN BUDGET: You have at most {{turn_budget}} turns. After the mandatory reads, write and save the report immediately.
 2. **Section 7.3 — Infiltration Campaign** MUST be filled from 05_intrusion.json:
    - Fill the "Campaign summary" table: devices_targeted, devices_compromised, credentials_harvested, crown_jewels_reached
    - Fill "Compromised devices" table: one row per device in compromised_devices[]

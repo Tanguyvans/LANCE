@@ -9,12 +9,109 @@ from src.agent.pipeline import (
     Pipeline,
     TOOL_GROUPS,
     _has_positive_exploit_evidence,
+    _phase4_local_verification_tools,
     _local_report_memo_contradicts_context,
     _looks_unusable_model_memo,
     _resolve_model_provider,
     _synthesize_exploit_result,
 )
 from src.agent.registry import AgentConfig, AGENTS
+
+
+
+
+def test_phase4_nonlocal_tools_are_restricted_to_evaluable_surface():
+    def tool(name):
+        return {"name": name, "description": name, "input_schema": {}, "function": lambda **_: "{}"}
+
+    tools = [
+        tool("http_get"), tool("http_request"), tool("curl_headers"),
+        tool("mtls_request"), tool("sqlmap"), tool("nikto_scan"),
+        tool("whatweb"), tool("modbus_scan"), tool("modbus_write"),
+        tool("save_deliverable"),
+    ]
+
+    https = {
+        item["name"] for item in _phase4_local_verification_tools(
+            tools, category="data", service="https", include_deliverable=True,
+        )
+    }
+    modbus = {
+        item["name"] for item in _phase4_local_verification_tools(
+            tools, category="no_auth", service="modbus", include_deliverable=True,
+        )
+    }
+
+    assert {"http_get", "http_request", "curl_headers", "mtls_request", "save_deliverable"} <= https
+    assert {"sqlmap", "nikto_scan", "whatweb"}.isdisjoint(https)
+    assert "modbus_scan" in modbus
+    assert "modbus_write" not in modbus
+    assert "save_deliverable" in modbus
+
+
+def test_synthesize_exploit_result_accepts_evaluable_scan_and_socket_evidence():
+    nmap = _synthesize_exploit_result(
+        {
+            "id": "VULN-010",
+            "device_id": "s1-modbus",
+            "device_ip": "192.168.100.50",
+            "type": "no_auth",
+            "service": "modbus",
+            "port": 502,
+        },
+        [{
+            "tool": "modbus_scan",
+            "result": json.dumps({
+                "stdout": "502/tcp open modbus\nUnit identifiers discovered",
+                "return_code": 0,
+            }),
+            "evidence_ref": "tc-modbus",
+        }],
+    )
+    ssh = _synthesize_exploit_result(
+        {
+            "id": "VULN-011",
+            "device_id": "s1-ssh",
+            "device_ip": "192.168.100.22",
+            "type": "weak_cipher",
+            "service": "ssh",
+            "port": 22,
+        },
+        [{
+            "tool": "ssh_audit",
+            "result": json.dumps({"stdout": "[fail] chacha20-poly1305 vulnerable to Terrapin", "return_code": 0}),
+            "evidence_ref": "tc-ssh",
+        }],
+    )
+    tcp = _synthesize_exploit_result(
+        {
+            "id": "VULN-012",
+            "device_id": "s1-opcua",
+            "device_ip": "192.168.100.60",
+            "type": "info_disclosure",
+            "service": "opcua",
+            "port": 4840,
+        },
+        [{
+            "tool": "tcp_send",
+            "result": json.dumps({"received_bytes": 4, "received_ascii": "ACK", "return_code": 0}),
+            "evidence_ref": "tc-tcp",
+        }],
+    )
+
+    assert nmap["status"] == "EXPLOITED"
+    assert nmap["evidence_level"] == 2
+    assert ssh["status"] == "EXPLOITED"
+    assert ssh["evidence_level"] == 2
+    assert tcp["status"] == "EXPLOITED"
+    assert tcp["evidence_level"] == 2
+
+
+def test_exploit_prompt_requires_fresh_phase4_verification():
+    prompt = Path("src/agent/prompts/exploit_device_vuln.txt").read_text(encoding="utf-8")
+    assert "Run at least one fresh verification tool" in prompt
+    assert "Never emit CONFIRMED" in prompt
+    assert "Do not use modbus_write" in prompt
 
 
 def test_resolve_model_provider_uses_registry(monkeypatch):
@@ -1690,7 +1787,8 @@ class TestPhase5Context:
         assert kwargs["required_tool"] is None
         assert kwargs["terminate_after_tool"] is None
         assert kwargs["terminate_on_unavailable_tools"] == {"save_deliverable"}
-        assert "LOCAL MOE PHASE 5 MODE" in kwargs["system_prompt"]
+        assert "Return the campaign memo" in kwargs["system_prompt"]
+        assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
 
 class TestPipelineRun:

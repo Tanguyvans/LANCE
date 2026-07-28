@@ -44,6 +44,20 @@ _CUDA_CLEANUP_LOCK = threading.Lock()
 _CUDA_CLEANUP_TIMER = None
 _CUDA_IDLE_CLEANUP_SECONDS = float(os.environ.get("MOE_CUDA_IDLE_CLEANUP_SECONDS", "120"))
 _ADAPTER_CONTEXT_TOKENS = int(os.environ.get("MOE_ADAPTER_CONTEXT_TOKENS", "6144"))
+_EXPERT_TRAINING_CONTEXT_TOKENS = {
+    "secretary": 6144,
+    "recon": 6144,
+    "vuln": 4096,
+    "exploit": 6144,
+    "base": 6144,
+}
+_EXPERT_GENERATION_TOKEN_CAPS = {
+    "secretary": 4096,
+    "recon": 1536,
+    "vuln": 1024,
+    "exploit": 2048,
+    "base": 2048,
+}
 
 _CONTRACT_RECOVERY_TOOLS = frozenset({
     "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
@@ -60,6 +74,27 @@ _MODEL_IDS = [
     "expert-exploit",
     "expert-secretary",
 ]
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _expert_context_budget(target_expert: str) -> int:
+    expert = str(target_expert or "base").strip().lower()
+    default = _EXPERT_TRAINING_CONTEXT_TOKENS.get(expert, _EXPERT_TRAINING_CONTEXT_TOKENS["base"])
+    override = _positive_int_env(f"MOE_{expert.upper()}_CONTEXT_TOKENS", default)
+    return min(_ADAPTER_CONTEXT_TOKENS, override)
+
+
+def _expert_generation_cap(target_expert: str) -> int:
+    expert = str(target_expert or "base").strip().lower()
+    default = _EXPERT_GENERATION_TOKEN_CAPS.get(expert, _EXPERT_GENERATION_TOKEN_CAPS["base"])
+    return _positive_int_env(f"MOE_{expert.upper()}_GENERATION_TOKENS", default)
 
 
 def _release_cuda_memory(torch_module) -> None:
@@ -357,6 +392,8 @@ def health():
         "status": "ok",
         "loaded_adapters": _ADAPTERS,
         "adapter_context_tokens": _ADAPTER_CONTEXT_TOKENS,
+        "expert_context_tokens": _EXPERT_TRAINING_CONTEXT_TOKENS,
+        "expert_generation_caps": _EXPERT_GENERATION_TOKEN_CAPS,
         "contract_recovery": True,
     }
 
@@ -926,12 +963,8 @@ def _generation_token_budget(
 ) -> int:
     """Bound local expert generations to their training-aligned operating window."""
     requested = max(1, int(requested_tokens))
-    remaining = max(256, context_budget - input_tokens)
-    if target_expert == "recon":
-        return min(requested, 1536, remaining)
-    if target_expert == "vuln":
-        return min(requested, 1024, remaining)
-    return requested
+    remaining = max(1, context_budget - input_tokens)
+    return min(requested, _expert_generation_cap(target_expert), remaining)
 
 
 @app.post("/v1/chat/completions")
@@ -960,12 +993,16 @@ def chat_completions(req: ChatCompletionRequest):
         return response
 
     model_tools = _select_model_tools(target_expert, req.tools, execution_state)
+    expert_context_budget = _expert_context_budget(target_expert)
+    requested_max_tokens = int(req.max_tokens or 4096)
+    generation_reserve = min(requested_max_tokens, _expert_generation_cap(target_expert))
+    prompt_budget = max(256, expert_context_budget - generation_reserve)
     prompt, prepared_prompt_tokens, _compacted = _prepare_prompt(
         _TOKENIZER,
         req.messages,
         model_tools,
         execution_state,
-        _ADAPTER_CONTEXT_TOKENS,
+        prompt_budget,
     )
 
     with _GENERATION_LOCK:
@@ -995,9 +1032,9 @@ def chat_completions(req: ChatCompletionRequest):
             with adapter_context, torch.inference_mode():
                 requested_tokens = _generation_token_budget(
                     target_expert,
-                    int(req.max_tokens or 4096),
+                    requested_max_tokens,
                     input_tokens,
-                    _ADAPTER_CONTEXT_TOKENS,
+                    expert_context_budget,
                 )
                 outputs = _MODEL.generate(
                     **inputs,
