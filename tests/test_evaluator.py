@@ -25,6 +25,10 @@ from src.benchmark.evaluator import (
     evaluate,
     match_vuln,
 )
+from src.benchmark.metric_contract import (
+    EVIDENCE_CONTRACT_VERSION,
+    METRIC_CONTRACT_VERSION,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -61,6 +65,10 @@ def _write_run(tmp_path: Path, findings: list[dict]) -> Path:
     """Write a minimal 03_vuln_analysis.json and return the run dir."""
     run_dir = tmp_path / "run"
     run_dir.mkdir()
+    (run_dir / "run_meta.json").write_text(json.dumps({
+        "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+    }))
     (run_dir / "03_vuln_analysis.json").write_text(
         json.dumps({"vulnerabilities": findings})
     )
@@ -925,6 +933,10 @@ class TestEvidenceMetrics:
     def _write_phase4_run(tmp_path: Path, tests: list[dict], tool_calls: list[dict] | None) -> Path:
         run_dir = tmp_path / "run"
         run_dir.mkdir()
+        (run_dir / "run_meta.json").write_text(json.dumps({
+            "metric_contract_version": METRIC_CONTRACT_VERSION,
+            "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+        }))
         (run_dir / "04_exploitation.json").write_text(
             json.dumps({"tests": tests}), encoding="utf-8"
         )

@@ -32,6 +32,14 @@ def _round_optional(value: float | None, digits: int = 3) -> float | None:
     return round(value, digits) if value is not None else None
 
 
+def _complete_mean(values: Iterable[float | None]) -> float | None:
+    """Average only when every expected value is comparable."""
+    materialized = list(values)
+    if not materialized or any(value is None for value in materialized):
+        return None
+    return fmean(float(value) for value in materialized if value is not None)
+
+
 def _scenario_sort_key(scenario_id: str) -> tuple[int, str]:
     numeric = ""
     suffix = ""
@@ -43,10 +51,12 @@ def _scenario_sort_key(scenario_id: str) -> tuple[int, str]:
     return (int(numeric), suffix) if numeric else (10**9, scenario_id)
 
 
-def _result_scenario_score(result: EvaluationLike, is_zero_gt: bool) -> float:
+def _result_scenario_score(result: EvaluationLike, is_zero_gt: bool) -> float | None:
     score = _get(result, "scenario_score_pct")
     if score is not None:
         return float(score)
+    if _get(result, "scoring_policy") == "strict-v3":
+        return None
     if is_zero_gt:
         specificity = _get(result, "specificity")
         if specificity is None:
@@ -61,7 +71,7 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "scenario_count": len(scenarios),
         "macro_scenario_score_pct": _round_optional(
-            _mean(float(s["scenario_score_pct"]) for s in scenarios)
+            _complete_mean(s.get("scenario_score_pct") for s in scenarios)
         ),
         "macro_positive_f1": _round_optional(
             _mean(float(s["f1_score"]) for s in positive)
@@ -192,16 +202,19 @@ def aggregate_evaluations(
             raise ValueError(f"Scenario {scenario_id} has conflicting split metadata: {sorted(declared_splits)}")
         split = next(iter(declared_splits), "unassigned")
 
-        scores = [_result_scenario_score(run, is_zero_gt) for run in runs]
+        run_scores = [_result_scenario_score(run, is_zero_gt) for run in runs]
+        scores = [score for score in run_scores if score is not None]
         f1 = _mean(float(_get(run, "f1_score", 0.0)) for run in runs) if not is_zero_gt else None
         precision = _mean(float(_get(run, "precision", 0.0)) for run in runs) if not is_zero_gt else None
         recall = _mean(float(_get(run, "recall", 0.0)) for run in runs) if not is_zero_gt else None
         detection_f1 = _mean(
             float(_get(run, "detection_f1", _get(run, "f1_score", 0.0))) for run in runs
         ) if not is_zero_gt else None
-        quality_adjusted_f1 = _mean(
-            float(_get(run, "quality_adjusted_f1", _get(run, "f1_score", 0.0))) for run in runs
-        ) if not is_zero_gt else None
+        quality_values = [
+            float(value) for value in (_get(run, "quality_adjusted_f1") for run in runs)
+            if value is not None
+        ]
+        quality_adjusted_f1 = _mean(quality_values) if not is_zero_gt else None
         verified_values = [
             float(value) for value in (_get(run, "verified_f1") for run in runs)
             if value is not None
@@ -234,7 +247,7 @@ def aggregate_evaluations(
             "run_count": len(runs),
             "missing": False,
             "is_zero_gt": is_zero_gt,
-            "scenario_score_pct": round(fmean(scores), 3),
+            "scenario_score_pct": _round_optional(_complete_mean(run_scores)),
             "f1_score": _round_optional(f1),
             "precision": _round_optional(precision),
             "recall": _round_optional(recall),
@@ -253,9 +266,17 @@ def aggregate_evaluations(
                     "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
                 )
             },
-            "run_score_stddev_pct": round(pstdev(scores), 3) if len(scores) > 1 else 0.0,
-            "run_score_min_pct": round(min(scores), 3),
-            "run_score_max_pct": round(max(scores), 3),
+            "run_score_stddev_pct": (
+                round(pstdev(scores), 3)
+                if len(scores) > 1 and len(scores) == len(run_scores)
+                else (0.0 if len(scores) == len(run_scores) == 1 else None)
+            ),
+            "run_score_min_pct": (
+                round(min(scores), 3) if len(scores) == len(run_scores) else None
+            ),
+            "run_score_max_pct": (
+                round(max(scores), 3) if len(scores) == len(run_scores) else None
+            ),
         })
 
     suite_summary = _summary_for_scenarios(scenario_rows)

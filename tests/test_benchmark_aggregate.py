@@ -99,6 +99,17 @@ class TestScenarioMacroAggregation:
         assert scenario["run_score_min_pct"] == 0.0
         assert scenario["run_score_max_pct"] == 100.0
 
+    def test_non_comparable_run_neutralizes_official_macro(self):
+        current = _evaluation("1", score=100.0, f1=1.0)
+        legacy = _evaluation("2", score=0.0, f1=1.0)
+        legacy["scenario_score_pct"] = None
+        legacy["scoring_policy"] = "strict-v3"
+
+        aggregate = aggregate_evaluations([current, legacy])
+
+        assert aggregate["per_scenario"]["2"]["scenario_score_pct"] is None
+        assert aggregate["macro_scenario_score_pct"] is None
+
     def test_zero_gt_specificity_contributes_as_scenario_score(self):
         results = [
             _evaluation("1", score=80.0, f1=0.8),

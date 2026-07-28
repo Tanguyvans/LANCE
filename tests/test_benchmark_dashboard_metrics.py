@@ -32,6 +32,11 @@ def test_evaluation_contract_contains_dashboard_quality_metrics():
         "cost_per_tp",
         "cost_per_expected_vulnerability",
         "turns_per_tp",
+        "metric_contract_version",
+        "run_metric_contract_version",
+        "run_evidence_contract_version",
+        "evidence_contract_compatible",
+        "metrics_compatibility_reason",
     }
 
     assert expected <= payload.keys()
@@ -61,6 +66,14 @@ def test_benchmark_dashboard_renders_strict_v3_metric_groups():
         assert metric in javascript
 
     assert "evidence_metrics_available" in javascript
+    assert "evidence_contract_compatible" in javascript
+    assert "metrics_compatibility_reason" in javascript
+    assert "score_error" in javascript
+    assert "Legacy" in javascript
+    assert "Non comparable" in javascript
+    assert "Score officiel" in javascript
+    assert "m?.score_pct != null" in javascript
+    assert "agg.avg_score_pct != null" in javascript
     assert "const totalPaths" in javascript
     assert "s?.is_zero_gt === true" in javascript
     assert "if (v == null) return null" in javascript

@@ -13,6 +13,10 @@ from src.benchmark.evaluator import (
     evaluate,
     match_vuln,
 )
+from src.benchmark.metric_contract import (
+    EVIDENCE_CONTRACT_VERSION,
+    METRIC_CONTRACT_VERSION,
+)
 from src.benchmark.strict_v3 import cve_is_allowed
 
 
@@ -58,6 +62,10 @@ def _finding(**overrides):
 def _write(tmp_path: Path, findings, vulnerabilities=None, *, controls=None, bonus_types=None):
     run = tmp_path / "run"
     run.mkdir()
+    (run / "run_meta.json").write_text(json.dumps({
+        "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+    }))
     (run / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": findings}))
     gt = tmp_path / "gt.yaml"
     vulns = vulnerabilities if vulnerabilities is not None else [_gt()]
@@ -150,6 +158,75 @@ def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
     assert result.matches[0]["verification_credit"] == 1.0
     assert result.scenario_score_pct == 100.0
     assert result.phase4_completion_rate == 1.0
+
+
+def test_current_metric_contract_keeps_evidence_scores_enabled(tmp_path):
+    run, gt = _write(tmp_path, [_finding()])
+    (run / "run_meta.json").write_text(json.dumps({
+        "model": "current-model",
+        "metric_contract_version": METRIC_CONTRACT_VERSION,
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+    }))
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "severity": "high", "service": "http", "port": 80,
+        "protocol": "tcp", "endpoint": "/backup.sql", "status": "EXPLOITED",
+        "evidence": "credentials returned", "tool_used": "http_get",
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "tool": "http_get", "args": {"url": "http://192.0.2.10/backup.sql"},
+        "result": {"return_code": 0, "status_code": 200, "body": "password=secret"},
+    }) + "\n")
+
+    result = evaluate(run, gt, policy=STRICT_V3)
+
+    assert result.evidence_contract_compatible is True
+    assert result.quality_adjusted_f1 == 1.0
+    assert result.verified_f1 == 1.0
+    assert result.exploitation_coverage == 1.0
+    assert result.scenario_score_pct == 100.0
+
+
+def test_missing_run_metadata_neutralizes_evidence_scores(tmp_path):
+    run, gt = _write(tmp_path, [_finding()])
+    (run / "run_meta.json").unlink()
+
+    result = evaluate(run, gt, policy=STRICT_V3)
+
+    assert result.evidence_contract_compatible is False
+    assert result.metrics_compatibility_reason == "run_meta.json is missing"
+    assert result.quality_adjusted_f1 is None
+    assert result.scenario_score_pct is None
+
+
+def test_legacy_metric_contract_neutralizes_evidence_scores(tmp_path):
+    run, gt = _write(tmp_path, [_finding()])
+    (run / "run_meta.json").write_text(json.dumps({
+        "model": "legacy-model",
+        "git_commit": "old",
+    }))
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "severity": "high", "service": "http", "port": 80,
+        "protocol": "tcp", "endpoint": "/backup.sql", "status": "CONFIRMED",
+        "evidence": "credentials returned", "tool_used": "http_get",
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "tool": "http_get", "args": {"url": "http://192.0.2.10/backup.sql"},
+        "result": {"return_code": 0, "status_code": 200, "body": "password=secret"},
+    }) + "\n")
+
+    result = evaluate(run, gt, policy=STRICT_V3)
+
+    assert result.detection_f1 == 1.0
+    assert result.evidence_contract_compatible is False
+    assert "metric contract legacy" in result.metrics_compatibility_reason
+    assert result.quality_adjusted_f1 is None
+    assert result.verified_f1 is None
+    assert result.exploitation_coverage is None
+    assert result.scenario_score_pct is None
+    assert result.evidence_metrics_available is False
+    assert result.evidence_provenance_available is False
 
 
 def test_mqtt_rc27_with_payload_is_positive_tool_evidence():

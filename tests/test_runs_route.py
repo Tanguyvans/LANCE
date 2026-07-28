@@ -234,3 +234,30 @@ class TestRunEndpoints:
         assert result["scenario_id"] == "1h"
         assert result["is_zero_gt"] is True
         assert result["scenario_score_pct"] == 100.0
+
+    def test_benchmark_row_exposes_evaluation_failure(self, tmp_path, monkeypatch):
+        run_dir = tmp_path / "public-run"
+        run_dir.mkdir()
+        (run_dir / "scenario_meta.json").write_text(json.dumps({
+            "scenario_id": "1",
+            "split": "dev-public",
+        }))
+        (run_dir / "03_vuln_analysis.json").write_text(
+            json.dumps({"vulnerabilities": []})
+        )
+        ground_truth = tmp_path / "ground_truth.yaml"
+        ground_truth.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(runs, "resolve_ground_truth_path", lambda _: ground_truth)
+
+        import src.benchmark.evaluator as evaluator
+        monkeypatch.setattr(
+            evaluator,
+            "evaluate",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(NameError("broken helper")),
+        )
+
+        row = get_benchmark()[0]
+
+        assert row["score"] is None
+        assert row["score_error"] == "Evaluation failed: broken helper"

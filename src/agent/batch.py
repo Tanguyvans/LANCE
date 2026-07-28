@@ -100,6 +100,10 @@ def _parse_single_scenario_id(value: int | str) -> str:
 def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
     """Return stable per-run metrics with the strict-v3 scenario score as primary."""
     specificity = evaluation.specificity
+
+    def rounded(value: Any, digits: int) -> float | None:
+        return round(float(value), digits) if value is not None else None
+
     return {
         "recall": round(evaluation.recall, 3),
         "precision": round(evaluation.precision, 3),
@@ -107,7 +111,7 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "detection_f1": round(getattr(evaluation, "detection_f1", evaluation.f1_score), 3),
         "credited_f1": round(getattr(evaluation, "credited_f1", evaluation.f1_score), 3),
         "severity_adjusted_f1": round(getattr(evaluation, "severity_adjusted_f1", evaluation.f1_score), 3),
-        "quality_adjusted_f1": round(getattr(evaluation, "quality_adjusted_f1", evaluation.f1_score), 3),
+        "quality_adjusted_f1": rounded(getattr(evaluation, "quality_adjusted_f1", None), 3),
         "verified_f1": getattr(evaluation, "verified_f1", None),
         "raw_precision": round(getattr(evaluation, "raw_precision", evaluation.precision), 3),
         "raw_false_positives": getattr(evaluation, "raw_false_positives", evaluation.false_positives),
@@ -124,13 +128,13 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         # strict-v3 uses quality-adjusted F1 (and control specificity) for
         # positive scenarios; zero-GT controls retain binary specificity.
         # Keep the weighted percentage under an explicit compatibility name.
-        "score_pct": round(evaluation.scenario_score_pct, 1),
+        "score_pct": rounded(evaluation.scenario_score_pct, 1),
         "weighted_score_pct": round(evaluation.score_pct, 1),
-        "scenario_score_pct": round(evaluation.scenario_score_pct, 1),
+        "scenario_score_pct": rounded(evaluation.scenario_score_pct, 1),
         "tp": evaluation.true_positives,
         "fp": evaluation.false_positives,
         "fn": evaluation.false_negatives,
-        "exploitation_coverage": round(evaluation.exploitation_coverage, 3),
+        "exploitation_coverage": rounded(evaluation.exploitation_coverage, 3),
         "phase4_candidates": getattr(evaluation, "phase4_candidates", 0),
         "phase4_conclusive": getattr(evaluation, "phase4_conclusive", 0),
         "phase4_completion_rate": getattr(evaluation, "phase4_completion_rate", None),
@@ -146,6 +150,11 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "negative_control_violations": getattr(evaluation, "negative_control_violations", 0),
         "negative_control_specificity": getattr(evaluation, "negative_control_specificity", None),
         "evidence_metrics_available": getattr(evaluation, "evidence_metrics_available", False),
+        "metric_contract_version": getattr(evaluation, "metric_contract_version", None),
+        "run_metric_contract_version": getattr(evaluation, "run_metric_contract_version", None),
+        "run_evidence_contract_version": getattr(evaluation, "run_evidence_contract_version", None),
+        "evidence_contract_compatible": getattr(evaluation, "evidence_contract_compatible", False),
+        "metrics_compatibility_reason": getattr(evaluation, "metrics_compatibility_reason", None),
         "evidence_provenance_available": getattr(evaluation, "evidence_provenance_available", False),
         "findings_with_declared_evidence": getattr(evaluation, "findings_with_declared_evidence", 0),
         "declared_evidence_coverage": getattr(evaluation, "declared_evidence_coverage", None),
@@ -168,7 +177,7 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "ambiguous_evidence_refs": getattr(evaluation, "ambiguous_evidence_refs", 0),
         "evidence_contradiction_rate": getattr(evaluation, "evidence_contradiction_rate", None),
         "path_coverage": round(getattr(evaluation, "path_coverage", 0.0), 3),
-        "quality_path_coverage": round(getattr(evaluation, "quality_path_coverage", 0.0), 3),
+        "quality_path_coverage": rounded(getattr(evaluation, "quality_path_coverage", None), 3),
         "quality_attack_path_credit": round(getattr(evaluation, "quality_attack_path_credit", 0.0), 3),
         "verified_path_coverage": getattr(evaluation, "verified_path_coverage", None),
         "verified_attack_paths": getattr(evaluation, "verified_attack_paths", 0),
@@ -392,9 +401,10 @@ def _print_scenario_summary(sid: str, entry: dict) -> None:
     m = entry.get("metrics")
     cost = entry.get("cost_usd", 0)
     if m:
+        score = f"{m['score_pct']:.1f}%" if m.get("score_pct") is not None else "N/A"
         print(
             f"  S{sid}: Recall={m['recall']:.3f}  Precision={m['precision']:.3f}  "
-            f"F1={m['f1']:.3f}  Score={m['score_pct']:.1f}%  "
+            f"F1={m['f1']:.3f}  Score={score}  "
             f"TP={m['tp']}  FP={m['fp']}  FN={m['fn']}  Cost=${cost:.4f}"
         )
     elif entry.get("status") == "failed":
@@ -407,6 +417,12 @@ def _print_scenario_summary(sid: str, entry: dict) -> None:
 
 def _print_batch_table(results: list[dict], aggregate: dict, summary_path: Path) -> None:
     col = {"s": 10, "r": 8, "p": 10, "f1": 7, "sc": 8, "tp": 5, "fp": 5, "fn": 5, "cost": 10}
+
+    def fmt(value: Any, width: int, digits: int = 3) -> str:
+        if value is None:
+            return f"{'N/A':>{width}}"
+        return f"{float(value):>{width}.{digits}f}"
+
     header = (
         f"  {'Scenario':<{col['s']}} {'Recall':>{col['r']}} {'Precision':>{col['p']}} "
         f"{'F1':>{col['f1']}} {'Score%':>{col['sc']}} "
@@ -428,8 +444,8 @@ def _print_batch_table(results: list[dict], aggregate: dict, summary_path: Path)
             continue
         m = r["metrics"]
         print(
-            f"  S{sid:<{col['s'] - 1}} {m['recall']:>{col['r']}.3f} {m['precision']:>{col['p']}.3f} "
-            f"{m['f1']:>{col['f1']}.3f} {m['score_pct']:>{col['sc']}.1f} "
+            f"  S{sid:<{col['s'] - 1}} {fmt(m['recall'], col['r'])} {fmt(m['precision'], col['p'])} "
+            f"{fmt(m['f1'], col['f1'])} {fmt(m['score_pct'], col['sc'], 1)} "
             f"{m['tp']:>{col['tp']}} {m['fp']:>{col['fp']}} {m['fn']:>{col['fn']}} "
             f"${r['cost_usd']:>{col['cost'] - 1}.4f}"
         )
@@ -437,9 +453,9 @@ def _print_batch_table(results: list[dict], aggregate: dict, summary_path: Path)
     if aggregate:
         print(sep)
         print(
-            f"  {'AVERAGE':<{col['s'] - 1}} {aggregate['avg_recall']:>{col['r']}.3f} "
-            f"{aggregate['avg_precision']:>{col['p']}.3f} {aggregate['avg_f1']:>{col['f1']}.3f} "
-            f"{aggregate['avg_score_pct']:>{col['sc']}.1f}"
+            f"  {'AVERAGE':<{col['s'] - 1}} {fmt(aggregate['avg_recall'], col['r'])} "
+            f"{fmt(aggregate['avg_precision'], col['p'])} {fmt(aggregate['avg_f1'], col['f1'])} "
+            f"{fmt(aggregate['avg_score_pct'], col['sc'], 1)}"
             f"{'':>{col['tp'] + col['fp'] + col['fn'] + 3}} "
             f"${aggregate['total_cost_usd']:>{col['cost'] - 1}.4f}"
         )

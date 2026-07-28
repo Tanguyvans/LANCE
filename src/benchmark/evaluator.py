@@ -28,6 +28,10 @@ from src.benchmark.strict_v3 import (
     derive_matching_contract,
     forbidden_types_for_control,
 )
+from src.benchmark.metric_contract import (
+    EVIDENCE_CONTRACT_VERSION,
+    METRIC_CONTRACT_VERSION,
+)
 
 
 # ── Evaluation policies ───────────────────────────────────────────────────────
@@ -246,10 +250,15 @@ class EvaluationResult:
     # Evaluation protocol / scenario-level metric. Historical fields below are
     # intentionally retained for JSON/API compatibility.
     scoring_policy: str = STRICT_V2.name
+    metric_contract_version: str = METRIC_CONTRACT_VERSION
+    run_metric_contract_version: str | None = None
+    run_evidence_contract_version: str | None = None
+    evidence_contract_compatible: bool = True
+    metrics_compatibility_reason: str | None = None
     split: str | None = None
     is_zero_gt: bool = False
     specificity: float | None = None
-    scenario_score_pct: float = 0.0
+    scenario_score_pct: float | None = 0.0
 
     # Counts
     total_gt_vulns: int = 0
@@ -271,7 +280,7 @@ class EvaluationResult:
     credited_recall: float = 0.0
     credited_f1: float = 0.0
     severity_adjusted_f1: float = 0.0
-    quality_adjusted_f1: float = 0.0
+    quality_adjusted_f1: float | None = 0.0
     verified_f1: float | None = None
     hallucination_rate: float = 0.0
     raw_precision: float = 0.0
@@ -291,7 +300,7 @@ class EvaluationResult:
     score_pct: float = 0.0  # weighted_score / max_weighted_score * 100
 
     # Primary metrics for pentest quality assessment
-    exploitation_coverage: float = 0.0  # % of TP findings with evidence_level >= 2
+    exploitation_coverage: float | None = 0.0  # % of TP findings with verified evidence
     tp_exploited: int = 0               # TP findings with evidence_level >= 2
     tp_detected_only: int = 0           # TP findings with evidence_level < 2
     verified_false_positives: int = 0
@@ -396,7 +405,7 @@ class EvaluationResult:
     # Details
     matches: list[dict] = field(default_factory=list)
     unmatched_llm: list[dict] = field(default_factory=list)
-    quality_path_coverage: float = 0.0
+    quality_path_coverage: float | None = 0.0
     quality_attack_path_credit: float = 0.0
     bonus_findings_list: list[dict] = field(default_factory=list)
 
@@ -861,6 +870,47 @@ def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
 _FAILED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "NOT_EXPLOITABLE"})
 _ERROR_PHASE4_STATUSES: frozenset[str] = frozenset({"ERROR"})
 _EXPLOITED_PHASE4_STATUSES: frozenset[str] = frozenset({"CONFIRMED", "EXPLOITED", "COMPROMISED"})
+
+
+def _run_metric_contract_status(
+    run_dir: Path,
+) -> tuple[str | None, str | None, bool, str | None]:
+    """Return the run contract versions and evidence-metric compatibility.
+
+    Missing, untrusted, or stale metadata fails closed so a modern evaluator
+    cannot silently assign evidence-aware scores to legacy artifacts.
+    """
+    path = run_dir / "run_meta.json"
+    if path.is_symlink():
+        return None, None, False, "run_meta.json must not be a symlink"
+    if not path.is_file():
+        return None, None, False, "run_meta.json is missing"
+    try:
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, None, False, "run_meta.json is unreadable"
+    if not isinstance(metadata, dict):
+        return None, None, False, "run_meta.json is not an object"
+
+    metric_version = metadata.get("metric_contract_version")
+    evidence_version = metadata.get("evidence_contract_version")
+    metric_version = str(metric_version) if metric_version not in (None, "") else None
+    evidence_version = str(evidence_version) if evidence_version not in (None, "") else None
+    if metric_version != METRIC_CONTRACT_VERSION:
+        return (
+            metric_version,
+            evidence_version,
+            False,
+            f"metric contract {metric_version or 'legacy'} != {METRIC_CONTRACT_VERSION}",
+        )
+    if evidence_version != EVIDENCE_CONTRACT_VERSION:
+        return (
+            metric_version,
+            evidence_version,
+            False,
+            f"evidence contract {evidence_version or 'legacy'} != {EVIDENCE_CONTRACT_VERSION}",
+        )
+    return metric_version, evidence_version, True, None
 
 
 def _load_tool_call_records(run_dir: Path) -> tuple[list[dict], bool]:
@@ -1676,8 +1726,13 @@ def evaluate(
         )
 
     llm_findings = _load_llm_findings(run_dir)
-    evidence_metrics_available = (run_dir / "04_exploitation.json").is_file()
-    tool_calls, evidence_provenance_available = _load_tool_call_records(run_dir)
+    run_metric_version, run_evidence_version, evidence_compatible, compatibility_reason = (
+        _run_metric_contract_status(run_dir)
+    )
+    phase4_artifact_available = (run_dir / "04_exploitation.json").is_file()
+    tool_calls, provenance_log_available = _load_tool_call_records(run_dir)
+    evidence_metrics_available = phase4_artifact_available and evidence_compatible
+    evidence_provenance_available = provenance_log_available and evidence_compatible
 
     cost_file = run_dir / "cost_summary.json"
     cost_data: dict = {}
@@ -1735,6 +1790,10 @@ def evaluate(
         run_dir=str(run_dir),
         ground_truth_file=str(ground_truth_file),
         scoring_policy=resolved_policy.name,
+        run_metric_contract_version=run_metric_version,
+        run_evidence_contract_version=run_evidence_version,
+        evidence_contract_compatible=evidence_compatible,
+        metrics_compatibility_reason=compatibility_reason,
         is_zero_gt=not gt_vulns,
         total_gt_vulns=len(gt_vulns),
         total_llm_findings=len(llm_findings),
@@ -2241,9 +2300,12 @@ def evaluate(
     result.path_coverage = round(
         result.attack_paths_detected / result.total_attack_paths, 3
     ) if result.total_attack_paths else 0.0
-    result.quality_path_coverage = round(
-        result.quality_attack_path_credit / result.total_attack_paths, 3
-    ) if result.total_attack_paths else 0.0
+    if result.evidence_contract_compatible:
+        result.quality_path_coverage = round(
+            result.quality_attack_path_credit / result.total_attack_paths, 3
+        ) if result.total_attack_paths else 0.0
+    else:
+        result.quality_path_coverage = None
     result.quality_attack_path_credit = round(result.quality_attack_path_credit, 3)
 
     intrusion_file = run_dir / "05_intrusion.json"
@@ -2277,7 +2339,7 @@ def evaluate(
                 position += 1
         return position == len(expected)
 
-    if result.intrusion_paths_available and result.total_attack_paths:
+    if result.evidence_contract_compatible and result.intrusion_paths_available and result.total_attack_paths:
         for path_match, attack_path in zip(result.path_matches, gt_attack_paths):
             expected_devices = normalized_expected_devices(attack_path)
             verified = (
@@ -2344,7 +2406,7 @@ def evaluate(
         / (quality_precision + quality_recall)
         if quality_precision + quality_recall else 0.0
     )
-    result.quality_adjusted_f1 = round(quality_f1, 3)
+    result.quality_adjusted_f1 = round(quality_f1, 3) if result.evidence_contract_compatible else None
     result.raw_false_positives = fp + result.bonus_findings
     raw_denominator = tp + result.raw_false_positives
     result.raw_precision = round(tp / raw_denominator, 3) if raw_denominator else 0.0
@@ -2359,9 +2421,9 @@ def evaluate(
     result.score_pct = round(
         result.weighted_score / max_score * 100, 1
     ) if max_score > 0 else 0.0
-    result.exploitation_coverage = round(
-        result.tp_exploited / tp, 3
-    ) if tp > 0 else 0.0
+    result.exploitation_coverage = (
+        round(result.tp_exploited / tp, 3) if tp > 0 else 0.0
+    ) if result.evidence_contract_compatible else None
     if result.evidence_metrics_available and result.evidence_provenance_available:
         prediction_count = tp + fp
         result.evidence_precision = round(
@@ -2424,12 +2486,15 @@ def evaluate(
             # A control violation is already an FP. Bound the additional control
             # penalty to 20% so one control cannot erase an otherwise valid run.
             result.negative_control_penalty_factor = 0.8 + 0.2 * control_specificity
-            result.scenario_score_pct = round(
-                result.quality_adjusted_f1
-                * result.negative_control_penalty_factor
-                * 100.0,
-                1,
-            )
+            if result.quality_adjusted_f1 is not None:
+                result.scenario_score_pct = round(
+                    result.quality_adjusted_f1
+                    * result.negative_control_penalty_factor
+                    * 100.0,
+                    1,
+                )
+            else:
+                result.scenario_score_pct = None
         else:
             result.scenario_score_pct = round(result.f1_score * 100.0, 1)
 
@@ -2441,9 +2506,10 @@ def evaluate(
     result.mhr_1_credited = _compute_mhr_credit(result.matches, k=1)
     result.mhr_2_credited = _compute_mhr_credit(result.matches, k=2)
     result.mhr_3_credited = _compute_mhr_credit(result.matches, k=3)
-    result.mhr_1_verified = _compute_mhr_credit(result.matches, k=1, verified=True)
-    result.mhr_2_verified = _compute_mhr_credit(result.matches, k=2, verified=True)
-    result.mhr_3_verified = _compute_mhr_credit(result.matches, k=3, verified=True)
+    if result.evidence_contract_compatible:
+        result.mhr_1_verified = _compute_mhr_credit(result.matches, k=1, verified=True)
+        result.mhr_2_verified = _compute_mhr_credit(result.matches, k=2, verified=True)
+        result.mhr_3_verified = _compute_mhr_credit(result.matches, k=3, verified=True)
     gt_hist, tp_hist = _depth_histograms(result.matches)
     # Convert int keys to str for JSON serialisability of the dataclass
     result.gt_at_depth = {str(k): v for k, v in sorted(gt_hist.items())}
@@ -2465,17 +2531,21 @@ def print_report(result: EvaluationResult) -> None:
     print(f"    Detection F1             : {result.detection_f1:.1%}")
     print(f"    Credited F1              : {result.credited_f1:.1%}")
     print(f"    Severity-adjusted F1     : {result.severity_adjusted_f1:.1%}")
-    print(f"    Quality-adjusted F1      : {result.quality_adjusted_f1:.1%}")
+    quality_f1 = f"{result.quality_adjusted_f1:.1%}" if result.quality_adjusted_f1 is not None else "N/A"
+    print(f"    Quality-adjusted F1      : {quality_f1}")
     verified_f1 = f"{result.verified_f1:.1%}" if result.verified_f1 is not None else "N/A"
     print(f"    Verified F1              : {verified_f1}")
-    print(f"    Official scenario score  : {result.scenario_score_pct:.1f}% ({result.scoring_policy})")
+    scenario_score = f"{result.scenario_score_pct:.1f}%" if result.scenario_score_pct is not None else "N/A"
+    print(f"    Official scenario score  : {scenario_score} ({result.scoring_policy})")
     print(f"    Weighted Score           : {result.weighted_score}/{result.max_weighted_score} ({result.score_pct:.1f}%)")
-    print(f"    Exploitation Coverage    : {result.exploitation_coverage:.1%}  ({result.tp_exploited}/{result.true_positives} TP prouvés niveau ≥ 2)")
+    exploitation = f"{result.exploitation_coverage:.1%}" if result.exploitation_coverage is not None else "N/A"
+    print(f"    Exploitation Coverage    : {exploitation}  ({result.tp_exploited}/{result.true_positives} TP prouvés niveau ≥ 2)")
     print(f"{'─'*60}")
 
     print("  EVIDENCE METRICS (DIAGNOSTIC)")
     if not result.evidence_metrics_available:
-        print("    Evidence metrics         : unavailable (no Phase 4 artifact)")
+        reason = result.metrics_compatibility_reason or "no Phase 4 artifact"
+        print(f"    Evidence metrics         : unavailable ({reason})")
     else:
         declared = (
             f"{result.declared_evidence_coverage:.1%}"

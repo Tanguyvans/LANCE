@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import zipfile
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 from src.benchmark.scenario_exports import resolve_ground_truth_path
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = ROOT / "output" / "agent"
@@ -299,6 +301,7 @@ def get_benchmark():
             "status": _run_status(d),
             "model": None,
             "score": None,
+            "score_error": None,
             "commit": _extract_commit(d),
             "execution_profile": _extract_execution_profile(d),
             "sealed": sealed,
@@ -316,8 +319,9 @@ def get_benchmark():
         if sealed:
             try:
                 entry["score"] = _load_sealed_summary(d, sid)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Sealed evaluation loading failed for %s: %s", d.name, exc)
+                entry["score_error"] = f"Evaluation failed: {exc}"
         elif vuln_file.exists():
             gt_path = resolve_ground_truth_path(sid)
             if gt_path.exists():
@@ -334,8 +338,9 @@ def get_benchmark():
                             pass
                     
                     entry["score"] = score_dict
-                except Exception:
-                    pass
+                except Exception as exc:
+                    log.warning("Benchmark evaluation failed for %s: %s", d.name, exc)
+                    entry["score_error"] = f"Evaluation failed: {exc}"
 
         results.append(entry)
 

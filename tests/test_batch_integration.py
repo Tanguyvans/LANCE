@@ -15,6 +15,7 @@ from src.agent.batch import (
     _evaluation_metrics,
     _parse_scenario_ids,
     _parse_single_scenario_id,
+    _print_scenario_summary,
 )
 
 
@@ -104,6 +105,50 @@ class TestBatchMetrics:
         assert aggregate["missing_scenarios"] == ["2"]
         assert aggregate["scenarios_evaluated"] == 1
         assert aggregate["scenarios_skipped"] == 1
+
+
+    def test_non_comparable_scenario_score_stays_null(self):
+        evaluation = _evaluation(
+            "1",
+            scenario_score_pct=0.0,
+            f1=1.0,
+            specificity=None,
+            zero_gt=False,
+        )
+        evaluation.scenario_score_pct = None
+        evaluation.quality_adjusted_f1 = None
+        evaluation.exploitation_coverage = None
+        evaluation.quality_path_coverage = None
+        evaluation.scoring_policy = "strict-v3"
+        evaluation.evidence_contract_compatible = False
+        evaluation.metrics_compatibility_reason = "metric contract legacy != strict-v3.3"
+        metrics = _evaluation_metrics(evaluation)
+        results = [{"scenario_id": "1", "metrics": metrics, "cost_usd": 0.25}]
+
+        aggregate = _aggregate_batch_results([evaluation], results, ["1"])
+
+        assert metrics["score_pct"] is None
+        assert metrics["scenario_score_pct"] is None
+        assert metrics["quality_adjusted_f1"] is None
+        assert metrics["exploitation_coverage"] is None
+        assert aggregate["macro_scenario_score_pct"] is None
+        assert aggregate["avg_score_pct"] is None
+
+    def test_non_comparable_scenario_summary_prints_na(self, capsys):
+        _print_scenario_summary("1", {
+            "metrics": {
+                "recall": 1.0,
+                "precision": 1.0,
+                "f1": 1.0,
+                "score_pct": None,
+                "tp": 1,
+                "fp": 0,
+                "fn": 0,
+            },
+            "cost_usd": 0.25,
+        })
+
+        assert "Score=N/A" in capsys.readouterr().out
 
 
 def test_dashboard_start_accepts_public_variant(monkeypatch):

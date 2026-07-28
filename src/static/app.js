@@ -1642,8 +1642,9 @@ function handleEvent(ev) {
 
   else if (t === 'batch_scenario_done') {
     const m = ev.metrics;
+    const score = m?.score_pct != null ? `${m.score_pct.toFixed(1)}%` : 'N/A';
     const metrics = m
-      ? `Recall=${m.recall.toFixed(3)} P=${m.precision.toFixed(3)} F1=${m.f1.toFixed(3)} Score=${m.score_pct.toFixed(1)}% TP=${m.tp} FP=${m.fp} FN=${m.fn}`
+      ? `Recall=${m.recall.toFixed(3)} P=${m.precision.toFixed(3)} F1=${m.f1.toFixed(3)} Score=${score} TP=${m.tp} FP=${m.fp} FN=${m.fn}`
       : 'pas de ground truth';
     addLog({type:'info', message:`[Batch ${ev.index}/${ev.total}] S${ev.scenario_id} terminé — ${metrics} — $${(ev.cost_usd||0).toFixed(4)}`});
     loadRuns();
@@ -1660,7 +1661,10 @@ function handleEvent(ev) {
     stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
     if (agg.avg_f1 !== undefined) {
-      addLog({type:'info', message:`Batch terminé — Avg F1=${agg.avg_f1.toFixed(3)} Recall=${agg.avg_recall.toFixed(3)} Score=${agg.avg_score_pct.toFixed(1)}% — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
+      const avgF1 = agg.avg_f1 != null ? agg.avg_f1.toFixed(3) : 'N/A';
+      const avgRecall = agg.avg_recall != null ? agg.avg_recall.toFixed(3) : 'N/A';
+      const avgScore = agg.avg_score_pct != null ? `${agg.avg_score_pct.toFixed(1)}%` : 'N/A';
+      addLog({type:'info', message:`Batch terminé — Avg F1=${avgF1} Recall=${avgRecall} Score=${avgScore} — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
     } else {
       addLog({type:'info', message:`Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
     }
@@ -1839,9 +1843,15 @@ async function openCompare() {
     if (!run) return `
       <div class="compare-col-header">${escapeHtml(label)}</div>
       <div class="compare-col-body" style="color:var(--red)">Erreur chargement</div>`;
+    const officialScore = score?.evidence_contract_compatible === false
+      ? `<span title="${escapeHtml(score.metrics_compatibility_reason || 'Contrat métrique legacy')}">Non comparable</span>`
+      : score?.scenario_score_pct != null
+        ? `${Number(score.scenario_score_pct).toFixed(1)}%`
+        : '—';
     const scoreSection = score?.recall != null ? `
       <div class="detail-section">
         <h3>Score benchmark</h3>
+        <div class="detail-row"><span class="detail-key">Score officiel</span><span class="detail-val">${officialScore}</span></div>
         <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
         <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
         <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
@@ -2047,9 +2057,15 @@ async function viewRun(runId) {
         ${rows || '<div style="color:var(--muted);font-size:11px">Évaluation en attente ou indisponible.</div>'}
       </div>`;
   } else if (score && score.recall != null) {
+    const officialScore = score.evidence_contract_compatible === false
+      ? `<span title="${escapeHtml(score.metrics_compatibility_reason || 'Contrat métrique legacy')}">Non comparable</span>`
+      : score.scenario_score_pct != null
+        ? `${Number(score.scenario_score_pct).toFixed(1)}%`
+        : '—';
     scoreHtml = `
       <div class="detail-section">
         <h3>Score benchmark</h3>
+        <div class="detail-row"><span class="detail-key">Score officiel</span><span class="detail-val">${officialScore}</span></div>
         <div class="detail-row"><span class="detail-key">Recall</span><span class="detail-val">${pct(score.recall)}</span></div>
         <div class="detail-row"><span class="detail-key">Precision</span><span class="detail-val">${pct(score.precision)}</span></div>
         <div class="detail-row"><span class="detail-key">F1</span><span class="detail-val">${pct(score.f1_score)}</span></div>
@@ -2381,6 +2397,9 @@ function renderBenchmarkTable() {
     const f1 = sealed ? toRatio(aggregate?.f1) : toRatio(s?.f1_score);
     const llmData = s?.llm_judge_data;
     const noScore = `<span class="bm-no-score">—</span>`;
+    const evidenceCompatible = sealed || s?.evidence_contract_compatible !== false;
+    const compatibilityReason = s?.metrics_compatibility_reason || 'Contrat métrique legacy';
+    const legacyMetric = `<span class="bm-no-score" title="${escapeHtml(compatibilityReason)}">Legacy</span>`;
     const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
     const profileShort = r.execution_profile
       ? `<span class="run-badge done">${escapeHtml(r.execution_profile)}</span>`
@@ -2393,7 +2412,7 @@ function renderBenchmarkTable() {
       : null;
     const controlSpecificity = isControlScenario ? toRatio(s?.specificity) : null;
     const primaryQuality = qualityF1 ?? controlSpecificity;
-    const barMetric = primaryQuality ?? f1;
+    const barMetric = evidenceCompatible ? (primaryQuality ?? f1) : f1;
     const barW = barMetric != null
       ? Math.max(0, Math.min(100, Math.round(barMetric * 100)))
       : 0;
@@ -2412,13 +2431,17 @@ function renderBenchmarkTable() {
           `F1 vérifié: ${pct(toRatio(s?.verified_f1))}`,
           `Politique: ${s?.scoring_policy || 'inconnue'}`,
         ].join('\n');
-    const qualityF1Cell = primaryQuality == null
-      ? noScore
-      : `<span class="bm-metric-main" style="color:${barColor(primaryQuality)}" title="${escapeHtml(qualityF1Title)}">${isControlScenario ? 'Spec ' : ''}${pct(primaryQuality)}</span>`;
+    const qualityF1Cell = (!sealed && !isControlScenario && !evidenceCompatible)
+      ? legacyMetric
+      : primaryQuality == null
+        ? noScore
+        : `<span class="bm-metric-main" style="color:${barColor(primaryQuality)}" title="${escapeHtml(qualityF1Title)}">${isControlScenario ? 'Spec ' : ''}${pct(primaryQuality)}</span>`;
 
     // Evidence diagnostics remain null when Phase 4/tool provenance is absent.
     let evidenceCell = noScore;
-    if (!sealed && s?.evidence_metrics_available) {
+    if (!sealed && !evidenceCompatible) {
+      evidenceCell = legacyMetric;
+    } else if (!sealed && s?.evidence_metrics_available) {
       const evidenceF1 = toRatio(s.evidence_f1);
       const traceable = toRatio(s.traceable_evidence_coverage);
       const faithfulness = toRatio(s.evidence_faithfulness);
@@ -2442,7 +2465,9 @@ function renderBenchmarkTable() {
     }
 
     let exploitCell = noScore;
-    if (!sealed && s) {
+    if (!sealed && !evidenceCompatible) {
+      exploitCell = legacyMetric;
+    } else if (!sealed && s) {
       const exploitation = toRatio(s.exploitation_coverage);
       const phase4 = toRatio(s.phase4_completion_rate);
       const verifiedF1 = toRatio(s.verified_f1);
@@ -2460,7 +2485,9 @@ function renderBenchmarkTable() {
 
     let pathsCell = noScore;
     const totalPaths = !sealed ? Number(s?.total_attack_paths || 0) : 0;
-    if (totalPaths > 0) {
+    if (totalPaths > 0 && !evidenceCompatible) {
+      pathsCell = legacyMetric;
+    } else if (totalPaths > 0) {
       const qualityPath = toRatio(s.quality_path_coverage);
       const verifiedPath = toRatio(s.verified_path_coverage);
       const mhr = [1, 2, 3].map(depth =>
@@ -2556,9 +2583,13 @@ function renderBenchmarkTable() {
     }
 
     // score_pct
-    let scorePct = noScore;
+    let scorePct = r.score_error
+      ? `<span class="bm-no-score" title="${escapeHtml(r.score_error)}">Erreur</span>`
+      : noScore;
     if (sealed && aggregate?.overall_score != null) {
       scorePct = `<span title="Agrégat signé">${pct(toRatio(aggregate.overall_score))}</span>`;
+    } else if (!sealed && !evidenceCompatible) {
+      scorePct = `<span class="bm-no-score" title="${escapeHtml(compatibilityReason)}">Non comparable</span>`;
     } else if (s?.scenario_score_pct != null) {
       scorePct = `<span title="Score officiel ${escapeHtml(s.scoring_policy || '')}">${s.scenario_score_pct.toFixed(1)}%</span>`;
     } else if (s?.score_pct != null) {
@@ -2703,14 +2734,18 @@ function addLog(ev) {
   else if (t === 'batch_scenario_start') text = `[${ev.index}/${ev.total}] Démarrage S${ev.scenario_id}…`;
   else if (t === 'batch_scenario_done') {
     const m = ev.metrics;
+    const score = m?.score_pct != null ? `${m.score_pct.toFixed(1)}%` : 'N/A';
     text = m
-      ? `[${ev.index}/${ev.total}] S${ev.scenario_id} — F1=${m.f1.toFixed(3)} Score=${m.score_pct.toFixed(1)}% TP=${m.tp} FP=${m.fp} FN=${m.fn} $${(ev.cost_usd||0).toFixed(4)}`
+      ? `[${ev.index}/${ev.total}] S${ev.scenario_id} — F1=${m.f1.toFixed(3)} Score=${score} TP=${m.tp} FP=${m.fp} FN=${m.fn} $${(ev.cost_usd||0).toFixed(4)}`
       : `[${ev.index}/${ev.total}] S${ev.scenario_id} terminé $${(ev.cost_usd||0).toFixed(4)}`;
   }
   else if (t === 'batch_done') {
     const agg = ev.aggregate || {};
+    const avgF1 = agg.avg_f1 != null ? agg.avg_f1.toFixed(3) : 'N/A';
+    const avgRecall = agg.avg_recall != null ? agg.avg_recall.toFixed(3) : 'N/A';
+    const avgScore = agg.avg_score_pct != null ? `${agg.avg_score_pct.toFixed(1)}%` : 'N/A';
     text = agg.avg_f1 !== undefined
-      ? `Batch terminé — Avg F1=${agg.avg_f1.toFixed(3)} Recall=${agg.avg_recall.toFixed(3)} Score=${agg.avg_score_pct.toFixed(1)}% Total $${(ev.total_cost_usd||0).toFixed(4)}`
+      ? `Batch terminé — Avg F1=${avgF1} Recall=${avgRecall} Score=${avgScore} Total $${(ev.total_cost_usd||0).toFixed(4)}`
       : `Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`;
   }
   else if (t === 'tool_call') {
