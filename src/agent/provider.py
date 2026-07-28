@@ -221,9 +221,6 @@ class LLMProvider:
             if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
             messages.append({"role": "assistant", "content": response.content})
 
-            # Execute tools (parallel)
-            from concurrent.futures import ThreadPoolExecutor
-
             completion_only_at_turn = completion_only
             repeated_tool_ids: set[str] = set()
             for tc in tool_calls:
@@ -244,24 +241,24 @@ class LLMProvider:
             if stream_callback:
                 for tc in tool_calls: stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
             terminate_now = False
-            with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
-                futures = {pool.submit(_maybe_execute_anthropic, tc): tc for tc in tool_calls}
-                tool_results = []
-                for f, tc in futures.items():
-                    res = f.result()
-                    failed, fallback_used = self._tool_result_metadata(res)
-                    if cost_tracker:
-                        if failed:
-                            cost_tracker.record_tool_error()
-                        if tc.name == "save_deliverable":
-                            cost_tracker.record_format_attempt(fallback_used=fallback_used)
-                    # Only mark required_tool as called if it succeeded.
-                    if required_tool and tc.name == required_tool and not failed:
-                        required_tool_called = True
-                    if terminate_after_tool and tc.name == terminate_after_tool and not failed:
-                        terminate_now = True
-                    if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
-                    tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
+            tool_results = []
+            # Phase tools use thread-local pipeline context. Execute them on the
+            # provider loop thread, in the same order as Anthropic's tool blocks.
+            for tc in tool_calls:
+                res = _maybe_execute_anthropic(tc)
+                failed, fallback_used = self._tool_result_metadata(res)
+                if cost_tracker:
+                    if failed:
+                        cost_tracker.record_tool_error()
+                    if tc.name == "save_deliverable":
+                        cost_tracker.record_format_attempt(fallback_used=fallback_used)
+                # Only mark required_tool as called if it succeeded.
+                if required_tool and tc.name == required_tool and not failed:
+                    required_tool_called = True
+                if terminate_after_tool and tc.name == terminate_after_tool and not failed:
+                    terminate_now = True
+                if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
+                tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
             messages.append({"role": "user", "content": tool_results})
             if terminate_now:
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})

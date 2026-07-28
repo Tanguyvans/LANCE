@@ -1,6 +1,7 @@
 """Tests for Phase 4.1 agent tools, provider, and orchestrator."""
 
 import json
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -618,3 +619,39 @@ def test_anthropic_repeated_calls_are_counted_on_parent_tracker_thread():
     assert len(executions) == 2
     assert usage.tool_calls == 3
     assert usage.tool_errors == 1
+
+
+def test_anthropic_tool_execution_preserves_thread_local_context():
+    provider = object.__new__(LLMProvider)
+    provider.provider = "anthropic"
+    provider.model = "test-model"
+    provider.client = MagicMock()
+
+    tool_call = MagicMock(type="tool_use", input={}, id="tc-context")
+    tool_call.name = "probe_context"
+    provider.client.messages.create.side_effect = [
+        MagicMock(content=[tool_call], usage=MagicMock(input_tokens=1, output_tokens=1)),
+        MagicMock(content=[MagicMock(type="text", text="done")], usage=MagicMock(input_tokens=1, output_tokens=1)),
+    ]
+
+    context = threading.local()
+    context.vulnerability = {"vuln_id": "VULN-CTX"}
+    seen_results = []
+    tools = [{
+        "name": "probe_context",
+        "description": "probe context",
+        "input_schema": {"type": "object"},
+        "function": lambda **_: json.dumps(getattr(context, "vulnerability", {})),
+    }]
+
+    def stream(event):
+        if event.get("type") == "tool_result":
+            seen_results.append(event["result"])
+
+    with patch("src.agent.cost_tracker.get_dynamic_pricing", return_value=None):
+        result = provider.chat_with_tools(
+            "system", "user", tools, stream_callback=stream, max_turns=2,
+        )
+
+    assert result == "done"
+    assert seen_results == ['{"vuln_id": "VULN-CTX"}']
