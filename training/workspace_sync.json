@@ -16,9 +16,9 @@
   "pull_report_globs": [
     "output/preflight_3b_report.json",
     "output/training-source-manifest.json",
-    "output/adapters/lance-qlora_moe_3b/*/adapter_config.json",
-    "output/adapters/lance-qlora_moe_3b/*/tokenizer_config.json",
-    "output/adapters/lance-qlora_moe_3b/*/checkpoint-*/trainer_state.json"
+    "output/adapters/lance-qlora_moe_3b_20260724/*/adapter_config.json",
+    "output/adapters/lance-qlora_moe_3b_20260724/*/tokenizer_config.json",
+    "output/adapters/lance-qlora_moe_3b_20260724/*/checkpoint-*/trainer_state.json"
   ],
   "blocked_roots": [
     ".git",
@@ -29,6 +29,7 @@
   ],
   "max_report_size_bytes": 5242880,
   "max_total_report_size_bytes": 52428800,
+  "pull_adapter_source_root": "output/adapters/lance-qlora_moe_3b_20260724",
   "pull_adapter_experts": [
     "secretary",
     "recon",

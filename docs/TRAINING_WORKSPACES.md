@@ -78,9 +78,11 @@ python3 scripts/training_workspace.py pull-adapters
 python3 scripts/training_workspace.py pull-adapters --apply
 ```
 
-Ils sont copiés sous `output/adapters/lance-qlora_moe_3b/`. Les checkpoints,
-états du trainer, datasets, environnements et sorties `wandb` ne sont jamais
-collectés par cette commande.
+La source d’entraînement est le répertoire versionné
+`output/adapters/lance-qlora_moe_3b_20260724/` chez Leo. Les fichiers finaux
+sont promus localement sous `output/adapters/lance-qlora_moe_3b/`, chemin stable
+consommé par le service HMoE. Les checkpoints, états du trainer, datasets,
+environnements et sorties `wandb` ne sont jamais collectés par cette commande.
 
 Un résultat destiné à une publication doit être synthétisé explicitement
 dans un document versionné, avec le commit et les hashes du manifeste source.

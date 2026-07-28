@@ -26,7 +26,9 @@ DEFAULT_REMOTE_ROOT = Path(
     os.environ.get("LANCE_TRAINING_WORKSPACE", "/home/leo/LANCE")
 )
 DEFAULT_REPORT_ROOT = CANONICAL_ROOT / "output" / "training-workspace" / "leo"
-DEFAULT_ADAPTER_ROOT = CANONICAL_ROOT / "output" / "adapters" / "lance-qlora_moe_3b"
+DEFAULT_ADAPTER_ROOT = CANONICAL_ROOT / Path(
+    "output/adapters/lance-qlora_moe_3b"
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ def load_manifest(path: Path) -> dict:
         "schema_version",
         "push_files",
         "pull_report_globs",
+        "pull_adapter_source_root",
         "pull_adapter_experts",
         "pull_adapter_files",
         "blocked_roots",
@@ -167,6 +170,7 @@ def build_pull_adapter_plan(
     """Collect only complete final adapters, never checkpoints or training state."""
     experts = manifest["pull_adapter_experts"]
     filenames = manifest["pull_adapter_files"]
+    source_root = safe_relative_path(manifest["pull_adapter_source_root"], ())
     if not isinstance(experts, list) or not experts or len(set(experts)) != len(experts):
         raise ValueError("pull_adapter_experts must be a non-empty unique list")
     if not isinstance(filenames, list) or not filenames or len(set(filenames)) != len(filenames):
@@ -183,9 +187,7 @@ def build_pull_adapter_plan(
             file_path = safe_relative_path(str(filename), ())
             if len(file_path.parts) != 1:
                 raise ValueError(f"Invalid adapter filename: {filename}")
-            source_relative = (
-                Path("output/adapters/lance-qlora_moe_3b") / expert_path / file_path
-            )
+            source_relative = source_root / expert_path / file_path
             source = contained_path(remote_root, source_relative)
             destination_relative = expert_path / file_path
             destination = contained_path(adapter_root, destination_relative)

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.training_workspace import (
+    DEFAULT_ADAPTER_ROOT,
     apply_plan,
     build_pull_adapter_plan,
     build_pull_plan,
@@ -21,8 +22,9 @@ def _manifest(**overrides) -> dict:
         "push_files": ["training/train_qlora_3b.py"],
         "pull_report_globs": [
             "output/preflight_3b_report.json",
-            "output/adapters/lance-qlora_moe_3b/*/adapter_config.json",
+            "output/adapters/lance-qlora_moe_3b_20260724/*/adapter_config.json",
         ],
+        "pull_adapter_source_root": "output/adapters/lance-qlora_moe_3b_20260724",
         "pull_adapter_experts": ["recon", "vuln", "exploit", "secretary"],
         "pull_adapter_files": [
             "adapter_config.json", "adapter_model.safetensors", "tokenizer_config.json",
@@ -69,7 +71,9 @@ def test_push_is_allowlisted_and_non_destructive(tmp_path: Path) -> None:
 def test_pull_reports_never_collects_weights(tmp_path: Path) -> None:
     remote = tmp_path / "remote"
     reports = tmp_path / "reports"
-    adapter = remote / "output" / "adapters" / "lance-qlora_moe_3b" / "recon"
+    adapter = (
+        remote / "output" / "adapters" / "lance-qlora_moe_3b_20260724" / "recon"
+    )
     adapter.mkdir(parents=True)
     (adapter / "adapter_config.json").write_text('{"base_model":"3b"}\n')
     (adapter / "adapter_model.safetensors").write_bytes(b"weights")
@@ -96,12 +100,18 @@ def test_manifest_requires_boundary_fields(tmp_path: Path) -> None:
         load_manifest(path)
 
 
+def test_default_adapter_destination_matches_hmoe_service() -> None:
+    assert DEFAULT_ADAPTER_ROOT.name == "lance-qlora_moe_3b"
+
+
 
 def test_pull_adapters_collects_only_explicit_final_files(tmp_path: Path) -> None:
     remote = tmp_path / "remote"
     local = tmp_path / "local"
     for expert in ("recon", "vuln", "exploit", "secretary"):
-        adapter = remote / "output" / "adapters" / "lance-qlora_moe_3b" / expert
+        adapter = (
+            remote / "output" / "adapters" / "lance-qlora_moe_3b_20260724" / expert
+        )
         adapter.mkdir(parents=True)
         (adapter / "adapter_config.json").write_text('{"base_model":"3b"}\n')
         (adapter / "adapter_model.safetensors").write_bytes(b"weights")
@@ -123,7 +133,9 @@ def test_pull_adapters_collects_only_explicit_final_files(tmp_path: Path) -> Non
 
 def test_pull_adapters_fails_closed_when_an_expert_is_incomplete(tmp_path: Path) -> None:
     remote = tmp_path / "remote"
-    adapter = remote / "output" / "adapters" / "lance-qlora_moe_3b" / "recon"
+    adapter = (
+        remote / "output" / "adapters" / "lance-qlora_moe_3b_20260724" / "recon"
+    )
     adapter.mkdir(parents=True)
     (adapter / "adapter_config.json").write_text("{}\n")
 

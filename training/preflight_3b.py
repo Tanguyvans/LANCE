@@ -21,7 +21,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXPERTS = ("secretary", "recon", "vuln", "exploit")
 REQUIRED_SFT_PARAMETERS = {
     "assistant_only_loss", "bf16", "dataset_num_proc", "eval_strategy",
-    "gradient_checkpointing_kwargs", "max_length", "packing",
+    "eval_on_start", "gradient_checkpointing_kwargs", "greater_is_better",
+    "load_best_model_at_end", "max_length", "metric_for_best_model", "packing",
     "prediction_loss_only", "tf32",
 }
 
