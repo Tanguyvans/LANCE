@@ -232,6 +232,33 @@ def test_export_delete_rejects_non_exports_and_tampered_exports(generator: Scena
         generator.delete_export(generated["id"])
 
 
+def test_delete_variant_removes_generated_bundle_and_dashboard_export(generator: ScenarioGenerator):
+    generated = generator.generate("api-authorization", 80, "rotate_ips")
+    generator.export_variant(generated["id"])
+
+    deleted = generator.delete_variant(generated["id"])
+
+    assert deleted["id"] == generated["id"]
+    assert deleted["export_deleted"] is True
+    assert (generator.storage_root / generated["id"]).exists() is False
+    assert generator.export_store.exists(generated["id"]) is False
+    with pytest.raises(ScenarioGeneratorError, match="not found"):
+        generator.get_variant(generated["id"])
+
+
+def test_delete_variant_rejects_official_ids_and_tampered_bundles(generator: ScenarioGenerator):
+    with pytest.raises(ScenarioGeneratorError, match="Invalid generated scenario identifier"):
+        generator.delete_variant("15")
+
+    generated = generator.generate("ota-lifecycle", 81, "rename_hosts")
+    topology_path = generator.storage_root / generated["id"] / "topology.yaml"
+    topology_path.write_text(topology_path.read_text() + "\n# modified\n", encoding="utf-8")
+
+    with pytest.raises(ScenarioGeneratorError, match="was modified"):
+        generator.delete_variant(generated["id"])
+    assert (generator.storage_root / generated["id"]).is_dir()
+
+
 def test_generator_router_is_registered_in_api_main():
     source = (REPO_ROOT / "src" / "api" / "main.py").read_text(encoding="utf-8")
     assert "scenario_generator.router" in source

@@ -79,12 +79,14 @@ function _renderScenarioLabDetails(variant) {
   const mutate = document.getElementById('sl-mutate');
   const exportButton = document.getElementById('sl-export');
   const deleteButton = document.getElementById('sl-delete-export');
+  const deleteVariantButton = document.getElementById('sl-delete-variant');
   const summary = _scenarioLab.variants.find(item => item.id === variant?.id);
   const exported = Boolean(summary?.exported);
   if (!variant) {
     exportButton.disabled = true;
     deleteButton.hidden = true;
     deleteButton.disabled = true;
+    deleteVariantButton.disabled = true;
     container.innerHTML = '<div class="sl-empty">Sélectionnez ou générez une variante.</div>';
     mutate.disabled = true;
     document.getElementById('sl-mutation-operation').innerHTML = '';
@@ -94,6 +96,7 @@ function _renderScenarioLabDetails(variant) {
   exportButton.hidden = exported;
   deleteButton.hidden = !exported;
   deleteButton.disabled = !exported;
+  deleteVariantButton.disabled = false;
 
   mutate.disabled = false;
   _scenarioLabOptions(
@@ -354,6 +357,43 @@ async function _deleteScenarioLabExport() {
   }
 }
 
+async function _deleteScenarioLabVariant() {
+  if (!_scenarioLab.selected) return;
+  const variantId = _scenarioLab.selected.id;
+  const summary = _scenarioLab.variants.find(item => item.id === variantId);
+  const exportWarning = summary?.exported
+    ? ' Son export sera également retiré du dashboard.'
+    : '';
+  if (!window.confirm(`Effacer définitivement ${variantId} du Scenario Lab ?${exportWarning}`)) return;
+
+  const button = document.getElementById('sl-delete-variant');
+  button.disabled = true;
+  _setScenarioLabStatus(`Suppression de ${variantId}…`);
+  try {
+    const payload = await _scenarioLabRequest(
+      '/api/scenario-generator/' + encodeURIComponent(variantId),
+      {method: 'DELETE'},
+    );
+    _scenarioLab.selected = null;
+    if (_scenarioLab.graph) {
+      _scenarioLab.graph.destroy();
+      _scenarioLab.graph = null;
+    }
+    document.getElementById('sl-preview-meta').textContent = 'Aucune variante sélectionnée';
+    document.getElementById('sl-cy').innerHTML = '';
+    await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
+    if (payload.scenario?.export_deleted) await loadTopology(null);
+    const suffix = payload.scenario?.export_deleted ? ' et retiré du dashboard' : '';
+    _setScenarioLabStatus(`${variantId} supprimé du Scenario Lab${suffix}`, 'success');
+    addLog({type: 'info', message: `Scénario généré supprimé : ${variantId}${suffix}`});
+  } catch (error) {
+    _setScenarioLabStatus(`Suppression impossible : ${error.message}`, 'error');
+    addLog({type: 'error', message: `Suppression impossible : ${error.message}`});
+  } finally {
+    _renderScenarioLabDetails(_scenarioLab.selected);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sl-seed').value = _scenarioLabSeed();
   document.getElementById('sl-mutation-seed').value = _scenarioLabSeed();
@@ -376,6 +416,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sl-delete-export').addEventListener(
     'click',
     _deleteScenarioLabExport,
+  );
+  document.getElementById('sl-delete-variant').addEventListener(
+    'click',
+    _deleteScenarioLabVariant,
   );
   document.getElementById('sl-fit').addEventListener('click', () => {
     if (_scenarioLab.graph) {

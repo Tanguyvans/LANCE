@@ -44,6 +44,7 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     assert 'id="sl-mutate"' in html
     assert 'id="sl-export"' in html
     assert 'id="sl-delete-export"' in html
+    assert 'id="sl-delete-variant"' in html
     assert 'id="btn-delete-exported-scenario"' in html
     assert 'id="sl-cy"' in html
     assert '<script src="/static/scenario_generator.js"></script>' in html
@@ -60,6 +61,7 @@ def test_classic_dashboard_controller_connects_generator_api_and_preview_graph()
     assert "/mutations" in javascript
     assert "/export" in javascript
     assert "method: 'DELETE'" in javascript
+    assert "_deleteScenarioLabVariant" in javascript
     assert "deleteSelectedExportedScenario" in app
     assert "/topology" in javascript
     assert "cytoscape({" in javascript

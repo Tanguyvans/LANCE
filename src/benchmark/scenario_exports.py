@@ -191,6 +191,11 @@ class ExportedScenarioStore:
         except ScenarioExportError:
             return False
 
+    def has_entry(self, scenario_id: str) -> bool:
+        """Return whether an export path exists, including an invalid entry."""
+        path = self._export_dir(str(scenario_id))
+        return path.exists() or path.is_symlink()
+
     def artifact_path(self, scenario_id: str, artifact: str) -> Path:
         if artifact not in _ARTIFACTS:
             raise ScenarioExportError(f"Unknown exported artifact: {artifact}")

@@ -59,6 +59,19 @@ def get_generated_scenario(variant_id: str):
     return _call(lambda: generator.get_variant(variant_id))
 
 
+@router.delete("/{variant_id}")
+def delete_generated_scenario(variant_id: str):
+    from src.api.routes import pipeline
+
+    if pipeline._state.get("running") and pipeline._state.get("scenario_id") == variant_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete a generated scenario while its dashboard run is active",
+        )
+    deleted = _call(lambda: generator.delete_variant(variant_id))
+    return {"deleted": True, "scenario": deleted}
+
+
 @router.get("/{variant_id}/topology")
 def get_generated_topology(variant_id: str):
     return _call(lambda: generator.get_topology_graph(variant_id))

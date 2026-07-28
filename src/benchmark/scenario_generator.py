@@ -146,6 +146,19 @@ class ScenarioGenerator:
         """Remove a dashboard export without deleting its Lab source variant."""
         return self.export_store.delete(variant_id)
 
+    def delete_variant(self, variant_id: str) -> dict[str, Any]:
+        """Remove one trusted Lab bundle and its dashboard export, if any."""
+        bundle = self._load_bundle(variant_id)  # validate provenance before deletion
+        summary = self._summary(bundle)
+        exported = self.export_store.has_entry(variant_id)
+        if exported:
+            # Validate the export before removing either copy.  A corrupted
+            # dashboard bundle must never be hidden by deleting its Lab source.
+            self.export_store.load(variant_id)
+            self.export_store.delete(variant_id)
+        shutil.rmtree(self._variant_dir(variant_id))
+        return {**summary, "export_deleted": exported}
+
     def generate(self, blueprint_id: str, seed: int, operation: str) -> dict[str, Any]:
         blueprint = self._blueprint(blueprint_id)
         self._validate_request(blueprint, seed, operation)
