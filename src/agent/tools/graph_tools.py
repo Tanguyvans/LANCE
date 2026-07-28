@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import ipaddress
-import re
 from dataclasses import asdict
 from pathlib import Path
 
@@ -16,11 +15,7 @@ from src.loader import build_graph, load_yaml
 from src.cve_lookup import load_cpe_mapping, scan_all_devices
 from src.risk_scorer import score_all_devices
 from src.attack_path import analyze_attack_paths
-from src.agent.tools.disbalance_engine import (
-    WeightedAttackGraph,
-    build_weighted_attack_graph,
-    compute_node_disbalance,
-)
+from src.agent.tools.disbalance_engine import WeightedAttackGraph, build_weighted_attack_graph
 from src.agent.tools.impact_cone import (
     identify_epicenter,
     compute_graph_disbalance,
@@ -141,63 +136,6 @@ _ROLE_SERVICES: dict[str, list[dict]] = {
     "ot_bacnet_server":[{"name": "bacnet", "port": 47808, "protocol": "udp"}, {"name": "http", "port": 8080, "protocol": "tcp"}],
     "ot_historian":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
 }
-
-_PORT_NAME: dict[int, str] = {
-    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 80: "http",
-    389: "ldap", 443: "https", 1883: "mqtt", 2049: "nfs",
-    3306: "mysql", 4840: "opcua", 5432: "postgres", 8080: "http-alt",
-    8443: "https", 8883: "mqtt-tls", 47808: "bacnet",
-}
-
-_PORT_RE = re.compile(r'[Pp]ort (\d+)/(tcp|udp)')
-
-
-def _enrich_node_services(node: dict, vulnerabilities: list[dict]) -> None:
-    """Add services discovered from vulnerability indicators (port mentions)."""
-    existing = {s["port"] for s in node["services"]}
-    for vuln in vulnerabilities:
-        if vuln.get("device") != node["id"]:
-            continue
-        for indicator in vuln.get("indicators", []):
-            for m in _PORT_RE.finditer(indicator):
-                port, proto = int(m.group(1)), m.group(2)
-                if port not in existing:
-                    node["services"].append({"name": _PORT_NAME.get(port, f"port-{port}"), "port": port, "protocol": proto})
-                    existing.add(port)
-
-
-def _build_edges_from_attack_paths(attack_paths_data: list[dict], node_index: dict, ip_to_id: dict) -> list[dict]:
-    """Derive network edges from attack_path chains (consecutive hops)."""
-    def _resolve(chain_device: str) -> str | None:
-        if chain_device.lower() in ("internet", "wan"):
-            return "internet"
-        name = chain_device.split(" (")[0].strip()
-        if name in node_index:
-            return name
-        # Match IP shorthands: (100.11) → 192.168.100.11, (20.11) → 192.168.20.11
-        m = re.search(r'\((\d+\.\d+)\)', chain_device)
-        if m:
-            suffix = m.group(1)
-            parts = suffix.split(".")
-            if len(parts) == 2:
-                # Two-octet shorthand: treat as last two octets with 192.168 prefix
-                candidate = f"192.168.{parts[0]}.{parts[1]}"
-                if candidate in ip_to_id:
-                    return ip_to_id[candidate]
-        return None
-
-    edges: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    for path in attack_paths_data:
-        chain = path.get("chain", [])
-        for i in range(len(chain) - 1):
-            src = _resolve(chain[i]["device"])
-            dst = _resolve(chain[i + 1]["device"])
-            if src and dst and src != dst and (src, dst) not in seen:
-                seen.add((src, dst))
-                edges.append({"source": src, "target": dst})
-    return edges
-
 
 def load_scenario_topology(scenario_id: int | str) -> dict:
     """Load the *public* topology for a development benchmark scenario.

@@ -4,7 +4,6 @@ Queries the NVD REST API v2.0 to find CVEs for devices/services
 based on CPE strings or keyword searches.
 """
 
-import os
 import re
 import time
 from dataclasses import dataclass, field

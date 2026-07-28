@@ -124,7 +124,6 @@ def _materialize_template(template: dict, service: dict, scenario_id: str,
 def _materialize_router_template(template: dict, topology: dict, scenario_id: str,
                                  fallback_index: int, prefix: str = "V") -> dict:
     router = topology.get("router", {})
-    device_name = router.get("name_template", "s{sid}-router").format(sid=scenario_id)
     ip = router.get("ip", "192.168.100.1")
     service = {
         "name_template": router.get("name_template", "s{sid}-router"),

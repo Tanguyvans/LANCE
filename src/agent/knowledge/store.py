@@ -9,14 +9,13 @@ The store is persistent (data/knowledge.db) and grows over time.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Callable
 
 import chromadb
 
-from src.agent.knowledge.embedder import embed, EMBEDDING_DIMS
+from src.agent.knowledge.embedder import embed
 
 log = logging.getLogger(__name__)
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 
 EMBEDDING_MODEL = "voyage-4-lite"
-EMBEDDING_DIMS = 1024
 
 _client = None
 

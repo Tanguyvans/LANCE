@@ -11,7 +11,6 @@ cache to compute local disbalance Δ(v) = D_{T-1}(v, Target) - D_T(v, Target).
 
 from __future__ import annotations
 
-import copy
 import logging
 from typing import Any
 

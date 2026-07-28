@@ -599,16 +599,6 @@ async function deleteSelectedExportedScenario() {
   }
 }
 
-function getSelectedScenarioId() {
-  const mode = document.querySelector('input[name="run-mode"]:checked').value;
-  if (mode === 'preset') {
-    const scenarioId = document.getElementById('sel-scenario').value || null;
-    return isSealedScenarioId(scenarioId) ? null : scenarioId;
-  }
-  // Custom mode: return architecture + packs info (handled separately in startRun)
-  return null;
-}
-
 function populateBenchmarkScenarioFilter() {
   const filter = document.getElementById('bm-filter-scenario');
   if (!filter) return;

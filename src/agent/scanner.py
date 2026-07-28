@@ -748,7 +748,6 @@ def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_nam
             return []  # Port confirmed closed/filtered by nmap — not a real finding
 
     # Port unreachable or all 1880 scans failed — add both suspected findings
-    device_id = device.get("device_id", "unknown")
     ip = device.get("ip", "")
     return [
         _make_finding(

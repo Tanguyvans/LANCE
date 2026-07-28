@@ -6,7 +6,6 @@ Usage:
 """
 
 import os
-import sys
 from pathlib import Path
 
 from src.cve_lookup import load_cpe_mapping, scan_all_devices

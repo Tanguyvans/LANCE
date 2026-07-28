@@ -14,7 +14,6 @@ the O(k·log n) cone of impacted nodes.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from src.agent.tools.disbalance_engine import WeightedAttackGraph, WEIGHT_INFINITE
 

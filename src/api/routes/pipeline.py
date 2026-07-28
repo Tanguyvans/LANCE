@@ -304,8 +304,6 @@ def _batch_thread(req: BatchRequest):
         from src.agent.pipeline import Pipeline
         from src.benchmark.evaluator import evaluate
 
-        GT_DIR = ROOT / "benchmarks" / "ground_truth"
-
         def _push(event: dict):
             loop = _state["loop"]
             q = _state["queue"]

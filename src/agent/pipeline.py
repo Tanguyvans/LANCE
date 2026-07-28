@@ -2036,8 +2036,6 @@ class Pipeline:
         )
         # usage will be recorded after validation
 
-        deliverable_path = self.run_dir / config.deliverable_file
-
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
@@ -5331,8 +5329,6 @@ class Pipeline:
             if v.get("type") == "known_cve" and status_raw == "UNTESTED":
                 claim_status = v.get("cve_claim_status", "unverified")
                 status = f"Potential (CVE-based; {claim_status})"
-            evidence_level = exploit.get("evidence_level", 1)
-            evidence_note = f"L{evidence_level}" if exploit else "-"
             title = (v.get("details") or "")[:80].replace("|", "/")
             sec5_rows.append(
                 f"| {vid} | {v.get('device_id','')} ({v.get('device_ip','')}) "

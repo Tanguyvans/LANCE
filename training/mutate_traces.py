@@ -1,4 +1,3 @@
-import json
 import re
 import random
 import os
@@ -73,7 +72,6 @@ def mutate_trace(trace_str: str) -> str:
         mutated = mutated.replace(f'"{old_os}"', f'"{new_os}"')
         
     # 5. Mutate Passwords (very basic replacement of known passwords)
-    passwords = ['P@ssw0rd123', 'M@n@geM3nt2026!', 'superSecret!', 'W1reGu@rd!2026', 'admin', 'root']
     new_pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=10)) + "!"
     
     # Only replace strong passwords to avoid breaking commands like "admin" user
@@ -110,7 +108,7 @@ def main():
                 continue
                 
             print(f"Mutating trace {idx+1} ({mutations_per_trace} times)...")
-            for m in range(mutations_per_trace):
+            for _ in range(mutations_per_trace):
                 variant = mutate_trace(original_trace)
                 out_f.write(variant + "\n")
                 mutated_count += 1

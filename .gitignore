@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .codex-staging/
 *.bak-*
+*.orig
 *.egg-info/
 dist/
 wandb/

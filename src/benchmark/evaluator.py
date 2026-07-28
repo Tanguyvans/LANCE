@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import ipaddress
 import json
 import re
 from dataclasses import dataclass, field, asdict
