@@ -1016,7 +1016,7 @@ class Pipeline:
                 self._pregenerate_report_sections()
 
             # Run the agent — catch Phase 6 errors so teardown always runs.
-            if agent_config.phase == 6 and self._uses_local_moe():
+            if agent_config.phase == 6 and self._uses_compact_local_moe():
                 status = self._run_local_report_phase(agent_config, stream_callback)
             elif agent_config.phase == 6:
                 try:
@@ -1883,7 +1883,9 @@ class Pipeline:
         max_turns, max_tokens = self.execution_profile.limits_for_phase(
             config.phase, config.max_turns, config.max_tokens
         )
-        local_intrusion_memo = config.name == "intrusion" and self._uses_local_moe()
+        local_intrusion_memo = (
+            config.name == "intrusion" and self._uses_compact_local_moe()
+        )
         if local_intrusion_memo:
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
@@ -2199,6 +2201,27 @@ class Pipeline:
                 ("lance-moe", "expert-")
             )
         )
+
+    def _uses_compact_local_moe(self) -> bool:
+        """Return whether compact small-model orchestration is active locally.
+
+        Local execution alone must not downgrade an explicit/full-capability
+        profile. Future local models resolved as ``full`` still need the normal
+        tool-driven agents; only GPU queue serialization remains provider-bound.
+        """
+        return self.execution_profile.routed_tools and self._uses_local_moe()
+
+    def _phase3_scan_results_for_prompt(
+        self, scan_data: dict, device_id: str
+    ) -> dict:
+        """Keep complete Phase 3 evidence for full, project it for compact."""
+        if not self.execution_profile.routed_tools:
+            return scan_data
+        compact = self._compact_phase3_scan_results(scan_data)
+        compact["_evidence_projection"]["full_scan_artifact"] = (
+            f"03_scans/{device_id}.json"
+        )
+        return compact
 
     @staticmethod
     def _compact_phase3_scan_results(
@@ -2642,7 +2665,7 @@ class Pipeline:
             return
 
         scanner_results = run_scanner(self.run_dir, surface, stream_callback)
-        if self._uses_local_moe():
+        if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
                 scanner_results, surface, stream_callback
             )
@@ -2678,11 +2701,10 @@ class Pipeline:
             scan_data = scanner_results.get(device_id, {})
             deliverable_file = f"03_device_{device_id}.json"
 
-            # Give local/small models a bounded projection. Full results remain in
-            # 03_scans/<device_id>.json and deterministic findings are passed separately.
-            scan_for_prompt = self._compact_phase3_scan_results(scan_data)
-            scan_for_prompt["_evidence_projection"]["full_scan_artifact"] = (
-                f"03_scans/{device_id}.json"
+            # Compact models receive a bounded projection with an artifact
+            # reference. Full models receive the complete scanner evidence.
+            scan_for_prompt = self._phase3_scan_results_for_prompt(
+                scan_data, device_id
             )
 
             variables = {**self.context}
@@ -2729,7 +2751,7 @@ class Pipeline:
                     "device_ip": device_ip, "phase": 3,
                 })
 
-            if self._uses_local_moe():
+            if self._uses_compact_local_moe():
                 local_context = {
                     "device": {
                         "id": device_id,
@@ -3507,15 +3529,15 @@ class Pipeline:
                 self.tracker.start_phase(phase_name)
                 result_text = ""
                 try:
-                    local_moe = self._uses_local_moe()
-                    if local_moe or self.execution_profile.routed_tools:
+                    compact_local_moe = self._uses_compact_local_moe()
+                    if compact_local_moe or self.execution_profile.routed_tools:
                         verification_tools = _phase4_local_verification_tools(
                             exploit_tools, category=category, service=service,
-                            include_deliverable=not local_moe,
+                            include_deliverable=not compact_local_moe,
                         )
                     else:
                         verification_tools = exploit_tools
-                    if local_moe:
+                    if compact_local_moe:
                         result_text = self.provider.chat_with_tools(
                             system_prompt=load_prompt(
                                 "exploit_device_vuln_memo",
@@ -4437,9 +4459,9 @@ class Pipeline:
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
-            if valid and not self._uses_local_moe():
+            if valid and not self._uses_compact_local_moe():
                 return
-            if valid and self._uses_local_moe():
+            if valid and self._uses_compact_local_moe():
                 log.warning(
                     "Phase 5 local MoE: reconciling valid model deliverable with tool evidence"
                 )

@@ -1665,7 +1665,7 @@ class TestPhase5Context:
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
@@ -1769,7 +1769,7 @@ class TestPhase5Context:
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         (pipeline.run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [],
             "all_targets": [],
@@ -1790,6 +1790,47 @@ class TestPhase5Context:
         assert "Return the campaign memo" in kwargs["system_prompt"]
         assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
+
+    def test_full_local_moe_intrusion_uses_standard_full_contract(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "future-full-local-model"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        (pipeline.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [],
+            "all_targets": [],
+            "recovered_credentials": [],
+        }))
+
+        status = pipeline._run_agent(AGENTS["intrusion"])
+
+        kwargs = mock_provider.chat_with_tools.call_args.kwargs
+        tool_names = {tool["name"] for tool in kwargs["tools"]}
+        assert status.startswith("failed:")
+        assert pipeline._uses_local_moe() is True
+        assert pipeline._uses_compact_local_moe() is False
+        assert "save_deliverable" in tool_names
+        assert kwargs["required_tool"] == "save_deliverable"
+        assert kwargs["terminate_after_tool"] == "save_deliverable"
+        assert kwargs["terminate_on_unavailable_tools"] is None
+        assert kwargs["max_turns"] == 80
+        assert kwargs["max_tokens"] == 16384
+
+        model_output = {
+            "summary": {"devices_compromised": 1},
+            "compromised_devices": [{"device_ip": "192.0.2.10"}],
+        }
+        (pipeline.run_dir / "05_intrusion.json").write_text(
+            json.dumps(model_output)
+        )
+        results = {"intrusion": "completed"}
+        pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
+
+        assert json.loads(
+            (pipeline.run_dir / "05_intrusion.json").read_text()
+        ) == model_output
+        assert results["intrusion"] == "completed"
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
@@ -1892,7 +1933,7 @@ class TestInformationPreservingArchitecture:
     def test_phase3_prompt_projection_is_bounded_and_references_full_scan(
         self, mock_provider, output_dir
     ):
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         scan_data = {
             "scan_results": {
                 "http": [
@@ -1906,7 +1947,7 @@ class TestInformationPreservingArchitecture:
             }
         }
 
-        projection = pipeline._compact_phase3_scan_results(scan_data)
+        projection = pipeline._phase3_scan_results_for_prompt(scan_data, "device")
 
         rendered = json.dumps(projection)
         assert len(rendered) < 8000
@@ -1915,14 +1956,38 @@ class TestInformationPreservingArchitecture:
             "03_scans/"
         )
 
+
+    def test_full_phase3_prompt_preserves_complete_scanner_evidence(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "future-full-local-model"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        scan_data = {
+            "scan_results": {
+                "http": [{
+                    "tool": "http_get",
+                    "kwargs": {"url": "http://device/large"},
+                    "result": "complete-evidence-" + ("A" * 12000),
+                }]
+            },
+            "findings": [{"type": "header", "evidence": "complete"}],
+        }
+
+        assert pipeline._phase3_scan_results_for_prompt(scan_data, "device") is scan_data
+        assert "_evidence_projection" not in scan_data
     def test_local_moe_phase3_uses_one_worker(
         self, mock_provider, output_dir
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
 
         assert pipeline._phase3_worker_count(4) == 1
+
+        full_pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        assert full_pipeline._phase3_worker_count(4) == 1
+        assert full_pipeline._uses_compact_local_moe() is False
 
         mock_provider.provider = "openrouter"
         mock_provider.model = "large-model"
@@ -1946,7 +2011,7 @@ class TestInformationPreservingArchitecture:
         }]})
         mock_device_info.return_value = json.dumps({"os_version": "OpenWrt"})
         mock_load_prompt.return_value = "legacy json prompt should not control local path"
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         run_dir = pipeline.run_dir
         fallback = {
             "device_id": "s1-router",
@@ -1994,7 +2059,7 @@ class TestInformationPreservingArchitecture:
         mock_provider.model = "lance-moe"
         memo = "Model memo: recon saw MQTT on 192.168.100.11 and one intrusion path."
         mock_provider.chat_with_tools.return_value = memo
-        pipeline = Pipeline(provider=mock_provider)
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "06_phase6_context.json").write_text(json.dumps({
