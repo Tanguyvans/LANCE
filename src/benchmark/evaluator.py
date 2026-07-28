@@ -637,6 +637,12 @@ def _normalized_values(value: object, *, integer: bool = False) -> set:
     return normalized
 
 
+def _normalize_port(value: object) -> int | None:
+    """Return one valid TCP/UDP port, or None for missing/invalid input."""
+    ports = {port for port in _normalized_values(value, integer=True) if 0 < port <= 65535}
+    return min(ports) if ports else None
+
+
 def _normalized_services(value: object) -> set[str]:
     aliases = {
         "mqtt_websocket": "mqtt-ws", "mqtt-websocket": "mqtt-ws",

@@ -20,6 +20,7 @@ from src.benchmark.evaluator import (
     _derive_evidence_level,
     _has_tool_provenance,
     _load_tool_call_records,
+    _normalize_port,
     _phase3_has_direct_evidence,
     evaluate,
     match_vuln,
@@ -27,6 +28,21 @@ from src.benchmark.evaluator import (
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (80, 80),
+        ("443", 443),
+        (["invalid", "1883"], 1883),
+        (None, None),
+        (0, None),
+        (65536, None),
+    ],
+)
+def test_normalize_port(value, expected):
+    assert _normalize_port(value) == expected
+
 
 def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguration",
         cve=None, device="s1-mqtt", hop_depth=0):
