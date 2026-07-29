@@ -26,5 +26,9 @@ jobs:
       - name: Install Python dependencies
         run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
 
+      - name: Reconcile LANCE MoE registry
+        working-directory: /opt/nato-smartcity-iot
+        run: venv/bin/python -m src.db.inject_moe
+
       - name: Restart FastAPI
         run: systemctl restart nato-fastapi

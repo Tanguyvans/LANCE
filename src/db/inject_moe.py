@@ -16,6 +16,9 @@ if str(ROOT) not in sys.path:
 from src.db.database import init_db, get_conn
 
 
+DEFAULT_BASE_URL = "http://localhost:8001/v1"
+
+
 def upsert_provider(name: str, base_url: str, api_key_env: str, default_model: str, kind: str = "local") -> None:
     query = """
         INSERT INTO providers (name, base_url, api_key_env, default_model, kind)
@@ -66,8 +69,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("LANCE_MOE_BASE_URL", "http://localhost:8001/v1"),
-        help="OpenAI-compatible HMoE API URL (default: %(default)s)",
+        default=None,
+        help=(
+            "OpenAI-compatible HMoE API URL. When omitted, use "
+            "LANCE_MOE_BASE_URL, then the existing local-moe registry URL, "
+            f"then {DEFAULT_BASE_URL}."
+        ),
     )
     parser.add_argument(
         "--include-experts",
@@ -77,13 +84,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def resolve_base_url(cli_value: str | None) -> str:
+    """Resolve the endpoint without overwriting a deployed registry by accident."""
+    candidate = cli_value or os.environ.get("LANCE_MOE_BASE_URL")
+    if not candidate:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT base_url FROM providers WHERE name = 'local-moe'"
+            ).fetchone()
+        candidate = row["base_url"] if row and row["base_url"] else DEFAULT_BASE_URL
+    return candidate.rstrip("/")
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     args = parse_args(argv)
     init_db()
+    base_url = resolve_base_url(args.base_url)
 
     upsert_provider(
         name="local-moe",
-        base_url=args.base_url.rstrip("/"),
+        base_url=base_url,
         api_key_env="LOCAL_API_KEY",
         default_model="lance-moe",
         kind="local"
@@ -118,7 +138,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     print(
         "Successfully injected 'local-moe' provider and HMoE model(s) "
-        f"using {args.base_url.rstrip('/')}"
+        f"using {base_url}"
     )
 
 
