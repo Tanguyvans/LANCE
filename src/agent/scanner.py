@@ -12,7 +12,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +49,16 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
         ("mqtt_listen", {"broker": "{ip}", "topic": "$SYS/#", "count": 3, "timeout": 5}),
         ("mqtt_listen", {"broker": "{ip}", "topic": "#", "count": 5, "timeout": 5, "username": "test", "password": "test"}),
         ("nmap_scan", {"target": "{ip}", "ports": "9001", "skip_discovery": True}),
+        ("http_request", {
+            "url": "http://{ip}:9001/",
+            "headers": {
+                "Connection": "Upgrade",
+                "Upgrade": "websocket",
+                "Sec-WebSocket-Version": "13",
+                "Sec-WebSocket-Key": "MDEyMzQ1Njc4OWFiY2RlZg==",
+            },
+            "follow_redirects": False,
+        }),
     ],
     "telnet": [
         ("nmap_scan", {"target": "{ip}", "ports": "23", "skip_discovery": True}),
@@ -205,6 +215,90 @@ def _resolve_kwargs(template: dict[str, Any], ip: str, port: int) -> dict[str, A
     return resolved
 
 
+_SENSITIVE_LISTING_LINK = re.compile(
+    r"(?i)(?:passw|credential|backup|dump|secret|config|api[_-]?key|token|"
+    r"\.sql(?:$|\?)|\.env(?:$|\?)|\.conf(?:$|\?)|\.config(?:$|\?)|"
+    r"\.key(?:$|\?)|\.pem(?:$|\?))"
+)
+
+
+def _listed_sensitive_urls(
+    results: dict[str, list[dict]], device_ip: str, *, limit: int = 8
+) -> list[str]:
+    """Return bounded, same-host sensitive links from observed directory pages."""
+    urls: set[str] = set()
+    snapshot = [entry for entries in results.values() for entry in entries]
+    for entry in snapshot:
+        if entry.get("tool") != "curl_headers":
+            continue
+        result = _parse_result(entry)
+        stdout = str(result.get("stdout", ""))
+        if "Index of" not in stdout:
+            continue
+        base_url = str((entry.get("kwargs") or {}).get("url", ""))
+        if not base_url:
+            continue
+        for href in re.findall(r"(?i)href\s*=\s*[\"']?([^\"'\s>]+)", stdout):
+            if href.startswith(("#", "?")) or href in {"../", "./"}:
+                continue
+            candidate = urljoin(base_url, href)
+            parsed = urlsplit(candidate)
+            if parsed.scheme not in {"http", "https"} or parsed.hostname != device_ip:
+                continue
+            if parsed.path.endswith("/") or not _SENSITIVE_LISTING_LINK.search(parsed.path):
+                continue
+            urls.add(candidate)
+    return sorted(urls)[: max(0, limit)]
+
+
+def _phase2_recon_scan_entries(run_dir: Path, device: dict) -> list[dict]:
+    """Project recorded Phase 2 service versions into the Phase 3 evidence set."""
+    path = run_dir / "02_recon_evidence.json"
+    if not path.is_file():
+        return []
+    try:
+        projection = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return []
+    device_ip = str(device.get("ip", ""))
+    rows = projection.get("devices", []) if isinstance(projection, dict) else []
+    row = next(
+        (
+            item for item in rows
+            if isinstance(item, dict) and str(item.get("ip", "")) == device_ip
+        ),
+        None,
+    )
+    if not row:
+        return []
+    lines = []
+    ports = []
+    for service in row.get("services", []):
+        if not isinstance(service, dict) or not isinstance(service.get("port"), int):
+            continue
+        port = int(service["port"])
+        ports.append(port)
+        version = str(service.get("version", "")).strip()
+        lines.append(
+            f"{port}/{service.get('protocol', 'tcp')} open "
+            f"{service.get('service', 'unknown')}"
+            + (f" {version}" if version else "")
+        )
+    if not lines:
+        return []
+    return [{
+        "tool": "nmap_scan",
+        "kwargs": {"target": device_ip, "ports": ",".join(map(str, sorted(ports)))},
+        "result": json.dumps({
+            "stdout": "\n".join(lines),
+            "stderr": "",
+            "return_code": 0,
+            "source": "02_recon_evidence.json",
+        }),
+        "source": "02_recon_evidence.json",
+    }]
+
+
 def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
@@ -252,6 +346,11 @@ def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]
     for tool_name, kwargs_tmpl in ROLE_EXTRA_SCANS.get(role, []):
         kwargs = _resolve_kwargs(kwargs_tmpl, ip, 80)
         _call(tool_name, kwargs, f"role_{role}")
+
+    # Follow only suspicious file links already disclosed by same-host directory
+    # listings. This remains bounded and avoids benchmark-specific filenames.
+    for url in _listed_sensitive_urls(results, ip):
+        _call("curl_headers", {"url": url}, "http_discovered")
 
     return results
 
@@ -328,6 +427,8 @@ def _extract_server_version(entries: list[dict], device: dict, svc_name: str) ->
 
 def _extract_missing_headers(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
     """Missing security headers → missing_header LOW."""
+    if str(device.get("role", "")).casefold() not in {"web_server", "iot_gateway"}:
+        return []
     for entry in entries:
         if entry["tool"] != "curl_headers":
             continue
@@ -567,10 +668,26 @@ def _extract_mqtt_sys(entries: list[dict], device: dict, svc_name: str) -> list[
 
 
 def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Port 9001 open is exposure, not proof of unauthenticated WebSocket use."""
+    """Confirm a WebSocket handshake when possible; otherwise retain exposure."""
     role = device.get("role", "")
     if "mqtt" not in role and "mqtt" not in svc_name:
         return []
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if ":9001" not in str(kwargs.get("url", "")):
+            continue
+        result = _parse_result(entry)
+        if result.get("status_code") == 101:
+            return [_make_finding(
+                device, "network_exposure", "MEDIUM", "mqtt-ws", 9001,
+                "MQTT WebSocket listener accepts an unauthenticated HTTP upgrade",
+                "HTTP 101 Switching Protocols returned for a WebSocket upgrade on port 9001",
+                status="confirmed",
+                technique="Complete an MQTT CONNECT over the accepted WebSocket before claiming MQTT no_auth",
+                tools=["http_request"],
+            )]
     for entry in entries:
         if entry["tool"] != "nmap_scan":
             continue
@@ -586,7 +703,7 @@ def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) ->
                 f"nmap port 9001: {stdout.strip()[:200]}",
                 status="suspected",
                 technique="Verify with an HTTP WebSocket upgrade request before claiming no_auth",
-                tools=["curl_headers"],
+                tools=["http_request"],
             )]
     return []
 
@@ -1216,6 +1333,9 @@ def run_scanner(
 
         # Run all tools
         scan_results = scan_device(device, tools_map)
+        recon_entries = _phase2_recon_scan_entries(run_dir, device)
+        if recon_entries:
+            scan_results["phase2_recon_evidence"] = recon_entries
 
         # Save raw results
         scan_path = scans_dir / f"{device_id}.json"

@@ -265,6 +265,115 @@ class TestScannerEvidenceExtraction:
 
         assert scanner_mod._extract_ssh_port_forwarding not in scanner_mod.FINDING_EXTRACTORS
 
+    def test_missing_headers_are_limited_to_supported_web_roles(self):
+        from src.agent import scanner as scanner_mod
+
+        entries = [{
+            "tool": "curl_headers",
+            "kwargs": {"url": "http://192.0.2.5/"},
+            "result": json.dumps({
+                "stdout": "HTTP/1.1 200 OK\nServer: nginx\n",
+                "return_code": 0,
+            }),
+        }]
+
+        router = scanner_mod._extract_missing_headers(
+            entries,
+            {"id": "router", "ip": "192.0.2.5", "role": "router"},
+            "http",
+        )
+        web = scanner_mod._extract_missing_headers(
+            entries,
+            {"id": "web", "ip": "192.0.2.5", "role": "web_server"},
+            "http",
+        )
+
+        assert router == []
+        assert len(web) == 1
+        assert web[0]["type"] == "missing_header"
+
+    def test_scanner_follows_bounded_sensitive_directory_links(self):
+        from src.agent import scanner as scanner_mod
+
+        called_urls = []
+
+        def curl_headers(url):
+            called_urls.append(url)
+            if url.endswith("/backup/"):
+                body = '<h1>Index of /backup/</h1><a href="db_dump.sql">dump</a>'
+            elif url.endswith("/config/"):
+                body = '<h1>Index of /config/</h1><a href="app.config">config</a>'
+            elif url.endswith("db_dump.sql"):
+                body = "INSERT INTO users VALUES ('admin','secretpass')"
+            elif url.endswith("app.config"):
+                body = "api_key=sk-example-12345678"
+            else:
+                body = "HTTP/1.1 404 Not Found"
+            return json.dumps({"stdout": body, "return_code": 0})
+
+        device = {
+            "id": "web", "ip": "192.0.2.5", "role": "web_server",
+            "services": [{"name": "http", "port": 80}],
+        }
+        results = scanner_mod.scan_device(
+            device, {"curl_headers": curl_headers}
+        )
+        findings = scanner_mod.extract_findings(results, device)
+
+        assert "http://192.0.2.5/backup/db_dump.sql" in called_urls
+        assert "http://192.0.2.5/config/app.config" in called_urls
+        assert any(finding["type"] == "data_exposure" for finding in findings)
+
+    def test_mqtt_websocket_upgrade_is_canonical_exposure(self):
+        from src.agent import scanner as scanner_mod
+        from src.agent.vuln_taxonomy import CANONICAL_TYPES, NOISE_TYPES
+
+        entries = [{
+            "tool": "http_request",
+            "kwargs": {"url": "http://192.0.2.11:9001/"},
+            "result": json.dumps({
+                "status_code": 101,
+                "headers": {"Upgrade": "websocket"},
+                "body": "",
+            }),
+        }]
+        findings = scanner_mod._extract_mqtt_websocket(
+            entries,
+            {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker"},
+            "mqtt",
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["type"] == "network_exposure"
+        assert findings[0]["exploitation_status"] == "confirmed"
+        assert "network_exposure" in CANONICAL_TYPES
+        assert "network_exposure" not in NOISE_TYPES
+
+    def test_phase2_recon_versions_restore_filtered_ssh_banner(self, tmp_path):
+        from src.agent import scanner as scanner_mod
+
+        (tmp_path / "02_recon_evidence.json").write_text(json.dumps({
+            "devices": [{
+                "ip": "192.0.2.13",
+                "services": [{
+                    "port": 22, "protocol": "tcp", "service": "ssh",
+                    "version": "OpenSSH 10.0p2 Debian",
+                }],
+            }],
+        }))
+        device = {
+            "id": "ssh", "ip": "192.0.2.13", "role": "ssh_server",
+        }
+        entries = scanner_mod._phase2_recon_scan_entries(tmp_path, device)
+        findings = scanner_mod.extract_findings({"recon": entries}, device)
+
+        assert entries[0]["source"] == "02_recon_evidence.json"
+        assert any(
+            finding["type"] == "info_disclosure"
+            and "banner" in finding["details"].lower()
+            for finding in findings
+        )
+
 
 class TestPrepare3BDatasets:
     def test_phase5_examples_remain_single_atomic_evidence_chain(self):
@@ -2327,6 +2436,122 @@ class TestInformationPreservingArchitecture:
         assert "not pre-computed" in projection["attack_paths_note"]
         assert (pipeline.run_dir / "01_graph_evidence.json").exists()
 
+    def test_compact_local_graph_rebuilds_facts_before_validation(
+        self, output_dir
+    ):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        records = [
+            {
+                "tool": "get_network_topology",
+                "args": {},
+                "result": json.dumps({
+                    "scenario": "Flat network",
+                    "subnet": "192.0.2.0/24",
+                    "nodes": [
+                        {"id": "router", "ip": "192.0.2.1", "type": "router", "role": "router"},
+                        {"id": "mqtt", "ip": "192.0.2.11", "type": "server", "role": "mqtt_broker"},
+                    ],
+                    "edges": [{"source": "router", "target": "mqtt"}],
+                }),
+                "evidence_ref": "tc-graph-topology",
+            },
+            {
+                "tool": "get_attack_surface",
+                "args": {},
+                "result": json.dumps([
+                    {
+                        "id": "router", "ip": "192.0.2.1", "type": "router",
+                        "services": [{"name": "ssh", "port": 22}],
+                    },
+                    {
+                        "id": "mqtt", "ip": "192.0.2.11", "type": "server",
+                        "services": [{"name": "mqtt", "port": 1883}],
+                    },
+                ]),
+                "evidence_ref": "tc-graph-surface",
+            },
+            {
+                "tool": "get_attack_paths",
+                "args": {},
+                "result": json.dumps({
+                    "note": "Attack paths not pre-computed; discover via active recon.",
+                }),
+                "evidence_ref": "tc-graph-paths",
+            },
+            {
+                "tool": "get_risk_scores",
+                "args": {},
+                "result": json.dumps({
+                    "note": "Risk scores not pre-computed.",
+                    "devices": [{"id": "router"}, {"id": "mqtt"}],
+                }),
+                "evidence_ref": "tc-graph-risks",
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n"
+        )
+        captured = {}
+
+        def save(filename, content):
+            captured.update(filename=filename, content=content)
+            return json.dumps({"status": "saved"})
+
+        config = AgentConfig(
+            name="graph_analysis", phase=1, prompt_template="graph_analysis",
+            deliverable_file="01_graph_analysis.md", tools=[],
+            validator="markdown_with_sections",
+        )
+        wrapped = pipeline._apply_deliverable_transaction([{
+            "name": "save_deliverable", "description": "save",
+            "input_schema": {}, "function": save,
+        }], config)[0]["function"]
+        result = json.loads(wrapped(
+            filename="01_graph_analysis.md",
+            content=(
+                "## 1. Executive Summary\n9 services and one attack path.\n"
+                "## 2. Invented facts\nRisk score 99."
+            ),
+        ))
+
+        assert result["validated"] is True
+        assert "**Declared devices:** 2" in captured["content"]
+        assert "**Theoretical attack surface:** 2 declared services" in captured["content"]
+        assert "**Estimated main risk:** Not pre-computed" in captured["content"]
+        assert "Attack paths not pre-computed" in captured["content"]
+        assert "Risk score 99" not in captured["content"]
+
+    def test_full_local_graph_preserves_autonomous_report(self, output_dir):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "future-full-local-model"
+        pipeline = Pipeline(provider=provider, execution_profile="full")
+        captured = {}
+
+        def save(filename, content):
+            captured.update(filename=filename, content=content)
+            return json.dumps({"status": "saved"})
+
+        config = AgentConfig(
+            name="graph_analysis", phase=1, prompt_template="graph_analysis",
+            deliverable_file="01_graph_analysis.md", tools=[],
+            validator="markdown_with_sections",
+        )
+        wrapped = pipeline._apply_deliverable_transaction([{
+            "name": "save_deliverable", "description": "save",
+            "input_schema": {}, "function": save,
+        }], config)[0]["function"]
+        autonomous = "## Section one\nFull reasoning.\n## Section two\nFull analysis."
+        result = json.loads(wrapped(
+            filename="01_graph_analysis.md", content=autonomous,
+        ))
+
+        assert result["validated"] is True
+        assert captured["content"] == autonomous
+
     def test_recon_projection_keeps_raw_evidence_and_builds_rows(
         self, mock_provider, output_dir
     ):
@@ -2457,7 +2682,10 @@ class TestInformationPreservingArchitecture:
         assert "| Unreachable YAML devices | 1 |" in captured["content"]
         assert "| router | 192.0.2.10 | 23,80 |" in captured["content"]
         assert "| offline | 192.0.2.12 | unreachable |" in captured["content"]
-        assert "| undocumented | 192.0.2.200 | unreachable |" in captured["content"]
+        assert (
+            "| undocumented | 192.0.2.200 | not service-scanned |"
+            in captured["content"]
+        )
         assert "The model keeps this autonomous narrative." in captured["content"]
 
     def test_full_local_recon_does_not_rewrite_model_report(
@@ -2805,3 +3033,75 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["total_tested"] == 0
         assert aggregate["summary"]["skipped_count"] == 1
         assert aggregate["summary"]["errors"] == 0
+
+    def test_phase4_compact_worker_receives_local_exploit_instructions(
+        self, output_dir, monkeypatch
+    ):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        finding = {
+            "id": "VULN-001",
+            "device_id": "router",
+            "device_ip": "192.0.2.1",
+            "type": "insecure_protocol",
+            "severity": "MEDIUM",
+            "service": "telnet",
+            "port": 23,
+            "protocol": "tcp",
+            "endpoint": "",
+            "details": "Telnet is exposed",
+            "evidence": "23/tcp open",
+            "exploitation_status": "confirmed",
+            "cve_ids": [],
+        }
+        (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+            "vulnerabilities": [finding],
+        }))
+
+        def nmap_scan(**kwargs):
+            return json.dumps({
+                "stdout": "23/tcp open telnet",
+                "stderr": "",
+                "return_code": 0,
+            })
+
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [{
+            "name": "nmap_scan",
+            "description": "scan",
+            "input_schema": {},
+            "function": nmap_scan,
+        }])
+
+        def chat_with_tools(*, system_prompt, tools, **kwargs):
+            assert "telnet" in system_prompt.lower()
+            result = tools[0]["function"](
+                target="192.0.2.1", ports="23", skip_discovery=True
+            )
+            with (pipeline.run_dir / "tool_calls.jsonl").open(
+                "a", encoding="utf-8"
+            ) as handle:
+                handle.write(json.dumps({
+                    "tool": "nmap_scan",
+                    "args": {
+                        "target": "192.0.2.1", "ports": "23",
+                        "skip_discovery": True,
+                    },
+                    "result": result,
+                    "vuln_id": "VULN-001",
+                    "evidence_ref": "tc-phase4-telnet",
+                }) + "\n")
+            return "Telnet exposure verified."
+
+        provider.chat_with_tools.side_effect = chat_with_tools
+
+        pipeline._run_exploit_agents(AGENTS["exploitation"])
+
+        aggregate = json.loads(
+            (pipeline.run_dir / "04_exploitation.json").read_text()
+        )
+        assert provider.chat_with_tools.call_count == 1
+        assert aggregate["summary"]["confirmed"] == 1
+        assert aggregate["summary"]["errors"] == 0
+        assert aggregate["tests"][0]["evidence_refs"] == ["tc-phase4-telnet"]

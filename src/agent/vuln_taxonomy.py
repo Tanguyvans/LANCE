@@ -65,7 +65,6 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "dos",
     "cve_mqtt_null_deref",
     "unpatched_software",
-    "network_exposure",
     # XSS / injection noise (require manual app-layer testing, not network scanner)
     "xss",
     "xss_stored",
