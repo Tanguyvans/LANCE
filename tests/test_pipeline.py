@@ -1928,6 +1928,101 @@ class TestPhase5Context:
         assert complete["ok"] is True
         assert complete["intrusion_progress"]["ready_to_complete"] is True
 
+
+    def test_compact_intrusion_contract_counts_http_mqtt_and_recovered_credentials(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [
+                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11"},
+                {"device_id": "s1-web", "device_ip": "192.168.100.12"},
+            ],
+            "all_targets": [
+                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11"},
+                {"device_id": "s1-web", "device_ip": "192.168.100.12"},
+            ],
+            "recovered_credentials": [
+                {
+                    "user": "root",
+                    "password": "P@ssw0rd123",
+                    "source_ip": "192.168.100.11",
+                    "source_device": "s1-mqtt",
+                },
+            ],
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {
+                "name": "read_deliverable",
+                "description": "read",
+                "input_schema": {},
+                "function": lambda **kwargs: json.dumps({
+                    "filename": kwargs["filename"],
+                    "content": (run_dir / kwargs["filename"]).read_text(),
+                }),
+            },
+            {
+                "name": "mqtt_listen",
+                "description": "mqtt",
+                "input_schema": {},
+                "function": lambda **_kwargs: json.dumps({"return_code": 27}),
+            },
+            {
+                "name": "http_get",
+                "description": "http",
+                "input_schema": {},
+                "function": lambda **_kwargs: json.dumps({"status_code": 200}),
+            },
+            {
+                "name": "try_credential",
+                "description": "try",
+                "input_schema": {},
+                "function": lambda **_kwargs: json.dumps({"success": False}),
+            },
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        tool_map["mqtt_listen"](broker="192.168.100.11", topic="#", count=1)
+        tool_map["http_get"](url="http://192.168.100.12/")
+
+        missing_credential = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert missing_credential["ok"] is False
+        progress = missing_credential["intrusion_progress"]
+        assert progress["missing_targets"] == []
+        assert progress["missing_entry_points"] == []
+        assert progress["missing_credentials"] == ["root@192.168.100.11"]
+
+        tool_map["try_credential"](
+            ip="192.168.100.12", service="ssh", user="root", password="P@ssw0rd123"
+        )
+        complete = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert complete["ok"] is True
+        assert complete["intrusion_progress"]["ready_to_complete"] is True
+
+    def test_compact_intrusion_completion_is_logged(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "all_targets": [],
+        }))
+
+        tools = pipeline._apply_compact_intrusion_tool_contract(
+            [], phase=5, agent="intrusion"
+        )
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+
+        result = json.loads(tool_map["complete_intrusion_campaign"]())
+
+        assert result["ok"] is False
+        log_entry = json.loads((run_dir / "tool_calls.jsonl").read_text())
+        assert log_entry["tool"] == "complete_intrusion_campaign"
+        assert log_entry["phase"] == 5
+        assert log_entry["agent"] == "intrusion"
+
     def test_local_moe_intrusion_rewrites_hallucinated_compromise(
         self, mock_provider, output_dir
     ):
@@ -2051,6 +2146,9 @@ class TestPhase5Context:
         assert status.startswith("failed:")
         assert "try_credential" in tool_names
         assert "ssh_exec" in tool_names
+        assert "mqtt_listen" in tool_names
+        assert "http_get" in tool_names
+        assert "curl_headers" in tool_names
         assert "complete_intrusion_campaign" in tool_names
         assert "save_deliverable" not in tool_names
         assert kwargs["required_tool"] == "complete_intrusion_campaign"

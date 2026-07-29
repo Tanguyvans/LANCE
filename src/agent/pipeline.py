@@ -68,8 +68,10 @@ def _resolve_model_provider(model: str) -> str:
 
 
 def _build_intrusion_tools() -> list[dict]:
-    """Extract ssh_exec and try_credential from RECON_TOOLS for the intrusion group."""
-    _intrusion_names = {"ssh_exec", "try_credential"}
+    """Extract bounded Phase 5 action tools from RECON_TOOLS."""
+    _intrusion_names = {
+        "curl_headers", "http_get", "mqtt_listen", "ssh_exec", "try_credential",
+    }
     return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
 
 
@@ -2274,7 +2276,9 @@ class Pipeline:
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
         if local_intrusion_memo:
-            tools = self._apply_compact_intrusion_tool_contract(tools)
+            tools = self._apply_compact_intrusion_tool_contract(
+                tools, phase=config.phase, agent=config.name
+            )
 
         # Build prompt variables
         variables = {**self.context}
@@ -3774,14 +3778,18 @@ class Pipeline:
                     "reason": "unvalidated_claim",
                 })
                 continue
-            if is_config_only(vuln_type):
-                skipped_candidates.append({
-                    "vuln_id": vuln.get("id", ""),
-                    "type": vuln_type,
-                    "reason": "configuration_or_detection_only",
-                })
-                continue
             category = exploit_category(vuln_type)
+            if is_config_only(vuln_type):
+                service_key = str(vuln.get("service", "")).casefold()
+                if self.execution_profile.routed_tools and service_key in PHASE4_LOCAL_SERVICE_TOOL_NAMES:
+                    category = category or "data_access"
+                else:
+                    skipped_candidates.append({
+                        "vuln_id": vuln.get("id", ""),
+                        "type": vuln_type,
+                        "reason": "configuration_or_detection_only",
+                    })
+                    continue
             if not category:
                 skipped_candidates.append({
                     "vuln_id": vuln.get("id", ""),
@@ -4162,32 +4170,97 @@ class Pipeline:
         )
         return "\n".join(lines)
 
-    def _apply_compact_intrusion_tool_contract(self, tools: list[dict]) -> list[dict]:
+    def _apply_compact_intrusion_tool_contract(
+        self,
+        tools: list[dict],
+        *,
+        phase: int | str | None = None,
+        agent: str | None = None,
+    ) -> list[dict]:
         """Require observable Phase 5 progress before compact memo completion."""
         context_loaded = False
         attempted_targets: set[str] = set()
+        attempted_entry_points: set[str] = set()
+        attempted_credentials: set[tuple[str, str]] = set()
         action_calls = 0
+        intrusion_action_tools = {
+            "try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers",
+        }
+        credential_action_tools = {"try_credential", "ssh_exec"}
 
-        def _load_expected_targets() -> dict[str, str]:
+        def _host_from_url(value: object) -> str:
+            raw = str(value or "").strip()
+            if not raw:
+                return ""
+            parsed = urlsplit(raw)
+            if parsed.hostname:
+                return parsed.hostname
+            return raw.split("/", 1)[0].split(":", 1)[0].strip()
+
+        def _target_from_args(name: str, kwargs: dict) -> str:
+            for key in ("ip", "host", "broker", "target"):
+                value = str(kwargs.get(key) or "").strip()
+                if value:
+                    return value
+            if name in {"http_get", "curl_headers"}:
+                return _host_from_url(kwargs.get("url"))
+            return ""
+
+        def _load_expectations() -> tuple[dict[str, str], dict[str, str], dict[tuple[str, str], dict]]:
             ctx_path = self.run_dir / "05_intrusion_context.json"
             try:
                 context = json.loads(ctx_path.read_text(encoding="utf-8"))
             except (OSError, TypeError, ValueError, json.JSONDecodeError):
-                return {}
+                return {}, {}, {}
+            if not isinstance(context, dict):
+                return {}, {}, {}
+
             targets: dict[str, str] = {}
-            for item in context.get("all_targets", []) if isinstance(context, dict) else []:
+            for item in context.get("all_targets", []):
                 if not isinstance(item, dict):
                     continue
                 ip = str(item.get("device_ip") or item.get("ip") or "").strip()
                 if not ip:
                     continue
                 targets[ip] = str(item.get("device_id") or ip)
-            return targets
 
-        expected_targets = _load_expected_targets()
+            entry_points: dict[str, str] = {}
+            for item in context.get("entry_points", []):
+                if not isinstance(item, dict):
+                    continue
+                ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+                if not ip:
+                    continue
+                entry_points[ip] = str(item.get("device_id") or ip)
+
+            credentials: dict[tuple[str, str], dict] = {}
+            for item in context.get("recovered_credentials", []):
+                if not isinstance(item, dict):
+                    continue
+                user = str(item.get("user") or "").strip()
+                password = str(item.get("password") or "").strip()
+                if not user or not password:
+                    continue
+                credentials[(user, password)] = {
+                    "user": user,
+                    "source_ip": str(item.get("source_ip") or ""),
+                    "source_device": str(item.get("source_device") or ""),
+                }
+            return targets, entry_points, credentials
+
+        expected_targets, expected_entry_points, expected_credentials = _load_expectations()
 
         def _progress() -> dict:
             missing_targets = sorted(set(expected_targets) - attempted_targets)
+            missing_entry_points = sorted(set(expected_entry_points) - attempted_entry_points)
+            missing_credentials = [
+                "{user}@{source}".format(user=meta["user"], source=meta.get("source_ip") or "recovered")
+                for key, meta in sorted(
+                    expected_credentials.items(),
+                    key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")),
+                )
+                if key not in attempted_credentials
+            ]
             return {
                 "schema_version": "1",
                 "context_loaded": context_loaded,
@@ -4200,9 +4273,35 @@ class Pipeline:
                     }
                     for ip in sorted(expected_targets)
                 ],
+                "entry_points": [
+                    {
+                        "target": ip,
+                        "device_id": expected_entry_points[ip],
+                        "attempted": ip in attempted_entry_points,
+                    }
+                    for ip in sorted(expected_entry_points)
+                ],
+                "recovered_credentials": [
+                    {
+                        "user": meta["user"],
+                        "source_ip": meta.get("source_ip", ""),
+                        "attempted": key in attempted_credentials,
+                    }
+                    for key, meta in sorted(
+                        expected_credentials.items(),
+                        key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")),
+                    )
+                ],
                 "attempted_targets": sorted(attempted_targets),
                 "missing_targets": missing_targets,
-                "ready_to_complete": context_loaded and not missing_targets,
+                "missing_entry_points": missing_entry_points,
+                "missing_credentials": missing_credentials,
+                "ready_to_complete": (
+                    context_loaded
+                    and not missing_targets
+                    and not missing_entry_points
+                    and not missing_credentials
+                ),
             }
 
         def _with_progress(result: str) -> str:
@@ -4223,8 +4322,9 @@ class Pipeline:
                 "error_kind": kind,
                 "error": message,
                 "instruction": (
-                    "Continue Phase 5 with try_credential or ssh_exec using the "
-                    "05_intrusion_context.json targets, then call "
+                    "Continue Phase 5 with mqtt_listen/http_get/curl_headers for "
+                    "entry-point validation and try_credential or ssh_exec for "
+                    "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
                 "intrusion_progress": _progress(),
@@ -4236,43 +4336,51 @@ class Pipeline:
                 result = original_fn(**kwargs)
                 if name == "read_deliverable" and kwargs.get("filename") == "05_intrusion_context.json":
                     context_loaded = True
-                if name in {"try_credential", "ssh_exec"}:
+                if name in intrusion_action_tools:
                     action_calls += 1
-                    target = str(kwargs.get("ip") or kwargs.get("host") or "").strip()
+                    target = _target_from_args(name, kwargs)
                     if target:
                         attempted_targets.add(target)
+                        if target in expected_entry_points:
+                            attempted_entry_points.add(target)
+                    if name in credential_action_tools:
+                        user = str(kwargs.get("user") or "").strip()
+                        password = str(kwargs.get("password") or "").strip()
+                        if user and password:
+                            attempted_credentials.add((user, password))
                 return _with_progress(result)
 
             return guarded
 
         def complete_intrusion_campaign(**_kwargs):
-            missing_targets = sorted(set(expected_targets) - attempted_targets)
+            progress = _progress()
             if not context_loaded:
                 return _completion_error(
                     "intrusion_context_required",
                     "Phase 5 cannot finish before reading 05_intrusion_context.json.",
                 )
-            if missing_targets:
+            if not progress["ready_to_complete"]:
                 return _completion_error(
                     "intrusion_contract_incomplete",
-                    "Phase 5 compact completion requires at least one intrusion action against every context target.",
+                    "Phase 5 compact completion requires entry-point coverage, target coverage, and recovered credential reuse attempts.",
                 )
             return json.dumps({
                 "ok": True,
                 "status": "campaign_complete",
-                "intrusion_progress": _progress(),
+                "intrusion_progress": progress,
             }, ensure_ascii=False)
 
         wrapped = [
             {**tool, "function": _guard(tool["name"], tool["function"])}
             for tool in tools
         ]
-        wrapped.append({
+        completion_tool = {
             "name": COMPACT_INTRUSION_COMPLETION_TOOL,
             "description": (
                 "Finish compact Phase 5 only after 05_intrusion_context.json "
-                "has been read and every listed target has at least one "
-                "try_credential or ssh_exec attempt."
+                "has been read, every listed target and entry point has an "
+                "observable action, and every recovered credential has been "
+                "tried at least once."
             ),
             "input_schema": {
                 "type": "object",
@@ -4285,7 +4393,8 @@ class Pipeline:
                 "additionalProperties": False,
             },
             "function": complete_intrusion_campaign,
-        })
+        }
+        wrapped.append(self._wrap_tool(completion_tool, phase=phase, agent=agent))
         return wrapped
 
     def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
