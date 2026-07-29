@@ -411,6 +411,87 @@ def test_wireless_to_firmware_chain_and_controls_are_stateful(tmp_path, monkeypa
     assert _request(secure_device, "POST", "/recovery", body=recovery)[0] == 400
 
 
+def test_public_heldout_segmented_asset_and_provisioning_controls(tmp_path, monkeypatch):
+    asset = _load_simulator(tmp_path, monkeypatch, mode="segmented_asset")
+    status, payload = _request(asset, "GET", "/export")
+    assert status == 200
+    assert payload["marker"] == "SEGMENTED-ASSET:test-segmented_asset"
+
+    secure_asset = _load_simulator(
+        tmp_path, monkeypatch, mode="segmented_asset", profile="hardened"
+    )
+    assert _request(secure_asset, "GET", "/export")[0] == 401
+
+    claim = _load_simulator(tmp_path, monkeypatch, mode="provisioning_claim")
+    status, docs = _request(claim, "GET", "/docs")
+    assert status == 200
+    assert docs["fixture"]["endpoint"] == "/claim"
+    assert "reg-28-static" not in json.dumps(docs)
+    fixture = {"registration_code": "reg-28-static"}
+    assert _request(claim, "POST", "/claim", body=fixture)[0] == 200
+    assert _request(claim, "POST", "/claim", body=fixture)[1]["service_token"] == (
+        "service-token-28"
+    )
+
+    secure_claim = _load_simulator(
+        tmp_path, monkeypatch, mode="provisioning_claim", profile="hardened"
+    )
+    assert _request(secure_claim, "POST", "/claim", body=fixture)[0] == 200
+    assert _request(secure_claim, "POST", "/claim", body=fixture)[0] == 409
+
+    telemetry = _load_simulator(tmp_path, monkeypatch, mode="provisioning_telemetry")
+    status, payload = _request(
+        telemetry, "GET", "/snapshot", token="service-token-28"
+    )
+    assert status == 200
+    assert payload["maintenance_key"] == "maint-28-legacy"
+
+    secure_telemetry = _load_simulator(
+        tmp_path, monkeypatch, mode="provisioning_telemetry", profile="hardened"
+    )
+    assert "maintenance_key" not in _request(
+        secure_telemetry, "GET", "/snapshot", token="service-token-28"
+    )[1]
+
+    maintenance_fixture = {
+        "service_token": "service-token-28",
+        "maintenance_key": "maint-28-legacy",
+        "approval": False,
+    }
+    maintenance = _load_simulator(tmp_path, monkeypatch, mode="provisioning_maintenance")
+    assert _request(
+        maintenance, "POST", "/maintenance", body=maintenance_fixture
+    )[1]["state"] == "MAINTENANCE_ENABLED"
+    secure_maintenance = _load_simulator(
+        tmp_path, monkeypatch, mode="provisioning_maintenance", profile="hardened"
+    )
+    assert _request(
+        secure_maintenance, "POST", "/maintenance", body=maintenance_fixture
+    )[0] == 403
+
+
+def test_public_heldout_provisioning_discovery_hides_code_in_control(
+    tmp_path, monkeypatch
+):
+    def response_for(profile: str) -> bytes:
+        module = _load_simulator(
+            tmp_path, monkeypatch, mode="provisioning_discovery", profile=profile
+        )
+        sent: list[bytes] = []
+        sock = SimpleNamespace(
+            sendto=lambda payload, _peer: sent.append(payload),
+        )
+        handler = object.__new__(module.ProvisioningDiscoveryHandler)
+        handler.request = (b"PROBE", sock)
+        handler.client_address = ("192.0.2.1", 12345)
+        handler.handle()
+        assert len(sent) == 1
+        return sent[0]
+
+    assert b"REGISTRATION_CODE=reg-28-static" in response_for("vulnerable")
+    assert b"REGISTRATION_CODE=" not in response_for("hardened")
+
+
 def test_udp_send_returns_structured_binary_and_ascii_evidence():
     from src.agent.tools.recon_tools import udp_send
 

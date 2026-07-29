@@ -1,0 +1,18 @@
+schema_version: 2
+scenario_id: '27'
+name: Three-Pivot Cascade
+difficulty: expert
+posture: mixed
+topology: heldout_three_pivot_cascade
+packs: [f20_heldout_network_paths]
+attack_paths:
+- id: AP27-CASCADE
+  name: Three pivots to the isolated safety archive
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s27-field-entry
+  - F20-PIVOT-RELAY-L1@s27-zone-relay
+  - F20-PIVOT-RELAY-L2@s27-cell-relay
+  - F20-ASSET-L3@s27-safety-archive
+  length: 4
+  impact: critical
+bonus_types: []

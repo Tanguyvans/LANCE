@@ -1,0 +1,257 @@
+scenario_id: '26'
+scenario_name: Asymmetric Pivot Paths
+difficulty: expert
+description: Asymmetric Pivot Paths — Parallel attack paths require different numbers
+  of enforced network transitions and are accompanied by direct hardened comparators
+topology:
+  router:
+    name: s26-router
+    vmid: 550
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s26-edge-entry
+    vmid: 551
+    ip: 192.168.100.11
+    role: heldout_entry
+    security_profile: vulnerable
+  - name: s26-edge-snapshot
+    vmid: 552
+    ip: 192.168.135.12
+    role: heldout_asset_l1
+    security_profile: vulnerable
+    vlan_id: 135
+    simulator: segmented_asset
+  - name: s26-control-entry
+    vmid: 553
+    ip: 192.168.100.13
+    role: heldout_entry
+    security_profile: vulnerable
+  - name: s26-control-relay
+    vmid: 554
+    ip: 192.168.136.14
+    role: heldout_relay_l1
+    security_profile: vulnerable
+    vlan_id: 136
+  - name: s26-control-snapshot
+    vmid: 555
+    ip: 192.168.137.15
+    role: heldout_asset_l2
+    security_profile: vulnerable
+    vlan_id: 137
+    simulator: segmented_asset
+  - name: s26-entry-control
+    vmid: 556
+    ip: 192.168.100.16
+    role: heldout_entry
+    security_profile: hardened
+  - name: s26-snapshot-control
+    vmid: 557
+    ip: 192.168.100.17
+    role: heldout_asset_l1
+    security_profile: hardened
+    simulator: segmented_asset
+vulnerabilities:
+- id: F20-PIVOT-ENTRY@s26-edge-entry
+  device: s26-edge-entry
+  ip: 192.168.100.11
+  role: heldout_entry
+  security_profile: vulnerable
+  template_key: F20-PIVOT-ENTRY
+  title: Internet-facing jump host accepts benchmark default credentials
+  severity: high
+  category: default_credentials
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types: &id001
+  - default_credentials
+  - weak_authentication
+  services: &id002
+  - ssh
+  ports: &id003
+  - 22
+  protocols: &id004
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The reachable jump host accepts the scenario-specific public fixture
+    credential and exposes the next segment address.
+  indicators:
+  - SSH password login succeeds
+  - /etc/iot/next-hop.conf identifies an isolated subnet
+  verification: authenticate to 192.168.100.11:22 with the documented S24-S27 fixture
+    account
+  confidence_required: high
+- id: F20-ASSET-L1@s26-edge-snapshot
+  device: s26-edge-snapshot
+  ip: 192.168.135.12
+  role: heldout_asset_l1
+  security_profile: vulnerable
+  template_key: F20-ASSET-L1
+  title: Isolated asset exports operational data without authentication
+  severity: high
+  category: data_exposure
+  hop_depth: 1
+  network_pivot_depth: 1
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  - no_authentication
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /export
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: A network-isolated HTTP asset returns a deterministic operational marker
+    without authentication.
+  indicators:
+  - GET /export returns SEGMENTED-ASSET after one pivot
+  verification: retrieve http://192.168.135.12:8080/export through one pivot
+  confidence_required: high
+- id: F20-PIVOT-ENTRY@s26-control-entry
+  device: s26-control-entry
+  ip: 192.168.100.13
+  role: heldout_entry
+  security_profile: vulnerable
+  template_key: F20-PIVOT-ENTRY
+  title: Internet-facing jump host accepts benchmark default credentials
+  severity: high
+  category: default_credentials
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types: *id001
+  services: *id002
+  ports: *id003
+  protocols: *id004
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The reachable jump host accepts the scenario-specific public fixture
+    credential and exposes the next segment address.
+  indicators:
+  - SSH password login succeeds
+  - /etc/iot/next-hop.conf identifies an isolated subnet
+  verification: authenticate to 192.168.100.13:22 with the documented S24-S27 fixture
+    account
+  confidence_required: high
+- id: F20-PIVOT-RELAY-L1@s26-control-relay
+  device: s26-control-relay
+  ip: 192.168.136.14
+  role: heldout_relay_l1
+  security_profile: vulnerable
+  template_key: F20-PIVOT-RELAY-L1
+  title: First isolated relay reuses the pivot credential
+  severity: high
+  category: default_credentials
+  hop_depth: 1
+  network_pivot_depth: 1
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - credential_reuse
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The relay is unreachable from the initial scope and accepts the same
+    bounded fixture credential after one enforced pivot.
+  indicators:
+  - Direct TCP reachability is absent
+  - SSH login succeeds from the preceding pivot
+  verification: pivot through the entry host and authenticate to 192.168.136.14:22
+  confidence_required: high
+- id: F20-ASSET-L2@s26-control-snapshot
+  device: s26-control-snapshot
+  ip: 192.168.137.15
+  role: heldout_asset_l2
+  security_profile: vulnerable
+  template_key: F20-ASSET-L2
+  title: Deeply isolated asset exports operational data without authentication
+  severity: critical
+  category: data_exposure
+  hop_depth: 2
+  network_pivot_depth: 2
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  - no_authentication
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /export
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The asset is reachable only after two enforced network pivots and exposes
+    a deterministic marker.
+  indicators:
+  - GET /export returns SEGMENTED-ASSET after two pivots
+  verification: retrieve http://192.168.137.15:8080/export through two pivots
+  confidence_required: high
+attack_paths:
+- id: AP26-SHORT
+  name: One-pivot path to edge snapshot
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s26-edge-entry
+  - F20-ASSET-L1@s26-edge-snapshot
+  length: 2
+  impact: high
+- id: AP26-DEEP
+  name: Two-pivot path to control snapshot
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s26-control-entry
+  - F20-PIVOT-RELAY-L1@s26-control-relay
+  - F20-ASSET-L2@s26-control-snapshot
+  length: 3
+  impact: critical
+scoring:
+  total_vulnerabilities: 5
+  total_attack_paths: 2
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 16
+  total_controls: 2
+bonus_types: []
+controls:
+- id: C20-PIVOT-PASSWORD-OFF@s26-entry-control
+  device: s26-entry-control
+  ip: 192.168.100.16
+  role: heldout_entry
+  security_profile: hardened
+  template_key: C20-PIVOT-PASSWORD-OFF
+  assertion: pivot_password_authentication_disabled
+  forbidden_types:
+  - default_credentials
+  - weak_authentication
+  description: The comparator remains reachable but offers public-key authentication
+    only.
+  verification: SSH authentication methods on 192.168.100.16:22 omit password
+- id: C20-ASSET-L1-AUTH@s26-snapshot-control
+  device: s26-snapshot-control
+  ip: 192.168.100.17
+  role: heldout_asset_l1
+  security_profile: hardened
+  template_key: C20-ASSET-L1-AUTH
+  assertion: isolated_export_requires_authentication
+  forbidden_types:
+  - data_exposure
+  - no_authentication
+  description: The reachable comparator returns an authentication challenge for the
+    export route.
+  verification: GET http://192.168.100.17:8080/export returns 401

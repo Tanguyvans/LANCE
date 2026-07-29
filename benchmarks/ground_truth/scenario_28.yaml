@@ -1,0 +1,250 @@
+scenario_id: '28'
+scenario_name: Provisioning Dependency Chain
+difficulty: expert
+description: Provisioning Dependency Chain — Four protocol-state weaknesses form a
+  logical chain while equivalent hardened services remain reachable on the same flat
+  network
+topology:
+  router:
+    name: s28-router
+    vmid: 600
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s28-discovery-open
+    vmid: 601
+    ip: 192.168.100.11
+    role: provisioning_discovery
+    security_profile: vulnerable
+    simulator: provisioning_discovery
+  - name: s28-discovery-control
+    vmid: 602
+    ip: 192.168.100.12
+    role: provisioning_discovery
+    security_profile: hardened
+    simulator: provisioning_discovery
+  - name: s28-claim-open
+    vmid: 603
+    ip: 192.168.100.13
+    role: provisioning_claim
+    security_profile: vulnerable
+    simulator: provisioning_claim
+  - name: s28-claim-control
+    vmid: 604
+    ip: 192.168.100.14
+    role: provisioning_claim
+    security_profile: hardened
+    simulator: provisioning_claim
+  - name: s28-telemetry-open
+    vmid: 605
+    ip: 192.168.100.15
+    role: provisioning_telemetry
+    security_profile: vulnerable
+    simulator: provisioning_telemetry
+  - name: s28-telemetry-control
+    vmid: 606
+    ip: 192.168.100.16
+    role: provisioning_telemetry
+    security_profile: hardened
+    simulator: provisioning_telemetry
+  - name: s28-maintenance-open
+    vmid: 607
+    ip: 192.168.100.17
+    role: provisioning_maintenance
+    security_profile: vulnerable
+    simulator: provisioning_maintenance
+  - name: s28-maintenance-control
+    vmid: 608
+    ip: 192.168.100.18
+    role: provisioning_maintenance
+    security_profile: hardened
+    simulator: provisioning_maintenance
+vulnerabilities:
+- id: F21-DISCOVERY-CODE@s28-discovery-open
+  device: s28-discovery-open
+  ip: 192.168.100.11
+  role: provisioning_discovery
+  security_profile: vulnerable
+  template_key: F21-DISCOVERY-CODE
+  title: Discovery response discloses a reusable registration code
+  severity: medium
+  category: info_disclosure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - info_disclosure
+  services:
+  - provisioning-discovery
+  ports:
+  - 56831
+  protocols:
+  - udp
+  exploit_eligible: false
+  owasp_iot: I2 - Insecure Network Services
+  description: An unauthenticated UDP probe returns the fixed registration fixture
+    used by the next step.
+  indicators:
+  - UDP PROBE response contains REGISTRATION_CODE=reg-28-static
+  verification: send PROBE to 192.168.100.11:56831/udp
+  confidence_required: high
+- id: F21-CLAIM-REPLAY@s28-claim-open
+  device: s28-claim-open
+  ip: 192.168.100.13
+  role: provisioning_claim
+  security_profile: vulnerable
+  template_key: F21-CLAIM-REPLAY
+  title: Provisioning API accepts registration-code replay
+  severity: high
+  category: auth_bypass
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 1
+  accepted_types:
+  - broken_access_control
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /claim
+  exploit_eligible: true
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: Replaying the disclosed registration code repeatedly yields the same
+    service token.
+  indicators:
+  - Two POST /claim requests return service-token-28
+  verification: replay reg-28-static twice against http://192.168.100.13:8080/claim
+  confidence_required: high
+- id: F21-TELEMETRY-KEY@s28-telemetry-open
+  device: s28-telemetry-open
+  ip: 192.168.100.15
+  role: provisioning_telemetry
+  security_profile: vulnerable
+  template_key: F21-TELEMETRY-KEY
+  title: Telemetry snapshot embeds a maintenance key
+  severity: high
+  category: data_exposure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 2
+  accepted_types:
+  - data_exposure
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /snapshot
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The service token authorizes a snapshot containing the fixed maintenance
+    key.
+  indicators:
+  - Bearer service-token-28 reveals maint-28-legacy
+  verification: GET http://192.168.100.15:8080/snapshot with the fixture bearer token
+  confidence_required: high
+- id: F21-MAINTENANCE-BYPASS@s28-maintenance-open
+  device: s28-maintenance-open
+  ip: 192.168.100.17
+  role: provisioning_maintenance
+  security_profile: vulnerable
+  template_key: F21-MAINTENANCE-BYPASS
+  title: Maintenance API accepts an unapproved state transition
+  severity: critical
+  category: broken_access_control
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 3
+  accepted_types:
+  - broken_access_control
+  - privilege_escalation
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /maintenance
+  exploit_eligible: true
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: The chained token and key enable maintenance even when approval is
+    explicitly false.
+  indicators:
+  - POST /maintenance returns MAINTENANCE_ENABLED with approval false
+  verification: submit the bounded token, key and approval=false fixture to http://192.168.100.17:8080/maintenance
+  confidence_required: high
+attack_paths:
+- id: AP28-PROVISIONING
+  name: Discovery disclosure to unauthorized maintenance
+  vulnerabilities_used:
+  - F21-DISCOVERY-CODE@s28-discovery-open
+  - F21-CLAIM-REPLAY@s28-claim-open
+  - F21-TELEMETRY-KEY@s28-telemetry-open
+  - F21-MAINTENANCE-BYPASS@s28-maintenance-open
+  length: 4
+  impact: critical
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 12
+  total_controls: 4
+bonus_types: []
+controls:
+- id: C21-DISCOVERY-AUTH@s28-discovery-control
+  device: s28-discovery-control
+  ip: 192.168.100.12
+  role: provisioning_discovery
+  security_profile: hardened
+  template_key: C21-DISCOVERY-AUTH
+  assertion: registration_code_not_disclosed
+  forbidden_types:
+  - info_disclosure
+  description: The comparator answers AUTH_REQUIRED without a registration code.
+  verification: PROBE to 192.168.100.12:56831/udp contains no REGISTRATION_CODE
+- id: C21-CLAIM-SINGLE-USE@s28-claim-control
+  device: s28-claim-control
+  ip: 192.168.100.14
+  role: provisioning_claim
+  security_profile: hardened
+  template_key: C21-CLAIM-SINGLE-USE
+  assertion: registration_code_single_use
+  forbidden_types:
+  - broken_access_control
+  description: The first bounded claim succeeds and its replay is rejected.
+  verification: the second POST /claim to http://192.168.100.14:8080 returns 409
+- id: C21-TELEMETRY-NO-KEY@s28-telemetry-control
+  device: s28-telemetry-control
+  ip: 192.168.100.16
+  role: provisioning_telemetry
+  security_profile: hardened
+  template_key: C21-TELEMETRY-NO-KEY
+  assertion: telemetry_contains_no_maintenance_secret
+  forbidden_types:
+  - data_exposure
+  description: The authorized snapshot contains operational values but no maintenance
+    key.
+  verification: GET http://192.168.100.16:8080/snapshot omits maintenance_key
+- id: C21-MAINTENANCE-APPROVAL@s28-maintenance-control
+  device: s28-maintenance-control
+  ip: 192.168.100.18
+  role: provisioning_maintenance
+  security_profile: hardened
+  template_key: C21-MAINTENANCE-APPROVAL
+  assertion: maintenance_requires_approval
+  forbidden_types:
+  - broken_access_control
+  - privilege_escalation
+  description: The comparator refuses approval=false without changing state.
+  verification: POST the unapproved fixture to http://192.168.100.18:8080/maintenance
+    returns 403

@@ -33,7 +33,7 @@ def _valid_contract_dict() -> dict:
         "session_id": "12345678-1234-5678-9234-567812345678",
         "scenario_id": "24",
         "split": "eval-sealed",
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "scope": {
             "ingress_cidrs": ["10.77.20.0/24"],
             "entrypoints": ["gateway.eval.internal:443"],
@@ -208,7 +208,7 @@ def test_submission_and_evaluation_contracts_reject_extra_detail():
         "session_id": contract.session_id,
         "scenario_id": "24",
         "run_id": "run-1",
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "artifact_schema_version": "1",
         "artifacts": [{"path": "run_meta.json", "sha256": "a" * 64, "size_bytes": 2}],
         "ground_truth": "oracle",
@@ -220,7 +220,7 @@ def test_submission_and_evaluation_contracts_reject_extra_detail():
         "schema_version": "1",
         "submission_id": "87654321-4321-6789-9234-567812345678",
         "scenario_id": "24",
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.5, "true_positives": 12},
@@ -235,7 +235,7 @@ def test_evaluation_summary_uses_normalized_ratios_and_nonnegative_usd():
         "schema_version": "1",
         "submission_id": "87654321-4321-6789-9234-567812345678",
         "scenario_id": "24",
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.875, "f1": 0.8, "cost_usd": 1.25},
@@ -258,7 +258,7 @@ def test_official_sealed_result_is_bound_to_a_suite_not_one_submission():
     summary = {
         "schema_version": "1",
         "suite_id": "12345678-1234-5678-9234-567812345678",
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.75, "f1": 0.7, "cost_usd": 8.0},
@@ -279,7 +279,7 @@ def test_complete_suite_signature_payload_is_verified_by_client():
     unsigned = {
         "schema_version": "1",
         "suite_id": suite_id,
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {
@@ -333,7 +333,7 @@ def test_complete_suite_without_trusted_key_fails_closed():
     payload = {
         "schema_version": "1",
         "suite_id": suite_id,
-        "benchmark_version": "3.1.0",
+        "benchmark_version": "3.2.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.75},

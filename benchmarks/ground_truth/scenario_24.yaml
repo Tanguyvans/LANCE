@@ -1,0 +1,182 @@
+scenario_id: '24'
+scenario_name: Dual-Zone Operations Chain
+difficulty: expert
+description: Dual-Zone Operations Chain — A two-pivot route reaches an isolated archive;
+  a parallel hardened route provides reachable negative controls
+topology:
+  router:
+    name: s24-router
+    vmid: 510
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s24-entry
+    vmid: 511
+    ip: 192.168.100.11
+    role: heldout_entry
+    security_profile: vulnerable
+  - name: s24-relay
+    vmid: 512
+    ip: 192.168.130.12
+    role: heldout_relay_l1
+    security_profile: vulnerable
+    vlan_id: 130
+  - name: s24-operations-archive
+    vmid: 513
+    ip: 192.168.131.13
+    role: heldout_asset_l2
+    security_profile: vulnerable
+    vlan_id: 131
+    simulator: segmented_asset
+  - name: s24-entry-control
+    vmid: 514
+    ip: 192.168.100.14
+    role: heldout_entry
+    security_profile: hardened
+  - name: s24-archive-control
+    vmid: 515
+    ip: 192.168.132.15
+    role: heldout_asset_l1
+    security_profile: hardened
+    vlan_id: 132
+    simulator: segmented_asset
+vulnerabilities:
+- id: F20-PIVOT-ENTRY@s24-entry
+  device: s24-entry
+  ip: 192.168.100.11
+  role: heldout_entry
+  security_profile: vulnerable
+  template_key: F20-PIVOT-ENTRY
+  title: Internet-facing jump host accepts benchmark default credentials
+  severity: high
+  category: default_credentials
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - weak_authentication
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The reachable jump host accepts the scenario-specific public fixture
+    credential and exposes the next segment address.
+  indicators:
+  - SSH password login succeeds
+  - /etc/iot/next-hop.conf identifies an isolated subnet
+  verification: authenticate to 192.168.100.11:22 with the documented S24-S27 fixture
+    account
+  confidence_required: high
+- id: F20-PIVOT-RELAY-L1@s24-relay
+  device: s24-relay
+  ip: 192.168.130.12
+  role: heldout_relay_l1
+  security_profile: vulnerable
+  template_key: F20-PIVOT-RELAY-L1
+  title: First isolated relay reuses the pivot credential
+  severity: high
+  category: default_credentials
+  hop_depth: 1
+  network_pivot_depth: 1
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - credential_reuse
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The relay is unreachable from the initial scope and accepts the same
+    bounded fixture credential after one enforced pivot.
+  indicators:
+  - Direct TCP reachability is absent
+  - SSH login succeeds from the preceding pivot
+  verification: pivot through the entry host and authenticate to 192.168.130.12:22
+  confidence_required: high
+- id: F20-ASSET-L2@s24-operations-archive
+  device: s24-operations-archive
+  ip: 192.168.131.13
+  role: heldout_asset_l2
+  security_profile: vulnerable
+  template_key: F20-ASSET-L2
+  title: Deeply isolated asset exports operational data without authentication
+  severity: critical
+  category: data_exposure
+  hop_depth: 2
+  network_pivot_depth: 2
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  - no_authentication
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /export
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The asset is reachable only after two enforced network pivots and exposes
+    a deterministic marker.
+  indicators:
+  - GET /export returns SEGMENTED-ASSET after two pivots
+  verification: retrieve http://192.168.131.13:8080/export through two pivots
+  confidence_required: high
+attack_paths:
+- id: AP24-OPERATIONS-CHAIN
+  name: Entry host to isolated operations archive
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s24-entry
+  - F20-PIVOT-RELAY-L1@s24-relay
+  - F20-ASSET-L2@s24-operations-archive
+  length: 3
+  impact: critical
+scoring:
+  total_vulnerabilities: 3
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 10
+  total_controls: 2
+bonus_types: []
+controls:
+- id: C20-PIVOT-PASSWORD-OFF@s24-entry-control
+  device: s24-entry-control
+  ip: 192.168.100.14
+  role: heldout_entry
+  security_profile: hardened
+  template_key: C20-PIVOT-PASSWORD-OFF
+  assertion: pivot_password_authentication_disabled
+  forbidden_types:
+  - default_credentials
+  - weak_authentication
+  description: The comparator remains reachable but offers public-key authentication
+    only.
+  verification: SSH authentication methods on 192.168.100.14:22 omit password
+- id: C20-ASSET-L1-AUTH@s24-archive-control
+  device: s24-archive-control
+  ip: 192.168.132.15
+  role: heldout_asset_l1
+  security_profile: hardened
+  template_key: C20-ASSET-L1-AUTH
+  assertion: isolated_export_requires_authentication
+  forbidden_types:
+  - data_exposure
+  - no_authentication
+  description: The reachable comparator returns an authentication challenge for the
+    export route.
+  verification: GET http://192.168.132.15:8080/export returns 401

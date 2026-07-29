@@ -15,8 +15,10 @@ acceptés ; il ne contient aucune logique d’orchestration ou d’évaluation.
 6. Le convertisseur route les corrections validées vers le dataset SFT de
    l’expert et de la phase concernés.
 
-Les runs `eval-sealed` sont refusés à partir du split, de l’identifiant de
-scénario et du catalogue de confiance. Les runs custom sont exclus par défaut.
+Les runs `test-public` (S20–S29) et `eval-sealed` sont refusés à partir du split,
+de l’identifiant de scénario et du catalogue de confiance. Les runs custom sont
+exclus par défaut. Cette barrière empêche qu’un résultat de test held-out soit
+réinjecté accidentellement dans le harness.
 
 ## Commandes
 

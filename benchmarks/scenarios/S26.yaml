@@ -1,0 +1,24 @@
+schema_version: 2
+scenario_id: '26'
+name: Asymmetric Pivot Paths
+difficulty: expert
+posture: mixed
+topology: heldout_asymmetric_paths
+packs: [f20_heldout_network_paths]
+attack_paths:
+- id: AP26-SHORT
+  name: One-pivot path to edge snapshot
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s26-edge-entry
+  - F20-ASSET-L1@s26-edge-snapshot
+  length: 2
+  impact: high
+- id: AP26-DEEP
+  name: Two-pivot path to control snapshot
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s26-control-entry
+  - F20-PIVOT-RELAY-L1@s26-control-relay
+  - F20-ASSET-L2@s26-control-snapshot
+  length: 3
+  impact: critical
+bonus_types: []

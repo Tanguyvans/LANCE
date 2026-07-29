@@ -1,0 +1,23 @@
+schema_version: 2
+scenario_id: '25'
+name: Segmented Fan-Out
+difficulty: expert
+posture: mixed
+topology: heldout_segmented_fanout
+packs: [f20_heldout_network_paths]
+attack_paths:
+- id: AP25-TELEMETRY
+  name: Gateway pivot to telemetry archive
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s25-gateway
+  - F20-ASSET-L1@s25-telemetry-archive
+  length: 2
+  impact: high
+- id: AP25-MAINTENANCE
+  name: Gateway pivot to maintenance archive
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s25-gateway
+  - F20-ASSET-L1@s25-maintenance-archive
+  length: 2
+  impact: critical
+bonus_types: []

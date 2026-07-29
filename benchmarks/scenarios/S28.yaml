@@ -1,0 +1,18 @@
+schema_version: 2
+scenario_id: '28'
+name: Provisioning Dependency Chain
+difficulty: expert
+posture: mixed
+topology: heldout_provisioning_chain
+packs: [f21_provisioning_chain]
+attack_paths:
+- id: AP28-PROVISIONING
+  name: Discovery disclosure to unauthorized maintenance
+  vulnerabilities_used:
+  - F21-DISCOVERY-CODE@s28-discovery-open
+  - F21-CLAIM-REPLAY@s28-claim-open
+  - F21-TELEMETRY-KEY@s28-telemetry-open
+  - F21-MAINTENANCE-BYPASS@s28-maintenance-open
+  length: 4
+  impact: critical
+bonus_types: []

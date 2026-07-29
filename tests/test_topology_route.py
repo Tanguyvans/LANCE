@@ -28,11 +28,16 @@ def test_public_hardened_variants_load_topology(selector, prefix, expected_nodes
     )
 
 
-def test_sealed_topology_remains_forbidden():
-    with pytest.raises(HTTPException) as exc:
-        _load_scenario("24")
+def test_new_public_heldout_topology_is_visible():
+    topology = _load_scenario("24")
 
-    assert exc.value.status_code == 403
+    node_ids = {node["id"] for node in topology["nodes"]}
+    assert "s24-entry" in node_ids
+    assert "s24-operations-archive" in node_ids
+    assert all(
+        edge["source"] in node_ids and edge["target"] in node_ids
+        for edge in topology["edges"]
+    )
 
 
 def test_unknown_topology_returns_not_found():

@@ -5,7 +5,7 @@ import re
 from itertools import combinations
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Any
 
 import pytest
 import yaml
@@ -21,30 +21,8 @@ EVAL_PROFILES = BENCHMARKS / "eval_profiles"
 GROUP_VARS = BENCHMARKS / "ansible" / "group_vars" / "all" / "main.yml"
 GROUP_VARS_V2 = BENCHMARKS / "ansible" / "group_vars" / "all" / "scenarios_v2.yml"
 
-PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 24))
-SEALED_IDS = tuple(str(scenario_id) for scenario_id in range(24, 30))
+PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 30))
 HARDENED_PROFILES = {"hardened", "near_miss"}
-PROFILE_FIELDS = {
-    "schema_version",
-    "scenario_id",
-    "split",
-    "controller_required",
-    "blind_required",
-    "score_visibility",
-}
-FORBIDDEN_SEALED_FIELDS = {
-    "topology",
-    "packs",
-    "ground_truth",
-    "vulnerabilities",
-    "controls",
-    "attack_paths",
-    "seed",
-    "roles",
-    "services",
-    "verification",
-    "credentials",
-}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -84,20 +62,6 @@ COMPOSE_GT = _load_compose_gt()
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-
-
-def _scenario_selectors(value: Any) -> Iterator[str]:
-    """Yield scenario IDs explicitly selected anywhere in a pack."""
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if key == "scenarios":
-                selected = child if isinstance(child, list) else [child]
-                yield from (str(item) for item in selected)
-            else:
-                yield from _scenario_selectors(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from _scenario_selectors(child)
 
 
 def test_every_public_scenario_references_existing_topology_and_packs():
@@ -189,6 +153,27 @@ def test_true_multihop_scenario_exposes_enforced_network_depth():
         int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]
     ) == 2
     assert gt["attack_paths"]
+
+
+@pytest.mark.parametrize("scenario_id", ("24", "25", "26", "27"))
+def test_new_public_heldout_network_scenarios_require_real_pivots(scenario_id: str):
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+
+    assert max(int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]) >= 1
+    assert gt["attack_paths"]
+
+
+def test_three_pivot_cascade_reaches_network_depth_three():
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / "S27.yaml")
+
+    assert max(int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]) == 3
+
+
+def test_s28_is_dependency_depth_not_network_depth():
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / "S28.yaml")
+
+    assert max(int(item["dependency_depth"]) for item in gt["vulnerabilities"]) == 3
+    assert {int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]} == {0}
 
 
 def test_independent_ot_protocol_checks_are_not_reported_as_a_chain():
@@ -296,6 +281,15 @@ def test_topology_matches_ansible_inventory_service_for_service(scenario_id: str
         assert topology_service["security_profile"] == ansible_service["security_profile"]
         assert topology_service.get("simulator") == ansible_service.get("simulator")
         assert topology_service["vmid_offset"] == ansible_service["vmid_offset"]
+        for network_key in (
+            "vlan_id",
+            "no_gateway",
+            "bootstrap_ip",
+            "secondary_ip",
+            "secondary_vlan_id",
+            "pivot_next_ip",
+        ):
+            assert topology_service.get(network_key) == ansible_service.get(network_key)
         assert topology["base_vmid"] + topology_service["vmid_offset"] == (
             ansible_base + ansible_service["vmid_offset"]
         )
@@ -322,39 +316,14 @@ def test_ansible_vmid_ranges_do_not_overlap():
         )
 
 
-def test_sealed_scenarios_publish_only_policy_metadata():
-    profile_files = sorted(path.name for path in EVAL_PROFILES.glob("*.yaml"))
-    assert profile_files == [f"S{scenario_id}.yaml" for scenario_id in SEALED_IDS]
-
-    for scenario_id in SEALED_IDS:
-        assert not (SCENARIOS / f"S{scenario_id}.yaml").exists()
-        assert not (GROUND_TRUTH / f"scenario_{scenario_id}.yaml").exists()
-        for directory in (TOPOLOGIES, PACKS):
-            assert not any(
-                re.search(rf"(?:^|[_-])s(?:cenario[_-]?)?{scenario_id}(?:[_-]|$)", path.stem, re.I)
-                for path in directory.glob("*.yaml")
-            )
-
-        profile = _load_yaml(EVAL_PROFILES / f"S{scenario_id}.yaml")
-        assert set(profile) == PROFILE_FIELDS
-        assert profile["scenario_id"] == scenario_id
-        assert profile["split"] == "eval-sealed"
-        assert profile["controller_required"] is True
-        assert profile["blind_required"] is True
-        assert profile["score_visibility"] == "aggregate"
-        assert FORBIDDEN_SEALED_FIELDS.isdisjoint(profile)
-
-    # Public packs may describe reusable attack families, but must not bind any
-    # concrete definition to a sealed scenario ID.
-    selected_by_public_packs = {
-        selected
-        for pack_path in PACKS.glob("*.yaml")
-        for selected in _scenario_selectors(_load_yaml(pack_path))
-    }
-    assert selected_by_public_packs.isdisjoint(SEALED_IDS)
+def test_current_release_has_no_sealed_profile_placeholders():
+    assert list(EVAL_PROFILES.glob("*.yaml")) == []
+    for scenario_id in range(24, 30):
+        assert (SCENARIOS / f"S{scenario_id}.yaml").is_file()
+        assert (GROUND_TRUTH / f"scenario_{scenario_id}.yaml").is_file()
 
 
-def test_catalog_has_exact_canonical_splits_and_only_profile_links_for_sealed_ids():
+def test_catalog_has_exact_canonical_public_splits():
     catalog = _load_yaml(BENCHMARKS / "catalog.yaml")
     scenarios = catalog["scenarios"]
 
@@ -363,15 +332,36 @@ def test_catalog_has_exact_canonical_splits_and_only_profile_links_for_sealed_id
         str(i) for i in range(1, 20)
     ]
     assert [entry["id"] for entry in scenarios if entry["split"] == "test-public"] == [
-        str(i) for i in range(20, 24)
+        str(i) for i in range(20, 30)
     ]
-    assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == [
-        str(i) for i in range(24, 30)
-    ]
+    assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == []
 
-    for entry in scenarios[:23]:
+    for entry in scenarios:
         assert set(entry) == {"id", "label", "split"}
-    for entry in scenarios[23:]:
-        assert set(entry) == {"id", "label", "split", "profile"}
-        assert entry["profile"] == f"eval_profiles/S{entry['id']}.yaml"
-        assert FORBIDDEN_SEALED_FIELDS.isdisjoint(entry)
+
+
+def test_paper_campaign_uses_the_complete_frozen_public_test_split():
+    campaign = _load_yaml(BENCHMARKS / "campaigns" / "paper_v3_4.yaml")
+    confirmatory = campaign["confirmatory"]
+    informed = campaign["public_held_out_informed_diagnostic"]
+
+    assert campaign["benchmark_version"] == "3.2.0"
+    assert confirmatory["split"] == "test-public"
+    assert confirmatory["scenarios"] == [str(i) for i in range(20, 30)]
+    assert confirmatory["systems"] == ["lance", "cai", "vulnbot"]
+    assert confirmatory["mode"] == "blind"
+    assert confirmatory["planned_runs"] == 10 * 3 * 3
+    assert confirmatory["freeze_before_first_run"] is True
+    assert confirmatory["tuning_from_results_forbidden"] is True
+
+    assert informed["scenarios"] == confirmatory["scenarios"]
+    assert informed["mode"] == "informed"
+    assert informed["run_after_blind_confirmatory"] is True
+    assert informed["planned_runs"] == 10 * 3
+
+    published = (
+        confirmatory["planned_runs"]
+        + campaign["development_diagnostics"]["planned_runs"]
+        + informed["planned_runs"]
+    )
+    assert campaign["planned_published_runs"] == published == 156

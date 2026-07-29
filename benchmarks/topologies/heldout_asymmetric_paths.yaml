@@ -1,0 +1,17 @@
+id: heldout_asymmetric_paths
+name: Asymmetric Pivot Paths
+description: Parallel attack paths require different numbers of enforced network transitions and are accompanied by direct hardened comparators
+base_vmid: 550
+router: {name_template: 's{sid}-router', type: openwrt, ip: 192.168.100.1, security_profile: hardened}
+services:
+- {name_template: 's{sid}-edge-entry', vmid_offset: 1, ip: 192.168.100.11, role: heldout_entry, security_profile: vulnerable, secondary_ip: 192.168.135.11, secondary_vlan_id: 135, pivot_next_ip: 192.168.135.12}
+- {name_template: 's{sid}-edge-snapshot', vmid_offset: 2, ip: 192.168.135.12, role: heldout_asset_l1, security_profile: vulnerable, vlan_id: 135, no_gateway: true, bootstrap_ip: 192.168.100.12, simulator: segmented_asset}
+- {name_template: 's{sid}-control-entry', vmid_offset: 3, ip: 192.168.100.13, role: heldout_entry, security_profile: vulnerable, secondary_ip: 192.168.136.13, secondary_vlan_id: 136, pivot_next_ip: 192.168.136.14}
+- {name_template: 's{sid}-control-relay', vmid_offset: 4, ip: 192.168.136.14, role: heldout_relay_l1, security_profile: vulnerable, vlan_id: 136, no_gateway: true, bootstrap_ip: 192.168.100.14, secondary_ip: 192.168.137.14, secondary_vlan_id: 137, pivot_next_ip: 192.168.137.15}
+- {name_template: 's{sid}-control-snapshot', vmid_offset: 5, ip: 192.168.137.15, role: heldout_asset_l2, security_profile: vulnerable, vlan_id: 137, no_gateway: true, bootstrap_ip: 192.168.100.15, simulator: segmented_asset}
+- {name_template: 's{sid}-entry-control', vmid_offset: 6, ip: 192.168.100.16, role: heldout_entry, security_profile: hardened}
+- {name_template: 's{sid}-snapshot-control', vmid_offset: 7, ip: 192.168.100.17, role: heldout_asset_l1, security_profile: hardened, simulator: segmented_asset}
+links:
+- {source: 's{sid}-edge-entry', target: 's{sid}-edge-snapshot', protocol: http, enforcement: vlan-135}
+- {source: 's{sid}-control-entry', target: 's{sid}-control-relay', protocol: ssh, enforcement: vlan-136}
+- {source: 's{sid}-control-relay', target: 's{sid}-control-snapshot', protocol: http, enforcement: vlan-137}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic, standard-library-only services for benchmark S15-S23.
+"""Deterministic, standard-library-only services for benchmark S15-S28.
 
 These are explicit simulators, not vendor implementations. HTTP scenarios model
 authorization and state transitions. The OT modes expose a minimal protocol
@@ -28,7 +28,12 @@ MODE = CONFIG["mode"]
 PROFILE = CONFIG.get("profile", "vulnerable")
 NAME = CONFIG.get("name", MODE)
 ALLOWED_FETCH_HOSTS = frozenset(str(host) for host in CONFIG.get("allowed_fetch_hosts", []))
-STATE: dict[str, object] = {"benchpoint": 21.5, "enrollments": 0, "join_used": False}
+STATE: dict[str, object] = {
+    "benchpoint": 21.5,
+    "enrollments": 0,
+    "join_used": False,
+    "claim_used": False,
+}
 OTA_KEY = b"nato-ota-shared-verification-key-v1"
 OTA_FIXTURES = {
     "1": "firmware-v1-obsolete",
@@ -152,6 +157,57 @@ class Handler(BaseHTTPRequestHandler):
 
         if MODE == "pivot_vault" and path == "/export":
             self._send(200, {"marker": "CITY-VAULT-S20", "scope": "operational-export"})
+            return
+
+        if MODE == "segmented_asset" and path == "/export":
+            if PROFILE == "hardened":
+                self._send(401, {"error": "authentication_required"})
+            else:
+                self._send(200, {
+                    "marker": f"SEGMENTED-ASSET:{NAME}",
+                    "scope": "bounded-operational-export",
+                })
+            return
+
+        if MODE == "provisioning_telemetry" and path == "/snapshot":
+            if bearer(self) != "service-token-28":
+                self._send(401, {"error": "service_token_required"})
+            else:
+                payload = {"device": "fixture-28", "temperature": 21.5}
+                if PROFILE == "vulnerable":
+                    payload["maintenance_key"] = "maint-28-legacy"
+                self._send(200, payload)
+            return
+
+        if MODE in {
+            "provisioning_discovery",
+            "provisioning_claim",
+            "provisioning_telemetry",
+            "provisioning_maintenance",
+        } and path == "/docs":
+            docs = {
+                "provisioning_discovery": {
+                    "transport": "udp",
+                    "port": 56831,
+                    "request": "PROBE",
+                },
+                "provisioning_claim": {
+                    "method": "POST",
+                    "endpoint": "/claim",
+                    "field": "registration_code",
+                },
+                "provisioning_telemetry": {
+                    "method": "GET",
+                    "endpoint": "/snapshot",
+                    "authorization": "Bearer token returned by claim",
+                },
+                "provisioning_maintenance": {
+                    "method": "POST",
+                    "endpoint": "/maintenance",
+                    "fields": ["service_token", "maintenance_key", "approval"],
+                },
+            }
+            self._send(200, {"fixture": docs[MODE], "simulated": True})
             return
 
         if MODE == "exploit_files" and path == "/files":
@@ -409,6 +465,36 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(200, {"state": "NORMAL", "signed": True})
             return
+        if MODE == "provisioning_claim" and path == "/claim":
+            if data.get("registration_code") != "reg-28-static":
+                self._send(401, {"error": "invalid_registration_code"})
+            elif PROFILE == "hardened" and STATE["claim_used"]:
+                self._send(409, {"error": "registration_code_already_used"})
+            else:
+                STATE["claim_used"] = True
+                self._send(200, {
+                    "service_token": "service-token-28",
+                    "replayed": PROFILE == "vulnerable",
+                })
+            return
+        if MODE == "provisioning_maintenance" and path == "/maintenance":
+            valid_fixture = (
+                data.get("service_token") == "service-token-28"
+                and data.get("maintenance_key") == "maint-28-legacy"
+            )
+            if not valid_fixture:
+                self._send(403, {"error": "bounded_maintenance_credentials_required"})
+            elif data.get("approval") is False and PROFILE == "hardened":
+                self._send(403, {"error": "approval_required", "state_changed": False})
+            elif data.get("approval") is False:
+                self._send(200, {
+                    "state": "MAINTENANCE_ENABLED",
+                    "approval": False,
+                    "simulated": True,
+                })
+            else:
+                self._send(200, {"state": "NORMAL", "approval": True})
+            return
         if MODE == "api_identity" and path == "/auth/login":
             valid = {
                 ("tenant-a", "TenantA-2026!"): "tenant-a-read",
@@ -552,6 +638,20 @@ class WirelessDiscoveryHandler(socketserver.BaseRequestHandler):
         sock.sendto(response, self.client_address)
 
 
+class ProvisioningDiscoveryHandler(socketserver.BaseRequestHandler):
+    """Bounded UDP provisioning discovery used only by S28."""
+
+    def handle(self) -> None:
+        data, sock = self.request
+        if data.strip().upper() != b"PROBE":
+            response = b"ERROR expected PROBE"
+        elif PROFILE == "vulnerable":
+            response = b"DEVICE_ID=s28-fixture;REGISTRATION_CODE=reg-28-static"
+        else:
+            response = b"AUTH_REQUIRED;DEVICE_ID=s28-fixture"
+        sock.sendto(response, self.client_address)
+
+
 def http_server(port: int = 8080) -> ThreadingHTTPServer:
     return ThreadingHTTPServer(("0.0.0.0", port), Handler)
 
@@ -569,6 +669,9 @@ def main() -> None:
         threading.Thread(target=server.serve_forever, daemon=True).start()
     elif MODE == "wireless_bridge":
         server = ReusableUDPServer(("0.0.0.0", 56830), WirelessDiscoveryHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    elif MODE == "provisioning_discovery":
+        server = ReusableUDPServer(("0.0.0.0", 56831), ProvisioningDiscoveryHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
 
     if MODE == "pki_mtls":

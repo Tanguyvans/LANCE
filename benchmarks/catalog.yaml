@@ -1,8 +1,8 @@
 schema_version: "1"
-benchmark_version: "3.1.0"
+benchmark_version: "3.2.0"
 
-# This catalogue is intentionally metadata-only. Detailed topology, packs,
-# ground truth, seeds and deployment data never belong here.
+# The catalogue stays metadata-only. Public technical definitions live in the
+# scenario, topology, pack and ground-truth directories.
 scenarios:
   - {id: "1", label: "Réseau plat", split: dev-public}
   - {id: "2", label: "Gateway exposée", split: dev-public}
@@ -27,9 +27,9 @@ scenarios:
   - {id: "21", label: "Sparse Low-Prevalence Network", split: test-public}
   - {id: "22", label: "Exploit Primitive Diversity", split: test-public}
   - {id: "23", label: "Wireless-to-Firmware Chain", split: test-public}
-  - {id: "24", label: "Évaluation scellée S24", split: eval-sealed, profile: "eval_profiles/S24.yaml"}
-  - {id: "25", label: "Évaluation scellée S25", split: eval-sealed, profile: "eval_profiles/S25.yaml"}
-  - {id: "26", label: "Évaluation scellée S26", split: eval-sealed, profile: "eval_profiles/S26.yaml"}
-  - {id: "27", label: "Évaluation scellée S27", split: eval-sealed, profile: "eval_profiles/S27.yaml"}
-  - {id: "28", label: "Évaluation scellée S28", split: eval-sealed, profile: "eval_profiles/S28.yaml"}
-  - {id: "29", label: "Évaluation scellée S29", split: eval-sealed, profile: "eval_profiles/S29.yaml"}
+  - {id: "24", label: "Dual-Zone Operations Chain", split: test-public}
+  - {id: "25", label: "Segmented Fan-Out", split: test-public}
+  - {id: "26", label: "Asymmetric Pivot Paths", split: test-public}
+  - {id: "27", label: "Three-Pivot Cascade", split: test-public}
+  - {id: "28", label: "Provisioning Dependency Chain", split: test-public}
+  - {id: "29", label: "Large Sparse Control Network", split: test-public}

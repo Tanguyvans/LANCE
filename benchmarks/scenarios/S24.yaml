@@ -1,0 +1,17 @@
+schema_version: 2
+scenario_id: '24'
+name: Dual-Zone Operations Chain
+difficulty: expert
+posture: mixed
+topology: heldout_dual_zone_chain
+packs: [f20_heldout_network_paths]
+attack_paths:
+- id: AP24-OPERATIONS-CHAIN
+  name: Entry host to isolated operations archive
+  vulnerabilities_used:
+  - F20-PIVOT-ENTRY@s24-entry
+  - F20-PIVOT-RELAY-L1@s24-relay
+  - F20-ASSET-L2@s24-operations-archive
+  length: 3
+  impact: critical
+bonus_types: []

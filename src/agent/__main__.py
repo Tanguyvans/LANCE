@@ -50,7 +50,7 @@ def main():
         default=None,
         help=(
             "Benchmark scenario ID. S1-S19 are public development scenarios, "
-            "S20-S23 are public held-out tests, and S24-S29 require the sealed controller."
+            "and S20-S29 are public held-out tests."
         ),
     )
     parser.add_argument(
@@ -60,7 +60,7 @@ def main():
         help=(
             "Run multiple scenarios sequentially and aggregate metrics. "
             "Accepts comma-separated IDs, 'dev', 'test', 'public', or 'all'; "
-            "eval requires the sealed controller."
+            "the current 'eval' selector is empty."
         ),
     )
     parser.add_argument(
@@ -78,7 +78,7 @@ def main():
         "--split",
         choices=["auto", "dev-public", "test-public", "eval-sealed"],
         default="auto",
-        help="Benchmark split policy. Sealed runs must be launched by the controller worker.",
+        help="Benchmark split policy. No current 3.2 scenario uses eval-sealed.",
     )
     args = parser.parse_args()
 

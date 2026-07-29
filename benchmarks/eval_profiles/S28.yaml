@@ -1,6 +1,0 @@
-schema_version: "1"
-scenario_id: "28"
-split: eval-sealed
-controller_required: true
-blind_required: true
-score_visibility: aggregate

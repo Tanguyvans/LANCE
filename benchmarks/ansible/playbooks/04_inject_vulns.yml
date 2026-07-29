@@ -21,7 +21,7 @@
     scenario_id: "1"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     proxmox_tmp_ip: "192.168.100.254"   # IP temp sur vmbr1 pour joindre OpenWrt
-    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S23)
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
 
   tasks:
 
@@ -1533,7 +1533,7 @@
         src: "{{ playbook_dir }}/../files/configure_s14_control.sh"
         dest: /tmp/configure_s14_control.sh
         mode: "0755"
-      when: scenario_id in ['14', '21']
+      when: scenario_id in ['14', '21', '29']
 
     - name: "[S14] Configurer les services hardened et near-miss"
       ansible.builtin.shell: |
@@ -1544,7 +1544,7 @@
       loop_control:
         label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
-        - scenario_id in ['14', '21']
+        - scenario_id in ['14', '21', '29']
         - (item.security_profile | default('vulnerable')) != 'vulnerable'
       changed_when: true
 
@@ -1569,6 +1569,34 @@
       when:
         - scenario_id == '20'
         - item.role in ['pivot_entry', 'pivot_relay', 'pivot_decoy']
+      changed_when: true
+
+    # ════════════════════════════════════════════════════
+    # S24-S27 — pivots publics held-out paramétrés
+    # ════════════════════════════════════════════════════
+
+    - name: "[S24-S27] Copier le configurateur des pivots publics"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/configure_heldout_pivot.sh"
+        dest: /tmp/configure_heldout_pivot.sh
+        mode: "0755"
+      when: scenario_id in ['24', '25', '26', '27']
+
+    - name: "[S24-S27] Configurer les pivots vulnérables et hardened"
+      ansible.builtin.shell: |
+        pct push {{ base_vmid | int + item.vmid_offset }} /tmp/configure_heldout_pivot.sh /tmp/configure_heldout_pivot.sh
+        pct exec {{ base_vmid | int + item.vmid_offset }} -- \
+          bash /tmp/configure_heldout_pivot.sh \
+          '{{ item.role }}' \
+          '{{ item.security_profile }}' \
+          '{{ scenario_id }}' \
+          '{{ item.pivot_next_ip | default("") }}'
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      loop_control:
+        label: "{{ item.name }} ({{ item.security_profile }})"
+      when:
+        - scenario_id in ['24', '25', '26', '27']
+        - item.role in ['heldout_entry', 'heldout_relay_l1', 'heldout_relay_l2']
       changed_when: true
 
     # ════════════════════════════════════════════════════
@@ -1670,10 +1698,10 @@
 
 
     # ════════════════════════════════════════════════════
-    # S15–S23 — services déterministes et sans dépendance cloud/vendor
+    # S15–S28 — services déterministes et sans dépendance cloud/vendor
     # ════════════════════════════════════════════════════
 
-    - name: "[S15-S23] Copier le runtime des simulateurs sur Proxmox"
+    - name: "[S15-S28] Copier le runtime des simulateurs sur Proxmox"
       ansible.builtin.copy:
         src: "{{ playbook_dir }}/../files/{{ item.src }}"
         dest: "/tmp/{{ item.dest }}"
@@ -1681,9 +1709,9 @@
       loop:
         - {src: benchmark_simulator.py, dest: benchmark_simulator.py}
         - {src: install_benchmark_simulator.sh, dest: install_benchmark_simulator.sh}
-      when: scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23']
+      when: scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
 
-    - name: "[S15-S23] Installer et démarrer chaque simulateur"
+    - name: "[S15-S28] Installer et démarrer chaque simulateur"
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/benchmark_simulator.py /tmp/benchmark_simulator.py
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/install_benchmark_simulator.sh /tmp/install_benchmark_simulator.sh
@@ -1697,12 +1725,12 @@
       loop_control:
         label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
       when:
-        - scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23']
+        - scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
         - item.simulator is defined
       register: simulator_installation
       changed_when: true
 
-    - name: "[S20] Retirer les interfaces de bootstrap qui contourneraient les pivots"
+    - name: "[multi-hop] Retirer les interfaces de bootstrap qui contourneraient les pivots"
       ansible.builtin.shell: |
         pct set {{ base_vmid | int + item.vmid_offset }} --delete net0
         pct restart {{ base_vmid | int + item.vmid_offset }}
@@ -1710,7 +1738,7 @@
       loop_control:
         label: "{{ item.name }}"
       when:
-        - scenario_id == '20'
+        - scenario_id in ['20', '24', '25', '26', '27']
         - item.bootstrap_ip is defined
       changed_when: true
 

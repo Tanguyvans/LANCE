@@ -17,6 +17,12 @@ source_hashes:
   '21': 3e4154cc7e263b73ed4a609b575f48ad9b40f6521bbe4a1864a8210f281dbad9
   '22': 503178f6bfdf4d25e86e4f5311104fd91cffbad87ecc4d1b482d3e3e2a497a99
   '23': 93c768af07e007aab70af944a33da49b888218a5bbe5a03e31b6ae1c936fe2a6
+  '24': a2a84a38cf9ef75a5dd5cf451e2ed47c5e0069c58e565fafbcbb5a2307be01ba
+  '25': dcbedb823d7417b0bcbd08e75cc5c88bf11b48467de5d8a998901c0d65946afe
+  '26': ebf4598db2309ff403791ae132557c403e58226c518b297ca6234163e1f6fee9
+  '27': 772ff103a0768fff477ec43452e381b7a370a1dab0000edd1ad24345e68a2b09
+  '28': c38e8a30468ae2530f5effbf722c03d5ec888bd55091df88a290655cef3e25e7
+  '29': 371571ffe6e1f10896094ffac40096cc282065e57041d4ad9354579aed6e1e82
   '3': 196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e
   '4': 6132f184038cccefbce650db166a8cd0df26207d65198000b3168eb486400838
   4h: e366eafd81470c905103c24dd7615b3a3aca1708f3615eaf769b92353382f262
@@ -2340,6 +2346,346 @@ scenarios:
       versions: []
       required_dimensions:
       - endpoint
+  '24':
+    F20-PIVOT-ENTRY@s24-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-PIVOT-RELAY-L1@s24-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-ASSET-L2@s24-operations-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+  '25':
+    F20-PIVOT-ENTRY@s25-gateway:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-ASSET-L1@s25-telemetry-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+    F20-ASSET-L1@s25-maintenance-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+  '26':
+    F20-PIVOT-ENTRY@s26-edge-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-ASSET-L1@s26-edge-snapshot:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+    F20-PIVOT-ENTRY@s26-control-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-PIVOT-RELAY-L1@s26-control-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-ASSET-L2@s26-control-snapshot:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+  '27':
+    F20-PIVOT-ENTRY@s27-field-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-PIVOT-RELAY-L1@s27-zone-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-PIVOT-RELAY-L2@s27-cell-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F20-ASSET-L3@s27-safety-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+  '28':
+    F21-DISCOVERY-CODE@s28-discovery-open:
+      accepted_types:
+      - info_disclosure
+      services:
+      - provisioning-discovery
+      ports:
+      - 56831
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F21-CLAIM-REPLAY@s28-claim-open:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /claim
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+    F21-TELEMETRY-KEY@s28-telemetry-open:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /snapshot
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+    F21-MAINTENANCE-BYPASS@s28-maintenance-open:
+      accepted_types:
+      - broken_access_control
+      - privilege_escalation
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /maintenance
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+  '29':
+    F10-MQTT-ANON@s29-mqtt-open:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
+    F10-WEB-BACKUP@s29-web-backup:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/db_backup_2024-01-15.sql
+      products: []
+      versions: []
+      required_dimensions:
+      - endpoint
+    F10-REDIS-NOAUTH@s29-redis-open:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+      required_dimensions:
+      - port
   '3':
     V1:
       accepted_types:

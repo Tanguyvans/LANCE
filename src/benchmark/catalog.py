@@ -1,9 +1,8 @@
-"""Strict catalogue for development, public-test, and sealed scenarios.
+"""Strict catalogue for development, public-test, and future sealed scenarios.
 
-The catalogue is deliberately metadata-only.  Detailed definitions for sealed
-scenarios live behind the evaluation controller and must never be added to the
-public repository.  Parsing is fail-closed: unknown keys, missing scenarios, an
-incorrect split, or a malformed sealed profile make the whole catalogue invalid.
+The current benchmark release is fully public: S1-S19 are development scenarios
+and S20-S29 are held out from tuning.  The sealed-profile types remain available
+for a later release, but no scenario in the current catalogue uses them.
 """
 
 from __future__ import annotations
@@ -36,9 +35,9 @@ _PROFILE_KEYS = frozenset(
     }
 )
 DEV_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(1, 20))
-TEST_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(20, 24))
+TEST_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(20, 30))
 PUBLIC_SCENARIO_IDS = DEV_PUBLIC_SCENARIO_IDS + TEST_PUBLIC_SCENARIO_IDS
-SEALED_SCENARIO_IDS = tuple(str(i) for i in range(24, 30))
+SEALED_SCENARIO_IDS: tuple[str, ...] = ()
 _EXPECTED_IDS = PUBLIC_SCENARIO_IDS + SEALED_SCENARIO_IDS
 
 

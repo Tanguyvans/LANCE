@@ -18,7 +18,7 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
-    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S23)
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
 
   tasks:
 
@@ -116,7 +116,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: item.role == 'mqtt_broker'
+      when:
+        - item.role == 'mqtt_broker'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -262,7 +264,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_web.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: item.role == 'web_server'
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 
@@ -361,7 +365,9 @@
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_ssh.sh /tmp/populate.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate.sh
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: item.role == 'ssh_server'
+      when:
+        - item.role == 'ssh_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
 

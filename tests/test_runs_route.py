@@ -48,7 +48,7 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
-def _sealed_summary(scenario_id="24", benchmark_version="3.1.0"):
+def _sealed_summary(scenario_id="24", benchmark_version="3.2.0"):
     return {
         "schema_version": "1",
         "submission_id": str(uuid4()),
