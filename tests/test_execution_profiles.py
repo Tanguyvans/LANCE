@@ -124,7 +124,8 @@ def test_compact_generic_phases_keep_required_tools_and_remove_noise():
     }
     assert {"sqlmap", "nuclei_scan", "searchsploit"}.isdisjoint(compact_recon)
     assert compact_intrusion == {
-        "read_deliverable", "save_deliverable", "ssh_exec", "try_credential",
+        "http_get", "mqtt_listen", "read_deliverable", "save_deliverable",
+        "ssh_exec", "try_credential",
     }
     assert compact_report == {
         "read_deliverable", "save_deliverable",
