@@ -2103,6 +2103,26 @@ class TestPhase5Context:
         ) == model_output
         assert results["intrusion"] == "completed"
 
+    @pytest.mark.parametrize(
+        ("profile", "expected_strict"),
+        [("compact", True), ("full", False)],
+    )
+    def test_local_moe_recon_requires_successful_save_only_for_compact(
+        self, mock_provider, output_dir, profile, expected_strict
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+
+        status = pipeline._run_agent(AGENTS["recon"])
+
+        kwargs = mock_provider.chat_with_tools.call_args.kwargs
+        assert status.startswith("failed:")
+        assert kwargs["required_tool"] == "save_deliverable"
+        assert kwargs["terminate_after_tool"] == "save_deliverable"
+        assert kwargs["strict_required_tool"] is expected_strict
+
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
     @patch("src.agent.pipeline.load_prompt")

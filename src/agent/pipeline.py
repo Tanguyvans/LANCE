@@ -2267,6 +2267,9 @@ class Pipeline:
         local_intrusion_memo = (
             config.name == "intrusion" and self._uses_compact_local_moe()
         )
+        compact_local_recon = (
+            config.name == "recon" and self._uses_compact_local_moe()
+        )
         if local_intrusion_memo:
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
@@ -2415,7 +2418,7 @@ class Pipeline:
             required_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
             terminate_after_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
             terminate_on_unavailable_tools=None,
-            strict_required_tool=local_intrusion_memo,
+            strict_required_tool=local_intrusion_memo or compact_local_recon,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
