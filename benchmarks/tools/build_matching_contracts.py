@@ -20,6 +20,7 @@ GT_DIR = ROOT / "ground_truth"
 DEFAULT_OUTPUT = GT_DIR / "matching_contracts.yaml"
 PUBLIC_FIELDS = (
     "accepted_types", "services", "ports", "protocols", "endpoints", "products", "versions",
+    "required_dimensions",
 )
 
 
@@ -42,7 +43,7 @@ def build() -> dict:
                 field: contract[field] for field in PUBLIC_FIELDS
             }
         scenarios[scenario_id] = entries
-    return {"schema_version": "strict-v3.3", "source_hashes": source_hashes, "scenarios": scenarios}
+    return {"schema_version": "strict-v3.4", "source_hashes": source_hashes, "scenarios": scenarios}
 
 
 def main() -> None:

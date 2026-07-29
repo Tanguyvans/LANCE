@@ -9,6 +9,8 @@ vulnerabilities:
     severity: critical
     category: data_exposure
     hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I7 - Insecure Data Transfer and Storage
     description: The simulated CA status endpoint serves a PEM private key without authentication.
     indicators:
@@ -23,6 +25,8 @@ vulnerabilities:
     severity: high
     category: misconfiguration
     hop_depth: 1
+    network_pivot_depth: 0
+    dependency_depth: 1
     owasp_iot: I8 - Lack of Device Management
     description: The same bootstrap token issues a bundle more than once.
     indicators:
@@ -37,6 +41,8 @@ vulnerabilities:
     severity: high
     category: weak_crypto
     hop_depth: 3
+    network_pivot_depth: 0
+    dependency_depth: 3
     owasp_iot: I8 - Lack of Device Management
     description: TLS validates the lab CA but the service does not load or check the generated revocation list.
     indicators:
@@ -51,6 +57,8 @@ vulnerabilities:
     severity: critical
     category: weak_crypto
     hop_depth: 2
+    network_pivot_depth: 0
+    dependency_depth: 2
     owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
     description: The device-b fixture reuses device-a key material, allowing identity impersonation.
     indicators:

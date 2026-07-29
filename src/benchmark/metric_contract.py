@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 
-METRIC_CONTRACT_VERSION = "strict-v3.3"
+METRIC_CONTRACT_VERSION = "strict-v3.4"
 EVIDENCE_CONTRACT_VERSION = "evidence-v2"
 
 
@@ -35,4 +35,3 @@ def metric_contract_metadata(root: Path | None = None) -> dict[str, str]:
             repository_root, "src/agent/tools/definitions/*.yaml"
         ),
     }
-

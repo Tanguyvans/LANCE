@@ -167,15 +167,36 @@ def test_public_v2_finding_and_control_ids_are_stable_unique_and_resolvable():
             assert set(attack_path["vulnerabilities_used"]) <= vulnerability_ids
 
 
-@pytest.mark.parametrize("scenario_id", tuple(str(i) for i in range(15, 21)))
-def test_chain_scenarios_expose_measurable_multihop_depths(scenario_id: str):
-    """The public chain scenarios must exercise MHR, not only document a path."""
+@pytest.mark.parametrize("scenario_id", ("15", "16", "17", "18"))
+def test_flat_chains_expose_dependency_not_network_depth(scenario_id: str):
     gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
-    depths = {int(item.get("hop_depth", 0)) for item in gt["vulnerabilities"]}
+    dependency_depths = {
+        int(item.get("dependency_depth", 0)) for item in gt["vulnerabilities"]
+    }
+    network_depths = {
+        int(item.get("network_pivot_depth", 0)) for item in gt["vulnerabilities"]
+    }
 
-    assert any(depth >= 1 for depth in depths)
-    assert max(depths) >= 2
+    assert max(dependency_depths) >= 2
+    assert network_depths == {0}
     assert gt["attack_paths"]
+
+
+def test_true_multihop_scenario_exposes_enforced_network_depth():
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / "S20.yaml")
+
+    assert max(
+        int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]
+    ) == 2
+    assert gt["attack_paths"]
+
+
+def test_independent_ot_protocol_checks_are_not_reported_as_a_chain():
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / "S19.yaml")
+
+    assert gt["attack_paths"] == []
+    assert {int(item["dependency_depth"]) for item in gt["vulnerabilities"]} == {0}
+    assert {int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]} == {0}
 
 
 def test_flat_dependency_chain_is_not_counted_as_network_pivots():

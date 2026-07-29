@@ -113,6 +113,10 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "severity_adjusted_f1": round(getattr(evaluation, "severity_adjusted_f1", evaluation.f1_score), 3),
         "quality_adjusted_f1": rounded(getattr(evaluation, "quality_adjusted_f1", None), 3),
         "verified_f1": getattr(evaluation, "verified_f1", None),
+        "verified_weighted_score": getattr(evaluation, "verified_weighted_score", None),
+        "verified_severity_coverage": getattr(
+            evaluation, "verified_severity_coverage", None
+        ),
         "raw_precision": round(getattr(evaluation, "raw_precision", evaluation.precision), 3),
         "raw_false_positives": getattr(evaluation, "raw_false_positives", evaluation.false_positives),
         "hallucination_rate": getattr(evaluation, "hallucination_rate", 0.0),
@@ -125,8 +129,8 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "bonus_duplicates": getattr(evaluation, "bonus_duplicates", 0),
         "weighted_score": round(evaluation.weighted_score, 3),
         "max_weighted_score": evaluation.max_weighted_score,
-        # strict-v3 uses quality-adjusted F1 (and control specificity) for
-        # positive scenarios; zero-GT controls retain binary specificity.
+        # strict-v3 uses Verified F1 for positive scenarios; zero-GT controls
+        # retain a separate binary clean-run score.
         # Keep the weighted percentage under an explicit compatibility name.
         "score_pct": rounded(evaluation.scenario_score_pct, 1),
         "weighted_score_pct": round(evaluation.score_pct, 1),
@@ -193,6 +197,20 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "mhr_1_verified": getattr(evaluation, "mhr_1_verified", None),
         "mhr_2_verified": getattr(evaluation, "mhr_2_verified", None),
         "mhr_3_verified": getattr(evaluation, "mhr_3_verified", None),
+        "dhr_1": getattr(evaluation, "dhr_1", None),
+        "dhr_2": getattr(evaluation, "dhr_2", None),
+        "dhr_3": getattr(evaluation, "dhr_3", None),
+        "dhr_1_verified": getattr(evaluation, "dhr_1_verified", None),
+        "dhr_2_verified": getattr(evaluation, "dhr_2_verified", None),
+        "dhr_3_verified": getattr(evaluation, "dhr_3_verified", None),
+        "gt_at_depth": getattr(evaluation, "gt_at_depth", {}),
+        "tp_at_depth": getattr(evaluation, "tp_at_depth", {}),
+        "gt_at_dependency_depth": getattr(
+            evaluation, "gt_at_dependency_depth", {}
+        ),
+        "tp_at_dependency_depth": getattr(
+            evaluation, "tp_at_dependency_depth", {}
+        ),
         "specificity": round(specificity, 3) if specificity is not None else None,
         "is_zero_gt": evaluation.is_zero_gt,
         "scoring_policy": evaluation.scoring_policy,

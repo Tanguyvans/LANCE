@@ -49,10 +49,16 @@ def test_normalize_port(value, expected):
 
 
 def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguration",
-        cve=None, device="s1-mqtt", hop_depth=0):
-    return {"id": id, "ip": ip, "severity": severity, "category": category,
-            "cve": cve, "device": device, "title": f"Vuln {id}",
-            "hop_depth": hop_depth}
+        cve=None, device="s1-mqtt", hop_depth=0,
+        network_pivot_depth=None, dependency_depth=None):
+    value = {"id": id, "ip": ip, "severity": severity, "category": category,
+             "cve": cve, "device": device, "title": f"Vuln {id}",
+             "hop_depth": hop_depth}
+    if network_pivot_depth is not None:
+        value["network_pivot_depth"] = network_pivot_depth
+    if dependency_depth is not None:
+        value["dependency_depth"] = dependency_depth
+    return value
 
 
 def _finding(id="F1", ip="192.168.100.11", type="no_auth", severity="high",
@@ -785,9 +791,9 @@ class TestEvaluateMhrContinued:
     def test_multi_hop_mhr_partial(self, tmp_path):
         """3 vulns at depths 0/1/2, only depth-0 and depth-1 found."""
         vulns = [
-            _gt(id="V1", ip="192.168.100.1",  hop_depth=0),
-            _gt(id="V2", ip="192.168.100.11", hop_depth=1),
-            _gt(id="V3", ip="192.168.100.50", hop_depth=2),
+            _gt(id="V1", ip="192.168.100.1", network_pivot_depth=0),
+            _gt(id="V2", ip="192.168.100.11", network_pivot_depth=1),
+            _gt(id="V3", ip="192.168.100.50", network_pivot_depth=2),
         ]
         findings = [
             _finding(id="F1", ip="192.168.100.1"),
@@ -810,7 +816,7 @@ class TestEvaluateMhrContinued:
     def test_mhr_in_serialized_result(self, tmp_path):
         """MHR fields survive asdict() round-trip — required for evaluator_score.json."""
         from dataclasses import asdict
-        vulns = [_gt(id="V1", hop_depth=2)]
+        vulns = [_gt(id="V1", network_pivot_depth=2)]
         findings = [_finding(id="F1")]
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns)
@@ -823,15 +829,26 @@ class TestEvaluateMhrContinued:
         assert "gt_at_depth" in d
         assert "tp_at_depth" in d
 
-    def test_gt_hop_depth_propagated_to_match(self, tmp_path):
-        """MatchResult.gt_hop_depth carries the depth from GT YAML."""
-        vulns = [_gt(id="V1", hop_depth=2)]
+    def test_explicit_network_depth_propagated_to_compatibility_alias(self, tmp_path):
+        """The serialized hop alias carries reviewed network depth only."""
+        vulns = [_gt(id="V1", network_pivot_depth=2)]
         findings = [_finding(id="F1")]
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns)
         result = evaluate(run_dir, gt_file)
 
         assert result.matches[0]["gt_hop_depth"] == 2
+
+    def test_legacy_hop_depth_does_not_manufacture_mhr(self, tmp_path):
+        vulns = [_gt(id="V1", hop_depth=3)]
+        findings = [_finding(id="F1")]
+        run_dir = _write_run(tmp_path, findings)
+        gt_file = _write_gt(tmp_path, vulns)
+
+        result = evaluate(run_dir, gt_file)
+
+        assert result.matches[0]["gt_hop_depth"] == 0
+        assert result.mhr_1 is None
 
     def test_missing_hop_depth_defaults_to_zero(self, tmp_path):
         """GT entries without hop_depth field default to 0 (backward compat)."""

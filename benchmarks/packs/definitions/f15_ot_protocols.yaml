@@ -9,6 +9,8 @@ vulnerabilities:
     severity: high
     category: weak_crypto
     hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I2 - Insecure Network Services
     description: The deterministic OPC UA simulator accepts a no-signing, no-encryption session.
     indicators:
@@ -22,6 +24,8 @@ vulnerabilities:
     severity: critical
     category: no_authentication
     hop_depth: 1
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I2 - Insecure Network Services
     description: The anonymous write operation changes only the simulator BenchPoint value.
     indicators:
@@ -36,6 +40,8 @@ vulnerabilities:
     severity: medium
     category: info_disclosure
     hop_depth: 1
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I2 - Insecure Network Services
     description: The BACnet/IP simulator answers unauthenticated discovery with its device and point inventory.
     indicators:
@@ -49,6 +55,8 @@ vulnerabilities:
     severity: high
     category: no_authentication
     hop_depth: 2
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I2 - Insecure Network Services
     description: The simulator accepts an unauthenticated write to the BenchPoint analog value.
     indicators:
@@ -63,6 +71,8 @@ vulnerabilities:
     severity: high
     category: no_authentication
     hop_depth: 3
+    network_pivot_depth: 0
+    dependency_depth: 0
     owasp_iot: I2 - Insecure Network Services
     description: Function code 6 changes the simulator-only holding register without authentication.
     indicators:

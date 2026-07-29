@@ -21,13 +21,6 @@ vulnerabilities:
     protocols: [tcp]
     verification: subscribe without credentials to {ip}:1883
     confidence_required: high
-    network_pivot_depth: 0
-    dependency_depth: 0
-    accepted_types: [data_exposure]
-    services: [http]
-    ports: [80]
-    protocols: [tcp]
-    endpoints: [/backup/db_backup_2024-01-15.sql]
   web_server:
   - key: F17-WEB-BACKUP
     applies_to: {profiles: [vulnerable]}
@@ -39,6 +32,13 @@ vulnerabilities:
     owasp_iot: I7 - Insecure Data Transfer and Storage
     description: The backup directory and bounded SQL fixture are accessible without authentication.
     indicators: [GET /backup/ returns an index, SQL fixture contains benchmark credentials]
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [data_exposure]
+    services: [http]
+    ports: [80]
+    protocols: [tcp]
+    endpoints: [/backup/db_backup_2024-01-15.sql]
     verification: retrieve http://{ip}/backup/db_backup_2024-01-15.sql
     confidence_required: high
 controls:

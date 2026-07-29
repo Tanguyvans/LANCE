@@ -62,6 +62,8 @@ vulnerabilities:
   severity: high
   category: weak_crypto
   hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: The deterministic OPC UA simulator accepts a no-signing, no-encryption
     session.
@@ -81,6 +83,8 @@ vulnerabilities:
   severity: critical
   category: no_authentication
   hop_depth: 1
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: The anonymous write operation changes only the simulator BenchPoint
     value.
@@ -99,6 +103,8 @@ vulnerabilities:
   severity: medium
   category: info_disclosure
   hop_depth: 1
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: The BACnet/IP simulator answers unauthenticated discovery with its
     device and point inventory.
@@ -117,6 +123,8 @@ vulnerabilities:
   severity: high
   category: no_authentication
   hop_depth: 2
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: The simulator accepts an unauthenticated write to the BenchPoint analog
     value.
@@ -135,6 +143,8 @@ vulnerabilities:
   severity: high
   category: no_authentication
   hop_depth: 3
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I2 - Insecure Network Services
   description: Function code 6 changes the simulator-only holding register without
     authentication.
@@ -143,32 +153,10 @@ vulnerabilities:
   - Holding register 100 can be modified and restored
   verification: perform a safe write/read/restore cycle against 192.168.100.16:502
   confidence_required: high
-attack_paths:
-- id: P19-1
-  title: Anonymous multi-protocol process manipulation
-  difficulty: expert
-  chain:
-  - hop: 1
-    device: s19-opcua-open
-    action: Negotiate the simulated OPC UA endpoint without message security
-  - hop: 2
-    device: s19-opcua-open
-    action: Modify the disposable BenchPoint anonymously
-  - hop: 3
-    device: s19-bacnet-open
-    action: Discover the HVAC object and modify its disposable value
-  - hop: 4
-    device: s19-modbus
-    action: Modify and restore the Modbus test register
-  vulnerabilities_used:
-  - F15-OPCUA-NONE@s19-opcua-open
-  - F15-OPCUA-WRITE@s19-opcua-open
-  - F15-BACNET-WRITE@s19-bacnet-open
-  - F15-MODBUS-WRITE@s19-modbus
-  impact: Demonstrated unauthenticated writes across three safe OT protocol simulators
+attack_paths: []
 scoring:
   total_vulnerabilities: 5
-  total_attack_paths: 1
+  total_attack_paths: 0
   weights:
     critical: 4
     high: 3

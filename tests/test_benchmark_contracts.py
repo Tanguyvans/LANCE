@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 import json
 import zipfile
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from src.benchmark.artifacts import (
     ArtifactError,
@@ -270,6 +272,94 @@ def test_official_sealed_result_is_bound_to_a_suite_not_one_submission():
     leaked = {**summary, "scenario_id": "24"}
     with pytest.raises(ContractError, match="forbidden/unknown"):
         SuiteEvaluationSummary.from_dict(leaked)
+
+
+def test_complete_suite_signature_payload_is_verified_by_client():
+    suite_id = "12345678-1234-5678-9234-567812345678"
+    unsigned = {
+        "schema_version": "1",
+        "suite_id": suite_id,
+        "benchmark_version": "3.0.0",
+        "status": "complete",
+        "score_visibility": "aggregate",
+        "metrics": {
+            "overall_score": 0.75,
+            "verified_f1": 0.75,
+            "planned_runs": 18,
+            "completed_runs": 18,
+        },
+        "signature": "placeholder",
+    }
+    parsed = SuiteEvaluationSummary.from_dict(unsigned)
+    private_key = Ed25519PrivateKey.generate()
+    signature = private_key.sign(parsed.signature_payload())
+    payload = {
+        **unsigned,
+        "signature": "ed25519:" + base64.urlsafe_b64encode(signature).rstrip(b"=").decode(),
+    }
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        @staticmethod
+        def json():
+            return payload
+
+    class Session:
+        trust_env = True
+
+        def request(self, *_args, **_kwargs):
+            return Response()
+
+        def close(self):
+            return None
+
+    client = SealedControllerClient(
+        "https://controller.internal",
+        "top-secret",
+        session=Session(),
+        signature_public_key=private_key.public_key(),
+    )
+
+    result = client.get_suite_evaluation(suite_id)
+
+    assert result.metrics["verified_f1"] == 0.75
+    assert client._session.trust_env is False
+
+
+def test_complete_suite_without_trusted_key_fails_closed():
+    suite_id = "12345678-1234-5678-9234-567812345678"
+    payload = {
+        "schema_version": "1",
+        "suite_id": suite_id,
+        "benchmark_version": "3.0.0",
+        "status": "complete",
+        "score_visibility": "aggregate",
+        "metrics": {"overall_score": 0.75},
+        "signature": "ed25519:" + "A" * 86,
+    }
+
+    class Response:
+        status_code = 200
+        headers = {}
+
+        @staticmethod
+        def json():
+            return payload
+
+    class Session:
+        def request(self, *_args, **_kwargs):
+            return Response()
+
+        def close(self):
+            return None
+
+    client = SealedControllerClient(
+        "https://controller.internal", "top-secret", session=Session()
+    )
+    with pytest.raises(ControllerError, match="trusted Ed25519 public key"):
+        client.get_suite_evaluation(suite_id)
 
 
 def test_controller_client_requires_tls_and_redacts_its_token():

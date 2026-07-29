@@ -116,7 +116,7 @@ class TestScenarioMacroAggregation:
         assert aggregate["per_scenario"]["2"]["scenario_score_pct"] is None
         assert aggregate["macro_scenario_score_pct"] is None
 
-    def test_zero_gt_specificity_contributes_as_scenario_score(self):
+    def test_zero_gt_specificity_is_separate_from_positive_score(self):
         results = [
             _evaluation("1", score=80.0, f1=0.8),
             _evaluation("1h", score=100.0, zero_gt=True, specificity=1.0),
@@ -124,9 +124,10 @@ class TestScenarioMacroAggregation:
 
         aggregate = aggregate_evaluations(results)
 
-        assert aggregate["macro_scenario_score_pct"] == 90.0
+        assert aggregate["macro_scenario_score_pct"] == 80.0
         assert aggregate["macro_positive_f1"] == 0.8
         assert aggregate["macro_zero_gt_specificity"] == 1.0
+        assert aggregate["macro_zero_gt_clean_run_rate"] == 1.0
 
     def test_control_runs_are_averaged_within_control_scenario(self):
         results = [
@@ -139,17 +140,52 @@ class TestScenarioMacroAggregation:
         assert aggregate["scenario_count"] == 1
         assert aggregate["per_scenario"]["1h"]["specificity"] == 0.5
         assert aggregate["macro_zero_gt_specificity"] == 0.5
-        assert aggregate["macro_scenario_score_pct"] == 50.0
+        assert aggregate["macro_scenario_score_pct"] is None
 
     def test_missing_expected_scenario_scores_zero(self):
         results = [_evaluation("1", score=100.0, f1=1.0)]
+        results[0].update({
+            "detection_f1": 1.0,
+            "verified_f1": 1.0,
+            "verified_severity_coverage": 1.0,
+            "quality_adjusted_f1": 1.0,
+            "phase4_completion_rate": 1.0,
+        })
 
         aggregate = aggregate_evaluations(results, expected_scenarios={"1", "2"})
 
         assert aggregate["macro_scenario_score_pct"] == 50.0
+        assert aggregate["macro_detection_f1"] == 0.5
+        assert aggregate["macro_verified_f1"] == 0.5
+        assert aggregate["macro_verified_severity_coverage"] == 0.5
         assert aggregate["missing_scenarios"] == ["2"]
         assert aggregate["per_scenario"]["2"]["run_count"] == 0
         assert aggregate["per_scenario"]["2"]["scenario_score_pct"] == 0.0
+
+    def test_missing_seed_repetitions_score_zero(self):
+        completed = _evaluation("20", score=100.0, f1=1.0)
+        completed.update({
+            "detection_f1": 1.0,
+            "quality_adjusted_f1": 1.0,
+            "verified_f1": 1.0,
+            "verified_severity_coverage": 1.0,
+            "phase4_completion_rate": 1.0,
+        })
+
+        aggregate = aggregate_evaluations(
+            [completed],
+            expected_scenarios={"20"},
+            expected_repetitions={"20": 3},
+        )
+
+        scenario = aggregate["per_scenario"]["20"]
+        assert scenario["scenario_score_pct"] == 33.333
+        assert scenario["verified_f1"] == 0.333
+        assert scenario["missing_run_count"] == 2
+        assert aggregate["planned_run_count"] == 3
+        assert aggregate["completed_run_count"] == 1
+        assert aggregate["completion_rate"] == 0.333
+        assert aggregate["missing_runs"] == {"20": 2}
 
 
 class TestSplitAggregation:
@@ -164,7 +200,7 @@ class TestSplitAggregation:
         aggregate = aggregate_evaluations(results, scenario_splits=splits)
 
         assert aggregate["per_split"]["train"]["macro_scenario_score_pct"] == 100.0
-        assert aggregate["per_split"]["test"]["macro_scenario_score_pct"] == 50.0
+        assert aggregate["per_split"]["test"]["macro_scenario_score_pct"] == 0.0
         assert aggregate["per_split"]["test"]["macro_positive_f1"] == 0.0
         assert aggregate["per_split"]["test"]["macro_zero_gt_specificity"] == 1.0
 

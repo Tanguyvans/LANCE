@@ -230,6 +230,43 @@ def derive_matching_contract(vulnerability: dict) -> dict:
     if not versions and products:
         versions = re.findall(r"\b\d{4}\.\d{1,3}\b", title)
 
+    dimension_values = {
+        "service": services,
+        "port": ports,
+        "protocol": protocols,
+        "endpoint": endpoints,
+        "product": products,
+    }
+    explicit_required = [
+        value.casefold() for value in _strings(vulnerability.get("required_dimensions"))
+    ]
+    allowed_dimensions = set(dimension_values)
+    unknown_dimensions = set(explicit_required) - allowed_dimensions
+    if unknown_dimensions:
+        raise ValueError(
+            f"unknown required matching dimensions: {sorted(unknown_dimensions)}"
+        )
+    if explicit_required:
+        missing_contract_values = [
+            name for name in explicit_required if not dimension_values[name]
+        ]
+        if missing_contract_values:
+            raise ValueError(
+                "required matching dimensions have no expected values: "
+                f"{sorted(missing_contract_values)}"
+            )
+        required_dimensions = list(dict.fromkeys(explicit_required))
+    else:
+        # Exact IP + semantic type remains mandatory. Require one reviewed
+        # structural discriminator, preferring the most vulnerability-specific
+        # value, while treating the other declared dimensions as contradiction
+        # checks rather than forcing the reporter to repeat every scanner field.
+        required_dimensions = next(
+            ([name] for name in ("endpoint", "product", "port", "service", "protocol")
+             if dimension_values[name]),
+            [],
+        )
+
     return {
         "accepted_types": accepted_types,
         "services": list(dict.fromkeys(services)),
@@ -238,6 +275,7 @@ def derive_matching_contract(vulnerability: dict) -> dict:
         "endpoints": list(dict.fromkeys(endpoints)),
         "products": list(dict.fromkeys(products)),
         "versions": list(dict.fromkeys(versions)),
+        "required_dimensions": required_dimensions,
         "contract_source": source,
     }
 

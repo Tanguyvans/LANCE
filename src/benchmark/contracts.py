@@ -7,8 +7,10 @@ truth or other oracle data into the agent worker.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
+import struct
 from dataclasses import dataclass
 from datetime import datetime
 from ipaddress import ip_network
@@ -376,15 +378,32 @@ class SubmissionReceipt:
 _AGGREGATE_METRICS = frozenset(
     {
         "overall_score",
+        "detection_f1",
+        "verified_f1",
+        "verified_severity_coverage",
         "precision",
         "recall",
         "f1",
+        "clean_run_rate",
         "exploitation_coverage",
         "path_coverage",
+        "verified_path_coverage",
+        "mhr_1_verified",
+        "mhr_2_verified",
+        "mhr_3_verified",
+        "dhr_1_verified",
+        "dhr_2_verified",
+        "dhr_3_verified",
+        "completion_rate",
+        "planned_runs",
+        "completed_runs",
         "cost_usd",
     }
 )
-_RATIO_AGGREGATE_METRICS = _AGGREGATE_METRICS - {"cost_usd"}
+_COUNT_AGGREGATE_METRICS = frozenset({"planned_runs", "completed_runs"})
+_RATIO_AGGREGATE_METRICS = (
+    _AGGREGATE_METRICS - {"cost_usd"} - _COUNT_AGGREGATE_METRICS
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,9 +462,21 @@ class EvaluationSummary:
                     raise ContractError(
                         f"evaluation metric {key} must be a normalized ratio in [0, 1]"
                     )
+                if key in _COUNT_AGGREGATE_METRICS and (
+                    numeric < 0.0 or not numeric.is_integer()
+                ):
+                    raise ContractError(
+                        f"evaluation metric {key} must be a non-negative integer"
+                    )
                 if key == "cost_usd" and numeric < 0.0:
                     raise ContractError("evaluation metric cost_usd must be non-negative USD")
                 metrics[key] = numeric
+            if (
+                "planned_runs" in metrics
+                and "completed_runs" in metrics
+                and metrics["completed_runs"] > metrics["planned_runs"]
+            ):
+                raise ContractError("completed_runs cannot exceed planned_runs")
             signature = _string(data["signature"], "evaluation signature", max_length=4096)
         elif data["metrics"] is not None or data["signature"] is not None:
             raise ContractError("pending/failed evaluations must not expose metrics or signatures")
@@ -514,9 +545,21 @@ class SuiteEvaluationSummary:
                     raise ContractError(
                         f"suite evaluation metric {key} must be a normalized ratio in [0, 1]"
                     )
+                if key in _COUNT_AGGREGATE_METRICS and (
+                    numeric < 0.0 or not numeric.is_integer()
+                ):
+                    raise ContractError(
+                        f"suite evaluation metric {key} must be a non-negative integer"
+                    )
                 if key == "cost_usd" and numeric < 0.0:
                     raise ContractError("suite evaluation metric cost_usd must be non-negative USD")
                 metrics[key] = numeric
+            if (
+                "planned_runs" in metrics
+                and "completed_runs" in metrics
+                and metrics["completed_runs"] > metrics["planned_runs"]
+            ):
+                raise ContractError("completed_runs cannot exceed planned_runs")
             signature = _string(data["signature"], "suite evaluation signature", max_length=4096)
         elif data["metrics"] is not None or data["signature"] is not None:
             raise ContractError(
@@ -530,3 +573,37 @@ class SuiteEvaluationSummary:
             metrics=metrics,
             signature=signature,
         )
+
+    def signature_payload(self) -> bytes:
+        """Return the canonical Ed25519 message for a complete suite result."""
+        if self.status != "complete" or self.metrics is None:
+            raise ContractError("only a complete suite result has a signature payload")
+
+        def binary64_hex(value: float) -> str:
+            numeric = float(value)
+            if numeric == 0.0:
+                numeric = 0.0
+            return struct.pack(">d", numeric).hex()
+
+        payload = [
+            "iotchainbench.sealed-suite.ed25519.v1",
+            self.schema_version,
+            self.suite_id,
+            self.benchmark_version,
+            self.status,
+            self.score_visibility,
+            [
+                [
+                    base64.urlsafe_b64encode(name.encode("utf-8"))
+                    .rstrip(b"=")
+                    .decode("ascii"),
+                    binary64_hex(value),
+                ]
+                for name, value in sorted(self.metrics.items())
+            ],
+        ]
+        return json.dumps(
+            payload,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("ascii")

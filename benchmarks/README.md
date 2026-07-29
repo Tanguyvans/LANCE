@@ -7,6 +7,8 @@ IoTChainBench évalue la capacité d’un agent LLM à découvrir, qualifier et 
 
 Cette séparation évite que le score final récompense principalement la mémorisation de scénarios connus. Le protocole normatif, la rotation des instances et les règles de publication sont détaillés dans [EVALUATION_PROTOCOL.md](docs/EVALUATION_PROTOCOL.md).
 
+La campagne prévue pour le papier est pré-enregistrée sous forme lisible par machine dans [`campaigns/paper_v3_4.yaml`](campaigns/paper_v3_4.yaml). Son statut reste `draft-not-authorized` tant que les gates d'infrastructure, d'adaptateurs baseline et de controller sealed ne sont pas toutes satisfaites.
+
 ## Vue d’ensemble
 
 ```mermaid

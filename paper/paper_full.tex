@@ -75,19 +75,20 @@ LLM penetration-testing agents are typically evaluated on isolated hosts, while
 IoT/OT compromises often depend on reachability across gateways, brokers, and
 segmented services. This leaves a methodological gap: single-host corpora do not
 measure pivots, protocol roles, or evidence depth. We present
-\systemname{}, a reproducible network-scale IoT benchmark with 12
-Proxmox/Ansible scenarios, 116 virtual devices, 209 injected vulnerabilities,
-and per-vulnerability ground truth across reachable and pivot-gated services.
+\systemname{}, a reproducible network-scale IoT benchmark with 23 public
+Proxmox/Ansible scenarios, 220 virtual-device instances, 266 injected
+vulnerabilities, 53 negative controls, and six additional sealed evaluation
+profiles.
 We also introduce \harnessname{} (LLM Agent for Network Compromise
 Evaluation), a six-phase network-native harness for topology analysis, active
 discovery, triage, verification, intrusion attempts, and report generation.
-Under the same model and evaluator, \harnessname{} reaches 0.935 F1 in informed
-mode (topology prior) and 0.887 F1 in blind mode (active discovery only),
-outperforming both adapted single-host baselines on all 12 scenarios. Across
-three additional LLM backends, \harnessname{} remains in a narrow 0.945--0.947
-mean-F1 band. On external single-host benchmarks used as transfer checks,
-\harnessname{} reaches 27.3\% end-to-end success on AutoPenBench and 30.2\%
-useful findings on a 328-case Vulhub snapshot.
+We introduce a fail-closed evaluation protocol that separates detection,
+verified exploitation, severity coverage, enforced network pivots, and logical
+dependencies. The confirmatory comparison uses blind execution on the six
+sealed profiles, three pre-committed repetitions per profile, equal scenario
+weighting, and zero credit for missing runs or unsupported claims. Public
+scenarios are reserved for development, ablation, and informed-versus-blind
+diagnostics.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -106,9 +107,9 @@ IoT/OT deployments are compromised through paths, not just devices. A camera, br
 \medskip\noindent\textbf{Contributions.}
 This paper makes three contributions.
 \begin{itemize}[leftmargin=*,nosep]
-  \item \textbf{\systemname{}:} a reproducible network-scale IoT benchmark with 12 Proxmox/Ansible scenarios, 116 virtual devices, 209 injected vulnerabilities, firewall-enforced reachability, and per-vulnerability ground truth.
+  \item \textbf{\systemname{}:} a reproducible network-scale IoT benchmark with 23 public scenarios (220 virtual-device instances, 266 vulnerabilities, and 53 controls) plus six sealed profiles, with per-vulnerability ground truth and infrastructure-verified reachability.
   \item \textbf{\harnessname{}:} a six-phase network-native LLM harness for discovery, triage, verification, intrusion, and reporting across multi-device IoT networks, with normalized finding schemas and evidence-level scoring.
-  \item \textbf{Evaluation:} a controlled comparison showing that \harnessname{} reaches 0.935 mean F1 in informed mode and 0.887 in blind mode, outperforms both adapted baselines on all 12 scenarios, and remains stable across three additional LLM backends.
+  \item \textbf{Evaluation:} a pre-committed, blind, sealed protocol with three scores---Detection F1, Verified F1, and Verified Severity Coverage---plus separate controls, verified path coverage, network-pivot reach (MHR), dependency-hop reach (DHR), cost, and completeness.
 \end{itemize}
 
 All artifacts are released at \texttt{ANONYMIZED\_URL}.
@@ -169,7 +170,7 @@ guide \harnessname{} Phase~4 and evaluator scoring.
 \textbf{Scope.}
 We evaluate IP/application-layer attacks on virtual IoT networks. Physical, side-channel, RF-layer, firmware-extraction, persistence, and insider attacks are out of scope.
 
-Figure~\ref{fig:attack-chain} illustrates a gateway-centric scenario where backend services are unreachable until the gateway is compromised.
+Figure~\ref{fig:attack-chain} illustrates the conceptual distinction between direct reachability and a pivot-gated service. The benchmark attributes positive MHR depth only when deployment-time reachability checks enforce that distinction.
 
 \begin{figure}[t]
 \centering
@@ -228,10 +229,10 @@ Figure~\ref{fig:attack-chain} illustrates a gateway-centric scenario where backe
   {backend unreachable without pivot};
 \end{tikzpicture}%
 }
-\caption{Gateway-centric attack chain (Scenario~S3). Backend services are
-unreachable from the Internet without first pivoting through the gateway.
-Single-host agents fail on this topology (F1\,=\,0 for both baselines)
-because they scan each target independently.}
+\caption{Conceptual pivot-gated attack surface. This diagram is not Scenario~S3,
+which is a flat network. The confirmatory public multi-hop fixture is S20, where
+two isolated VLANs require successive entry and relay pivots and direct-access
+controls are verified before each run.}
 \label{fig:attack-chain}
 \end{figure}
 
@@ -241,7 +242,7 @@ because they scan each target independently.}
 \section{\systemname: A Network-Scale Benchmark}
 \label{sec:iotbench}
 
-\systemname{} is designed to evaluate network-scale IoT/OT assessment rather than isolated-host exploitation. Scenarios are deployed reproducibly from Ansible playbooks on Proxmox, vulnerabilities are injected idempotently, and segmented cases use OpenWrt firewall rules to enforce which services are directly reachable and which require a pivot. The benchmark covers five reachability patterns: flat networks (P1), gateway-centric deployments (P2), segmented IT/OT zones (P3), hub-centric stars (P4), and edge-cloud pivots (P5). Scenarios mix IoT/OT protocols such as MQTT, Modbus, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, and Telnet, with per-vulnerability YAML ground truth recording device, IP, severity, category, indicators, and verification commands.
+\systemname{} is designed to evaluate network-scale IoT/OT assessment rather than isolated-host exploitation. Scenarios are deployed reproducibly from Ansible playbooks on Proxmox and vulnerabilities are injected idempotently. Flat application workflows, logical prerequisite chains, and enforced network pivots are represented separately. In particular, a scenario receives positive network-pivot depth only when routing or firewall checks demonstrate that the target is unreachable from the original evaluator vantage point. Scenarios mix IoT/OT protocols such as MQTT, Modbus, OPC~UA, BACnet, LoRaWAN, CoAP, SNMP, SSH, HTTP, FTP, and Telnet, with per-vulnerability YAML ground truth recording device, IP, severity, category, structural matching contract, indicators, and verification commands.
 
 \medskip\noindent\textbf{Design goals.}
 The benchmark is built around three requirements:
@@ -251,7 +252,7 @@ The benchmark is built around three requirements:
   \item \textbf{Scorable evidence:} the oracle records expected indicators and verification commands, allowing the evaluator to distinguish shallow detection from stronger exploit evidence.
 \end{itemize}
 
-The 12 scenarios (Table~\ref{tab:scenarios}) comprise 10 main scenarios covering 4--8 devices and two scalability stressors with 15 and 35 devices.
+The public development split contains 23 scenarios (Table~\ref{tab:scenarios}); six additional profiles are evaluated only by the sealed controller.
 
 \begin{table}[h!]
 \centering
@@ -259,29 +260,21 @@ The 12 scenarios (Table~\ref{tab:scenarios}) comprise 10 main scenarios covering
 \label{tab:scenarios}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}llcrl@{}}
+\begin{tabular}{@{}llrrr@{}}
 \toprule
-ID & Pattern / role & Dev & Vulns & Theme \\
+IDs & Role in protocol & Dev & Vulns & Controls \\
 \midrule
-\multicolumn{5}{@{}l}{\emph{Main scenarios (pattern coverage)}} \\
+\texttt{S1--S12} & Legacy public development and scale & 116 & 209 & 0 \\
+\texttt{S13} & VLAN segmentation development fixture & 17 & 20 & 0 \\
+\texttt{S14} & Sparse mixed-hardening controls & 11 & 4 & 8 \\
+\texttt{S15--S18} & Stateful logical dependency chains & 28 & 14 & 14 \\
+\texttt{S19} & Independent safe OT protocol checks & 8 & 5 & 2 \\
+\texttt{S20} & Two enforced network pivots & 5 & 4 & 3 \\
+\texttt{S21--S22} & Low prevalence and exploit diversity & 26 & 6 & 22 \\
+\texttt{S23} & Wireless-to-firmware logical chain & 9 & 4 & 4 \\
 \midrule
-\texttt{s\_1}  & P1 Flat              & 4  & 12 & Minimal IoT (MQTT/Web/SSH) \\
-\texttt{s\_2}  & P1 Flat              & 6  & 13 & Flat IoT + IT mix \\
-\texttt{s\_3}  & P2 Gateway-centric   & 8  & 18 & NATO lab replica \\
-\texttt{s\_4}  & P3 Segmented IT/OT   & 8  & 18 & Industrial (Modbus/HMI) \\
-\texttt{s\_5}  & P4 Hub-centric star  & 8  & 15 & Smart building (cameras/NVR) \\
-\texttt{s\_6}  & P4 Hub-centric star  & 6  & 16 & Home automation hub \\
-\texttt{s\_7}  & P5 Edge-cloud pivot  & 6  & 14 & Edge $\to$ cloud API \\
-\texttt{s\_8}  & P3 Segmented IT/OT   & 8  & 14 & IT/IoT/OT 3-zone industrial \\
-\texttt{s\_9}  & P1 Flat (mesh)       & 6  & 11 & Mesh IoT smart-city outdoor \\
-\texttt{s\_10} & P1 Flat (variants)   & 6  & 13 & Role-variant stress \\
-\midrule
-\multicolumn{5}{@{}l}{\emph{Scalability stressors}} \\
-\midrule
-\texttt{s\_11} & Smart City (flat)    & 15 & 23 & 3 zones same /24 (no isolation) \\
-\texttt{s\_12} & Smart City (large)   & 35 & 42 & Largest network (34 LXC services) \\
-\midrule
-\textbf{Total} &                      &\textbf{116} & \textbf{209} & \\
+\textbf{Public total} & & \textbf{220} & \textbf{266} & \textbf{53} \\
+\texttt{S24--S29} & Sealed confirmatory profiles & \multicolumn{3}{c}{private until retirement} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -291,23 +284,23 @@ ID & Pattern / role & Dev & Vulns & Theme \\
 
 Vulnerabilities are injected by a dedicated Ansible role parameterized by \texttt{scenario\_id}, making deployments reproducible and idempotent. Scenario YAML files declare router-level weaknesses (Telnet, WAN administration, FTP) and per-service roles that trigger targeted injections such as anonymous MQTT, weak SSH credentials, and passwordless database roots.
 
-Across the 12 scenarios, \systemname{} injects 209 vulnerabilities in 11 categories. The largest categories are misconfiguration (62), data exposure (36), missing authentication (34), and default credentials (26). Severity is intentionally skewed toward exploitable deployment weaknesses: 33 critical, 95 high, 60 medium, and 21 low.
+Across the public split, \systemname{} injects 266 vulnerabilities and evaluates 53 explicit negative controls. Public S1--S23 are never used for a confirmatory leaderboard: they support implementation, ablation, matching audits, and informed-versus-blind diagnostics. S24--S29 are absent from the worker image and are instantiated with controller-side seeds.
 
 \subsection{Ground-Truth Schema}
 \label{sec:iotbench:gt}
 
-Each scenario ships a YAML ground-truth file with one entry per injected vulnerability. Entries record the affected device, IP, role, severity, category, OWASP IoT Top~10 and MITRE ATT\&CK for ICS mappings, optional CVE, expected indicators, verification command, and reachability metadata. This per-vulnerability granularity supports the common matcher and severity-weighted score used in evaluation, while preserving pivot-aware diagnostics absent from flag-capture benchmarks.
+Each public scenario ships a YAML ground-truth file with one entry per injected vulnerability. Entries record the affected device, IP, role, severity, category, optional CVE, accepted semantic types, structural matching fields, expected indicators, verification command, and two distinct depth variables. \texttt{network\_pivot\_depth} counts enforced changes of network vantage point; \texttt{dependency\_depth} counts ordered logical prerequisites. The historical \texttt{hop\_depth} field is ignored by the v3.4 MHR scorer.
 
-Scenarios may also declare adjacent advisory vulnerability types that are counted as neither true positives nor false positives. This avoids penalizing legitimate hardening recommendations while keeping the recall denominator fixed.
+Scenarios may declare tightly bounded advisory types, but these are capped, deduplicated, and require traceable evidence. Hardened comparators are encoded as explicit negative controls and reported separately as a clean-run rate.
 
 \subsection{Scoring and Diagnostic Fields}
 \label{sec:iotbench:eval}
 
-Each LLM finding is matched to ground truth in three ordered passes: exact CVE, \texttt{(ip, vuln\_type)} with canonicalized type, then \texttt{(ip, severity)} fallback. Unmatched findings are false positives, and duplicates on \texttt{(ip, type, port)} are collapsed to prevent inflation.
+Each LLM finding is matched one-to-one to ground truth under a versioned explicit contract. A match requires the target IP, an accepted semantic type (or a target-bound, offline-validated CVE), and the vulnerability-specific \texttt{required\_dimensions}. Optional declared dimensions reject contradictions but are not all mandatory. There is no IP--severity fallback. Unmatched findings are false positives and duplicate claims are collapsed.
 
-We report recall, precision, F1, and a severity-weighted score. The latter normalizes true positives by ground-truth severity weights (critical~4, high~3, medium~2, low~1), with $0.5\times$ and $0.75\times$ penalties for fallback and severity-mismatch matches. F1 treats each vulnerability as binary, while the weighted score rewards recovering more severe findings.
+The main table reports three values. \emph{Detection F1} measures correctly identified vulnerabilities whether or not exploitation succeeds. \emph{Verified F1}, the primary score, counts a true positive only when a fresh Phase~4 tool record is target-compatible and its output semantically demonstrates the finding. \emph{Verified Severity Coverage} is the fraction of total ground-truth severity weight (critical~4, high~3, medium~2, low~1) whose vulnerabilities are verified. Missing proof in a contract-compatible run receives zero verified credit.
 
-For diagnostics, ground truth can store the minimum hop depth from the entry point to each affected device. We use this metadata to design multi-hop scenarios and interpret failures, but do not report hop-depth as a separate aggregate metric.
+For depth $k$, MHR@k is recall restricted to vulnerabilities with \texttt{network\_pivot\_depth}$\geq k$; DHR@k applies the same definition to \texttt{dependency\_depth}. Verified variants additionally require proof. Undefined depths are reported as N/A rather than zero. Attack-path coverage requires all referenced findings; verified path coverage also requires proof and an ordered Phase~5 chain.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §5 Harness
@@ -345,18 +338,46 @@ We compare \harnessname{} with two adapted LLM-agent baselines:
   \item a CAI-style single-agent tool loop~\cite{cai25};
   \item a VulnBot-style multi-agent pipeline with a penetration task graph~\cite{vulnbot25}.
 \end{itemize}
-Both baselines are designed primarily for single-target workflows, so we run them in the informed setting once per ground-truth target device, normalize their outputs into the common finding schema, merge findings at scenario level, and score the merged result with the same evaluator. \harnessname{} is reported in both informed and blind modes.
-
-This adaptation is intentionally favorable to the baselines: they receive the ground-truth target devices instead of having to discover the network from scratch. What they do not receive is the network-native state maintained by \harnessname{}, including shared topology, pivot paths, and scenario-level deduplication before intrusion planning. The comparison therefore isolates whether architecture matters once model choice, prompts, target artifacts, and evaluator are controlled.
+The confirmatory comparison runs every system in blind mode from the same controller-issued network scope. Baseline adapters must emit the same target, type, structural fields, evidence references, and tool-call provenance as \harnessname{}; the normalizer may not read ground truth or synthesize missing fields. Informed \harnessname{} runs are restricted to the public diagnostic split and are not part of the sealed architecture claim.
 
 \textbf{Metrics and variance.}
-We report recall, precision, F1, and severity-weighted score. Evidence levels and hop-depth metadata are retained for diagnostic analysis but not reported as aggregate metrics. \harnessname{} is additionally repeated once in informed mode to estimate same-artifact stability; adapted baselines are reported from one controlled run per target device.
+We report Detection F1, Verified F1 (primary), Verified Severity Coverage, clean-run rate, verified path coverage, verified MHR/DHR, cost, and planned/completed run counts. The confirmatory matrix is \{\harnessname{}, CAI, VulnBot\}$\times$S24--S29$\times$three paired controller repetitions. Repetitions are averaged within profile before a six-profile macro-average. A pre-committed but missing repetition contributes zero; no incomplete metric is silently omitted. We report paired effect sizes and 95\% confidence intervals across controller-matched repetitions.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
 % ══════════════════════════════════════════════════════════════════════════
 \section{Evaluation}
 \label{sec:eval}
+
+\subsection{Pre-registered Confirmatory Matrix}
+
+The primary architecture comparison comprises 54 blind sealed runs:
+three systems (\harnessname{}, CAI, and VulnBot), six controller-only profiles
+(S24--S29), and three paired repetitions. The suite manifest fixes the runner
+commit, model and provider, tool proxy, budgets, controller epoch, scoring
+policy, and planned run grid before the first execution. No prompt, adapter, or
+normalizer is changed after the first confirmatory result. A missing or crashed
+cell contributes zero to Detection F1, Verified F1, and Verified Severity
+Coverage; completeness is published with the score.
+
+\subsection{Public Diagnostics and Reporting}
+
+We separately execute S14--S23 in informed and blind mode with three repetitions
+per condition (60 runs). These public results diagnose topology-prior effects,
+matching errors, controls, exploit diversity, DHR, and the S20 network-pivot
+fixture, but do not support the sealed generalization claim. A 16-run smoke
+pilot on S20--S23 is used only to validate adapters and infrastructure and is
+excluded from all reported estimates.
+
+The main result table contains, for each system, Detection F1, Verified F1,
+Verified Severity Coverage, clean-run rate, verified path coverage, verified
+MHR@1/2, cost, and completed/planned runs. We report paired differences against
+\harnessname{} with 95\% confidence intervals. Numerical cells are inserted
+only after the full sealed suite has completed and its aggregate signature has
+been verified. Consequently, the historical strict-v2 table below is retained
+in the source for provenance but deliberately excluded from this draft.
+
+\iffalse
 
 \subsection{Overall Performance}
 \label{sec:eval:overall}
@@ -433,24 +454,26 @@ The main cross-model variation is a precision--recall tradeoff rather than a col
 
 Although the main claim concerns network-scale IoT evaluation, we also run \harnessname{} on two established single-host corpora to check that the per-target exploitation component is not specialized only to \systemname{}. These runs are contextual rather than a controlled leaderboard because task oracles and published protocols differ across systems. On AutoPenBench, informed \harnessname{} captures 9/33 end-to-end flags (27.3\%) and produces useful exploit evidence on 17/33 tasks (51.5\%); blind mode captures 7/33 flags (21.2\%). On a 328-case Vulhub snapshot, informed \harnessname{} produces 99 useful findings (30.2\%), while blind mode produces 92 (28.0\%). These results support transfer to single-host exploitation, but they do not replace the main \systemname{} result because they do not exercise topology priors, reachability constraints, or lateral movement.
 
+\fi
+
 % ══════════════════════════════════════════════════════════════════════════
 % §8 Discussion
 % ══════════════════════════════════════════════════════════════════════════
 \section{Discussion and Limitations}
 \label{sec:discussion}
 
-The evaluation suggests three implications.
+The revised design isolates three questions that the previous evaluation mixed.
 \begin{itemize}[leftmargin=*,nosep]
-  \item \textbf{Flat target lists are insufficient.} The clearest case is \texttt{S3}: back-end services are unreachable without a prior gateway traversal step. Both adapted baselines produce no true-positive matches (F1~=~0), while \harnessname{} exceeds F1~=~0.94 in both informed and blind modes.
-  \item \textbf{Blind discovery is viable but changes the error profile.} Blind \harnessname{} keeps high precision and F1, but loses recall relative to informed mode. This suggests that active discovery can recover much of the topology, while metadata still helps expose or prioritize pivot-gated findings.
-  \item \textbf{The result is architectural, not only model-specific.} The architecture comparison uses the same model and evaluator, and the Gemma, DeepSeek, and Qwen reruns remain within a narrow F1 band under the same harness.
+  \item \textbf{Identification is not verification.} Detection F1 measures whether the system names the right vulnerability; Verified F1 determines whether the claim is supported by fresh target-bound execution evidence.
+  \item \textbf{Logical depth is not network depth.} S15--S18 and S23 test ordered application prerequisites through DHR. Only infrastructure-enforced reachability transitions, such as S20, contribute to MHR.
+  \item \textbf{Controls are not positive findings.} Hardened comparators produce a separate clean-run rate. Mixing them into a composite F1 obscures whether a failure comes from missed vulnerabilities or over-reporting.
 \end{itemize}
 
 Several limitations remain.
 \begin{itemize}[leftmargin=*,nosep]
   \item \textbf{Virtualization boundary:} scenarios run on Linux containers; real constrained hardware, bootloaders, RTOS firmware, and physical interfaces introduce attack surfaces not covered here.
-  \item \textbf{Run-to-run variance:} only informed \harnessname{} was rerun on the same artifact set ($\Delta$F1~=~$-$0.017 mean); blind-mode confidence intervals remain future work.
-  \item \textbf{Oracle boundaries:} neutral advisory categories may inflate precision if they are defined too broadly, and severity-fallback matches are only an approximation of evidence quality.
+  \item \textbf{Controller trust:} official claims require controller-side verification, signed aggregate results, and auditable binding to the runner, model, budget, and suite manifest; worker-submitted logs alone are not a trust anchor.
+  \item \textbf{Oracle boundaries:} matching contracts and bounded advisory categories still require expert review even though severity fallback has been removed.
   \item \textbf{Prompt and model scope:} results use a single prompt family; per-model prompt tuning may change absolute scores even if the architecture trend persists.
   \item \textbf{Scenario coverage:} the benchmark covers fixed topological patterns and vulnerabilities tractably injectable via Ansible; dynamic deployments, RF-layer attacks, and supply-chain weaknesses are out of scope.
 \end{itemize}
@@ -461,16 +484,15 @@ Several limitations remain.
 \section{Conclusion}
 \label{sec:conclusion}
 
-Single-host benchmarks cannot capture the pivot chains, protocol roles, and reachability dependencies that shape IoT/OT risk. This paper introduced \systemname{}, a 12-scenario network-scale benchmark with deterministic vulnerability injection and per-vulnerability ground truth, and \harnessname{}, a six-phase network-native harness for discovery, verification, intrusion, and reporting.
+Single-host benchmarks cannot capture the protocol roles and reachability dependencies that shape IoT/OT risk. This paper introduces \systemname{}, with 23 public development scenarios and six sealed confirmatory profiles, and \harnessname{}, a six-phase network-native harness for discovery, verification, intrusion, and reporting.
 
-The evaluation supports three conclusions.
-\begin{itemize}[leftmargin=*,nosep]
-  \item \textbf{Network context matters:} informed \harnessname{} reaches 0.935 mean F1 and 86.4\% severity-weighted score, outperforming both adapted single-target baselines on every scenario.
-  \item \textbf{Topology priors help but are not mandatory:} blind \harnessname{} reaches 0.887 mean F1 using active discovery only, with lower recall but slightly higher precision than informed mode.
-  \item \textbf{The effect is not model-specific:} Gemma, DeepSeek, and Qwen reruns remain within 0.945--0.947 mean F1 under the same architecture and evaluator.
-\end{itemize}
-
-Together, these results show that evaluating LLM-based IoT penetration-testing agents requires network-aware tasks, per-vulnerability ground truth, and evidence-level scoring. We release the scenarios, playbooks, ground truth, and evaluation code to support reproducible research in this setting.
+The methodological contribution is a fail-closed separation of detection,
+verified exploitation, severity-weighted coverage, negative controls, logical
+dependencies, and enforced network pivots. The final empirical claim will be
+drawn only from the pre-committed 54-run blind sealed matrix; public
+informed-versus-blind runs remain diagnostic. We release the public scenarios,
+playbooks, ground truth, matching contracts, and evaluation code to support
+reproducible research in this setting.
 % ── bibliography ──────────────────────────────────────────────────────────
 \begin{thebibliography}{00}
 

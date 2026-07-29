@@ -18,6 +18,7 @@ from src.benchmark.metric_contract import (
     METRIC_CONTRACT_VERSION,
 )
 from src.benchmark.strict_v3 import cve_is_allowed
+from src.benchmark.strict_v3 import derive_matching_contract
 
 
 def _gt(**overrides):
@@ -86,7 +87,7 @@ def _write(tmp_path: Path, findings, vulnerabilities=None, *, controls=None, bon
 def test_public_matching_catalog_covers_every_ground_truth_entry():
     root = Path(__file__).resolve().parents[1] / "benchmarks" / "ground_truth"
     catalog = yaml.safe_load((root / "matching_contracts.yaml").read_text())
-    assert catalog["schema_version"] == "strict-v3.3"
+    assert catalog["schema_version"] == METRIC_CONTRACT_VERSION
     for path in root.glob("scenario_*.yaml"):
         ground_truth = yaml.safe_load(path.read_text()) or {}
         scenario_id = str(ground_truth.get("scenario_id"))
@@ -97,6 +98,36 @@ def test_public_matching_catalog_covers_every_ground_truth_entry():
             for vulnerability in ground_truth.get("vulnerabilities", [])
         }
         assert all(contract["accepted_types"] for contract in contracts.values())
+        assert all("required_dimensions" in contract for contract in contracts.values())
+
+
+def test_structural_oracle_can_match_every_public_ground_truth_entry():
+    root = Path(__file__).resolve().parents[1] / "benchmarks" / "ground_truth"
+    for path in root.glob("scenario_*.yaml"):
+        ground_truth = yaml.safe_load(path.read_text()) or {}
+        for vulnerability in ground_truth.get("vulnerabilities", []) or []:
+            contract = derive_matching_contract(vulnerability)
+            finding = {
+                "id": f"oracle-{vulnerability['id']}",
+                "device_ip": vulnerability["ip"],
+                "type": contract["accepted_types"][0],
+                "severity": vulnerability.get("severity", "low"),
+                "cve_ids": [vulnerability["cve"]] if vulnerability.get("cve") else [],
+                "services": contract["services"],
+                "ports": contract["ports"],
+                "protocols": contract["protocols"],
+                "endpoints": contract["endpoints"],
+                "products": contract["products"],
+                "versions": contract["versions"],
+                "details": " ".join([
+                    *contract["products"], *contract["versions"],
+                ]),
+            }
+
+            match, method = match_vuln(vulnerability, [finding], policy=STRICT_V3)
+
+            assert match is finding, f"oracle ceiling failed for {path.name}:{vulnerability['id']}"
+            assert method in {"cve", "exact-structural"}
 
 
 def test_rejects_broad_category_substitution():
@@ -112,6 +143,15 @@ def test_rejects_conflicting_service_or_port():
     assert match is None
 
 
+def test_only_reviewed_matching_dimensions_are_required():
+    finding = _finding(service="", port=None, protocol="", endpoint="/backup.sql")
+
+    match, method = match_vuln(_gt(), [finding], policy=STRICT_V3)
+
+    assert match is finding
+    assert method == "exact-structural"
+
+
 def test_exact_structure_matches_but_detection_only_gets_no_primary_credit(tmp_path):
     run, gt = _write(tmp_path, [_finding()])
     result = evaluate(run, gt, policy=STRICT_V3)
@@ -120,6 +160,8 @@ def test_exact_structure_matches_but_detection_only_gets_no_primary_credit(tmp_p
     assert result.matches[0]["match_credit"] == 1.0
     assert result.matches[0]["structural_match"] is True
     assert result.matches[0]["verification_credit"] == 0.0
+    assert result.verified_f1 == 0.0
+    assert result.verified_severity_coverage == 0.0
     assert result.scenario_score_pct == 0.0
 
 
@@ -155,6 +197,8 @@ def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
     }) + "\n")
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.verified_f1 == 1.0
+    assert result.verified_severity_coverage == 1.0
+    assert result.verified_weighted_score == 3.0
     assert result.matches[0]["verification_credit"] == 1.0
     assert result.scenario_score_pct == 100.0
     assert result.phase4_completion_rate == 1.0
@@ -256,7 +300,7 @@ def test_phase4_error_is_incomplete(tmp_path):
     assert result.phase4_completion_rate == 0.0
 
 
-def test_negative_control_violation_reduces_primary_score(tmp_path):
+def test_negative_control_violation_is_reported_without_double_penalty(tmp_path):
     control = {
         "id": "C1", "ip": "192.0.2.20", "assertion": "anonymous_mqtt_denied",
     }
@@ -275,8 +319,9 @@ def test_negative_control_violation_reduces_primary_score(tmp_path):
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.negative_control_violations == 1
     assert result.negative_control_specificity == 0.0
-    assert result.negative_control_penalty_factor == 0.8
-    assert result.scenario_score_pct == 53.4
+    assert result.negative_control_penalty_factor == 1.0
+    assert result.verified_f1 == 0.667
+    assert result.scenario_score_pct == 66.7
 
 
 def test_unknown_cve_is_reported_and_cannot_match_cve_gt(tmp_path):

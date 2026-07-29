@@ -6,6 +6,8 @@ be copied into the agent worker environment or challenge contract.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +16,9 @@ from urllib.parse import urljoin, urlparse
 from uuid import UUID
 
 import requests
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from src.benchmark.artifacts import manifest_sha256
 from src.benchmark.catalog import EVAL_SEALED, BenchmarkCatalog, get_scenario, load_catalog
@@ -70,6 +75,31 @@ def _exact_mapping(raw: object, *, keys: frozenset[str], where: str) -> Mapping[
     return raw
 
 
+def _load_signature_public_key(
+    value: Ed25519PublicKey | bytes | str | Path | None,
+) -> Ed25519PublicKey | None:
+    if value is None:
+        return None
+    if isinstance(value, Ed25519PublicKey):
+        return value
+    if isinstance(value, (str, Path)):
+        path = Path(value)
+        if not path.is_file() or path.is_symlink():
+            raise ControllerError(f"sealed signature public key is not a regular file: {path}")
+        encoded = path.read_bytes()
+    elif isinstance(value, bytes):
+        encoded = value
+    else:
+        raise ControllerError("sealed signature public key must be PEM bytes or a file path")
+    try:
+        public_key = serialization.load_pem_public_key(encoded)
+    except (TypeError, ValueError) as exc:
+        raise ControllerError("sealed signature public key is not valid PEM") from exc
+    if not isinstance(public_key, Ed25519PublicKey):
+        raise ControllerError("sealed signature public key must be Ed25519")
+    return public_key
+
+
 class SealedControllerClient:
     """Fail-closed HTTP client for creating and scoring sealed sessions."""
 
@@ -83,6 +113,7 @@ class SealedControllerClient:
         allow_insecure: bool = False,
         session: requests.Session | None = None,
         catalog: BenchmarkCatalog | None = None,
+        signature_public_key: Ed25519PublicKey | bytes | str | Path | None = None,
     ) -> None:
         parsed = urlparse(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -101,7 +132,10 @@ class SealedControllerClient:
         self.timeout = float(timeout)
         self.verify_tls = verify_tls
         self._session = session or requests.Session()
+        if hasattr(self._session, "trust_env"):
+            self._session.trust_env = False
         self._catalog = catalog or load_catalog()
+        self._signature_public_key = _load_signature_public_key(signature_public_key)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(base_url={self.base_url!r}, token=<redacted>)"
@@ -112,12 +146,15 @@ class SealedControllerClient:
         *,
         url_env: str = "SEALED_CONTROLLER_URL",
         token_env: str = "SEALED_CONTROLLER_TOKEN",
+        public_key_env: str = "SEALED_CONTROLLER_PUBLIC_KEY",
         **kwargs,
     ) -> "SealedControllerClient":
         url = os.environ.get(url_env)
         token = os.environ.get(token_env)
         if not url or not token:
             raise ControllerError(f"{url_env} and {token_env} must be configured in the trusted control plane")
+        if "signature_public_key" not in kwargs:
+            kwargs["signature_public_key"] = os.environ.get(public_key_env)
         return cls(url, token, **kwargs)
 
     def close(self) -> None:
@@ -143,7 +180,12 @@ class SealedControllerClient:
         **kwargs,
     ) -> requests.Response:
         headers = dict(kwargs.pop("headers", {}))
-        headers.update({"Accept": "application/json", "Authorization": f"Bearer {self._token}"})
+        headers.update({
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self._token}",
+            "Cache-Control": "no-store",
+        })
+        kwargs["allow_redirects"] = False
         try:
             response = self._session.request(
                 method,
@@ -291,6 +333,33 @@ class SealedControllerClient:
             raise ControllerError("suite evaluation summary suite_id mismatch")
         if summary.benchmark_version != self._catalog.benchmark_version:
             raise ControllerError("suite evaluation summary benchmark version mismatch")
+        if summary.status == "complete":
+            if self._signature_public_key is None:
+                raise ControllerError(
+                    "a trusted Ed25519 public key is required for complete suite results"
+                )
+            assert summary.signature is not None
+            prefix = "ed25519:"
+            if not summary.signature.startswith(prefix):
+                raise ControllerError("suite evaluation signature has an unsupported format")
+            encoded_signature = summary.signature.removeprefix(prefix)
+            if not encoded_signature or "=" in encoded_signature:
+                raise ControllerError("suite evaluation signature is not canonical base64url")
+            try:
+                padding = "=" * (-len(encoded_signature) % 4)
+                signature = base64.b64decode(
+                    encoded_signature + padding,
+                    altchars=b"-_",
+                    validate=True,
+                )
+            except (binascii.Error, ValueError) as exc:
+                raise ControllerError("suite evaluation signature is not valid base64url") from exc
+            if len(signature) != 64:
+                raise ControllerError("suite evaluation Ed25519 signature must be 64 bytes")
+            try:
+                self._signature_public_key.verify(signature, summary.signature_payload())
+            except InvalidSignature as exc:
+                raise ControllerError("suite evaluation signature verification failed") from exc
         return summary
 
     def teardown(self, session_id: str) -> None:

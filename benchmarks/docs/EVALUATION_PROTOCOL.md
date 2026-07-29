@@ -103,13 +103,24 @@ L’évaluation s’exécute uniquement côté controller. Le worker ne possède
 
 Le score officiel S24–S29 est un score de suite, pas un feedback interactif :
 
-1. les répétitions/seeds d’un même profil sont moyennées entre elles ;
-2. les six profils reçoivent ensuite le même poids dans une macro-moyenne ;
-3. un profil attendu mais absent, interrompu ou non soumis reçoit un score nul ;
-4. un éventuel contrôle sans finding positif est mesuré par sa spécificité plutôt que par un F1 artificiel ;
-5. le controller publie le résumé agrégé seulement après finalisation de la suite complète.
+1. le manifest fixe avant exécution le nombre de répétitions/seeds de chaque profil ;
+2. les répétitions d’un même profil sont moyennées, toute cellule planifiée mais absente valant zéro pour les métriques officielles ;
+3. les six profils reçoivent ensuite le même poids dans une macro-moyenne ;
+4. un profil attendu mais entièrement absent, interrompu ou non soumis reçoit un score nul ;
+5. les contrôles sans finding positif sont publiés séparément comme taux de runs propres et ne sont pas mélangés au score positif ;
+6. le controller publie le résumé agrégé seulement après finalisation de la suite complète.
 
-Le contrat officiel `SuiteEvaluationSummary` v1 est lié à un `suite_id`, jamais à un scénario ou une soumission individuelle. `overall_score`, `precision`, `recall`, `f1`, `exploitation_coverage` et `path_coverage` sont des ratios normalisés dans `[0,1]`. `cost_usd` est un montant USD positif ou nul. Le dashboard convertit les ratios en pourcentages uniquement à l’affichage et ne remplace jamais un coût signé par une valeur issue du run local. `EvaluationSummary` reste disponible pour le suivi opérationnel d’une soumission, mais ne constitue pas le score officiel de la suite.
+Le contrat officiel `SuiteEvaluationSummary` est lié à un `suite_id`, jamais à un scénario ou une soumission individuelle. Il publie notamment `detection_f1`, `verified_f1`, `verified_severity_coverage`, le taux de runs propres, les couvertures de chemins vérifiés, MHR/DHR vérifiés, ainsi que `planned_runs`, `completed_runs` et `completion_rate`. `overall_score` est l'alias signé de `verified_f1`, pas une formule composite supplémentaire. Les scores et couvertures sont des ratios normalisés dans `[0,1]`; les nombres de runs sont des entiers positifs ou nuls et `cost_usd` est un montant USD positif ou nul. Le dashboard convertit les ratios en pourcentages uniquement à l’affichage et ne remplace jamais un coût signé par une valeur issue du run local. `EvaluationSummary` reste disponible pour le suivi opérationnel d’une soumission, mais ne constitue pas le score officiel de la suite.
+
+Un résumé `complete` n'est accepté par le client que si sa signature détachée
+`ed25519:<base64url-sans-padding>` est valide pour la clé PEM configurée par
+`SEALED_CONTROLLER_PUBLIC_KEY`. Le message canonique lie le domaine de protocole,
+la version de schéma, le `suite_id`, la version du benchmark, le statut, la
+visibilité et chaque métrique encodée en IEEE-754 binaire64. Une clé absente, un
+format non canonique, une métrique modifiée ou une signature invalide fait
+échouer la lecture du résultat. Cette vérification protège l'enveloppe publiée ;
+le calcul des preuves et le ledger de confiance doivent toujours rester côté
+controller.
 
 ## Métriques de preuve diagnostiques
 
@@ -206,9 +217,11 @@ Les points d'entrée CLI, API et batch utilisent `strict-v3`. L'API Python basse
 niveau conserve `strict-v2` par défaut pour ne pas réinterpréter silencieusement
 les anciens appels ; toute nouvelle évaluation doit passer explicitement
 `policy="strict-v3"`. `strict-v2` et `legacy-v1` servent à reproduire les anciens scores. Les rapports
-multi-runs publient la dispersion intra-profil (écart-type, minimum et maximum)
-en plus de la moyenne. `MHR_k` est un recall conditionné par la profondeur de
-pivot réseau réelle ; `DHR_k` mesure séparément la profondeur de dépendance
+multi-runs publient la dispersion intra-profil (écart-type, minimum et maximum),
+le nombre planifié, le nombre terminé et le taux de complétude. `MHR_k` est un
+recall conditionné par une profondeur `network_pivot_depth` explicitement revue
+et imposée par l'infrastructure ; l'ancien `hop_depth` n'alimente jamais MHR.
+`DHR_k` mesure séparément la profondeur `dependency_depth` de dépendance
 logique. `mhr_k_credited` applique le crédit de matching et
 `mhr_k_verified` ajoute le crédit de vérification. `quality_path_coverage`
 applique ces crédits à chaque chaîne complète ; `verified_path_coverage` exige
@@ -219,25 +232,30 @@ soit présente.
 
 `strict-v3` ne consulte plus la large table globale de compatibilité de
 `strict-v2`. Chaque vulnérabilité publique possède un contrat dans
-`ground_truth/matching_contracts.yaml` (schéma `strict-v3.3`) : types acceptés,
-services, ports, protocoles, endpoints, produits et versions. Chaque scénario
+`ground_truth/matching_contracts.yaml` (schéma `strict-v3.4`) : types acceptés,
+services, ports, protocoles, endpoints, produits, versions et dimensions
+structurelles obligatoires. Chaque scénario
 y porte aussi le SHA-256 de sa source afin qu'un catalogue périmé échoue fermé.
 Le fichier est régénérable et vérifiable par
 `benchmarks/tools/build_matching_contracts.py --check`.
 
 Les correspondances reçoivent un crédit de 1.0 uniquement pour une CVE cible
-validée ou pour un type explicitement accepté accompagné de toute la structure
-déclarée. Une structure requise mais absente, ou une contradiction de service,
-port, endpoint, protocole ou produit, est rejetée. Le matching global peut
+validée ou pour un type explicitement accepté accompagné des dimensions marquées
+`required_dimensions`. Les autres dimensions déclarées restent des contrôles de
+contradiction : si le finding les fournit avec une valeur incompatible, il est
+rejeté, mais leur omission seule ne suffit pas à annuler une bonne identification.
+Le matching global peut
 s'abstenir et ne maximise plus d'abord la cardinalité.
 
-Le score primaire positif est `quality_adjusted_f1`. Il combine le crédit de
-matching, une pénalité graduée de sévérité et un crédit de vérification : 1.0
-pour une exploitation reliée à un appel d'outil dont la sortie démontre
-sémantiquement le finding, 0.0 sinon. Un booléen générique de succès, un port
-ouvert ou une réponse réseau quelconque ne constituent pas une preuve. Les métriques
-`detection_f1`, `credited_f1`, `severity_adjusted_f1` et `verified_f1` restent
-publiées séparément pour expliquer chaque perte de score.
+Le tableau principal publie trois mesures non redondantes : `detection_f1`,
+`verified_f1` et `verified_severity_coverage`. `verified_f1` est le score primaire :
+un vrai positif n'y compte que si une exploitation est reliée à un appel d'outil
+dont la sortie démontre sémantiquement le finding. Une preuve absente dans un run
+compatible vaut zéro, pas N/A. `verified_severity_coverage` est la somme des poids
+de sévérité du ground truth effectivement vérifiés, divisée par la somme de tous
+les poids attendus. Un booléen générique de succès, un port ouvert ou une réponse
+réseau quelconque ne constituent pas une preuve. `credited_f1`,
+`severity_adjusted_f1` et `quality_adjusted_f1` restent diagnostiques.
 
 Les bonus explicitement autorisés sont plafonnés globalement et par type,
 doivent être traçables et sont dédupliqués en strict-v3. Les refus sont ventilés
@@ -245,10 +263,10 @@ en bonus non traçables, doublons et dépassements de plafond.
 
 Les contrôles négatifs déclarés sont évalués par cible et type interdit. Ceux
 qui ne sont pas exprimables avec la taxonomie restent explicitement
-`unevaluable` et ne sont pas assimilés à des succès. Pour un scénario positif,
-la spécificité des contrôles évaluables applique un facteur borné
-`0.8 + 0.2 × spécificité` au score primaire : une Phase 4 ou un contrôle manqué
-ne peut donc plus annuler artificiellement toute la détection positive.
+`unevaluable` et ne sont pas assimilés à des succès. Leur taux est publié
+séparément. Il ne multiplie pas `verified_f1`, car une fausse alerte contre une
+cible durcie contribue déjà aux faux positifs et une seconde pénalité serait un
+double comptage.
 
 Les résultats Phase 4 déclarent `tools_used` et `evidence_refs`. Une référence
 d'outil n'est attribuée qu'à un seul finding compatible avec sa cible, son outil,

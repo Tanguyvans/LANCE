@@ -109,17 +109,15 @@ vulnerabilities:
   network_pivot_depth: 0
   dependency_depth: 0
   accepted_types:
-  - data_exposure
+  - no_auth
   services:
-  - http
+  - mqtt
   ports:
-  - 80
+  - 1883
   protocols:
   - tcp
   verification: subscribe without credentials to 192.168.100.11:1883
   confidence_required: high
-  endpoints:
-  - /backup/db_backup_2024-01-15.sql
 - id: F17-WEB-BACKUP@s21-web-backup
   device: s21-web-backup
   ip: 192.168.100.12
@@ -130,6 +128,18 @@ vulnerabilities:
   severity: high
   category: data_exposure
   hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  services:
+  - http
+  ports:
+  - 80
+  protocols:
+  - tcp
+  endpoints:
+  - /backup/db_backup_2024-01-15.sql
   exploit_eligible: true
   owasp_iot: I7 - Insecure Data Transfer and Storage
   description: The backup directory and bounded SQL fixture are accessible without

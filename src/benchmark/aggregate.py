@@ -70,27 +70,28 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     controls = [s for s in scenarios if s["is_zero_gt"] is True]
     return {
         "scenario_count": len(scenarios),
+        "positive_scenario_count": len(positive),
+        "control_scenario_count": len(controls),
         "macro_scenario_score_pct": _round_optional(
-            _complete_mean(s.get("scenario_score_pct") for s in scenarios)
+            _complete_mean(s.get("scenario_score_pct") for s in positive)
         ),
         "macro_positive_f1": _round_optional(
-            _mean(float(s["f1_score"]) for s in positive)
+            _complete_mean(s.get("f1_score") for s in positive)
         ),
-        "macro_detection_f1": _round_optional(_mean(
-            float(s["detection_f1"]) for s in positive
-            if s.get("detection_f1") is not None
+        "macro_detection_f1": _round_optional(_complete_mean(
+            s.get("detection_f1") for s in positive
         )),
-        "macro_quality_adjusted_f1": _round_optional(_mean(
-            float(s["quality_adjusted_f1"]) for s in positive
-            if s.get("quality_adjusted_f1") is not None
+        "macro_quality_adjusted_f1": _round_optional(_complete_mean(
+            s.get("quality_adjusted_f1") for s in positive
         )),
-        "macro_verified_f1": _round_optional(_mean(
-            float(s["verified_f1"]) for s in positive
-            if s.get("verified_f1") is not None
+        "macro_verified_f1": _round_optional(_complete_mean(
+            s.get("verified_f1") for s in positive
         )),
-        "macro_phase4_completion_rate": _round_optional(_mean(
-            float(s["phase4_completion_rate"]) for s in positive
-            if s.get("phase4_completion_rate") is not None
+        "macro_verified_severity_coverage": _round_optional(_complete_mean(
+            s.get("verified_severity_coverage") for s in positive
+        )),
+        "macro_phase4_completion_rate": _round_optional(_complete_mean(
+            s.get("phase4_completion_rate") for s in positive
         )),
         "macro_quality_path_coverage": _round_optional(_mean(
             float(s["quality_path_coverage"]) for s in positive
@@ -113,13 +114,16 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
             )
         },
         "macro_positive_precision": _round_optional(
-            _mean(float(s["precision"]) for s in positive)
+            _complete_mean(s.get("precision") for s in positive)
         ),
         "macro_positive_recall": _round_optional(
-            _mean(float(s["recall"]) for s in positive)
+            _complete_mean(s.get("recall") for s in positive)
         ),
         "macro_zero_gt_specificity": _round_optional(
-            _mean(float(s["specificity"]) for s in controls)
+            _complete_mean(s.get("specificity") for s in controls)
+        ),
+        "macro_zero_gt_clean_run_rate": _round_optional(
+            _complete_mean(s.get("specificity") for s in controls)
         ),
     }
 
@@ -128,18 +132,23 @@ def aggregate_evaluations(
     evaluations: Iterable[EvaluationLike],
     *,
     expected_scenarios: Iterable[str | int] | None = None,
+    expected_repetitions: int | Mapping[str | int, int] | None = None,
+    scenario_is_zero_gt: Mapping[str | int, bool] | None = None,
     scenario_splits: Mapping[str | int, str] | None = None,
 ) -> dict[str, Any]:
     """Aggregate evaluations with equal weight per scenario.
 
     Multiple seeds/runs for one scenario are averaged before the suite macro is
-    computed. Scenarios listed in ``expected_scenarios`` but missing from the
-    results are retained with a zero score so crashes cannot improve a batch.
+    computed. ``expected_repetitions`` freezes the planned seed count; missing
+    cells receive zero on official metrics so crashes cannot improve a batch.
+    Zero-GT controls are reported as a separate clean-run rate and never mixed
+    into the positive-scenario primary score.
     ``scenario_splits`` is intentionally supplied by the caller/evaluator-side
     manifest rather than inferred from agent-controlled run output.
     """
     rows = list(evaluations)
     split_map = {str(k): str(v) for k, v in (scenario_splits or {}).items()}
+    zero_gt_map = {str(k): bool(v) for k, v in (scenario_is_zero_gt or {}).items()}
     grouped: dict[str, list[EvaluationLike]] = defaultdict(list)
     for row in rows:
         scenario_id = str(_get(row, "scenario_id", ""))
@@ -148,29 +157,62 @@ def aggregate_evaluations(
         grouped[scenario_id].append(row)
 
     expected = {str(s) for s in (expected_scenarios or [])}
+    if isinstance(expected_repetitions, bool):
+        raise ValueError("expected_repetitions must be a positive integer or mapping")
+    if isinstance(expected_repetitions, int):
+        if expected_repetitions <= 0:
+            raise ValueError("expected_repetitions must be positive")
+        repetition_map = {
+            scenario_id: expected_repetitions
+            for scenario_id in (expected or set(grouped))
+        }
+    else:
+        repetition_map = {
+            str(scenario_id): int(count)
+            for scenario_id, count in (expected_repetitions or {}).items()
+        }
+        if any(count <= 0 for count in repetition_map.values()):
+            raise ValueError("expected repetition counts must be positive")
+        expected |= set(repetition_map)
     all_scenario_ids = set(grouped) | expected
     scenario_rows: list[dict[str, Any]] = []
     missing: list[str] = []
 
     for scenario_id in sorted(all_scenario_ids, key=_scenario_sort_key):
         runs = grouped.get(scenario_id, [])
+        planned_run_count = repetition_map.get(
+            scenario_id,
+            max(1, len(runs)) if scenario_id in expected else len(runs),
+        )
+        if len(runs) > planned_run_count:
+            raise ValueError(
+                f"Scenario {scenario_id} has {len(runs)} results for "
+                f"{planned_run_count} planned repetitions"
+            )
+        missing_run_count = planned_run_count - len(runs)
         if not runs:
             missing.append(scenario_id)
+            is_zero_gt = zero_gt_map.get(scenario_id, False)
             scenario_rows.append({
                 "scenario_id": scenario_id,
                 "split": split_map.get(scenario_id, "unassigned"),
                 "run_count": 0,
+                "planned_run_count": planned_run_count,
+                "completed_run_count": 0,
+                "missing_run_count": missing_run_count,
+                "completion_rate": 0.0,
                 "missing": True,
-                "is_zero_gt": None,
+                "is_zero_gt": is_zero_gt,
                 "scenario_score_pct": 0.0,
-                "f1_score": None,
-                "precision": None,
-                "recall": None,
-                "specificity": None,
-                "detection_f1": None,
-                "quality_adjusted_f1": None,
-                "verified_f1": None,
-                "phase4_completion_rate": None,
+                "f1_score": None if is_zero_gt else 0.0,
+                "precision": None if is_zero_gt else 0.0,
+                "recall": None if is_zero_gt else 0.0,
+                "specificity": 0.0 if is_zero_gt else None,
+                "detection_f1": None if is_zero_gt else 0.0,
+                "quality_adjusted_f1": None if is_zero_gt else 0.0,
+                "verified_f1": None if is_zero_gt else 0.0,
+                "verified_severity_coverage": None if is_zero_gt else 0.0,
+                "phase4_completion_rate": None if is_zero_gt else 0.0,
                 "quality_path_coverage": None,
                 "verified_path_coverage": None,
                 "mhr_1": None,
@@ -198,6 +240,10 @@ def aggregate_evaluations(
         if len(zero_gt_values) != 1:
             raise ValueError(f"Scenario {scenario_id} mixes zero-GT and positive evaluations")
         is_zero_gt = zero_gt_values.pop()
+        if scenario_id in zero_gt_map and zero_gt_map[scenario_id] != is_zero_gt:
+            raise ValueError(
+                f"Scenario {scenario_id} conflicts with evaluator-side zero-GT metadata"
+            )
 
         declared_splits = {
             str(value)
@@ -210,41 +256,63 @@ def aggregate_evaluations(
             raise ValueError(f"Scenario {scenario_id} has conflicting split metadata: {sorted(declared_splits)}")
         split = next(iter(declared_splits), "unassigned")
 
-        run_scores = [_result_scenario_score(run, is_zero_gt) for run in runs]
+        zero_fill = [0.0] * missing_run_count
+        run_scores = [
+            *[_result_scenario_score(run, is_zero_gt) for run in runs],
+            *zero_fill,
+        ]
         scores = [score for score in run_scores if score is not None]
-        f1 = _mean(float(_get(run, "f1_score", 0.0)) for run in runs) if not is_zero_gt else None
-        precision = _mean(float(_get(run, "precision", 0.0)) for run in runs) if not is_zero_gt else None
-        recall = _mean(float(_get(run, "recall", 0.0)) for run in runs) if not is_zero_gt else None
-        detection_f1 = _mean(
-            float(_get(run, "detection_f1", _get(run, "f1_score", 0.0))) for run in runs
-        ) if not is_zero_gt else None
-        quality_values = [
-            float(value) for value in (_get(run, "quality_adjusted_f1") for run in runs)
-            if value is not None
-        ]
-        quality_adjusted_f1 = _mean(quality_values) if not is_zero_gt else None
-        verified_values = [
-            float(value) for value in (_get(run, "verified_f1") for run in runs)
-            if value is not None
-        ]
-        completion_values = [
-            float(value) for value in (_get(run, "phase4_completion_rate") for run in runs)
-            if value is not None
-        ]
-        def optional_run_mean(name: str) -> float | None:
-            return _mean(
-                float(value) for value in (_get(run, name) for run in runs)
-                if value is not None
-            )
-        specificity = (
-            _mean(
-                float(
-                    _get(run, "specificity")
-                    if _get(run, "specificity") is not None
-                    else (1.0 if int(_get(run, "false_positives", 0)) == 0 else 0.0)
-                )
+        def completed_metric_values(name: str, *, default: Any = None) -> list[float | None]:
+            return [
+                float(value) if value is not None else None
+                for value in (_get(run, name, default) for run in runs)
+            ]
+
+        f1 = _complete_mean([
+            *completed_metric_values("f1_score", default=0.0), *zero_fill,
+        ]) if not is_zero_gt else None
+        precision = _complete_mean([
+            *completed_metric_values("precision", default=0.0), *zero_fill,
+        ]) if not is_zero_gt else None
+        recall = _complete_mean([
+            *completed_metric_values("recall", default=0.0), *zero_fill,
+        ]) if not is_zero_gt else None
+        detection_f1 = _complete_mean([
+            *[
+                float(_get(run, "detection_f1", _get(run, "f1_score", 0.0)))
                 for run in runs
-            )
+            ],
+            *zero_fill,
+        ]) if not is_zero_gt else None
+        quality_adjusted_f1 = _complete_mean([
+            *completed_metric_values("quality_adjusted_f1"), *zero_fill,
+        ]) if not is_zero_gt else None
+        verified_f1 = _complete_mean([
+            *completed_metric_values("verified_f1"), *zero_fill,
+        ]) if not is_zero_gt else None
+        verified_severity_coverage = _complete_mean([
+            *completed_metric_values("verified_severity_coverage"), *zero_fill,
+        ]) if not is_zero_gt else None
+        completion_rate = _complete_mean([
+            *completed_metric_values("phase4_completion_rate"), *zero_fill,
+        ]) if not is_zero_gt else None
+        def optional_run_mean(name: str) -> float | None:
+            completed = completed_metric_values(name)
+            if all(value is None for value in completed):
+                return None
+            return _complete_mean([*completed, *zero_fill])
+        specificity = (
+            _complete_mean([
+                *[
+                    float(
+                        _get(run, "specificity")
+                        if _get(run, "specificity") is not None
+                        else (1.0 if int(_get(run, "false_positives", 0)) == 0 else 0.0)
+                    )
+                    for run in runs
+                ],
+                *zero_fill,
+            ])
             if is_zero_gt
             else None
         )
@@ -253,7 +321,11 @@ def aggregate_evaluations(
             "scenario_id": scenario_id,
             "split": split,
             "run_count": len(runs),
-            "missing": False,
+            "planned_run_count": planned_run_count,
+            "completed_run_count": len(runs),
+            "missing_run_count": missing_run_count,
+            "completion_rate": round(len(runs) / planned_run_count, 3),
+            "missing": missing_run_count > 0,
             "is_zero_gt": is_zero_gt,
             "scenario_score_pct": _round_optional(_complete_mean(run_scores)),
             "f1_score": _round_optional(f1),
@@ -262,8 +334,9 @@ def aggregate_evaluations(
             "specificity": _round_optional(specificity),
             "detection_f1": _round_optional(detection_f1),
             "quality_adjusted_f1": _round_optional(quality_adjusted_f1),
-            "verified_f1": _round_optional(_mean(verified_values)),
-            "phase4_completion_rate": _round_optional(_mean(completion_values)),
+            "verified_f1": _round_optional(verified_f1),
+            "verified_severity_coverage": _round_optional(verified_severity_coverage),
+            "phase4_completion_rate": _round_optional(completion_rate),
             "quality_path_coverage": _round_optional(optional_run_mean("quality_path_coverage")),
             "verified_path_coverage": _round_optional(optional_run_mean("verified_path_coverage")),
             **{
@@ -295,10 +368,24 @@ def aggregate_evaluations(
         split_scenarios = [s for s in scenario_rows if s["split"] == split]
         per_split[split] = _summary_for_scenarios(split_scenarios)
 
+    planned_run_count = sum(int(s["planned_run_count"]) for s in scenario_rows)
+    completed_run_count = sum(int(s["completed_run_count"]) for s in scenario_rows)
+    missing_runs = {
+        s["scenario_id"]: int(s["missing_run_count"])
+        for s in scenario_rows if int(s["missing_run_count"]) > 0
+    }
     return {
         "run_count": len(rows),
+        "planned_run_count": planned_run_count,
+        "completed_run_count": completed_run_count,
+        "missing_run_count": planned_run_count - completed_run_count,
+        "completion_rate": (
+            round(completed_run_count / planned_run_count, 3)
+            if planned_run_count else None
+        ),
         **suite_summary,
         "missing_scenarios": missing,
+        "missing_runs": missing_runs,
         "per_scenario": {s["scenario_id"]: s for s in scenario_rows},
         "per_split": per_split,
     }

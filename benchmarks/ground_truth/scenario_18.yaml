@@ -57,6 +57,8 @@ vulnerabilities:
   severity: critical
   category: code_injection
   hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
   owasp_iot: I3 - Insecure Ecosystem Interfaces
   description: The fetch endpoint permits requests to the metadata service even though
     it is not directly reachable by the scanner.
@@ -75,6 +77,8 @@ vulnerabilities:
   severity: high
   category: privilege_escalation
   hop_depth: 1
+  network_pivot_depth: 0
+  dependency_depth: 1
   owasp_iot: I9 - Insecure Default Settings
   description: Metadata returns a bearer token with object-store administrative scope.
   indicators:
@@ -93,6 +97,8 @@ vulnerabilities:
   severity: critical
   category: data_exposure
   hop_depth: 2
+  network_pivot_depth: 0
+  dependency_depth: 2
   owasp_iot: I7 - Insecure Data Transfer and Storage
   description: The metadata role token authorizes retrieval of sensitive simulated
     object-store data.
