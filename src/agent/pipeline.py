@@ -98,6 +98,8 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 # They remain useful in development but are never exposed to a sealed worker.
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
+COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
+
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
 })
@@ -2268,6 +2270,8 @@ class Pipeline:
         if local_intrusion_memo:
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
+        if local_intrusion_memo:
+            tools = self._apply_compact_intrusion_tool_contract(tools)
 
         # Build prompt variables
         variables = {**self.context}
@@ -2280,14 +2284,16 @@ class Pipeline:
         variables["intrusion_completion_turn"] = max(1, int(max_turns * 0.9))
         if config.name == "intrusion":
             if local_intrusion_memo:
-                variables["intrusion_save_tool"] = ""
+                variables["intrusion_save_tool"] = (
+                    f"- {COMPACT_INTRUSION_COMPLETION_TOOL}(summary=<short campaign summary>)"
+                )
                 variables[
                     "intrusion_completion_rule"
-                ] = "Finalise with a concise campaign memo; the orchestrator derives the JSON deliverable."
-                variables["intrusion_final_phase_title"] = "Return the campaign memo"
+                ] = "Finish with one successful complete_intrusion_campaign call. If it returns ok=false, continue with the required Phase 5 tools; the orchestrator derives the JSON deliverable."
+                variables["intrusion_final_phase_title"] = "Complete compact campaign"
                 variables[
                     "intrusion_final_instruction"
-                ] = "Return a concise campaign memo with confirmed results, evidence references, and the best next action."
+                ] = "Call complete_intrusion_campaign after reading 05_intrusion_context.json and attempting every listed target at least once. Do not stop before the tool reports success."
             else:
                 variables["intrusion_save_tool"] = "- save_deliverable(filename=\"05_intrusion.json\", content=<full JSON>)"
                 variables["intrusion_completion_rule"] = "Finish with one successful save_deliverable call. If it returns ok=false, repair the archived draft and retry without repeating data gathering."
@@ -2406,9 +2412,10 @@ class Pipeline:
             stream_callback=self._model_stream_callback(
                 stream_callback, phase=config.phase, agent=config.name
             ),
-            required_tool=None if local_intrusion_memo else "save_deliverable",
-            terminate_after_tool=None if local_intrusion_memo else "save_deliverable",
-            terminate_on_unavailable_tools={"save_deliverable"} if local_intrusion_memo else None,
+            required_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
+            terminate_after_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
+            terminate_on_unavailable_tools=None,
+            strict_required_tool=local_intrusion_memo,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
@@ -4151,6 +4158,132 @@ class Pipeline:
             "A wider scan or several complementary scans also satisfy a row."
         )
         return "\n".join(lines)
+
+    def _apply_compact_intrusion_tool_contract(self, tools: list[dict]) -> list[dict]:
+        """Require observable Phase 5 progress before compact memo completion."""
+        context_loaded = False
+        attempted_targets: set[str] = set()
+        action_calls = 0
+
+        def _load_expected_targets() -> dict[str, str]:
+            ctx_path = self.run_dir / "05_intrusion_context.json"
+            try:
+                context = json.loads(ctx_path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                return {}
+            targets: dict[str, str] = {}
+            for item in context.get("all_targets", []) if isinstance(context, dict) else []:
+                if not isinstance(item, dict):
+                    continue
+                ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+                if not ip:
+                    continue
+                targets[ip] = str(item.get("device_id") or ip)
+            return targets
+
+        expected_targets = _load_expected_targets()
+
+        def _progress() -> dict:
+            missing_targets = sorted(set(expected_targets) - attempted_targets)
+            return {
+                "schema_version": "1",
+                "context_loaded": context_loaded,
+                "action_calls": action_calls,
+                "targets": [
+                    {
+                        "target": ip,
+                        "device_id": expected_targets[ip],
+                        "attempted": ip in attempted_targets,
+                    }
+                    for ip in sorted(expected_targets)
+                ],
+                "attempted_targets": sorted(attempted_targets),
+                "missing_targets": missing_targets,
+                "ready_to_complete": context_loaded and not missing_targets,
+            }
+
+        def _with_progress(result: str) -> str:
+            try:
+                payload = json.loads(result)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {"ok": True, "result": str(result)}
+            if not isinstance(payload, dict):
+                payload = {"ok": True, "result": payload}
+            else:
+                payload = dict(payload)
+            payload["intrusion_progress"] = _progress()
+            return json.dumps(payload, ensure_ascii=False, default=str)
+
+        def _completion_error(kind: str, message: str) -> str:
+            return json.dumps({
+                "ok": False,
+                "error_kind": kind,
+                "error": message,
+                "instruction": (
+                    "Continue Phase 5 with try_credential or ssh_exec using the "
+                    "05_intrusion_context.json targets, then call "
+                    f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
+                ),
+                "intrusion_progress": _progress(),
+            }, ensure_ascii=False)
+
+        def _guard(name: str, original_fn):
+            def guarded(**kwargs):
+                nonlocal action_calls, context_loaded
+                result = original_fn(**kwargs)
+                if name == "read_deliverable" and kwargs.get("filename") == "05_intrusion_context.json":
+                    context_loaded = True
+                if name in {"try_credential", "ssh_exec"}:
+                    action_calls += 1
+                    target = str(kwargs.get("ip") or kwargs.get("host") or "").strip()
+                    if target:
+                        attempted_targets.add(target)
+                return _with_progress(result)
+
+            return guarded
+
+        def complete_intrusion_campaign(**_kwargs):
+            missing_targets = sorted(set(expected_targets) - attempted_targets)
+            if not context_loaded:
+                return _completion_error(
+                    "intrusion_context_required",
+                    "Phase 5 cannot finish before reading 05_intrusion_context.json.",
+                )
+            if missing_targets:
+                return _completion_error(
+                    "intrusion_contract_incomplete",
+                    "Phase 5 compact completion requires at least one intrusion action against every context target.",
+                )
+            return json.dumps({
+                "ok": True,
+                "status": "campaign_complete",
+                "intrusion_progress": _progress(),
+            }, ensure_ascii=False)
+
+        wrapped = [
+            {**tool, "function": _guard(tool["name"], tool["function"])}
+            for tool in tools
+        ]
+        wrapped.append({
+            "name": COMPACT_INTRUSION_COMPLETION_TOOL,
+            "description": (
+                "Finish compact Phase 5 only after 05_intrusion_context.json "
+                "has been read and every listed target has at least one "
+                "try_credential or ssh_exec attempt."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Short campaign summary based on executed Phase 5 tools.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+            "function": complete_intrusion_campaign,
+        })
+        return wrapped
 
     def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
         """Enforce Recon invariants without prescribing the model's strategy.

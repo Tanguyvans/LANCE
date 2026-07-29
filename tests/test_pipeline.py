@@ -1635,6 +1635,47 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 1
         save.assert_called_once_with(filename="result.md", content="done")
 
+    def test_openai_loop_strict_required_tool_reprompts_after_text_only_turn(self):
+        """Strict required tools prevent compact agents from ending with prose only."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        text_message = MagicMock(content="Trying", tool_calls=None)
+        complete_call = MagicMock()
+        complete_call.function.name = "complete_intrusion_campaign"
+        complete_call.function.arguments = '{}'
+        complete_call.id = "call_complete"
+        complete_message = MagicMock(content=None, tool_calls=[complete_call])
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(finish_reason="stop", message=text_message)], usage=None),
+            MagicMock(choices=[MagicMock(finish_reason="tool_calls", message=complete_message)], usage=None),
+        ]
+        complete = MagicMock(return_value='{"ok": true}')
+
+        result = provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[{
+                "name": "complete_intrusion_campaign",
+                "description": "complete",
+                "input_schema": {},
+                "function": complete,
+            }],
+            max_turns=10,
+            required_tool="complete_intrusion_campaign",
+            terminate_after_tool="complete_intrusion_campaign",
+            strict_required_tool=True,
+        )
+
+        assert result == "Trying"
+        assert provider.client.chat.completions.create.call_count == 2
+        complete.assert_called_once_with()
+
     def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
         """Interleaved duplicate calls must switch the model to save-only mode."""
         from src.agent.provider import LLMProvider
@@ -1833,6 +1874,60 @@ class TestPhase5Context:
             "source_device": "s1-mqtt",
         }]
 
+    def test_compact_intrusion_contract_requires_context_and_target_attempts(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "all_targets": [
+                {"device_id": "s1-router", "device_ip": "192.168.100.1"},
+                {"device_id": "s1-ssh", "device_ip": "192.168.100.13"},
+            ],
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {
+                "name": "read_deliverable",
+                "description": "read",
+                "input_schema": {},
+                "function": lambda **kwargs: json.dumps({
+                    "filename": kwargs["filename"],
+                    "content": (run_dir / kwargs["filename"]).read_text(),
+                }),
+            },
+            {
+                "name": "try_credential",
+                "description": "try",
+                "input_schema": {},
+                "function": lambda **_kwargs: '{"success": false}',
+            },
+            {
+                "name": "ssh_exec",
+                "description": "ssh",
+                "input_schema": {},
+                "function": lambda **_kwargs: '{"return_code": 255}',
+            },
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+
+        before_read = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert before_read["ok"] is False
+        assert before_read["error_kind"] == "intrusion_context_required"
+
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        tool_map["try_credential"](
+            ip="192.168.100.1", service="ssh", user="root", password="root"
+        )
+        missing_one = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert missing_one["ok"] is False
+        assert missing_one["error_kind"] == "intrusion_contract_incomplete"
+        assert missing_one["intrusion_progress"]["missing_targets"] == ["192.168.100.13"]
+
+        tool_map["ssh_exec"](ip="192.168.100.13", user="root", password="root", command="id")
+        complete = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert complete["ok"] is True
+        assert complete["intrusion_progress"]["ready_to_complete"] is True
+
     def test_local_moe_intrusion_rewrites_hallucinated_compromise(
         self, mock_provider, output_dir
     ):
@@ -1956,11 +2051,13 @@ class TestPhase5Context:
         assert status.startswith("failed:")
         assert "try_credential" in tool_names
         assert "ssh_exec" in tool_names
+        assert "complete_intrusion_campaign" in tool_names
         assert "save_deliverable" not in tool_names
-        assert kwargs["required_tool"] is None
-        assert kwargs["terminate_after_tool"] is None
-        assert kwargs["terminate_on_unavailable_tools"] == {"save_deliverable"}
-        assert "Return the campaign memo" in kwargs["system_prompt"]
+        assert kwargs["required_tool"] == "complete_intrusion_campaign"
+        assert kwargs["terminate_after_tool"] == "complete_intrusion_campaign"
+        assert kwargs["terminate_on_unavailable_tools"] is None
+        assert kwargs["strict_required_tool"] is True
+        assert "Complete compact campaign" in kwargs["system_prompt"]
         assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
 
@@ -1987,6 +2084,7 @@ class TestPhase5Context:
         assert kwargs["required_tool"] == "save_deliverable"
         assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["terminate_on_unavailable_tools"] is None
+        assert kwargs["strict_required_tool"] is False
         assert kwargs["max_turns"] == 80
         assert kwargs["max_tokens"] == 16384
 

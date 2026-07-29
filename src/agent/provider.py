@@ -144,15 +144,16 @@ class LLMProvider:
         terminate_after_tool: str | None = None,
         repeat_guard: bool = True,
         terminate_on_unavailable_tools: set[str] | frozenset[str] | None = None,
+        strict_required_tool: bool = False,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools)
+            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset()):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -190,7 +191,7 @@ class LLMProvider:
                 cost_tracker.record_turn(input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, tool_call_count=len(tool_calls))
 
             if not tool_calls:
-                if required_tool and not required_tool_called and (completion_only or not reminder_sent):
+                if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
                     reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
                     messages.append({"role": "assistant", "content": response.content})
                     messages.append({"role": "user", "content": reminder})
@@ -265,7 +266,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset()):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -341,7 +342,7 @@ class LLMProvider:
                             cost_tracker.record_turn(input_tokens=fallback.usage.prompt_tokens or 0, output_tokens=fallback.usage.completion_tokens or 0)
                         fb_content = fallback.choices[0].message.content or ""
                         if stream_callback: stream_callback({"type": "text_chunk", "text": fb_content, "turn": turn + 1})
-                        if required_tool and not required_tool_called and not reminder_sent:
+                        if required_tool and not required_tool_called and (strict_required_tool or not reminder_sent):
                             messages.append({"role": "assistant", "content": fb_content})
                             messages.append({"role": "user", "content": f"Call {required_tool} now with the results."})
                             reminder_sent = True
@@ -359,7 +360,7 @@ class LLMProvider:
                 return last_nonempty_text or "(unexpected tool call without available tools)"
 
             if not message.tool_calls:
-                if required_tool and not required_tool_called and (completion_only or not reminder_sent):
+                if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
                     messages.append({"role": "assistant", "content": message.content or ""})
                     messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
                     reminder_sent = True
