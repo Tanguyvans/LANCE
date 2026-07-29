@@ -5080,6 +5080,46 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
+    def _record_blocked_intrusion_synthesis(
+        self,
+        config,
+        results: dict,
+        data: dict,
+        *,
+        stream_callback=None,
+        reason: str,
+    ) -> None:
+        """Record a diagnostic Phase 5 artifact without promoting empty work."""
+        summary = data.setdefault("summary", {})
+        summary["_note"] = reason
+        data["status"] = "blocked"
+        data["blocked_reason"] = reason
+        path = self.run_dir / config.deliverable_file
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        results[config.name] = "blocked:phase5_no_observable_actions"
+        log.warning("Phase 5 synthesis blocked: %s", reason)
+        print(f"  Phase 5 synthesis blocked: {reason}")
+        if stream_callback:
+            stream_callback({
+                "type": "phase_done",
+                "phase": config.phase,
+                "name": config.name,
+                "status": results[config.name],
+                "deliverable": config.deliverable_file,
+                "cost_usd": 0,
+                "turns": 0,
+            })
+
+    @staticmethod
+    def _intrusion_synthesis_has_observable_actions(data: dict) -> bool:
+        summary = data.get("summary", {}) if isinstance(data, dict) else {}
+        if not isinstance(summary, dict):
+            return False
+        return (
+            int(summary.get("devices_attempted", 0) or 0) > 0
+            or int(summary.get("devices_compromised", 0) or 0) > 0
+        )
+
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Guarantee a valid 05_intrusion.json exists after Phase 5.
 
@@ -5102,6 +5142,18 @@ class Pipeline:
                 data = self._synthesize_intrusion_from_tools(
                     note="Reconciled from tool_calls.jsonl — local MoE model output is treated as memo-only."
                 )
+                if not self._intrusion_synthesis_has_observable_actions(data):
+                    self._record_blocked_intrusion_synthesis(
+                        config,
+                        results,
+                        data,
+                        stream_callback=stream_callback,
+                        reason=(
+                            "No observable Phase 5 intrusion action was recorded; "
+                            "only context/completion chatter was available."
+                        ),
+                    )
+                    return
                 path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
                 results[config.name] = "completed:synthesized"
                 print(
@@ -5124,6 +5176,18 @@ class Pipeline:
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
         )
         data = self._synthesize_intrusion_from_tools()
+        if not self._intrusion_synthesis_has_observable_actions(data):
+            self._record_blocked_intrusion_synthesis(
+                config,
+                results,
+                data,
+                stream_callback=stream_callback,
+                reason=(
+                    "No observable Phase 5 intrusion action was recorded; "
+                    "refusing to promote an empty synthesized deliverable."
+                ),
+            )
+            return
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
         results[config.name] = "completed:synthesized"
         print(
@@ -5149,7 +5213,25 @@ class Pipeline:
         compromised: dict = {}
         creds: list = []
         seen_cred: set = set()
-        attempted: set = set()  # all IPs we tried credentials against
+        attempted: set = set()  # all IPs touched by Phase 5 action tools
+
+        def _host_from_url(value: object) -> str:
+            raw = str(value or "").strip()
+            if not raw:
+                return ""
+            parsed = urlsplit(raw)
+            if parsed.hostname:
+                return parsed.hostname
+            return raw.split("/", 1)[0].split(":", 1)[0].strip()
+
+        def _target_from_tool(tool: str, args: dict) -> str:
+            for key in ("ip", "host", "broker", "target"):
+                value = str(args.get(key) or "").strip()
+                if value:
+                    return value
+            if tool in {"http_get", "curl_headers"}:
+                return _host_from_url(args.get("url"))
+            return ""
 
         # Map IP -> device_id from the pre-generated intrusion context so the
         # synthesized deliverable carries real device names, not blanks.
@@ -5197,6 +5279,8 @@ class Pipeline:
                     continue
                 tool = rec.get("tool")
                 args = rec.get("args") or {}
+                if not isinstance(args, dict):
+                    args = {}
                 res: dict = {}
                 raw = rec.get("result")
                 if isinstance(raw, str):
@@ -5206,8 +5290,8 @@ class Pipeline:
                         res = {}
                 elif isinstance(raw, dict):
                     res = raw
-                ip = args.get("ip")
-                if tool == "try_credential" and ip:
+                ip = _target_from_tool(str(tool or ""), args)
+                if tool in {"try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers"} and ip:
                     attempted.add(ip)
                 if not (isinstance(res, dict) and res.get("success") and ip):
                     continue

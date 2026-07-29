@@ -160,7 +160,9 @@ class LLMProvider:
         reminder_sent = False
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
+        no_tool_stalls = 0
         _REPEAT_THRESHOLD = 3
+        _NO_TOOL_STALL_THRESHOLD = 3
 
         terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
 
@@ -192,6 +194,15 @@ class LLMProvider:
 
             if not tool_calls:
                 if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
+                    no_tool_stalls += 1
+                    if no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD:
+                        log.warning(
+                            "Required tool %s was not called after %d no-tool turns",
+                            required_tool, no_tool_stalls,
+                        )
+                        if stream_callback:
+                            stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
+                        return "\n".join(text_parts) or f"(required tool {required_tool} not called after repeated reminders)"
                     reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
                     messages.append({"role": "assistant", "content": response.content})
                     messages.append({"role": "user", "content": reminder})
@@ -200,6 +211,7 @@ class LLMProvider:
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return "\n".join(text_parts)
 
+            no_tool_stalls = 0
             terminal_unavailable = next(
                 (
                     tc.name for tc in tool_calls
@@ -275,7 +287,9 @@ class LLMProvider:
         last_nonempty_text = ""
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
+        no_tool_stalls = 0
         _REPEAT_THRESHOLD = 3
+        _NO_TOOL_STALL_THRESHOLD = 3
 
         terminal_api_tools = [
             tool for tool in api_tools
@@ -361,6 +375,17 @@ class LLMProvider:
 
             if not message.tool_calls:
                 if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
+                    no_tool_stalls += 1
+                    if no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD:
+                        log.warning(
+                            "Required tool %s was not called after %d no-tool turns",
+                            required_tool, no_tool_stalls,
+                        )
+                        if message.content and stream_callback:
+                            stream_callback({"type": "text_chunk", "text": message.content, "turn": turn + 1})
+                        if stream_callback:
+                            stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
+                        return last_nonempty_text or f"(required tool {required_tool} not called after repeated reminders)"
                     messages.append({"role": "assistant", "content": message.content or ""})
                     messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
                     reminder_sent = True
@@ -370,6 +395,7 @@ class LLMProvider:
                     stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                 return last_nonempty_text
 
+            no_tool_stalls = 0
             terminal_unavailable = next(
                 (
                     tc.function.name for tc in message.tool_calls

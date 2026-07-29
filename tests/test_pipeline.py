@@ -1676,6 +1676,40 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 2
         complete.assert_called_once_with()
 
+    def test_openai_loop_stops_strict_required_tool_no_tool_stall(self):
+        """Strict required-tool mode must not burn the full turn budget on empty prose."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+        empty_message = MagicMock(content=None, tool_calls=None)
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(finish_reason="stop", message=empty_message)],
+            usage=None,
+        )
+        complete = MagicMock(return_value='{"ok": true}')
+
+        result = provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[{
+                "name": "complete_intrusion_campaign",
+                "description": "complete",
+                "input_schema": {},
+                "function": complete,
+            }],
+            max_turns=50,
+            required_tool="complete_intrusion_campaign",
+            terminate_after_tool="complete_intrusion_campaign",
+            strict_required_tool=True,
+        )
+
+        assert result == "(required tool complete_intrusion_campaign not called after repeated reminders)"
+        assert provider.client.chat.completions.create.call_count == 3
+        complete.assert_not_called()
+
     def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
         """Interleaved duplicate calls must switch the model to save-only mode."""
         from src.agent.provider import LLMProvider
@@ -2106,6 +2140,56 @@ class TestPhase5Context:
             "source_ip": "192.168.100.11",
             "source_device": "s1-mqtt",
         }]
+
+    def test_intrusion_synthesis_blocks_context_only_trace(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
+            "all_targets": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
+            "recovered_credentials": [],
+        }))
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "phase": 5,
+            "agent": "intrusion",
+            "tool": "read_deliverable",
+            "args": {"filename": "05_intrusion_context.json"},
+            "result": json.dumps({"content": "{}"}),
+        }) + "\n")
+
+        results = {"intrusion": "failed:empty"}
+        pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
+
+        final = json.loads((run_dir / "05_intrusion.json").read_text())
+        assert results["intrusion"] == "blocked:phase5_no_observable_actions"
+        assert final["status"] == "blocked"
+        assert final["summary"]["devices_attempted"] == 0
+        assert final["summary"]["devices_compromised"] == 0
+
+    def test_intrusion_synthesis_counts_noncredential_actions(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "all_targets": [{"device_id": "s1-web", "device_ip": "192.168.100.12"}],
+        }))
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "phase": 5,
+            "agent": "intrusion",
+            "tool": "http_get",
+            "args": {"url": "http://192.168.100.12/admin"},
+            "result": json.dumps({"status_code": 200}),
+        }) + "\n")
+
+        data = pipeline._synthesize_intrusion_from_tools()
+
+        assert data["summary"]["devices_attempted"] == 1
+        assert pipeline._intrusion_synthesis_has_observable_actions(data) is True
 
     def test_non_local_intrusion_keeps_valid_model_deliverable(
         self, mock_provider, output_dir
