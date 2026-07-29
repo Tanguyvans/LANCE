@@ -374,6 +374,70 @@ class TestReconToolContract:
         assert [name for name, _ in calls].count("nmap_scan") == 2
         assert calls[0][0] == "ssh_audit"
 
+    @pytest.mark.parametrize(
+        ("profile", "expected_error", "expected_read_calls"),
+        [
+            ("compact", "recon_completion_required", 1),
+            ("full", None, 2),
+        ],
+    )
+    def test_only_compact_local_moe_locks_tools_after_recon_is_ready(
+        self, output_dir, monkeypatch, profile, expected_error, expected_read_calls
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [{
+                "id": "web", "ip": "192.168.100.12", "role": "web_server",
+            }]
+        })
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile=profile)
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
+        read = MagicMock(return_value='{"content":"phase1"}')
+
+        def constant(result):
+            return lambda **kwargs: result
+
+        guarded = {
+            item["name"]: item["function"]
+            for item in pipeline._apply_recon_tool_contract([
+                {"name": "arp_scan", "description": "arp", "input_schema": {},
+                 "function": constant('{"hosts":[]}')},
+                {"name": "nmap_discovery", "description": "discovery",
+                 "input_schema": {},
+                 "function": constant('{"stdout":"ok","return_code":0}')},
+                {"name": "read_deliverable", "description": "read",
+                 "input_schema": {}, "function": read},
+                {"name": "nmap_scan", "description": "scan", "input_schema": {},
+                 "function": constant('{"stdout":"ok","return_code":0}')},
+                {"name": "save_deliverable", "description": "save",
+                 "input_schema": {},
+                 "function": constant('{"status":"saved"}')},
+            ])
+        }
+        guarded["arp_scan"]()
+        guarded["nmap_discovery"](target="192.168.100.0/24")
+        guarded["read_deliverable"](filename="01_graph_analysis.md")
+        item = pipeline._recon_scan_plan(
+            graph_tools._scenario_topology["nodes"]
+        )[0]
+        guarded["nmap_scan"](
+            target=item["target"], ports=item["ports"], skip_discovery=True
+        )
+
+        late_read = json.loads(guarded["read_deliverable"](
+            filename="01_graph_analysis.md"
+        ))
+        assert read.call_count == expected_read_calls
+        if expected_error:
+            assert late_read["error_kind"] == expected_error
+            assert late_read["allowed_tool"] == "save_deliverable"
+        else:
+            assert late_read["content"] == "phase1"
+
     def test_two_identical_scan_failures_end_retry_loop_as_failed_evidence(
         self, mock_provider, output_dir, monkeypatch
     ):
@@ -2279,7 +2343,10 @@ class TestInformationPreservingArchitecture:
                 "tool": "nmap_scan",
                 "args": {"target": "192.0.2.10"},
                 "result": json.dumps({
-                    "stdout": "22/tcp open ssh OpenSSH 9.2",
+                    "stdout": (
+                        "23/tcp open telnet?\n"
+                        "80/tcp open http OpenWrt uHTTPd"
+                    ),
                     "return_code": 0,
                 }),
             },
@@ -2291,9 +2358,139 @@ class TestInformationPreservingArchitecture:
         projection = pipeline._build_recon_evidence_projection()
 
         assert projection["device_count"] == 1
-        assert projection["devices"][0]["open_ports"] == [22]
-        assert "OpenSSH 9.2" in projection["markdown_service_rows"][0]
+        assert projection["devices"][0]["open_ports"] == [23, 80]
+        services = projection["devices"][0]["services"]
+        assert services[0]["service"] == "telnet?"
+        assert services[0]["version"] == ""
+        assert services[1]["service"] == "http"
+        assert services[1]["version"] == "OpenWrt uHTTPd"
         assert (pipeline.run_dir / "02_recon_evidence.json").exists()
+
+    def test_compact_local_recon_rebuilds_fact_sections_before_validation(
+        self, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [
+                {"id": "router", "ip": "192.0.2.10", "role": "router"},
+                {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker"},
+                {"id": "offline", "ip": "192.0.2.12", "role": "server"},
+            ]
+        })
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        records = [
+            {
+                "tool": "arp_scan",
+                "args": {},
+                "result": json.dumps({"hosts": [
+                    {"ip": "192.0.2.10"}, {"ip": "192.0.2.11"},
+                ]}),
+            },
+            {
+                "tool": "nmap_discovery",
+                "args": {"target": "192.0.2.0/24"},
+                "result": json.dumps({"stdout": (
+                    "Nmap scan report for 192.0.2.10\n"
+                    "Nmap scan report for 192.0.2.11\n"
+                    "Nmap scan report for 192.0.2.200"
+                )}),
+            },
+            {
+                "tool": "nmap_scan",
+                "args": {"target": "192.0.2.10"},
+                "result": json.dumps({"stdout": (
+                    "23/tcp open telnet?\n80/tcp open http OpenWrt uHTTPd"
+                )}),
+            },
+            {
+                "tool": "nmap_scan",
+                "args": {"target": "192.0.2.11"},
+                "result": json.dumps({"stdout": "1883/tcp open mqtt Mosquitto 2.0"}),
+            },
+            {
+                "tool": "nmap_scan",
+                "args": {"target": "192.0.2.12"},
+                "result": json.dumps({
+                    "stdout": "Host seems down.", "return_code": 0,
+                }),
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n",
+            encoding="utf-8",
+        )
+        captured = {}
+
+        def save(filename, content):
+            captured.update(filename=filename, content=content)
+            return json.dumps({"status": "saved"})
+
+        config = AgentConfig(
+            name="recon", phase=2, prompt_template="recon",
+            deliverable_file="02_recon.md", tools=[],
+            validator="recon_markdown",
+        )
+        wrapped = pipeline._apply_deliverable_transaction([{
+            "name": "save_deliverable",
+            "description": "save",
+            "input_schema": {},
+            "function": save,
+        }], config)[0]["function"]
+        result = json.loads(wrapped(
+            filename="02_recon.md",
+            content=(
+                "# Recon\n\n## 1. Summary\n\nDraft\n\n"
+                "## 2. Discovered Services per Device\n\n"
+                "No table yet.\n\n## 3. Key Findings\n\n"
+                "- The model keeps this autonomous narrative."
+            ),
+        ))
+
+        assert result["validated"] is True
+        assert "| Total live hosts (ARP) | 2 |" in captured["content"]
+        assert "| YAML devices confirmed | 2 |" in captured["content"]
+        assert "| Undocumented devices | 1 |" in captured["content"]
+        assert "| Unreachable YAML devices | 1 |" in captured["content"]
+        assert "| router | 192.0.2.10 | 23,80 |" in captured["content"]
+        assert "| offline | 192.0.2.12 | unreachable |" in captured["content"]
+        assert "| undocumented | 192.0.2.200 | unreachable |" in captured["content"]
+        assert "The model keeps this autonomous narrative." in captured["content"]
+
+    def test_full_local_recon_does_not_rewrite_model_report(
+        self, output_dir
+    ):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="full")
+        save = MagicMock(return_value='{"status":"saved"}')
+        config = AgentConfig(
+            name="recon", phase=2, prompt_template="recon",
+            deliverable_file="02_recon.md", tools=[],
+            validator="recon_markdown",
+        )
+        wrapped = pipeline._apply_deliverable_transaction([{
+            "name": "save_deliverable",
+            "description": "save",
+            "input_schema": {},
+            "function": save,
+        }], config)[0]["function"]
+        result = json.loads(wrapped(
+            filename="02_recon.md",
+            content=(
+                "# Recon\n\n## 1. Summary\n\nDraft\n\n"
+                "## 2. Discovered Services per Device\n\n"
+                "No table yet.\n\n## 3. Key Findings\n\nAutonomous."
+            ),
+        ))
+
+        assert result["error_kind"] == "deliverable_validation"
+        assert "found 0" in result["error"]
+        save.assert_not_called()
 
     def test_local_moe_phase3_cve_validation_logs_and_feeds_aggregation(
         self, mock_provider, output_dir, monkeypatch

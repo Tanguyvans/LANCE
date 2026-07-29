@@ -1710,7 +1710,8 @@ class Pipeline:
                     })
                     row["sources"].append("nmap_scan")
                     for match in re.finditer(
-                        r"(?m)^(\d+)/(tcp|udp)\s+open\s+(\S+)(?:\s+(.*))?$",
+                        r"(?m)^(\d+)/(tcp|udp)[ \t]+open[ \t]+(\S+)"
+                        r"(?:[ \t]+(.*))?$",
                         stdout,
                     ):
                         port = int(match.group(1))
@@ -1769,6 +1770,114 @@ class Pipeline:
         )
         return projection
 
+    def _finalize_compact_recon_markdown(self, content: str) -> str:
+        """Bind compact local Recon facts to the deterministic evidence ledger.
+
+        Compact 3B models retain control over the Key Findings narrative, while
+        the two fact-heavy sections are rebuilt from raw tool evidence. Full
+        profiles never call this helper and keep autonomous report composition.
+        """
+        projection = self._build_recon_evidence_projection()
+        rows = projection.get("devices", [])
+        arp_count = sum(
+            "arp_scan" in row.get("sources", [])
+            for row in rows if isinstance(row, dict)
+        )
+        observed_ips = {
+            str(row.get("ip"))
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("ip")
+            and (
+                "arp_scan" in row.get("sources", [])
+                or "nmap_discovery" in row.get("sources", [])
+                or bool(row.get("open_ports"))
+            )
+        }
+        confirmed_count = sum(
+            bool(row.get("device")) and str(row.get("ip")) in observed_ips
+            for row in rows if isinstance(row, dict)
+        )
+        undocumented_count = sum(
+            not row.get("device") and str(row.get("ip")) in observed_ips
+            for row in rows if isinstance(row, dict)
+        )
+
+        try:
+            from src.agent.tools.graph_tools import _scenario_topology
+            declared_nodes = (_scenario_topology or {}).get("nodes", [])
+        except Exception:
+            declared_nodes = []
+        unreachable_count = sum(
+            bool(node.get("ip")) and str(node.get("ip")) not in observed_ips
+            for node in declared_nodes if isinstance(node, dict)
+        )
+
+        summary = "\n".join([
+            "| Metric | Value |",
+            "|--------|-------|",
+            f"| Total live hosts (ARP) | {arp_count} |",
+            f"| YAML devices confirmed | {confirmed_count} |",
+            f"| Undocumented devices | {undocumented_count} |",
+            f"| Unreachable YAML devices | {unreachable_count} |",
+            "",
+            "Evidence policy: this inventory is regenerated from recorded "
+            "ARP and Nmap results. An unreachable host or a service marked "
+            "as not observed is not treated as evidence that it is absent.",
+        ])
+        services = "\n".join([
+            "| Device | IP | Open Ports | Key Services |",
+            "|--------|----|------------|--------------|",
+            *[str(row) for row in projection.get("markdown_service_rows", [])],
+        ])
+
+        summary_heading = "## 1. Summary"
+        services_heading = "## 2. Discovered Services per Device"
+        findings_heading = "## 3. Key Findings"
+        summary_index = content.find(summary_heading)
+        findings_index = content.find(findings_heading)
+        if summary_index >= 0:
+            preamble = content[:summary_index].rstrip()
+        else:
+            first_section = content.find("## ")
+            preamble = (
+                content[:first_section].rstrip()
+                if first_section >= 0 else content.rstrip()
+            )
+        if findings_index >= 0:
+            findings = content[findings_index:].strip()
+        else:
+            findings = (
+                f"{findings_heading}\n\n"
+                "- Review the deterministic service table above and prioritize "
+                "unexpected hosts, exposed services, and failed probes."
+            )
+        if not preamble:
+            preamble = "# Phase 2: Reconnaissance"
+
+        return (
+            f"{preamble}\n\n"
+            f"{summary_heading}\n\n{summary}\n\n"
+            f"{services_heading}\n\n{services}\n\n"
+            f"{findings}\n"
+        )
+
+    @staticmethod
+    def _validate_compact_recon_projection(
+        content: str, projection: dict
+    ) -> tuple[bool, str]:
+        """Require every deterministic device row in compact Recon output."""
+        expected_rows = [
+            str(row) for row in projection.get("markdown_service_rows", [])
+        ]
+        missing = [row for row in expected_rows if row not in content]
+        if missing:
+            return False, (
+                "Compact Recon output diverges from deterministic evidence: "
+                f"{len(missing)} service row(s) missing"
+            )
+        return True, "OK"
+
     def _apply_deliverable_transaction(
         self,
         tools: list[dict],
@@ -1813,6 +1922,11 @@ class Pipeline:
                     })
 
                 normalized = _extract_json(content) if target.endswith(".json") else content
+                strict_compact_recon = (
+                    config.name == "recon" and self._uses_compact_local_moe()
+                )
+                if strict_compact_recon:
+                    normalized = self._finalize_compact_recon_markdown(normalized)
                 safe_name = target.replace("/", "__").replace("\\", "__")
                 attempt_dir = self.run_dir / ".attempts" / safe_name
                 attempt_dir.mkdir(parents=True, exist_ok=True)
@@ -1823,6 +1937,15 @@ class Pipeline:
 
                 validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
                 valid, validation_error = validator_fn(attempt_ref)
+                if valid and strict_compact_recon:
+                    projection = json.loads(
+                        (self.run_dir / "02_recon_evidence.json").read_text(
+                            encoding="utf-8"
+                        )
+                    )
+                    valid, validation_error = self._validate_compact_recon_projection(
+                        normalized, projection
+                    )
                 entry = {
                     "timestamp": datetime.now().astimezone().isoformat(),
                     "phase": config.phase,
@@ -3802,6 +3925,7 @@ class Pipeline:
         completed_calls: set[str] = set()
         scan_cache: dict[str, str] = {}
         scan_failure_counts: dict[str, int] = {}
+        strict_compact_completion = self._uses_compact_local_moe()
         target_subnets = [
             value for value in str(self.context.get("target_subnet", "")).split()
             if value
@@ -4009,6 +4133,17 @@ class Pipeline:
                         "invalid_recon_target",
                         f"Out-of-scope Recon target: {outside}",
                         allowed_subnets=target_subnets,
+                    )
+                if (
+                    strict_compact_completion
+                    and name != "save_deliverable"
+                    and not _missing_requirements()
+                ):
+                    return _error(
+                        "recon_completion_required",
+                        "Compact local Recon evidence is complete; only "
+                        "save_deliverable is allowed now.",
+                        allowed_tool="save_deliverable",
                     )
 
                 if name == "arp_scan":
