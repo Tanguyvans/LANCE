@@ -48,7 +48,10 @@ def main():
         "--scenario",
         type=str,
         default=None,
-        help="Benchmark scenario ID. S1-S23 are public development scenarios; S24-S29 require the sealed controller.",
+        help=(
+            "Benchmark scenario ID. S1-S19 are public development scenarios, "
+            "S20-S23 are public held-out tests, and S24-S29 require the sealed controller."
+        ),
     )
     parser.add_argument(
         "--batch",
@@ -56,7 +59,8 @@ def main():
         metavar="IDS",
         help=(
             "Run multiple scenarios sequentially and aggregate metrics. "
-            "Accepts comma-separated IDs, 'dev', or 'all'; eval requires the sealed controller."
+            "Accepts comma-separated IDs, 'dev', 'test', 'public', or 'all'; "
+            "eval requires the sealed controller."
         ),
     )
     parser.add_argument(
@@ -72,7 +76,7 @@ def main():
     )
     parser.add_argument(
         "--split",
-        choices=["auto", "dev-public", "eval-sealed"],
+        choices=["auto", "dev-public", "test-public", "eval-sealed"],
         default="auto",
         help="Benchmark split policy. Sealed runs must be launched by the controller worker.",
     )
@@ -96,21 +100,28 @@ def main():
 
     normalized_batch: str | None = None
     if args.batch is not None:
-        from src.agent.batch import _parse_scenario_ids
+        from src.agent.batch import _parse_scenario_ids, _public_scenario_split
         try:
-            normalized_batch = ",".join(_parse_scenario_ids(args.batch))
+            batch_ids = _parse_scenario_ids(args.batch)
+            normalized_batch = ",".join(batch_ids)
         except ValueError as exc:
             parser.error(str(exc))
-        resolved_split = "dev-public"
+        batch_splits = {_public_scenario_split(sid) for sid in batch_ids}
+        if resolved_split is not None and batch_splits != {resolved_split}:
+            parser.error(
+                f"batch belongs to {', '.join(sorted(batch_splits))}, not {resolved_split}"
+            )
+        resolved_split = next(iter(batch_splits)) if len(batch_splits) == 1 else None
     elif args.scenario is not None:
-        from src.agent.batch import _parse_single_scenario_id
+        from src.agent.batch import _parse_single_scenario_id, _public_scenario_split
         try:
             args.scenario = _parse_single_scenario_id(args.scenario)
         except ValueError as exc:
             parser.error(str(exc))
-        if resolved_split not in (None, "dev-public"):
-            parser.error(f"S{args.scenario} belongs to dev-public, not {resolved_split}")
-        resolved_split = "dev-public"
+        scenario_split = _public_scenario_split(args.scenario)
+        if resolved_split not in (None, scenario_split):
+            parser.error(f"S{args.scenario} belongs to {scenario_split}, not {resolved_split}")
+        resolved_split = scenario_split
 
     # Resolve all local-only validation before constructing a provider. This
     # keeps invalid/sealed invocations free of credentials and network setup.

@@ -73,7 +73,7 @@ def list_scenarios():
                 "vulns": vuln_list,
             })
 
-    # Public development scenarios are backed by deployable YAML.  Sealed
+    # Public development and held-out test scenarios are backed by deployable YAML. Sealed
     # scenarios are appended from the metadata-only catalogue and never expose
     # topology, packs, seeds, or oracle details.
     scenarios_by_id: dict[str, dict] = {}

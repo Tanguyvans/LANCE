@@ -19,9 +19,9 @@ class SealedScenarioError(ValueError):
 
 def _available_scenarios() -> list[str]:
     """Return deployable public scenarios, including legacy hardened variants."""
-    from src.benchmark.catalog import DEV_PUBLIC, list_scenarios
+    from src.benchmark.catalog import list_scenarios
 
-    ids = [item.id for item in list_scenarios(DEV_PUBLIC)]
+    ids = [item.id for item in list_scenarios() if not item.sealed]
     variants = [
         path.stem.removeprefix("scenario_")
         for path in GT_DIR.glob("scenario_*.yaml")
@@ -37,6 +37,25 @@ def _available_scenarios() -> list[str]:
     return sorted(set(ids + variants), key=sort_key)
 
 
+def _public_scenario_split(scenario_id: int | str) -> str:
+    """Return the trusted split for one locally deployable scenario.
+
+    Historical variants and Scenario Lab exports remain development material;
+    numeric catalogue scenarios retain their explicit dev/test-public split.
+    """
+    normalized = str(scenario_id).strip().removeprefix("S").removeprefix("s")
+    if normalized.isdigit():
+        from src.benchmark.catalog import load_catalog
+
+        descriptor = load_catalog().get(normalized)
+        if descriptor.sealed:
+            raise SealedScenarioError(
+                f"S{normalized} must run through the external sealed controller"
+            )
+        return descriptor.split
+    return "dev-public"
+
+
 def _parse_scenario_ids(batch_arg: str) -> list[str]:
     """Parse --batch argument into a list of scenario ID strings.
 
@@ -50,7 +69,10 @@ def _parse_scenario_ids(batch_arg: str) -> list[str]:
         return _available_scenarios()
     from src.benchmark.catalog import CatalogError, load_catalog
 
-    if selector not in {"dev", "dev-public", "eval", "eval-sealed"}:
+    if selector not in {
+        "dev", "dev-public", "test", "test-public", "public",
+        "eval", "eval-sealed",
+    }:
         resolved: list[str] = []
         for raw in selector.split(","):
             sid = raw.strip().removeprefix("s")
@@ -253,7 +275,7 @@ def _aggregate_batch_results(
     official = aggregate_evaluations(
         evaluations,
         expected_scenarios=expected,
-        scenario_splits={sid: "dev-public" for sid in expected},
+        scenario_splits={sid: _public_scenario_split(sid) for sid in expected},
     )
     process = [result["metrics"] for result in completed if result["metrics"].get("process_metrics_available")]
 
@@ -332,6 +354,7 @@ def run_batch(
 
     for idx, sid in enumerate(scenario_ids, 1):
         scenario_id: int | str = int(sid) if sid.isdigit() else sid
+        scenario_split = _public_scenario_split(sid)
         gt_file = resolve_ground_truth_path(sid)
 
         if not gt_file.exists():
@@ -354,7 +377,7 @@ def run_batch(
                 scenario_id=scenario_id,
                 auto_teardown=True,
                 blind=blind,
-                benchmark_split="dev-public",
+                benchmark_split=scenario_split,
                 execution_profile=execution_profile,
             )
             run_results = pipeline.run()
@@ -387,7 +410,7 @@ def run_batch(
 
         try:
             ev = evaluate(run_dir, gt_file, policy="strict-v3")
-            ev.split = "dev-public"
+            ev.split = scenario_split
             evaluation_results.append(ev)
             entry["metrics"] = _evaluation_metrics(ev)
         except Exception as exc:

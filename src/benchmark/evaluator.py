@@ -2332,7 +2332,7 @@ def evaluate(
 
     # Evaluate complete attack chains after one-to-one finding matching. Partial
     # chains are intentionally not counted as detected, but their missing GT IDs
-    # remain visible on the public development split for diagnosis.
+    # remain visible on the public development/test splits for diagnosis.
     matched_gt_ids = {
         str(match["gt_id"])
         for match in result.matches

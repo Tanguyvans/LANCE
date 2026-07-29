@@ -1,13 +1,16 @@
 # Protocole d’évaluation public et scellé
 
-Ce document définit la séparation officielle d’IoTChainBench v3 entre les profils de développement publics et les profils d’évaluation scellés. Il décrit les informations visibles par le runner, le protocole controller/worker, la rotation des instances et la publication des scores. Il ne décrit volontairement aucune propriété interne de S24–S29.
+Ce document définit la séparation officielle d’IoTChainBench v3.1 entre les profils de développement publics, le test public held-out et les profils d’évaluation scellés. Il décrit les informations visibles par le runner, le protocole controller/worker, la rotation des instances et la publication des scores. Il ne décrit volontairement aucune propriété interne de S24–S29.
 
-## Deux splits aux objectifs différents
+## Trois splits aux objectifs différents
 
 | Split | Profils | Usage | Contenu accessible |
 | --- | --- | --- | --- |
-| `dev-public` | S1–S23 | Développement, débogage, ablations et reproductibilité | Scénario, topologie, packs, injection, vérification et ground truth |
+| `dev-public` | S1–S19 | Développement, débogage, ablations et reproductibilité | Scénario, topologie, packs, injection, vérification et ground truth |
+| `test-public` | S20–S23 | Test public après gel du harness | Même contenu public, mais interdit à la boucle d’apprentissage |
 | `eval-sealed` | S24–S29 | Mesure finale de généralisation | Identifiant opaque, politique d’exécution et contrat runtime minimal |
+
+`test-public` signifie held-out par rapport au développement du harness, et non secret. Les définitions et ground truths S20–S23 restent consultables pour l’audit et la reproductibilité, mais leurs résultats ne peuvent servir à modifier le pipeline, les prompts, les scanners, les adaptateurs ou les budgets de la version évaluée. Une telle modification consomme le split et impose une nouvelle version du benchmark ou du runner.
 
 Les variantes historiques S1h et S4h restent des contrôles de développement, mais ne constituent pas des profils numériques supplémentaires dans le catalogue officiel S1–S29.
 
@@ -211,7 +214,7 @@ contrat d’évaluation.
 
 Aucun détail par vulnérabilité, hôte, chemin, seed ou profil sealed n’est retourné. Les TP/FP/FN individuels, indices de matching et raisons d’échec restent privés. Cette politique empêche d’utiliser le controller comme oracle itératif. Le résultat agrégé est signé et rattaché à la version du benchmark, au hash du runner, au modèle et à la politique de budget.
 
-Les scores `dev-public` et `eval-sealed` doivent toujours être affichés séparément. Un score public sert au développement ; il ne remplace pas le score de généralisation sealed.
+Les scores `dev-public`, `test-public` et `eval-sealed` doivent toujours être affichés séparément. Le premier sert au développement, le second à un test public reproductible après gel, et le troisième à la généralisation scellée.
 
 Les points d'entrée CLI, API et batch utilisent `strict-v3`. L'API Python basse
 niveau conserve `strict-v2` par défaut pour ne pas réinterpréter silencieusement
@@ -291,7 +294,8 @@ Les anciennes instances peuvent être publiées après leur retrait définitif p
 
 Le protocole combine plusieurs protections complémentaires :
 
-- S1–S23 constituent la surface explicite de développement ; toute optimisation de prompts ou de scanners doit se faire sur ce split ;
+- S1–S19 constituent la surface explicite de développement ; toute optimisation de prompts ou de scanners doit se faire sur ce split ;
+- S20–S23 sont publics et auditables, mais leurs runs sont exclus de l’apprentissage et ne commencent qu’après le gel du harness ;
 - les définitions privées de S24–S29 sont absentes du dépôt, des images worker et des bases de connaissances accessibles au modèle ;
 - le mode informed est interdit sur le split sealed ;
 - les sorties sealed ne sont jamais ingérées dans l’historique réutilisable par un run futur ;

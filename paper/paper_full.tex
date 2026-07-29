@@ -75,10 +75,10 @@ LLM penetration-testing agents are typically evaluated on isolated hosts, while
 IoT/OT compromises often depend on reachability across gateways, brokers, and
 segmented services. This leaves a methodological gap: single-host corpora do not
 measure pivots, protocol roles, or evidence depth. We present
-\systemname{}, a reproducible network-scale IoT benchmark with 23 public
-Proxmox/Ansible scenarios, 220 virtual-device instances, 266 injected
-vulnerabilities, 53 negative controls, and six additional sealed evaluation
-profiles.
+\systemname{}, a reproducible network-scale IoT benchmark with 19 public
+development scenarios and four public held-out scenarios, totaling 220
+virtual-device instances, 266 injected vulnerabilities, and 53 negative
+controls, plus six additional sealed evaluation profiles.
 We also introduce \harnessname{} (LLM Agent for Network Compromise
 Evaluation), a six-phase network-native harness for topology analysis, active
 discovery, triage, verification, intrusion attempts, and report generation.
@@ -87,8 +87,7 @@ verified exploitation, severity coverage, enforced network pivots, and logical
 dependencies. The confirmatory comparison uses blind execution on the six
 sealed profiles, three pre-committed repetitions per profile, equal scenario
 weighting, and zero credit for missing runs or unsupported claims. Public
-scenarios are reserved for development, ablation, and informed-versus-blind
-diagnostics.
+S1--S19 support development; inspectable S20--S23 are held out from tuning.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -107,7 +106,7 @@ IoT/OT deployments are compromised through paths, not just devices. A camera, br
 \medskip\noindent\textbf{Contributions.}
 This paper makes three contributions.
 \begin{itemize}[leftmargin=*,nosep]
-  \item \textbf{\systemname{}:} a reproducible network-scale IoT benchmark with 23 public scenarios (220 virtual-device instances, 266 vulnerabilities, and 53 controls) plus six sealed profiles, with per-vulnerability ground truth and infrastructure-verified reachability.
+  \item \textbf{\systemname{}:} 19 public development scenarios, four public held-out tests, and six sealed profiles, with 220 public device instances, 266 vulnerabilities, 53 controls, per-vulnerability ground truth, and verified reachability.
   \item \textbf{\harnessname{}:} a six-phase network-native LLM harness for discovery, triage, verification, intrusion, and reporting across multi-device IoT networks, with normalized finding schemas and evidence-level scoring.
   \item \textbf{Evaluation:} a pre-committed, blind, sealed protocol with three scores---Detection F1, Verified F1, and Verified Severity Coverage---plus separate controls, verified path coverage, network-pivot reach (MHR), dependency-hop reach (DHR), cost, and completeness.
 \end{itemize}
@@ -230,7 +229,7 @@ Figure~\ref{fig:attack-chain} illustrates the conceptual distinction between dir
 \end{tikzpicture}%
 }
 \caption{Conceptual pivot-gated attack surface. This diagram is not Scenario~S3,
-which is a flat network. The confirmatory public multi-hop fixture is S20, where
+which is a flat network. The public held-out multi-hop fixture is S20, where
 two isolated VLANs require successive entry and relay pivots and direct-access
 controls are verified before each run.}
 \label{fig:attack-chain}
@@ -252,7 +251,7 @@ The benchmark is built around three requirements:
   \item \textbf{Scorable evidence:} the oracle records expected indicators and verification commands, allowing the evaluator to distinguish shallow detection from stronger exploit evidence.
 \end{itemize}
 
-The public development split contains 23 scenarios (Table~\ref{tab:scenarios}); six additional profiles are evaluated only by the sealed controller.
+The benchmark has 19 public development scenarios, four inspectable public held-out tests, and six controller-only profiles (Table~\ref{tab:scenarios}). Held-out denotes exclusion from tuning, not secrecy.
 
 \begin{table}[h!]
 \centering
@@ -266,12 +265,12 @@ IDs & Role in protocol & Dev & Vulns & Controls \\
 \midrule
 \texttt{S1--S12} & Legacy public development and scale & 116 & 209 & 0 \\
 \texttt{S13} & VLAN segmentation development fixture & 17 & 20 & 0 \\
-\texttt{S14} & Sparse mixed-hardening controls & 11 & 4 & 8 \\
-\texttt{S15--S18} & Stateful logical dependency chains & 28 & 14 & 14 \\
-\texttt{S19} & Independent safe OT protocol checks & 8 & 5 & 2 \\
-\texttt{S20} & Two enforced network pivots & 5 & 4 & 3 \\
-\texttt{S21--S22} & Low prevalence and exploit diversity & 26 & 6 & 22 \\
-\texttt{S23} & Wireless-to-firmware logical chain & 9 & 4 & 4 \\
+\texttt{S14} & Development: mixed-hardening controls & 11 & 4 & 8 \\
+\texttt{S15--S18} & Development: logical dependency chains & 28 & 14 & 14 \\
+\texttt{S19} & Development: safe OT protocol checks & 8 & 5 & 2 \\
+\texttt{S20} & Public held-out: two network pivots & 5 & 4 & 3 \\
+\texttt{S21--S22} & Public held-out: prevalence/diversity & 26 & 6 & 22 \\
+\texttt{S23} & Public held-out: firmware chain & 9 & 4 & 4 \\
 \midrule
 \textbf{Public total} & & \textbf{220} & \textbf{266} & \textbf{53} \\
 \texttt{S24--S29} & Sealed confirmatory profiles & \multicolumn{3}{c}{private until retirement} \\
@@ -284,7 +283,7 @@ IDs & Role in protocol & Dev & Vulns & Controls \\
 
 Vulnerabilities are injected by a dedicated Ansible role parameterized by \texttt{scenario\_id}, making deployments reproducible and idempotent. Scenario YAML files declare router-level weaknesses (Telnet, WAN administration, FTP) and per-service roles that trigger targeted injections such as anonymous MQTT, weak SSH credentials, and passwordless database roots.
 
-Across the public split, \systemname{} injects 266 vulnerabilities and evaluates 53 explicit negative controls. Public S1--S23 are never used for a confirmatory leaderboard: they support implementation, ablation, matching audits, and informed-versus-blind diagnostics. S24--S29 are absent from the worker image and are instantiated with controller-side seeds.
+Across both public splits, \systemname{} injects 266 vulnerabilities and evaluates 53 controls. S1--S19 support development and audits. S20--S23 are code-excluded from learning and run only after the harness, prompts, adapters, and budgets are frozen. S24--S29 are absent from the worker image and use controller-side seeds.
 
 \subsection{Ground-Truth Schema}
 \label{sec:iotbench:gt}
@@ -338,7 +337,7 @@ We compare \harnessname{} with two adapted LLM-agent baselines:
   \item a CAI-style single-agent tool loop~\cite{cai25};
   \item a VulnBot-style multi-agent pipeline with a penetration task graph~\cite{vulnbot25}.
 \end{itemize}
-The confirmatory comparison runs every system in blind mode from the same controller-issued network scope. Baseline adapters must emit the same target, type, structural fields, evidence references, and tool-call provenance as \harnessname{}; the normalizer may not read ground truth or synthesize missing fields. Informed \harnessname{} runs are restricted to the public diagnostic split and are not part of the sealed architecture claim.
+The confirmatory comparison runs every system in blind mode from the same controller-issued network scope. Baseline adapters must emit the same target, type, structural fields, evidence references, and tool-call provenance as \harnessname{}; the normalizer may not read ground truth or synthesize missing fields. Informed \harnessname{} runs are restricted to public reporting and are not part of the sealed architecture claim.
 
 \textbf{Metrics and variance.}
 We report Detection F1, Verified F1 (primary), Verified Severity Coverage, clean-run rate, verified path coverage, verified MHR/DHR, cost, and planned/completed run counts. The confirmatory matrix is \{\harnessname{}, CAI, VulnBot\}$\times$S24--S29$\times$three paired controller repetitions. Repetitions are averaged within profile before a six-profile macro-average. A pre-committed but missing repetition contributes zero; no incomplete metric is silently omitted. We report paired effect sizes and 95\% confidence intervals across controller-matched repetitions.
@@ -355,19 +354,17 @@ The primary architecture comparison comprises 54 blind sealed runs:
 three systems (\harnessname{}, CAI, and VulnBot), six controller-only profiles
 (S24--S29), and three paired repetitions. The suite manifest fixes the runner
 commit, model and provider, tool proxy, budgets, controller epoch, scoring
-policy, and planned run grid before the first execution. No prompt, adapter, or
-normalizer is changed after the first confirmatory result. A missing or crashed
-cell contributes zero to Detection F1, Verified F1, and Verified Severity
-Coverage; completeness is published with the score.
+policy, and planned grid before any held-out or sealed run. Harness, prompts,
+adapters, and normalizers are then frozen. A missing cell receives zero on all
+three scores; completeness is published.
 
 \subsection{Public Diagnostics and Reporting}
 
-We separately execute S14--S23 in informed and blind mode with three repetitions
-per condition (60 runs). These public results diagnose topology-prior effects,
-matching errors, controls, exploit diversity, DHR, and the S20 network-pivot
-fixture, but do not support the sealed generalization claim. A 16-run smoke
-pilot on S20--S23 is used only to validate adapters and infrastructure and is
-excluded from all reported estimates.
+S14--S19 receive 36 informed/blind exploratory runs. Before freezing, a 12-run
+smoke pilot on S14, S15, and S19 validates infrastructure and adapters but is
+excluded from estimates. After freezing, S20--S23 receive 24 informed/blind
+held-out runs. They diagnose diversity, DHR, and S20's network pivots, but do
+not support the sealed generalization claim.
 
 The main result table contains, for each system, Detection F1, Verified F1,
 Verified Severity Coverage, clean-run rate, verified path coverage, verified
@@ -484,13 +481,13 @@ Several limitations remain.
 \section{Conclusion}
 \label{sec:conclusion}
 
-Single-host benchmarks cannot capture the protocol roles and reachability dependencies that shape IoT/OT risk. This paper introduces \systemname{}, with 23 public development scenarios and six sealed confirmatory profiles, and \harnessname{}, a six-phase network-native harness for discovery, verification, intrusion, and reporting.
+Single-host benchmarks miss IoT/OT reachability dependencies. We introduce \systemname{}, with 19 public development, four public held-out, and six sealed profiles, and \harnessname{}, a six-phase network-native assessment harness.
 
 The methodological contribution is a fail-closed separation of detection,
 verified exploitation, severity-weighted coverage, negative controls, logical
 dependencies, and enforced network pivots. The final empirical claim will be
-drawn only from the pre-committed 54-run blind sealed matrix; public
-informed-versus-blind runs remain diagnostic. We release the public scenarios,
+drawn only from the pre-committed 54-run blind sealed matrix; development and
+public held-out runs are reported separately. We release the public scenarios,
 playbooks, ground truth, matching contracts, and evaluation code to support
 reproducible research in this setting.
 % ── bibliography ──────────────────────────────────────────────────────────

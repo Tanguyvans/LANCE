@@ -122,7 +122,7 @@ def test_sealed_run_is_skipped_and_never_mined(tmp_path: Path):
     runs.mkdir()
     run = _write_run(runs, split="eval-sealed")
     meta = json.loads((run / "scenario_meta.json").read_text())
-    meta["scenario_id"] = "20"
+    meta["scenario_id"] = "24"
     (run / "scenario_meta.json").write_text(json.dumps(meta))
     gt_dir = tmp_path / "gt"
     _write_gt(gt_dir)
@@ -132,6 +132,23 @@ def test_sealed_run_is_skipped_and_never_mined(tmp_path: Path):
     assert manifest["candidate_count"] == 0
     assert manifest["processed_runs"] == []
     assert "sealed" in manifest["skipped_runs"][0]["reason"].lower()
+
+
+def test_public_test_run_is_skipped_and_never_mined(tmp_path: Path):
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    run = _write_run(runs, split="test-public")
+    meta = json.loads((run / "scenario_meta.json").read_text())
+    meta["scenario_id"] = "20"
+    (run / "scenario_meta.json").write_text(json.dumps(meta))
+    gt_dir = tmp_path / "gt"
+    _write_gt(gt_dir)
+
+    manifest = mine_runs(runs, tmp_path / "dataset", ground_truth_dir=gt_dir)
+
+    assert manifest["candidate_count"] == 0
+    assert manifest["processed_runs"] == []
+    assert "held-out" in manifest["skipped_runs"][0]["reason"]
 
 
 def test_export_contains_accepted_candidates_only(tmp_path: Path):

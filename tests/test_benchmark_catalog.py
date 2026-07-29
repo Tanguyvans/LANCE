@@ -9,10 +9,13 @@ import yaml
 from src.benchmark.catalog import (
     DEFAULT_CATALOG_PATH,
     DEV_PUBLIC,
+    DEV_PUBLIC_SCENARIO_IDS,
     EVAL_SEALED,
     CatalogError,
     PUBLIC_SCENARIO_IDS,
     SEALED_SCENARIO_IDS,
+    TEST_PUBLIC,
+    TEST_PUBLIC_SCENARIO_IDS,
     load_catalog,
     load_eval_profile,
 )
@@ -30,21 +33,25 @@ def _catalog_copy(tmp_path: Path) -> tuple[Path, dict]:
     return catalog_path, data
 
 
-def test_default_catalog_has_exact_public_and_sealed_splits():
+def test_default_catalog_has_exact_development_test_and_sealed_splits():
     catalog = load_catalog()
 
     assert [scenario.id for scenario in catalog.scenarios] == [str(i) for i in range(1, 30)]
-    assert [scenario.id for scenario in catalog.for_split(DEV_PUBLIC)] == list(PUBLIC_SCENARIO_IDS)
+    assert [scenario.id for scenario in catalog.for_split(DEV_PUBLIC)] == list(DEV_PUBLIC_SCENARIO_IDS)
+    assert [scenario.id for scenario in catalog.for_split(TEST_PUBLIC)] == list(TEST_PUBLIC_SCENARIO_IDS)
     assert [scenario.id for scenario in catalog.for_split(EVAL_SEALED)] == list(SEALED_SCENARIO_IDS)
-    assert catalog.benchmark_version == "3.0.0"
+    assert catalog.benchmark_version == "3.1.0"
     assert catalog.get("S24").sealed is True
     assert catalog.get(23).sealed is False
+    assert catalog.get(20).split == TEST_PUBLIC
 
 
 def test_catalog_selectors_are_stable_and_deduplicate_ids():
     catalog = load_catalog()
 
-    assert [item.id for item in catalog.resolve_selector("dev")] == list(PUBLIC_SCENARIO_IDS)
+    assert [item.id for item in catalog.resolve_selector("dev")] == list(DEV_PUBLIC_SCENARIO_IDS)
+    assert [item.id for item in catalog.resolve_selector("test")] == list(TEST_PUBLIC_SCENARIO_IDS)
+    assert [item.id for item in catalog.resolve_selector("public")] == list(PUBLIC_SCENARIO_IDS)
     assert [item.id for item in catalog.resolve_selector("eval")] == list(SEALED_SCENARIO_IDS)
     assert [item.id for item in catalog.resolve_selector("24,25,24")] == ["24", "25"]
     assert len(catalog.resolve_selector("all")) == 29

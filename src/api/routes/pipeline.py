@@ -293,6 +293,7 @@ def _batch_thread(req: BatchRequest):
         from src.agent.batch import (
             _aggregate_batch_results,
             _evaluation_metrics,
+            _public_scenario_split,
             _parse_scenario_ids,
         )
         # Validate before importing/constructing any execution machinery. This
@@ -327,6 +328,7 @@ def _batch_thread(req: BatchRequest):
                 break
 
             gt_file = resolve_ground_truth_path(sid)
+            scenario_split = _public_scenario_split(sid)
             _push({"type": "batch_scenario_start", "scenario_id": sid, "index": idx, "total": total})
             _state["scenario_id"] = sid
 
@@ -355,7 +357,7 @@ def _batch_thread(req: BatchRequest):
                     scenario_id=int(sid) if sid.isdigit() else sid,
                     auto_teardown=True,
                     blind=req.blind,
-                    benchmark_split="dev-public",
+                    benchmark_split=scenario_split,
                     execution_profile=req.execution_profile,
                     manage_scenario=not default_export_store().exists(sid),
                 )
@@ -397,7 +399,7 @@ def _batch_thread(req: BatchRequest):
             if gt_file.exists():
                 try:
                     ev_result = evaluate(run_dir, gt_file, policy="strict-v3")
-                    ev_result.split = "dev-public"
+                    ev_result.split = scenario_split
                     evaluation_results.append(ev_result)
                     metrics = _evaluation_metrics(ev_result)
                 except Exception as exc:

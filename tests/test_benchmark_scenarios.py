@@ -360,7 +360,10 @@ def test_catalog_has_exact_canonical_splits_and_only_profile_links_for_sealed_id
 
     assert [entry["id"] for entry in scenarios] == [str(i) for i in range(1, 30)]
     assert [entry["id"] for entry in scenarios if entry["split"] == "dev-public"] == [
-        str(i) for i in range(1, 24)
+        str(i) for i in range(1, 20)
+    ]
+    assert [entry["id"] for entry in scenarios if entry["split"] == "test-public"] == [
+        str(i) for i in range(20, 24)
     ]
     assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == [
         str(i) for i in range(24, 30)

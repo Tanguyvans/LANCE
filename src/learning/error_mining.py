@@ -30,7 +30,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from src.benchmark.catalog import DEV_PUBLIC, get_scenario
+from src.benchmark.catalog import DEV_PUBLIC, TEST_PUBLIC, get_scenario
 from src.benchmark.evaluator import _load_llm_findings, evaluate, resolve_policy
 
 
@@ -136,6 +136,8 @@ def _run_context(
         descriptor = None
     if descriptor is not None and descriptor.sealed:
         raise LearningLoopError(f"Refusing sealed scenario S{scenario_id}")
+    if descriptor is not None and descriptor.split == TEST_PUBLIC:
+        raise LearningLoopError(f"Refusing public held-out scenario S{scenario_id}")
 
     if scenario_meta.get("custom_config"):
         if not allow_custom:

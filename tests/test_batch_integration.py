@@ -70,6 +70,11 @@ class TestScenarioSelection:
         assert "23" in selected
         assert "24" not in selected
 
+    def test_development_and_public_test_selectors_are_distinct(self):
+        assert _parse_scenario_ids("dev") == [str(i) for i in range(1, 20)]
+        assert _parse_scenario_ids("test") == [str(i) for i in range(20, 24)]
+        assert _parse_scenario_ids("public") == [str(i) for i in range(1, 24)]
+
 
 class TestBatchMetrics:
     def test_zero_gt_control_uses_specificity_as_primary_score(self):
@@ -258,6 +263,22 @@ def test_cli_accepts_public_hardened_variant(monkeypatch):
     provider.assert_called_once()
     assert pipeline.call_args.kwargs["scenario_id"] == "4h"
     assert pipeline.call_args.kwargs["benchmark_split"] == "dev-public"
+
+
+def test_cli_preserves_public_test_split(monkeypatch):
+    from src.agent import __main__ as agent_main
+
+    provider_instance = SimpleNamespace(model="test")
+    monkeypatch.setattr(agent_main, "LLMProvider", Mock(return_value=provider_instance))
+    pipeline_instance = Mock()
+    pipeline_instance.run.return_value = {}
+    pipeline = Mock(return_value=pipeline_instance)
+    monkeypatch.setattr(agent_main, "Pipeline", pipeline)
+    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "S20"])
+
+    agent_main.main()
+
+    assert pipeline.call_args.kwargs["benchmark_split"] == "test-public"
 
 def test_batch_process_metrics_are_propagated_and_weighted_by_attempts():
     first = _evaluation("1", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False)
