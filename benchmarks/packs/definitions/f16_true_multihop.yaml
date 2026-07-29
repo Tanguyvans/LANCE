@@ -1,0 +1,100 @@
+id: f16_true_multihop
+name: True Network Multi-Hop
+description: Credential and configuration findings whose reachability requires two real L2 pivots.
+vulnerabilities:
+  pivot_entry:
+  - key: F16-ENTRY-CREDS
+    applies_to: {profiles: [vulnerable]}
+    title: Entry host accepts benchmark default credentials
+    severity: high
+    category: default_credentials
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [default_credentials]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I9 - Insecure Default Settings
+    description: The directly reachable SSH service accepts entry/Entry-20!.
+    indicators: [SSH password login succeeds as entry]
+    verification: authenticate to {ip}:22 with the documented bounded fixture account
+    confidence_required: high
+  - key: F16-RELAY-CONFIG
+    applies_to: {profiles: [vulnerable]}
+    title: Entry host exposes relay credentials and internal addressing
+    severity: high
+    category: data_exposure
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 1
+    accepted_types: [data_exposure]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The entry account can read /etc/iot/relay.conf containing the VLAN 110 relay endpoint and password.
+    indicators: [File contains 192.168.110.12 and the relay fixture credential]
+    verification: read /etc/iot/relay.conf after bounded SSH authentication to {ip}
+    confidence_required: high
+  pivot_relay:
+  - key: F16-RELAY-CREDS
+    applies_to: {profiles: [vulnerable]}
+    title: Isolated relay accepts credentials recovered from the entry host
+    severity: critical
+    category: default_credentials
+    hop_depth: 1
+    network_pivot_depth: 1
+    dependency_depth: 2
+    accepted_types: [default_credentials]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The relay SSH endpoint is reachable only from the entry VLAN and accepts relay/Relay-20!.
+    indicators: [Nested SSH from entry to 192.168.110.12 succeeds]
+    verification: from the entry host authenticate to {ip}:22 and run id
+    confidence_required: high
+  pivot_vault:
+  - key: F16-VAULT-NOAUTH
+    applies_to: {profiles: [vulnerable]}
+    title: Second-hop vault exposes operational export without authentication
+    severity: critical
+    category: no_authentication
+    hop_depth: 2
+    network_pivot_depth: 2
+    dependency_depth: 3
+    accepted_types: [no_auth]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/export]
+    exploit_eligible: true
+    owasp_iot: I2 - Insecure Network Services
+    description: The vault is reachable only from VLAN 120 and returns the S20 marker without authentication.
+    indicators: [GET /export returns CITY-VAULT-S20]
+    verification: from the relay GET http://{ip}:8080/export without credentials
+    confidence_required: high
+controls:
+  pivot_relay:
+  - key: C16-RELAY-DIRECT-ISOLATION
+    applies_to: {profiles: [vulnerable]}
+    assertion: relay_not_directly_reachable
+    description: The evaluator network has no route to the VLAN 110 relay.
+    verification: a direct TCP connection to {ip}:22 times out while the same connection succeeds from entry
+  pivot_vault:
+  - key: C16-VAULT-DIRECT-ISOLATION
+    applies_to: {profiles: [vulnerable]}
+    assertion: vault_not_directly_reachable
+    description: The evaluator network has no route to the VLAN 120 vault.
+    verification: a direct TCP connection to {ip}:8080 times out while the same request succeeds from relay
+  pivot_decoy:
+  - key: C16-DECOY-PASSWORD-DISABLED
+    applies_to: {profiles: [hardened]}
+    assertion: decoy_password_authentication_disabled
+    forbidden_types: [default_credentials]
+    description: The directly reachable decoy exposes SSH but disables password authentication.
+    verification: sshd effective configuration on {ip} reports PasswordAuthentication no

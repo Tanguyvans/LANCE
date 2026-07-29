@@ -1,0 +1,27 @@
+id: sparse_low_prevalence
+name: Sparse Low-Prevalence Network
+description: Sixteen realistic services contain only two positives and eighteen explicit negative controls
+base_vmid: 440
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-mqtt-open', vmid_offset: 1, ip: 192.168.100.11, role: mqtt_broker, security_profile: vulnerable}
+- {name_template: 's{sid}-web-backup', vmid_offset: 2, ip: 192.168.100.12, role: web_server, security_profile: vulnerable}
+- {name_template: 's{sid}-mqtt-secure-a', vmid_offset: 3, ip: 192.168.100.13, role: mqtt_broker, security_profile: hardened}
+- {name_template: 's{sid}-mqtt-secure-b', vmid_offset: 4, ip: 192.168.100.14, role: mqtt_broker, security_profile: hardened}
+- {name_template: 's{sid}-mqtt-secure-c', vmid_offset: 5, ip: 192.168.100.15, role: mqtt_broker, security_profile: hardened}
+- {name_template: 's{sid}-mqtt-nearmiss', vmid_offset: 6, ip: 192.168.100.16, role: mqtt_broker, security_profile: near_miss}
+- {name_template: 's{sid}-web-secure-a', vmid_offset: 7, ip: 192.168.100.17, role: web_server, security_profile: hardened}
+- {name_template: 's{sid}-web-secure-b', vmid_offset: 8, ip: 192.168.100.18, role: web_server, security_profile: hardened}
+- {name_template: 's{sid}-web-secure-c', vmid_offset: 9, ip: 192.168.100.19, role: web_server, security_profile: hardened}
+- {name_template: 's{sid}-web-nearmiss', vmid_offset: 10, ip: 192.168.100.20, role: web_server, security_profile: near_miss}
+- {name_template: 's{sid}-ssh-secure-a', vmid_offset: 11, ip: 192.168.100.21, role: ssh_server, security_profile: hardened}
+- {name_template: 's{sid}-ssh-secure-b', vmid_offset: 12, ip: 192.168.100.22, role: ssh_server, security_profile: hardened}
+- {name_template: 's{sid}-ssh-secure-c', vmid_offset: 13, ip: 192.168.100.23, role: ssh_server, security_profile: hardened}
+- {name_template: 's{sid}-redis-secure-a', vmid_offset: 14, ip: 192.168.100.24, role: db_server_v2, security_profile: hardened}
+- {name_template: 's{sid}-redis-secure-b', vmid_offset: 15, ip: 192.168.100.25, role: db_server_v2, security_profile: hardened}
+- {name_template: 's{sid}-redis-secure-c', vmid_offset: 16, ip: 192.168.100.26, role: db_server_v2, security_profile: hardened}
+links: []

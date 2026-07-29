@@ -18,7 +18,7 @@
   vars:
     scenario_id: "1"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
-    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S19)
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S23)
 
   tasks:
 

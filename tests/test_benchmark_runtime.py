@@ -315,6 +315,102 @@ def test_cloud_fetch_profiles_fail_closed_before_network_access(tmp_path, monkey
     assert vulnerable._private_or_local_host("2606:4700:4700::1111") is False
 
 
+def test_exploit_diversity_profiles_have_behaviorally_equivalent_controls(
+    tmp_path,
+    monkeypatch,
+):
+    vulnerable = _load_simulator(tmp_path, monkeypatch, mode="exploit_auth")
+    assert _request(
+        vulnerable, "POST", "/login",
+        body={"username": "operator", "password": {"$ne": None}},
+    )[0] == 200
+    hardened = _load_simulator(tmp_path, monkeypatch, mode="exploit_auth", profile="hardened")
+    assert _request(
+        hardened, "POST", "/login",
+        body={"username": "operator", "password": {"$ne": None}},
+    )[0] == 401
+
+    vulnerable = _load_simulator(tmp_path, monkeypatch, mode="exploit_files")
+    assert _request(vulnerable, "GET", "/files?path=../../etc/device-secret") == (
+        200,
+        {"path": "../../etc/device-secret", "marker": "DEVICE-SECRET-S22"},
+    )
+    hardened = _load_simulator(tmp_path, monkeypatch, mode="exploit_files", profile="hardened")
+    assert _request(hardened, "GET", "/files?path=../../etc/device-secret")[0] == 403
+
+    vulnerable = _load_simulator(tmp_path, monkeypatch, mode="exploit_command")
+    status, payload = _request(
+        vulnerable, "POST", "/diagnostics", body={"target": "127.0.0.1;id"},
+    )
+    assert status == 200 and payload["stdout"].startswith("uid=1000")
+    hardened = _load_simulator(tmp_path, monkeypatch, mode="exploit_command", profile="hardened")
+    assert _request(
+        hardened, "POST", "/diagnostics", body={"target": "127.0.0.1;id"},
+    )[0] == 400
+
+    vulnerable = _load_simulator(tmp_path, monkeypatch, mode="exploit_privilege")
+    status, payload = _request(
+        vulnerable, "POST", "/jobs", token="low-privilege-s22", body={"role": "admin"},
+    )
+    assert status == 201 and payload["effective_role"] == "root-maintenance"
+    hardened = _load_simulator(tmp_path, monkeypatch, mode="exploit_privilege", profile="hardened")
+    assert _request(
+        hardened, "POST", "/jobs", token="low-privilege-s22", body={"role": "admin"},
+    )[0] == 403
+
+
+def test_wireless_to_firmware_chain_and_controls_are_stateful(tmp_path, monkeypatch):
+    radio = _load_simulator(tmp_path, monkeypatch, mode="wireless_bridge")
+    socket = _UDPSocket()
+    handler = object.__new__(radio.WirelessDiscoveryHandler)
+    handler.request = (b"DISCOVER", socket)
+    handler.client_address = ("127.0.0.1", 56830)
+    handler.handle()
+    assert b"JOIN_TOKEN=join-23-replay" in socket.sent[0][0]
+
+    secure_radio = _load_simulator(
+        tmp_path, monkeypatch, mode="wireless_bridge", profile="hardened",
+    )
+    socket = _UDPSocket()
+    handler = object.__new__(secure_radio.WirelessDiscoveryHandler)
+    handler.request = (b"DISCOVER", socket)
+    handler.client_address = ("127.0.0.1", 56830)
+    handler.handle()
+    assert socket.sent[0][0] == b"AUTH_REQUIRED;DEVICE_ID=s23-sensor"
+
+    gateway = _load_simulator(tmp_path, monkeypatch, mode="device_gateway")
+    for _ in range(2):
+        assert _request(
+            gateway, "POST", "/join", body={"join_token": "join-23-replay"},
+        )[0] == 200
+    secure_gateway = _load_simulator(
+        tmp_path, monkeypatch, mode="device_gateway", profile="hardened",
+    )
+    assert _request(
+        secure_gateway, "POST", "/join", body={"join_token": "join-23-replay"},
+    )[0] == 200
+    assert _request(
+        secure_gateway, "POST", "/join", body={"join_token": "join-23-replay"},
+    )[0] == 409
+
+    archive = _load_simulator(tmp_path, monkeypatch, mode="firmware_archive")
+    assert _request(archive, "GET", "/firmware/current")[1]["debug_key"] == "debug-23-recovery"
+    secure_archive = _load_simulator(
+        tmp_path, monkeypatch, mode="firmware_archive", profile="hardened",
+    )
+    assert "debug_key" not in _request(secure_archive, "GET", "/firmware/current")[1]
+
+    device = _load_simulator(tmp_path, monkeypatch, mode="boot_device")
+    recovery = {
+        "management_token": "gateway-admin-23",
+        "recovery_key": "debug-23-recovery",
+        "signed": False,
+    }
+    assert _request(device, "POST", "/recovery", body=recovery)[1]["state"] == "RECOVERY_MODE"
+    secure_device = _load_simulator(tmp_path, monkeypatch, mode="boot_device", profile="hardened")
+    assert _request(secure_device, "POST", "/recovery", body=recovery)[0] == 400
+
+
 def test_udp_send_returns_structured_binary_and_ascii_evidence():
     from src.agent.tools.recon_tools import udp_send
 

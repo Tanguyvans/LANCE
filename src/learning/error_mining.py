@@ -123,7 +123,7 @@ def _run_context(
     # must never turn a sealed run into reusable learning data.
     if split == "eval-sealed":
         raise LearningLoopError(f"Refusing sealed run: {run_dir.name}")
-    if scenario_id.isdigit() and 20 <= int(scenario_id) <= 25:
+    if scenario_id.isdigit() and 24 <= int(scenario_id) <= 29:
         raise LearningLoopError(f"Refusing sealed scenario S{scenario_id}")
     if not scenario_id:
         raise LearningLoopError(f"scenario_id missing in {run_dir / 'scenario_meta.json'}")
@@ -1126,7 +1126,7 @@ def validate_dataset(dataset_dir: Path, *, verify_checksum: bool = True) -> dict
         if candidate.get("split") not in LEARNING_SPLITS:
             raise LearningLoopError(f"Invalid learning split at record {index}")
         scenario_id = _normalise_scenario_id(candidate.get("scenario_id", ""))
-        if scenario_id.isdigit() and 20 <= int(scenario_id) <= 25:
+        if scenario_id.isdigit() and 24 <= int(scenario_id) <= 29:
             raise LearningLoopError(f"Sealed candidate at record {index}")
 
     checksum = _sha256(dataset_dir / "candidates.jsonl")

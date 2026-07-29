@@ -1,0 +1,216 @@
+scenario_id: '20'
+scenario_name: True Network Multi-Hop Pivot
+difficulty: expert
+description: True Network Multi-Hop Pivot — Two isolated VLANs are reachable only
+  through two successively compromised dual-homed hosts
+topology:
+  router:
+    name: s20-router
+    vmid: 420
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s20-entry
+    vmid: 421
+    ip: 192.168.100.11
+    role: pivot_entry
+    security_profile: vulnerable
+  - name: s20-relay
+    vmid: 422
+    ip: 192.168.110.12
+    role: pivot_relay
+    security_profile: vulnerable
+    vlan_id: 110
+  - name: s20-vault
+    vmid: 423
+    ip: 192.168.120.13
+    role: pivot_vault
+    security_profile: vulnerable
+    vlan_id: 120
+    simulator: pivot_vault
+  - name: s20-decoy
+    vmid: 424
+    ip: 192.168.100.14
+    role: pivot_decoy
+    security_profile: hardened
+vulnerabilities:
+- id: F16-ENTRY-CREDS@s20-entry
+  device: s20-entry
+  ip: 192.168.100.11
+  role: pivot_entry
+  security_profile: vulnerable
+  template_key: F16-ENTRY-CREDS
+  title: Entry host accepts benchmark default credentials
+  severity: high
+  category: default_credentials
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I9 - Insecure Default Settings
+  description: The directly reachable SSH service accepts entry/Entry-20!.
+  indicators:
+  - SSH password login succeeds as entry
+  verification: authenticate to 192.168.100.11:22 with the documented bounded fixture
+    account
+  confidence_required: high
+- id: F16-RELAY-CONFIG@s20-entry
+  device: s20-entry
+  ip: 192.168.100.11
+  role: pivot_entry
+  security_profile: vulnerable
+  template_key: F16-RELAY-CONFIG
+  title: Entry host exposes relay credentials and internal addressing
+  severity: high
+  category: data_exposure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 1
+  accepted_types:
+  - data_exposure
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The entry account can read /etc/iot/relay.conf containing the VLAN
+    110 relay endpoint and password.
+  indicators:
+  - File contains 192.168.110.12 and the relay fixture credential
+  verification: read /etc/iot/relay.conf after bounded SSH authentication to 192.168.100.11
+  confidence_required: high
+- id: F16-RELAY-CREDS@s20-relay
+  device: s20-relay
+  ip: 192.168.110.12
+  role: pivot_relay
+  security_profile: vulnerable
+  template_key: F16-RELAY-CREDS
+  title: Isolated relay accepts credentials recovered from the entry host
+  severity: critical
+  category: default_credentials
+  hop_depth: 1
+  network_pivot_depth: 1
+  dependency_depth: 2
+  accepted_types:
+  - default_credentials
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The relay SSH endpoint is reachable only from the entry VLAN and accepts
+    relay/Relay-20!.
+  indicators:
+  - Nested SSH from entry to 192.168.110.12 succeeds
+  verification: from the entry host authenticate to 192.168.110.12:22 and run id
+  confidence_required: high
+- id: F16-VAULT-NOAUTH@s20-vault
+  device: s20-vault
+  ip: 192.168.120.13
+  role: pivot_vault
+  security_profile: vulnerable
+  template_key: F16-VAULT-NOAUTH
+  title: Second-hop vault exposes operational export without authentication
+  severity: critical
+  category: no_authentication
+  hop_depth: 2
+  network_pivot_depth: 2
+  dependency_depth: 3
+  accepted_types:
+  - no_auth
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /export
+  exploit_eligible: true
+  owasp_iot: I2 - Insecure Network Services
+  description: The vault is reachable only from VLAN 120 and returns the S20 marker
+    without authentication.
+  indicators:
+  - GET /export returns CITY-VAULT-S20
+  verification: from the relay GET http://192.168.120.13:8080/export without credentials
+  confidence_required: high
+attack_paths:
+- id: P20-1
+  title: Two network pivots to an isolated operational vault
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: s20-entry
+    action: Authenticate to the only directly reachable host and read its relay connection
+      profile
+  - hop: 2
+    device: s20-relay
+    action: Pivot over VLAN 110 using the recovered relay credentials
+  - hop: 3
+    device: s20-vault
+    action: Reach the data vault over VLAN 120 from the second dual-homed host
+  vulnerabilities_used:
+  - F16-ENTRY-CREDS@s20-entry
+  - F16-RELAY-CONFIG@s20-entry
+  - F16-RELAY-CREDS@s20-relay
+  - F16-VAULT-NOAUTH@s20-vault
+  impact: Access to data that is unreachable from the evaluator network without both
+    pivots
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 14
+  total_controls: 3
+bonus_types: []
+controls:
+- id: C16-RELAY-DIRECT-ISOLATION@s20-relay
+  device: s20-relay
+  ip: 192.168.110.12
+  role: pivot_relay
+  security_profile: vulnerable
+  template_key: C16-RELAY-DIRECT-ISOLATION
+  assertion: relay_not_directly_reachable
+  description: The evaluator network has no route to the VLAN 110 relay.
+  verification: a direct TCP connection to 192.168.110.12:22 times out while the same
+    connection succeeds from entry
+- id: C16-VAULT-DIRECT-ISOLATION@s20-vault
+  device: s20-vault
+  ip: 192.168.120.13
+  role: pivot_vault
+  security_profile: vulnerable
+  template_key: C16-VAULT-DIRECT-ISOLATION
+  assertion: vault_not_directly_reachable
+  description: The evaluator network has no route to the VLAN 120 vault.
+  verification: a direct TCP connection to 192.168.120.13:8080 times out while the
+    same request succeeds from relay
+- id: C16-DECOY-PASSWORD-DISABLED@s20-decoy
+  device: s20-decoy
+  ip: 192.168.100.14
+  role: pivot_decoy
+  security_profile: hardened
+  template_key: C16-DECOY-PASSWORD-DISABLED
+  assertion: decoy_password_authentication_disabled
+  forbidden_types:
+  - default_credentials
+  description: The directly reachable decoy exposes SSH but disables password authentication.
+  verification: sshd effective configuration on 192.168.100.14 reports PasswordAuthentication
+    no

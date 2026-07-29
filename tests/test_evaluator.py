@@ -1152,12 +1152,12 @@ class TestEvidenceMetrics:
             {
                 "evidence_ref": "tc-good",
                 "tool": "ssh_login", "args": {"ip": "192.168.100.11"},
-                "result": {"success": True},
+                "result": {"success": True, "return_code": 0, "stdout": "uid=1000(iot)"},
             },
             {
                 "evidence_ref": "tc-fp",
                 "tool": "ssh_login", "args": {"ip": "192.168.100.99"},
-                "result": {"success": True},
+                "result": {"success": True, "return_code": 0, "stdout": "uid=1000(iot)"},
             },
         ]
         run_dir = self._write_phase4_run(tmp_path, tests, tool_calls)

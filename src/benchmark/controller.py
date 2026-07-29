@@ -23,6 +23,7 @@ from src.benchmark.contracts import (
     EvaluationSummary,
     SubmissionManifest,
     SubmissionReceipt,
+    SuiteEvaluationSummary,
 )
 
 
@@ -270,6 +271,26 @@ class SealedControllerClient:
             raise ControllerError("controller returned an invalid evaluation summary") from exc
         if summary.submission_id != canonical_id:
             raise ControllerError("evaluation summary submission_id mismatch")
+        return summary
+
+    def get_suite_evaluation(self, suite_id: str) -> SuiteEvaluationSummary:
+        """Fetch the official aggregate-only result after suite finalization."""
+        canonical_id = _canonical_uuid(suite_id, "suite_id")
+        response = self._request(
+            "GET",
+            f"v1/suites/{canonical_id}",
+            expected_status=frozenset({200}),
+        )
+        try:
+            summary = SuiteEvaluationSummary.from_dict(
+                self._json(response, "suite evaluation summary")
+            )
+        except ContractError as exc:
+            raise ControllerError("controller returned an invalid suite evaluation summary") from exc
+        if summary.suite_id != canonical_id:
+            raise ControllerError("suite evaluation summary suite_id mismatch")
+        if summary.benchmark_version != self._catalog.benchmark_version:
+            raise ControllerError("suite evaluation summary benchmark version mismatch")
         return summary
 
     def teardown(self, session_id: str) -> None:

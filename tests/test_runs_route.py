@@ -48,7 +48,7 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
-def _sealed_summary(scenario_id="20", benchmark_version="2.0.0"):
+def _sealed_summary(scenario_id="24", benchmark_version="3.0.0"):
     return {
         "schema_version": "1",
         "submission_id": str(uuid4()),
@@ -72,7 +72,7 @@ class TestRunVisibility:
 
     def test_sealed_listing_exposes_no_raw_artifacts(self, tmp_path):
         (tmp_path / "scenario_meta.json").write_text(
-            json.dumps({"scenario_id": "20", "split": "eval-sealed"})
+            json.dumps({"scenario_id": "24", "split": "eval-sealed"})
         )
         (tmp_path / "03_vuln_analysis.json").write_text("{}")
 
@@ -100,7 +100,7 @@ class TestSealedSummaryTrustBoundary:
         (run_dir / "evaluation_summary.json").write_text(json.dumps(_sealed_summary()))
         monkeypatch.delenv("SEALED_EVALUATION_DIR", raising=False)
 
-        assert _load_sealed_summary(run_dir, "20") is None
+        assert _load_sealed_summary(run_dir, "24") is None
 
     def test_trusted_summary_is_validated_and_signature_not_exposed(self, tmp_path, monkeypatch):
         run_dir = tmp_path / "run-1"
@@ -110,7 +110,7 @@ class TestSealedSummaryTrustBoundary:
         (trusted_dir / "run-1.json").write_text(json.dumps(_sealed_summary()))
         monkeypatch.setenv("SEALED_EVALUATION_DIR", str(trusted_dir))
 
-        summary = _load_sealed_summary(run_dir, "20")
+        summary = _load_sealed_summary(run_dir, "24")
 
         assert summary["metrics"] == {"overall_score": 0.875}
         assert "signature" not in summary
@@ -126,7 +126,7 @@ class TestSealedSummaryTrustBoundary:
         monkeypatch.setenv("SEALED_EVALUATION_DIR", str(trusted_dir))
 
         with pytest.raises(ValueError, match="benchmark version mismatch"):
-            _load_sealed_summary(run_dir, "20")
+            _load_sealed_summary(run_dir, "24")
 
 
 class TestRunEndpoints:
@@ -143,7 +143,7 @@ class TestRunEndpoints:
         run_dir = output_dir / "sealed-run"
         run_dir.mkdir(parents=True)
         (run_dir / "scenario_meta.json").write_text(
-            json.dumps({"scenario_id": "20", "split": "eval-sealed"})
+            json.dumps({"scenario_id": "24", "split": "eval-sealed"})
         )
         (run_dir / "03_vuln_analysis.json").write_text("{}")
         (run_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 999.0}))
@@ -161,7 +161,7 @@ class TestRunEndpoints:
         run_dir = tmp_path / "sealed-run"
         run_dir.mkdir()
         (run_dir / "scenario_meta.json").write_text(
-            json.dumps({"scenario_id": "20", "split": "eval-sealed"})
+            json.dumps({"scenario_id": "24", "split": "eval-sealed"})
         )
         (run_dir / "03_vuln_analysis.json").write_text("{}")
         (run_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 999.0}))
@@ -184,7 +184,7 @@ class TestRunEndpoints:
         run_dir.mkdir(parents=True)
         trusted_dir.mkdir()
         (run_dir / "scenario_meta.json").write_text(
-            json.dumps({"scenario_id": "20", "split": "eval-sealed"})
+            json.dumps({"scenario_id": "24", "split": "eval-sealed"})
         )
         (run_dir / "03_vuln_analysis.json").write_text("{}")
         (run_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 999.0}))
@@ -206,7 +206,7 @@ class TestRunEndpoints:
         run_dir = output_dir / "sealed-run"
         run_dir.mkdir(parents=True)
         (run_dir / "scenario_meta.json").write_text(
-            json.dumps({"scenario_id": "20", "split": "eval-sealed"})
+            json.dumps({"scenario_id": "24", "split": "eval-sealed"})
         )
         (run_dir / "evaluation_summary.json").write_text(json.dumps(_sealed_summary()))
         monkeypatch.setattr(runs, "OUTPUT_DIR", output_dir)

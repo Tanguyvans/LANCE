@@ -21,8 +21,8 @@ EVAL_PROFILES = BENCHMARKS / "eval_profiles"
 GROUP_VARS = BENCHMARKS / "ansible" / "group_vars" / "all" / "main.yml"
 GROUP_VARS_V2 = BENCHMARKS / "ansible" / "group_vars" / "all" / "scenarios_v2.yml"
 
-PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 20))
-SEALED_IDS = tuple(str(scenario_id) for scenario_id in range(20, 26))
+PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 24))
+SEALED_IDS = tuple(str(scenario_id) for scenario_id in range(24, 30))
 HARDENED_PROFILES = {"hardened", "near_miss"}
 PROFILE_FIELDS = {
     "schema_version",
@@ -167,7 +167,7 @@ def test_public_v2_finding_and_control_ids_are_stable_unique_and_resolvable():
             assert set(attack_path["vulnerabilities_used"]) <= vulnerability_ids
 
 
-@pytest.mark.parametrize("scenario_id", tuple(str(i) for i in range(15, 20)))
+@pytest.mark.parametrize("scenario_id", tuple(str(i) for i in range(15, 21)))
 def test_chain_scenarios_expose_measurable_multihop_depths(scenario_id: str):
     """The public chain scenarios must exercise MHR, not only document a path."""
     gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
@@ -176,6 +176,21 @@ def test_chain_scenarios_expose_measurable_multihop_depths(scenario_id: str):
     assert any(depth >= 1 for depth in depths)
     assert max(depths) >= 2
     assert gt["attack_paths"]
+
+
+def test_flat_dependency_chain_is_not_counted_as_network_pivots():
+    scenario_id = "23"
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+    assert max(int(item["dependency_depth"]) for item in gt["vulnerabilities"]) >= 2
+    assert {int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]} == {0}
+    assert {int(item["hop_depth"]) for item in gt["vulnerabilities"]} == {0}
+
+
+def test_independent_exploit_primitives_are_not_reported_as_a_chain():
+    gt = COMPOSE_GT.compose_scenario(SCENARIOS / "S22.yaml")
+    assert gt["attack_paths"] == []
+    assert {int(item["dependency_depth"]) for item in gt["vulnerabilities"]} == {0}
+    assert {int(item["network_pivot_depth"]) for item in gt["vulnerabilities"]} == {0}
 
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
@@ -322,17 +337,17 @@ def test_catalog_has_exact_canonical_splits_and_only_profile_links_for_sealed_id
     catalog = _load_yaml(BENCHMARKS / "catalog.yaml")
     scenarios = catalog["scenarios"]
 
-    assert [entry["id"] for entry in scenarios] == [str(i) for i in range(1, 26)]
+    assert [entry["id"] for entry in scenarios] == [str(i) for i in range(1, 30)]
     assert [entry["id"] for entry in scenarios if entry["split"] == "dev-public"] == [
-        str(i) for i in range(1, 20)
+        str(i) for i in range(1, 24)
     ]
     assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == [
-        str(i) for i in range(20, 26)
+        str(i) for i in range(24, 30)
     ]
 
-    for entry in scenarios[:19]:
+    for entry in scenarios[:23]:
         assert set(entry) == {"id", "label", "split"}
-    for entry in scenarios[19:]:
+    for entry in scenarios[23:]:
         assert set(entry) == {"id", "label", "split", "profile"}
         assert entry["profile"] == f"eval_profiles/S{entry['id']}.yaml"
         assert FORBIDDEN_SEALED_FIELDS.isdisjoint(entry)

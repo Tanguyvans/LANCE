@@ -20,6 +20,7 @@ from src.benchmark.contracts import (
     ContractError,
     EvaluationSummary,
     SubmissionManifest,
+    SuiteEvaluationSummary,
 )
 from src.benchmark.controller import ControllerError, SealedControllerClient
 
@@ -28,9 +29,9 @@ def _valid_contract_dict() -> dict:
     return {
         "schema_version": "1",
         "session_id": "12345678-1234-5678-9234-567812345678",
-        "scenario_id": "20",
+        "scenario_id": "24",
         "split": "eval-sealed",
-        "benchmark_version": "2.0.0",
+        "benchmark_version": "3.0.0",
         "scope": {
             "ingress_cidrs": ["10.77.20.0/24"],
             "entrypoints": ["gateway.eval.internal:443"],
@@ -48,7 +49,7 @@ def test_challenge_contract_strict_round_trip():
     raw = _valid_contract_dict()
     contract = ChallengeContract.from_dict(raw)
 
-    assert contract.scenario_id == "20"
+    assert contract.scenario_id == "24"
     assert contract.scope.ingress_cidrs == ("10.77.20.0/24",)
     assert ChallengeContract.from_json(contract.to_json()) == contract
     assert json.loads(contract.to_json()) == raw
@@ -71,7 +72,7 @@ def test_challenge_contract_accepts_missing_optional_entrypoint_hints():
     [
         (lambda data: data.update({"topology": {"nodes": []}}), "forbidden/unknown"),
         (lambda data: data["scope"].update({"seed": 42}), "forbidden/unknown"),
-        (lambda data: data.update({"scenario_id": "19"}), "S20-S25"),
+        (lambda data: data.update({"scenario_id": "23"}), "S24-S29"),
         (lambda data: data.update({"split": "dev-public"}), "eval-sealed"),
         (lambda data: data["scope"].pop("ingress_cidrs"), "missing required"),
         (lambda data: data["scope"].update({"ingress_cidrs": []}), "at least one CIDR"),
@@ -119,7 +120,7 @@ def _write_run_artifacts(run_dir: Path) -> None:
     (run_dir / "04_exploits" / "gateway").mkdir(parents=True)
     (run_dir / "run_meta.json").write_text('{"model":"test"}', encoding="utf-8")
     (run_dir / "scenario_meta.json").write_text(
-        '{"scenario_id":"20","split":"eval-sealed"}',
+        '{"scenario_id":"24","split":"eval-sealed"}',
         encoding="utf-8",
     )
     (run_dir / "03_vuln_analysis.json").write_text('{"vulnerabilities":[]}', encoding="utf-8")
@@ -203,9 +204,9 @@ def test_submission_and_evaluation_contracts_reject_extra_detail():
     manifest = {
         "schema_version": "1",
         "session_id": contract.session_id,
-        "scenario_id": "20",
+        "scenario_id": "24",
         "run_id": "run-1",
-        "benchmark_version": "2.0.0",
+        "benchmark_version": "3.0.0",
         "artifact_schema_version": "1",
         "artifacts": [{"path": "run_meta.json", "sha256": "a" * 64, "size_bytes": 2}],
         "ground_truth": "oracle",
@@ -216,8 +217,8 @@ def test_submission_and_evaluation_contracts_reject_extra_detail():
     summary = {
         "schema_version": "1",
         "submission_id": "87654321-4321-6789-9234-567812345678",
-        "scenario_id": "20",
-        "benchmark_version": "2.0.0",
+        "scenario_id": "24",
+        "benchmark_version": "3.0.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.5, "true_positives": 12},
@@ -231,8 +232,8 @@ def test_evaluation_summary_uses_normalized_ratios_and_nonnegative_usd():
     summary = {
         "schema_version": "1",
         "submission_id": "87654321-4321-6789-9234-567812345678",
-        "scenario_id": "20",
-        "benchmark_version": "2.0.0",
+        "scenario_id": "24",
+        "benchmark_version": "3.0.0",
         "status": "complete",
         "score_visibility": "aggregate",
         "metrics": {"overall_score": 0.875, "f1": 0.8, "cost_usd": 1.25},
@@ -249,6 +250,26 @@ def test_evaluation_summary_uses_normalized_ratios_and_nonnegative_usd():
     invalid_cost = {**summary, "metrics": {"overall_score": 0.5, "cost_usd": -1.0}}
     with pytest.raises(ContractError, match="non-negative USD"):
         EvaluationSummary.from_dict(invalid_cost)
+
+
+def test_official_sealed_result_is_bound_to_a_suite_not_one_submission():
+    summary = {
+        "schema_version": "1",
+        "suite_id": "12345678-1234-5678-9234-567812345678",
+        "benchmark_version": "3.0.0",
+        "status": "complete",
+        "score_visibility": "aggregate",
+        "metrics": {"overall_score": 0.75, "f1": 0.7, "cost_usd": 8.0},
+        "signature": "signed-suite-envelope",
+    }
+
+    parsed = SuiteEvaluationSummary.from_dict(summary)
+    assert parsed.suite_id == summary["suite_id"]
+    assert parsed.metrics == summary["metrics"]
+
+    leaked = {**summary, "scenario_id": "24"}
+    with pytest.raises(ContractError, match="forbidden/unknown"):
+        SuiteEvaluationSummary.from_dict(leaked)
 
 
 def test_controller_client_requires_tls_and_redacts_its_token():

@@ -30,7 +30,7 @@ def test_public_hardened_variants_load_topology(selector, prefix, expected_nodes
 
 def test_sealed_topology_remains_forbidden():
     with pytest.raises(HTTPException) as exc:
-        _load_scenario("20")
+        _load_scenario("24")
 
     assert exc.value.status_code == 403
 

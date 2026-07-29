@@ -191,7 +191,7 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "S20-S25 require the external sealed controller and isolated worker. "
+                    "S24-S29 require the external sealed controller and isolated worker. "
                     "They cannot run inside the dashboard process."
                 ),
             ) from exc

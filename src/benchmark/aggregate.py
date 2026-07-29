@@ -108,6 +108,8 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
                 "mhr_1", "mhr_2", "mhr_3",
                 "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
                 "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
+                "dhr_1", "dhr_2", "dhr_3",
+                "dhr_1_verified", "dhr_2_verified", "dhr_3_verified",
             )
         },
         "macro_positive_precision": _round_optional(
@@ -180,6 +182,12 @@ def aggregate_evaluations(
                 "mhr_1_verified": None,
                 "mhr_2_verified": None,
                 "mhr_3_verified": None,
+                "dhr_1": None,
+                "dhr_2": None,
+                "dhr_3": None,
+                "dhr_1_verified": None,
+                "dhr_2_verified": None,
+                "dhr_3_verified": None,
                 "run_score_stddev_pct": None,
                 "run_score_min_pct": None,
                 "run_score_max_pct": None,
@@ -264,6 +272,8 @@ def aggregate_evaluations(
                     "mhr_1", "mhr_2", "mhr_3",
                     "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
                     "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
+                    "dhr_1", "dhr_2", "dhr_3",
+                    "dhr_1_verified", "dhr_2_verified", "dhr_3_verified",
                 )
             },
             "run_score_stddev_pct": (

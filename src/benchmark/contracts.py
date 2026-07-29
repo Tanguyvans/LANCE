@@ -19,6 +19,8 @@ from uuid import UUID
 CONTRACT_SCHEMA_VERSION = "1"
 ARTIFACT_SCHEMA_VERSION = "1"
 SEALED_SPLIT = "eval-sealed"
+SEALED_SCENARIO_MIN = 24
+SEALED_SCENARIO_MAX = 29
 
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -84,8 +86,8 @@ def _uuid(value: object, where: str) -> str:
 
 def _sealed_scenario_id(value: object, where: str = "scenario_id") -> str:
     raw = _string(value, where, max_length=2)
-    if not raw.isdigit() or not 20 <= int(raw) <= 25:
-        raise ContractError(f"{where} must identify a sealed scenario S20-S25")
+    if not raw.isdigit() or not SEALED_SCENARIO_MIN <= int(raw) <= SEALED_SCENARIO_MAX:
+        raise ContractError(f"{where} must identify a sealed scenario S24-S29")
     return raw
 
 
@@ -451,6 +453,78 @@ class EvaluationSummary:
         return cls(
             submission_id=_uuid(data["submission_id"], "submission_id"),
             scenario_id=_sealed_scenario_id(data["scenario_id"]),
+            benchmark_version=_version(data["benchmark_version"], "benchmark_version"),
+            status=status,  # type: ignore[arg-type]
+            metrics=metrics,
+            signature=signature,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SuiteEvaluationSummary:
+    """Aggregate-only official result for a complete sealed suite."""
+
+    suite_id: str
+    benchmark_version: str
+    status: Literal["pending", "complete", "failed"]
+    metrics: Mapping[str, float] | None
+    signature: str | None
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+    score_visibility: Literal["aggregate"] = "aggregate"
+
+    @classmethod
+    def from_dict(cls, raw: object) -> "SuiteEvaluationSummary":
+        data = _mapping(raw, "suite evaluation summary")
+        keys = frozenset({
+            "schema_version",
+            "suite_id",
+            "benchmark_version",
+            "status",
+            "score_visibility",
+            "metrics",
+            "signature",
+        })
+        _exact_keys(data, allowed=keys, where="suite evaluation summary")
+        if _version(data["schema_version"], "schema_version") != CONTRACT_SCHEMA_VERSION:
+            raise ContractError("unsupported suite evaluation schema_version")
+        status = _string(data["status"], "suite evaluation status", max_length=16)
+        if status not in {"pending", "complete", "failed"}:
+            raise ContractError(f"unsupported suite evaluation status: {status}")
+        if data["score_visibility"] != "aggregate":
+            raise ContractError("sealed suite evaluation may expose aggregate scores only")
+
+        metrics: dict[str, float] | None = None
+        signature: str | None = None
+        if status == "complete":
+            raw_metrics = _mapping(data["metrics"], "suite evaluation metrics")
+            _exact_keys(
+                raw_metrics,
+                allowed=_AGGREGATE_METRICS,
+                required=frozenset({"overall_score"}),
+                where="suite evaluation metrics",
+            )
+            metrics = {}
+            for key, value in raw_metrics.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise ContractError(f"suite evaluation metric {key} must be numeric")
+                numeric = float(value)
+                if not -float("inf") < numeric < float("inf"):
+                    raise ContractError(f"suite evaluation metric {key} must be finite")
+                if key in _RATIO_AGGREGATE_METRICS and not 0.0 <= numeric <= 1.0:
+                    raise ContractError(
+                        f"suite evaluation metric {key} must be a normalized ratio in [0, 1]"
+                    )
+                if key == "cost_usd" and numeric < 0.0:
+                    raise ContractError("suite evaluation metric cost_usd must be non-negative USD")
+                metrics[key] = numeric
+            signature = _string(data["signature"], "suite evaluation signature", max_length=4096)
+        elif data["metrics"] is not None or data["signature"] is not None:
+            raise ContractError(
+                "pending/failed suite evaluations must not expose metrics or signatures"
+            )
+
+        return cls(
+            suite_id=_uuid(data["suite_id"], "suite_id"),
             benchmark_version=_version(data["benchmark_version"], "benchmark_version"),
             status=status,  # type: ignore[arg-type]
             metrics=metrics,

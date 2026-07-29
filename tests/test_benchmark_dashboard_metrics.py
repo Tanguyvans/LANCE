@@ -29,6 +29,8 @@ def test_evaluation_contract_contains_dashboard_quality_metrics():
         "verified_path_coverage",
         "mhr_1_credited",
         "mhr_1_verified",
+        "dhr_1",
+        "dhr_1_verified",
         "cost_per_tp",
         "cost_per_expected_vulnerability",
         "turns_per_tp",

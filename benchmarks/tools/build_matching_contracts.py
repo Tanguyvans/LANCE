@@ -42,7 +42,7 @@ def build() -> dict:
                 field: contract[field] for field in PUBLIC_FIELDS
             }
         scenarios[scenario_id] = entries
-    return {"schema_version": "strict-v3.2", "source_hashes": source_hashes, "scenarios": scenarios}
+    return {"schema_version": "strict-v3.3", "source_hashes": source_hashes, "scenarios": scenarios}
 
 
 def main() -> None:

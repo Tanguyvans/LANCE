@@ -34,7 +34,9 @@ _PROFILE_KEYS = frozenset(
         "score_visibility",
     }
 )
-_EXPECTED_IDS = tuple(str(i) for i in range(1, 26))
+PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(1, 24))
+SEALED_SCENARIO_IDS = tuple(str(i) for i in range(24, 30))
+_EXPECTED_IDS = PUBLIC_SCENARIO_IDS + SEALED_SCENARIO_IDS
 
 
 class CatalogError(ValueError):
@@ -254,7 +256,13 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
         seen.add(scenario_id)
 
         numeric_id = int(scenario_id)
-        expected_split = DEV_PUBLIC if 1 <= numeric_id <= 19 else EVAL_SEALED if 20 <= numeric_id <= 25 else None
+        expected_split = (
+            DEV_PUBLIC
+            if scenario_id in PUBLIC_SCENARIO_IDS
+            else EVAL_SEALED
+            if scenario_id in SEALED_SCENARIO_IDS
+            else None
+        )
         if expected_split is None or split != expected_split:
             raise CatalogError(f"scenario S{scenario_id} must use split {expected_split!r}, got {split!r}")
 
@@ -279,7 +287,7 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
     if set(ids) != set(_EXPECTED_IDS) or len(ids) != len(_EXPECTED_IDS):
         missing = sorted(set(_EXPECTED_IDS) - set(ids), key=int)
         extra = sorted(set(ids) - set(_EXPECTED_IDS), key=int)
-        raise CatalogError(f"catalogue must contain exactly S1-S25 (missing={missing}, extra={extra})")
+        raise CatalogError(f"catalogue must contain exactly S1-S29 (missing={missing}, extra={extra})")
     scenarios.sort(key=lambda item: int(item.id))
 
     catalog = BenchmarkCatalog(

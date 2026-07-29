@@ -48,7 +48,7 @@ def main():
         "--scenario",
         type=str,
         default=None,
-        help="Benchmark scenario ID. S1-S19 are public development scenarios; S20-S25 require the sealed controller.",
+        help="Benchmark scenario ID. S1-S23 are public development scenarios; S24-S29 require the sealed controller.",
     )
     parser.add_argument(
         "--batch",

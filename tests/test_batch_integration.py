@@ -59,7 +59,7 @@ class TestScenarioSelection:
 
     def test_local_selectors_reject_sealed_scenarios(self):
         with pytest.raises(SealedScenarioError):
-            _parse_scenario_ids("20")
+            _parse_scenario_ids("24")
         with pytest.raises(SealedScenarioError):
             _parse_scenario_ids("eval")
 
@@ -67,8 +67,8 @@ class TestScenarioSelection:
         selected = _parse_scenario_ids("all")
 
         assert "1h" in selected and "4h" in selected
-        assert "19" in selected
-        assert "20" not in selected
+        assert "23" in selected
+        assert "24" not in selected
 
 
 class TestBatchMetrics:
@@ -181,7 +181,7 @@ def test_dashboard_start_rejects_sealed_scenario(monkeypatch):
 
     route._state["running"] = False
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(route.start_pipeline(route.StartRequest(scenario_id="20")))
+        asyncio.run(route.start_pipeline(route.StartRequest(scenario_id="24")))
 
     assert exc.value.status_code == 503
 
@@ -232,7 +232,7 @@ def test_cli_rejects_sealed_before_provider_construction(monkeypatch):
 
     provider = Mock(side_effect=AssertionError("provider must not be constructed"))
     monkeypatch.setattr(agent_main, "LLMProvider", provider)
-    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "20"])
+    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "24"])
 
     with pytest.raises(SystemExit) as exc:
         agent_main.main()

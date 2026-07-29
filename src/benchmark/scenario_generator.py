@@ -582,7 +582,7 @@ class ScenarioGenerator:
         for vuln in gt["vulnerabilities"]:
             contract = derive_matching_contract(vuln)
             entries[vuln["id"]] = {field: contract[field] for field in fields}
-        return {"schema_version": "strict-v3.2", "source_hashes": {variant_id: source_hash},
+        return {"schema_version": "strict-v3.3", "source_hashes": {variant_id: source_hash},
                 "scenarios": {variant_id: entries}}
 
     @staticmethod

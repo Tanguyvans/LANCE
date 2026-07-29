@@ -1,5 +1,5 @@
 schema_version: "1"
-benchmark_version: "2.0.0"
+benchmark_version: "3.0.0"
 
 # This catalogue is intentionally metadata-only. Detailed topology, packs,
 # ground truth, seeds and deployment data never belong here.
@@ -23,9 +23,13 @@ scenarios:
   - {id: "17", label: "Stateful Signed OTA", split: dev-public}
   - {id: "18", label: "Simulated Cloud IAM and SSRF", split: dev-public}
   - {id: "19", label: "Safe Multi-Protocol OT Cell", split: dev-public}
-  - {id: "20", label: "Évaluation scellée S20", split: eval-sealed, profile: "eval_profiles/S20.yaml"}
-  - {id: "21", label: "Évaluation scellée S21", split: eval-sealed, profile: "eval_profiles/S21.yaml"}
-  - {id: "22", label: "Évaluation scellée S22", split: eval-sealed, profile: "eval_profiles/S22.yaml"}
-  - {id: "23", label: "Évaluation scellée S23", split: eval-sealed, profile: "eval_profiles/S23.yaml"}
+  - {id: "20", label: "True Network Multi-Hop Pivot", split: dev-public}
+  - {id: "21", label: "Sparse Low-Prevalence Network", split: dev-public}
+  - {id: "22", label: "Exploit Primitive Diversity", split: dev-public}
+  - {id: "23", label: "Wireless-to-Firmware Chain", split: dev-public}
   - {id: "24", label: "Évaluation scellée S24", split: eval-sealed, profile: "eval_profiles/S24.yaml"}
   - {id: "25", label: "Évaluation scellée S25", split: eval-sealed, profile: "eval_profiles/S25.yaml"}
+  - {id: "26", label: "Évaluation scellée S26", split: eval-sealed, profile: "eval_profiles/S26.yaml"}
+  - {id: "27", label: "Évaluation scellée S27", split: eval-sealed, profile: "eval_profiles/S27.yaml"}
+  - {id: "28", label: "Évaluation scellée S28", split: eval-sealed, profile: "eval_profiles/S28.yaml"}
+  - {id: "29", label: "Évaluation scellée S29", split: eval-sealed, profile: "eval_profiles/S29.yaml"}

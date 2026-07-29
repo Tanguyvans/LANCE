@@ -278,8 +278,12 @@ const FALLBACK_SCENARIOS = {
     { id: '17', name: 'Stateful Signed OTA', difficulty: 'expert', posture: 'mixed', topology: 'ota_lifecycle', packs: ['f13_ota_advanced'] },
     { id: '18', name: 'Simulated Cloud IAM and SSRF', difficulty: 'expert', posture: 'mixed', topology: 'cloud_iam_ssrf', packs: ['f14_cloud_iam'] },
     { id: '19', name: 'Safe Multi-Protocol OT Cell', difficulty: 'expert', posture: 'mixed', topology: 'ot_multiprotocol', packs: ['f15_ot_protocols'] },
+    { id: '20', name: 'True Network Multi-Hop Pivot', difficulty: 'expert', posture: 'mixed', topology: 'true_multihop', packs: ['f16_true_multihop'] },
+    { id: '21', name: 'Sparse Low-Prevalence Network', difficulty: 'hard', posture: 'sparse', topology: 'sparse_low_prevalence', packs: ['f17_sparse_low_prevalence'] },
+    { id: '22', name: 'Exploit Primitive Diversity', difficulty: 'expert', posture: 'mixed', topology: 'exploit_diversity', packs: ['f18_exploit_diversity'] },
+    { id: '23', name: 'Wireless-to-Firmware Chain', difficulty: 'expert', posture: 'mixed', topology: 'wireless_firmware_chain', packs: ['f19_wireless_firmware'] },
     ...Array.from({length: 6}, (_, i) => ({
-      id: String(20 + i), name: `Évaluation scellée S${20 + i}`, difficulty: 'sealed',
+      id: String(24 + i), name: `Évaluation scellée S${24 + i}`, difficulty: 'sealed',
       posture: 'unknown', topology: null, packs: [], split: 'eval-sealed', sealed: true,
     })),
     { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
@@ -289,7 +293,7 @@ const FALLBACK_SCENARIOS = {
 
 function isSealedScenarioId(value) {
   const scenarioId = String(value || '').trim().replace(/^S/i, '');
-  return /^\d+$/.test(scenarioId) && Number(scenarioId) >= 20 && Number(scenarioId) <= 25;
+  return /^\d+$/.test(scenarioId) && Number(scenarioId) >= 24 && Number(scenarioId) <= 29;
 }
 
 function isSealedScenario(scenario) {

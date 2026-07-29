@@ -1,0 +1,343 @@
+scenario_id: '21'
+scenario_name: Sparse Low-Prevalence Network
+difficulty: hard
+description: Sparse Low-Prevalence Network — Sixteen realistic services contain only
+  two positives and eighteen explicit negative controls
+topology:
+  router:
+    name: s21-router
+    vmid: 440
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s21-mqtt-open
+    vmid: 441
+    ip: 192.168.100.11
+    role: mqtt_broker
+    security_profile: vulnerable
+  - name: s21-web-backup
+    vmid: 442
+    ip: 192.168.100.12
+    role: web_server
+    security_profile: vulnerable
+  - name: s21-mqtt-secure-a
+    vmid: 443
+    ip: 192.168.100.13
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s21-mqtt-secure-b
+    vmid: 444
+    ip: 192.168.100.14
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s21-mqtt-secure-c
+    vmid: 445
+    ip: 192.168.100.15
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s21-mqtt-nearmiss
+    vmid: 446
+    ip: 192.168.100.16
+    role: mqtt_broker
+    security_profile: near_miss
+  - name: s21-web-secure-a
+    vmid: 447
+    ip: 192.168.100.17
+    role: web_server
+    security_profile: hardened
+  - name: s21-web-secure-b
+    vmid: 448
+    ip: 192.168.100.18
+    role: web_server
+    security_profile: hardened
+  - name: s21-web-secure-c
+    vmid: 449
+    ip: 192.168.100.19
+    role: web_server
+    security_profile: hardened
+  - name: s21-web-nearmiss
+    vmid: 450
+    ip: 192.168.100.20
+    role: web_server
+    security_profile: near_miss
+  - name: s21-ssh-secure-a
+    vmid: 451
+    ip: 192.168.100.21
+    role: ssh_server
+    security_profile: hardened
+  - name: s21-ssh-secure-b
+    vmid: 452
+    ip: 192.168.100.22
+    role: ssh_server
+    security_profile: hardened
+  - name: s21-ssh-secure-c
+    vmid: 453
+    ip: 192.168.100.23
+    role: ssh_server
+    security_profile: hardened
+  - name: s21-redis-secure-a
+    vmid: 454
+    ip: 192.168.100.24
+    role: db_server_v2
+    security_profile: hardened
+  - name: s21-redis-secure-b
+    vmid: 455
+    ip: 192.168.100.25
+    role: db_server_v2
+    security_profile: hardened
+  - name: s21-redis-secure-c
+    vmid: 456
+    ip: 192.168.100.26
+    role: db_server_v2
+    security_profile: hardened
+vulnerabilities:
+- id: F17-MQTT-ANONYMOUS@s21-mqtt-open
+  device: s21-mqtt-open
+  ip: 192.168.100.11
+  role: mqtt_broker
+  security_profile: vulnerable
+  template_key: F17-MQTT-ANONYMOUS
+  title: MQTT broker permits anonymous subscription
+  severity: high
+  category: no_authentication
+  hop_depth: 0
+  exploit_eligible: true
+  owasp_iot: I2 - Insecure Network Services
+  description: Anonymous subscription receives a retained benchmark message.
+  indicators:
+  - 'Unauthenticated subscription to # succeeds'
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  services:
+  - http
+  ports:
+  - 80
+  protocols:
+  - tcp
+  verification: subscribe without credentials to 192.168.100.11:1883
+  confidence_required: high
+  endpoints:
+  - /backup/db_backup_2024-01-15.sql
+- id: F17-WEB-BACKUP@s21-web-backup
+  device: s21-web-backup
+  ip: 192.168.100.12
+  role: web_server
+  security_profile: vulnerable
+  template_key: F17-WEB-BACKUP
+  title: Web server exposes a directory-indexed database backup
+  severity: high
+  category: data_exposure
+  hop_depth: 0
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The backup directory and bounded SQL fixture are accessible without
+    authentication.
+  indicators:
+  - GET /backup/ returns an index
+  - SQL fixture contains benchmark credentials
+  verification: retrieve http://192.168.100.12/backup/db_backup_2024-01-15.sql
+  confidence_required: high
+attack_paths: []
+scoring:
+  total_vulnerabilities: 2
+  total_attack_paths: 0
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 6
+  total_controls: 18
+bonus_types: []
+controls:
+- id: C17-MQTT-AUTH@s21-mqtt-secure-a
+  device: s21-mqtt-secure-a
+  ip: 192.168.100.13
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C17-MQTT-AUTH
+  assertion: mqtt_anonymous_subscription_denied
+  forbidden_types: &id001
+  - no_auth
+  description: Anonymous subscription is rejected while the service remains reachable.
+  verification: unauthenticated subscription to 192.168.100.13:1883 fails
+- id: C17-MQTT-AUTH@s21-mqtt-secure-b
+  device: s21-mqtt-secure-b
+  ip: 192.168.100.14
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C17-MQTT-AUTH
+  assertion: mqtt_anonymous_subscription_denied
+  forbidden_types: *id001
+  description: Anonymous subscription is rejected while the service remains reachable.
+  verification: unauthenticated subscription to 192.168.100.14:1883 fails
+- id: C17-MQTT-AUTH@s21-mqtt-secure-c
+  device: s21-mqtt-secure-c
+  ip: 192.168.100.15
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C17-MQTT-AUTH
+  assertion: mqtt_anonymous_subscription_denied
+  forbidden_types: *id001
+  description: Anonymous subscription is rejected while the service remains reachable.
+  verification: unauthenticated subscription to 192.168.100.15:1883 fails
+- id: C17-MQTT-AUTH@s21-mqtt-nearmiss
+  device: s21-mqtt-nearmiss
+  ip: 192.168.100.16
+  role: mqtt_broker
+  security_profile: near_miss
+  template_key: C17-MQTT-AUTH
+  assertion: mqtt_anonymous_subscription_denied
+  forbidden_types: *id001
+  description: Anonymous subscription is rejected while the service remains reachable.
+  verification: unauthenticated subscription to 192.168.100.16:1883 fails
+- id: C17-WEB-BACKUP-HIDDEN@s21-web-secure-a
+  device: s21-web-secure-a
+  ip: 192.168.100.17
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-BACKUP-HIDDEN
+  assertion: backup_path_not_found
+  forbidden_types: &id002
+  - data_exposure
+  - directory_listing
+  description: The comparator returns 404 for the backup path.
+  verification: GET http://192.168.100.17/backup/ returns 404
+- id: C17-WEB-ADMIN-AUTH@s21-web-secure-a
+  device: s21-web-secure-a
+  ip: 192.168.100.17
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-ADMIN-AUTH
+  assertion: admin_requires_authentication
+  forbidden_types: &id003
+  - no_auth
+  description: The administration route presents an authentication challenge.
+  verification: GET http://192.168.100.17/admin returns 401
+- id: C17-WEB-BACKUP-HIDDEN@s21-web-secure-b
+  device: s21-web-secure-b
+  ip: 192.168.100.18
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-BACKUP-HIDDEN
+  assertion: backup_path_not_found
+  forbidden_types: *id002
+  description: The comparator returns 404 for the backup path.
+  verification: GET http://192.168.100.18/backup/ returns 404
+- id: C17-WEB-ADMIN-AUTH@s21-web-secure-b
+  device: s21-web-secure-b
+  ip: 192.168.100.18
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-ADMIN-AUTH
+  assertion: admin_requires_authentication
+  forbidden_types: *id003
+  description: The administration route presents an authentication challenge.
+  verification: GET http://192.168.100.18/admin returns 401
+- id: C17-WEB-BACKUP-HIDDEN@s21-web-secure-c
+  device: s21-web-secure-c
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-BACKUP-HIDDEN
+  assertion: backup_path_not_found
+  forbidden_types: *id002
+  description: The comparator returns 404 for the backup path.
+  verification: GET http://192.168.100.19/backup/ returns 404
+- id: C17-WEB-ADMIN-AUTH@s21-web-secure-c
+  device: s21-web-secure-c
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C17-WEB-ADMIN-AUTH
+  assertion: admin_requires_authentication
+  forbidden_types: *id003
+  description: The administration route presents an authentication challenge.
+  verification: GET http://192.168.100.19/admin returns 401
+- id: C17-WEB-BACKUP-HIDDEN@s21-web-nearmiss
+  device: s21-web-nearmiss
+  ip: 192.168.100.20
+  role: web_server
+  security_profile: near_miss
+  template_key: C17-WEB-BACKUP-HIDDEN
+  assertion: backup_path_not_found
+  forbidden_types: *id002
+  description: The comparator returns 404 for the backup path.
+  verification: GET http://192.168.100.20/backup/ returns 404
+- id: C17-WEB-ADMIN-AUTH@s21-web-nearmiss
+  device: s21-web-nearmiss
+  ip: 192.168.100.20
+  role: web_server
+  security_profile: near_miss
+  template_key: C17-WEB-ADMIN-AUTH
+  assertion: admin_requires_authentication
+  forbidden_types: *id003
+  description: The administration route presents an authentication challenge.
+  verification: GET http://192.168.100.20/admin returns 401
+- id: C17-SSH-KEY-ONLY@s21-ssh-secure-a
+  device: s21-ssh-secure-a
+  ip: 192.168.100.21
+  role: ssh_server
+  security_profile: hardened
+  template_key: C17-SSH-KEY-ONLY
+  assertion: ssh_password_authentication_disabled
+  forbidden_types: &id004
+  - default_credentials
+  description: The SSH service is reachable but password authentication is disabled.
+  verification: sshd effective configuration on 192.168.100.21 reports PasswordAuthentication
+    no
+- id: C17-SSH-KEY-ONLY@s21-ssh-secure-b
+  device: s21-ssh-secure-b
+  ip: 192.168.100.22
+  role: ssh_server
+  security_profile: hardened
+  template_key: C17-SSH-KEY-ONLY
+  assertion: ssh_password_authentication_disabled
+  forbidden_types: *id004
+  description: The SSH service is reachable but password authentication is disabled.
+  verification: sshd effective configuration on 192.168.100.22 reports PasswordAuthentication
+    no
+- id: C17-SSH-KEY-ONLY@s21-ssh-secure-c
+  device: s21-ssh-secure-c
+  ip: 192.168.100.23
+  role: ssh_server
+  security_profile: hardened
+  template_key: C17-SSH-KEY-ONLY
+  assertion: ssh_password_authentication_disabled
+  forbidden_types: *id004
+  description: The SSH service is reachable but password authentication is disabled.
+  verification: sshd effective configuration on 192.168.100.23 reports PasswordAuthentication
+    no
+- id: C17-REDIS-AUTH@s21-redis-secure-a
+  device: s21-redis-secure-a
+  ip: 192.168.100.24
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C17-REDIS-AUTH
+  assertion: redis_requires_authentication
+  forbidden_types: &id005
+  - no_auth
+  description: Redis responds with NOAUTH to an unauthenticated PING.
+  verification: redis-cli against 192.168.100.24:6379 without a password returns NOAUTH
+- id: C17-REDIS-AUTH@s21-redis-secure-b
+  device: s21-redis-secure-b
+  ip: 192.168.100.25
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C17-REDIS-AUTH
+  assertion: redis_requires_authentication
+  forbidden_types: *id005
+  description: Redis responds with NOAUTH to an unauthenticated PING.
+  verification: redis-cli against 192.168.100.25:6379 without a password returns NOAUTH
+- id: C17-REDIS-AUTH@s21-redis-secure-c
+  device: s21-redis-secure-c
+  ip: 192.168.100.26
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C17-REDIS-AUTH
+  assertion: redis_requires_authentication
+  forbidden_types: *id005
+  description: Redis responds with NOAUTH to an unauthenticated PING.
+  verification: redis-cli against 192.168.100.26:6379 without a password returns NOAUTH

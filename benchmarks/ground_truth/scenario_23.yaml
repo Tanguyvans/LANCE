@@ -1,0 +1,261 @@
+scenario_id: '23'
+scenario_name: Wireless-to-Firmware Chain
+difficulty: expert
+description: Wireless-to-Firmware Chain — Simulated wireless discovery, join-token
+  replay, firmware disclosure and unsigned recovery update
+topology:
+  router:
+    name: s23-router
+    vmid: 490
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s23-radio-open
+    vmid: 491
+    ip: 192.168.100.11
+    role: wireless_bridge
+    security_profile: vulnerable
+    simulator: wireless_bridge
+  - name: s23-radio-secure
+    vmid: 492
+    ip: 192.168.100.12
+    role: wireless_bridge
+    security_profile: hardened
+    simulator: wireless_bridge
+  - name: s23-gateway-open
+    vmid: 493
+    ip: 192.168.100.13
+    role: device_gateway
+    security_profile: vulnerable
+    simulator: device_gateway
+  - name: s23-gateway-secure
+    vmid: 494
+    ip: 192.168.100.14
+    role: device_gateway
+    security_profile: hardened
+    simulator: device_gateway
+  - name: s23-firmware-open
+    vmid: 495
+    ip: 192.168.100.15
+    role: firmware_archive
+    security_profile: vulnerable
+    simulator: firmware_archive
+  - name: s23-firmware-secure
+    vmid: 496
+    ip: 192.168.100.16
+    role: firmware_archive
+    security_profile: hardened
+    simulator: firmware_archive
+  - name: s23-device-open
+    vmid: 497
+    ip: 192.168.100.17
+    role: boot_device
+    security_profile: vulnerable
+    simulator: boot_device
+  - name: s23-device-secure
+    vmid: 498
+    ip: 192.168.100.18
+    role: boot_device
+    security_profile: hardened
+    simulator: boot_device
+vulnerabilities:
+- id: F19-WIRELESS-DISCLOSURE@s23-radio-open
+  device: s23-radio-open
+  ip: 192.168.100.11
+  role: wireless_bridge
+  security_profile: vulnerable
+  template_key: F19-WIRELESS-DISCLOSURE
+  title: Simulated wireless discovery discloses a reusable join token
+  severity: medium
+  category: info_disclosure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - info_disclosure
+  services:
+  - wireless-discovery
+  ports:
+  - 56830
+  protocols:
+  - udp
+  exploit_eligible: false
+  owasp_iot: I2 - Insecure Network Services
+  description: UDP discovery returns device identity and a fixed join token without
+    authenticating the requester.
+  indicators:
+  - UDP DISCOVER response contains JOIN_TOKEN join-23-replay
+  verification: send DISCOVER to 192.168.100.11:56830/udp
+  confidence_required: high
+- id: F19-JOIN-REPLAY@s23-gateway-open
+  device: s23-gateway-open
+  ip: 192.168.100.13
+  role: device_gateway
+  security_profile: vulnerable
+  template_key: F19-JOIN-REPLAY
+  title: Gateway accepts replay of a wireless join token
+  severity: high
+  category: misconfiguration
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 1
+  accepted_types:
+  - misconfiguration
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /join
+  exploit_eligible: true
+  owasp_iot: I9 - Insecure Default Settings
+  description: Reusing the discovered token repeatedly yields the same bounded gateway
+    management token.
+  indicators:
+  - Two POST /join requests both return gateway-admin-23
+  verification: replay join-23-replay twice against http://192.168.100.13:8080/join
+  confidence_required: high
+- id: F19-FIRMWARE-SECRET@s23-firmware-open
+  device: s23-firmware-open
+  ip: 192.168.100.15
+  role: firmware_archive
+  security_profile: vulnerable
+  template_key: F19-FIRMWARE-SECRET
+  title: Firmware manifest exposes an embedded recovery key
+  severity: high
+  category: data_exposure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 2
+  accepted_types:
+  - data_exposure
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /firmware/current
+  exploit_eligible: true
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: The public firmware fixture contains the fixed recovery key debug-23-recovery.
+  indicators:
+  - GET /firmware/current returns debug_key debug-23-recovery
+  verification: retrieve http://192.168.100.15:8080/firmware/current
+  confidence_required: high
+- id: F19-UNSIGNED-RECOVERY@s23-device-open
+  device: s23-device-open
+  ip: 192.168.100.17
+  role: boot_device
+  security_profile: vulnerable
+  template_key: F19-UNSIGNED-RECOVERY
+  title: Device accepts unsigned recovery firmware
+  severity: critical
+  category: insecure_update
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 3
+  accepted_types:
+  - insecure_update
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /recovery
+  exploit_eligible: true
+  owasp_iot: I4 - Lack of Secure Update Mechanism
+  description: The disposable device accepts signed=false when supplied the bounded
+    gateway token and recovery key.
+  indicators:
+  - POST /recovery returns RECOVERY_MODE with signed false
+  verification: submit the documented fixture to http://192.168.100.17:8080/recovery
+  confidence_required: high
+attack_paths:
+- id: P23-1
+  title: Wireless discovery to unsigned recovery update
+  difficulty: expert
+  chain:
+  - hop: 1
+    device: s23-radio-open
+    action: Discover the simulated device and exposed join token over UDP
+  - hop: 2
+    device: s23-gateway-open
+    action: Replay the join token to obtain a gateway management token
+  - hop: 3
+    device: s23-firmware-open
+    action: Read the firmware manifest and embedded recovery key
+  - hop: 4
+    device: s23-device-open
+    action: Submit the unsigned recovery fixture using the bounded management token
+  vulnerabilities_used:
+  - F19-WIRELESS-DISCLOSURE@s23-radio-open
+  - F19-JOIN-REPLAY@s23-gateway-open
+  - F19-FIRMWARE-SECRET@s23-firmware-open
+  - F19-UNSIGNED-RECOVERY@s23-device-open
+  impact: Simulated compromise path from radio discovery to device recovery mode
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 12
+  total_controls: 4
+bonus_types: []
+controls:
+- id: C19-WIRELESS-AUTH@s23-radio-secure
+  device: s23-radio-secure
+  ip: 192.168.100.12
+  role: wireless_bridge
+  security_profile: hardened
+  template_key: C19-WIRELESS-AUTH
+  assertion: wireless_discovery_hides_join_token
+  forbidden_types:
+  - info_disclosure
+  description: The hardened UDP response requires authentication and never contains
+    a join token.
+  verification: DISCOVER to 192.168.100.12:56830/udp returns AUTH_REQUIRED without
+    JOIN_TOKEN
+- id: C19-JOIN-REPLAY-DENIED@s23-gateway-secure
+  device: s23-gateway-secure
+  ip: 192.168.100.14
+  role: device_gateway
+  security_profile: hardened
+  template_key: C19-JOIN-REPLAY-DENIED
+  assertion: join_token_single_use
+  forbidden_types:
+  - misconfiguration
+  description: The hardened gateway accepts the fixture token once and rejects its
+    replay.
+  verification: the second POST /join to http://192.168.100.14:8080 returns 409
+- id: C19-FIRMWARE-NO-SECRET@s23-firmware-secure
+  device: s23-firmware-secure
+  ip: 192.168.100.16
+  role: firmware_archive
+  security_profile: hardened
+  template_key: C19-FIRMWARE-NO-SECRET
+  assertion: firmware_manifest_contains_no_recovery_key
+  forbidden_types:
+  - data_exposure
+  description: The hardened firmware manifest contains no debug or recovery key.
+  verification: GET http://192.168.100.16:8080/firmware/current omits debug_key
+- id: C19-UNSIGNED-RECOVERY-DENIED@s23-device-secure
+  device: s23-device-secure
+  ip: 192.168.100.18
+  role: boot_device
+  security_profile: hardened
+  template_key: C19-UNSIGNED-RECOVERY-DENIED
+  assertion: unsigned_recovery_rejected
+  forbidden_types:
+  - insecure_update
+  description: The hardened device rejects signed=false without changing state.
+  verification: POST the unsigned fixture to http://192.168.100.18:8080/recovery returns
+    400

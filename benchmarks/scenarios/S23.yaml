@@ -1,0 +1,23 @@
+schema_version: 2
+scenario_id: '23'
+name: Wireless-to-Firmware Chain
+difficulty: expert
+posture: mixed
+topology: wireless_firmware_chain
+packs: [f19_wireless_firmware]
+attack_paths:
+- id: P23-1
+  title: Wireless discovery to unsigned recovery update
+  difficulty: expert
+  chain:
+  - {hop: 1, device: s23-radio-open, action: Discover the simulated device and exposed join token over UDP}
+  - {hop: 2, device: s23-gateway-open, action: Replay the join token to obtain a gateway management token}
+  - {hop: 3, device: s23-firmware-open, action: Read the firmware manifest and embedded recovery key}
+  - {hop: 4, device: s23-device-open, action: Submit the unsigned recovery fixture using the bounded management token}
+  vulnerabilities_used:
+  - F19-WIRELESS-DISCLOSURE@s23-radio-open
+  - F19-JOIN-REPLAY@s23-gateway-open
+  - F19-FIRMWARE-SECRET@s23-firmware-open
+  - F19-UNSIGNED-RECOVERY@s23-device-open
+  impact: Simulated compromise path from radio discovery to device recovery mode
+bonus_types: []

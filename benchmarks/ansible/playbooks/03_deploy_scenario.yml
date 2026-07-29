@@ -19,7 +19,7 @@
     scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     max_vmid_offset: "{{ benchmark_scenarios[scenario_id].services | map(attribute='vmid_offset') | max | int }}"
-    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S19)
+    # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S23)
 
   tasks:
 
@@ -159,12 +159,34 @@
     - name: Configurer le réseau et le DNS de chaque CT
       ansible.builtin.command: >-
         pct set {{ base_vmid | int + item.vmid_offset }}
-        --net0 name=eth0,bridge={{ benchmark_bridge }}{% if item.vlan_id is defined %},tag={{ item.vlan_id }}{% endif %},ip={{ item.ip }}/24,gw={% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
-        --nameserver {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_dns }}{% endif %}
+        --net0 name=eth0,bridge={{ benchmark_bridge }}{% if item.bootstrap_ip is not defined and item.vlan_id is defined %},tag={{ item.vlan_id }}{% endif %},ip={{ item.bootstrap_ip | default(item.ip) }}/24{% if item.bootstrap_ip is defined %},gw={{ benchmark_gateway }}{% elif not (item.no_gateway | default(false) | bool) %},gw={% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}{% endif %}
+        --nameserver {{ benchmark_dns }}
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx
       when: ct_checks.results[idx].rc != 0
+
+    - name: "[S20] Ajouter le réseau isolé principal après l'interface de bootstrap"
+      ansible.builtin.command: >-
+        pct set {{ base_vmid | int + item.vmid_offset }}
+        --net1 name=eth1,bridge={{ benchmark_bridge }},tag={{ item.vlan_id }},ip={{ item.ip }}/24
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when:
+        - ct_checks.results[idx].rc != 0
+        - item.bootstrap_ip is defined
+
+    - name: "[S20] Ajouter l'interface vers le segment de pivot suivant"
+      ansible.builtin.command: >-
+        pct set {{ base_vmid | int + item.vmid_offset }}
+        --net{{ 2 if item.bootstrap_ip is defined else 1 }} name=eth{{ 2 if item.bootstrap_ip is defined else 1 }},bridge={{ benchmark_bridge }},tag={{ item.secondary_vlan_id }},ip={{ item.secondary_ip }}/24
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      loop_control:
+        index_var: idx
+      when:
+        - ct_checks.results[idx].rc != 0
+        - item.secondary_ip is defined
 
     - name: Démarrer chaque CT service
       ansible.builtin.command: pct start {{ base_vmid | int + item.vmid_offset }}
@@ -192,7 +214,7 @@
     - name: Vérifier la connectivité réseau de chaque CT
       ansible.builtin.command: >-
         pct exec {{ base_vmid | int + item.vmid_offset }} -- ping -c1 -W2
-        {% if item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
+        {% if item.no_gateway | default(false) | bool %}{{ item.ip }}{% elif item.vlan_id is defined %}192.168.{{ item.vlan_id }}.1{% else %}{{ benchmark_gateway }}{% endif %}
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         index_var: idx

@@ -86,7 +86,7 @@ def _write(tmp_path: Path, findings, vulnerabilities=None, *, controls=None, bon
 def test_public_matching_catalog_covers_every_ground_truth_entry():
     root = Path(__file__).resolve().parents[1] / "benchmarks" / "ground_truth"
     catalog = yaml.safe_load((root / "matching_contracts.yaml").read_text())
-    assert catalog["schema_version"] == "strict-v3.2"
+    assert catalog["schema_version"] == "strict-v3.3"
     for path in root.glob("scenario_*.yaml"):
         ground_truth = yaml.safe_load(path.read_text()) or {}
         scenario_id = str(ground_truth.get("scenario_id"))
@@ -112,25 +112,25 @@ def test_rejects_conflicting_service_or_port():
     assert match is None
 
 
-def test_exact_structure_gets_full_match_credit_but_detection_only_proof_credit(tmp_path):
+def test_exact_structure_matches_but_detection_only_gets_no_primary_credit(tmp_path):
     run, gt = _write(tmp_path, [_finding()])
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.detection_f1 == 1.0
     assert result.credited_f1 == 1.0
     assert result.matches[0]["match_credit"] == 1.0
     assert result.matches[0]["structural_match"] is True
-    assert result.matches[0]["verification_credit"] == 0.5
-    assert result.scenario_score_pct == 50.0
+    assert result.matches[0]["verification_credit"] == 0.0
+    assert result.scenario_score_pct == 0.0
 
 
-def test_missing_structure_gets_partial_credit(tmp_path):
+def test_missing_required_structure_is_not_a_match(tmp_path):
     finding = _finding(service="", port=None, protocol="", endpoint="")
     run, gt = _write(tmp_path, [finding])
     result = evaluate(run, gt, policy=STRICT_V3)
-    assert result.detection_f1 == 1.0
-    assert result.credited_f1 == 0.75
-    assert result.matches[0]["match_credit"] == 0.75
-    assert result.scenario_score_pct == 37.5
+    assert result.detection_f1 == 0.0
+    assert result.credited_f1 == 0.0
+    assert result.matches[0]["matched"] is False
+    assert result.scenario_score_pct == 0.0
 
 
 def test_primary_score_includes_severity_error(tmp_path):
@@ -138,7 +138,7 @@ def test_primary_score_includes_severity_error(tmp_path):
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.detection_f1 == 1.0
     assert result.severity_adjusted_f1 == 0.25
-    assert result.scenario_score_pct == 12.5
+    assert result.scenario_score_pct == 0.0
 
 
 def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
@@ -151,7 +151,7 @@ def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
     }]}))
     (run / "tool_calls.jsonl").write_text(json.dumps({
         "tool": "http_get", "args": {"url": "http://192.0.2.10/backup.sql"},
-        "result": {"success": True, "body": "password=secret"},
+        "result": {"success": True, "status_code": 200, "body": "password=secret"},
     }) + "\n")
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.verified_f1 == 1.0
@@ -262,11 +262,21 @@ def test_negative_control_violation_reduces_primary_score(tmp_path):
     }
     findings = [_finding(), _finding(id="F2", device_ip="192.0.2.20", type="no_auth")]
     run, gt = _write(tmp_path, findings, controls=[control])
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "severity": "high", "service": "http", "port": 80, "protocol": "tcp",
+        "endpoint": "/backup.sql", "status": "CONFIRMED", "evidence": "password=secret",
+        "tool_used": "http_request", "data_extracted": ["password=secret"],
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "tool": "http_request", "args": {"url": "http://192.0.2.10/backup.sql"},
+        "result": {"status_code": 200, "body": "password=secret"},
+    }) + "\n")
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.negative_control_violations == 1
     assert result.negative_control_specificity == 0.0
     assert result.negative_control_penalty_factor == 0.8
-    assert result.scenario_score_pct == 26.6
+    assert result.scenario_score_pct == 53.4
 
 
 def test_unknown_cve_is_reported_and_cannot_match_cve_gt(tmp_path):
@@ -379,7 +389,48 @@ def test_http_request_and_raw_socket_results_receive_semantic_verdicts():
     finding = _finding(data_extracted=["password=secret"])
     assert _tool_call_outcome(http, finding) is True
     assert _tool_call_outcome(denied, finding) is False
-    assert _tool_call_outcome(tcp, finding) is True
+    assert _tool_call_outcome(tcp, finding) is False
+
+
+def test_generic_success_flags_cannot_override_semantic_failure():
+    finding = _finding(type="code_injection", data_extracted=[])
+    assert _tool_call_outcome({
+        "tool": "http_request",
+        "result": {"success": True, "status_code": 403, "body": "uid=1000"},
+    }, finding) is False
+    assert _tool_call_outcome({
+        "tool": "tcp_send",
+        "result": {"success": True, "received_bytes": 4, "received_ascii": "PONG"},
+    }, finding) is False
+    assert _tool_call_outcome({
+        "tool": "invented_tool",
+        "result": {"success": True, "status": "confirmed"},
+    }, finding) is None
+
+
+def test_nmap_open_port_alone_is_not_vulnerability_proof():
+    record = {
+        "tool": "nmap_scan",
+        "result": {"return_code": 0, "stdout": "80/tcp open http"},
+    }
+    assert _tool_call_outcome(record, _finding(type="no_auth", port=80)) is False
+
+
+def test_dependency_reach_does_not_inflate_network_multi_hop_reach(tmp_path):
+    vulnerability = _gt(
+        hop_depth=0,
+        network_pivot_depth=0,
+        dependency_depth=2,
+    )
+    run, gt = _write(tmp_path, [_finding()], [vulnerability])
+    result = evaluate(run, gt, policy=STRICT_V3)
+
+    assert result.mhr_1 is None
+    assert result.dhr_1 == 1.0
+    assert result.dhr_2 == 1.0
+    assert result.dhr_2_verified == 0.0
+    assert result.matches[0]["gt_network_pivot_depth"] == 0
+    assert result.matches[0]["gt_dependency_depth"] == 2
 
 
 def test_extracted_json_text_is_found_inside_structured_tool_output(tmp_path):

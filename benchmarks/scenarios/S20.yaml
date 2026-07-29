@@ -1,0 +1,22 @@
+schema_version: 2
+scenario_id: '20'
+name: True Network Multi-Hop Pivot
+difficulty: expert
+posture: mixed
+topology: true_multihop
+packs: [f16_true_multihop]
+attack_paths:
+- id: P20-1
+  title: Two network pivots to an isolated operational vault
+  difficulty: expert
+  chain:
+  - {hop: 1, device: s20-entry, action: Authenticate to the only directly reachable host and read its relay connection profile}
+  - {hop: 2, device: s20-relay, action: Pivot over VLAN 110 using the recovered relay credentials}
+  - {hop: 3, device: s20-vault, action: Reach the data vault over VLAN 120 from the second dual-homed host}
+  vulnerabilities_used:
+  - F16-ENTRY-CREDS@s20-entry
+  - F16-RELAY-CONFIG@s20-entry
+  - F16-RELAY-CREDS@s20-relay
+  - F16-VAULT-NOAUTH@s20-vault
+  impact: Access to data that is unreachable from the evaluator network without both pivots
+bonus_types: []

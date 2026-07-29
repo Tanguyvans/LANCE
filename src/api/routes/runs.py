@@ -95,7 +95,7 @@ def _is_sealed_run(run_dir: Path) -> bool:
     if scenario_id is None:
         return False
     normalized = _normalized_scenario_id(scenario_id)
-    if normalized.isdigit() and 20 <= int(normalized) <= 25:
+    if normalized.isdigit() and 24 <= int(normalized) <= 29:
         return True
     descriptor = _scenario_descriptor(run_dir)
     return bool(descriptor and descriptor.sealed)
@@ -385,7 +385,7 @@ def score_run(run_id: str):
     # trusted, so setting custom_config must never switch a sealed run back to a
     # run-local ground truth.
     if _is_sealed_run(run_dir):
-        if not scenario_id.isdigit() or not 20 <= int(scenario_id) <= 25:
+        if not scenario_id.isdigit() or not 24 <= int(scenario_id) <= 29:
             raise HTTPException(status_code=500, detail="Invalid sealed scenario metadata")
         try:
             summary = _load_sealed_summary(run_dir, scenario_id)

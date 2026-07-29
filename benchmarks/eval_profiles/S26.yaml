@@ -1,5 +1,5 @@
 schema_version: "1"
-scenario_id: "21"
+scenario_id: "26"
 split: eval-sealed
 controller_required: true
 blind_required: true

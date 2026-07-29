@@ -1,0 +1,19 @@
+id: true_multihop
+name: True Network Multi-Hop Pivot
+description: Two isolated VLANs are reachable only through two successively compromised dual-homed hosts
+base_vmid: 420
+subnets: [192.168.100.0/24, 192.168.110.0/24, 192.168.120.0/24]
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-entry', vmid_offset: 1, ip: 192.168.100.11, role: pivot_entry, security_profile: vulnerable, secondary_ip: 192.168.110.11, secondary_vlan_id: 110}
+- {name_template: 's{sid}-relay', vmid_offset: 2, ip: 192.168.110.12, role: pivot_relay, security_profile: vulnerable, vlan_id: 110, no_gateway: true, bootstrap_ip: 192.168.100.12, secondary_ip: 192.168.120.12, secondary_vlan_id: 120}
+- {name_template: 's{sid}-vault', vmid_offset: 3, ip: 192.168.120.13, role: pivot_vault, security_profile: vulnerable, vlan_id: 120, no_gateway: true, bootstrap_ip: 192.168.100.13, simulator: pivot_vault}
+- {name_template: 's{sid}-decoy', vmid_offset: 4, ip: 192.168.100.14, role: pivot_decoy, security_profile: hardened}
+links:
+- {source: attacker, target: 's{sid}-entry', protocol: ssh, reachability: direct}
+- {source: 's{sid}-entry', target: 's{sid}-relay', protocol: ssh, reachability: vlan110-only}
+- {source: 's{sid}-relay', target: 's{sid}-vault', protocol: http, reachability: vlan120-only}
