@@ -1670,10 +1670,15 @@ class TestRepeatingToolDetector:
             required_tool="complete_intrusion_campaign",
             terminate_after_tool="complete_intrusion_campaign",
             strict_required_tool=True,
+            force_tool_on_stall=True,
         )
 
         assert result == "Trying"
         assert provider.client.chat.completions.create.call_count == 2
+        first_request = provider.client.chat.completions.create.call_args_list[0].kwargs
+        second_request = provider.client.chat.completions.create.call_args_list[1].kwargs
+        assert "tool_choice" not in first_request
+        assert second_request["tool_choice"] == "required"
         complete.assert_called_once_with()
 
     def test_openai_loop_stops_strict_required_tool_no_tool_stall(self):
@@ -2240,6 +2245,7 @@ class TestPhase5Context:
         assert kwargs["terminate_after_tool"] == "complete_intrusion_campaign"
         assert kwargs["terminate_on_unavailable_tools"] is None
         assert kwargs["strict_required_tool"] is True
+        assert kwargs["force_tool_on_stall"] is True
         assert "Complete compact campaign" in kwargs["system_prompt"]
         assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
@@ -2286,6 +2292,7 @@ class TestPhase5Context:
         assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["terminate_on_unavailable_tools"] is None
         assert kwargs["strict_required_tool"] is False
+        assert kwargs["force_tool_on_stall"] is False
         assert kwargs["max_turns"] == 80
         assert kwargs["max_tokens"] == 16384
 

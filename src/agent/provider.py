@@ -145,13 +145,14 @@ class LLMProvider:
         repeat_guard: bool = True,
         terminate_on_unavailable_tools: set[str] | frozenset[str] | None = None,
         strict_required_tool: bool = False,
+        force_tool_on_stall: bool = False,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         if self.provider == "anthropic":
             return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool, force_tool_on_stall)
 
     def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
@@ -278,7 +279,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -288,6 +289,7 @@ class LLMProvider:
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
         no_tool_stalls = 0
+        force_any_tool_next_turn = False
         _REPEAT_THRESHOLD = 3
         _NO_TOOL_STALL_THRESHOLD = 3
 
@@ -310,6 +312,9 @@ class LLMProvider:
                 if active_api_tools:
                     request_kwargs["tools"] = active_api_tools
                     request_kwargs["parallel_tool_calls"] = False
+                    if force_any_tool_next_turn:
+                        request_kwargs["tool_choice"] = "required"
+                        force_any_tool_next_turn = False
                 response = _call_with_retry(
                     self.client.chat.completions.create,
                     **request_kwargs,
@@ -387,7 +392,17 @@ class LLMProvider:
                             stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
                         return last_nonempty_text or f"(required tool {required_tool} not called after repeated reminders)"
                     messages.append({"role": "assistant", "content": message.content or ""})
-                    messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
+                    if force_tool_on_stall and not completion_only:
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "Do not wait or describe future work. Call one available action tool now. "
+                                f"Call '{required_tool}' only when its progress contract is complete."
+                            ),
+                        })
+                        force_any_tool_next_turn = True
+                    else:
+                        messages.append({"role": "user", "content": f"IMPORTANT: Call '{required_tool}' before finishing."})
                     reminder_sent = True
                     continue
                 if message.content and stream_callback:
