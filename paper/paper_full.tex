@@ -252,7 +252,7 @@ The benchmark is built around three requirements:
   \item \textbf{Scorable evidence:} the oracle records expected indicators and verification commands, allowing the evaluator to distinguish shallow detection from stronger exploit evidence.
 \end{itemize}
 
-The benchmark has 19 public development scenarios and ten inspectable public held-out tests (Table~\ref{tab:scenarios}). Held-out denotes exclusion from empirical tuning, not secrecy.
+The benchmark has 19 public development scenarios and ten inspectable public held-out tests (Table~\ref{tab:scenarios}). Held-out denotes exclusion from empirical tuning, not secrecy. The two public splits play strictly different roles. S1--S19 are development material: the harness, prompts, tools, adapters, matching rules, and budgets were all allowed to be adjusted against their results, so they cannot measure generalization. S20--S29 form the held-out test set: their definitions, topologies, and ground truths are public and inspectable, but they are frozen before the first test run and their results may never be used to tune the evaluated version. This edition deliberately ships no sealed split; the protection is procedural---pre-commitment of the campaign manifest, blind execution, and an explicit prohibition on tuning from test results---rather than secrecy.
 
 \begin{table}[h!]
 \centering
@@ -302,7 +302,7 @@ Each LLM finding is matched one-to-one to ground truth under a versioned explici
 
 The main table reports three values. \emph{Detection F1} measures correctly identified vulnerabilities whether or not exploitation succeeds. \emph{Verified F1}, the primary score, counts a true positive only when a fresh Phase~4 tool record is target-compatible and its output semantically demonstrates the finding. \emph{Verified Severity Coverage} is the fraction of total ground-truth severity weight (critical~4, high~3, medium~2, low~1) whose vulnerabilities are verified. Missing proof in a contract-compatible run receives zero verified credit.
 
-For depth $k$, MHR@k is recall restricted to vulnerabilities with \texttt{network\_pivot\_depth}$\geq k$; DHR@k applies the same definition to \texttt{dependency\_depth}. Verified variants additionally require proof. Undefined depths are reported as N/A rather than zero. Attack-path coverage requires all referenced findings; verified path coverage also requires proof and an ordered Phase~5 chain.
+For depth $k$, MHR@k is recall restricted to vulnerabilities with \texttt{network\_pivot\_depth}$\geq k$; DHR@k applies the same definition to \texttt{dependency\_depth}. Undefined depths are reported as N/A rather than zero. Verified variants additionally require proof, and for network depth that proof is pivot-based: a true positive at \texttt{network\_pivot\_depth}$\geq k$ is verified only when the execution trace contains a successful explicit pivot tool call whose password-free provenance record shows a real jump chain of at least $k$ hops ending on the target. Declarative attack chains and direct-access calls earn no verified credit at depth, so verified MHR measures demonstrated multi-hop capability rather than detection or narration. Attack-path coverage requires all referenced findings; verified path coverage also requires proof and an ordered Phase~5 chain.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §5 Harness
@@ -315,7 +315,7 @@ Existing LLM pentest harnesses typically process targets as a flat list, letting
 \subsection{Pipeline}
 \label{sec:harness:pipeline}
 
-\harnessname{} separates network assessment into discovery, local analysis, evidence collection, lateral movement, and reporting. \textbf{Phase~1} builds a directed topology graph $G=(V,E)$ whose vertices are devices and whose edges are protocol-labeled links. In informed mode, this graph is loaded from benchmark metadata; in blind mode, it starts empty and is populated by active discovery. \textbf{Phase~2} scans the target CIDR for hosts, services, versions, L2 vendors, and protocol endpoints (MQTT, SSH, HTTP). \textbf{Phase~3} performs per-device triage: each device receives a deterministic scanner pass and a constrained LLM micro-agent, whose outputs are merged and deduplicated. \textbf{Phase~4} verifies candidate findings with operational tools such as SSH, MQTT, MySQL, Modbus, and Telnet, attempting the deepest evidence level achievable (\textsf{L1}--\textsf{L3}). \textbf{Phase~5} conducts intrusion and lateral movement over observed or asserted topology edges, recording each hop with source, destination, protocol, and credentials. \textbf{Phase~6} emits a network-scoped report with device inventory, validated findings, attack-surface summary, intrusion narrative, and remediation priorities.
+\harnessname{} separates network assessment into discovery, local analysis, evidence collection, lateral movement, and reporting. \textbf{Phase~1} builds a directed topology graph $G=(V,E)$ whose vertices are devices and whose edges are protocol-labeled links. In informed mode, this graph is loaded from benchmark metadata; in blind mode, it starts empty and is populated by active discovery. \textbf{Phase~2} scans the target CIDR for hosts, services, versions, L2 vendors, and protocol endpoints (MQTT, SSH, HTTP). \textbf{Phase~3} performs per-device triage: each device receives a deterministic scanner pass and a constrained LLM micro-agent, whose outputs are merged and deduplicated. \textbf{Phase~4} verifies candidate findings with operational tools such as SSH, MQTT, MySQL, Modbus, and Telnet, attempting the deepest evidence level achievable (\textsf{L1}--\textsf{L3}). \textbf{Phase~5} conducts intrusion and lateral movement over observed or asserted topology edges. Cross-segment access goes through explicit, traceable pivot tools (\texttt{pivot\_ssh\_exec}, \texttt{pivot\_http\_get}) whose arguments are the full SSH jump chain; each call emits a password-free network-provenance record (jump chain, vantage point, target, pivot depth) that the evaluator later checks against ground-truth depth requirements. Each hop is recorded with source, destination, protocol, and credentials. \textbf{Phase~6} emits a network-scoped report with device inventory, validated findings, attack-surface summary, intrusion narrative, and remediation priorities.
 
 \subsection{Cost Envelope}
 \label{sec:harness:cost}
@@ -371,11 +371,30 @@ used to tune the reported version.
 
 The main result table contains, for each system, Detection F1, Verified F1,
 Verified Severity Coverage, clean-run rate, verified path coverage, verified
-MHR@1/2/3, cost, and completed/planned runs. We report paired differences against
+MHR@1/2/3, cost, and completed/planned runs (Table~\ref{tab:main-results}). We report paired differences against
 \harnessname{} with 95\% confidence intervals. Numerical cells are inserted
 only after the full pre-committed public test grid has completed. Consequently,
 the historical strict-v2 table below is retained
 in the source for provenance but deliberately excluded from this draft.
+
+\begin{table}[h!]
+\centering
+\caption{\footnotesize Confirmatory results on the public held-out test set (S20--S29, blind mode, three paired repetitions). Cells are populated only after the pre-committed grid completes; the harness, prompts, adapters, and budgets are frozen before the first test run and no test result may be used for tuning.}
+\label{tab:main-results}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}lrrrrrrrrrr@{}}
+\toprule
+System & Det. F1 & Ver. F1 & Sev. cov. & Clean & Path & MHR@1 & MHR@2 & MHR@3 & Cost & Runs \\
+\midrule
+\harnessname{} & -- & -- & -- & -- & -- & -- & -- & -- & -- & 0/30 \\
+CAI            & -- & -- & -- & -- & -- & -- & -- & -- & -- & 0/30 \\
+VulnBot        & -- & -- & -- & -- & -- & -- & -- & -- & -- & 0/30 \\
+\bottomrule
+\end{tabular}
+\smallskip\\
+\footnotesize\emph{Det./Ver. F1: detection and verified F1; Sev. cov.: verified severity coverage; Clean: clean-run rate on controls; Path: verified attack-path coverage; MHR@k: verified multi-hop reach at pivot depth $\geq k$, credited only with proven jump chains.}
+\end{table}
 
 \iffalse
 
