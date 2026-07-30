@@ -2457,15 +2457,28 @@ class Pipeline:
         valid, msg = validator_fn(config.deliverable_file)
 
         status = "completed" if valid else f"failed:{msg}"
+        # Compact Phase 5 may need deterministic reconciliation before the
+        # model's failed validation can become a terminal UI event. Full
+        # profiles keep the normal event ordering unchanged.
+        defer_compact_intrusion_done = (
+            config.phase == 5
+            and local_intrusion_memo
+            and not valid
+        )
 
         if hasattr(self, "tracker") and self.tracker:
             self.tracker.record_validation_result(success=valid)
 
         usage = self.tracker.end_phase()
-        if usage:
+        if usage and not defer_compact_intrusion_done:
             print(
                 f"\n  Phase {config.phase} done: {usage.turns} turns, "
                 f"${usage.cost_usd():.4f}"
+            )
+        elif defer_compact_intrusion_done:
+            print(
+                f"\n  Phase {config.phase} model pass ended; "
+                "compact reconciliation pending"
             )
 
         if valid:
@@ -2473,13 +2486,14 @@ class Pipeline:
             print(f"  Deliverable validated: {config.deliverable_file}")
         else:
             log.error("Phase %d deliverable FAILED: %s", config.phase, msg)
-            print(f"  Deliverable FAILED validation: {msg}")
-            print(f"  LLM final output: {result_text[:500]}")
+            if not defer_compact_intrusion_done:
+                print(f"  Deliverable FAILED validation: {msg}")
+                print(f"  LLM final output: {result_text[:500]}")
 
         if config.name == "recon":
             self._build_recon_evidence_projection()
 
-        if stream_callback:
+        if stream_callback and not defer_compact_intrusion_done:
             stream_callback({
                 "type": "phase_done",
                 "phase": config.phase,

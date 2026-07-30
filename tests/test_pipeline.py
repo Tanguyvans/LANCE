@@ -2244,6 +2244,24 @@ class TestPhase5Context:
         assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
 
+    def test_compact_intrusion_defers_failed_phase_event_until_reconciliation(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        (pipeline.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [],
+            "all_targets": [],
+            "recovered_credentials": [],
+        }))
+        events = []
+
+        status = pipeline._run_agent(AGENTS["intrusion"], events.append)
+
+        assert status.startswith("failed:")
+        assert not [event for event in events if event.get("type") == "phase_done"]
+
     def test_full_local_moe_intrusion_uses_standard_full_contract(
         self, mock_provider, output_dir
     ):
