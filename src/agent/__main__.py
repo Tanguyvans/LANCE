@@ -8,7 +8,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_DOTENV_PATH = Path(".env")
+if os.access(_DOTENV_PATH, os.R_OK):
+    load_dotenv(_DOTENV_PATH)
 
 from src.agent.provider import LLMProvider
 from src.agent.pipeline import Pipeline
