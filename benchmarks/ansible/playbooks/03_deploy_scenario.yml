@@ -28,6 +28,62 @@
         msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ benchmark_scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in benchmark_scenarios
 
+    - name: Vérifier que le VMID routeur existant appartient au scénario
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid={{ base_vmid }}
+        expected='s{{ scenario_id }}-router'
+        if qm status "$vmid" >/dev/null 2>&1; then
+          actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
+          [ "$actual" = "$expected" ] || {
+            echo "VMID $vmid appartient à la VM '$actual', attendu '$expected'" >&2
+            exit 1
+          }
+        elif pct status "$vmid" >/dev/null 2>&1; then
+          actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+          echo "VMID $vmid appartient au CT '$actual', attendu la VM '$expected'" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      register: router_owner_check
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si le VMID routeur appartient à une autre charge
+      ansible.builtin.fail:
+        msg: "{{ router_owner_check.stderr | default(router_owner_check.stdout) }}"
+      when: router_owner_check.rc != 0
+
+    - name: Vérifier que les VMID services existants appartiennent au scénario
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid={{ base_vmid | int + item.vmid_offset }}
+        expected='s{{ scenario_id }}-{{ item.name }}'
+        if pct status "$vmid" >/dev/null 2>&1; then
+          actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+          [ "$actual" = "$expected" ] || {
+            echo "VMID $vmid appartient au CT '$actual', attendu '$expected'" >&2
+            exit 1
+          }
+        elif qm status "$vmid" >/dev/null 2>&1; then
+          actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
+          echo "VMID $vmid appartient à la VM '$actual', attendu le CT '$expected'" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      register: service_owner_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si un VMID service appartient à une autre charge
+      ansible.builtin.fail:
+        msg: "{{ item.stderr | default(item.stdout) }}"
+      loop: "{{ service_owner_checks.results }}"
+      when: item.rc != 0
+
     - name: Vérifier que le template Debian ({{ tpl_debian_vmid }}) existe
       ansible.builtin.command: pct status {{ tpl_debian_vmid }}
       register: tpl_debian_check
@@ -52,6 +108,7 @@
 
     - name: Détecter si un autre scénario est déjà en cours
       ansible.builtin.shell: |
+        set -euo pipefail
         running=$(
           { qm list 2>/dev/null | awk 'NR>1 && $3=="running" {print $1}';
             pct list 2>/dev/null | awk 'NR>1 && $2=="running" {print $1}'; }
@@ -60,6 +117,19 @@
         for vmid in $running; do
           {% for sid, sbase in benchmark_scenario_vmid_ranges.items() %}
           if [ "$vmid" -ge "{{ sbase }}" ] && [ "$vmid" -le "{{ (sbase | int) + (benchmark_scenarios[sid].services | map(attribute='vmid_offset') | max | int) }}" ]; then
+            # A range match does not prove ownership. VM 101/immich, for
+            # example, overlaps the historical S1 range. Only benchmark names
+            # are allowed to count as active scenarios.
+            actual=""
+            if qm status "$vmid" >/dev/null 2>&1; then
+              actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
+            elif pct status "$vmid" >/dev/null 2>&1; then
+              actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+            fi
+            case "$actual" in
+              s{{ sid }}-*) ;;
+              *) continue ;;
+            esac
             if [ "{{ sid }}" = "{{ scenario_id }}" ]; then
               continue
             fi
@@ -74,6 +144,8 @@
           exit 1
         fi
         echo "OK"
+      args:
+        executable: /bin/bash
       register: conflict_check
       changed_when: false
       failed_when: false

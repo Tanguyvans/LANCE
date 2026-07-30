@@ -14,6 +14,7 @@
 #   2. 03_deploy_scenario.yml
 #   3. 04_inject_vulns.yml
 #   4. 05_populate_services.yml  (sauf si --no-populate)
+#   5. 06_verify.yml
 #
 # En cas d'erreur à n'importe quelle étape, le script s'arrête.
 
@@ -39,29 +40,34 @@ log_error() { echo -e "${RED}✗ $1${NC}"; exit 1; }
 # ── Arguments ──
 SCENARIO_ID=""
 POPULATE=true
-VAULT_ARGS="--ask-vault-pass"
+VAULT_ARGS=(--ask-vault-pass)
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    [1-7])
-      SCENARIO_ID="$1"
-      shift ;;
     --no-populate)
       POPULATE=false
       shift ;;
     --vault-pass-file)
-      VAULT_ARGS="--vault-password-file $2"
+      [[ $# -ge 2 ]] || log_error "--vault-pass-file requiert un chemin"
+      VAULT_ARGS=(--vault-password-file "$2")
       shift 2 ;;
     --help|-h)
       sed -n '2,14p' "$0" | sed 's/^# \?//'
       exit 0 ;;
     *)
-      log_error "Argument inconnu : $1. Usage : ./deploy.sh <1|2|3|4|5|6|7> [--no-populate]"
+      if [[ -z "$SCENARIO_ID" && "$1" =~ ^[0-9]+$ ]]; then
+        SCENARIO_ID="$1"
+        shift
+      else
+        log_error "Argument inconnu : $1. Usage : ./deploy.sh <1-29> [--no-populate]"
+      fi
       ;;
   esac
 done
 
-[[ -z "$SCENARIO_ID" ]] && log_error "scenario_id manquant. Usage : ./deploy.sh <1|2|3|4|5|6|7>"
+[[ -z "$SCENARIO_ID" ]] && log_error "scenario_id manquant. Usage : ./deploy.sh <1-29>"
+(( SCENARIO_ID >= 1 && SCENARIO_ID <= 29 )) \
+  || log_error "scenario_id invalide : $SCENARIO_ID (attendu : 1-29)"
 
 # ── Résumé scénarios ──
 case $SCENARIO_ID in
@@ -72,11 +78,7 @@ case $SCENARIO_ID in
   5) SCENARIO_NAME="Smart Building        (8 VMs  — cam1, cam2, nvr, access-ctrl, hvac, mqtt, web)" ;;
   6) SCENARIO_NAME="Domotique centralisée (6 VMs  — hub, mqtt, db, cam, web)" ;;
   7) SCENARIO_NAME="Edge-Cloud pivot      (6 VMs  — edge-gw, edge-mqtt, edge-compute, cloud-api, cloud-db)" ;;
-esac
-
-case $SCENARIO_ID in
-  1) BASE=100 ;; 2) BASE=110 ;; 3) BASE=120 ;; 4) BASE=130 ;; 5) BASE=150 ;;
-  6) BASE=160 ;; 7) BASE=170 ;;
+  *) SCENARIO_NAME="Scénario benchmark public S${SCENARIO_ID}" ;;
 esac
 
 echo -e "\n${BOLD}╔══════════════════════════════════════════════════════════╗"
@@ -87,7 +89,7 @@ echo -e "  Populate  : $([ "$POPULATE" = true ] && echo "${GREEN}oui${NC}" || ec
 echo -e "  Répertoire: $SCRIPT_DIR"
 echo ""
 
-run_playbook() { ansible-playbook -i "$INVENTORY" $VAULT_ARGS "$@"; }
+run_playbook() { ansible-playbook -i "$INVENTORY" "${VAULT_ARGS[@]}" "$@"; }
 EXTRA="--extra-vars scenario_id=$SCENARIO_ID"
 START_TIME=$(date +%s)
 
@@ -96,29 +98,20 @@ log_step "Vérification des scénarios actifs..."
 
 # Extraction fiable de l'IP : ancrer sur ansible_host: (sans suffix) pour éviter proxmox_api_host
 PROXMOX_IP=$(grep -E '^\s+ansible_host:' "$INVENTORY" | awk '{print $2}' | head -1)
-RUNNING=""
+RUNNING_BENCHMARK_NAMES=""
 if [[ -n "$PROXMOX_IP" ]]; then
-  RUNNING=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
+  RUNNING_BENCHMARK_NAMES=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \
     root@"$PROXMOX_IP" \
-    "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$1}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$1}'" 2>/dev/null) \
-    || { log_warn "SSH vers Proxmox ($PROXMOX_IP) inaccessible — détection de conflit ignorée"; RUNNING=""; }
+    "pct list 2>/dev/null | awk 'NR>1 && \$2==\"running\" {print \$NF}'; qm list 2>/dev/null | awk 'NR>1 && \$3==\"running\" {print \$2}'" 2>/dev/null \
+    | grep -E '^s[0-9]+-' || true) \
+    || { log_warn "SSH vers Proxmox ($PROXMOX_IP) inaccessible — le playbook vérifiera les conflits"; RUNNING_BENCHMARK_NAMES=""; }
 else
-  log_warn "IP Proxmox introuvable dans $INVENTORY — détection de conflit ignorée"
+  log_warn "IP Proxmox introuvable dans $INVENTORY — le playbook vérifiera les conflits"
 fi
 
-CONFLICT_SCENARIO=""
-for vmid in $RUNNING; do
-  [[ "$vmid" -lt 100 || "$vmid" -gt 199 ]] 2>/dev/null && continue
-  [[ "$vmid" -ge "$BASE" && "$vmid" -lt "$((BASE+10))" ]] && continue
-  for s in 1 2 3 4 5 6 7; do
-    case $s in 1) b=100 ;; 2) b=110 ;; 3) b=120 ;; 4) b=130 ;; 5) b=150 ;; 6) b=160 ;; 7) b=170 ;; esac
-    if [[ "$vmid" -ge "$b" && "$vmid" -lt "$((b+10))" ]]; then
-      CONFLICT_SCENARIO="$s"
-      break
-    fi
-  done
-  [[ -n "$CONFLICT_SCENARIO" ]] && break
-done
+CONFLICT_SCENARIO=$(printf '%s\n' "$RUNNING_BENCHMARK_NAMES" \
+  | sed -nE 's/^s([0-9]+)-.*/\1/p' \
+  | awk -v current="$SCENARIO_ID" '$1 != current {print; exit}')
 
 if [[ -n "$CONFLICT_SCENARIO" ]]; then
   log_warn "Scénario S${CONFLICT_SCENARIO} actif détecté — teardown en cours..."
@@ -126,7 +119,7 @@ if [[ -n "$CONFLICT_SCENARIO" ]]; then
     || log_error "Teardown S${CONFLICT_SCENARIO} échoué"
   log_ok "Scénario S${CONFLICT_SCENARIO} supprimé"
 else
-  log_ok "Aucun conflit détecté (ou vérification SSH ignorée)"
+  log_ok "Aucun autre scénario benchmark actif détecté"
 fi
 
 # ── Étape 1 : Déploiement ──
@@ -148,6 +141,12 @@ if [[ "$POPULATE" = true ]]; then
     || log_warn "Peuplement partiellement échoué (05_populate_services.yml) — non bloquant"
   log_ok "Services peuplés"
 fi
+
+# ── Étape 4 : Vérification bloquante ──
+log_step "Vérification de l'état vulnérable attendu..."
+run_playbook "$PLAYBOOKS/06_verify.yml" $EXTRA \
+  || log_error "Vérification échouée (06_verify.yml)"
+log_ok "Scénario vérifié"
 
 # ── Résumé final ──
 END_TIME=$(date +%s)

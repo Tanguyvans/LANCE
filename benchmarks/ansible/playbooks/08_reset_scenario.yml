@@ -37,6 +37,33 @@
         msg: "Scénario S{{ scenario_id }} non déployé (router VMID {{ base_vmid }} introuvable). Lancer d'abord 03_deploy_scenario.yml."
       when: router_check.rc != 0
 
+    - name: Vérifier le propriétaire du routeur avant reset
+      ansible.builtin.shell: |
+        set -euo pipefail
+        actual=$(qm config {{ base_vmid }} | awk -F': ' '$1 == "name" {print $2; exit}')
+        [ "$actual" = 's{{ scenario_id }}-router' ] || {
+          echo "REFUS: VMID {{ base_vmid }} appartient à '$actual'" >&2
+          exit 1
+        }
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Vérifier les propriétaires des services avant reset
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid={{ base_vmid | int + item.vmid_offset }}
+        expected='s{{ scenario_id }}-{{ item.name }}'
+        actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+        [ "$actual" = "$expected" ] || {
+          echo "REFUS: VMID $vmid appartient à '$actual', attendu '$expected'" >&2
+          exit 1
+        }
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      changed_when: false
+
     - name: Afficher le scénario à resetter
       ansible.builtin.debug:
         msg: "Reset S{{ scenario_id }} — {{ benchmark_scenarios[scenario_id].name }} (VMIDs {{ base_vmid }}–{{ base_vmid | int + max_vmid_offset | int }})"

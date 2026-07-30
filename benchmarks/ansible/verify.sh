@@ -5,12 +5,18 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIO_ID="${1:-}"
-VAULT_ARGS="--ask-vault-pass"
+VAULT_ARGS=(--ask-vault-pass)
 
-[[ -z "$SCENARIO_ID" ]] && { echo "Usage : ./verify.sh <1|2|3|4|5|6|7>"; exit 1; }
-[[ "$2" == "--vault-pass-file" ]] && VAULT_ARGS="--vault-password-file $3"
+[[ "$SCENARIO_ID" =~ ^[0-9]+$ ]] \
+  || { echo "Usage : ./verify.sh <1-29> [--vault-pass-file <file>]"; exit 1; }
+(( SCENARIO_ID >= 1 && SCENARIO_ID <= 29 )) \
+  || { echo "scenario_id invalide : $SCENARIO_ID (attendu : 1-29)"; exit 1; }
+if [[ "${2:-}" == "--vault-pass-file" ]]; then
+  [[ -n "${3:-}" ]] || { echo "--vault-pass-file requiert un chemin"; exit 1; }
+  VAULT_ARGS=(--vault-password-file "$3")
+fi
 
 ansible-playbook -i "$SCRIPT_DIR/inventory.yml" \
   "$SCRIPT_DIR/playbooks/06_verify.yml" \
-  $VAULT_ARGS \
+  "${VAULT_ARGS[@]}" \
   --extra-vars "scenario_id=$SCENARIO_ID"
