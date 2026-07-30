@@ -240,6 +240,25 @@ def compose_scenario(scenario_path: Path) -> dict:
     if len(control_ids) != len(set(control_ids)):
         raise ValueError(f"Duplicate control IDs in scenario S{sid}")
 
+    # Explicit footholds are starting conditions, not findings. Scenario files
+    # may therefore remove the corresponding pack-generated vulnerability from
+    # the scored oracle while retaining the reusable pack definition.
+    excluded_vulnerabilities = {
+        str(vulnerability_id)
+        for vulnerability_id in scenario.get("excluded_vulnerabilities", [])
+    }
+    unknown_exclusions = excluded_vulnerabilities - set(vuln_ids)
+    if unknown_exclusions:
+        raise ValueError(
+            f"Unknown excluded vulnerability IDs in scenario S{sid}: "
+            f"{sorted(unknown_exclusions)}"
+        )
+    if excluded_vulnerabilities:
+        vulns = [
+            vulnerability for vulnerability in vulns
+            if vulnerability["id"] not in excluded_vulnerabilities
+        ]
+
     # Compute scoring
     max_score = sum(
         SEVERITY_WEIGHTS.get(v.get("severity", "low").lower(), 1) for v in vulns

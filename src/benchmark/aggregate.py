@@ -90,6 +90,20 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "macro_verified_severity_coverage": _round_optional(_complete_mean(
             s.get("verified_severity_coverage") for s in positive
         )),
+        "macro_negative_control_specificity": _round_optional(_mean(
+            float(s["negative_control_specificity"])
+            for s in positive if s.get("negative_control_specificity") is not None
+        )),
+        "macro_negative_control_clean_run_rate": _round_optional(_mean(
+            float(s["negative_control_clean_run_rate"])
+            for s in positive if s.get("negative_control_clean_run_rate") is not None
+        )),
+        "negative_control_scenario_count": sum(
+            s.get("negative_control_clean_run_rate") is not None for s in positive
+        ),
+        "negative_control_run_count": sum(
+            int(s.get("negative_control_run_count", 0)) for s in positive
+        ),
         "macro_phase4_completion_rate": _round_optional(_complete_mean(
             s.get("phase4_completion_rate") for s in positive
         )),
@@ -212,6 +226,10 @@ def aggregate_evaluations(
                 "quality_adjusted_f1": None if is_zero_gt else 0.0,
                 "verified_f1": None if is_zero_gt else 0.0,
                 "verified_severity_coverage": None if is_zero_gt else 0.0,
+                # A missing official cell must not improve the published
+                # control result. Confirmatory profiles all declare controls.
+                "negative_control_specificity": None if is_zero_gt else 0.0,
+                "negative_control_clean_run_rate": None if is_zero_gt else 0.0,
                 "phase4_completion_rate": None if is_zero_gt else 0.0,
                 "quality_path_coverage": None,
                 "verified_path_coverage": None,
@@ -298,9 +316,19 @@ def aggregate_evaluations(
         ]) if not is_zero_gt else None
         def optional_run_mean(name: str) -> float | None:
             completed = completed_metric_values(name)
-            if all(value is None for value in completed):
+            evaluable = [float(value) for value in completed if value is not None]
+            if not evaluable:
                 return None
-            return _complete_mean([*completed, *zero_fill])
+            # None means that the scenario declares no applicable control for
+            # that run. Unevaluable declared controls are emitted as 0.0 by the
+            # evaluator and therefore remain fail-closed here.
+            return _mean([*evaluable, *zero_fill])
+        negative_control_specificity = optional_run_mean(
+            "negative_control_specificity"
+        ) if not is_zero_gt else None
+        negative_control_clean_run_rate = optional_run_mean(
+            "negative_control_clean_run"
+        ) if not is_zero_gt else None
         specificity = (
             _complete_mean([
                 *[
@@ -336,6 +364,15 @@ def aggregate_evaluations(
             "quality_adjusted_f1": _round_optional(quality_adjusted_f1),
             "verified_f1": _round_optional(verified_f1),
             "verified_severity_coverage": _round_optional(verified_severity_coverage),
+            "negative_control_specificity": _round_optional(
+                negative_control_specificity
+            ),
+            "negative_control_clean_run_rate": _round_optional(
+                negative_control_clean_run_rate
+            ),
+            "negative_control_run_count": sum(
+                _get(run, "negative_control_clean_run") is not None for run in runs
+            ),
             "phase4_completion_rate": _round_optional(completion_rate),
             "quality_path_coverage": _round_optional(optional_run_mean("quality_path_coverage")),
             "verified_path_coverage": _round_optional(optional_run_mean("verified_path_coverage")),

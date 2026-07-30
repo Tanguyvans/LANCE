@@ -5,6 +5,12 @@ difficulty: expert
 posture: mixed
 topology: heldout_asymmetric_paths
 packs: [f20_heldout_network_paths]
+initial_credentials:
+- {device_id: s26-edge-entry, ip: 192.168.100.11, service: ssh, port: 22, user: pivot, password: 'Pivot-S26!'}
+- {device_id: s26-control-entry, ip: 192.168.100.13, service: ssh, port: 22, user: pivot, password: 'Pivot-S26!'}
+excluded_vulnerabilities:
+- F20-PIVOT-ENTRY@s26-edge-entry
+- F20-PIVOT-ENTRY@s26-control-entry
 attack_paths:
 - id: AP26-SHORT
   name: One-pivot path to edge snapshot
@@ -13,7 +19,6 @@ attack_paths:
   - {hop: 1, device: s26-edge-entry, action: Authenticate to the directly reachable edge entry host}
   - {hop: 2, device: s26-edge-snapshot, action: Pivot from the edge entry host to the segmented edge snapshot}
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s26-edge-entry
   - F20-ASSET-L1@s26-edge-snapshot
   length: 2
   impact: high
@@ -25,7 +30,6 @@ attack_paths:
   - {hop: 2, device: s26-control-relay, action: Pivot from the control entry host to the control relay}
   - {hop: 3, device: s26-control-snapshot, action: Pivot from the control relay to the isolated control snapshot}
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s26-control-entry
   - F20-PIVOT-RELAY-L1@s26-control-relay
   - F20-ASSET-L2@s26-control-snapshot
   length: 3

@@ -49,37 +49,6 @@ topology:
     vlan_id: 134
     simulator: segmented_asset
 vulnerabilities:
-- id: F20-PIVOT-ENTRY@s25-gateway
-  device: s25-gateway
-  ip: 192.168.100.11
-  role: heldout_entry
-  security_profile: vulnerable
-  template_key: F20-PIVOT-ENTRY
-  title: Internet-facing jump host accepts benchmark default credentials
-  severity: high
-  category: default_credentials
-  hop_depth: 0
-  network_pivot_depth: 0
-  dependency_depth: 0
-  accepted_types:
-  - default_credentials
-  - weak_authentication
-  services:
-  - ssh
-  ports:
-  - 22
-  protocols:
-  - tcp
-  exploit_eligible: true
-  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
-  description: The reachable jump host accepts the scenario-specific public fixture
-    credential and exposes the next segment address.
-  indicators:
-  - SSH password login succeeds
-  - /etc/iot/next-hop.conf identifies an isolated subnet
-  verification: authenticate to 192.168.100.11:22 with the documented S24-S27 fixture
-    account
-  confidence_required: high
 - id: F20-ASSET-L1@s25-telemetry-archive
   device: s25-telemetry-archive
   ip: 192.168.133.12
@@ -148,7 +117,6 @@ attack_paths:
     device: s25-telemetry-archive
     action: Pivot from the gateway to the segmented telemetry archive
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-telemetry-archive
   length: 2
   impact: high
@@ -163,19 +131,18 @@ attack_paths:
     device: s25-maintenance-archive
     action: Pivot from the gateway to the segmented maintenance archive
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-maintenance-archive
   length: 2
   impact: critical
 scoring:
-  total_vulnerabilities: 3
+  total_vulnerabilities: 2
   total_attack_paths: 2
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 9
+  max_weighted_score: 6
   total_controls: 3
 bonus_types: []
 controls:

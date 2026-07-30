@@ -34,34 +34,6 @@ topology:
     role: pivot_decoy
     security_profile: hardened
 vulnerabilities:
-- id: F16-ENTRY-CREDS@s20-entry
-  device: s20-entry
-  ip: 192.168.100.11
-  role: pivot_entry
-  security_profile: vulnerable
-  template_key: F16-ENTRY-CREDS
-  title: Entry host accepts benchmark default credentials
-  severity: high
-  category: default_credentials
-  hop_depth: 0
-  network_pivot_depth: 0
-  dependency_depth: 0
-  accepted_types:
-  - default_credentials
-  services:
-  - ssh
-  ports:
-  - 22
-  protocols:
-  - tcp
-  exploit_eligible: true
-  owasp_iot: I9 - Insecure Default Settings
-  description: The directly reachable SSH service accepts entry/Entry-20!.
-  indicators:
-  - SSH password login succeeds as entry
-  verification: authenticate to 192.168.100.11:22 with the documented bounded fixture
-    account
-  confidence_required: high
 - id: F16-RELAY-CONFIG@s20-entry
   device: s20-entry
   ip: 192.168.100.11
@@ -164,21 +136,20 @@ attack_paths:
     device: s20-vault
     action: Reach the data vault over VLAN 120 from the second dual-homed host
   vulnerabilities_used:
-  - F16-ENTRY-CREDS@s20-entry
   - F16-RELAY-CONFIG@s20-entry
   - F16-RELAY-CREDS@s20-relay
   - F16-VAULT-NOAUTH@s20-vault
   impact: Access to data that is unreachable from the evaluator network without both
     pivots
 scoring:
-  total_vulnerabilities: 4
+  total_vulnerabilities: 3
   total_attack_paths: 1
   weights:
     critical: 4
     high: 3
     medium: 2
     low: 1
-  max_weighted_score: 14
+  max_weighted_score: 11
   total_controls: 3
 bonus_types: []
 controls:

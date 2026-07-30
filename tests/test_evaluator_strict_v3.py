@@ -319,6 +319,7 @@ def test_negative_control_violation_is_reported_without_double_penalty(tmp_path)
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.negative_control_violations == 1
     assert result.negative_control_specificity == 0.0
+    assert result.negative_control_clean_run == 0.0
     assert result.negative_control_penalty_factor == 1.0
     assert result.verified_f1 == 0.667
     assert result.scenario_score_pct == 66.7
@@ -547,7 +548,7 @@ def test_tools_used_and_endpoint_prevent_cross_finding_evidence_reuse(tmp_path):
     assert result.matches[0]["verification_credit"] == 1.0
 
 
-def test_unevaluable_negative_control_is_reported_without_penalty(tmp_path):
+def test_unevaluable_negative_control_fails_control_metrics(tmp_path):
     control = {"id": "C1", "ip": "192.0.2.20", "assertion": "invalid_login_rejected"}
     run, gt = _write(tmp_path, [_finding()], controls=[control])
     result = evaluate(run, gt, policy=STRICT_V3)
@@ -555,6 +556,8 @@ def test_unevaluable_negative_control_is_reported_without_penalty(tmp_path):
     assert result.negative_controls_total == 0
     assert result.negative_controls_unevaluable == 1
     assert result.negative_control_penalty_factor == 1.0
+    assert result.negative_control_specificity == 0.0
+    assert result.negative_control_clean_run == 0.0
 
 
 

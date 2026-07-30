@@ -331,6 +331,10 @@ class EvaluationResult:
     negative_control_penalty_factor: float = 1.0
     negative_control_violations: int = 0
     negative_control_specificity: float | None = None
+    # Binary per-run control outcome for mixed positive/control scenarios.
+    # A run is clean only when every declared internal control is evaluable and
+    # none is violated. This is aggregated separately from finding metrics.
+    negative_control_clean_run: float | None = None
 
     # Evidence diagnostics. Verified F1 is the strict-v3 positive-scenario
     # primary score; the remaining evidence fields explain that score.
@@ -2366,11 +2370,22 @@ def evaluate(
                 violated_controls.add(str(control.get("id", f"control-{index}")))
                 break
     result.negative_control_violations = len(violated_controls)
-    if result.negative_controls_total:
+    if result.negative_controls_declared:
+        passed_controls = (
+            result.negative_controls_total - result.negative_control_violations
+        )
         result.negative_control_specificity = round(
-            (result.negative_controls_total - result.negative_control_violations)
-            / result.negative_controls_total,
+            passed_controls / result.negative_controls_declared,
             3,
+        )
+    if gt_controls:
+        # Fail closed: an unevaluable declared control must not silently
+        # disappear from the scenario-level clean-run rate.
+        result.negative_control_clean_run = (
+            1.0
+            if result.negative_controls_unevaluable == 0
+            and result.negative_control_violations == 0
+            else 0.0
         )
 
     if result.evidence_metrics_available:

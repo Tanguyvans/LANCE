@@ -13,14 +13,14 @@ source_hashes:
   '19': dd8a9cb0893c93f960b747311bb662bd4f969bf573eb6698b1b33b1fb9e433bb
   1h: 1227ec22149f06b594b2d50148f63776605c524454e5839ff54b76dea5280bb8
   '2': fdf6e91860a9ee8b327d8a3693ba0d579be6971321d76efc581150f136011286
-  '20': f7e395063dd05631a1a4adb3f399ab07b0adb0c8d3b8cfd1c8967287cae927f4
+  '20': d0dc83e883e58e4da980562a0084b36ec6a00ec22775597f8ae6e0ad7884fa29
   '21': 3e4154cc7e263b73ed4a609b575f48ad9b40f6521bbe4a1864a8210f281dbad9
   '22': 503178f6bfdf4d25e86e4f5311104fd91cffbad87ecc4d1b482d3e3e2a497a99
   '23': 93c768af07e007aab70af944a33da49b888218a5bbe5a03e31b6ae1c936fe2a6
-  '24': 8689e947208eefd128acb3dc383bd07341572bfd6778932c23aa74071bbcb59a
-  '25': c5a9ad655ff78729054d64b3b456ea4cdd02759b27eecc741ced1af86f9b01b7
-  '26': 22f3f0233d93c77d8c09c984ca3867e4144bd8e28b38d1779d5734fec0c6a7cd
-  '27': 9675d21b868e686926294307525ed5bd962a9042a2534d349565e423c3c509d9
+  '24': 538d6551b849240667403888b65f74e0634eb5b2a99e7a22897d6a0a06e7d0e6
+  '25': 1495bc41b667b420b950a9b62251e957812d9053253794d2c0d2337da805bb0a
+  '26': 27299578e108da55ebd57f2e5c8433cc7b56891a5c22e71fa5b332aae2969ab6
+  '27': e632f239dfadb79fa9ad16a4da7f116a01019a4644f956e9444d1ac9fd0c7b9d
   '28': 32b9cc3006b1a54c1465a76effdd227ded5ffe18ebb3ff899bd675c37e85413b
   '29': 371571ffe6e1f10896094ffac40096cc282065e57041d4ad9354579aed6e1e82
   '3': 196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e
@@ -2138,20 +2138,6 @@ scenarios:
       required_dimensions:
       - endpoint
   '20':
-    F16-ENTRY-CREDS@s20-entry:
-      accepted_types:
-      - default_credentials
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F16-RELAY-CONFIG@s20-entry:
       accepted_types:
       - data_exposure
@@ -2347,21 +2333,6 @@ scenarios:
       required_dimensions:
       - endpoint
   '24':
-    F20-PIVOT-ENTRY@s24-entry:
-      accepted_types:
-      - default_credentials
-      - no_auth
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F20-PIVOT-RELAY-L1@s24-relay:
       accepted_types:
       - default_credentials
@@ -2394,21 +2365,6 @@ scenarios:
       required_dimensions:
       - endpoint
   '25':
-    F20-PIVOT-ENTRY@s25-gateway:
-      accepted_types:
-      - default_credentials
-      - no_auth
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F20-ASSET-L1@s25-telemetry-archive:
       accepted_types:
       - data_exposure
@@ -2442,21 +2398,6 @@ scenarios:
       required_dimensions:
       - endpoint
   '26':
-    F20-PIVOT-ENTRY@s26-edge-entry:
-      accepted_types:
-      - default_credentials
-      - no_auth
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F20-ASSET-L1@s26-edge-snapshot:
       accepted_types:
       - data_exposure
@@ -2473,21 +2414,6 @@ scenarios:
       versions: []
       required_dimensions:
       - endpoint
-    F20-PIVOT-ENTRY@s26-control-entry:
-      accepted_types:
-      - default_credentials
-      - no_auth
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F20-PIVOT-RELAY-L1@s26-control-relay:
       accepted_types:
       - default_credentials
@@ -2520,21 +2446,6 @@ scenarios:
       required_dimensions:
       - endpoint
   '27':
-    F20-PIVOT-ENTRY@s27-field-entry:
-      accepted_types:
-      - default_credentials
-      - no_auth
-      services:
-      - ssh
-      ports:
-      - 22
-      protocols:
-      - tcp
-      endpoints: []
-      products: []
-      versions: []
-      required_dimensions:
-      - port
     F20-PIVOT-RELAY-L1@s27-zone-relay:
       accepted_types:
       - default_credentials

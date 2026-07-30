@@ -5,6 +5,10 @@ difficulty: expert
 posture: mixed
 topology: heldout_segmented_fanout
 packs: [f20_heldout_network_paths]
+initial_credentials:
+- {device_id: s25-gateway, ip: 192.168.100.11, service: ssh, port: 22, user: pivot, password: 'Pivot-S25!'}
+excluded_vulnerabilities:
+- F20-PIVOT-ENTRY@s25-gateway
 attack_paths:
 - id: AP25-TELEMETRY
   name: Gateway pivot to telemetry archive
@@ -13,7 +17,6 @@ attack_paths:
   - {hop: 1, device: s25-gateway, action: Authenticate to the directly reachable gateway}
   - {hop: 2, device: s25-telemetry-archive, action: Pivot from the gateway to the segmented telemetry archive}
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-telemetry-archive
   length: 2
   impact: high
@@ -24,7 +27,6 @@ attack_paths:
   - {hop: 1, device: s25-gateway, action: Authenticate to the directly reachable gateway}
   - {hop: 2, device: s25-maintenance-archive, action: Pivot from the gateway to the segmented maintenance archive}
   vulnerabilities_used:
-  - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-maintenance-archive
   length: 2
   impact: critical

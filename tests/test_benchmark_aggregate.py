@@ -129,6 +129,43 @@ class TestScenarioMacroAggregation:
         assert aggregate["macro_zero_gt_specificity"] == 1.0
         assert aggregate["macro_zero_gt_clean_run_rate"] == 1.0
 
+    def test_mixed_scenario_control_clean_runs_are_reported_separately(self):
+        clean = _evaluation("20", score=80.0, f1=0.8)
+        clean.update({
+            "negative_control_specificity": 1.0,
+            "negative_control_clean_run": 1.0,
+        })
+        violated = _evaluation("20", score=60.0, f1=0.6)
+        violated.update({
+            "negative_control_specificity": 0.75,
+            "negative_control_clean_run": 0.0,
+        })
+
+        aggregate = aggregate_evaluations([clean, violated])
+
+        scenario = aggregate["per_scenario"]["20"]
+        assert scenario["negative_control_specificity"] == 0.875
+        assert scenario["negative_control_clean_run_rate"] == 0.5
+        assert aggregate["macro_negative_control_specificity"] == 0.875
+        assert aggregate["macro_negative_control_clean_run_rate"] == 0.5
+        assert scenario["negative_control_run_count"] == 2
+        assert aggregate["negative_control_run_count"] == 2
+
+    def test_run_without_declared_controls_is_excluded_from_control_average(self):
+        clean = _evaluation("20", score=80.0, f1=0.8)
+        clean.update({
+            "negative_control_specificity": 1.0,
+            "negative_control_clean_run": 1.0,
+        })
+        no_controls = _evaluation("20", score=60.0, f1=0.6)
+
+        aggregate = aggregate_evaluations([clean, no_controls])
+
+        scenario = aggregate["per_scenario"]["20"]
+        assert scenario["negative_control_specificity"] == 1.0
+        assert scenario["negative_control_clean_run_rate"] == 1.0
+        assert scenario["negative_control_run_count"] == 1
+
     def test_control_runs_are_averaged_within_control_scenario(self):
         results = [
             _evaluation("1h", score=100.0, zero_gt=True, specificity=1.0),
@@ -170,6 +207,8 @@ class TestScenarioMacroAggregation:
             "verified_f1": 1.0,
             "verified_severity_coverage": 1.0,
             "phase4_completion_rate": 1.0,
+            "negative_control_specificity": 1.0,
+            "negative_control_clean_run": 1.0,
         })
 
         aggregate = aggregate_evaluations(
@@ -181,6 +220,7 @@ class TestScenarioMacroAggregation:
         scenario = aggregate["per_scenario"]["20"]
         assert scenario["scenario_score_pct"] == 33.333
         assert scenario["verified_f1"] == 0.333
+        assert scenario["negative_control_clean_run_rate"] == 0.333
         assert scenario["missing_run_count"] == 2
         assert aggregate["planned_run_count"] == 3
         assert aggregate["completed_run_count"] == 1
