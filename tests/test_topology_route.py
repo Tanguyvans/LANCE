@@ -28,11 +28,12 @@ def test_public_hardened_variants_load_topology(selector, prefix, expected_nodes
     )
 
 
-def test_sealed_topology_remains_forbidden():
-    with pytest.raises(HTTPException) as exc:
-        _load_scenario("20")
+def test_public_test_topology_is_visible():
+    topology = _load_scenario("20")
 
-    assert exc.value.status_code == 403
+    node_ids = {node["id"] for node in topology["nodes"]}
+    assert "s20-entry" in node_ids
+    assert "s20-vault" in node_ids
 
 
 def test_unknown_topology_returns_not_found():

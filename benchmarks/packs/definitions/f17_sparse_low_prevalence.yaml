@@ -1,0 +1,78 @@
+id: f17_sparse_low_prevalence
+name: Sparse Low-Prevalence Precision
+description: Two positives among sixteen realistic services and eighteen negative assertions.
+vulnerabilities:
+  mqtt_broker:
+  - key: F17-MQTT-ANONYMOUS
+    applies_to: {profiles: [vulnerable]}
+    title: MQTT broker permits anonymous subscription
+    severity: high
+    category: no_authentication
+    hop_depth: 0
+    exploit_eligible: true
+    owasp_iot: I2 - Insecure Network Services
+    description: Anonymous subscription receives a retained benchmark message.
+    indicators: ['Unauthenticated subscription to # succeeds']
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [no_auth]
+    services: [mqtt]
+    ports: [1883]
+    protocols: [tcp]
+    verification: subscribe without credentials to {ip}:1883
+    confidence_required: high
+  web_server:
+  - key: F17-WEB-BACKUP
+    applies_to: {profiles: [vulnerable]}
+    title: Web server exposes a directory-indexed database backup
+    severity: high
+    category: data_exposure
+    hop_depth: 0
+    exploit_eligible: true
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The backup directory and bounded SQL fixture are accessible without authentication.
+    indicators: [GET /backup/ returns an index, SQL fixture contains benchmark credentials]
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [data_exposure]
+    services: [http]
+    ports: [80]
+    protocols: [tcp]
+    endpoints: [/backup/db_backup_2024-01-15.sql]
+    verification: retrieve http://{ip}/backup/db_backup_2024-01-15.sql
+    confidence_required: high
+controls:
+  mqtt_broker:
+  - key: C17-MQTT-AUTH
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: mqtt_anonymous_subscription_denied
+    forbidden_types: [no_auth]
+    description: Anonymous subscription is rejected while the service remains reachable.
+    verification: unauthenticated subscription to {ip}:1883 fails
+  web_server:
+  - key: C17-WEB-BACKUP-HIDDEN
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: backup_path_not_found
+    forbidden_types: [data_exposure, directory_listing]
+    description: The comparator returns 404 for the backup path.
+    verification: GET http://{ip}/backup/ returns 404
+  - key: C17-WEB-ADMIN-AUTH
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: admin_requires_authentication
+    forbidden_types: [no_auth]
+    description: The administration route presents an authentication challenge.
+    verification: GET http://{ip}/admin returns 401
+  ssh_server:
+  - key: C17-SSH-KEY-ONLY
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: ssh_password_authentication_disabled
+    forbidden_types: [default_credentials]
+    description: The SSH service is reachable but password authentication is disabled.
+    verification: sshd effective configuration on {ip} reports PasswordAuthentication no
+  db_server_v2:
+  - key: C17-REDIS-AUTH
+    applies_to: {profiles: [hardened, near_miss]}
+    assertion: redis_requires_authentication
+    forbidden_types: [no_auth]
+    description: Redis responds with NOAUTH to an unauthenticated PING.
+    verification: redis-cli against {ip}:6379 without a password returns NOAUTH

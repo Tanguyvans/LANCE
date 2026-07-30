@@ -10,7 +10,6 @@ import pytest
 from fastapi import HTTPException
 
 from src.agent.batch import (
-    SealedScenarioError,
     _aggregate_batch_results,
     _evaluation_metrics,
     _parse_scenario_ids,
@@ -57,18 +56,18 @@ class TestScenarioSelection:
         with pytest.raises(ValueError, match="exactly one"):
             _parse_single_scenario_id("dev")
 
-    def test_local_selectors_reject_sealed_scenarios(self):
-        with pytest.raises(SealedScenarioError):
-            _parse_scenario_ids("20")
-        with pytest.raises(SealedScenarioError):
-            _parse_scenario_ids("eval")
+    def test_public_test_scenarios_are_selectable_locally(self):
+        assert _parse_scenario_ids("20") == ["20"]
+        assert _parse_scenario_ids("20,29") == ["20", "29"]
+        assert _parse_scenario_ids("test") == [str(i) for i in range(20, 30)]
+        assert _parse_scenario_ids("eval") == []
 
-    def test_all_contains_public_variants_but_no_sealed_ids(self):
+    def test_all_contains_variants_and_every_public_id(self):
         selected = _parse_scenario_ids("all")
 
         assert "1h" in selected and "4h" in selected
         assert "19" in selected
-        assert "20" not in selected
+        assert "20" in selected and "29" in selected
 
 
 class TestBatchMetrics:
@@ -176,14 +175,28 @@ def test_dashboard_start_accepts_public_variant(monkeypatch):
         route._state.update(snapshot)
 
 
-def test_dashboard_start_rejects_sealed_scenario(monkeypatch):
+def test_dashboard_start_accepts_public_test_scenario(monkeypatch):
     from src.api.routes import pipeline as route
 
-    route._state["running"] = False
-    with pytest.raises(HTTPException) as exc:
-        asyncio.run(route.start_pipeline(route.StartRequest(scenario_id="20")))
+    snapshot = dict(route._state)
 
-    assert exc.value.status_code == 503
+    class NoopThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(route.threading, "Thread", NoopThread)
+    route._state["running"] = False
+    request = route.StartRequest(scenario_id="20")
+    try:
+        assert asyncio.run(route.start_pipeline(request)) == {"status": "started"}
+        assert request.scenario_id == "20"
+        assert route._state["scenario_id"] == "20"
+    finally:
+        route._state.clear()
+        route._state.update(snapshot)
 
 
 def test_dashboard_stop_keeps_run_locked_until_worker_finishes():
@@ -227,18 +240,22 @@ def test_dashboard_rejects_start_while_teardown_is_running():
         route._state.update(snapshot)
 
 
-def test_cli_rejects_sealed_before_provider_construction(monkeypatch):
+def test_cli_accepts_public_test_scenario(monkeypatch):
     from src.agent import __main__ as agent_main
 
-    provider = Mock(side_effect=AssertionError("provider must not be constructed"))
+    provider_instance = SimpleNamespace(model="test")
+    provider = Mock(return_value=provider_instance)
+    pipeline_instance = Mock()
+    pipeline_instance.run.return_value = {}
+    pipeline = Mock(return_value=pipeline_instance)
     monkeypatch.setattr(agent_main, "LLMProvider", provider)
+    monkeypatch.setattr(agent_main, "Pipeline", pipeline)
     monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "20"])
 
-    with pytest.raises(SystemExit) as exc:
-        agent_main.main()
+    agent_main.main()
 
-    assert exc.value.code == 2
-    provider.assert_not_called()
+    provider.assert_called_once()
+    assert pipeline.call_args.kwargs["scenario_id"] == "20"
 
 
 def test_cli_accepts_public_hardened_variant(monkeypatch):

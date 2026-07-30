@@ -1,0 +1,112 @@
+id: f21_provisioning_chain
+name: Provisioning Dependency Chain
+description: A bounded discovery, claim, telemetry and maintenance sequence with logical but not network depth.
+vulnerabilities:
+  provisioning_discovery:
+  - key: F21-DISCOVERY-CODE
+    applies_to: {profiles: [vulnerable]}
+    title: Discovery response discloses a reusable registration code
+    severity: medium
+    category: info_disclosure
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [info_disclosure]
+    services: [provisioning-discovery]
+    ports: [56831]
+    protocols: [udp]
+    exploit_eligible: false
+    owasp_iot: I2 - Insecure Network Services
+    description: An unauthenticated UDP probe returns the fixed registration fixture used by the next step.
+    indicators: [UDP PROBE response contains REGISTRATION_CODE=reg-28-static]
+    verification: send PROBE to {ip}:56831/udp
+    confidence_required: high
+  provisioning_claim:
+  - key: F21-CLAIM-REPLAY
+    applies_to: {profiles: [vulnerable]}
+    title: Provisioning API accepts registration-code replay
+    severity: high
+    category: auth_bypass
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 1
+    accepted_types: [broken_access_control]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/claim]
+    exploit_eligible: true
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: Replaying the disclosed registration code repeatedly yields the same service token.
+    indicators: [Two POST /claim requests return service-token-28]
+    verification: replay reg-28-static twice against http://{ip}:8080/claim
+    confidence_required: high
+  provisioning_telemetry:
+  - key: F21-TELEMETRY-KEY
+    applies_to: {profiles: [vulnerable]}
+    title: Telemetry snapshot embeds a maintenance key
+    severity: high
+    category: data_exposure
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 2
+    accepted_types: [data_exposure]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/snapshot]
+    exploit_eligible: true
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The service token authorizes a snapshot containing the fixed maintenance key.
+    indicators: [Bearer service-token-28 reveals maint-28-legacy]
+    verification: GET http://{ip}:8080/snapshot with the fixture bearer token
+    confidence_required: high
+  provisioning_maintenance:
+  - key: F21-MAINTENANCE-BYPASS
+    applies_to: {profiles: [vulnerable]}
+    title: Maintenance API accepts an unapproved state transition
+    severity: critical
+    category: broken_access_control
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 3
+    accepted_types: [broken_access_control, privilege_escalation]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/maintenance]
+    exploit_eligible: true
+    owasp_iot: I3 - Insecure Ecosystem Interfaces
+    description: The chained token and key enable maintenance even when approval is explicitly false.
+    indicators: [POST /maintenance returns MAINTENANCE_ENABLED with approval false]
+    verification: submit the bounded token, key and approval=false fixture to http://{ip}:8080/maintenance
+    confidence_required: high
+controls:
+  provisioning_discovery:
+  - key: C21-DISCOVERY-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: registration_code_not_disclosed
+    forbidden_types: [info_disclosure]
+    description: The comparator answers AUTH_REQUIRED without a registration code.
+    verification: PROBE to {ip}:56831/udp contains no REGISTRATION_CODE
+  provisioning_claim:
+  - key: C21-CLAIM-SINGLE-USE
+    applies_to: {profiles: [hardened]}
+    assertion: registration_code_single_use
+    forbidden_types: [broken_access_control]
+    description: The first bounded claim succeeds and its replay is rejected.
+    verification: the second POST /claim to http://{ip}:8080 returns 409
+  provisioning_telemetry:
+  - key: C21-TELEMETRY-NO-KEY
+    applies_to: {profiles: [hardened]}
+    assertion: telemetry_contains_no_maintenance_secret
+    forbidden_types: [data_exposure]
+    description: The authorized snapshot contains operational values but no maintenance key.
+    verification: GET http://{ip}:8080/snapshot omits maintenance_key
+  provisioning_maintenance:
+  - key: C21-MAINTENANCE-APPROVAL
+    applies_to: {profiles: [hardened]}
+    assertion: maintenance_requires_approval
+    forbidden_types: [broken_access_control, privilege_escalation]
+    description: The comparator refuses approval=false without changing state.
+    verification: POST the unapproved fixture to http://{ip}:8080/maintenance returns 403

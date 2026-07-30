@@ -1,0 +1,22 @@
+id: wireless_firmware_chain
+name: Wireless-to-Firmware Chain
+description: Simulated wireless discovery, join-token replay, firmware disclosure and unsigned recovery update
+base_vmid: 490
+router:
+  name_template: 's{sid}-router'
+  type: openwrt
+  ip: 192.168.100.1
+  security_profile: hardened
+services:
+- {name_template: 's{sid}-radio-open', vmid_offset: 1, ip: 192.168.100.11, role: wireless_bridge, security_profile: vulnerable, simulator: wireless_bridge}
+- {name_template: 's{sid}-radio-secure', vmid_offset: 2, ip: 192.168.100.12, role: wireless_bridge, security_profile: hardened, simulator: wireless_bridge}
+- {name_template: 's{sid}-gateway-open', vmid_offset: 3, ip: 192.168.100.13, role: device_gateway, security_profile: vulnerable, simulator: device_gateway}
+- {name_template: 's{sid}-gateway-secure', vmid_offset: 4, ip: 192.168.100.14, role: device_gateway, security_profile: hardened, simulator: device_gateway}
+- {name_template: 's{sid}-firmware-open', vmid_offset: 5, ip: 192.168.100.15, role: firmware_archive, security_profile: vulnerable, simulator: firmware_archive}
+- {name_template: 's{sid}-firmware-secure', vmid_offset: 6, ip: 192.168.100.16, role: firmware_archive, security_profile: hardened, simulator: firmware_archive}
+- {name_template: 's{sid}-device-open', vmid_offset: 7, ip: 192.168.100.17, role: boot_device, security_profile: vulnerable, simulator: boot_device}
+- {name_template: 's{sid}-device-secure', vmid_offset: 8, ip: 192.168.100.18, role: boot_device, security_profile: hardened, simulator: boot_device}
+links:
+- {source: 's{sid}-radio-open', target: 's{sid}-gateway-open', protocol: join-token}
+- {source: 's{sid}-gateway-open', target: 's{sid}-firmware-open', protocol: http}
+- {source: 's{sid}-firmware-open', target: 's{sid}-device-open', protocol: recovery-update}

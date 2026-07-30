@@ -1,0 +1,15 @@
+id: heldout_dual_zone_chain
+name: Dual-Zone Operations Chain
+description: A two-pivot route reaches an isolated archive; a parallel hardened route provides reachable negative controls
+base_vmid: 510
+router: {name_template: 's{sid}-router', type: openwrt, ip: 192.168.100.1, security_profile: hardened}
+services:
+- {name_template: 's{sid}-entry', vmid_offset: 1, ip: 192.168.100.11, role: heldout_entry, security_profile: vulnerable, secondary_ip: 192.168.130.11, secondary_vlan_id: 130, pivot_next_ip: 192.168.130.12}
+- {name_template: 's{sid}-relay', vmid_offset: 2, ip: 192.168.130.12, role: heldout_relay_l1, security_profile: vulnerable, vlan_id: 130, no_gateway: true, bootstrap_ip: 192.168.100.12, secondary_ip: 192.168.131.12, secondary_vlan_id: 131, pivot_next_ip: 192.168.131.13}
+- {name_template: 's{sid}-operations-archive', vmid_offset: 3, ip: 192.168.131.13, role: heldout_asset_l2, security_profile: vulnerable, vlan_id: 131, no_gateway: true, bootstrap_ip: 192.168.100.13, simulator: segmented_asset}
+- {name_template: 's{sid}-entry-control', vmid_offset: 4, ip: 192.168.100.14, role: heldout_entry, security_profile: hardened, secondary_ip: 192.168.132.14, secondary_vlan_id: 132, pivot_next_ip: 192.168.132.15}
+- {name_template: 's{sid}-archive-control', vmid_offset: 5, ip: 192.168.132.15, role: heldout_asset_l1, security_profile: hardened, vlan_id: 132, no_gateway: true, bootstrap_ip: 192.168.100.15, simulator: segmented_asset}
+links:
+- {source: 's{sid}-entry', target: 's{sid}-relay', protocol: ssh, enforcement: vlan-130}
+- {source: 's{sid}-relay', target: 's{sid}-operations-archive', protocol: http, enforcement: vlan-131}
+- {source: 's{sid}-entry-control', target: 's{sid}-archive-control', protocol: ssh, enforcement: vlan-132}

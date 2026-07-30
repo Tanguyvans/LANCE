@@ -1,0 +1,17 @@
+id: heldout_segmented_fanout
+name: Segmented Fan-Out
+description: One compromised gateway exposes two distinct isolated assets while a hardened gateway protects equivalent comparators
+base_vmid: 530
+router: {name_template: 's{sid}-router', type: openwrt, ip: 192.168.100.1, security_profile: hardened}
+services:
+- {name_template: 's{sid}-gateway', vmid_offset: 1, ip: 192.168.100.11, role: heldout_entry, security_profile: vulnerable, secondary_ip: 192.168.133.11, secondary_vlan_id: 133, pivot_next_ip: 192.168.133.12}
+- {name_template: 's{sid}-telemetry-archive', vmid_offset: 2, ip: 192.168.133.12, role: heldout_asset_l1, security_profile: vulnerable, vlan_id: 133, no_gateway: true, bootstrap_ip: 192.168.100.12, simulator: segmented_asset}
+- {name_template: 's{sid}-maintenance-archive', vmid_offset: 3, ip: 192.168.133.13, role: heldout_asset_l1, security_profile: vulnerable, vlan_id: 133, no_gateway: true, bootstrap_ip: 192.168.100.13, simulator: segmented_asset}
+- {name_template: 's{sid}-gateway-control', vmid_offset: 4, ip: 192.168.100.14, role: heldout_entry, security_profile: hardened, secondary_ip: 192.168.134.14, secondary_vlan_id: 134, pivot_next_ip: 192.168.134.15}
+- {name_template: 's{sid}-telemetry-control', vmid_offset: 5, ip: 192.168.134.15, role: heldout_asset_l1, security_profile: hardened, vlan_id: 134, no_gateway: true, bootstrap_ip: 192.168.100.15, simulator: segmented_asset}
+- {name_template: 's{sid}-maintenance-control', vmid_offset: 6, ip: 192.168.134.16, role: heldout_asset_l1, security_profile: hardened, vlan_id: 134, no_gateway: true, bootstrap_ip: 192.168.100.16, simulator: segmented_asset}
+links:
+- {source: 's{sid}-gateway', target: 's{sid}-telemetry-archive', protocol: http, enforcement: vlan-133}
+- {source: 's{sid}-gateway', target: 's{sid}-maintenance-archive', protocol: http, enforcement: vlan-133}
+- {source: 's{sid}-gateway-control', target: 's{sid}-telemetry-control', protocol: http, enforcement: vlan-134}
+- {source: 's{sid}-gateway-control', target: 's{sid}-maintenance-control', protocol: http, enforcement: vlan-134}

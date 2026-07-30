@@ -1,0 +1,27 @@
+schema_version: 2
+scenario_id: '27'
+name: Three-Pivot Cascade
+difficulty: expert
+posture: mixed
+topology: heldout_three_pivot_cascade
+packs: [f20_heldout_network_paths]
+initial_credentials:
+- {device_id: s27-field-entry, ip: 192.168.100.11, service: ssh, port: 22, user: pivot, password: 'Pivot-S27!'}
+excluded_vulnerabilities:
+- F20-PIVOT-ENTRY@s27-field-entry
+attack_paths:
+- id: AP27-CASCADE
+  name: Three pivots to the isolated safety archive
+  title: Three network pivots to the isolated safety archive
+  chain:
+  - {hop: 1, device: s27-field-entry, action: Authenticate to the directly reachable field entry host}
+  - {hop: 2, device: s27-zone-relay, action: Pivot from the field entry host to the zone relay}
+  - {hop: 3, device: s27-cell-relay, action: Pivot from the zone relay to the cell relay}
+  - {hop: 4, device: s27-safety-archive, action: Pivot from the cell relay to the isolated safety archive}
+  vulnerabilities_used:
+  - F20-PIVOT-RELAY-L1@s27-zone-relay
+  - F20-PIVOT-RELAY-L2@s27-cell-relay
+  - F20-ASSET-L3@s27-safety-archive
+  length: 4
+  impact: critical
+bonus_types: []

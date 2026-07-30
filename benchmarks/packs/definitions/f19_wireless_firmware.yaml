@@ -1,0 +1,112 @@
+id: f19_wireless_firmware
+name: Wireless-to-Firmware Chain
+description: Safe simulators for radio discovery, join replay, firmware secret exposure and unsigned recovery.
+vulnerabilities:
+  wireless_bridge:
+  - key: F19-WIRELESS-DISCLOSURE
+    applies_to: {profiles: [vulnerable]}
+    title: Simulated wireless discovery discloses a reusable join token
+    severity: medium
+    category: info_disclosure
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [info_disclosure]
+    services: [wireless-discovery]
+    ports: [56830]
+    protocols: [udp]
+    exploit_eligible: false
+    owasp_iot: I2 - Insecure Network Services
+    description: UDP discovery returns device identity and a fixed join token without authenticating the requester.
+    indicators: [UDP DISCOVER response contains JOIN_TOKEN join-23-replay]
+    verification: send DISCOVER to {ip}:56830/udp
+    confidence_required: high
+  device_gateway:
+  - key: F19-JOIN-REPLAY
+    applies_to: {profiles: [vulnerable]}
+    title: Gateway accepts replay of a wireless join token
+    severity: high
+    category: misconfiguration
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 1
+    accepted_types: [misconfiguration]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/join]
+    exploit_eligible: true
+    owasp_iot: I9 - Insecure Default Settings
+    description: Reusing the discovered token repeatedly yields the same bounded gateway management token.
+    indicators: [Two POST /join requests both return gateway-admin-23]
+    verification: replay join-23-replay twice against http://{ip}:8080/join
+    confidence_required: high
+  firmware_archive:
+  - key: F19-FIRMWARE-SECRET
+    applies_to: {profiles: [vulnerable]}
+    title: Firmware manifest exposes an embedded recovery key
+    severity: high
+    category: data_exposure
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 2
+    accepted_types: [data_exposure]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/firmware/current]
+    exploit_eligible: true
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: The public firmware fixture contains the fixed recovery key debug-23-recovery.
+    indicators: [GET /firmware/current returns debug_key debug-23-recovery]
+    verification: retrieve http://{ip}:8080/firmware/current
+    confidence_required: high
+  boot_device:
+  - key: F19-UNSIGNED-RECOVERY
+    applies_to: {profiles: [vulnerable]}
+    title: Device accepts unsigned recovery firmware
+    severity: critical
+    category: insecure_update
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 3
+    accepted_types: [insecure_update]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/recovery]
+    exploit_eligible: true
+    owasp_iot: I4 - Lack of Secure Update Mechanism
+    description: The disposable device accepts signed=false when supplied the bounded gateway token and recovery key.
+    indicators: [POST /recovery returns RECOVERY_MODE with signed false]
+    verification: submit the documented fixture to http://{ip}:8080/recovery
+    confidence_required: high
+controls:
+  wireless_bridge:
+  - key: C19-WIRELESS-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: wireless_discovery_hides_join_token
+    forbidden_types: [info_disclosure]
+    description: The hardened UDP response requires authentication and never contains a join token.
+    verification: DISCOVER to {ip}:56830/udp returns AUTH_REQUIRED without JOIN_TOKEN
+  device_gateway:
+  - key: C19-JOIN-REPLAY-DENIED
+    applies_to: {profiles: [hardened]}
+    assertion: join_token_single_use
+    forbidden_types: [misconfiguration]
+    description: The hardened gateway accepts the fixture token once and rejects its replay.
+    verification: the second POST /join to http://{ip}:8080 returns 409
+  firmware_archive:
+  - key: C19-FIRMWARE-NO-SECRET
+    applies_to: {profiles: [hardened]}
+    assertion: firmware_manifest_contains_no_recovery_key
+    forbidden_types: [data_exposure]
+    description: The hardened firmware manifest contains no debug or recovery key.
+    verification: GET http://{ip}:8080/firmware/current omits debug_key
+  boot_device:
+  - key: C19-UNSIGNED-RECOVERY-DENIED
+    applies_to: {profiles: [hardened]}
+    assertion: unsigned_recovery_rejected
+    forbidden_types: [insecure_update]
+    description: The hardened device rejects signed=false without changing state.
+    verification: POST the unsigned fixture to http://{ip}:8080/recovery returns 400

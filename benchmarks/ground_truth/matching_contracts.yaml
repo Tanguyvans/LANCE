@@ -13,6 +13,16 @@ source_hashes:
   '19': 75a9425f7e7570f8cb32e0a46ff253fec2b271ee71fdd68aca2dd3e23cad6819
   1h: 1227ec22149f06b594b2d50148f63776605c524454e5839ff54b76dea5280bb8
   '2': fdf6e91860a9ee8b327d8a3693ba0d579be6971321d76efc581150f136011286
+  '20': e8eca8fc9c83e3d193f90220779bf6c67f7096fb85ddafb9ffb6a636cbe9c355
+  '21': 6b980c0f35328de6449706a38da4a1697be40207db1d5cbbe6efd11e3e043654
+  '22': 503178f6bfdf4d25e86e4f5311104fd91cffbad87ecc4d1b482d3e3e2a497a99
+  '23': 93c768af07e007aab70af944a33da49b888218a5bbe5a03e31b6ae1c936fe2a6
+  '24': ed66374846a3258ce0fc5743cbcd2fe825c4345e8916fbe0c060ccf22f0d8c34
+  '25': 183461c1079cbafb0eed5169f0e1157b6e69fd04703aefb8c95808d9cec62211
+  '26': 9c75dbc0ebdc2a23c68319436aaf4755f6ddeab79cce917db5491c11d6ab3298
+  '27': 087bbb1fc1d59ec37aa672a8507157c2cafa23b872b078ca09c54028d9de3e5b
+  '28': 32b9cc3006b1a54c1465a76effdd227ded5ffe18ebb3ff899bd675c37e85413b
+  '29': 371571ffe6e1f10896094ffac40096cc282065e57041d4ad9354579aed6e1e82
   '3': 196ee5bb7ab4f676fe4f605906cecbfbc8e81a3c0b16c3552d18a051d9bf8c1e
   '4': 6132f184038cccefbce650db166a8cd0df26207d65198000b3168eb486400838
   4h: e366eafd81470c905103c24dd7615b3a3aca1708f3615eaf769b92353382f262
@@ -1835,6 +1845,483 @@ scenarios:
       - tcp
       endpoints:
       - /backup/
+      products: []
+      versions: []
+  '20':
+    F16-ENTRY-CREDS@s20-entry:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F16-RELAY-CONFIG@s20-entry:
+      accepted_types:
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F16-RELAY-CREDS@s20-relay:
+      accepted_types:
+      - default_credentials
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F16-VAULT-NOAUTH@s20-vault:
+      accepted_types:
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+  '21':
+    F17-MQTT-ANONYMOUS@s21-mqtt-open:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F17-WEB-BACKUP@s21-web-backup:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/db_backup_2024-01-15.sql
+      products: []
+      versions: []
+  '22':
+    F18-AUTH-BYPASS@s22-auth-bypass:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /login
+      products: []
+      versions: []
+    F18-PATH-TRAVERSAL@s22-files-traversal:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /files
+      products: []
+      versions: []
+    F18-COMMAND-INJECTION@s22-command-injection:
+      accepted_types:
+      - code_injection
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /diagnostics
+      products: []
+      versions: []
+    F18-PRIVILEGE-OVERRIDE@s22-privilege-escalation:
+      accepted_types:
+      - privilege_escalation
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /jobs
+      products: []
+      versions: []
+  '23':
+    F19-WIRELESS-DISCLOSURE@s23-radio-open:
+      accepted_types:
+      - info_disclosure
+      services:
+      - wireless-discovery
+      ports:
+      - 56830
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    F19-JOIN-REPLAY@s23-gateway-open:
+      accepted_types:
+      - misconfiguration
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /join
+      products: []
+      versions: []
+    F19-FIRMWARE-SECRET@s23-firmware-open:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /firmware/current
+      products: []
+      versions: []
+    F19-UNSIGNED-RECOVERY@s23-device-open:
+      accepted_types:
+      - insecure_update
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /recovery
+      products: []
+      versions: []
+  '24':
+    F20-PIVOT-ENTRY@s24-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-PIVOT-RELAY-L1@s24-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-ASSET-L2@s24-operations-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+  '25':
+    F20-PIVOT-ENTRY@s25-gateway:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-ASSET-L1@s25-telemetry-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+    F20-ASSET-L1@s25-maintenance-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+  '26':
+    F20-PIVOT-ENTRY@s26-edge-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-ASSET-L1@s26-edge-snapshot:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+    F20-PIVOT-ENTRY@s26-control-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-PIVOT-RELAY-L1@s26-control-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-ASSET-L2@s26-control-snapshot:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+  '27':
+    F20-PIVOT-ENTRY@s27-field-entry:
+      accepted_types:
+      - default_credentials
+      - no_auth
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-PIVOT-RELAY-L1@s27-zone-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-PIVOT-RELAY-L2@s27-cell-relay:
+      accepted_types:
+      - default_credentials
+      - data_exposure
+      services:
+      - ssh
+      ports:
+      - 22
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F20-ASSET-L3@s27-safety-archive:
+      accepted_types:
+      - data_exposure
+      - no_auth
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /export
+      products: []
+      versions: []
+  '28':
+    F21-DISCOVERY-CODE@s28-discovery-open:
+      accepted_types:
+      - info_disclosure
+      services:
+      - provisioning-discovery
+      ports:
+      - 56831
+      protocols:
+      - udp
+      endpoints: []
+      products: []
+      versions: []
+    F21-CLAIM-REPLAY@s28-claim-open:
+      accepted_types:
+      - broken_access_control
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /claim
+      products: []
+      versions: []
+    F21-TELEMETRY-KEY@s28-telemetry-open:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /snapshot
+      products: []
+      versions: []
+    F21-MAINTENANCE-BYPASS@s28-maintenance-open:
+      accepted_types:
+      - broken_access_control
+      - privilege_escalation
+      services:
+      - http
+      ports:
+      - 8080
+      protocols:
+      - tcp
+      endpoints:
+      - /maintenance
+      products: []
+      versions: []
+  '29':
+    F10-MQTT-ANON@s29-mqtt-open:
+      accepted_types:
+      - no_auth
+      services:
+      - mqtt
+      ports:
+      - 1883
+      protocols:
+      - tcp
+      endpoints: []
+      products: []
+      versions: []
+    F10-WEB-BACKUP@s29-web-backup:
+      accepted_types:
+      - data_exposure
+      services:
+      - http
+      ports:
+      - 80
+      protocols:
+      - tcp
+      endpoints:
+      - /backup/db_backup_2024-01-15.sql
+      products: []
+      versions: []
+    F10-REDIS-NOAUTH@s29-redis-open:
+      accepted_types:
+      - no_auth
+      services:
+      - redis
+      ports:
+      - 6379
+      protocols:
+      - tcp
+      endpoints: []
       products: []
       versions: []
   '3':

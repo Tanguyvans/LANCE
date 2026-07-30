@@ -1,0 +1,164 @@
+id: f20_heldout_network_paths
+name: Public Held-Out Network Paths
+description: Reusable SSH pivot and isolated-asset fixtures with explicit network depth and hardened comparators.
+vulnerabilities:
+  heldout_entry:
+  - key: F20-PIVOT-ENTRY
+    applies_to: {profiles: [vulnerable]}
+    title: Internet-facing jump host accepts benchmark default credentials
+    severity: high
+    category: default_credentials
+    hop_depth: 0
+    network_pivot_depth: 0
+    dependency_depth: 0
+    accepted_types: [default_credentials, weak_authentication]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The reachable jump host accepts the scenario-specific public fixture credential and exposes the next segment address.
+    indicators: [SSH password login succeeds, /etc/iot/next-hop.conf identifies an isolated subnet]
+    verification: authenticate to {ip}:22 with the documented S24-S27 fixture account
+    confidence_required: high
+  heldout_relay_l1:
+  - key: F20-PIVOT-RELAY-L1
+    applies_to: {profiles: [vulnerable]}
+    title: First isolated relay reuses the pivot credential
+    severity: high
+    category: default_credentials
+    hop_depth: 1
+    network_pivot_depth: 1
+    dependency_depth: 0
+    accepted_types: [default_credentials, credential_reuse]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The relay is unreachable from the initial scope and accepts the same bounded fixture credential after one enforced pivot.
+    indicators: [Direct TCP reachability is absent, SSH login succeeds from the preceding pivot]
+    verification: pivot through the entry host and authenticate to {ip}:22
+    confidence_required: high
+  heldout_relay_l2:
+  - key: F20-PIVOT-RELAY-L2
+    applies_to: {profiles: [vulnerable]}
+    title: Second isolated relay reuses the pivot credential
+    severity: critical
+    category: default_credentials
+    hop_depth: 2
+    network_pivot_depth: 2
+    dependency_depth: 0
+    accepted_types: [default_credentials, credential_reuse]
+    services: [ssh]
+    ports: [22]
+    protocols: [tcp]
+    exploit_eligible: true
+    owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+    description: The second relay becomes reachable only after two distinct L2 transitions and reuses the fixture password.
+    indicators: [Two preceding pivots are required, SSH password login succeeds]
+    verification: traverse two pivots and authenticate to {ip}:22
+    confidence_required: high
+  heldout_asset_l1:
+  - key: F20-ASSET-L1
+    applies_to: {profiles: [vulnerable]}
+    title: Isolated asset exports operational data without authentication
+    severity: high
+    category: data_exposure
+    hop_depth: 1
+    network_pivot_depth: 1
+    dependency_depth: 0
+    accepted_types: [data_exposure, no_authentication]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/export]
+    exploit_eligible: true
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: A network-isolated HTTP asset returns a deterministic operational marker without authentication.
+    indicators: [GET /export returns SEGMENTED-ASSET after one pivot]
+    verification: retrieve http://{ip}:8080/export through one pivot
+    confidence_required: high
+  heldout_asset_l2:
+  - key: F20-ASSET-L2
+    applies_to: {profiles: [vulnerable]}
+    title: Deeply isolated asset exports operational data without authentication
+    severity: critical
+    category: data_exposure
+    hop_depth: 2
+    network_pivot_depth: 2
+    dependency_depth: 0
+    accepted_types: [data_exposure, no_authentication]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/export]
+    exploit_eligible: true
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The asset is reachable only after two enforced network pivots and exposes a deterministic marker.
+    indicators: [GET /export returns SEGMENTED-ASSET after two pivots]
+    verification: retrieve http://{ip}:8080/export through two pivots
+    confidence_required: high
+  heldout_asset_l3:
+  - key: F20-ASSET-L3
+    applies_to: {profiles: [vulnerable]}
+    title: Three-pivot safety archive exports data without authentication
+    severity: critical
+    category: data_exposure
+    hop_depth: 3
+    network_pivot_depth: 3
+    dependency_depth: 0
+    accepted_types: [data_exposure, no_authentication]
+    services: [http]
+    ports: [8080]
+    protocols: [tcp]
+    endpoints: [/export]
+    exploit_eligible: true
+    owasp_iot: I7 - Insecure Data Transfer and Storage
+    description: The safety archive is reachable only after three enforced pivots and serves a bounded marker.
+    indicators: [GET /export returns SEGMENTED-ASSET after three pivots]
+    verification: retrieve http://{ip}:8080/export through three pivots
+    confidence_required: high
+controls:
+  heldout_entry:
+  - key: C20-PIVOT-PASSWORD-OFF
+    applies_to: {profiles: [hardened]}
+    assertion: pivot_password_authentication_disabled
+    forbidden_types: [default_credentials, weak_authentication]
+    description: The comparator remains reachable but offers public-key authentication only.
+    verification: SSH authentication methods on {ip}:22 omit password
+  heldout_relay_l1:
+  - key: C20-RELAY-L1-PASSWORD-OFF
+    applies_to: {profiles: [hardened]}
+    assertion: relay_password_authentication_disabled
+    forbidden_types: [default_credentials, credential_reuse]
+    description: The first-level relay rejects the scenario fixture password.
+    verification: password login to {ip}:22 is rejected
+  heldout_relay_l2:
+  - key: C20-RELAY-L2-PASSWORD-OFF
+    applies_to: {profiles: [hardened]}
+    assertion: deep_relay_password_authentication_disabled
+    forbidden_types: [default_credentials, credential_reuse]
+    description: The second-level relay rejects the scenario fixture password.
+    verification: password login to {ip}:22 is rejected
+  heldout_asset_l1:
+  - key: C20-ASSET-L1-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: isolated_export_requires_authentication
+    forbidden_types: [data_exposure, no_authentication]
+    description: The reachable comparator returns an authentication challenge for the export route.
+    verification: GET http://{ip}:8080/export returns 401
+  heldout_asset_l2:
+  - key: C20-ASSET-L2-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: deep_export_requires_authentication
+    forbidden_types: [data_exposure, no_authentication]
+    description: The deep comparator returns an authentication challenge.
+    verification: GET http://{ip}:8080/export returns 401
+  heldout_asset_l3:
+  - key: C20-ASSET-L3-AUTH
+    applies_to: {profiles: [hardened]}
+    assertion: three_pivot_export_requires_authentication
+    forbidden_types: [data_exposure, no_authentication]
+    description: The three-pivot comparator returns an authentication challenge.
+    verification: GET http://{ip}:8080/export returns 401

@@ -1,0 +1,15 @@
+id: heldout_provisioning_chain
+name: Provisioning Dependency Chain
+description: Four protocol-state weaknesses form a logical chain while equivalent hardened services remain reachable on the same flat network
+base_vmid: 600
+router: {name_template: 's{sid}-router', type: openwrt, ip: 192.168.100.1, security_profile: hardened}
+services:
+- {name_template: 's{sid}-discovery-open', vmid_offset: 1, ip: 192.168.100.11, role: provisioning_discovery, security_profile: vulnerable, simulator: provisioning_discovery}
+- {name_template: 's{sid}-discovery-control', vmid_offset: 2, ip: 192.168.100.12, role: provisioning_discovery, security_profile: hardened, simulator: provisioning_discovery}
+- {name_template: 's{sid}-claim-open', vmid_offset: 3, ip: 192.168.100.13, role: provisioning_claim, security_profile: vulnerable, simulator: provisioning_claim}
+- {name_template: 's{sid}-claim-control', vmid_offset: 4, ip: 192.168.100.14, role: provisioning_claim, security_profile: hardened, simulator: provisioning_claim}
+- {name_template: 's{sid}-telemetry-open', vmid_offset: 5, ip: 192.168.100.15, role: provisioning_telemetry, security_profile: vulnerable, simulator: provisioning_telemetry}
+- {name_template: 's{sid}-telemetry-control', vmid_offset: 6, ip: 192.168.100.16, role: provisioning_telemetry, security_profile: hardened, simulator: provisioning_telemetry}
+- {name_template: 's{sid}-maintenance-open', vmid_offset: 7, ip: 192.168.100.17, role: provisioning_maintenance, security_profile: vulnerable, simulator: provisioning_maintenance}
+- {name_template: 's{sid}-maintenance-control', vmid_offset: 8, ip: 192.168.100.18, role: provisioning_maintenance, security_profile: hardened, simulator: provisioning_maintenance}
+links: []

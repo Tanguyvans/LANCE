@@ -21,30 +21,8 @@ EVAL_PROFILES = BENCHMARKS / "eval_profiles"
 GROUP_VARS = BENCHMARKS / "ansible" / "group_vars" / "all" / "main.yml"
 GROUP_VARS_V2 = BENCHMARKS / "ansible" / "group_vars" / "all" / "scenarios_v2.yml"
 
-PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 20))
-SEALED_IDS = tuple(str(scenario_id) for scenario_id in range(20, 26))
+PUBLIC_V2_IDS = tuple(str(scenario_id) for scenario_id in range(14, 30))
 HARDENED_PROFILES = {"hardened", "near_miss"}
-PROFILE_FIELDS = {
-    "schema_version",
-    "scenario_id",
-    "split",
-    "controller_required",
-    "blind_required",
-    "score_visibility",
-}
-FORBIDDEN_SEALED_FIELDS = {
-    "topology",
-    "packs",
-    "ground_truth",
-    "vulnerabilities",
-    "controls",
-    "attack_paths",
-    "seed",
-    "roles",
-    "services",
-    "verification",
-    "credentials",
-}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -286,53 +264,25 @@ def test_ansible_vmid_ranges_do_not_overlap():
         )
 
 
-def test_sealed_scenarios_publish_only_policy_metadata():
-    profile_files = sorted(path.name for path in EVAL_PROFILES.glob("*.yaml"))
-    assert profile_files == [f"S{scenario_id}.yaml" for scenario_id in SEALED_IDS]
-
-    for scenario_id in SEALED_IDS:
-        assert not (SCENARIOS / f"S{scenario_id}.yaml").exists()
-        assert not (GROUND_TRUTH / f"scenario_{scenario_id}.yaml").exists()
-        for directory in (TOPOLOGIES, PACKS):
-            assert not any(
-                re.search(rf"(?:^|[_-])s(?:cenario[_-]?)?{scenario_id}(?:[_-]|$)", path.stem, re.I)
-                for path in directory.glob("*.yaml")
-            )
-
-        profile = _load_yaml(EVAL_PROFILES / f"S{scenario_id}.yaml")
-        assert set(profile) == PROFILE_FIELDS
-        assert profile["scenario_id"] == scenario_id
-        assert profile["split"] == "eval-sealed"
-        assert profile["controller_required"] is True
-        assert profile["blind_required"] is True
-        assert profile["score_visibility"] == "aggregate"
-        assert FORBIDDEN_SEALED_FIELDS.isdisjoint(profile)
-
-    # Public packs may describe reusable attack families, but must not bind any
-    # concrete definition to a sealed scenario ID.
-    selected_by_public_packs = {
-        selected
-        for pack_path in PACKS.glob("*.yaml")
-        for selected in _scenario_selectors(_load_yaml(pack_path))
-    }
-    assert selected_by_public_packs.isdisjoint(SEALED_IDS)
+def test_current_release_has_no_sealed_profile_placeholders():
+    assert list(EVAL_PROFILES.glob("*.yaml")) == []
+    for scenario_id in range(20, 30):
+        assert (SCENARIOS / f"S{scenario_id}.yaml").is_file()
+        assert (GROUND_TRUTH / f"scenario_{scenario_id}.yaml").is_file()
 
 
-def test_catalog_has_exact_canonical_splits_and_only_profile_links_for_sealed_ids():
+def test_catalog_has_exact_canonical_public_splits():
     catalog = _load_yaml(BENCHMARKS / "catalog.yaml")
     scenarios = catalog["scenarios"]
 
-    assert [entry["id"] for entry in scenarios] == [str(i) for i in range(1, 26)]
+    assert [entry["id"] for entry in scenarios] == [str(i) for i in range(1, 30)]
     assert [entry["id"] for entry in scenarios if entry["split"] == "dev-public"] == [
         str(i) for i in range(1, 20)
     ]
-    assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == [
-        str(i) for i in range(20, 26)
+    assert [entry["id"] for entry in scenarios if entry["split"] == "test-public"] == [
+        str(i) for i in range(20, 30)
     ]
+    assert [entry["id"] for entry in scenarios if entry["split"] == "eval-sealed"] == []
 
-    for entry in scenarios[:19]:
+    for entry in scenarios:
         assert set(entry) == {"id", "label", "split"}
-    for entry in scenarios[19:]:
-        assert set(entry) == {"id", "label", "split", "profile"}
-        assert entry["profile"] == f"eval_profiles/S{entry['id']}.yaml"
-        assert FORBIDDEN_SEALED_FIELDS.isdisjoint(entry)

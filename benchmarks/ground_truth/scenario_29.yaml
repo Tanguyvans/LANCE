@@ -1,0 +1,398 @@
+scenario_id: '29'
+scenario_name: Large Sparse Control Network
+difficulty: hard
+description: Large Sparse Control Network — Twenty reachable services contain three
+  positives and twenty-two explicit hardened or near-miss assertions
+topology:
+  router:
+    name: s29-router
+    vmid: 620
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s29-mqtt-open
+    vmid: 621
+    ip: 192.168.100.11
+    role: mqtt_broker
+    security_profile: vulnerable
+  - name: s29-web-backup
+    vmid: 622
+    ip: 192.168.100.12
+    role: web_server
+    security_profile: vulnerable
+  - name: s29-redis-open
+    vmid: 623
+    ip: 192.168.100.13
+    role: db_server_v2
+    security_profile: vulnerable
+  - name: s29-mqtt-secure-a
+    vmid: 624
+    ip: 192.168.100.14
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s29-mqtt-secure-b
+    vmid: 625
+    ip: 192.168.100.15
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s29-mqtt-secure-c
+    vmid: 626
+    ip: 192.168.100.16
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s29-mqtt-secure-d
+    vmid: 627
+    ip: 192.168.100.17
+    role: mqtt_broker
+    security_profile: hardened
+  - name: s29-web-secure-a
+    vmid: 628
+    ip: 192.168.100.18
+    role: web_server
+    security_profile: hardened
+  - name: s29-web-secure-b
+    vmid: 629
+    ip: 192.168.100.19
+    role: web_server
+    security_profile: hardened
+  - name: s29-web-secure-c
+    vmid: 630
+    ip: 192.168.100.20
+    role: web_server
+    security_profile: hardened
+  - name: s29-web-secure-d
+    vmid: 631
+    ip: 192.168.100.21
+    role: web_server
+    security_profile: hardened
+  - name: s29-web-nearmiss
+    vmid: 632
+    ip: 192.168.100.22
+    role: web_server
+    security_profile: near_miss
+  - name: s29-ssh-secure-a
+    vmid: 633
+    ip: 192.168.100.23
+    role: ssh_server
+    security_profile: hardened
+  - name: s29-ssh-secure-b
+    vmid: 634
+    ip: 192.168.100.24
+    role: ssh_server
+    security_profile: hardened
+  - name: s29-ssh-secure-c
+    vmid: 635
+    ip: 192.168.100.25
+    role: ssh_server
+    security_profile: hardened
+  - name: s29-ssh-secure-d
+    vmid: 636
+    ip: 192.168.100.26
+    role: ssh_server
+    security_profile: hardened
+  - name: s29-redis-secure-a
+    vmid: 637
+    ip: 192.168.100.27
+    role: db_server_v2
+    security_profile: hardened
+  - name: s29-redis-secure-b
+    vmid: 638
+    ip: 192.168.100.28
+    role: db_server_v2
+    security_profile: hardened
+  - name: s29-redis-secure-c
+    vmid: 639
+    ip: 192.168.100.29
+    role: db_server_v2
+    security_profile: hardened
+  - name: s29-redis-secure-d
+    vmid: 640
+    ip: 192.168.100.30
+    role: db_server_v2
+    security_profile: hardened
+vulnerabilities:
+- id: F10-MQTT-ANON@s29-mqtt-open
+  device: s29-mqtt-open
+  ip: 192.168.100.11
+  role: mqtt_broker
+  security_profile: vulnerable
+  template_key: F10-MQTT-ANON
+  title: Anonymous MQTT subscription exposes retained operational secrets
+  severity: high
+  category: no_authentication
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: The broker accepts an unauthenticated wildcard subscription and publishes
+    retained secrets.
+  indicators:
+  - Port 1883/tcp accepts a CONNECT packet without username or password
+  - Wildcard subscription returns smartcity/admin/credentials
+  verification: mosquitto_sub -h 192.168.100.11 -t '#' -C 1 -W 5
+  confidence_required: high
+- id: F10-WEB-BACKUP@s29-web-backup
+  device: s29-web-backup
+  ip: 192.168.100.12
+  role: web_server
+  security_profile: vulnerable
+  template_key: F10-WEB-BACKUP
+  title: Public web backup contains database credentials
+  severity: high
+  category: data_exposure
+  owasp_iot: I2 - Insecure Network Services
+  description: Directory listing exposes a SQL backup and an application configuration
+    file.
+  indicators:
+  - GET /backup/ returns HTTP 200 with an index
+  - GET /backup/db_backup_2024-01-15.sql returns credential material
+  verification: curl -fsS http://192.168.100.12/backup/db_backup_2024-01-15.sql
+  confidence_required: high
+- id: F10-REDIS-NOAUTH@s29-redis-open
+  device: s29-redis-open
+  ip: 192.168.100.13
+  role: db_server_v2
+  security_profile: vulnerable
+  template_key: F10-REDIS-NOAUTH
+  title: Redis accepts commands without authentication
+  severity: high
+  category: no_authentication
+  owasp_iot: I2 - Insecure Network Services
+  description: Redis is bound to all interfaces with protected mode and authentication
+    disabled.
+  indicators:
+  - Port 6379/tcp is reachable
+  - Unauthenticated PING returns PONG
+  verification: redis-cli -h 192.168.100.13 PING
+  confidence_required: high
+attack_paths: []
+scoring:
+  total_vulnerabilities: 3
+  total_attack_paths: 0
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 9
+  total_controls: 22
+bonus_types: []
+controls:
+- id: C10-MQTT-AUTH@s29-mqtt-secure-a
+  device: s29-mqtt-secure-a
+  ip: 192.168.100.14
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.14 -t '#' -C 1 -W 2 must fail with authorization
+    error
+- id: C10-MQTT-AUTH@s29-mqtt-secure-b
+  device: s29-mqtt-secure-b
+  ip: 192.168.100.15
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.15 -t '#' -C 1 -W 2 must fail with authorization
+    error
+- id: C10-MQTT-AUTH@s29-mqtt-secure-c
+  device: s29-mqtt-secure-c
+  ip: 192.168.100.16
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.16 -t '#' -C 1 -W 2 must fail with authorization
+    error
+- id: C10-MQTT-AUTH@s29-mqtt-secure-d
+  device: s29-mqtt-secure-d
+  ip: 192.168.100.17
+  role: mqtt_broker
+  security_profile: hardened
+  template_key: C10-MQTT-AUTH
+  assertion: anonymous_mqtt_denied
+  description: An unauthenticated MQTT CONNECT or wildcard subscription must be rejected.
+  verification: mosquitto_sub -h 192.168.100.17 -t '#' -C 1 -W 2 must fail with authorization
+    error
+- id: C10-WEB-BACKUP-DENIED@s29-web-secure-a
+  device: s29-web-secure-a
+  ip: 192.168.100.18
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.18/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s29-web-secure-a
+  device: s29-web-secure-a
+  ip: 192.168.100.18
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.18/admin
+    returns 401
+- id: C10-WEB-BACKUP-DENIED@s29-web-secure-b
+  device: s29-web-secure-b
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.19/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s29-web-secure-b
+  device: s29-web-secure-b
+  ip: 192.168.100.19
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.19/admin
+    returns 401
+- id: C10-WEB-BACKUP-DENIED@s29-web-secure-c
+  device: s29-web-secure-c
+  ip: 192.168.100.20
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.20/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s29-web-secure-c
+  device: s29-web-secure-c
+  ip: 192.168.100.20
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.20/admin
+    returns 401
+- id: C10-WEB-BACKUP-DENIED@s29-web-secure-d
+  device: s29-web-secure-d
+  ip: 192.168.100.21
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.21/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s29-web-secure-d
+  device: s29-web-secure-d
+  ip: 192.168.100.21
+  role: web_server
+  security_profile: hardened
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.21/admin
+    returns 401
+- id: C10-WEB-BACKUP-DENIED@s29-web-nearmiss
+  device: s29-web-nearmiss
+  ip: 192.168.100.22
+  role: web_server
+  security_profile: near_miss
+  template_key: C10-WEB-BACKUP-DENIED
+  assertion: sensitive_backup_not_exposed
+  description: Backup-looking paths return 403 or 404 and contain no secrets.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.22/backup/
+    returns 403 or 404
+- id: C10-WEB-ADMIN-AUTH@s29-web-nearmiss
+  device: s29-web-nearmiss
+  ip: 192.168.100.22
+  role: web_server
+  security_profile: near_miss
+  template_key: C10-WEB-ADMIN-AUTH
+  assertion: admin_authentication_enforced
+  description: The visible admin endpoint is a near miss and correctly returns HTTP
+    401.
+  verification: curl -sS -o /dev/null -w '%{http_code}' http://192.168.100.22/admin
+    returns 401
+- id: C10-SSH-PASSWORD-OFF@s29-ssh-secure-a
+  device: s29-ssh-secure-a
+  ip: 192.168.100.23
+  role: ssh_server
+  security_profile: hardened
+  template_key: C10-SSH-PASSWORD-OFF
+  assertion: ssh_password_authentication_disabled
+  description: SSH exposes public-key authentication only.
+  verification: nmap --script ssh-auth-methods -p22 192.168.100.23 reports publickey
+    and no password
+- id: C10-SSH-PASSWORD-OFF@s29-ssh-secure-b
+  device: s29-ssh-secure-b
+  ip: 192.168.100.24
+  role: ssh_server
+  security_profile: hardened
+  template_key: C10-SSH-PASSWORD-OFF
+  assertion: ssh_password_authentication_disabled
+  description: SSH exposes public-key authentication only.
+  verification: nmap --script ssh-auth-methods -p22 192.168.100.24 reports publickey
+    and no password
+- id: C10-SSH-PASSWORD-OFF@s29-ssh-secure-c
+  device: s29-ssh-secure-c
+  ip: 192.168.100.25
+  role: ssh_server
+  security_profile: hardened
+  template_key: C10-SSH-PASSWORD-OFF
+  assertion: ssh_password_authentication_disabled
+  description: SSH exposes public-key authentication only.
+  verification: nmap --script ssh-auth-methods -p22 192.168.100.25 reports publickey
+    and no password
+- id: C10-SSH-PASSWORD-OFF@s29-ssh-secure-d
+  device: s29-ssh-secure-d
+  ip: 192.168.100.26
+  role: ssh_server
+  security_profile: hardened
+  template_key: C10-SSH-PASSWORD-OFF
+  assertion: ssh_password_authentication_disabled
+  description: SSH exposes public-key authentication only.
+  verification: nmap --script ssh-auth-methods -p22 192.168.100.26 reports publickey
+    and no password
+- id: C10-REDIS-AUTH@s29-redis-secure-a
+  device: s29-redis-secure-a
+  ip: 192.168.100.27
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C10-REDIS-AUTH
+  assertion: redis_authentication_required
+  description: An unauthenticated Redis command returns NOAUTH.
+  verification: redis-cli -h 192.168.100.27 PING returns NOAUTH Authentication required
+- id: C10-REDIS-AUTH@s29-redis-secure-b
+  device: s29-redis-secure-b
+  ip: 192.168.100.28
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C10-REDIS-AUTH
+  assertion: redis_authentication_required
+  description: An unauthenticated Redis command returns NOAUTH.
+  verification: redis-cli -h 192.168.100.28 PING returns NOAUTH Authentication required
+- id: C10-REDIS-AUTH@s29-redis-secure-c
+  device: s29-redis-secure-c
+  ip: 192.168.100.29
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C10-REDIS-AUTH
+  assertion: redis_authentication_required
+  description: An unauthenticated Redis command returns NOAUTH.
+  verification: redis-cli -h 192.168.100.29 PING returns NOAUTH Authentication required
+- id: C10-REDIS-AUTH@s29-redis-secure-d
+  device: s29-redis-secure-d
+  ip: 192.168.100.30
+  role: db_server_v2
+  security_profile: hardened
+  template_key: C10-REDIS-AUTH
+  assertion: redis_authentication_required
+  description: An unauthenticated Redis command returns NOAUTH.
+  verification: redis-cli -h 192.168.100.30 PING returns NOAUTH Authentication required

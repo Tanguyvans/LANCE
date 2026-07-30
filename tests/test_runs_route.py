@@ -48,7 +48,11 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
-def _sealed_summary(scenario_id="20", benchmark_version="2.0.0"):
+def _sealed_summary(scenario_id="20", benchmark_version=None):
+    if benchmark_version is None:
+        from src.benchmark.catalog import load_catalog
+
+        benchmark_version = load_catalog().benchmark_version
     return {
         "schema_version": "1",
         "submission_id": str(uuid4()),

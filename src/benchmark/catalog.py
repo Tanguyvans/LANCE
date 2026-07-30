@@ -1,9 +1,8 @@
-"""Strict public catalogue for development and sealed benchmark scenarios.
+"""Strict catalogue for development, public-test, and future sealed scenarios.
 
-The catalogue is deliberately metadata-only.  Detailed definitions for sealed
-scenarios live behind the evaluation controller and must never be added to the
-public repository.  Parsing is fail-closed: unknown keys, missing scenarios, an
-incorrect split, or a malformed sealed profile make the whole catalogue invalid.
+The current benchmark release is fully public: S1-S19 are development scenarios
+and S20-S29 are held out from tuning. Sealed-profile support remains available
+for a future release.
 """
 
 from __future__ import annotations
@@ -19,8 +18,9 @@ CATALOG_SCHEMA_VERSION = "1"
 DEFAULT_CATALOG_PATH = Path(__file__).resolve().parents[2] / "benchmarks" / "catalog.yaml"
 
 DEV_PUBLIC: Literal["dev-public"] = "dev-public"
+TEST_PUBLIC: Literal["test-public"] = "test-public"
 EVAL_SEALED: Literal["eval-sealed"] = "eval-sealed"
-ScenarioSplit = Literal["dev-public", "eval-sealed"]
+ScenarioSplit = Literal["dev-public", "test-public", "eval-sealed"]
 
 _CATALOG_KEYS = frozenset({"schema_version", "benchmark_version", "scenarios"})
 _SCENARIO_KEYS = frozenset({"id", "label", "split", "profile"})
@@ -34,7 +34,11 @@ _PROFILE_KEYS = frozenset(
         "score_visibility",
     }
 )
-_EXPECTED_IDS = tuple(str(i) for i in range(1, 26))
+DEV_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(1, 20))
+TEST_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(20, 30))
+PUBLIC_SCENARIO_IDS = DEV_PUBLIC_SCENARIO_IDS + TEST_PUBLIC_SCENARIO_IDS
+SEALED_SCENARIO_IDS: tuple[str, ...] = ()
+_EXPECTED_IDS = PUBLIC_SCENARIO_IDS + SEALED_SCENARIO_IDS
 
 
 class CatalogError(ValueError):
@@ -123,7 +127,7 @@ class BenchmarkCatalog:
         raise CatalogError(f"unknown benchmark scenario: {scenario_id}")
 
     def for_split(self, split: ScenarioSplit) -> tuple[ScenarioDescriptor, ...]:
-        if split not in (DEV_PUBLIC, EVAL_SEALED):
+        if split not in (DEV_PUBLIC, TEST_PUBLIC, EVAL_SEALED):
             raise CatalogError(f"unsupported benchmark split: {split}")
         return tuple(item for item in self.scenarios if item.split == split)
 
@@ -132,6 +136,10 @@ class BenchmarkCatalog:
             normalized = selector.strip().lower()
             if normalized in {"dev", DEV_PUBLIC}:
                 return self.for_split(DEV_PUBLIC)
+            if normalized in {"test", TEST_PUBLIC}:
+                return self.for_split(TEST_PUBLIC)
+            if normalized == "public":
+                return tuple(item for item in self.scenarios if not item.sealed)
             if normalized in {"eval", EVAL_SEALED}:
                 return self.for_split(EVAL_SEALED)
             if normalized == "all":
@@ -253,8 +261,15 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
             raise CatalogError(f"duplicate scenario id: {scenario_id}")
         seen.add(scenario_id)
 
-        numeric_id = int(scenario_id)
-        expected_split = DEV_PUBLIC if 1 <= numeric_id <= 19 else EVAL_SEALED if 20 <= numeric_id <= 25 else None
+        expected_split = (
+            DEV_PUBLIC
+            if scenario_id in DEV_PUBLIC_SCENARIO_IDS
+            else TEST_PUBLIC
+            if scenario_id in TEST_PUBLIC_SCENARIO_IDS
+            else EVAL_SEALED
+            if scenario_id in SEALED_SCENARIO_IDS
+            else None
+        )
         if expected_split is None or split != expected_split:
             raise CatalogError(f"scenario S{scenario_id} must use split {expected_split!r}, got {split!r}")
 
@@ -264,7 +279,7 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
                 raise CatalogError(f"sealed scenario S{scenario_id} is missing its public policy profile")
             profile_path = _safe_profile_path(catalog_path.parent, scenario_id, item["profile"])
         elif "profile" in item:
-            raise CatalogError(f"dev-public scenario S{scenario_id} must not declare a sealed profile")
+            raise CatalogError(f"public scenario S{scenario_id} must not declare a sealed profile")
 
         scenarios.append(
             ScenarioDescriptor(
@@ -279,7 +294,7 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
     if set(ids) != set(_EXPECTED_IDS) or len(ids) != len(_EXPECTED_IDS):
         missing = sorted(set(_EXPECTED_IDS) - set(ids), key=int)
         extra = sorted(set(ids) - set(_EXPECTED_IDS), key=int)
-        raise CatalogError(f"catalogue must contain exactly S1-S25 (missing={missing}, extra={extra})")
+        raise CatalogError(f"catalogue must contain exactly S1-S29 (missing={missing}, extra={extra})")
     scenarios.sort(key=lambda item: int(item.id))
 
     catalog = BenchmarkCatalog(

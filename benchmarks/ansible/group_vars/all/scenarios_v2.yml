@@ -1,4 +1,4 @@
-# Benchmark v2 scenario additions.
+# Benchmark v2/v3 public scenario additions.
 #
 # This file is intentionally separate from main.yml: the master VM keeps
 # deployment-specific values in main.yml with git's skip-worktree bit. Keeping
@@ -12,6 +12,16 @@ scenario_vmid_ranges_v2:
   "17": 360  # S17 Signed OTA → 360-366
   "18": 380  # S18 Simulated Cloud IAM → 380-386
   "19": 400  # S19 Multi-Protocol OT → 400-407
+  "20": 420  # S20 True Multi-Hop → 420-424
+  "21": 440  # S21 Sparse Low-Prevalence → 440-456
+  "22": 470  # S22 Exploit Diversity → 470-478
+  "23": 490  # S23 Wireless-to-Firmware → 490-498
+  "24": 510  # S24 Dual-Zone Operations Chain → 510-515
+  "25": 530  # S25 Segmented Fan-Out → 530-536
+  "26": 550  # S26 Asymmetric Pivot Paths → 550-557
+  "27": 580  # S27 Three-Pivot Cascade → 580-586
+  "28": 600  # S28 Provisioning Dependency Chain → 600-608
+  "29": 620  # S29 Large Sparse Control Network → 620-640
 
 scenarios_v2:
   "14":
@@ -84,6 +94,144 @@ scenarios_v2:
       - { name: bacnet-secure, vmid_offset: 5, ip: "192.168.100.15", role: "ot_bacnet_server", security_profile: "hardened", simulator: "bacnet" }
       - { name: modbus,        vmid_offset: 6, ip: "192.168.100.16", role: "modbus_server", security_profile: "vulnerable" }
       - { name: historian,     vmid_offset: 7, ip: "192.168.100.17", role: "ot_historian", security_profile: "hardened", simulator: "ot_historian" }
+
+  "20":
+    name: "True Network Multi-Hop Pivot"
+    router_vulns: []
+    services:
+      - { name: entry, vmid_offset: 1, ip: "192.168.100.11", role: "pivot_entry", security_profile: "vulnerable", secondary_ip: "192.168.110.11", secondary_vlan_id: 110 }
+      - { name: relay, vmid_offset: 2, ip: "192.168.110.12", role: "pivot_relay", security_profile: "vulnerable", vlan_id: 110, no_gateway: true, bootstrap_ip: "192.168.100.12", secondary_ip: "192.168.120.12", secondary_vlan_id: 120 }
+      - { name: vault, vmid_offset: 3, ip: "192.168.120.13", role: "pivot_vault", security_profile: "vulnerable", vlan_id: 120, no_gateway: true, bootstrap_ip: "192.168.100.13", simulator: "pivot_vault" }
+      - { name: decoy, vmid_offset: 4, ip: "192.168.100.14", role: "pivot_decoy", security_profile: "hardened" }
+
+  "21":
+    name: "Sparse Low-Prevalence Network"
+    router_vulns: []
+    services:
+      - { name: mqtt-open, vmid_offset: 1, ip: "192.168.100.11", role: "mqtt_broker", security_profile: "vulnerable" }
+      - { name: web-backup, vmid_offset: 2, ip: "192.168.100.12", role: "web_server", security_profile: "vulnerable" }
+      - { name: mqtt-secure-a, vmid_offset: 3, ip: "192.168.100.13", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-secure-b, vmid_offset: 4, ip: "192.168.100.14", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-secure-c, vmid_offset: 5, ip: "192.168.100.15", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-nearmiss, vmid_offset: 6, ip: "192.168.100.16", role: "mqtt_broker", security_profile: "near_miss" }
+      - { name: web-secure-a, vmid_offset: 7, ip: "192.168.100.17", role: "web_server", security_profile: "hardened" }
+      - { name: web-secure-b, vmid_offset: 8, ip: "192.168.100.18", role: "web_server", security_profile: "hardened" }
+      - { name: web-secure-c, vmid_offset: 9, ip: "192.168.100.19", role: "web_server", security_profile: "hardened" }
+      - { name: web-nearmiss, vmid_offset: 10, ip: "192.168.100.20", role: "web_server", security_profile: "near_miss" }
+      - { name: ssh-secure-a, vmid_offset: 11, ip: "192.168.100.21", role: "ssh_server", security_profile: "hardened" }
+      - { name: ssh-secure-b, vmid_offset: 12, ip: "192.168.100.22", role: "ssh_server", security_profile: "hardened" }
+      - { name: ssh-secure-c, vmid_offset: 13, ip: "192.168.100.23", role: "ssh_server", security_profile: "hardened" }
+      - { name: redis-secure-a, vmid_offset: 14, ip: "192.168.100.24", role: "db_server_v2", security_profile: "hardened" }
+      - { name: redis-secure-b, vmid_offset: 15, ip: "192.168.100.25", role: "db_server_v2", security_profile: "hardened" }
+      - { name: redis-secure-c, vmid_offset: 16, ip: "192.168.100.26", role: "db_server_v2", security_profile: "hardened" }
+
+  "22":
+    name: "Exploit Primitive Diversity (simulator)"
+    router_vulns: []
+    services:
+      - { name: auth-bypass, vmid_offset: 1, ip: "192.168.100.11", role: "exploit_auth_server", security_profile: "vulnerable", simulator: "exploit_auth" }
+      - { name: auth-control, vmid_offset: 2, ip: "192.168.100.12", role: "exploit_auth_server", security_profile: "hardened", simulator: "exploit_auth" }
+      - { name: files-traversal, vmid_offset: 3, ip: "192.168.100.13", role: "exploit_files_server", security_profile: "vulnerable", simulator: "exploit_files" }
+      - { name: files-control, vmid_offset: 4, ip: "192.168.100.14", role: "exploit_files_server", security_profile: "hardened", simulator: "exploit_files" }
+      - { name: command-injection, vmid_offset: 5, ip: "192.168.100.15", role: "exploit_command_server", security_profile: "vulnerable", simulator: "exploit_command" }
+      - { name: command-control, vmid_offset: 6, ip: "192.168.100.16", role: "exploit_command_server", security_profile: "hardened", simulator: "exploit_command" }
+      - { name: privilege-escalation, vmid_offset: 7, ip: "192.168.100.17", role: "exploit_privilege_server", security_profile: "vulnerable", simulator: "exploit_privilege" }
+      - { name: privilege-control, vmid_offset: 8, ip: "192.168.100.18", role: "exploit_privilege_server", security_profile: "hardened", simulator: "exploit_privilege" }
+
+  "23":
+    name: "Wireless-to-Firmware Chain (simulator)"
+    router_vulns: []
+    services:
+      - { name: radio-open, vmid_offset: 1, ip: "192.168.100.11", role: "wireless_bridge", security_profile: "vulnerable", simulator: "wireless_bridge" }
+      - { name: radio-secure, vmid_offset: 2, ip: "192.168.100.12", role: "wireless_bridge", security_profile: "hardened", simulator: "wireless_bridge" }
+      - { name: gateway-open, vmid_offset: 3, ip: "192.168.100.13", role: "device_gateway", security_profile: "vulnerable", simulator: "device_gateway" }
+      - { name: gateway-secure, vmid_offset: 4, ip: "192.168.100.14", role: "device_gateway", security_profile: "hardened", simulator: "device_gateway" }
+      - { name: firmware-open, vmid_offset: 5, ip: "192.168.100.15", role: "firmware_archive", security_profile: "vulnerable", simulator: "firmware_archive" }
+      - { name: firmware-secure, vmid_offset: 6, ip: "192.168.100.16", role: "firmware_archive", security_profile: "hardened", simulator: "firmware_archive" }
+      - { name: device-open, vmid_offset: 7, ip: "192.168.100.17", role: "boot_device", security_profile: "vulnerable", simulator: "boot_device" }
+      - { name: device-secure, vmid_offset: 8, ip: "192.168.100.18", role: "boot_device", security_profile: "hardened", simulator: "boot_device" }
+
+  "24":
+    name: "Dual-Zone Operations Chain"
+    router_vulns: []
+    services:
+      - { name: entry, vmid_offset: 1, ip: "192.168.100.11", role: "heldout_entry", security_profile: "vulnerable", secondary_ip: "192.168.130.11", secondary_vlan_id: 130, pivot_next_ip: "192.168.130.12" }
+      - { name: relay, vmid_offset: 2, ip: "192.168.130.12", role: "heldout_relay_l1", security_profile: "vulnerable", vlan_id: 130, no_gateway: true, bootstrap_ip: "192.168.100.12", secondary_ip: "192.168.131.12", secondary_vlan_id: 131, pivot_next_ip: "192.168.131.13" }
+      - { name: operations-archive, vmid_offset: 3, ip: "192.168.131.13", role: "heldout_asset_l2", security_profile: "vulnerable", vlan_id: 131, no_gateway: true, bootstrap_ip: "192.168.100.13", simulator: "segmented_asset" }
+      - { name: entry-control, vmid_offset: 4, ip: "192.168.100.14", role: "heldout_entry", security_profile: "hardened", secondary_ip: "192.168.132.14", secondary_vlan_id: 132, pivot_next_ip: "192.168.132.15" }
+      - { name: archive-control, vmid_offset: 5, ip: "192.168.132.15", role: "heldout_asset_l1", security_profile: "hardened", vlan_id: 132, no_gateway: true, bootstrap_ip: "192.168.100.15", simulator: "segmented_asset" }
+
+  "25":
+    name: "Segmented Fan-Out"
+    router_vulns: []
+    services:
+      - { name: gateway, vmid_offset: 1, ip: "192.168.100.11", role: "heldout_entry", security_profile: "vulnerable", secondary_ip: "192.168.133.11", secondary_vlan_id: 133, pivot_next_ip: "192.168.133.12" }
+      - { name: telemetry-archive, vmid_offset: 2, ip: "192.168.133.12", role: "heldout_asset_l1", security_profile: "vulnerable", vlan_id: 133, no_gateway: true, bootstrap_ip: "192.168.100.12", simulator: "segmented_asset" }
+      - { name: maintenance-archive, vmid_offset: 3, ip: "192.168.133.13", role: "heldout_asset_l1", security_profile: "vulnerable", vlan_id: 133, no_gateway: true, bootstrap_ip: "192.168.100.13", simulator: "segmented_asset" }
+      - { name: gateway-control, vmid_offset: 4, ip: "192.168.100.14", role: "heldout_entry", security_profile: "hardened", secondary_ip: "192.168.134.14", secondary_vlan_id: 134, pivot_next_ip: "192.168.134.15" }
+      - { name: telemetry-control, vmid_offset: 5, ip: "192.168.134.15", role: "heldout_asset_l1", security_profile: "hardened", vlan_id: 134, no_gateway: true, bootstrap_ip: "192.168.100.15", simulator: "segmented_asset" }
+      - { name: maintenance-control, vmid_offset: 6, ip: "192.168.134.16", role: "heldout_asset_l1", security_profile: "hardened", vlan_id: 134, no_gateway: true, bootstrap_ip: "192.168.100.16", simulator: "segmented_asset" }
+
+  "26":
+    name: "Asymmetric Pivot Paths"
+    router_vulns: []
+    services:
+      - { name: edge-entry, vmid_offset: 1, ip: "192.168.100.11", role: "heldout_entry", security_profile: "vulnerable", secondary_ip: "192.168.135.11", secondary_vlan_id: 135, pivot_next_ip: "192.168.135.12" }
+      - { name: edge-snapshot, vmid_offset: 2, ip: "192.168.135.12", role: "heldout_asset_l1", security_profile: "vulnerable", vlan_id: 135, no_gateway: true, bootstrap_ip: "192.168.100.12", simulator: "segmented_asset" }
+      - { name: control-entry, vmid_offset: 3, ip: "192.168.100.13", role: "heldout_entry", security_profile: "vulnerable", secondary_ip: "192.168.136.13", secondary_vlan_id: 136, pivot_next_ip: "192.168.136.14" }
+      - { name: control-relay, vmid_offset: 4, ip: "192.168.136.14", role: "heldout_relay_l1", security_profile: "vulnerable", vlan_id: 136, no_gateway: true, bootstrap_ip: "192.168.100.14", secondary_ip: "192.168.137.14", secondary_vlan_id: 137, pivot_next_ip: "192.168.137.15" }
+      - { name: control-snapshot, vmid_offset: 5, ip: "192.168.137.15", role: "heldout_asset_l2", security_profile: "vulnerable", vlan_id: 137, no_gateway: true, bootstrap_ip: "192.168.100.15", simulator: "segmented_asset" }
+      - { name: entry-control, vmid_offset: 6, ip: "192.168.100.16", role: "heldout_entry", security_profile: "hardened" }
+      - { name: snapshot-control, vmid_offset: 7, ip: "192.168.100.17", role: "heldout_asset_l1", security_profile: "hardened", simulator: "segmented_asset" }
+
+  "27":
+    name: "Three-Pivot Cascade"
+    router_vulns: []
+    services:
+      - { name: field-entry, vmid_offset: 1, ip: "192.168.100.11", role: "heldout_entry", security_profile: "vulnerable", secondary_ip: "192.168.138.11", secondary_vlan_id: 138, pivot_next_ip: "192.168.138.12" }
+      - { name: zone-relay, vmid_offset: 2, ip: "192.168.138.12", role: "heldout_relay_l1", security_profile: "vulnerable", vlan_id: 138, no_gateway: true, bootstrap_ip: "192.168.100.12", secondary_ip: "192.168.139.12", secondary_vlan_id: 139, pivot_next_ip: "192.168.139.13" }
+      - { name: cell-relay, vmid_offset: 3, ip: "192.168.139.13", role: "heldout_relay_l2", security_profile: "vulnerable", vlan_id: 139, no_gateway: true, bootstrap_ip: "192.168.100.13", secondary_ip: "192.168.140.13", secondary_vlan_id: 140, pivot_next_ip: "192.168.140.14" }
+      - { name: safety-archive, vmid_offset: 4, ip: "192.168.140.14", role: "heldout_asset_l3", security_profile: "vulnerable", vlan_id: 140, no_gateway: true, bootstrap_ip: "192.168.100.14", simulator: "segmented_asset" }
+      - { name: entry-control, vmid_offset: 5, ip: "192.168.100.15", role: "heldout_entry", security_profile: "hardened" }
+      - { name: archive-control, vmid_offset: 6, ip: "192.168.100.16", role: "heldout_asset_l1", security_profile: "hardened", simulator: "segmented_asset" }
+
+  "28":
+    name: "Provisioning Dependency Chain"
+    router_vulns: []
+    services:
+      - { name: discovery-open, vmid_offset: 1, ip: "192.168.100.11", role: "provisioning_discovery", security_profile: "vulnerable", simulator: "provisioning_discovery" }
+      - { name: discovery-control, vmid_offset: 2, ip: "192.168.100.12", role: "provisioning_discovery", security_profile: "hardened", simulator: "provisioning_discovery" }
+      - { name: claim-open, vmid_offset: 3, ip: "192.168.100.13", role: "provisioning_claim", security_profile: "vulnerable", simulator: "provisioning_claim" }
+      - { name: claim-control, vmid_offset: 4, ip: "192.168.100.14", role: "provisioning_claim", security_profile: "hardened", simulator: "provisioning_claim" }
+      - { name: telemetry-open, vmid_offset: 5, ip: "192.168.100.15", role: "provisioning_telemetry", security_profile: "vulnerable", simulator: "provisioning_telemetry" }
+      - { name: telemetry-control, vmid_offset: 6, ip: "192.168.100.16", role: "provisioning_telemetry", security_profile: "hardened", simulator: "provisioning_telemetry" }
+      - { name: maintenance-open, vmid_offset: 7, ip: "192.168.100.17", role: "provisioning_maintenance", security_profile: "vulnerable", simulator: "provisioning_maintenance" }
+      - { name: maintenance-control, vmid_offset: 8, ip: "192.168.100.18", role: "provisioning_maintenance", security_profile: "hardened", simulator: "provisioning_maintenance" }
+
+  "29":
+    name: "Large Sparse Control Network"
+    router_vulns: []
+    services:
+      - { name: mqtt-open, vmid_offset: 1, ip: "192.168.100.11", role: "mqtt_broker", security_profile: "vulnerable" }
+      - { name: web-backup, vmid_offset: 2, ip: "192.168.100.12", role: "web_server", security_profile: "vulnerable" }
+      - { name: redis-open, vmid_offset: 3, ip: "192.168.100.13", role: "db_server_v2", security_profile: "vulnerable" }
+      - { name: mqtt-secure-a, vmid_offset: 4, ip: "192.168.100.14", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-secure-b, vmid_offset: 5, ip: "192.168.100.15", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-secure-c, vmid_offset: 6, ip: "192.168.100.16", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: mqtt-secure-d, vmid_offset: 7, ip: "192.168.100.17", role: "mqtt_broker", security_profile: "hardened" }
+      - { name: web-secure-a, vmid_offset: 8, ip: "192.168.100.18", role: "web_server", security_profile: "hardened" }
+      - { name: web-secure-b, vmid_offset: 9, ip: "192.168.100.19", role: "web_server", security_profile: "hardened" }
+      - { name: web-secure-c, vmid_offset: 10, ip: "192.168.100.20", role: "web_server", security_profile: "hardened" }
+      - { name: web-secure-d, vmid_offset: 11, ip: "192.168.100.21", role: "web_server", security_profile: "hardened" }
+      - { name: web-nearmiss, vmid_offset: 12, ip: "192.168.100.22", role: "web_server", security_profile: "near_miss" }
+      - { name: ssh-secure-a, vmid_offset: 13, ip: "192.168.100.23", role: "ssh_server", security_profile: "hardened" }
+      - { name: ssh-secure-b, vmid_offset: 14, ip: "192.168.100.24", role: "ssh_server", security_profile: "hardened" }
+      - { name: ssh-secure-c, vmid_offset: 15, ip: "192.168.100.25", role: "ssh_server", security_profile: "hardened" }
+      - { name: ssh-secure-d, vmid_offset: 16, ip: "192.168.100.26", role: "ssh_server", security_profile: "hardened" }
+      - { name: redis-secure-a, vmid_offset: 17, ip: "192.168.100.27", role: "db_server_v2", security_profile: "hardened" }
+      - { name: redis-secure-b, vmid_offset: 18, ip: "192.168.100.28", role: "db_server_v2", security_profile: "hardened" }
+      - { name: redis-secure-c, vmid_offset: 19, ip: "192.168.100.29", role: "db_server_v2", security_profile: "hardened" }
+      - { name: redis-secure-d, vmid_offset: 20, ip: "192.168.100.30", role: "db_server_v2", security_profile: "hardened" }
 
 # Playbooks use the merged variables below. The original S1-S13 maps stay in
 # main.yml for backward compatibility with existing master installations.

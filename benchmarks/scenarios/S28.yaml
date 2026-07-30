@@ -1,0 +1,24 @@
+schema_version: 2
+scenario_id: '28'
+name: Provisioning Dependency Chain
+difficulty: expert
+posture: mixed
+topology: heldout_provisioning_chain
+packs: [f21_provisioning_chain]
+attack_paths:
+- id: AP28-PROVISIONING
+  name: Discovery disclosure to unauthorized maintenance
+  title: Ordered provisioning dependency chain on a flat network
+  chain:
+  - {hop: 1, device: s28-discovery-open, action: Recover the discovery enrollment code from the open discovery service}
+  - {hop: 2, device: s28-claim-open, action: Replay the discovery code against the claim service}
+  - {hop: 3, device: s28-telemetry-open, action: Recover the telemetry signing key using the claimed identity}
+  - {hop: 4, device: s28-maintenance-open, action: Bypass maintenance authorization with the recovered telemetry key}
+  vulnerabilities_used:
+  - F21-DISCOVERY-CODE@s28-discovery-open
+  - F21-CLAIM-REPLAY@s28-claim-open
+  - F21-TELEMETRY-KEY@s28-telemetry-open
+  - F21-MAINTENANCE-BYPASS@s28-maintenance-open
+  length: 4
+  impact: critical
+bonus_types: []

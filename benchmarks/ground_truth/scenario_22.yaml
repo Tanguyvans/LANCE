@@ -1,0 +1,238 @@
+scenario_id: '22'
+scenario_name: Exploit Primitive Diversity
+difficulty: expert
+description: Exploit Primitive Diversity — Four deterministic application exploit
+  primitives each paired with a hardened comparator
+topology:
+  router:
+    name: s22-router
+    vmid: 470
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s22-auth-bypass
+    vmid: 471
+    ip: 192.168.100.11
+    role: exploit_auth_server
+    security_profile: vulnerable
+    simulator: exploit_auth
+  - name: s22-auth-control
+    vmid: 472
+    ip: 192.168.100.12
+    role: exploit_auth_server
+    security_profile: hardened
+    simulator: exploit_auth
+  - name: s22-files-traversal
+    vmid: 473
+    ip: 192.168.100.13
+    role: exploit_files_server
+    security_profile: vulnerable
+    simulator: exploit_files
+  - name: s22-files-control
+    vmid: 474
+    ip: 192.168.100.14
+    role: exploit_files_server
+    security_profile: hardened
+    simulator: exploit_files
+  - name: s22-command-injection
+    vmid: 475
+    ip: 192.168.100.15
+    role: exploit_command_server
+    security_profile: vulnerable
+    simulator: exploit_command
+  - name: s22-command-control
+    vmid: 476
+    ip: 192.168.100.16
+    role: exploit_command_server
+    security_profile: hardened
+    simulator: exploit_command
+  - name: s22-privilege-escalation
+    vmid: 477
+    ip: 192.168.100.17
+    role: exploit_privilege_server
+    security_profile: vulnerable
+    simulator: exploit_privilege
+  - name: s22-privilege-control
+    vmid: 478
+    ip: 192.168.100.18
+    role: exploit_privilege_server
+    security_profile: hardened
+    simulator: exploit_privilege
+vulnerabilities:
+- id: F18-AUTH-BYPASS@s22-auth-bypass
+  device: s22-auth-bypass
+  ip: 192.168.100.11
+  role: exploit_auth_server
+  security_profile: vulnerable
+  template_key: F18-AUTH-BYPASS
+  title: Structured login value bypasses authentication
+  severity: high
+  category: auth_bypass
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - broken_access_control
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /login
+  exploit_eligible: true
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: A JSON operator fixture is interpreted as a match-all password condition.
+  indicators:
+  - POST /login with the documented operator object returns operator-token-s22
+  verification: POST the bounded JSON operator fixture to http://192.168.100.11:8080/login
+  confidence_required: high
+- id: F18-PATH-TRAVERSAL@s22-files-traversal
+  device: s22-files-traversal
+  ip: 192.168.100.13
+  role: exploit_files_server
+  security_profile: vulnerable
+  template_key: F18-PATH-TRAVERSAL
+  title: File API permits bounded path traversal
+  severity: high
+  category: data_exposure
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /files
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The simulator maps ../device-secret to a fixed non-filesystem marker.
+  indicators:
+  - GET /files?path=../../etc/device-secret returns DEVICE-SECRET-S22
+  verification: request the bounded traversal fixture from http://192.168.100.13:8080/files
+  confidence_required: high
+- id: F18-COMMAND-INJECTION@s22-command-injection
+  device: s22-command-injection
+  ip: 192.168.100.15
+  role: exploit_command_server
+  security_profile: vulnerable
+  template_key: F18-COMMAND-INJECTION
+  title: Diagnostics parameter permits simulated command injection
+  severity: critical
+  category: code_injection
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - code_injection
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /diagnostics
+  exploit_eligible: true
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: A separator in the diagnostics target triggers a fixed uid marker;
+    no shell command is executed.
+  indicators:
+  - POST /diagnostics with target 127.0.0.1;id returns uid=1000(iotdiag)
+  verification: submit the bounded marker payload to http://192.168.100.15:8080/diagnostics
+  confidence_required: high
+- id: F18-PRIVILEGE-OVERRIDE@s22-privilege-escalation
+  device: s22-privilege-escalation
+  ip: 192.168.100.17
+  role: exploit_privilege_server
+  security_profile: vulnerable
+  template_key: F18-PRIVILEGE-OVERRIDE
+  title: Job API accepts an unauthorized privileged role override
+  severity: critical
+  category: privilege_escalation
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - privilege_escalation
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /jobs
+  exploit_eligible: true
+  owasp_iot: I3 - Insecure Ecosystem Interfaces
+  description: A low-privilege token can create a root-maintenance job by supplying
+    role=admin.
+  indicators:
+  - POST /jobs with the fixture token and role admin returns effective_role root-maintenance
+  verification: submit the bounded role override to http://192.168.100.17:8080/jobs
+  confidence_required: high
+attack_paths: []
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 0
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 14
+  total_controls: 4
+bonus_types: []
+controls:
+- id: C18-AUTH-OPERATOR-REJECTED@s22-auth-control
+  device: s22-auth-control
+  ip: 192.168.100.12
+  role: exploit_auth_server
+  security_profile: hardened
+  template_key: C18-AUTH-OPERATOR-REJECTED
+  assertion: structured_login_operator_rejected
+  forbidden_types:
+  - broken_access_control
+  description: The hardened login requires scalar credentials and rejects the operator
+    object.
+  verification: the same POST to http://192.168.100.12:8080/login returns 401
+- id: C18-TRAVERSAL-REJECTED@s22-files-control
+  device: s22-files-control
+  ip: 192.168.100.14
+  role: exploit_files_server
+  security_profile: hardened
+  template_key: C18-TRAVERSAL-REJECTED
+  assertion: path_traversal_rejected
+  forbidden_types:
+  - data_exposure
+  description: The hardened file API rejects parent-directory components.
+  verification: the same GET to http://192.168.100.14:8080/files returns 403
+- id: C18-COMMAND-REJECTED@s22-command-control
+  device: s22-command-control
+  ip: 192.168.100.16
+  role: exploit_command_server
+  security_profile: hardened
+  template_key: C18-COMMAND-REJECTED
+  assertion: command_separator_rejected
+  forbidden_types:
+  - code_injection
+  description: The hardened diagnostics API accepts only IP literals.
+  verification: the same POST to http://192.168.100.16:8080/diagnostics returns 400
+- id: C18-ROLE-OVERRIDE-REJECTED@s22-privilege-control
+  device: s22-privilege-control
+  ip: 192.168.100.18
+  role: exploit_privilege_server
+  security_profile: hardened
+  template_key: C18-ROLE-OVERRIDE-REJECTED
+  assertion: privileged_role_override_rejected
+  forbidden_types:
+  - privilege_escalation
+  description: The hardened job API refuses a privileged role for the low-privilege
+    fixture token.
+  verification: the same POST to http://192.168.100.18:8080/jobs returns 403

@@ -1,0 +1,9 @@
+schema_version: 2
+scenario_id: '21'
+name: Sparse Low-Prevalence Network
+difficulty: hard
+posture: sparse
+topology: sparse_low_prevalence
+packs: [f17_sparse_low_prevalence]
+attack_paths: []
+bonus_types: []

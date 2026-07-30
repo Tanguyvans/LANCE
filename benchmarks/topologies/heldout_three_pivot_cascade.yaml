@@ -1,0 +1,16 @@
+id: heldout_three_pivot_cascade
+name: Three-Pivot Cascade
+description: Three successive SSH pivots are required before an isolated safety archive becomes reachable
+base_vmid: 580
+router: {name_template: 's{sid}-router', type: openwrt, ip: 192.168.100.1, security_profile: hardened}
+services:
+- {name_template: 's{sid}-field-entry', vmid_offset: 1, ip: 192.168.100.11, role: heldout_entry, security_profile: vulnerable, secondary_ip: 192.168.138.11, secondary_vlan_id: 138, pivot_next_ip: 192.168.138.12}
+- {name_template: 's{sid}-zone-relay', vmid_offset: 2, ip: 192.168.138.12, role: heldout_relay_l1, security_profile: vulnerable, vlan_id: 138, no_gateway: true, bootstrap_ip: 192.168.100.12, secondary_ip: 192.168.139.12, secondary_vlan_id: 139, pivot_next_ip: 192.168.139.13}
+- {name_template: 's{sid}-cell-relay', vmid_offset: 3, ip: 192.168.139.13, role: heldout_relay_l2, security_profile: vulnerable, vlan_id: 139, no_gateway: true, bootstrap_ip: 192.168.100.13, secondary_ip: 192.168.140.13, secondary_vlan_id: 140, pivot_next_ip: 192.168.140.14}
+- {name_template: 's{sid}-safety-archive', vmid_offset: 4, ip: 192.168.140.14, role: heldout_asset_l3, security_profile: vulnerable, vlan_id: 140, no_gateway: true, bootstrap_ip: 192.168.100.14, simulator: segmented_asset}
+- {name_template: 's{sid}-entry-control', vmid_offset: 5, ip: 192.168.100.15, role: heldout_entry, security_profile: hardened}
+- {name_template: 's{sid}-archive-control', vmid_offset: 6, ip: 192.168.100.16, role: heldout_asset_l1, security_profile: hardened, simulator: segmented_asset}
+links:
+- {source: 's{sid}-field-entry', target: 's{sid}-zone-relay', protocol: ssh, enforcement: vlan-138}
+- {source: 's{sid}-zone-relay', target: 's{sid}-cell-relay', protocol: ssh, enforcement: vlan-139}
+- {source: 's{sid}-cell-relay', target: 's{sid}-safety-archive', protocol: http, enforcement: vlan-140}

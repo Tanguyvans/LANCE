@@ -1,0 +1,231 @@
+scenario_id: '27'
+scenario_name: Three-Pivot Cascade
+difficulty: expert
+description: Three-Pivot Cascade — Three successive SSH pivots are required before
+  an isolated safety archive becomes reachable
+topology:
+  router:
+    name: s27-router
+    vmid: 580
+    ip: 192.168.100.1
+    type: openwrt
+  services:
+  - name: s27-field-entry
+    vmid: 581
+    ip: 192.168.100.11
+    role: heldout_entry
+    security_profile: vulnerable
+  - name: s27-zone-relay
+    vmid: 582
+    ip: 192.168.138.12
+    role: heldout_relay_l1
+    security_profile: vulnerable
+    vlan_id: 138
+  - name: s27-cell-relay
+    vmid: 583
+    ip: 192.168.139.13
+    role: heldout_relay_l2
+    security_profile: vulnerable
+    vlan_id: 139
+  - name: s27-safety-archive
+    vmid: 584
+    ip: 192.168.140.14
+    role: heldout_asset_l3
+    security_profile: vulnerable
+    vlan_id: 140
+    simulator: segmented_asset
+  - name: s27-entry-control
+    vmid: 585
+    ip: 192.168.100.15
+    role: heldout_entry
+    security_profile: hardened
+  - name: s27-archive-control
+    vmid: 586
+    ip: 192.168.100.16
+    role: heldout_asset_l1
+    security_profile: hardened
+    simulator: segmented_asset
+vulnerabilities:
+- id: F20-PIVOT-ENTRY@s27-field-entry
+  device: s27-field-entry
+  ip: 192.168.100.11
+  role: heldout_entry
+  security_profile: vulnerable
+  template_key: F20-PIVOT-ENTRY
+  title: Internet-facing jump host accepts benchmark default credentials
+  severity: high
+  category: default_credentials
+  hop_depth: 0
+  network_pivot_depth: 0
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - weak_authentication
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The reachable jump host accepts the scenario-specific public fixture
+    credential and exposes the next segment address.
+  indicators:
+  - SSH password login succeeds
+  - /etc/iot/next-hop.conf identifies an isolated subnet
+  verification: authenticate to 192.168.100.11:22 with the documented S24-S27 fixture
+    account
+  confidence_required: high
+- id: F20-PIVOT-RELAY-L1@s27-zone-relay
+  device: s27-zone-relay
+  ip: 192.168.138.12
+  role: heldout_relay_l1
+  security_profile: vulnerable
+  template_key: F20-PIVOT-RELAY-L1
+  title: First isolated relay reuses the pivot credential
+  severity: high
+  category: default_credentials
+  hop_depth: 1
+  network_pivot_depth: 1
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - credential_reuse
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The relay is unreachable from the initial scope and accepts the same
+    bounded fixture credential after one enforced pivot.
+  indicators:
+  - Direct TCP reachability is absent
+  - SSH login succeeds from the preceding pivot
+  verification: pivot through the entry host and authenticate to 192.168.138.12:22
+  confidence_required: high
+- id: F20-PIVOT-RELAY-L2@s27-cell-relay
+  device: s27-cell-relay
+  ip: 192.168.139.13
+  role: heldout_relay_l2
+  security_profile: vulnerable
+  template_key: F20-PIVOT-RELAY-L2
+  title: Second isolated relay reuses the pivot credential
+  severity: critical
+  category: default_credentials
+  hop_depth: 2
+  network_pivot_depth: 2
+  dependency_depth: 0
+  accepted_types:
+  - default_credentials
+  - credential_reuse
+  services:
+  - ssh
+  ports:
+  - 22
+  protocols:
+  - tcp
+  exploit_eligible: true
+  owasp_iot: I1 - Weak Guessable or Hardcoded Passwords
+  description: The second relay becomes reachable only after two distinct L2 transitions
+    and reuses the fixture password.
+  indicators:
+  - Two preceding pivots are required
+  - SSH password login succeeds
+  verification: traverse two pivots and authenticate to 192.168.139.13:22
+  confidence_required: high
+- id: F20-ASSET-L3@s27-safety-archive
+  device: s27-safety-archive
+  ip: 192.168.140.14
+  role: heldout_asset_l3
+  security_profile: vulnerable
+  template_key: F20-ASSET-L3
+  title: Three-pivot safety archive exports data without authentication
+  severity: critical
+  category: data_exposure
+  hop_depth: 3
+  network_pivot_depth: 3
+  dependency_depth: 0
+  accepted_types:
+  - data_exposure
+  - no_authentication
+  services:
+  - http
+  ports:
+  - 8080
+  protocols:
+  - tcp
+  endpoints:
+  - /export
+  exploit_eligible: true
+  owasp_iot: I7 - Insecure Data Transfer and Storage
+  description: The safety archive is reachable only after three enforced pivots and
+    serves a bounded marker.
+  indicators:
+  - GET /export returns SEGMENTED-ASSET after three pivots
+  verification: retrieve http://192.168.140.14:8080/export through three pivots
+  confidence_required: high
+attack_paths:
+- id: AP27-CASCADE
+  name: Three pivots to the isolated safety archive
+  title: Three network pivots to the isolated safety archive
+  chain:
+  - hop: 1
+    device: s27-field-entry
+    action: Authenticate to the directly reachable field entry host
+  - hop: 2
+    device: s27-zone-relay
+    action: Pivot from the field entry host to the zone relay
+  - hop: 3
+    device: s27-cell-relay
+    action: Pivot from the zone relay to the cell relay
+  - hop: 4
+    device: s27-safety-archive
+    action: Pivot from the cell relay to the isolated safety archive
+  vulnerabilities_used:
+  - F20-PIVOT-RELAY-L1@s27-zone-relay
+  - F20-PIVOT-RELAY-L2@s27-cell-relay
+  - F20-ASSET-L3@s27-safety-archive
+  length: 4
+  impact: critical
+scoring:
+  total_vulnerabilities: 4
+  total_attack_paths: 1
+  weights:
+    critical: 4
+    high: 3
+    medium: 2
+    low: 1
+  max_weighted_score: 14
+  total_controls: 2
+bonus_types: []
+controls:
+- id: C20-PIVOT-PASSWORD-OFF@s27-entry-control
+  device: s27-entry-control
+  ip: 192.168.100.15
+  role: heldout_entry
+  security_profile: hardened
+  template_key: C20-PIVOT-PASSWORD-OFF
+  assertion: pivot_password_authentication_disabled
+  forbidden_types:
+  - default_credentials
+  - weak_authentication
+  description: The comparator remains reachable but offers public-key authentication
+    only.
+  verification: SSH authentication methods on 192.168.100.15:22 omit password
+- id: C20-ASSET-L1-AUTH@s27-archive-control
+  device: s27-archive-control
+  ip: 192.168.100.16
+  role: heldout_asset_l1
+  security_profile: hardened
+  template_key: C20-ASSET-L1-AUTH
+  assertion: isolated_export_requires_authentication
+  forbidden_types:
+  - data_exposure
+  - no_authentication
+  description: The reachable comparator returns an authentication challenge for the
+    export route.
+  verification: GET http://192.168.100.16:8080/export returns 401

@@ -15,6 +15,62 @@
 
   tasks:
 
+    - name: Vérifier que le VMID routeur appartient au scénario avant suppression
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid={{ base_vmid }}
+        expected='s{{ scenario_id }}-router'
+        if qm status "$vmid" >/dev/null 2>&1; then
+          actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
+          [ "$actual" = "$expected" ] || {
+            echo "REFUS: VMID $vmid appartient à la VM '$actual', attendu '$expected'" >&2
+            exit 1
+          }
+        elif pct status "$vmid" >/dev/null 2>&1; then
+          actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+          echo "REFUS: VMID $vmid appartient au CT '$actual', attendu la VM '$expected'" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      register: teardown_router_owner_check
+      changed_when: false
+      failed_when: false
+
+    - name: Vérifier les VMID services avant suppression
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid={{ base_vmid | int + item.vmid_offset }}
+        expected='s{{ scenario_id }}-{{ item.name }}'
+        if pct status "$vmid" >/dev/null 2>&1; then
+          actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+          [ "$actual" = "$expected" ] || {
+            echo "REFUS: VMID $vmid appartient au CT '$actual', attendu '$expected'" >&2
+            exit 1
+          }
+        elif qm status "$vmid" >/dev/null 2>&1; then
+          actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
+          echo "REFUS: VMID $vmid appartient à la VM '$actual', attendu le CT '$expected'" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      register: teardown_service_owner_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer le teardown si le routeur n'appartient pas au scénario
+      ansible.builtin.fail:
+        msg: "{{ teardown_router_owner_check.stderr | default(teardown_router_owner_check.stdout) }}"
+      when: teardown_router_owner_check.rc != 0
+
+    - name: Bloquer le teardown si un service n'appartient pas au scénario
+      ansible.builtin.fail:
+        msg: "{{ item.stderr | default(item.stdout) }}"
+      loop: "{{ teardown_service_owner_checks.results }}"
+      when: item.rc != 0
+
     - name: Arrêter toutes les VMs KVM du scénario
       ansible.builtin.command: qm stop {{ item }} --skiplock
       failed_when: false

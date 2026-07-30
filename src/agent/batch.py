@@ -19,9 +19,9 @@ class SealedScenarioError(ValueError):
 
 def _available_scenarios() -> list[str]:
     """Return deployable public scenarios, including legacy hardened variants."""
-    from src.benchmark.catalog import DEV_PUBLIC, list_scenarios
+    from src.benchmark.catalog import list_scenarios
 
-    ids = [item.id for item in list_scenarios(DEV_PUBLIC)]
+    ids = [item.id for item in list_scenarios() if not item.sealed]
     variants = [
         path.stem.removeprefix("scenario_")
         for path in GT_DIR.glob("scenario_*.yaml")
@@ -50,7 +50,10 @@ def _parse_scenario_ids(batch_arg: str) -> list[str]:
         return _available_scenarios()
     from src.benchmark.catalog import CatalogError, load_catalog
 
-    if selector not in {"dev", "dev-public", "eval", "eval-sealed"}:
+    if selector not in {
+        "dev", "dev-public", "test", "test-public", "public",
+        "eval", "eval-sealed",
+    }:
         resolved: list[str] = []
         for raw in selector.split(","):
             sid = raw.strip().removeprefix("s")
