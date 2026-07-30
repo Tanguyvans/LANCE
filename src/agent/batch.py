@@ -119,6 +119,34 @@ def _parse_single_scenario_id(value: int | str) -> str:
     return scenario_ids[0]
 
 
+def _load_scenario_footholds(scenario_id: int | str) -> list[dict] | None:
+    """Return the optional explicit footholds declared by a public scenario.
+
+    A scenario YAML may declare ``initial_credentials:`` — benchmark-provided
+    Phase 5 footholds, injected as explicit entry credentials rather than
+    findings. Absent key (the common case) means no footholds.
+    """
+    import yaml
+
+    path = ROOT / "benchmarks" / "scenarios" / f"S{scenario_id}.yaml"
+    if not path.exists():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError:
+        return None
+    credentials = data.get("initial_credentials")
+    if credentials is None:
+        return None
+    if not isinstance(credentials, list) or not all(
+        isinstance(item, dict) for item in credentials
+    ):
+        raise ValueError(
+            f"S{scenario_id}: initial_credentials must be a list of objects"
+        )
+    return credentials
+
+
 def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
     """Return stable per-run metrics with the strict-v3 scenario score as primary."""
     specificity = evaluation.specificity
@@ -379,6 +407,7 @@ def run_batch(
                 blind=blind,
                 benchmark_split=scenario_split,
                 execution_profile=execution_profile,
+                initial_credentials=_load_scenario_footholds(sid),
             )
             run_results = pipeline.run()
         except Exception as exc:

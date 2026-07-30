@@ -71,6 +71,8 @@ class StartRequest(BaseModel):
     selected_packs: list[str] | None = None
     excluded_vulns: list[str] | None = None  # vuln IDs to exclude from GT
     execution_profile: Literal["auto", "compact", "full"] = "auto"
+    # Explicit Phase 5 footholds (benchmark-provided entry credentials)
+    initial_credentials: list[dict] | None = None
 
 
 def _pipeline_thread(req: StartRequest):
@@ -112,6 +114,7 @@ def _pipeline_thread(req: StartRequest):
             target_network=req.target_network,
             blind=req.blind,
             execution_profile=req.execution_profile,
+            initial_credentials=req.initial_credentials,
         )
 
         def callback(event: dict):
@@ -282,6 +285,9 @@ class BatchRequest(BaseModel):
     phases: list[int] | None = None
     blind: bool = False        # Deploy each scenario but hide topology from agent
     execution_profile: Literal["auto", "compact", "full"] = "auto"
+    # Explicit Phase 5 footholds applied to every scenario in the batch; a
+    # scenario YAML's own initial_credentials take precedence when declared.
+    initial_credentials: list[dict] | None = None
 
 
 def _batch_thread(req: BatchRequest):
@@ -293,6 +299,7 @@ def _batch_thread(req: BatchRequest):
         from src.agent.batch import (
             _aggregate_batch_results,
             _evaluation_metrics,
+            _load_scenario_footholds,
             _public_scenario_split,
             _parse_scenario_ids,
         )
@@ -360,6 +367,9 @@ def _batch_thread(req: BatchRequest):
                     benchmark_split=scenario_split,
                     execution_profile=req.execution_profile,
                     manage_scenario=not default_export_store().exists(sid),
+                    initial_credentials=(
+                        _load_scenario_footholds(sid) or req.initial_credentials
+                    ),
                 )
                 pipeline.run(
                     stream_callback=make_callback(sid),

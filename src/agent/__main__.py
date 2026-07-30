@@ -13,6 +13,41 @@ from src.agent.provider import LLMProvider
 from src.agent.pipeline import Pipeline
 
 
+def _parse_initial_credentials(args, parser) -> list[dict] | None:
+    """Parse --initial-credentials into a list of foothold dicts.
+
+    Accepts an inline JSON array or @path/to/file.json. Structural validation
+    (literal IPs, allowed services, port ranges) happens in
+    Pipeline._sanitize_initial_credentials; here we only guarantee a list of
+    objects so invalid input fails before any provider is constructed.
+    """
+    raw = args.initial_credentials
+    if raw is None:
+        return None
+    if args.batch is not None:
+        parser.error(
+            "--initial-credentials cannot be combined with --batch; declare "
+            'per-scenario "initial_credentials" in the scenario YAML instead'
+        )
+    import json as _json
+
+    text = raw
+    if raw.startswith("@"):
+        from pathlib import Path as _Path
+
+        try:
+            text = _Path(raw[1:]).read_text()
+        except OSError as exc:
+            parser.error(f"cannot read initial credentials file: {exc}")
+    try:
+        parsed = _json.loads(text)
+    except _json.JSONDecodeError as exc:
+        parser.error(f"--initial-credentials is not valid JSON: {exc}")
+    if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
+        parser.error("--initial-credentials must be a JSON array of objects")
+    return parsed
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="NATO Smart City IoT — Pentest Agent Pipeline"
@@ -80,6 +115,16 @@ def main():
         default="auto",
         help="Benchmark split policy. No current 3.2 scenario uses eval-sealed.",
     )
+    parser.add_argument(
+        "--initial-credentials",
+        default=None,
+        metavar="JSON|@FILE",
+        help=(
+            "Explicit foothold credentials for Phase 5, as a JSON array or "
+            "@path/to/file.json. Each entry needs ip, user, password and "
+            "optionally service/port/device_id. Single-scenario runs only."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -97,6 +142,8 @@ def main():
             "eval-sealed runs must be launched through the sealed controller; "
             "the regular CLI has no oracle or deployment access"
         )
+
+    initial_credentials = _parse_initial_credentials(args, parser)
 
     normalized_batch: str | None = None
     if args.batch is not None:
@@ -147,6 +194,7 @@ def main():
         target_network=args.target_network,
         benchmark_split=resolved_split,
         execution_profile=args.execution_profile,
+        initial_credentials=initial_credentials,
     )
     results = pipeline.run()
 
