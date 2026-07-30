@@ -3105,3 +3105,164 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["confirmed"] == 1
         assert aggregate["summary"]["errors"] == 0
         assert aggregate["tests"][0]["evidence_refs"] == ["tc-phase4-telnet"]
+
+
+
+# ── Initial credentials (explicit Phase 5 footholds) ─────────────────────────
+
+class TestSanitizeInitialCredentials:
+    def test_valid_credentials_get_default_ports_and_dedup(self):
+        creds = Pipeline._sanitize_initial_credentials([
+            {"ip": "192.168.100.11", "user": "admin", "password": "s3cret"},
+            {"ip": "192.168.100.12", "user": "root", "password": "toor",
+             "service": "redis"},
+            {"ip": "192.168.100.11", "user": "admin", "password": "s3cret"},
+        ])
+        assert len(creds) == 2
+        assert creds[0]["service"] == "ssh"
+        assert creds[0]["port"] == 22
+        assert creds[1]["port"] == 6379
+
+    def test_hostname_is_rejected(self):
+        with pytest.raises(ValueError, match="literal IP"):
+            Pipeline._sanitize_initial_credentials([
+                {"ip": "entry.internal", "user": "admin", "password": "x"},
+            ])
+
+    def test_missing_password_is_rejected(self):
+        with pytest.raises(ValueError, match="user and password"):
+            Pipeline._sanitize_initial_credentials([
+                {"ip": "192.168.100.11", "user": "admin"},
+            ])
+
+    def test_unsupported_service_is_rejected(self):
+        with pytest.raises(ValueError, match="unsupported service"):
+            Pipeline._sanitize_initial_credentials([
+                {"ip": "192.168.100.11", "user": "admin", "password": "x",
+                 "service": "smb"},
+            ])
+
+    def test_invalid_port_is_rejected(self):
+        with pytest.raises(ValueError, match="port"):
+            Pipeline._sanitize_initial_credentials([
+                {"ip": "192.168.100.11", "user": "admin", "password": "x",
+                 "port": 70000},
+            ])
+
+    def test_non_object_entry_is_rejected(self):
+        with pytest.raises(ValueError, match="must be an object"):
+            Pipeline._sanitize_initial_credentials(["not-a-dict"])
+
+
+# ── Multi-hop chain synthesis from pivot tool provenance ─────────────────────
+
+def _bare_pipeline(run_dir: Path) -> Pipeline:
+    """Return a Pipeline shell sufficient for artifact-level helpers."""
+    import threading
+
+    pipeline = Pipeline.__new__(Pipeline)
+    pipeline.run_dir = run_dir
+    pipeline._artifact_log_lock = threading.Lock()
+    pipeline._tool_call_count = 0
+    pipeline.max_tool_calls = None
+    return pipeline
+
+
+def _pivot_log_record(chain_ips, *, tool="pivot_ssh_exec", stdout="uid=0(root)"):
+    chain = [{"ip": ip, "user": "u", "port": 22} for ip in chain_ips]
+    return {
+        "tool": tool,
+        "phase": 5,
+        "args": {"jump_chain": json.dumps(chain)},
+        "result": json.dumps({
+            "success": True,
+            "return_code": 0,
+            "stdout": stdout,
+            "network_provenance": {
+                "schema_version": "1",
+                "transport": "ssh-chain",
+                "jump_chain": chain,
+                "source_vantage": chain_ips[-2] if len(chain_ips) > 1 else "worker",
+                "target_ip": chain_ips[-1],
+                "target_port": 22,
+                "network_pivot_depth": len(chain_ips) - 1,
+            },
+        }),
+    }
+
+
+class TestIntrusionSynthesisFromPivotTools:
+    def test_pivot_provenance_builds_ordered_multi_hop_chain(self, tmp_path):
+        (tmp_path / "tool_calls.jsonl").write_text(
+            json.dumps(_pivot_log_record(
+                ["192.168.100.11", "192.168.110.12", "192.168.120.13"],
+            )) + "\n"
+        )
+        data = _bare_pipeline(tmp_path)._synthesize_intrusion_from_tools()
+
+        assert data["summary"]["devices_compromised"] == 3
+        chain = data["chains"][0]
+        assert [hop["device_ip"] for hop in chain["hops"]] == [
+            "192.168.100.11", "192.168.110.12", "192.168.120.13",
+        ]
+        assert chain["hops"][0]["pivot_to"] == "192.168.110.12"
+        assert chain["hops"][1]["pivot_to"] == "192.168.120.13"
+        assert chain["hops"][2]["pivot_to"] is None
+        assert chain["hops"][0]["access_method"] == "pivot_ssh_exec"
+        by_ip = {d["device_ip"]: d for d in data["compromised_devices"]}
+        assert by_ip["192.168.100.11"]["access_via"] == "entry_point"
+        assert by_ip["192.168.110.12"]["access_via"] == "192.168.100.11"
+        assert by_ip["192.168.120.13"]["access_via"] == "192.168.110.12"
+
+    def test_synthesized_output_contains_no_password(self, tmp_path):
+        record = _pivot_log_record(["192.168.100.11", "192.168.110.12"])
+        record["args"]["jump_chain"] = json.dumps([
+            {"ip": "192.168.100.11", "user": "u", "port": 22},
+            {"ip": "192.168.110.12", "user": "u", "port": 22},
+        ])
+        (tmp_path / "tool_calls.jsonl").write_text(json.dumps(record) + "\n")
+        data = _bare_pipeline(tmp_path)._synthesize_intrusion_from_tools()
+        assert "password" not in json.dumps(data["chains"])
+        assert "password" not in json.dumps(data["compromised_devices"])
+
+    def test_failed_pivot_calls_do_not_create_hops(self, tmp_path):
+        record = _pivot_log_record(["192.168.100.11", "192.168.110.12"])
+        record["result"] = json.dumps({"success": False, "return_code": 1})
+        (tmp_path / "tool_calls.jsonl").write_text(json.dumps(record) + "\n")
+        data = _bare_pipeline(tmp_path)._synthesize_intrusion_from_tools()
+        assert data["summary"]["devices_compromised"] == 0
+
+
+class TestPivotToolLogRedaction:
+    def test_logged_jump_chain_strips_passwords(self, tmp_path):
+        pipeline = _bare_pipeline(tmp_path)
+        chain = json.dumps([
+            {"ip": "192.168.100.11", "user": "admin", "password": "entry-secret"},
+            {"ip": "192.168.110.12", "user": "relay", "password": "relay-secret"},
+        ])
+        wrapped = pipeline._wrap_tool({
+            "name": "pivot_ssh_exec",
+            "function": lambda **kwargs: json.dumps({"success": True}),
+        }, phase=5)
+        wrapped["function"](jump_chain=chain, command="id")
+
+        logged = (tmp_path / "tool_calls.jsonl").read_text()
+        assert "entry-secret" not in logged
+        assert "relay-secret" not in logged
+        entry = json.loads(logged.strip())
+        logged_chain = json.loads(entry["args"]["jump_chain"])
+        assert [hop["ip"] for hop in logged_chain] == [
+            "192.168.100.11", "192.168.110.12",
+        ]
+        assert all("password" not in hop for hop in logged_chain)
+
+    def test_non_pivot_tools_keep_full_args(self, tmp_path):
+        pipeline = _bare_pipeline(tmp_path)
+        wrapped = pipeline._wrap_tool({
+            "name": "ssh_exec",
+            "function": lambda **kwargs: json.dumps({"success": True}),
+        }, phase=5)
+        wrapped["function"](ip="192.168.100.11", user="admin", password="s3cret",
+                            command="id")
+        entry = json.loads((tmp_path / "tool_calls.jsonl").read_text().strip())
+        assert entry["args"]["password"] == "s3cret"

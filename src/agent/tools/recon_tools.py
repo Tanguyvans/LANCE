@@ -10,6 +10,7 @@ All subprocess tools return {stdout, stderr, return_code} as JSON.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -204,6 +205,197 @@ def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) ->
         result["stderr"] = result["stderr"][:4000] + "\n...[TRUNCATED]"
         
     result["success"] = result["return_code"] == 0
+    return json.dumps(result)
+
+
+_PIVOT_USER_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,64}$")
+
+
+def _pivot_error(message: str) -> str:
+    """Return a consistently shaped, non-throwing pivot tool error."""
+    return json.dumps({"success": False, "error": message})
+
+
+def _validate_pivot_port(value: object, *, default: int) -> int:
+    try:
+        port = int(default if value is None else value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError("port must be between 1 and 65535")
+    return port
+
+
+def _parse_jump_chain(jump_chain: str) -> list[dict]:
+    """Parse and validate an explicit SSH jump chain.
+
+    Literal IP addresses are deliberately required.  This keeps the chain
+    auditable and prevents a benchmark prompt from turning a pivot request
+    into an implicit DNS lookup or shell fragment.
+    """
+    try:
+        raw = json.loads(jump_chain)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ValueError("jump_chain must be a JSON array") from exc
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 8:
+        raise ValueError("jump_chain must contain between 1 and 8 hops")
+
+    chain: list[dict] = []
+    for index, hop in enumerate(raw, start=1):
+        if not isinstance(hop, dict):
+            raise ValueError(f"jump_chain hop {index} must be an object")
+        ip = str(hop.get("ip", "")).strip()
+        user = str(hop.get("user", "")).strip()
+        password = hop.get("password")
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError as exc:
+            raise ValueError(f"jump_chain hop {index} requires a literal IP address") from exc
+        if not _PIVOT_USER_RE.fullmatch(user):
+            raise ValueError(f"jump_chain hop {index} has an invalid user")
+        if not isinstance(password, str) or not password or len(password) > 512:
+            raise ValueError(f"jump_chain hop {index} has an invalid password")
+        chain.append({
+            "ip": ip,
+            "user": user,
+            "password": password,
+            "port": _validate_pivot_port(hop.get("port"), default=22),
+        })
+    return chain
+
+
+def _safe_ssh_command(hop: dict, *, connect_timeout: int) -> list[str]:
+    return [
+        "sshpass", "-p", hop["password"],
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", f"ConnectTimeout={connect_timeout}",
+        "-o", "BatchMode=no",
+        f"-p{hop['port']}",
+        f"{hop['user']}@{hop['ip']}",
+    ]
+
+
+def _build_pivot_command(chain: list[dict], remote_command: str, *, connect_timeout: int = 10) -> list[str]:
+    """Build local -> hop[0] -> ... -> hop[-1] command without shell interpolation."""
+    command = remote_command
+    for hop in reversed(chain[1:]):
+        command = shlex.join(_safe_ssh_command(hop, connect_timeout=connect_timeout) + [command])
+    return _safe_ssh_command(chain[0], connect_timeout=connect_timeout) + [command]
+
+
+def _redact_pivot_secrets(value: str, chain: list[dict]) -> str:
+    redacted = value
+    for hop in chain:
+        password = hop["password"]
+        if password:
+            redacted = redacted.replace(password, "[redacted]")
+    return redacted
+
+
+def _pivot_provenance(
+    chain: list[dict], *, transport: str, target_ip: str, target_port: int, endpoint: str = ""
+) -> dict:
+    """Return password-free, machine-checkable evidence of the network path."""
+    if transport == "ssh-chain":
+        source_vantage = "worker" if len(chain) == 1 else chain[-2]["ip"]
+        depth = max(0, len(chain) - 1)
+    else:
+        source_vantage = chain[-1]["ip"]
+        depth = len(chain)
+    return {
+        "schema_version": "1",
+        "transport": transport,
+        "jump_chain": [
+            {"ip": hop["ip"], "user": hop["user"], "port": hop["port"]}
+            for hop in chain
+        ],
+        "source_vantage": source_vantage,
+        "target_ip": target_ip,
+        "target_port": target_port,
+        "endpoint": endpoint,
+        "network_pivot_depth": depth,
+    }
+
+
+def _trim_pivot_result(result: dict, chain: list[dict]) -> dict:
+    for field, limit in (("stdout", 8000), ("stderr", 4000)):
+        value = result.get(field, "")
+        if isinstance(value, str):
+            value = _redact_pivot_secrets(value, chain)
+            if len(value) > limit:
+                value = value[:limit] + "\n...[TRUNCATED]"
+            result[field] = value
+    return result
+
+
+def pivot_ssh_exec(jump_chain: str, command: str, timeout: int = 30) -> str:
+    """Execute a command through an explicit, auditable SSH jump chain."""
+    try:
+        chain = _parse_jump_chain(jump_chain)
+        if not isinstance(command, str) or not command.strip() or len(command) > 4000:
+            raise ValueError("command must be a non-empty string of at most 4000 characters")
+        run_timeout = max(1, min(int(timeout), 60))
+    except (TypeError, ValueError) as exc:
+        return _pivot_error(str(exc))
+
+    result = _trim_pivot_result(
+        _run(_build_pivot_command(chain, command), timeout=run_timeout), chain
+    )
+    result["success"] = result.get("return_code") == 0
+    result["network_provenance"] = _pivot_provenance(
+        chain,
+        transport="ssh-chain",
+        target_ip=chain[-1]["ip"],
+        target_port=chain[-1]["port"],
+    )
+    return json.dumps(result)
+
+
+def pivot_http_get(jump_chain: str, url: str, timeout: int = 15) -> str:
+    """Fetch an HTTP(S) URL from the final host in an SSH jump chain."""
+    try:
+        chain = _parse_jump_chain(jump_chain)
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("url must be an absolute http or https URL")
+        target_ip = str(parsed.hostname)
+        ipaddress.ip_address(target_ip)
+        target_port = _validate_pivot_port(
+            parsed.port, default=443 if parsed.scheme == "https" else 80
+        )
+        if len(url) > 4000:
+            raise ValueError("url must be at most 4000 characters")
+        run_timeout = max(1, min(int(timeout), 60))
+    except (TypeError, ValueError) as exc:
+        return _pivot_error(str(exc))
+
+    marker = "__HTTP_STATUS__:"
+    curl_command = [
+        "curl", "-sS", "-L",
+        "--connect-timeout", str(min(run_timeout, 15)),
+        "--max-time", str(run_timeout),
+        "-w", f"\\n{marker}%{{http_code}}",
+        url,
+    ]
+    result = _trim_pivot_result(
+        _run(_build_pivot_command(chain, shlex.join(curl_command)), timeout=run_timeout + 5), chain
+    )
+    stdout = result.get("stdout", "")
+    body, sep, status = stdout.rpartition(marker)
+    status_code = int(status.strip()) if sep and status.strip().isdigit() else 0
+    result["stdout"] = body if sep else stdout
+    result["body"] = result["stdout"]
+    result["status_code"] = status_code
+    result["success"] = result.get("return_code") == 0 and 200 <= status_code < 300
+    result["network_provenance"] = _pivot_provenance(
+        chain,
+        transport="ssh-chain+http",
+        target_ip=target_ip,
+        target_port=target_port,
+        endpoint=parsed.path or "/",
+    )
     return json.dumps(result)
 
 
@@ -754,6 +946,8 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "modbus_write", modbus_write)
     register_python_handler(tools, "arp_scan", arp_scan)
     register_python_handler(tools, "ssh_exec", ssh_exec)
+    register_python_handler(tools, "pivot_ssh_exec", pivot_ssh_exec)
+    register_python_handler(tools, "pivot_http_get", pivot_http_get)
     register_python_handler(tools, "try_credential", try_credential)
     register_python_handler(tools, "traceroute", traceroute)
     register_python_handler(tools, "python_exec", python_exec)

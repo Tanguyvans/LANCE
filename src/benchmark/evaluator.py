@@ -228,6 +228,13 @@ class MatchResult:
     gt_hop_depth: int = 0
     gt_network_pivot_depth: int = 0
     gt_dependency_depth: int = 0
+    # Pivot-proof audit trail. When the GT entry requires at least one network
+    # pivot (network_pivot_depth >= 1), verification credit is granted only if
+    # a successful pivot tool call demonstrates the required depth in its
+    # password-free ``network_provenance`` record.
+    pivot_proof_required: int = 0
+    pivot_proof_depth: int | None = None
+    pivot_proof_status: str = "not_required"  # not_required | proven | unproven
 
 
 # Types considered "bonus" when found on a device that already has matched vulns.
@@ -1025,6 +1032,7 @@ def _record_implied_ports(record: dict) -> set[int]:
         ports.add(21)
     defaults = {
         "ssh_login": 22, "ssh_exec": 22, "ssh_audit": 22,
+        "pivot_ssh_exec": 22,
         "mqtt_listen": 1883, "mysql_query": 3306, "redis_cmd": 6379,
         "modbus_scan": 502, "telnet_connect": 23,
     }
@@ -1096,6 +1104,7 @@ def _finding_tool_names(finding: dict) -> set[str]:
             "http_get", "http_request", "curl_headers", "ssh_login", "ssh_exec",
             "ssh_audit", "mqtt_listen", "mysql_query", "ftp_list", "redis_cmd",
             "telnet_connect", "modbus_scan", "try_credential", "mtls_request",
+            "pivot_ssh_exec", "pivot_http_get",
         ):
             if re.search(rf"(?<![a-z0-9]){re.escape(known)}(?![a-z0-9])", canonical):
                 names.add(known)
@@ -1178,6 +1187,57 @@ def _matching_tool_calls(finding: dict, tool_calls: list[dict]) -> list[dict]:
         refs = set(finding["_resolved_evidence_refs"])
         return [record for record in tool_calls if record.get("_evidence_ref") in refs]
     return [record for record in tool_calls if _tool_call_matches_finding(finding, record)]
+
+PIVOT_PROOF_TOOLS = {"pivot_ssh_exec", "pivot_http_get"}
+
+
+def _pivot_provenance(record: dict) -> dict | None:
+    """Return the password-free network provenance of a pivot tool call.
+
+    The provenance block is emitted by the pivot tools themselves from the
+    jump chain that was actually executed, so it is machine-checkable evidence
+    of the real network path rather than a declarative claim.
+    """
+    result = _tool_result_data(record)
+    if not isinstance(result, dict):
+        return None
+    provenance = result.get("network_provenance")
+    if not isinstance(provenance, dict):
+        return None
+    if str(provenance.get("schema_version", "")) != "1":
+        return None
+    return provenance
+
+
+def _pivot_depth_proven(record: dict, required_depth: int, target_ip: str) -> bool:
+    """Return whether one tool call proves >= required_depth real pivots.
+
+    A call qualifies only when it is an explicit pivot tool whose executed
+    jump chain ends on the GT target and whose recorded network pivot depth
+    meets or exceeds the depth required by the ground truth. Direct access
+    tools (ssh_exec, try_credential, http_get) never prove a pivot, however
+    successful they are: on a properly segmented deployment they cannot reach
+    the target at all, so a successful direct call contradicts the enforced
+    topology instead of demonstrating multi-hop capability.
+    """
+    if required_depth < 1:
+        return True
+    if _canonical_tool_name(record.get("tool", "")) not in PIVOT_PROOF_TOOLS:
+        return False
+    provenance = _pivot_provenance(record)
+    if provenance is None:
+        return False
+    if str(provenance.get("target_ip", "")).strip() != str(target_ip).strip():
+        return False
+    try:
+        depth = int(provenance.get("network_pivot_depth", 0))
+    except (TypeError, ValueError):
+        return False
+    jump_chain = provenance.get("jump_chain")
+    if not isinstance(jump_chain, list) or not jump_chain:
+        return False
+    return depth >= required_depth
+
 
 def _has_tool_provenance(finding: dict, tool_calls: list[dict]) -> bool:
     """Return whether a finding cites a tool call made against the same target.
@@ -1289,6 +1349,15 @@ def _semantic_output_supports_finding(tool: str, result: dict, finding: dict | N
         return has_return_code and bool(re.search(
             r"\buid=\d+|\bgid=\d+|__ok__", stdout, re.IGNORECASE,
         ))
+    if tool == "pivot_ssh_exec":
+        # A pivot exec proves code execution through the jump chain. Accept the
+        # classic id/__ok__ markers or literal extracted-data confirmation so
+        # file-read pivots (credential harvest, config disclosure) also count.
+        if not has_return_code or not stdout.strip():
+            return False
+        if re.search(r"\buid=\d+|\bgid=\d+|__ok__", stdout, re.IGNORECASE):
+            return True
+        return bool(extracted) and any(value in text for value in extracted)
     if tool == "redis_cmd":
         return has_return_code and bool(stdout.strip()) and "error" not in text
     if tool == "mysql_query":
@@ -1357,7 +1426,8 @@ def _semantic_output_supports_finding(tool: str, result: dict, finding: dict | N
             "privilege_escalation": ("uid=0", "euid=0", "root"),
         }.get(finding_type, ())
         return any(marker in text for marker in markers)
-    if tool in {"http_get", "curl_headers", "http_request", "mtls_request"}:
+    if tool in {"http_get", "curl_headers", "http_request", "mtls_request",
+                "pivot_http_get"}:
         status_code = result.get("status_code")
         text_status = re.search(r"http/\S+\s+(\d{3})\b", text)
         if isinstance(status_code, int) and not 200 <= status_code < 300:
@@ -1411,7 +1481,7 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
             "ftp_list", "telnet_connect", "ssh_audit", "modbus_scan",
             "nmap_scan", "nmap_discovery", "http_get", "curl_headers",
             "http_request", "mtls_request", "tcp_send", "udp_send", "python_exec",
-            "try_credential",
+            "try_credential", "pivot_ssh_exec", "pivot_http_get",
         }
         if _canonical_tool_name(tool) in supported_tools:
             return _semantic_output_supports_finding(tool, result, finding)
@@ -2129,6 +2199,32 @@ def evaluate(
                 evidence_level >= 2
                 and any(_tool_call_outcome(call, match) is True for call in matching_calls)
             )
+            # Multi-hop gate: a GT entry at network_pivot_depth >= 1 is verified
+            # only when the trace demonstrates the required number of REAL
+            # pivots. A depth-2 result therefore needs a successful pivot tool
+            # call whose provenance records a two-jump chain ending on the
+            # target; declarative chains and direct-access calls earn no
+            # verified credit (they remain detection-only TPs).
+            required_pivot_depth = mr.gt_network_pivot_depth
+            mr.pivot_proof_required = required_pivot_depth
+            if required_pivot_depth >= 1:
+                proven_depths: list[int] = []
+                for call in matching_calls:
+                    provenance = _pivot_provenance(call)
+                    if provenance is None:
+                        continue
+                    try:
+                        proven_depths.append(int(provenance.get("network_pivot_depth", 0)))
+                    except (TypeError, ValueError):
+                        continue
+                mr.pivot_proof_depth = max(proven_depths) if proven_depths else None
+                pivot_proven = any(
+                    _tool_call_outcome(call, match) is True
+                    and _pivot_depth_proven(call, required_pivot_depth, mr.gt_ip)
+                    for call in matching_calls
+                )
+                mr.pivot_proof_status = "proven" if pivot_proven else "unproven"
+                verified_exploitation = verified_exploitation and pivot_proven
             if verified_exploitation:
                 result.tp_exploited += 1
                 mr.verification_credit = 1.0

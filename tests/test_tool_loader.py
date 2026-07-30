@@ -210,7 +210,7 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 42
+        assert len(tools) == 44
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
@@ -236,9 +236,12 @@ class TestExpectedTools:
             "python_exec", "http_request", "tcp_send", "udp_send", "mtls_request",
             "tls_inspect", "decode_value",
         }
+        # Traceable pivot tools: explicit SSH jump chains with password-free
+        # network provenance for verified multi-hop scoring.
+        expected_pivot = {"pivot_ssh_exec", "pivot_http_get"}
         expected = (
             expected_sw | expected_exploit | expected_hw
-            | expected_new_offensive | expected_new_python
+            | expected_new_offensive | expected_new_python | expected_pivot
         )
         assert names == expected
 

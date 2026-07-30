@@ -68,8 +68,10 @@ def _resolve_model_provider(model: str) -> str:
 
 
 def _build_intrusion_tools() -> list[dict]:
-    """Extract ssh_exec and try_credential from RECON_TOOLS for the intrusion group."""
-    _intrusion_names = {"ssh_exec", "try_credential"}
+    """Extract the scoped, phase-5 intrusion tools from RECON_TOOLS."""
+    _intrusion_names = {
+        "ssh_exec", "try_credential", "pivot_ssh_exec", "pivot_http_get",
+    }
     return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
 
 
@@ -732,6 +734,7 @@ class Pipeline:
         benchmark_split: str | None = None,
         manage_scenario: bool = True,
         execution_profile: str = "auto",
+        initial_credentials: list[dict] | None = None,
     ):
         self.provider = provider
         self.execution_profile_resolution = resolve_execution_profile_for_model(
@@ -760,6 +763,7 @@ class Pipeline:
         self.custom_config = custom_config
         self.blind = blind
         self.target_network = target_network
+        self.initial_credentials = self._sanitize_initial_credentials(initial_credentials or [])
         self.max_tool_calls: int | None = None
         self._tool_call_count = 0
         self._artifact_log_lock = threading.Lock()
@@ -887,6 +891,7 @@ class Pipeline:
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
             "oracle_access": False,
+            "initial_credential_count": len(self.initial_credentials),
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
             **metric_contract_metadata(),
@@ -4898,13 +4903,13 @@ class Pipeline:
             })
 
     def _synthesize_intrusion_from_tools(self, note: str | None = None) -> dict:
-        """Reconstruct an intrusion deliverable from logged try_credential /
-        ssh_exec calls (both are Phase-5-only tools)."""
+        """Reconstruct an intrusion deliverable from logged Phase-5 tool calls."""
         log_path = self.run_dir / "tool_calls.jsonl"
         compromised: dict = {}
         creds: list = []
         seen_cred: set = set()
         attempted: set = set()  # all IPs we tried credentials against
+        chains_by_ips: dict[tuple[str, ...], dict] = {}
 
         # Map IP -> device_id from the pre-generated intrusion context so the
         # synthesized deliverable carries real device names, not blanks.
@@ -4964,7 +4969,61 @@ class Pipeline:
                 ip = args.get("ip")
                 if tool == "try_credential" and ip:
                     attempted.add(ip)
-                if not (isinstance(res, dict) and res.get("success") and ip):
+                if not (isinstance(res, dict) and res.get("success")):
+                    continue
+
+                provenance = res.get("network_provenance")
+                if tool in {"pivot_ssh_exec", "pivot_http_get"} and isinstance(provenance, dict):
+                    raw_chain = provenance.get("jump_chain")
+                    chain_ips = [
+                        str(hop.get("ip")) for hop in raw_chain
+                        if isinstance(hop, dict) and hop.get("ip")
+                    ] if isinstance(raw_chain, list) else []
+                    target_ip = str(provenance.get("target_ip", ""))
+                    if not chain_ips or not target_ip:
+                        continue
+                    if tool == "pivot_http_get" and target_ip != chain_ips[-1]:
+                        chain_ips.append(target_ip)
+                    attempted.update(chain_ips)
+                    output = str(res.get("body") or res.get("stdout") or "").strip()
+                    for hop_index, hop_ip in enumerate(chain_ips):
+                        access_via = "entry_point" if hop_index == 0 else chain_ips[hop_index - 1]
+                        if tool == "pivot_http_get" and hop_index == len(chain_ips) - 1:
+                            access_method = "pivot_http_get"
+                        elif hop_index == 0:
+                            access_method = "pivot_ssh_exec"
+                        else:
+                            access_method = "pivot_ssh_exec"
+                        comp = compromised.setdefault(hop_ip, {
+                            "device_id": ip_to_id.get(hop_ip, ""), "device_ip": hop_ip,
+                            "access_method": access_method, "access_via": access_via,
+                            "data_exfiltrated": "", "credentials_found": [],
+                        })
+                        if output and hop_index == len(chain_ips) - 1 and not comp["data_exfiltrated"]:
+                            comp["data_exfiltrated"] = output[:500]
+
+                    key = tuple(chain_ips)
+                    if key not in chains_by_ips:
+                        hops = []
+                        for hop_index, hop_ip in enumerate(chain_ips, start=1):
+                            comp = compromised[hop_ip]
+                            hops.append({
+                                "hop_index": hop_index,
+                                "device_id": comp["device_id"],
+                                "device_ip": hop_ip,
+                                "access_method": comp["access_method"],
+                                "commands_run": [],
+                                "output_summary": output[:400] if hop_index == len(chain_ips) else "",
+                                "pivot_to": chain_ips[hop_index] if hop_index < len(chain_ips) else None,
+                            })
+                        chains_by_ips[key] = {
+                            "id": f"chain_{len(chains_by_ips) + 1}",
+                            "hops": hops,
+                            "crown_jewel_reached": ip_to_id.get(chain_ips[-1]) or chain_ips[-1],
+                        }
+                    continue
+
+                if not ip:
                     continue
 
                 if tool == "try_credential":
@@ -4996,7 +5055,7 @@ class Pipeline:
                         comp["data_exfiltrated"] = out[:500]
 
         devices = list(compromised.values())
-        chains = [{
+        chains = list(chains_by_ips.values()) or [{
             "id": f"chain_{i + 1}",
             "hops": [{
                 "hop_index": 1,
@@ -5023,6 +5082,47 @@ class Pipeline:
             "compromised_devices": devices,
             "chains": chains,
         }
+
+    @staticmethod
+    def _sanitize_initial_credentials(credentials: list[dict]) -> list[dict]:
+        """Validate benchmark-provided footholds before exposing them to Phase 5."""
+        allowed_services = {"ssh", "http", "https", "ftp", "mqtt", "telnet", "redis", "mysql"}
+        defaults = {
+            "ssh": 22, "http": 80, "https": 443, "ftp": 21, "mqtt": 1883,
+            "telnet": 23, "redis": 6379, "mysql": 3306,
+        }
+        sanitized: list[dict] = []
+        seen: set[tuple] = set()
+        for index, credential in enumerate(credentials, start=1):
+            if not isinstance(credential, dict):
+                raise ValueError(f"initial_credentials[{index}] must be an object")
+            ip = str(credential.get("ip") or credential.get("device_ip") or "").strip()
+            user = str(credential.get("user") or credential.get("username") or "").strip()
+            password = credential.get("password")
+            service = str(credential.get("service") or "ssh").lower().strip()
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError as exc:
+                raise ValueError(f"initial_credentials[{index}] must use a literal IP address") from exc
+            if not user or len(user) > 64 or not isinstance(password, str) or not password:
+                raise ValueError(f"initial_credentials[{index}] requires a user and password")
+            if service not in allowed_services:
+                raise ValueError(f"initial_credentials[{index}] has unsupported service {service!r}")
+            try:
+                port = int(credential.get("port") or defaults[service])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"initial_credentials[{index}] port must be an integer") from exc
+            if not 1 <= port <= 65535:
+                raise ValueError(f"initial_credentials[{index}] port must be between 1 and 65535")
+            item = {
+                "ip": ip, "user": user, "password": password, "service": service,
+                "port": port, "device_id": str(credential.get("device_id") or ""),
+            }
+            key = (ip, user, password, service, port)
+            if key not in seen:
+                seen.add(key)
+                sanitized.append(item)
+        return sanitized
 
     def _generate_intrusion_context(self) -> None:
         """Pre-generate 05_intrusion_context.json for the intrusion agent.
@@ -5136,6 +5236,27 @@ class Pipeline:
                     "evidence": (exp.get("evidence") or "")[:200],
                 })
 
+        # A benchmark can declare initial footholds independently of Phase 4.
+        # This makes multi-hop scenarios reproducible without treating a supplied
+        # credential as an exploitation result.
+        for credential in self.initial_credentials:
+            entry_points.append({
+                "device_id": credential["device_id"],
+                "device_ip": credential["ip"],
+                "vuln_type": "initial_credential",
+                "service": credential["service"],
+                "port": credential["port"],
+                "evidence": "benchmark-provided initial credential",
+            })
+            credentials.append({
+                "user": credential["user"],
+                "password": credential["password"],
+                "service": credential["service"],
+                "source_ip": credential["ip"],
+                "source_device": credential["device_id"],
+                "initial": True,
+            })
+
         # Deduplicate entry points by device_ip
         seen_ep: set = set()
         unique_entries = []
@@ -5191,7 +5312,8 @@ class Pipeline:
             "confirmed_exploits": len(confirmed),
             "recovered_credentials": credentials[:30],
             "NOTE": (
-                "STRATEGY: (1) Use entry_points as starting devices. "
+                "STRATEGY: (1) Use entry_points as starting devices; supplied initial "
+                "credentials are explicit footholds, not findings. "
                 "(2) After gaining access, harvest all credentials from the host. "
                 "(3) Spray ALL harvested credentials against ALL devices in all_targets. "
                 "(4) Repeat from each newly compromised device until no new hosts are reachable. "
@@ -6059,6 +6181,25 @@ class Pipeline:
         log_path = self.run_dir / "tool_calls.jsonl"
         tool_name = tool["name"]
 
+        def safe_logged_args(call_kwargs: dict) -> dict:
+            if tool_name not in {"pivot_ssh_exec", "pivot_http_get"}:
+                return call_kwargs
+            safe_args = dict(call_kwargs)
+            raw_chain = safe_args.get("jump_chain")
+            try:
+                chain = json.loads(raw_chain) if isinstance(raw_chain, str) else raw_chain
+                if isinstance(chain, list):
+                    safe_args["jump_chain"] = json.dumps([
+                        {
+                            key: value for key, value in hop.items()
+                            if key != "password"
+                        }
+                        for hop in chain if isinstance(hop, dict)
+                    ])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                safe_args["jump_chain"] = "[redacted malformed jump_chain]"
+            return safe_args
+
         def logged_fn(**kwargs):
             evidence_ref = f"tc-{uuid4().hex}"
             with self._artifact_log_lock:
@@ -6078,7 +6219,7 @@ class Pipeline:
                     "timestamp": datetime.now().astimezone().isoformat(),
                     "sequence": sequence,
                     "tool": tool_name,
-                    "args": kwargs,
+                    "args": safe_logged_args(kwargs),
                     "result": result if isinstance(result, str) else str(result),
                     "phase": phase,
                     "agent": agent,
@@ -6136,6 +6277,8 @@ class Pipeline:
         04_exploitation.json (key: "tests" with CONFIRMED entries).
         """
         if not config.conditional:
+            return True
+        if config.phase == 5 and self.initial_credentials:
             return True
         path = self.run_dir / config.conditional
         if not path.exists():

@@ -555,3 +555,174 @@ def test_unevaluable_negative_control_is_reported_without_penalty(tmp_path):
     assert result.negative_controls_total == 0
     assert result.negative_controls_unevaluable == 1
     assert result.negative_control_penalty_factor == 1.0
+
+
+
+# ── Multi-hop verified scoring (pivot-proof gate) ────────────────────────────
+
+def _write_pivot_run(tmp_path, *, gt_depth, phase4_tool, tool_record,
+                     service="http", port=80, endpoint="/backup.sql"):
+    vulnerability = _gt(
+        network_pivot_depth=gt_depth,
+        services=[service], ports=[port],
+        endpoints=[endpoint] if endpoint else [],
+    )
+    finding = _finding(service=service, port=port, endpoint=endpoint)
+    run, gt = _write(tmp_path, [finding], [vulnerability])
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "severity": "high", "service": service, "port": port, "protocol": "tcp",
+        "endpoint": endpoint, "status": "CONFIRMED",
+        "evidence": "credentials returned", "tool_used": phase4_tool,
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps(tool_record) + "\n")
+    return run, gt
+
+
+def _pivot_record(*, target_ip="192.0.2.10", depth=2, success=True,
+                  provenance_target=None, tool="pivot_ssh_exec"):
+    chain_ips = ["192.0.2.1", "192.0.2.2", target_ip][: depth + 1]
+    chain = [{"ip": ip, "user": "u", "port": 22} for ip in chain_ips]
+    if tool == "pivot_http_get":
+        result = {
+            "success": success,
+            "return_code": 0 if success else 22,
+            "status_code": 200 if success else 404,
+            "body": "password=secret" if success else "",
+            "stdout": "password=secret" if success else "",
+        }
+        args = {"jump_chain": json.dumps(chain), "url": f"http://{target_ip}/backup.sql"}
+        transport = "ssh-chain+http"
+    else:
+        result = {
+            "success": success,
+            "return_code": 0 if success else 1,
+            "stdout": "uid=0(root) gid=0(root)" if success else "",
+            "stderr": "" if success else "boom",
+        }
+        args = {"jump_chain": json.dumps(chain), "command": "id"}
+        transport = "ssh-chain"
+    result["network_provenance"] = {
+        "schema_version": "1",
+        "transport": transport,
+        "jump_chain": chain,
+        "source_vantage": chain_ips[-2] if len(chain_ips) > 1 else "worker",
+        "target_ip": provenance_target or target_ip,
+        "target_port": 22,
+        "network_pivot_depth": depth,
+    }
+    return {"tool": tool, "args": args, "result": result}
+
+
+def test_real_two_pivot_chain_earns_verified_credit(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="pivot_ssh_exec",
+        tool_record=_pivot_record(depth=2),
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    match = result.matches[0]
+    assert match["verification_credit"] == 1.0
+    assert match["pivot_proof_required"] == 2
+    assert match["pivot_proof_depth"] == 2
+    assert match["pivot_proof_status"] == "proven"
+    assert result.verified_f1 == 1.0
+    assert result.mhr_2 == 1.0
+    assert result.mhr_2_verified == 1.0
+    assert result.mhr_1_verified == 1.0
+
+
+def test_pivot_http_get_chain_earns_verified_credit(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="pivot_http_get",
+        tool_record=_pivot_record(depth=2, tool="pivot_http_get"),
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.matches[0]["verification_credit"] == 1.0
+    assert result.matches[0]["pivot_proof_status"] == "proven"
+    assert result.mhr_2_verified == 1.0
+
+
+def test_direct_access_is_a_rejected_fake_pivot(tmp_path):
+    record = {
+        "tool": "ssh_exec",
+        "args": {"ip": "192.0.2.10", "user": "root", "command": "id"},
+        "result": {"success": True, "return_code": 0, "stdout": "uid=0(root)"},
+    }
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="ssh_exec", tool_record=record,
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    match = result.matches[0]
+    # Detection still counts; verified credit does not.
+    assert result.detection_f1 == 1.0
+    assert result.mhr_2 == 1.0
+    assert match["verification_credit"] == 0.0
+    assert match["pivot_proof_status"] == "unproven"
+    assert match["pivot_proof_depth"] is None
+    assert result.verified_f1 == 0.0
+    assert result.mhr_2_verified == 0.0
+
+
+def test_shallower_chain_than_required_is_rejected(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="pivot_ssh_exec",
+        tool_record=_pivot_record(depth=1),
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    match = result.matches[0]
+    assert match["verification_credit"] == 0.0
+    assert match["pivot_proof_status"] == "unproven"
+    assert match["pivot_proof_depth"] == 1
+    assert result.mhr_2_verified == 0.0
+
+
+def test_failed_pivot_call_is_rejected(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="pivot_ssh_exec",
+        tool_record=_pivot_record(depth=2, success=False),
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.matches[0]["verification_credit"] == 0.0
+    assert result.matches[0]["pivot_proof_status"] == "unproven"
+
+
+def test_pivot_provenance_for_wrong_target_is_rejected(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=2, phase4_tool="pivot_ssh_exec",
+        tool_record=_pivot_record(depth=2, provenance_target="192.0.2.99"),
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.matches[0]["verification_credit"] == 0.0
+    assert result.matches[0]["pivot_proof_status"] == "unproven"
+
+
+def test_deeper_chain_than_required_is_accepted(tmp_path):
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=1, phase4_tool="pivot_ssh_exec",
+        tool_record=_pivot_record(depth=3),
+        service="ssh", port=22, endpoint="",
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.matches[0]["verification_credit"] == 1.0
+    assert result.matches[0]["pivot_proof_status"] == "proven"
+    assert result.mhr_1_verified == 1.0
+
+
+def test_zero_depth_gt_needs_no_pivot_proof(tmp_path):
+    record = {
+        "tool": "http_get", "args": {"url": "http://192.0.2.10/backup.sql"},
+        "result": {"success": True, "status_code": 200, "body": "password=secret"},
+    }
+    run, gt = _write_pivot_run(
+        tmp_path, gt_depth=0, phase4_tool="http_get", tool_record=record,
+    )
+    result = evaluate(run, gt, policy=STRICT_V3)
+    match = result.matches[0]
+    assert match["verification_credit"] == 1.0
+    assert match["pivot_proof_status"] == "not_required"
+    assert result.verified_f1 == 1.0
