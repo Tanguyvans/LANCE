@@ -64,7 +64,7 @@ passer.
 
 La comparaison principale est :
 
-`{LANCE, CAI, VulnBot} × {S20…S29} × 1 run blind = 30 runs`.
+`{LANCE, CAI, VulnBot} × {S20…S29} × 2 répétitions blind = 60 runs`.
 
 Les trois systèmes utilisent une instance réinitialisée du même scénario pour
 les comparaisons appariées. Un reset suivi de `verify` est obligatoire entre
@@ -77,12 +77,14 @@ L’ordre des trois systèmes blind suit une rotation latine selon le scénario 
 de répartir un éventuel effet temporel : LANCE→CAI→VulnBot sur S20, puis
 CAI→VulnBot→LANCE sur S21, puis VulnBot→LANCE→CAI sur S22, et répétition.
 
-Après ces 30 runs, dix runs informés de LANCE (`S20…S29 × 1`) peuvent être
+Après ces 60 runs, vingt runs informés de LANCE (`S20…S29 × 2`) peuvent être
 exécutés pour diagnostiquer l’écart entre connaissance de l’oracle et autonomie.
 Ils sont rapportés séparément et ne remplacent jamais la comparaison blind.
 
-Les 38 diagnostics LANCE sur S1–S19 (informed/blind, un run par condition) restent
-exploratoires. La campagne prévoit donc 78 runs IoT publiés et 12 pilotes exclus.
+Les 76 diagnostics LANCE sur S1–S19 (informed/blind, deux répétitions par
+condition) restent exploratoires. La campagne prévoit donc 156 runs IoT publiés
+et 12 pilotes exclus. Les deux répétitions sont publiées séparément ; elles ne
+suffisent pas à estimer un intervalle de confiance run-à-run stable.
 
 ## Scoring et agrégation
 
@@ -150,16 +152,44 @@ Prévisualisation obligatoire de l’orchestrateur :
 python3 benchmarks/tools/run_campaign.py --dry-run \
   --provider minimax --model MiniMax-M2.7 \
   --baseline-model openai/MiniMax-M2.7 \
+  --only-system lance --only-mode blind \
   --worker root@<worker-1200> --worker root@<worker-1201> \
   --worker root@<worker-1202> --worker root@<worker-1203>
 ```
 
 Après le smoke test réel et le passage explicite du manifeste à
-`frozen-authorized`, la même commande est lancée avec `--authorize` et le fichier
-de vault. Le master seul exécute Ansible ; les workers utilisent
+`frozen-authorized`, la même commande est lancée avec `--authorize`. Un fichier
+de vault n'est transmis que s'il est réellement utilisé (`--vault-password-file`),
+ou demandé explicitement avec `--ask-vault-pass`. Le master seul exécute Ansible ; les workers utilisent
 `--no-manage-scenario`. L’orchestrateur sérialise deploy → run → reset → verify
 et termine chaque scénario par teardown. Les résultats S20–S29 ne doivent servir
 à aucun ajustement (`tuning_from_results_forbidden: true`).
+
+Le suivi peut être ouvert dans un second terminal sans autorisation d'exécution :
+
+```bash
+python3 benchmarks/tools/run_campaign.py \
+  --only-system lance --only-mode blind \
+  --watch-status 5
+```
+
+Le fichier `output/campaigns/paper-v3.4/state.json` conserve l'opération en
+cours, le worker, la répétition, les échecs et le chemin du journal. Chaque run
+possède aussi un journal local et ses artefacts sont rapatriés avant d'être
+marqué `completed`.
+
+Le smoke test réel reste séparé de la campagne officielle. Exemple sur S15 :
+
+```bash
+python3 benchmarks/tools/run_campaign.py --pilot --authorize \
+  --inventory benchmarks/ansible/inventory.local.yml \
+  --provider minimax --model MiniMax-M2.7 \
+  --only-scenario 15 --only-system lance --only-mode blind \
+  --only-repetition 1 --worker root@<worker-1200>
+```
+
+Son état est écrit dans `pilot-state.json`, jamais dans le `state.json` des 58
+runs LANCE blind officiels.
 
 CAI et VulnBot reçoivent le CIDR complet une seule fois, jamais une liste d’IP
 dérivée du ground truth. Le normaliseur peut traduire une trace native vers le
@@ -170,7 +200,7 @@ schéma commun mais ne peut ni inventer un appel d’outil ni synthétiser une p
 AutoPenBench et Vulhub utilisent le profil externe de LANCE et leurs métriques
 natives. AutoPenBench est évalué par flags/milestones. Un cas Vulhub ne compte
 que s’il possède un vérificateur CVE déterministe pré-engagé. Les résultats
-externes ne sont jamais mélangés au Verified F1 IoT et ne font pas partie des 78
+externes ne sont jamais mélangés au Verified F1 IoT et ne font pas partie des 156
 runs. Les commits, runlists, budgets et checkers sont fixés dans
 `benchmarks/external/manifest.yaml`.
 

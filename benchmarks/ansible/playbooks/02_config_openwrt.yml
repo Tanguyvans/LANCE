@@ -10,9 +10,44 @@
 #   6. Arrête la VM, remplace le template 9001 par la version configurée
 #
 # Après ce playbook :
-#   - tpl-openwrt (9001) est configuré avec LAN=192.168.100.1 et SSH WAN activé
+#   - tpl-openwrt (9010) est configuré avec LAN=192.168.100.1 et SSH WAN activé
 #   - vmbr1 est un bridge pur sans IP sur Proxmox
 #   - OpenWrt est joignable via son IP WAN (DHCP sur 192.168.88.x)
+
+- name: "Préflight — vérifier les VMID OpenWrt avant toute mutation"
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Lire le template brut attendu (9001)
+      ansible.builtin.command: qm config 9001
+      register: openwrt_raw_config
+      changed_when: false
+      failed_when: false
+
+    - name: Bloquer si le template brut est absent ou n'appartient pas au benchmark
+      ansible.builtin.assert:
+        that:
+          - openwrt_raw_config.rc == 0
+          - "'name: tpl-openwrt' in openwrt_raw_config.stdout"
+          - "'template: 1' in openwrt_raw_config.stdout"
+        fail_msg: >-
+          VMID 9001 doit être le template benchmark 'tpl-openwrt' créé par
+          01_create_templates.yml. Aucun autre objet ne sera remplacé.
+
+    - name: Vérifier que le VMID final (9010) est libre
+      ansible.builtin.command: qm config 9010
+      register: openwrt_final_config
+      changed_when: false
+      failed_when: false
+
+    - name: Refuser de remplacer automatiquement un VMID 9010 existant
+      ansible.builtin.assert:
+        that:
+          - openwrt_final_config.rc != 0
+        fail_msg: >-
+          VMID 9010 existe déjà. Le playbook refuse de le détruire, même s'il
+          ressemble à un ancien template. Vérifier et nettoyer explicitement.
 
 - name: "Étape 1 — Préparer Proxmox"
   hosts: proxmox
@@ -27,21 +62,9 @@
 
   tasks:
 
-    - name: Retirer l'IP 192.168.100.1 de vmbr1 (passer à inet manual)
-      ansible.builtin.blockinfile:
-        path: /etc/network/interfaces
-        marker: "# {mark} ANSIBLE MANAGED - vmbr1 benchmark"
-        block: |
-          auto vmbr1
-          iface vmbr1 inet manual
-              bridge-ports none
-              bridge-stp off
-              bridge-fd 0
-              # Bridge interne pour les VMs benchmark (pas de NIC physique)
-
-    - name: Appliquer la nouvelle config vmbr1 (sans IP)
-      ansible.builtin.command: ifreload -a
-      changed_when: true
+    - name: Vérifier que le bridge benchmark isolé est actif
+      ansible.builtin.command: ip link show {{ benchmark_bridge }}
+      changed_when: false
 
     - name: Supprimer manuellement l'IP résiduelle sur vmbr1 si encore présente
       ansible.builtin.command: ip addr del 192.168.100.1/24 dev vmbr1
@@ -59,13 +82,6 @@
     - name: Router uniquement 192.168.1.1 (OpenWrt) via vmbr1 — route hôte /32 prioritaire
       ansible.builtin.command: ip route replace {{ openwrt_default_lan }}/32 dev vmbr1 src {{ openwrt_tmp_proxy_ip }}
       changed_when: true
-
-    - name: Détruire la VM temporaire 9010 si elle existe déjà (nettoyage)
-      block:
-        - ansible.builtin.command: qm stop {{ openwrt_tmp_vmid }} --skiplock
-          failed_when: false
-        - ansible.builtin.command: qm destroy {{ openwrt_tmp_vmid }} --purge
-          failed_when: false
 
     - name: Cloner le template OpenWrt brut (9001) vers une VM temporaire (9010)
       ansible.builtin.command: >-
@@ -180,7 +196,7 @@
     - name: Renommer la VM configurée en tpl-openwrt
       ansible.builtin.command: qm set {{ openwrt_tmp_vmid }} --name tpl-openwrt
 
-    - name: Convertir en template (nouveau 9001)
+    - name: Convertir la VM 9010 configurée en template final
       ansible.builtin.command: qm template {{ openwrt_tmp_vmid }}
 
     - name: Mettre à jour tpl_openwrt_vmid dans group_vars/all/main.yml (→ 9010)

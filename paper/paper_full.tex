@@ -84,7 +84,7 @@ Evaluation), a six-phase network-native harness for topology analysis, active
 discovery, triage, verification, intrusion attempts, and report generation.
 We introduce a fail-closed evaluation protocol that separates detection,
 verified exploitation, severity coverage, enforced network pivots, and logical
-dependencies. The primary comparison comprises 30 blind runs: three systems,
+dependencies. The primary comparison comprises 60 blind runs: three systems,
 ten public held-out scenarios, and one pre-committed run per condition, with
 equal scenario weighting and zero credit for missing runs or unsupported claims. S1--S19
 support development; inspectable S20--S29 are frozen before evaluation and held
@@ -343,7 +343,7 @@ We compare \harnessname{} with two upstream LLM-agent baselines:
 The confirmatory comparison runs every system in blind mode from the same pre-committed network scope and identical declared starting conditions. Baseline adapters must emit the same target, type, structural fields, evidence references, and tool-call provenance as \harnessname{}; the normalizer may not read ground truth or synthesize missing fields. Informed \harnessname{} runs are secondary diagnostics and are not part of the primary architecture comparison.
 
 \textbf{Metrics and uncertainty.}
-We report Detection F1, Verified F1 (primary), Verified Severity Coverage, clean-run rate, verified path coverage, verified MHR/DHR, cost, and planned/completed run counts. The confirmatory matrix is \{\harnessname{}, CAI, VulnBot\}$\times$S20--S29 with one run per condition. Scenarios receive equal weight and a pre-committed but missing cell contributes zero. With no stochastic repetitions, we do not claim run-to-run confidence intervals; paired differences and dispersion across the ten scenarios are descriptive.
+We report Detection F1, Verified F1 (primary), Verified Severity Coverage, clean-run rate, verified path coverage, verified MHR/DHR, cost, and planned/completed run counts. The confirmatory matrix is \{\harnessname{}, CAI, VulnBot\}$\times$S20--S29 with two pre-committed repetitions per condition. Scenarios receive equal weight and a pre-committed but missing cell contributes zero. Two repetitions are reported separately but are insufficient for stable run-level confidence intervals; paired differences and dispersion across the ten scenarios remain descriptive.
 
 % ══════════════════════════════════════════════════════════════════════════
 % §7 Evaluation
@@ -353,9 +353,9 @@ We report Detection F1, Verified F1 (primary), Verified Severity Coverage, clean
 
 \subsection{Pre-registered Confirmatory Matrix}
 
-The primary architecture comparison comprises 30 blind public held-out runs:
+The primary architecture comparison comprises 60 blind public held-out runs:
 three systems (\harnessname{}, CAI, and VulnBot), ten test scenarios
-(S20--S29), and one run per system--scenario condition. The campaign manifest fixes the runner
+(S20--S29), and two repetitions per system--scenario condition. The campaign manifest fixes the runner
 commit, model and provider, tool proxy, budgets, scoring policy, scenario order,
 and planned grid before any test run. Harness, prompts,
 adapters, and normalizers are then frozen. A missing cell receives zero on all
@@ -365,9 +365,9 @@ condition.
 
 \subsection{Public Diagnostics and Reporting}
 
-S1--S19 receive 38 informed/blind exploratory runs. Before freezing, a 12-run
+S1--S19 receive 76 informed/blind exploratory runs. Before freezing, a 12-run
 smoke pilot on S14, S15, and S19 validates infrastructure and adapters but is
-excluded from estimates. After the 30 blind runs, S20--S29 receive ten informed
+excluded from estimates. After the 60 blind runs, S20--S29 receive twenty informed
 \harnessname{} runs as a secondary oracle-gap diagnostic. These runs cannot be
 used to tune the reported version.
 

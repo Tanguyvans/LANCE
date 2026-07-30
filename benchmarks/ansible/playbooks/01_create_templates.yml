@@ -20,7 +20,7 @@
           failed_when: false
         - ansible.builtin.command: pct destroy 9000
           failed_when: false
-      tags: [cleanup]
+      tags: [never, cleanup]
 
     - name: Arrêter et supprimer tpl-openwrt KVM (9001) si présent
       block:
@@ -28,7 +28,7 @@
           failed_when: false
         - ansible.builtin.command: qm destroy 9001 --purge
           failed_when: false
-      tags: [cleanup]
+      tags: [never, cleanup]
 
 
 - name: Template LXC — Debian 13
@@ -79,6 +79,25 @@
       failed_when: false
       tags: [lxc]
 
+    - name: Lire le CT 9000 existant avant de le réutiliser
+      ansible.builtin.command: pct config {{ debian_lxc_vmid }}
+      register: ct_debian_config
+      changed_when: false
+      failed_when: false
+      when: ct_debian_check.rc == 0
+      tags: [lxc]
+
+    - name: Refuser un VMID 9000 qui n'est pas le template benchmark
+      ansible.builtin.assert:
+        that:
+          - "'hostname: tpl-debian' in ct_debian_config.stdout"
+          - "'template: 1' in ct_debian_config.stdout"
+        fail_msg: >-
+          VMID 9000 existe mais n'est pas le template benchmark tpl-debian.
+          Aucun objet existant ne sera remplacé.
+      when: ct_debian_check.rc == 0
+      tags: [lxc]
+
     - name: Créer le CT LXC Debian 13 de base
       ansible.builtin.command: >-
         pct create {{ debian_lxc_vmid }}
@@ -116,7 +135,9 @@
     - name: Configurer le cache apt dans le CT template (hérité par les CT de scénario)
       ansible.builtin.shell: |
         pct exec {{ debian_lxc_vmid }} -- bash -c 'printf "Acquire::http::Proxy \"http://{{ apt_cache_host | default(proxmox_api_host) }}:3142\";\n" > /etc/apt/apt.conf.d/00aptproxy'
-      when: ct_debian_check.rc != 0
+      when:
+        - ct_debian_check.rc != 0
+        - benchmark_use_apt_cache | bool
       changed_when: true
       tags: [lxc, aptcache]
 
@@ -158,6 +179,25 @@
       register: tpl_openwrt_check
       changed_when: false
       failed_when: false
+      tags: [tpl-openwrt]
+
+    - name: Lire la VM 9001 existante avant de la réutiliser
+      ansible.builtin.command: qm config {{ openwrt_vmid }}
+      register: tpl_openwrt_config
+      changed_when: false
+      failed_when: false
+      when: tpl_openwrt_check.rc == 0
+      tags: [tpl-openwrt]
+
+    - name: Refuser un VMID 9001 qui n'est pas le template benchmark
+      ansible.builtin.assert:
+        that:
+          - "'name: tpl-openwrt' in tpl_openwrt_config.stdout"
+          - "'template: 1' in tpl_openwrt_config.stdout"
+        fail_msg: >-
+          VMID 9001 existe mais n'est pas le template benchmark tpl-openwrt.
+          Aucun objet existant ne sera remplacé.
+      when: tpl_openwrt_check.rc == 0
       tags: [tpl-openwrt]
 
     - name: Télécharger l'image OpenWrt
@@ -241,24 +281,25 @@
       register: lan_nic_check
       changed_when: false
       failed_when: false
+      when: benchmark_expose_physical_lan | bool
 
     - name: "[LAN] Avertir si {{ benchmark_lan_nic }} absent (machine avec une seule NIC ?)"
       ansible.builtin.debug:
         msg: "AVERTISSEMENT : {{ benchmark_lan_nic }} introuvable sur ce Proxmox — exposition LAN ignorée. Modifier benchmark_lan_nic dans group_vars/all.yml si nécessaire."
-      when: lan_nic_check.rc != 0
+      when: benchmark_expose_physical_lan | bool and lan_nic_check.rc != 0
 
     - name: "[LAN] Vérifier que {{ benchmark_lan_nic }} n'est pas déjà dans vmbr1"
       ansible.builtin.slurp:
         src: /etc/network/interfaces
       register: current_interfaces
-      when: lan_nic_check.rc == 0
+      when: benchmark_expose_physical_lan | bool and lan_nic_check.rc == 0
 
     - name: "[LAN] Ajouter {{ benchmark_lan_nic }} au bridge vmbr1"
       ansible.builtin.replace:
         path: /etc/network/interfaces
         regexp: "(iface vmbr1 inet manual\n(?:.*\n)*?)(\\s+bridge-ports none)"
         replace: "\\1        bridge-ports {{ benchmark_lan_nic }}"
-      when: lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
+      when: benchmark_expose_physical_lan | bool and lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
       notify: reload network
 
     - name: "[LAN] Fallback — ajouter bridge-ports si absent"
@@ -267,7 +308,7 @@
         insertafter: "iface vmbr1 inet manual"
         line: "        bridge-ports {{ benchmark_lan_nic }}"
         state: present
-      when: lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
+      when: benchmark_expose_physical_lan | bool and lan_nic_check.rc == 0 and not ((current_interfaces.content | b64decode) is search('bridge-ports.*' + benchmark_lan_nic))
       notify: reload network
 
     # ── Résumé ──
@@ -279,8 +320,11 @@
             9000  (CT  LXC) tpl-debian  → Debian 13, base pour tous les services
             {{ openwrt_vmid }}  (KVM    ) tpl-openwrt → OpenWrt 23.05, routeur/firewall (brut)
           ───────────────────────────────────────────────────────
-          LAN benchmark exposé sur nic1 (vmbr1)
-          Brancher un switch/PC sur nic1 → IP 192.168.100.x via DHCP OpenWrt
+          {% if benchmark_expose_physical_lan | bool %}
+          LAN benchmark exposé sur {{ benchmark_lan_nic }} ({{ benchmark_bridge }})
+          {% else %}
+          LAN benchmark interne uniquement sur {{ benchmark_bridge }} (aucune NIC physique)
+          {% endif %}
           ═══════════════════════════════════════════════════════
           Prochaine étape : 02_config_openwrt.yml (configure le template OpenWrt → VMID 9010)
 

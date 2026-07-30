@@ -12,7 +12,14 @@ benchmark_bridge: "vmbr1"
 benchmark_network: "192.168.100.0/24"
 benchmark_gateway: "192.168.100.1"
 benchmark_dns: "192.168.100.1"   # dnsmasq OpenWrt (UDP 53 vers WAN filtré)
-benchmark_lan_nic: "nic1"        # NIC physique exposé sur vmbr1 pour accès direct au réseau benchmark
+benchmark_lan_nic: "nic1"
+benchmark_expose_physical_lan: false  # Opt-in uniquement : vmbr1 reste interne par défaut
+benchmark_use_apt_cache: false        # Ne nécessite pas 00_proxmox_init sur le PVE existant
+benchmark_worker_interfaces:
+  - { vmid: 1200, hostname: "nato-nas-baseline-1", ip: "192.168.100.200/24" }
+  - { vmid: 1201, hostname: "nato-nas-baseline-2", ip: "192.168.100.201/24" }
+  - { vmid: 1202, hostname: "nato-nas-baseline-3", ip: "192.168.100.202/24" }
+  - { vmid: 1203, hostname: "nato-nas-baseline-4", ip: "192.168.100.203/24" }
 
 # ── IDs templates ──
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)
@@ -23,8 +30,8 @@ tpl_openwrt_vmid: 9010   # KVM    — OpenWrt x86-64 configuré (LAN=192.168.100
 # base+1…N : services LXC (vmid_offset défini dans scenarios ci-dessous)
 # S11 utilise une plage de 15 VMIDs (220-234) — scénario 15 VMs
 scenario_vmid_ranges:
-  "1": 100   # S1 Flat              → 100-109
-  "2": 110   # S2 Gateway           → 110-119
+  "1": 2000  # S1 Flat              → 2000-2009 (100/101 protégés sur le labo)
+  "2": 2020  # S2 Gateway           → 2020-2029 (110 protégé sur le labo)
   "3": 120   # S3 NATO Lab          → 120-129
   "4": 130   # S4 Segmenté          → 130-139
   "5": 150   # S5 Building          → 150-159

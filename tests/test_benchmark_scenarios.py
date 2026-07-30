@@ -350,21 +350,22 @@ def test_paper_campaign_uses_the_complete_frozen_public_test_split():
     assert confirmatory["scenarios"] == [str(i) for i in range(20, 30)]
     assert confirmatory["systems"] == ["lance", "cai", "vulnbot"]
     assert confirmatory["mode"] == "blind"
-    assert confirmatory["repetitions"] == 1
-    assert confirmatory["planned_runs"] == 10 * 3
+    assert confirmatory["repetitions"] == 2
+    assert confirmatory["planned_runs"] == 10 * 3 * 2
     assert confirmatory["freeze_before_first_run"] is True
     assert confirmatory["tuning_from_results_forbidden"] is True
 
     assert informed["scenarios"] == confirmatory["scenarios"]
     assert informed["mode"] == "informed"
     assert informed["run_after_blind_confirmatory"] is True
-    assert informed["repetitions"] == 1
-    assert informed["planned_runs"] == 10
+    assert informed["repetitions"] == 2
+    assert informed["planned_runs"] == 10 * 2
 
     development = campaign["development_diagnostics"]
     assert development["scenarios"] == [str(i) for i in range(1, 20)]
     assert development["modes"] == ["informed", "blind"]
-    assert development["planned_runs"] == 19 * 2
+    assert development["repetitions"] == 2
+    assert development["planned_runs"] == 19 * 2 * 2
     assert campaign["execution"]["reset_between_conditions"] is True
 
     published = (
@@ -372,7 +373,7 @@ def test_paper_campaign_uses_the_complete_frozen_public_test_split():
         + development["planned_runs"]
         + informed["planned_runs"]
     )
-    assert campaign["planned_published_runs"] == published == 78
+    assert campaign["planned_published_runs"] == published == 156
 
 
 def test_multihop_starting_credentials_are_not_scored_findings():

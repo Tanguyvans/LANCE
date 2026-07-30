@@ -1,0 +1,21 @@
+- name: Prepare benchmark workers for oracle-free blind execution
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Verify exact worker ownership and apply the blind worker guard
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid='{{ item.vmid }}'
+        expected_hostname='{{ item.hostname }}'
+        actual_hostname=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+        if [ "$actual_hostname" != "$expected_hostname" ]; then
+          echo "REFUS: CT $vmid est '$actual_hostname', attendu '$expected_hostname'" >&2
+          exit 1
+        fi
+        pct exec "$vmid" -- bash /opt/nato-smartcity-iot-v3.4/benchmarks/tools/prepare_blind_worker.sh
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_worker_interfaces }}"
+      register: blind_worker_prepare
+      changed_when: "'Blind worker prepared:' in blind_worker_prepare.stdout"

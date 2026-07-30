@@ -1,0 +1,112 @@
+# Prepare only the isolated benchmark bridge and the worker-side interfaces.
+# This intentionally does not alter vmbr0, a physical NIC, repositories, users,
+# API tokens, or non-worker workloads.
+
+- name: Prepare isolated benchmark network
+  hosts: proxmox
+  gather_facts: false
+
+  tasks:
+    - name: Refuse physical exposure in the paper campaign
+      ansible.builtin.assert:
+        that:
+          - not (benchmark_expose_physical_lan | bool)
+        fail_msg: >-
+          benchmark_expose_physical_lan must remain false for the isolated
+          paper campaign. No physical NIC will be attached automatically.
+
+    - name: Verify that the management bridge exists
+      ansible.builtin.command: ip link show vmbr0
+      changed_when: false
+
+    - name: Check whether the benchmark bridge already exists
+      ansible.builtin.command: ip link show {{ benchmark_bridge }}
+      register: benchmark_bridge_before
+      changed_when: false
+      failed_when: false
+
+    - name: Read only the benchmark bridge port setting
+      ansible.builtin.shell: |
+        awk -v bridge='{{ benchmark_bridge }}' '
+          $1 == "iface" { in_bridge = ($2 == bridge); next }
+          in_bridge && $1 == "bridge-ports" { print $2; exit }
+        ' /etc/network/interfaces
+      args:
+        executable: /bin/bash
+      register: benchmark_bridge_ports
+      changed_when: false
+
+    - name: Refuse an existing benchmark bridge connected to a port
+      ansible.builtin.assert:
+        that:
+          - (benchmark_bridge_ports.stdout | trim) in ['', 'none']
+        fail_msg: >-
+          {{ benchmark_bridge }} already has a non-empty bridge-ports setting.
+          Refusing to alter a physical or pre-existing network automatically.
+      when: benchmark_bridge_before.rc == 0
+
+    - name: Create the internal benchmark bridge configuration
+      ansible.builtin.blockinfile:
+        path: /etc/network/interfaces
+        marker: "# {mark} ANSIBLE MANAGED - isolated benchmark bridge"
+        block: |
+          auto {{ benchmark_bridge }}
+          iface {{ benchmark_bridge }} inet manual
+              bridge-ports none
+              bridge-stp off
+              bridge-fd 0
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+      register: benchmark_bridge_config
+      when: benchmark_bridge_before.rc != 0
+
+    - name: Activate the new internal bridge
+      ansible.builtin.command: ifreload -a
+      when: benchmark_bridge_config is changed
+      changed_when: true
+
+    - name: Verify that the benchmark bridge is active
+      ansible.builtin.command: ip link show {{ benchmark_bridge }}
+      changed_when: false
+
+    - name: Attach an isolated net1 to each exact benchmark worker
+      ansible.builtin.shell: |
+        set -euo pipefail
+        vmid='{{ item.vmid }}'
+        expected_hostname='{{ item.hostname }}'
+        expected_ip='{{ item.ip }}'
+
+        actual_hostname=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
+        if [ "$actual_hostname" != "$expected_hostname" ]; then
+          echo "REFUS: CT $vmid est '$actual_hostname', attendu '$expected_hostname'" >&2
+          exit 1
+        fi
+
+        current_net1=$(pct config "$vmid" | awk -F': ' '$1 == "net1" {print $2; exit}')
+        if [ -n "$current_net1" ]; then
+          case "$current_net1" in
+            *"name=eth1"*"bridge={{ benchmark_bridge }}"*"ip=$expected_ip"*)
+              echo "UNCHANGED:$vmid"
+              exit 0
+              ;;
+            *)
+              echo "REFUS: CT $vmid possède déjà net1=$current_net1" >&2
+              exit 1
+              ;;
+          esac
+        fi
+
+        pct set "$vmid" --net1 "name=eth1,bridge={{ benchmark_bridge }},ip=$expected_ip,type=veth"
+        echo "ATTACHED:$vmid"
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_worker_interfaces }}"
+      register: worker_network_attach
+      changed_when: "'ATTACHED:' in worker_network_attach.stdout"
+
+    - name: Confirm protected workloads were outside this playbook's scope
+      ansible.builtin.debug:
+        msg: >-
+          {{ benchmark_bridge }} is internal; worker interfaces are attached.
+          VM 100 (truenas), CT 101 (immich), and VM 110 (hermes-agent)
+          were not targeted.

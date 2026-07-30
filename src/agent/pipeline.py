@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import ipaddress
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -273,6 +274,9 @@ ROLE_SPECIFIC_RULES: dict[str, str] = {
 
 def _get_git_commit() -> str | None:
     """Return the short hash of the current git commit, or None if unavailable."""
+    pinned = os.environ.get("LANCE_GIT_COMMIT", "").strip()
+    if re.fullmatch(r"[0-9a-fA-F]{7,40}", pinned):
+        return pinned[:12].lower()
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -11,6 +12,20 @@ load_dotenv()
 
 from src.agent.provider import LLMProvider
 from src.agent.pipeline import Pipeline
+
+
+def _scrub_sensitive_environment_for_tools() -> None:
+    """Remove credentials after the provider client has captured its API key.
+
+    Agent tools execute child processes. Those children need PATH and locale,
+    but never provider keys, auth sockets, passwords, tokens, or proxy secrets.
+    """
+    markers = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+    exact = {"SSH_AUTH_SOCK", "AWS_PROFILE", "NETRC"}
+    for name in list(os.environ):
+        upper = name.upper()
+        if upper in exact or upper.endswith("_PROXY") or any(marker in upper for marker in markers):
+            os.environ.pop(name, None)
 
 
 def _parse_initial_credentials(args, parser) -> list[dict] | None:
@@ -123,6 +138,12 @@ def main():
         help="Discovery scope, for example 192.168.100.0/24.",
     )
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Root directory for this run's timestamped artifacts.",
+    )
+    parser.add_argument(
         "--split",
         choices=["auto", "dev-public", "test-public", "eval-sealed"],
         default="auto",
@@ -160,6 +181,10 @@ def main():
 
     initial_credentials = _parse_initial_credentials(args, parser)
 
+    if args.output_dir is not None:
+        import src.agent.pipeline as pipeline_module
+        pipeline_module.OUTPUT_DIR = args.output_dir
+
     normalized_batch: str | None = None
     if args.batch is not None:
         from src.agent.batch import _parse_scenario_ids, _public_scenario_split
@@ -193,6 +218,8 @@ def main():
     # Resolve all local-only validation before constructing a provider. This
     # keeps invalid/sealed invocations free of credentials and network setup.
     provider = LLMProvider(provider=args.provider, model=args.model)
+    if args.blind:
+        _scrub_sensitive_environment_for_tools()
 
     # Batch mode: sequential multi-scenario run
     if args.batch is not None:
