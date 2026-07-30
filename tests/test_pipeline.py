@@ -3066,6 +3066,137 @@ class TestInformationPreservingArchitecture:
         )
         assert "The model keeps this autonomous narrative." in captured["content"]
 
+    def test_compact_recon_recovers_missing_deliverable_from_tool_evidence(
+        self, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [
+                {"id": "router", "ip": "192.0.2.10", "role": "router"},
+                {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker"},
+            ]
+        })
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        records = [
+            {"tool": "arp_scan", "args": {}, "result": json.dumps({
+                "hosts": [{"ip": "192.0.2.10"}, {"ip": "192.0.2.11"}],
+            })},
+            {"tool": "nmap_scan", "args": {"target": "192.0.2.10"},
+             "result": json.dumps({"stdout": "22/tcp open ssh Dropbear"})},
+            {"tool": "nmap_scan", "args": {"target": "192.0.2.11"},
+             "result": json.dumps({"stdout": "1883/tcp open mqtt Mosquitto"})},
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n"
+        )
+
+        def save(filename, content):
+            (pipeline.run_dir / filename).write_text(content)
+            return json.dumps({"status": "saved"})
+
+        events = []
+        recovered = pipeline._recover_compact_recon_deliverable(
+            AGENTS["recon"],
+            [{"name": "save_deliverable", "function": save}],
+            events.append,
+        )
+
+        assert recovered is True
+        content = (pipeline.run_dir / "02_recon.md").read_text()
+        assert "| router | 192.0.2.10 | 22 |" in content
+        assert "| mqtt | 192.0.2.11 | 1883 |" in content
+        assert "compact model completed the required discovery" in content
+        assert [event["type"] for event in events] == ["tool_call", "tool_result"]
+
+    def test_compact_recon_run_recovers_after_model_omits_save(
+        self, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        monkeypatch.setattr(graph_tools, "_scenario_topology", {
+            "nodes": [
+                {"id": "router", "ip": "192.0.2.10", "role": "router", "services": [{"port": 22}]},
+                {"id": "mqtt", "ip": "192.0.2.11", "role": "mqtt_broker", "services": [{"port": 1883}]},
+            ]
+        })
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
+        projection = {
+            "device_count": 2,
+            "devices": [
+                {"device": "router", "ip": "192.0.2.10", "sources": ["arp_scan", "nmap_scan"], "open_ports": [22]},
+                {"device": "mqtt", "ip": "192.0.2.11", "sources": ["arp_scan", "nmap_scan"], "open_ports": [1883]},
+            ],
+            "markdown_service_rows": [
+                "| router | 192.0.2.10 | 22 | ssh:22 Dropbear |",
+                "| mqtt | 192.0.2.11 | 1883 | mqtt:1883 Mosquitto |",
+            ],
+        }
+
+        def build_projection():
+            (pipeline.run_dir / "02_recon_evidence.json").write_text(json.dumps(projection))
+            return projection
+
+        monkeypatch.setattr(pipeline, "_build_recon_evidence_projection", build_projection)
+
+        def tool(name, function):
+            return {"name": name, "description": name, "input_schema": {}, "function": function}
+
+        def save(filename, content):
+            (pipeline.run_dir / filename).write_text(content)
+            return json.dumps({"status": "saved"})
+
+        tools = [
+            tool("arp_scan", lambda: json.dumps({"hosts": [{"ip": "192.0.2.10"}, {"ip": "192.0.2.11"}]})),
+            tool("nmap_discovery", lambda target: json.dumps({"stdout": "Nmap scan report for 192.0.2.10\nNmap scan report for 192.0.2.11"})),
+            tool("read_deliverable", lambda filename: json.dumps({"filename": filename, "content": "# Graph"})),
+            tool("nmap_scan", lambda target, **_kwargs: json.dumps({"stdout": (
+                "22/tcp open ssh Dropbear" if target == "192.0.2.10"
+                else "1883/tcp open mqtt Mosquitto"
+            )})),
+            tool("save_deliverable", save),
+        ]
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda _config: tools)
+
+        def model_without_save(**kwargs):
+            exposed = {item["name"]: item["function"] for item in kwargs["tools"]}
+            exposed["arp_scan"]()
+            exposed["nmap_discovery"](target="192.0.2.0/24")
+            exposed["read_deliverable"](filename="01_graph_analysis.md")
+            for item in pipeline._recon_scan_plan(graph_tools._scenario_topology["nodes"]):
+                exposed["nmap_scan"](
+                    target=item["target"], ports=item["ports"], skip_discovery=True
+                )
+            return "Writing 02_recon.md."
+
+        provider.chat_with_tools.side_effect = model_without_save
+        events = []
+
+        status = pipeline._run_agent(AGENTS["recon"], events.append)
+
+        assert status == "completed:synthesized"
+        assert (pipeline.run_dir / "02_recon.md").exists()
+        phase_done = [event for event in events if event.get("type") == "phase_done"]
+        assert len(phase_done) == 1
+        assert phase_done[0]["status"] == "completed:synthesized"
+
+    def test_full_recon_never_uses_compact_recovery(self, output_dir):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="full")
+
+        assert pipeline._recover_compact_recon_deliverable(
+            AGENTS["recon"], [], None
+        ) is False
+
     def test_full_local_recon_does_not_rewrite_model_report(
         self, output_dir
     ):

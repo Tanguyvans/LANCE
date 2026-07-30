@@ -2124,6 +2124,62 @@ class Pipeline:
             )
         return True, "OK"
 
+    def _recover_compact_recon_deliverable(
+        self,
+        config: AgentConfig,
+        tools: list[dict],
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> bool:
+        """Save a deterministic Recon report after a compact-model save stall."""
+        if config.name != "recon" or not self._uses_compact_local_moe():
+            return False
+        projection = self._build_recon_evidence_projection()
+        if len(projection.get("devices", [])) < 2:
+            return False
+        save_tool = next(
+            (tool for tool in tools if tool.get("name") == "save_deliverable"),
+            None,
+        )
+        if not save_tool or not callable(save_tool.get("function")):
+            return False
+        draft = self._finalize_compact_recon_markdown(
+            "# Phase 2: Reconnaissance\n\n"
+            "**Source:** Active network scans recovered after a compact-model "
+            "save stall.\n\n"
+            "## 1. Summary\n\n"
+            "The deterministic evidence ledger is authoritative for host and "
+            "service inventory.\n\n"
+            "## 2. Discovered Services per Device\n\n"
+            "Service rows are regenerated from recorded ARP and Nmap outputs.\n\n"
+            "## 3. Key Findings\n\n"
+            "- The compact model completed the required discovery and minimum "
+            "port coverage but did not emit its final save tool call.\n"
+            "- This recovered report contains only observations recorded in "
+            "tool_calls.jsonl; failed or missing probes are not treated as "
+            "evidence that a host or service is absent.\n"
+            "- Review undocumented hosts, unexpected open ports, and scan "
+            "failures before beginning vulnerability analysis.\n"
+        )
+        args = {"filename": config.deliverable_file, "content": draft}
+        if stream_callback:
+            stream_callback({
+                "type": "tool_call", "name": "save_deliverable", "args": args,
+            })
+        try:
+            result = save_tool["function"](**args)
+        except Exception as exc:
+            log.warning("Compact Recon recovery save failed: %s", exc)
+            return False
+        if stream_callback:
+            stream_callback({
+                "type": "tool_result",
+                "name": "save_deliverable",
+                "result": str(result)[:2000],
+            })
+        validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+        valid, _ = validator_fn(config.deliverable_file)
+        return valid
+
     def _apply_deliverable_transaction(
         self,
         tools: list[dict],
@@ -2456,8 +2512,19 @@ class Pipeline:
         # Validate deliverable
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
+        recovered_compact_recon = False
+        if not valid and compact_local_recon:
+            recovered_compact_recon = self._recover_compact_recon_deliverable(
+                config, tools, stream_callback
+            )
+            if recovered_compact_recon:
+                valid, msg = validator_fn(config.deliverable_file)
 
-        status = "completed" if valid else f"failed:{msg}"
+        status = (
+            "completed:synthesized"
+            if recovered_compact_recon
+            else ("completed" if valid else f"failed:{msg}")
+        )
         # Compact Phase 5 may need deterministic reconciliation before the
         # model's failed validation can become a terminal UI event. Full
         # profiles keep the normal event ordering unchanged.
