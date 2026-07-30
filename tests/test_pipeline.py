@@ -1184,6 +1184,8 @@ class TestGitCommit:
         meta = json.loads(meta_file.read_text())
         assert meta["git_commit"] == "deadbeef"
         assert meta["model"] == "test-model"
+        assert meta["mode"] == "informed"
+        assert meta["blind"] is False
 
 
 class TestBlindMode:
@@ -1259,13 +1261,29 @@ class TestScenarioDeployment:
         pipeline = Pipeline(provider=mock_provider, scenario_id=1)
         with (
             patch.object(pipeline, "_teardown_all_running_scenarios"),
-            patch.object(pipeline, "_run_playbook", side_effect=[True, True, False]),
+            patch.object(pipeline, "_run_playbook", side_effect=[True, True, True, False]),
             patch.object(pipeline, "_run_teardown") as cleanup,
         ):
             success = pipeline._run_scenario_deploy()
 
         assert success is False
         cleanup.assert_called_once_with(None)
+
+    def test_deploy_runs_populate_before_verify(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider, scenario_id=1)
+        with (
+            patch.object(pipeline, "_teardown_all_running_scenarios"),
+            patch.object(pipeline, "_run_playbook", return_value=True) as playbook,
+            patch.object(pipeline, "_run_teardown"),
+        ):
+            assert pipeline._run_scenario_deploy() is True
+
+        assert [call.args[0] for call in playbook.call_args_list] == [
+            "03_deploy_scenario.yml",
+            "04_inject_vulns.yml",
+            "05_populate_services.yml",
+            "06_verify.yml",
+        ]
 
 
 class TestDeviceAgents:

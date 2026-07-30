@@ -735,6 +735,7 @@ class Pipeline:
         manage_scenario: bool = True,
         execution_profile: str = "auto",
         initial_credentials: list[dict] | None = None,
+        external_task_hint: str | None = None,
     ):
         self.provider = provider
         self.execution_profile_resolution = resolve_execution_profile_for_model(
@@ -764,6 +765,7 @@ class Pipeline:
         self.blind = blind
         self.target_network = target_network
         self.initial_credentials = self._sanitize_initial_credentials(initial_credentials or [])
+        self.external_task_hint = str(external_task_hint or "").strip()
         self.max_tool_calls: int | None = None
         self._tool_call_count = 0
         self._artifact_log_lock = threading.Lock()
@@ -856,6 +858,16 @@ class Pipeline:
             "network_topology_edges": "",
             "execution_profile": self.execution_profile.name,
         }
+        if self.external_task_hint:
+            # Public task text is context, not an answer key. It is injected
+            # through the same shared target block used by the six normal
+            # phases, while the expected flag remains controller-only.
+            self.context["scenario_context"] = (
+                "External benchmark task (no oracle):\n" + self.external_task_hint
+            )
+            (self.run_dir / "external_task.txt").write_text(
+                self.external_task_hint + "\n", encoding="utf-8"
+            )
 
         # Build compact edge list from whatever topology is available
         from src.agent.tools.graph_tools import _scenario_topology as _st, _backend as _bk
@@ -890,6 +902,11 @@ class Pipeline:
             "model": getattr(self.provider, "model", None),
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
+            "mode": "blind" if self.blind else "informed",
+            "blind": bool(self.blind),
+            "manage_scenario": bool(self.manage_scenario),
+            "external_profile": bool(self.external_task_hint),
+            "max_tool_calls": self.max_tool_calls,
             "oracle_access": False,
             "initial_credential_count": len(self.initial_credentials),
             **self.execution_profile_resolution.metadata(),
@@ -941,6 +958,9 @@ class Pipeline:
                 "run_dir": str(self.run_dir),
                 "model": getattr(self.provider, "model", None),
                 "git_commit": self.git_commit,
+                "mode": "blind" if self.blind else "informed",
+                "blind": bool(self.blind),
+                "manage_scenario": bool(self.manage_scenario),
                 "oracle_access": False,
                 **self.execution_profile_resolution.metadata(),
             }
@@ -1235,6 +1255,17 @@ class Pipeline:
             log.error("Vuln injection failed — aborting pipeline and cleaning scenario")
             self._run_teardown(stream_callback)
             return False
+        # 05 — populate deterministic service fixtures before verification.
+        ok = self._run_playbook(
+            "05_populate_services.yml",
+            stream_callback,
+            "populate_start",
+            "populate_done",
+        )
+        if not ok:
+            log.error("Service population failed — aborting pipeline and cleaning scenario")
+            self._run_teardown(stream_callback)
+            return False
         # 06 — verify all vulns are present before running the LLM. Benchmark
         # scoring is invalid when the expected vulnerable state is incomplete.
         ok_verify = self._run_playbook("06_verify.yml", stream_callback, "verify_start", "verify_done")
@@ -1282,9 +1313,17 @@ class Pipeline:
                     continue
             except Exception:
                 continue
+            ownership_probe = (
+                f"vmid={base}; actual=''; "
+                f"if qm status $vmid >/dev/null 2>&1; then "
+                f"actual=$(qm config $vmid | awk -F': ' '$1 == \"name\" {{print $2; exit}}'); "
+                f"elif pct status $vmid >/dev/null 2>&1; then "
+                f"actual=$(pct config $vmid | awk -F': ' '$1 == \"hostname\" {{print $2; exit}}'); fi; "
+                f"case \"$actual\" in s{sid}-*) echo EXISTS;; esac"
+            )
             check = subprocess.run(
                 ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5",
-                 f"root@{proxmox_host}", f"(qm status {base} 2>/dev/null || pct status {base} 2>/dev/null) && echo EXISTS || true"],
+                 f"root@{proxmox_host}", ownership_probe],
                 capture_output=True, text=True, timeout=10,
             )
             if "EXISTS" not in check.stdout:

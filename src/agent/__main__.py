@@ -104,6 +104,19 @@ def main():
         help="Hide the public topology and force active discovery.",
     )
     parser.add_argument(
+        "--no-manage-scenario",
+        action="store_true",
+        help=(
+            "Run the agent against an already prepared scenario; do not call "
+            "Proxmox deployment or teardown playbooks."
+        ),
+    )
+    parser.add_argument(
+        "--no-auto-teardown",
+        action="store_true",
+        help="Keep a locally managed scenario deployed after the run.",
+    )
+    parser.add_argument(
         "--target-network",
         default=None,
         metavar="CIDR",
@@ -137,6 +150,8 @@ def main():
         parser.error("--scenario and --batch are mutually exclusive")
     if args.batch is not None and args.target_network is not None:
         parser.error("--target-network cannot be combined with --batch")
+    if args.no_manage_scenario and args.scenario is None and args.batch is None:
+        parser.error("--no-manage-scenario requires --scenario or --batch")
     if args.split == "eval-sealed":
         parser.error(
             "eval-sealed runs must be launched through the sealed controller; "
@@ -154,6 +169,11 @@ def main():
         except ValueError as exc:
             parser.error(str(exc))
         batch_splits = {_public_scenario_split(sid) for sid in batch_ids}
+        if args.no_manage_scenario and len(batch_ids) != 1:
+            parser.error(
+                "--no-manage-scenario accepts exactly one scenario per worker invocation; "
+                "the central campaign runner must prepare/reset scenarios between runs"
+            )
         if resolved_split is not None and batch_splits != {resolved_split}:
             parser.error(
                 f"batch belongs to {', '.join(sorted(batch_splits))}, not {resolved_split}"
@@ -184,6 +204,8 @@ def main():
             phases=args.phases,
             blind=args.blind,
             execution_profile=args.execution_profile,
+            manage_scenario=not args.no_manage_scenario,
+            auto_teardown=not args.no_auto_teardown and not args.no_manage_scenario,
         )
         return
 
@@ -191,6 +213,8 @@ def main():
         provider=provider, dry_run=args.dry_run, phases=args.phases,
         scenario_id=args.scenario,
         blind=args.blind,
+        manage_scenario=not args.no_manage_scenario,
+        auto_teardown=not args.no_auto_teardown and not args.no_manage_scenario,
         target_network=args.target_network,
         benchmark_split=resolved_split,
         execution_profile=args.execution_profile,

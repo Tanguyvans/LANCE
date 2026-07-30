@@ -203,6 +203,7 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "negative_control_penalty_factor": getattr(evaluation, "negative_control_penalty_factor", 1.0),
         "negative_control_violations": getattr(evaluation, "negative_control_violations", 0),
         "negative_control_specificity": getattr(evaluation, "negative_control_specificity", None),
+        "negative_control_clean_run": getattr(evaluation, "negative_control_clean_run", None),
         "evidence_metrics_available": getattr(evaluation, "evidence_metrics_available", False),
         "metric_contract_version": getattr(evaluation, "metric_contract_version", None),
         "run_metric_contract_version": getattr(evaluation, "run_metric_contract_version", None),
@@ -347,6 +348,8 @@ def run_batch(
     phases: list[int] | None = None,
     blind: bool = False,
     execution_profile: str = "auto",
+    manage_scenario: bool = True,
+    auto_teardown: bool = True,
 ) -> Path:
     """Run scenarios sequentially and save batch_summary.json.
 
@@ -370,6 +373,7 @@ def run_batch(
     print(f"\n{'=' * 60}")
     print(f"BATCH RUN — {len(scenario_ids)} scenario(s): {', '.join(f'S{s}' for s in scenario_ids)}")
     print(f"Model : {getattr(provider, 'model', 'unknown')}")
+    print(f"Mode  : {'blind' if blind else 'informed'}")
     print(
         f"Profile: {profile_resolution.profile.name} "
         f"({profile_resolution.resolution_basis})"
@@ -403,8 +407,9 @@ def run_batch(
                 dry_run=dry_run,
                 phases=phases,
                 scenario_id=scenario_id,
-                auto_teardown=True,
+                auto_teardown=auto_teardown,
                 blind=blind,
+                manage_scenario=manage_scenario,
                 benchmark_split=scenario_split,
                 execution_profile=execution_profile,
                 initial_credentials=_load_scenario_footholds(sid),
@@ -416,6 +421,7 @@ def run_batch(
             cost = round(tracker.total_cost(), 4) if tracker is not None else 0.0
             entry = {
                 "scenario_id": sid,
+                "mode": "blind" if blind else "informed",
                 "run_dir": str(failed_run_dir) if failed_run_dir else None,
                 "cost_usd": cost,
                 "status": "failed",
@@ -431,6 +437,7 @@ def run_batch(
 
         entry: dict = {
             "scenario_id": sid,
+            "mode": "blind" if blind else "informed",
             "run_dir": str(run_dir),
             "pipeline_results": run_results,
             "cost_usd": cost,
@@ -455,6 +462,10 @@ def run_batch(
     summary = {
         "batch_timestamp": timestamp,
         "model": getattr(provider, "model", None),
+        "mode": "blind" if blind else "informed",
+        "blind": bool(blind),
+        "manage_scenario": bool(manage_scenario),
+        "auto_teardown": bool(auto_teardown),
         **profile_resolution.metadata(),
         "scenarios": results,
         "aggregate": aggregate,
