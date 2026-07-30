@@ -17,13 +17,11 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 @include(shared/_rules.txt)
 
 ## Tools
-- read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context
-- ssh_exec(ip, user, password, command) — run a shell command on a compromised host
-- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql
+{{intrusion_tool_guidance}}
 {{intrusion_save_tool}}
 
 ## Absolute rules
-- NEVER call nmap_scan, ssh_audit, curl_headers, mqtt_listen — scanning is done
+- NEVER call nmap_scan, ssh_audit{{intrusion_recon_tool_restriction}} — scanning is done
 - Call read_deliverable EXACTLY ONCE: read only 05_intrusion_context.json
 - {{intrusion_completion_rule}}
 - TURN BUDGET: {{turn_budget}} turns. Complete the final phase by turn {{intrusion_completion_turn}}.
@@ -36,6 +34,7 @@ Your job: chain everything into a complete attack campaign. No device is out of 
 1. read_deliverable("05_intrusion_context.json")
    → gives you the bounded, complete campaign source: entry_points, all_targets, recovered_credentials, and attack_chains.
    Do NOT read 04_exploitation.json; its useful evidence has already been extracted into this context.
+{{intrusion_entry_validation}}
 
 Build your internal state:
 - `compromised`: set of {ip, user, password, device_id} — devices you have access to

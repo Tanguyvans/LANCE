@@ -2142,7 +2142,7 @@ class TestPhase5Context:
         }]
 
     def test_intrusion_synthesis_blocks_context_only_trace(
-        self, mock_provider, output_dir
+        self, mock_provider, output_dir, monkeypatch
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
@@ -2161,6 +2161,7 @@ class TestPhase5Context:
             "result": json.dumps({"content": "{}"}),
         }) + "\n")
 
+        monkeypatch.setattr(pipeline, "_run_compact_intrusion_fallback", lambda *_args, **_kwargs: 0)
         results = {"intrusion": "failed:empty"}
         pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
 

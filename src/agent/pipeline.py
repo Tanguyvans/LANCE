@@ -101,6 +101,7 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
+COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 8
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
@@ -2290,7 +2291,29 @@ class Pipeline:
         variables["intrusion_campaign_stop_turn"] = max(1, int(max_turns * 0.875))
         variables["intrusion_completion_turn"] = max(1, int(max_turns * 0.9))
         if config.name == "intrusion":
+            variables["intrusion_tool_guidance"] = (
+                "- read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context\n"
+                "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
+                "- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql"
+            )
+            variables["intrusion_recon_tool_restriction"] = ", curl_headers, mqtt_listen"
+            variables["intrusion_entry_validation"] = ""
             if local_intrusion_memo:
+                variables["intrusion_tool_guidance"] = (
+                    "- read_deliverable(filename) — read only the intrusion context\n"
+                    "- mqtt_listen(broker, topic, count, timeout) — validate anonymous MQTT entry points\n"
+                    "- http_get(url) / curl_headers(url) — validate HTTP entry points and exposed content\n"
+                    "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
+                    "- try_credential(ip, service, user, password) — test recovered credentials on a target"
+                )
+                variables["intrusion_recon_tool_restriction"] = ""
+                variables["intrusion_entry_validation"] = (
+                    "## Compact entry validation — mandatory before credential reuse\n\n"
+                    "- For an MQTT no_auth entry point, call mqtt_listen once.\n"
+                    "- For an HTTP directory_listing or data-exposure entry point, call http_get or curl_headers once.\n"
+                    "- Then use try_credential against the remaining context targets. "
+                    "These are authorized Phase 5 actions, not Phase 2 scanning."
+                )
                 variables["intrusion_save_tool"] = (
                     f"- {COMPACT_INTRUSION_COMPLETION_TOOL}(summary=<short campaign summary>)"
                 )
@@ -5080,6 +5103,104 @@ class Pipeline:
     # Phase 5 — Intrusion context + post-processing
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _compact_intrusion_service(target: dict) -> str:
+        role = str(target.get("role") or "").strip().casefold()
+        services = {
+            "router": "ssh", "gateway": "ssh", "ssh_server": "ssh",
+            "mqtt_broker": "mqtt", "web_server": "http",
+            "nodered_server": "http", "camera": "http",
+            "ftp_server": "ftp", "db_server": "mysql", "db_server_v2": "redis",
+        }
+        if role in services:
+            return services[role]
+        ports = {int(port) for port in target.get("services", []) if str(port).isdigit()}
+        if 22 in ports:
+            return "ssh"
+        if 1883 in ports:
+            return "mqtt"
+        if 80 in ports or 443 in ports:
+            return "http"
+        if 21 in ports:
+            return "ftp"
+        if 3306 in ports:
+            return "mysql"
+        if 6379 in ports:
+            return "redis"
+        return "ssh"
+
+    def _run_compact_intrusion_fallback(self, config, stream_callback=None) -> int:
+        """Run a bounded baseline only after a compact local-model stall."""
+        if not self._uses_compact_local_moe():
+            return 0
+        try:
+            context = json.loads(
+                (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return 0
+        if not isinstance(context, dict):
+            return 0
+        tools = filter_profile_tools(
+            self.execution_profile, config.phase, self._resolve_tools(config)
+        )
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+        actions = []
+        covered = set()
+        for entry in context.get("entry_points", []):
+            if not isinstance(entry, dict):
+                continue
+            ip = str(entry.get("device_ip") or entry.get("ip") or "").strip()
+            service = str(entry.get("service") or "").strip().casefold()
+            if not ip or ip in covered:
+                continue
+            if service == "mqtt" and "mqtt_listen" in tool_map:
+                actions.append(("mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}))
+            elif service in {"http", "https"} and "http_get" in tool_map:
+                actions.append(("http_get", {"url": f"http://{ip}/"}))
+            else:
+                continue
+            covered.add(ip)
+        credentials = [
+            item for item in context.get("recovered_credentials", [])
+            if isinstance(item, dict) and str(item.get("user") or "").strip()
+            and str(item.get("password") or "").strip()
+        ]
+        for index, target in enumerate(context.get("all_targets", [])):
+            if len(actions) >= COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS or not isinstance(target, dict):
+                break
+            ip = str(target.get("device_ip") or target.get("ip") or "").strip()
+            if not ip or ip in covered or "try_credential" not in tool_map:
+                continue
+            credential = credentials[index % len(credentials)] if credentials else {"user": "root", "password": "root"}
+            actions.append(("try_credential", {
+                "ip": ip, "service": self._compact_intrusion_service(target),
+                "user": str(credential["user"]), "password": str(credential["password"]),
+            }))
+            covered.add(ip)
+        executed = 0
+        for name, kwargs in actions[:COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS]:
+            function = tool_map.get(name)
+            if function is None:
+                continue
+            if stream_callback:
+                stream_callback({"type": "tool_call", "name": name, "args": kwargs})
+            try:
+                result = function(**kwargs)
+            except Exception as exc:
+                log.warning("Compact Phase 5 fallback %s failed: %s", name, exc)
+                continue
+            executed += 1
+            if stream_callback:
+                stream_callback({"type": "tool_result", "name": name, "result": str(result)[:2000]})
+        return executed
+
+    def _recover_compact_intrusion_no_progress(self, config, stream_callback=None) -> dict:
+        executed = self._run_compact_intrusion_fallback(config, stream_callback)
+        return self._synthesize_intrusion_from_tools(
+            note=f"Synthesized after compact-model stall; bounded fallback actions: {executed}."
+        )
+
     def _record_blocked_intrusion_synthesis(
         self,
         config,
@@ -5143,6 +5264,10 @@ class Pipeline:
                     note="Reconciled from tool_calls.jsonl — local MoE model output is treated as memo-only."
                 )
                 if not self._intrusion_synthesis_has_observable_actions(data):
+                    data = self._recover_compact_intrusion_no_progress(
+                        config, stream_callback
+                    )
+                if not self._intrusion_synthesis_has_observable_actions(data):
                     self._record_blocked_intrusion_synthesis(
                         config,
                         results,
@@ -5176,6 +5301,10 @@ class Pipeline:
             "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
         )
         data = self._synthesize_intrusion_from_tools()
+        if self._uses_compact_local_moe() and not self._intrusion_synthesis_has_observable_actions(data):
+            data = self._recover_compact_intrusion_no_progress(
+                config, stream_callback
+            )
         if not self._intrusion_synthesis_has_observable_actions(data):
             self._record_blocked_intrusion_synthesis(
                 config,
