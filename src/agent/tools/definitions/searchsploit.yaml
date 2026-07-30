@@ -1,7 +1,8 @@
 name: "searchsploit"
 command: "searchsploit"
 args: ["--colour", "0", "--id"]
-enabled: true
+enabled: false
+disabled_reason: "searchsploit is unavailable in the frozen Debian Trixie worker image"
 timeout: 20
 max_output: 4000
 short_description: "Local exploit-db lookup"

@@ -1,7 +1,8 @@
 name: "nxc_validate"
 command: "nxc"
 args: []
-enabled: true
+enabled: false
+disabled_reason: "nxc is unavailable in the frozen Debian Trixie worker image"
 timeout: 60
 max_output: 4000
 short_description: "Credential validation across protocols (NetExec)"

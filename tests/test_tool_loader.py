@@ -210,7 +210,7 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 44
+        assert len(tools) == 37
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
@@ -227,10 +227,8 @@ class TestExpectedTools:
         expected_hw = {"hackrf_capture", "flipper_zero", "exploit_iot_kit", "proxmark3"}
         # New offensive/recon tools added by the agent-tools-expansion PR.
         expected_new_offensive = {
-            "sqlmap", "gobuster_dir", "whatweb", "nuclei_scan",
-            "nikto_scan", "wpscan", "searchsploit", "dig_query",
-            "smbclient_list", "enum4linux", "nxc_validate",
-            "openssl_inspect", "ysoserial_payload",
+            "sqlmap", "gobuster_dir", "whatweb", "dig_query",
+            "smbclient_list", "openssl_inspect",
         }
         expected_new_python = {
             "python_exec", "http_request", "tcp_send", "udp_send", "mtls_request",

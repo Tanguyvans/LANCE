@@ -1,7 +1,8 @@
 name: "nikto_scan"
 command: "nikto"
 args: ["-ask", "no", "-nointeractive", "-maxtime", "120", "-Tuning", "x4567890b"]
-enabled: true
+enabled: false
+disabled_reason: "nikto is unavailable in the frozen Debian Trixie worker image"
 timeout: 180
 max_output: 6000
 short_description: "Web server misconfiguration scanner"

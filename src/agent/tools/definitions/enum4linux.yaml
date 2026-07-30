@@ -1,7 +1,8 @@
 name: "enum4linux"
 command: "enum4linux-ng"
 args: ["-A", "-q"]
-enabled: true
+enabled: false
+disabled_reason: "enum4linux-ng is unavailable in the frozen Debian Trixie worker image"
 timeout: 180
 max_output: 8000
 short_description: "SMB/NetBIOS enumeration"

@@ -1,7 +1,8 @@
 name: "nuclei_scan"
 command: "nuclei"
 args: ["-silent", "-no-color", "-stats=false", "-rate-limit", "30", "-timeout", "10"]
-enabled: true
+enabled: false
+disabled_reason: "nuclei is unavailable in the frozen Debian Trixie worker image"
 timeout: 600
 max_output: 8000
 short_description: "Template-based vulnerability scan"

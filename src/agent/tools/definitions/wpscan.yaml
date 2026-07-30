@@ -1,7 +1,8 @@
 name: "wpscan"
 command: "wpscan"
 args: ["--no-banner", "--random-user-agent", "--disable-tls-checks", "--request-timeout", "15", "--connect-timeout", "10", "--no-update", "--force"]
-enabled: true
+enabled: false
+disabled_reason: "wpscan is unavailable in the frozen Debian Trixie worker image"
 timeout: 300
 max_output: 7000
 short_description: "WordPress version + plugin/theme vulnerability scanner"

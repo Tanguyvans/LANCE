@@ -188,10 +188,8 @@ class TestNewToolsLoaded:
     """Each new tool YAML must load and produce a callable function entry."""
 
     NEW_TOOL_NAMES = (
-        "sqlmap", "gobuster_dir", "whatweb", "nuclei_scan",
-        "nikto_scan", "wpscan", "searchsploit", "dig_query",
-        "smbclient_list", "enum4linux", "nxc_validate",
-        "openssl_inspect", "ysoserial_payload",
+        "sqlmap", "gobuster_dir", "whatweb", "dig_query",
+        "smbclient_list", "openssl_inspect",
         "python_exec", "http_request", "tcp_send",
         "tls_inspect", "decode_value",
     )
@@ -207,6 +205,15 @@ class TestNewToolsLoaded:
         schema = tool["input_schema"]
         assert schema["type"] == "object"
         assert "properties" in schema
+
+    @pytest.mark.parametrize("name", (
+        "enum4linux", "nikto_scan", "nuclei_scan", "nxc_validate",
+        "searchsploit", "wpscan", "ysoserial_payload",
+    ))
+    def test_unavailable_worker_tool_is_not_advertised(self, name):
+        from src.agent.tools.recon_tools import RECON_TOOLS
+
+        assert name not in {tool["name"] for tool in RECON_TOOLS}
 
 
 class TestPythonExec:

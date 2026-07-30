@@ -5,21 +5,16 @@ base64
 bash
 curl
 dig
-enum4linux-ng
 gobuster
 head
 java
 mosquitto_sub
 mysql
 nc
-nikto
 nmap
-nuclei
-nxc
 openssl
 ping
 redis-cli
-searchsploit
 smbclient
 sqlmap
 ssh
@@ -28,4 +23,3 @@ sshpass
 timeout
 traceroute
 whatweb
-wpscan

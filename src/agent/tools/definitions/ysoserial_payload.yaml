@@ -1,7 +1,8 @@
 name: "ysoserial_payload"
 command: "bash"
 args: ["-c", "java -jar \"${YSOSERIAL_JAR:-/opt/baseline-tools/tools/ysoserial.jar}\" \"$0\" \"$1\" | base64 -w0"]
-enabled: true
+enabled: false
+disabled_reason: "the pinned ysoserial JAR is absent from the frozen worker image"
 timeout: 30
 max_output: 6000
 short_description: "Java deserialization payload generator (ysoserial)"
