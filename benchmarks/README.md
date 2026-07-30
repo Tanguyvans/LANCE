@@ -167,9 +167,9 @@ Cette liste historique et non exhaustive documente le corpus public.
 
 Pour S1–S29, `ground_truth/scenario_N.yaml` décrit les instances attendues, leurs indicateurs, les commandes de vérification et les chemins d’attaque. Ces fichiers sont publics pour permettre l’audit et la reproduction scientifique. Seuls S1–S19 alimentent le développement et les tests de non-régression du harness ; S20–S29 restent exclus de la boucle d’apprentissage empirique.
 
-Les comptages ajoutés sont : S24=3, S25=3, S26=5, S27=4, S28=4 et S29=3 vulnérabilités. Leurs contrôles respectifs sont 2, 3, 2, 2, 4 et 22.
+Les comptages scorés sont : S24=2, S25=2, S26=3, S27=3, S28=4 et S29=3 vulnérabilités. Pour S24–S27, les comptes d'entrée fournis sont des conditions initiales et non des findings scorés. Leurs contrôles respectifs sont 2, 3, 2, 2, 4 et 22.
 
-> Le corpus historique S1–S12 totalise **209 vulnérabilités** sur 116 appareils. Le corpus public officiel S1–S29 totalise **288 vulnérabilités**, **88 contrôles** et **278 appareils**, hors variantes S1h/S4h.
+> Le corpus historique S1–S12 totalise **209 vulnérabilités** sur 116 appareils. Le corpus public officiel S1–S29 totalise **282 vulnérabilités scorées**, **88 contrôles** et **278 appareils**, hors variantes S1h/S4h.
 
 Chaque entrée supporte un champ `bonus_types` listant les types de findings tolérés (ne comptent pas en FP lorsqu'ils ne figurent pas dans l'ensemble injecté). La taxonomie canonique est définie dans `src/agent/vuln_taxonomy.py` — toute nouvelle alias passe par `VULN_TYPE_ALIASES` / `NOISE_TYPES` plutôt qu'en duplication locale.
 
@@ -206,7 +206,7 @@ La provenance est explicite : S1–S19 ont contribué à la création du harness
 | Phase 4 Completion Rate | Verdicts conclusifs Phase 4 / findings Phase 3 éligibles à l'exploitation |
 | Coût | Tokens consommés par scénario (résumé par phase) |
 
-Le tableau principal rapporte Detection F1, Verified F1 et Verified Severity Coverage. Le clean-run rate reste séparé des findings. Les répétitions sont d’abord moyennées au sein de chaque scénario, puis S20–S29 sont macro-moyennés à poids égal. Un run pré-engagé manquant vaut zéro. Voir [le protocole d’évaluation](docs/EVALUATION_PROTOCOL.md#scoring-et-agrégation).
+Le tableau principal rapporte Detection F1, Verified F1 et Verified Severity Coverage. Le negative-control clean-run rate reste séparé des findings : un run mixte est propre uniquement si tous ses contrôles déclarés sont évaluables et qu'aucun n'est violé. Les répétitions sont d’abord moyennées au sein de chaque scénario, puis S20–S29 sont macro-moyennés à poids égal. Un run pré-engagé manquant vaut zéro. Voir [le protocole d’évaluation](docs/EVALUATION_PROTOCOL.md#scoring-et-agrégation).
 
 Les métriques de qualité sont contractualisées comme des ratios `[0,1]` ; `cost_usd` est exprimé en dollars US. Les résultats doivent toujours préciser le split et la version du benchmark. Les moyennes `dev-public` et `test-public` restent séparées ; des versions dont les définitions ou le scoring diffèrent ne sont pas directement comparables.
 

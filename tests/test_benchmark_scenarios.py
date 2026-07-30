@@ -350,18 +350,44 @@ def test_paper_campaign_uses_the_complete_frozen_public_test_split():
     assert confirmatory["scenarios"] == [str(i) for i in range(20, 30)]
     assert confirmatory["systems"] == ["lance", "cai", "vulnbot"]
     assert confirmatory["mode"] == "blind"
-    assert confirmatory["planned_runs"] == 10 * 3 * 3
+    assert confirmatory["repetitions"] == 1
+    assert confirmatory["planned_runs"] == 10 * 3
     assert confirmatory["freeze_before_first_run"] is True
     assert confirmatory["tuning_from_results_forbidden"] is True
 
     assert informed["scenarios"] == confirmatory["scenarios"]
     assert informed["mode"] == "informed"
     assert informed["run_after_blind_confirmatory"] is True
-    assert informed["planned_runs"] == 10 * 3
+    assert informed["repetitions"] == 1
+    assert informed["planned_runs"] == 10
+
+    development = campaign["development_diagnostics"]
+    assert development["scenarios"] == [str(i) for i in range(1, 20)]
+    assert development["modes"] == ["informed", "blind"]
+    assert development["planned_runs"] == 19 * 2
+    assert campaign["execution"]["reset_between_conditions"] is True
 
     published = (
         confirmatory["planned_runs"]
-        + campaign["development_diagnostics"]["planned_runs"]
+        + development["planned_runs"]
         + informed["planned_runs"]
     )
-    assert campaign["planned_published_runs"] == published == 156
+    assert campaign["planned_published_runs"] == published == 78
+
+
+def test_multihop_starting_credentials_are_not_scored_findings():
+    for scenario_id in (20, 24, 25, 26, 27):
+        scenario = _load_yaml(SCENARIOS / f"S{scenario_id}.yaml")
+        ground_truth = _load_yaml(GROUND_TRUTH / f"scenario_{scenario_id}.yaml")
+        credentials = scenario.get("initial_credentials") or []
+        excluded = set(scenario.get("excluded_vulnerabilities") or [])
+
+        assert credentials, f"S{scenario_id} has no reproducible starting foothold"
+        assert excluded, f"S{scenario_id} scores its supplied starting foothold"
+        assert excluded.isdisjoint({v["id"] for v in ground_truth["vulnerabilities"]})
+        for credential in credentials:
+            assert credential["service"] == "ssh"
+            assert credential["port"] == 22
+            assert credential["ip"].startswith("192.168.100.")
+            assert credential["user"]
+            assert credential["password"]

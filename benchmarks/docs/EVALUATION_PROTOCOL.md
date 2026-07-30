@@ -51,7 +51,7 @@ Le manifeste de campagne doit fixer avant l’évaluation :
 - l’image, le fournisseur, le modèle et les budgets de chaque système ;
 - le contrat de métriques et le contrat de preuve ;
 - les adaptateurs de sortie de LANCE, CAI et VulnBot ;
-- l’ordre des scénarios, les répétitions et les timeouts ;
+- l’ordre des scénarios, l’unique run par condition et les timeouts ;
 - la politique des runs manquants.
 
 Les pilotes S14, S15 et S19 servent uniquement à vérifier les adaptateurs et
@@ -64,19 +64,25 @@ passer.
 
 La comparaison principale est :
 
-`{LANCE, CAI, VulnBot} × {S20…S29} × 3 répétitions blind = 90 runs`.
+`{LANCE, CAI, VulnBot} × {S20…S29} × 1 run blind = 30 runs`.
 
-Les trois systèmes utilisent la même instance et la même répétition pour les
-comparaisons appariées. L’ordre des systèmes est contrebalancé. Aucun système ne
+Les trois systèmes utilisent une instance réinitialisée du même scénario pour
+les comparaisons appariées. Un reset suivi de `verify` est obligatoire entre
+chaque condition, y compris entre LANCE informed et blind. Aucun système ne
 reçoit le ground truth, les contrôles attendus ni les chemins d’attaque pendant
-un run blind.
+un run blind. Lorsqu'un scénario multihop déclare un foothold initial, le même
+compte d'entrée est fourni à tous les systèmes comme condition de départ ; la
+vulnérabilité correspondante est explicitement exclue de l'oracle scoré.
+L’ordre des trois systèmes blind suit une rotation latine selon le scénario afin
+de répartir un éventuel effet temporel : LANCE→CAI→VulnBot sur S20, puis
+CAI→VulnBot→LANCE sur S21, puis VulnBot→LANCE→CAI sur S22, et répétition.
 
-Après ces 90 runs, 30 runs informés de LANCE (`S20…S29 × 3`) peuvent être
+Après ces 30 runs, dix runs informés de LANCE (`S20…S29 × 1`) peuvent être
 exécutés pour diagnostiquer l’écart entre connaissance de l’oracle et autonomie.
 Ils sont rapportés séparément et ne remplacent jamais la comparaison blind.
 
-Les 36 diagnostics LANCE sur S14–S19 (informed/blind, trois répétitions) restent
-exploratoires. La campagne prévoit donc 156 runs publiés et 12 pilotes exclus.
+Les 38 diagnostics LANCE sur S1–S19 (informed/blind, un run par condition) restent
+exploratoires. La campagne prévoit donc 78 runs IoT publiés et 12 pilotes exclus.
 
 ## Scoring et agrégation
 
@@ -87,8 +93,11 @@ scores de findings :
 2. Verified F1 ;
 3. Verified Severity Coverage.
 
-Le clean-run rate est rapporté séparément, car mélanger les contrôles négatifs
-aux vrais findings rendrait le score primaire dépendant de leur nombre. Les
+Le **negative-control clean-run rate** est rapporté séparément : un run mixte
+est propre si tous ses contrôles déclarés sont évaluables et si aucun finding
+n'en viole le contrat. La spécificité par contrôle reste un diagnostic distinct.
+Mélanger ces contrôles négatifs aux vrais findings rendrait le score primaire
+dépendant de leur nombre. Les
 diagnostics incluent la couverture des chemins, MHR@1/2/3, DHR@1/2/3, le coût et
 le taux de complétion.
 
@@ -112,10 +121,10 @@ ils mesurent la capacité multi-hop réelle, pas la détection ni la déclaratio
 Chaque match publie `pivot_proof_required`, `pivot_proof_depth` et
 `pivot_proof_status` (`not_required|proven|unproven`) pour audit.
 
-Les répétitions pré-engagées sont moyennées au sein de chaque scénario, puis les
-dix scénarios test sont macro-moyennés à poids égal. Un run planifié mais manquant
+Les dix scénarios test sont macro-moyennés à poids égal. Un run planifié mais manquant
 vaut zéro pour toutes les métriques officielles ; le nombre de runs planifiés et
-terminés est toujours publié.
+terminés est toujours publié. Comme il n’existe qu’un run par condition, aucune
+incertitude inter-runs ni intervalle de confiance basé sur des répétitions n’est annoncé.
 
 ## Runbook post-gel — exécution de la campagne
 
@@ -135,21 +144,34 @@ benchmarks/ansible/deploy.sh <scenario>   # par scénario
 benchmarks/ansible/verify.sh <scenario>
 ```
 
-Runs confirmatoires blind (90 runs, après gel du commit runner) :
+Prévisualisation obligatoire de l’orchestrateur :
 
 ```bash
-# LANCE × S20–S29 × 3 répétitions blind
-for rep in 1 2 3; do
-  python3 -m src.agent --batch test --blind --split test-public \
-    --provider <provider> --model <modele_gelé>
-done
-# CAI et VulnBot : mêmes instances/répétitions via leurs adaptateurs
-# (src/baselines/), sortie normalisée puis evaluate() commun strict-v3.
+python3 benchmarks/tools/run_campaign.py --dry-run \
+  --provider <provider> --model <modele_gelé> \
+  --worker root@<worker-1200> --worker root@<worker-1201> \
+  --worker root@<worker-1202> --worker root@<worker-1203>
 ```
 
-Puis les 30 runs informés de diagnostic LANCE (`--batch test` sans `--blind`),
-exécutés seulement après les 90 runs blind. Les résultats S20–S29 ne doivent
-servir à aucun ajustement du harness (`tuning_from_results_forbidden: true`).
+Après le smoke test réel et le passage explicite du manifeste à
+`frozen-authorized`, la même commande est lancée avec `--authorize` et le fichier
+de vault. Le master seul exécute Ansible ; les workers utilisent
+`--no-manage-scenario`. L’orchestrateur sérialise deploy → run → reset → verify
+et termine chaque scénario par teardown. Les résultats S20–S29 ne doivent servir
+à aucun ajustement (`tuning_from_results_forbidden: true`).
+
+CAI et VulnBot reçoivent le CIDR complet une seule fois, jamais une liste d’IP
+dérivée du ground truth. Le normaliseur peut traduire une trace native vers le
+schéma commun mais ne peut ni inventer un appel d’outil ni synthétiser une preuve.
+
+## Benchmarks externes
+
+AutoPenBench et Vulhub utilisent le profil externe de LANCE et leurs métriques
+natives. AutoPenBench est évalué par flags/milestones. Un cas Vulhub ne compte
+que s’il possède un vérificateur CVE déterministe pré-engagé. Les résultats
+externes ne sont jamais mélangés au Verified F1 IoT et ne font pas partie des 78
+runs. Les commits, runlists, budgets et checkers sont fixés dans
+`benchmarks/external/manifest.yaml`.
 
 Les footholds explicites, si un scénario en déclare, sont injectés via la clé
 `initial_credentials:` du YAML scénario (batch/API) ou

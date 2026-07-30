@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 campaign_id: paper-v3.4
 status: draft-not-authorized
 benchmark_version: 3.2.0
@@ -12,7 +12,7 @@ publication_metrics:
   - detection_f1
   - verified_f1
   - verified_severity_coverage
-  separate_controls: clean_run_rate
+  separate_controls: negative_control_clean_run_rate
   diagnostics:
   - verified_path_coverage
   - mhr_1_verified
@@ -23,7 +23,7 @@ publication_metrics:
   - completion_rate
 
 aggregation:
-  within_profile: mean_over_precommitted_repetitions
+  within_profile: one_run_per_precommitted_condition
   across_profiles: equal_weight_macro_mean
   missing_run_policy: zero_for_all_official_metrics
   incompatible_contract_policy: non_comparable_fail_campaign
@@ -38,6 +38,8 @@ gates_before_freeze:
 - s14_s29_real_infrastructure_deploy_inject_populate_verify
 - public_oracle_empty_spam_and_missing_proof_ceiling_tests
 - baseline_adapters_emit_structural_fields_and_tool_provenance
+- real_vulnbot_smoke_test_passes_or_campaign_is_refrozen_without_vulnbot
+- reset_and_verify_between_every_condition
 - public_test_definitions_ground_truth_and_matching_contracts_frozen
 - runner_commit_image_model_provider_budgets_and_scenario_order_precommitted
 
@@ -59,21 +61,21 @@ confirmatory:
   scenarios: ['20', '21', '22', '23', '24', '25', '26', '27', '28', '29']
   systems: [lance, cai, vulnbot]
   mode: blind
-  repetitions: 3
-  pair_repetitions_by_scenario_instance: true
+  repetitions: 1
+  pair_by_scenario_instance: true
   freeze_before_first_run: true
   tuning_from_results_forbidden: true
-  planned_runs: 90
+  planned_runs: 30
 
 development_diagnostics:
   publish: true
   split: dev-public
   role: exploratory_only
-  scenarios: ['14', '15', '16', '17', '18', '19']
+  scenarios: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
   systems: [lance]
   modes: [informed, blind]
-  repetitions: 3
-  planned_runs: 36
+  repetitions: 1
+  planned_runs: 38
 
 public_held_out_informed_diagnostic:
   publish: true
@@ -82,18 +84,42 @@ public_held_out_informed_diagnostic:
   scenarios: ['20', '21', '22', '23', '24', '25', '26', '27', '28', '29']
   systems: [lance]
   mode: informed
-  repetitions: 3
+  repetitions: 1
   freeze_before_first_run: true
   tuning_from_results_forbidden: true
   run_after_blind_confirmatory: true
-  planned_runs: 30
+  planned_runs: 10
+
+execution:
+  controller: master_only
+  worker_scenario_management: false
+  mutable_scenarios_in_parallel: false
+  reset_between_conditions: true
+  reset_sequence: [reset, verify]
+  scenario_sequence: ascending
+  blind_system_order: latin_rotation_by_scenario
+  mode_recorded_in_run_metadata: true
+
+external_benchmarks:
+  included_in_iot_run_count: false
+  manifest: benchmarks/external/manifest.yaml
+  suites: [autopenbench, vulhub]
+  metrics: native_suite_oracles
+
+pre_freeze_contingency:
+  decision_gate: real_vulnbot_smoke_test
+  on_failure: create_and_freeze_a_new_68_run_manifest_before_any_official_run
+  switching_after_first_official_run_forbidden: true
 
 statistics:
-  confidence_level: 0.95
-  pairing: scenario_instance_and_repetition
+  repeated_run_confidence_intervals: false
+  reason: one_run_per_condition
+  pairing: scenario_instance
   report_effect_sizes: true
   report_per_profile_values: true
+  report_per_scenario_values: true
+  uncertainty_summary: descriptive_across_scenarios_only
   model_sensitivity_is_optional_follow_up: true
 
-planned_published_runs: 156
+planned_published_runs: 78
 planned_excluded_pilot_runs: 12
