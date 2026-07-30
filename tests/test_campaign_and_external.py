@@ -9,7 +9,14 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from benchmarks.tools.run_campaign import CampaignRunner, _conditions, _load_manifest, _parser
+from benchmarks.tools.run_campaign import (
+    LANCE_REQUIRED_ARTIFACTS,
+    CampaignRunner,
+    Condition,
+    _conditions,
+    _load_manifest,
+    _parser,
+)
 from src.agent.__main__ import _scrub_sensitive_environment_for_tools
 from src.baselines.external_benchmarks import ExternalBenchmarkCase, run_case
 from src.baselines.runner import _normalise_calls
@@ -110,6 +117,79 @@ def test_campaign_passes_declared_foothold_without_oracle_to_blind_lance(tmp_pat
     remote_command = runner._agent_command(condition, remote=True)
     assert remote_command[0] == "benchmarks/tools/run_blind_worker.sh"
     assert "src.agent" not in remote_command
+
+
+def test_campaign_preflights_remote_blind_worker_before_deploy(tmp_path):
+    manifest_path = ROOT / "benchmarks/campaigns/paper_v3_4.yaml"
+    manifest = _load_manifest(manifest_path)
+    args = _parser().parse_args([
+        "--manifest", str(manifest_path),
+        "--dry-run",
+        "--worker", "root@192.0.2.10",
+        "--state", str(tmp_path / "state.json"),
+    ])
+    runner = CampaignRunner(args, manifest)
+    condition = Condition("15", "lance", "blind", "pilot", 1)
+
+    with patch.object(runner, "_run") as mock_run:
+        runner._preflight_workers([condition])
+
+    command = mock_run.call_args.args[0]
+    assert command[:2] == ["ssh", "root@192.0.2.10"]
+    assert command[2].endswith("benchmarks/tools/run_blind_worker.sh --preflight")
+
+
+def test_campaign_rejects_lance_run_with_failed_recon(tmp_path):
+    condition = Condition("15", "lance", "blind", "pilot", 1)
+    for name in LANCE_REQUIRED_ARTIFACTS:
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    meta = {
+        "run_status": "failed",
+        "phase_statuses": {
+            "graph_analysis": "completed",
+            "recon": "failed:Deliverable '02_recon.md' not found",
+            "report": "completed",
+        },
+    }
+
+    with pytest.raises(RuntimeError, match="not completed"):
+        CampaignRunner._validate_collected_run(condition, tmp_path, meta)
+
+
+def test_campaign_accepts_only_complete_lance_artifact_contract(tmp_path):
+    condition = Condition("15", "lance", "blind", "pilot", 1)
+    for name in LANCE_REQUIRED_ARTIFACTS:
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    meta = {
+        "run_status": "completed",
+        "phase_statuses": {
+            "graph_analysis": "completed",
+            "recon": "completed",
+            "report": "completed",
+        },
+    }
+
+    CampaignRunner._validate_collected_run(condition, tmp_path, meta)
+    (tmp_path / "02_recon.md").unlink()
+    with pytest.raises(RuntimeError, match="02_recon.md"):
+        CampaignRunner._validate_collected_run(condition, tmp_path, meta)
+
+
+def test_blind_worker_tool_contract_covers_enabled_subprocess_definitions():
+    required = {
+        line.strip()
+        for line in (ROOT / "benchmarks/tools/blind_worker_required_tools.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    enabled_commands = set()
+    for path in (ROOT / "src/agent/tools/definitions").glob("*.yaml"):
+        definition = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if definition.get("enabled", True) and definition.get("command"):
+            enabled_commands.add(str(definition["command"]))
+
+    assert enabled_commands <= required
 
 
 def test_blind_tool_environment_scrubs_credentials(monkeypatch):

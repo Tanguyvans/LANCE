@@ -415,6 +415,11 @@ def run_batch(
                 initial_credentials=_load_scenario_footholds(sid),
             )
             run_results = pipeline.run()
+            run_status = getattr(pipeline, "run_status", None)
+            if isinstance(run_status, str) and run_status != "completed":
+                raise RuntimeError(
+                    f"pipeline finished with status {run_status}: {run_results}"
+                )
         except Exception as exc:
             failed_run_dir = getattr(pipeline, "run_dir", None)
             tracker = getattr(pipeline, "tracker", None)

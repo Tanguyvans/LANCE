@@ -221,6 +221,7 @@ def main():
     # keeps invalid/sealed invocations free of credentials and network setup.
     provider = LLMProvider(provider=args.provider, model=args.model)
     if args.blind:
+        os.environ["LANCE_BLIND"] = "1"
         _scrub_sensitive_environment_for_tools()
 
     # Batch mode: sequential multi-scenario run
@@ -257,6 +258,9 @@ def main():
     for name, status in results.items():
         icon = "v" if status == "completed" else "x" if "failed" in status else "-"
         print(f"  [{icon}] {name}: {status}")
+    run_status = getattr(pipeline, "run_status", None)
+    if isinstance(run_status, str) and run_status != "completed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

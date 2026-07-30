@@ -22,6 +22,10 @@ log = logging.getLogger(__name__)
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
+def _blind_benchmark_mode() -> bool:
+    return os.environ.get("LANCE_BLIND", "").strip() == "1"
+
+
 # ── Frontmatter parsing ─────────────────────────────────────────
 
 def _parse_skill_file(path: Path) -> dict[str, Any]:
@@ -149,6 +153,10 @@ def search_knowledge(
     Collections: cve_knowledge, skills, run_history
     When searching 'skills', results are filtered by the active skill filter.
     """
+    if _blind_benchmark_mode():
+        return json.dumps({
+            "error": "semantic knowledge store disabled in blind benchmark mode"
+        })
     try:
         from src.agent.knowledge.store import search
         results = search(collection, query, top_k=top_k, where=where)
@@ -178,14 +186,13 @@ def cve_search(query: str, top_k: int = 5) -> str:
     of its compatibility classification.
     """
     try:
-        from src.agent.knowledge.store import get_or_fetch
         from src.cve_lookup import (
             classify_cve_compatibility,
             query_nvd,
         )
 
         def fetch_from_nvd(q: str) -> list[dict]:
-            api_key = os.environ.get("NVD_API_KEY")
+            api_key = None if _blind_benchmark_mode() else os.environ.get("NVD_API_KEY")
             results = query_nvd(q, api_key)
             return [
                 {
@@ -223,17 +230,23 @@ def cve_search(query: str, top_k: int = 5) -> str:
             }
             return annotated
 
-        try:
-            # Retrieve a wider cache window before ranking: semantic similarity
-            # alone can otherwise let an incompatible candidate crowd a more
-            # useful compatible candidate out of a small top_k response.
-            cache_k = max(top_k * 4, 20)
-            results = get_or_fetch(
-                "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
-                threshold=0.62,
-            )
-        except Exception as store_err:
-            log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
+        use_cache = bool(os.environ.get("VOYAGE_API_KEY")) and not _blind_benchmark_mode()
+        if use_cache:
+            try:
+                from src.agent.knowledge.store import get_or_fetch
+
+                # Retrieve a wider cache window before ranking: semantic similarity
+                # alone can otherwise let an incompatible candidate crowd a more
+                # useful compatible candidate out of a small top_k response.
+                cache_k = max(top_k * 4, 20)
+                results = get_or_fetch(
+                    "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
+                    threshold=0.62,
+                )
+            except Exception as store_err:
+                log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
+                results = fetch_from_nvd(query)[:top_k]
+        else:
             results = fetch_from_nvd(query)[:top_k]
         annotated = [annotate_result(item) for item in results]
         priority = {"compatible": 0, "conditional": 1, "indeterminate": 2, "incompatible": 3}
@@ -251,6 +264,10 @@ def search_history(query: str, device_id: str | None = None, top_k: int = 5) -> 
 
     Delegates to search_knowledge with run_history collection and optional device filter.
     """
+    if _blind_benchmark_mode():
+        return json.dumps({
+            "error": "run history disabled in blind benchmark mode"
+        })
     where = {"device_id": device_id} if device_id else None
     return search_knowledge(query, collection="run_history", top_k=top_k, where=where)
 

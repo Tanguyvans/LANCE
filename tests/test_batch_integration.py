@@ -297,6 +297,24 @@ def test_cli_preserves_public_test_split(monkeypatch):
 
     assert pipeline.call_args.kwargs["benchmark_split"] == "test-public"
 
+
+def test_cli_exits_nonzero_when_pipeline_metadata_marks_failure(monkeypatch):
+    from src.agent import __main__ as agent_main
+
+    provider_instance = SimpleNamespace(model="test")
+    pipeline_instance = Mock(run_status="failed")
+    pipeline_instance.run.return_value = {
+        "recon": "failed:Deliverable '02_recon.md' not found"
+    }
+    monkeypatch.setattr(agent_main, "LLMProvider", Mock(return_value=provider_instance))
+    monkeypatch.setattr(agent_main, "Pipeline", Mock(return_value=pipeline_instance))
+    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "S15"])
+
+    with pytest.raises(SystemExit) as exc:
+        agent_main.main()
+
+    assert exc.value.code == 1
+
 def test_batch_process_metrics_are_propagated_and_weighted_by_attempts():
     first = _evaluation("1", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False)
     second = _evaluation("2", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False)

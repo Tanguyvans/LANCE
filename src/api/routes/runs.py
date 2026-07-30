@@ -246,6 +246,15 @@ def _detect_scenario(run_dir: Path) -> str | None:
 
 def _run_status(run_dir: Path) -> str:
     """Infer run status from deliverable files."""
+    try:
+        meta = _read_run_meta(run_dir)
+    except Exception:
+        return "failed"
+    declared = meta.get("run_status") if meta else None
+    if declared in {"running", "failed"}:
+        return str(declared)
+    if declared == "completed":
+        return "done"
     files = list(run_dir.glob("*"))
     names = [f.name for f in files]
     if "06_report.md" in names or "05_report.md" in names:

@@ -48,6 +48,15 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
+def test_run_status_prefers_fail_closed_metadata_over_report_file(tmp_path):
+    (tmp_path / "run_meta.json").write_text(
+        json.dumps({"run_status": "failed"}), encoding="utf-8"
+    )
+    (tmp_path / "06_report.md").write_text("fallback", encoding="utf-8")
+
+    assert runs._run_status(tmp_path) == "failed"
+
+
 def _sealed_summary(scenario_id="24", benchmark_version="3.2.0"):
     return {
         "schema_version": "1",

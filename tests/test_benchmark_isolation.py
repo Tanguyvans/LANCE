@@ -109,3 +109,23 @@ def test_sealed_tool_groups_remove_history_and_python(tmp_path, monkeypatch):
     names = {tool["name"] for tool in pipeline._resolve_tools(config)}
     assert "python_exec" not in names
     assert "search_history" not in names
+
+
+def test_blind_tool_groups_remove_cross_run_semantic_memory(tmp_path, monkeypatch):
+    import src.agent.pipeline as pipeline_module
+    from src.agent.registry import AgentConfig
+
+    monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "output")
+    pipeline = Pipeline(
+        provider=_provider(), scenario_id="20", blind=True, phases=[99], dry_run=True,
+    )
+    config = AgentConfig(
+        name="blind", phase=2, prompt_template="x", deliverable_file="x.md",
+        tools=["skill"],
+    )
+
+    names = {tool["name"] for tool in pipeline._resolve_tools(config)}
+
+    assert "search_history" not in names
+    assert "search_knowledge" not in names
+    assert "cve_search" in names

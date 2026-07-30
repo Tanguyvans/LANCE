@@ -8,6 +8,7 @@ import pytest
 from src.agent.pipeline import (
     Pipeline,
     TOOL_GROUPS,
+    _classify_pipeline_results,
     _has_positive_exploit_evidence,
     _phase4_local_verification_tools,
     _local_report_memo_contradicts_context,
@@ -16,6 +17,37 @@ from src.agent.pipeline import (
     _synthesize_exploit_result,
 )
 from src.agent.registry import AgentConfig, AGENTS
+
+
+def test_pipeline_result_classification_is_fail_closed():
+    selected = ["graph_analysis", "recon", "vuln_analysis", "report"]
+
+    status, failures = _classify_pipeline_results({
+        "graph_analysis": "completed",
+        "recon": "failed:Deliverable '02_recon.md' not found",
+        "vuln_analysis": "skipped:prerequisites",
+        "report": "completed",
+    }, selected)
+
+    assert status == "failed"
+    assert failures == {
+        "recon": "failed:Deliverable '02_recon.md' not found",
+        "vuln_analysis": "skipped:prerequisites",
+    }
+
+
+def test_pipeline_result_classification_allows_only_conditional_skips():
+    status, failures = _classify_pipeline_results({
+        "graph_analysis": "completed",
+        "recon": "completed",
+        "vuln_analysis": "completed",
+        "exploitation": "skipped:conditional",
+        "intrusion": "skipped:conditional",
+        "report": "completed",
+    }, list(AGENTS))
+
+    assert status == "completed"
+    assert failures == {}
 
 
 

@@ -54,6 +54,29 @@ log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
 
+def _classify_pipeline_results(
+    results: dict[str, str], selected_agents: list[str]
+) -> tuple[str, dict[str, str]]:
+    """Return a fail-closed overall status for the selected pipeline phases.
+
+    Conditional skips are legitimate when a valid upstream phase found no work.
+    Missing phases, failed deliverables, dependency skips, errors, and blocked
+    phases make the run unusable for a benchmark campaign.
+    """
+    failures: dict[str, str] = {}
+    for name in selected_agents:
+        status = results.get(name)
+        if status is None:
+            failures[name] = "missing"
+        elif status == "completed" or status.startswith("completed:"):
+            continue
+        elif status == "skipped:conditional":
+            continue
+        else:
+            failures[name] = status
+    return ("failed", failures) if failures else ("completed", {})
+
+
 def _resolve_model_provider(model: str) -> str:
     """Resolve a model's provider from the registry, with legacy fallback."""
     try:
@@ -100,6 +123,7 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 # These tools cross the worker scratch/network boundary or query previous runs.
 # They remain useful in development but are never exposed to a sealed worker.
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
+BLIND_FORBIDDEN_TOOLS = {"search_history", "search_knowledge"}
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
@@ -742,6 +766,7 @@ class Pipeline:
         external_task_hint: str | None = None,
     ):
         self.provider = provider
+        self.run_status = "not_started"
         self.execution_profile_resolution = resolve_execution_profile_for_model(
             execution_profile, getattr(provider, "model", None)
         )
@@ -913,6 +938,9 @@ class Pipeline:
             "max_tool_calls": self.max_tool_calls,
             "oracle_access": False,
             "initial_credential_count": len(self.initial_credentials),
+            "run_status": "running",
+            "phase_statuses": {},
+            "persistent_history_enabled": not (self.blind or self.sealed),
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
             **metric_contract_metadata(),
@@ -980,6 +1008,12 @@ class Pipeline:
             if self.manage_scenario and not self.dry_run:
                 deploy_ok = self._run_scenario_deploy(stream_callback)
                 if not deploy_ok:
+                    self.run_status = "failed"
+                    self._update_run_meta({
+                        "run_status": self.run_status,
+                        "phase_statuses": {},
+                        "run_failure_reasons": {"deploy": "failed"},
+                    })
                     if stream_callback:
                         stream_callback({"type": "pipeline_done", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
                     return {}
@@ -988,6 +1022,7 @@ class Pipeline:
         agents = sorted(AGENTS.values(), key=lambda a: a.phase)
         if self.phases is not None:
             agents = [a for a in agents if a.phase in self.phases]
+        selected_agent_names = [agent.name for agent in agents]
 
         results: dict[str, str] = {}
 
@@ -1113,33 +1148,43 @@ class Pipeline:
         cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
         log.info("Cost summary saved to %s", cost_path)
 
-        # Persist the run to the SQLite history (best effort — never fatal).
-        try:
-            from src.db.database import init_db, record_phase_usage, record_run
+        self.run_status, failure_reasons = _classify_pipeline_results(
+            results, selected_agent_names
+        )
+        self._update_run_meta({
+            "run_status": self.run_status,
+            "phase_statuses": results,
+            "run_failure_reasons": failure_reasons,
+        })
 
-            init_db()
-            summary = self.tracker.summary()
-            tokens_in, tokens_out = self.tracker.total_tokens()
-            run_id = record_run({
-                "run_dir": str(self.run_dir),
-                "ts": self.run_dir.name,
-                "scenario_id": self.scenario_id,
-                "model": getattr(self.provider, "model", None),
-                "provider": getattr(self.provider, "provider", None),
-                "status": "completed",
-                "cost_usd": round(self.tracker.total_cost(), 4),
-                "tokens_in": tokens_in,
-                "tokens_out": tokens_out,
-                "git_commit": self.git_commit,
-            })
-            if run_id is not None and summary.get("phases"):
-                record_phase_usage(run_id, summary["phases"])
-        except Exception as e:
-            log.warning("DB run persistence failed (non-fatal): %s", e)
+        # Persist the run to the SQLite history (best effort — never fatal).
+        if not self.blind:
+            try:
+                from src.db.database import init_db, record_phase_usage, record_run
+
+                init_db()
+                summary = self.tracker.summary()
+                tokens_in, tokens_out = self.tracker.total_tokens()
+                run_id = record_run({
+                    "run_dir": str(self.run_dir),
+                    "ts": self.run_dir.name,
+                    "scenario_id": self.scenario_id,
+                    "model": getattr(self.provider, "model", None),
+                    "provider": getattr(self.provider, "provider", None),
+                    "status": self.run_status,
+                    "cost_usd": round(self.tracker.total_cost(), 4),
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "git_commit": self.git_commit,
+                })
+                if run_id is not None and summary.get("phases"):
+                    record_phase_usage(run_id, summary["phases"])
+            except Exception as e:
+                log.warning("DB run persistence failed (non-fatal): %s", e)
 
         # Episodic memory is intentionally disabled for sealed runs.  Otherwise
         # later submissions could recover findings from earlier challenge seeds.
-        if not self.sealed:
+        if not self.sealed and not self.blind:
             try:
                 from src.agent.knowledge.ingest import ingest_run_findings
                 ingested = ingest_run_findings(self.run_dir, self.provider.model)
@@ -1166,6 +1211,7 @@ class Pipeline:
                 "results": results,
                 "total_cost_usd": round(self.tracker.total_cost(), 4),
                 "run_dir": str(self.run_dir),
+                "run_status": self.run_status,
             })
 
         return results
@@ -6198,6 +6244,8 @@ class Pipeline:
                 for tool in TOOL_GROUPS[ref]:
                     if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
                         continue
+                    if self.blind and tool["name"] in BLIND_FORBIDDEN_TOOLS:
+                        continue
                     if tool["name"] not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
                         seen_names.add(tool["name"])
@@ -6207,6 +6255,8 @@ class Pipeline:
             for group in TOOL_GROUPS.values():
                 for tool in group:
                     if self.sealed and tool["name"] in SEALED_FORBIDDEN_TOOLS:
+                        continue
+                    if self.blind and tool["name"] in BLIND_FORBIDDEN_TOOLS:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
@@ -6296,13 +6346,13 @@ class Pipeline:
     def _check_prerequisites(
         self, config: AgentConfig, results: dict[str, str]
     ) -> bool:
-        """Check that all prerequisite deliverables exist or were skipped."""
+        """Check that prerequisite phases completed or were conditional no-ops."""
         for prereq_name in config.prerequisites:
             status = results.get(prereq_name)
             if status is not None:
                 if status == "completed" or (
-                    isinstance(status, str) and status.startswith("skipped:")
-                ):
+                    isinstance(status, str) and status.startswith("completed:")
+                ) or status == "skipped:conditional":
                     continue
                 return False
             # If prerequisite wasn't run yet, check deliverable on disk

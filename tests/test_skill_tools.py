@@ -115,7 +115,10 @@ class TestSkillToolDefinitions:
 
 class TestCVESearchCompatibilityCache:
     @patch("src.agent.knowledge.store.get_or_fetch")
-    def test_versioned_query_classifies_without_deleting_cache_results(self, mock_get):
+    def test_versioned_query_classifies_without_deleting_cache_results(
+        self, mock_get, monkeypatch
+    ):
+        monkeypatch.setenv("VOYAGE_API_KEY", "test-key")
         compatible_matches = [{
             "criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
             "versionEndExcluding": "9.6",
@@ -144,6 +147,18 @@ class TestCVESearchCompatibilityCache:
         assert mock_get.call_args.kwargs["top_k"] == 20
         assert "cached_filter" not in mock_get.call_args.kwargs
 
+    @patch("src.agent.knowledge.store.get_or_fetch")
+    @patch("src.cve_lookup.query_nvd", return_value=[])
+    def test_blind_cve_search_never_imports_semantic_cache(
+        self, mock_nvd, mock_get, monkeypatch
+    ):
+        monkeypatch.setenv("LANCE_BLIND", "1")
+        monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+        assert json.loads(cve_search("OpenSSH 9.2")) == []
+        mock_nvd.assert_called_once_with("OpenSSH 9.2", None)
+        mock_get.assert_not_called()
+
 
 class TestSearchHistory:
     """Test run history search."""
@@ -170,6 +185,17 @@ class TestSearchHistory:
     def test_search_handles_error(self, mock_search):
         result = json.loads(search_history("test query"))
         assert "error" in result
+
+    @patch("src.agent.knowledge.store.search")
+    def test_blind_mode_disables_cross_run_memory(
+        self, mock_search, monkeypatch
+    ):
+        monkeypatch.setenv("LANCE_BLIND", "1")
+
+        result = json.loads(search_history("test query"))
+
+        assert "disabled in blind benchmark mode" in result["error"]
+        mock_search.assert_not_called()
 
 
 class TestHardFiltering:

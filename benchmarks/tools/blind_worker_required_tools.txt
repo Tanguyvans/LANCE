@@ -1,0 +1,31 @@
+# Frozen external command contract for official LANCE blind workers.
+# The launcher checks every command before an agent or scenario run starts.
+arp
+base64
+bash
+curl
+dig
+enum4linux-ng
+gobuster
+head
+java
+mosquitto_sub
+mysql
+nc
+nikto
+nmap
+nuclei
+nxc
+openssl
+ping
+redis-cli
+searchsploit
+smbclient
+sqlmap
+ssh
+ssh-audit
+sshpass
+timeout
+traceroute
+whatweb
+wpscan

@@ -30,6 +30,16 @@ DEFAULT_MANIFEST = ROOT / "benchmarks" / "campaigns" / "paper_v3_4.yaml"
 DEFAULT_INVENTORY = ROOT / "benchmarks" / "ansible" / "inventory.yml"
 PLAYBOOK_DIR = ROOT / "benchmarks" / "ansible" / "playbooks"
 SCENARIO_DIR = ROOT / "benchmarks" / "scenarios"
+LANCE_REQUIRED_ARTIFACTS = (
+    "run_meta.json",
+    "scenario_meta.json",
+    "cost_summary.json",
+    "tool_calls.jsonl",
+    "01_graph_analysis.md",
+    "02_recon.md",
+    "06_report.md",
+)
+LANCE_REQUIRED_PHASES = ("graph_analysis", "recon", "report")
 
 
 @dataclass(frozen=True)
@@ -219,6 +229,47 @@ class CampaignRunner:
         self.worker_index += 1
         return worker
 
+    def _preflight_workers(self, conditions: list[Condition]) -> None:
+        """Validate every remote blind LANCE worker before Proxmox is touched."""
+        if not any(
+            item.system == "lance" and item.mode == "blind"
+            for item in conditions
+        ):
+            return
+        for worker in dict.fromkeys(self.workers):
+            if worker == "local":
+                continue
+            remote = (
+                f"cd {shlex.quote(self.args.remote_workdir)} && "
+                f"{shlex.quote(self.args.blind_worker_launcher)} --preflight"
+            )
+            self._run(["ssh", worker, remote])
+
+    @staticmethod
+    def _validate_collected_run(
+        condition: Condition, run_dir: Path, meta: dict[str, Any]
+    ) -> None:
+        """Reject incomplete LANCE artifacts even if the process exited zero."""
+        if condition.system != "lance":
+            return
+        if meta.get("run_status") != "completed":
+            raise RuntimeError(
+                f"collected LANCE run is not completed: {meta.get('run_status')!r}"
+            )
+        phase_statuses = meta.get("phase_statuses")
+        if not isinstance(phase_statuses, dict):
+            raise RuntimeError("collected LANCE run has no phase_statuses contract")
+        bad_phases = {
+            name: phase_statuses.get(name)
+            for name in LANCE_REQUIRED_PHASES
+            if not str(phase_statuses.get(name, "")).startswith("completed")
+        }
+        if bad_phases:
+            raise RuntimeError(f"required LANCE phases are incomplete: {bad_phases}")
+        missing = [name for name in LANCE_REQUIRED_ARTIFACTS if not (run_dir / name).is_file()]
+        if missing:
+            raise RuntimeError(f"collected LANCE run is missing artifacts: {', '.join(missing)}")
+
     @staticmethod
     def _initial_credentials(scenario: str) -> list[dict[str, Any]]:
         path = SCENARIO_DIR / f"S{scenario}.yaml"
@@ -332,6 +383,7 @@ class CampaignRunner:
                     raise RuntimeError(
                         f"collected mode mismatch for {condition.id}: {meta.get('mode')!r}"
                     )
+                self._validate_collected_run(condition, run_dir, meta)
                 if (run_dir / "ground_truth.yaml").exists():
                     raise RuntimeError(
                         f"blind worker leaked ground_truth.yaml into {condition.id} artifacts"
@@ -359,6 +411,7 @@ class CampaignRunner:
             item for item in selected
             if self.state["conditions"].get(item.id, {}).get("status") != "completed"
         ]
+        self._preflight_workers(pending)
         # groupby deliberately preserves phase order from _conditions. The same
         # scenario may therefore form one blind block and a later informed block.
         for scenario, grouped in groupby(pending, key=lambda item: item.scenario):
