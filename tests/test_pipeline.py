@@ -10,6 +10,8 @@ from src.agent.pipeline import (
     TOOL_GROUPS,
     _classify_pipeline_results,
     _has_positive_exploit_evidence,
+    _http_response_is_error,
+    _load_infrastructure_exclusions,
     _phase4_local_verification_tools,
     _local_report_memo_contradicts_context,
     _looks_unusable_model_memo,
@@ -48,6 +50,33 @@ def test_pipeline_result_classification_allows_only_conditional_skips():
 
     assert status == "completed"
     assert failures == {}
+
+
+def test_campaign_inventory_excludes_only_worker_hosts():
+    exclusions = {str(network) for network in _load_infrastructure_exclusions()}
+    assert exclusions >= {
+        "192.168.100.200/32", "192.168.100.201/32",
+        "192.168.100.202/32", "192.168.100.203/32",
+    }
+    assert "192.168.100.0/24" not in exclusions
+
+
+def test_http_error_body_is_never_positive_evidence():
+    assert _http_response_is_error('{"error":"bearer_token_required"}', None)
+    assert _http_response_is_error("HTTP/1.1 401 Unauthorized", 401)
+    assert not _http_response_is_error('{"devices":[{"id":"device-b"}]}', 200)
+
+
+def test_tool_wrapper_refuses_worker_host_without_calling_tool(mock_provider):
+    pipeline = Pipeline(provider=mock_provider)
+    called = []
+    wrapped = pipeline._wrap_tool({
+        "name": "http_get",
+        "function": lambda **kwargs: called.append(kwargs) or "should-not-run",
+    }, phase=4)
+    result = json.loads(wrapped["function"](url="http://192.168.100.200:8080/"))
+    assert result["error_kind"] == "excluded_infrastructure_target"
+    assert called == []
 
 
 

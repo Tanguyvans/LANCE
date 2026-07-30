@@ -20,6 +20,10 @@ benchmark_worker_interfaces:
   - { vmid: 1201, hostname: "nato-nas-baseline-2", ip: "192.168.100.201/24" }
   - { vmid: 1202, hostname: "nato-nas-baseline-3", ip: "192.168.100.202/24" }
   - { vmid: 1203, hostname: "nato-nas-baseline-4", ip: "192.168.100.203/24" }
+# Optional additional controller/worker addresses. Worker interfaces above are
+# automatically excluded by the agent; this list is for future infrastructure.
+benchmark_infrastructure_exclusions: []
+benchmark_openwrt_hardened_root_password: "NATO-Benchmark-Router-2026!"
 
 # ── IDs templates ──
 tpl_debian_vmid: 9000    # CT LXC — Debian 13 (tous les services Linux)

@@ -52,6 +52,35 @@ from src.benchmark.metric_contract import metric_contract_metadata
 
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
+_IP_TOKEN_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?")
+
+
+def _load_infrastructure_exclusions(custom_config: dict | None = None) -> list[ipaddress.IPv4Network]:
+    """Load campaign infrastructure addresses that are never assessment targets."""
+    values: list[str] = []
+    inventory = Path(__file__).resolve().parents[2] / "benchmarks/ansible/group_vars/all/main.yml"
+    try:
+        data = yaml.safe_load(inventory.read_text(encoding="utf-8")) or {}
+        for worker in data.get("benchmark_worker_interfaces", []) or []:
+            if isinstance(worker, dict) and worker.get("ip"):
+                # The interface CIDR describes the LAN; exclude only its host.
+                values.append(f"{ipaddress.ip_interface(str(worker['ip'])).ip}/32")
+        values.extend(str(value) for value in data.get("benchmark_infrastructure_exclusions", []) or [])
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        log.debug("Unable to load benchmark infrastructure exclusions: %s", exc)
+    if isinstance(custom_config, dict):
+        values.extend(str(value) for value in custom_config.get("excluded_hosts", []) or [])
+
+    networks: list[ipaddress.IPv4Network] = []
+    for value in values:
+        try:
+            network = ipaddress.ip_network(value, strict=False)
+        except ValueError:
+            log.warning("Ignoring invalid infrastructure exclusion %r", value)
+            continue
+        if isinstance(network, ipaddress.IPv4Network) and network not in networks:
+            networks.append(network)
+    return networks
 
 
 def _classify_pipeline_results(
@@ -405,6 +434,9 @@ def _has_positive_exploit_evidence(result: dict) -> bool:
         "[cache]", "only duplicate", "timed out", "timeout", "no new information",
         "no new topics", "return_code\": 1", "return code 1", "connection refused",
         "empty response", "no output", "failed to", "error executing",
+        "bearer_token_required", "invalid_credentials", "authorization_required",
+        "token_required", "unauthorized", "forbidden", "access denied",
+        "http 401", "http 403", "http 404", "status 401", "status 403", "status 404",
     )
     if any(marker in combined for marker in negative_markers):
         return False
@@ -444,6 +476,18 @@ def _text_has_sensitive_data(text: str) -> bool:
         r"(password|passwd|pass|secret|api[_-]?key|token|credential|db_user|db_pass|private[_ -]?key)",
         text or "",
         re.IGNORECASE,
+    ))
+
+
+def _http_response_is_error(text: str, status_code: int | None) -> bool:
+    """Recognize API errors even when a tool wrapper omitted the HTTP status."""
+    if status_code in {401, 403, 404}:
+        return True
+    lower = (text or "").casefold()
+    return any(marker in lower for marker in (
+        "bearer_token_required", "invalid_credentials", "authorization_required",
+        "token_required", "authentication required", "unauthorized", "forbidden",
+        "access denied", "not found",
     ))
 
 
@@ -623,6 +667,12 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     ),
                 })
                 continue
+            if _http_response_is_error(text, status_code):
+                if status_code == 404 or "not found" in lower:
+                    failures.append(f"{tool} returned HTTP 404/Not Found")
+                else:
+                    failures.append(f"{tool} reached an authenticated, forbidden, or error endpoint")
+                continue
             if status_code == 404 or "not found" in lower:
                 failures.append(f"{tool} returned HTTP 404/Not Found")
                 continue
@@ -793,6 +843,7 @@ class Pipeline:
         self.custom_config = custom_config
         self.blind = blind
         self.target_network = target_network
+        self.excluded_networks = _load_infrastructure_exclusions(custom_config)
         self.initial_credentials = self._sanitize_initial_credentials(initial_credentials or [])
         self.external_task_hint = str(external_task_hint or "").strip()
         self.max_tool_calls: int | None = None
@@ -846,6 +897,45 @@ class Pipeline:
         set_output_dir(self.run_dir)
         import src.agent.validators as val_mod
         val_mod.OUTPUT_DIR = self.run_dir
+
+    def _is_excluded_address(self, value: str) -> bool:
+        """Return whether one literal host address belongs to campaign infrastructure."""
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError:
+            return False
+        return any(address in network for network in getattr(self, "excluded_networks", []))
+
+    def _excluded_targets_in_values(self, values: object) -> list[str]:
+        """Find direct host targets in tool arguments without rejecting subnet scans."""
+        matches: list[str] = []
+        text = json.dumps(values, ensure_ascii=False, default=str)
+        for token in _IP_TOKEN_RE.findall(text):
+            try:
+                candidate = ipaddress.ip_network(token, strict=False)
+            except ValueError:
+                continue
+            # A wider CIDR may include both benchmark hosts and workers. It is
+            # allowed; worker results are filtered before they reach the agent.
+            if candidate.prefixlen != candidate.max_prefixlen:
+                continue
+            if self._is_excluded_address(str(candidate.network_address)):
+                matches.append(str(candidate.network_address))
+        return list(dict.fromkeys(matches))
+
+    def _redact_excluded_infrastructure(self, result: object) -> object:
+        """Keep worker addresses out of model-visible discovery output."""
+        if not getattr(self, "excluded_networks", []) or not isinstance(result, str):
+            return result
+        redacted = result
+        for network in getattr(self, "excluded_networks", []):
+            if network.prefixlen == network.max_prefixlen:
+                redacted = re.sub(
+                    rf"(?<![\d.]){re.escape(str(network.network_address))}(?![\d.])",
+                    "[excluded-infrastructure]",
+                    redacted,
+                )
+        return redacted
 
     def run(
         self,
@@ -2623,7 +2713,7 @@ class Pipeline:
                 if not line.startswith("Host:") or "Ports:" not in line:
                     continue
                 ip = line.split()[1]
-                if ip in local_ips:
+                if ip in local_ips or self._is_excluded_address(ip):
                     continue
                 host = discovered.setdefault(ip, {"id": ip, "ip": ip, "type": "host", "services": []})
                 existing = {(item["port"], item.get("protocol", "tcp")) for item in host["services"]}
@@ -3577,6 +3667,32 @@ class Pipeline:
                             device_id, fallback_exc,
                         )
 
+        # Documentation can explicitly expose authorized benchmark test accounts
+        # and authentication workflows. Preserve such runtime observations for
+        # Phase 4 without turning them into vulnerability candidates.
+        authorized_fixtures: list[dict] = []
+        fixture_keys: set[str] = set()
+        for f in sorted(self.run_dir.glob("03_device_*.json")):
+            try:
+                data = json.loads(_extract_json(f.read_text(encoding="utf-8")))
+            except Exception:
+                continue
+            fixtures = data.get("authorized_fixtures", []) if isinstance(data, dict) else []
+            for fixture in fixtures if isinstance(fixtures, list) else []:
+                if not isinstance(fixture, dict):
+                    continue
+                clean = {
+                    key: value for key, value in fixture.items()
+                    if key in {"source", "endpoint", "username", "password", "notes", "service"}
+                    and isinstance(value, (str, int, float, bool))
+                }
+                if not clean:
+                    continue
+                key = json.dumps(clean, sort_keys=True, ensure_ascii=False)
+                if key not in fixture_keys:
+                    fixture_keys.add(key)
+                    authorized_fixtures.append(clean)
+
         records_by_id = {r["candidate_id"]: r for r in raw_records}
         cve_search_evidence = self._load_cve_search_evidence()
 
@@ -3781,6 +3897,7 @@ class Pipeline:
         result = {
             "vulnerabilities": final,
             "attack_chain_hints": self._detect_attack_chains(final),
+            "authorized_fixtures": authorized_fixtures,
             "summary": {
                 "total": len(final),
                 "critical": severity_counts["critical"],
@@ -3827,6 +3944,9 @@ class Pipeline:
             return
         vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
         all_vulns = vuln_data.get("vulnerabilities", [])
+        authorized_fixtures = vuln_data.get("authorized_fixtures", [])
+        if not isinstance(authorized_fixtures, list):
+            authorized_fixtures = []
 
         # 2. Filter vulns that need an exploit agent
         exploit_tasks: list[dict] = []
@@ -3953,6 +4073,9 @@ class Pipeline:
             variables["port"] = str(port) if port else "0"
             variables["vuln_details"] = details
             variables["vuln_evidence"] = evidence[:500]
+            variables["authorized_fixtures"] = json.dumps(
+                authorized_fixtures, ensure_ascii=False, separators=(",", ":")
+            )
             variables["exploit_instructions"] = instructions
             variables["expected_deliverable"] = deliverable_file
             set_expected_deliverable(deliverable_file)
@@ -4175,7 +4298,7 @@ class Pipeline:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 for h in data.get("new_hosts_discovered", []):
                     ip = h.get("ip", "").strip()
-                    if ip and ip not in seen_ips:
+                    if ip and not self._is_excluded_address(ip) and ip not in seen_ips:
                         seen_ips.add(ip)
                         new_hosts.append(h)
             except Exception:
@@ -4361,6 +4484,8 @@ class Pipeline:
             ))
             for target in sorted(discovered):
                 if not _in_scope(target):
+                    continue
+                if self._is_excluded_address(target):
                     continue
                 expected_scans.setdefault(target, {
                     "target": target,
@@ -5232,6 +5357,21 @@ class Pipeline:
         if vuln_path.exists():
             vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
             chains = vuln_data.get("attack_chain_hints", [])
+            fixtures = vuln_data.get("authorized_fixtures", [])
+            if isinstance(fixtures, list):
+                for fixture in fixtures:
+                    if not isinstance(fixture, dict):
+                        continue
+                    user = str(fixture.get("username", "")).strip()
+                    password = fixture.get("password")
+                    if user and isinstance(password, str) and password:
+                        credentials.append({
+                            "user": user,
+                            "password": password,
+                            "source_ip": str(fixture.get("source", "")),
+                            "source_device": "authorized_fixture",
+                            "fixture": True,
+                        })
 
         if exploit_path.exists():
             exploit_data = json.loads(exploit_path.read_text(encoding="utf-8"))
@@ -6323,6 +6463,17 @@ class Pipeline:
                     with open(log_path, "a", encoding="utf-8") as f:
                         f.write(entry + "\n")
 
+            excluded = self._excluded_targets_in_values(kwargs)
+            if excluded:
+                result = json.dumps({
+                    "ok": False,
+                    "error_kind": "excluded_infrastructure_target",
+                    "error": "Campaign infrastructure is not an assessment target",
+                    "excluded_targets": excluded,
+                }, ensure_ascii=False)
+                write_entry(result)
+                return result
+
             try:
                 result = original_fn(**kwargs)
             except Exception as exc:
@@ -6335,6 +6486,7 @@ class Pipeline:
                     pass  # Never mask the original tool exception with logging.
                 raise
 
+            result = self._redact_excluded_infrastructure(result)
             try:
                 write_entry(result)
             except Exception:

@@ -890,6 +890,15 @@
       failed_when: false
       changed_when: true
 
+    - name: "[OpenWrt] Durcir root hors scénarios avec vulnérabilité routeur"
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+        root@{{ benchmark_gateway }}
+        'printf "%s\\n" "root:{{ benchmark_openwrt_hardened_root_password }}" | chpasswd'
+      when: (benchmark_scenarios[scenario_id].router_vulns | default([]) | length) == 0
+      no_log: true
+      changed_when: true
+
 
     # ════════════════════════════════════════════════════
     # NOUVELLES VULNÉRABILITÉS — diversification benchmark

@@ -38,6 +38,12 @@ Based on the device role, focus your analysis on these specific findings:
 
 {{role_specific_rules}}
 
+## Authorized service fixtures
+
+Public service documentation (`/docs`, `/openapi.json`, `/redoc`, README) can explicitly provide authorized test/development accounts and an authentication workflow. This is a service fixture, not a data-exposure vulnerability: do not report it as a finding.
+
+When observed at runtime, add an optional top-level `authorized_fixtures` array to your JSON deliverable. Each item contains only observed values, for example: `{"source":"192.0.2.10:8080/docs","endpoint":"http://192.0.2.10:8080/auth/login","username":"test-user","password":"observed-password","notes":"obtain a bearer token before testing the related API"}`. The pipeline passes these fixtures to later verification agents.
+
 ## Severity rules — strictly enforce these caps
 
 | Finding | Severity |
@@ -152,6 +158,7 @@ Call save_deliverable("{{expected_deliverable}}", json_content) when complete. I
 {
   "device_id": "{{device_id}}",
   "device_ip": "{{device_ip}}",
+  "authorized_fixtures": [],
   "vulnerabilities": [
     ...all automated findings PLUS your additions...
   ],
