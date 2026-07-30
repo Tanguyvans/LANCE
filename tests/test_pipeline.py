@@ -1661,6 +1661,56 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 1
         save.assert_called_once_with(filename="result.md", content="done")
 
+    def test_openai_loop_skips_calls_after_successful_terminal_tool(self):
+        """Sibling calls after a successful terminal save must not execute."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        def tool_call(name, arguments, call_id):
+            call = MagicMock()
+            call.function.name = name
+            call.function.arguments = json.dumps(arguments)
+            call.id = call_id
+            return call
+
+        message = MagicMock(
+            content="Campaign complete.",
+            tool_calls=[
+                tool_call("action", {"step": "before"}, "call_before"),
+                tool_call(
+                    "save_deliverable",
+                    {"filename": "05_intrusion.json", "content": "{}"},
+                    "call_save",
+                ),
+                tool_call("action", {"step": "after"}, "call_after"),
+            ],
+        )
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(finish_reason="tool_calls", message=message)],
+            usage=None,
+        )
+        action = MagicMock(return_value='{"ok":true}')
+        save = MagicMock(return_value='{"status":"saved"}')
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[
+                {"name": "action", "description": "act", "input_schema": {}, "function": action},
+                {"name": "save_deliverable", "description": "save", "input_schema": {}, "function": save},
+            ],
+            max_turns=10,
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+        )
+
+        action.assert_called_once_with(step="before")
+        save.assert_called_once_with(filename="05_intrusion.json", content="{}")
+
     def test_openai_loop_strict_required_tool_reprompts_after_text_only_turn(self):
         """Strict required tools prevent compact agents from ending with prose only."""
         from src.agent.provider import LLMProvider

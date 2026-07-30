@@ -273,6 +273,8 @@ class LLMProvider:
                     terminate_now = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
                 tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
+                if terminate_now:
+                    break
             messages.append({"role": "user", "content": tool_results})
             if terminate_now:
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
@@ -505,6 +507,8 @@ class LLMProvider:
                     terminate_now = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
+                if terminate_now:
+                    break
             if terminate_now:
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
                 return last_nonempty_text or f"(terminated by {terminate_after_tool})"

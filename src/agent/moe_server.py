@@ -168,6 +168,7 @@ class ChatCompletionRequest(BaseModel):
     model: str
     messages: List[Message]
     tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: str | Dict[str, Any] | None = None
     max_tokens: Optional[int] = 4096
     temperature: Optional[float] = 0.0
     stream: bool = False
@@ -902,6 +903,31 @@ def _allowed_tool_names(tools: Optional[List[Dict[str, Any]]]) -> set[str]:
     }
 
 
+def _required_tool_instruction(
+    tool_choice: str | Dict[str, Any] | None,
+    tools: Optional[List[Dict[str, Any]]],
+) -> str:
+    """Translate OpenAI tool_choice into an instruction the local model sees."""
+    required = tool_choice == "required"
+    selected_name = ""
+    if isinstance(tool_choice, dict):
+        function = tool_choice.get("function")
+        if isinstance(function, dict):
+            selected_name = str(function.get("name") or "").strip()
+            required = bool(selected_name)
+    if not required:
+        return ""
+    allowed = sorted(_allowed_tool_names(tools))
+    if selected_name and selected_name in allowed:
+        allowed = [selected_name]
+    if not allowed:
+        return ""
+    return (
+        "TOOL CALL REQUIRED FOR THIS RESPONSE. Emit exactly one native tool "
+        "call and no prose. The tool must be one of: " + ", ".join(allowed) + "."
+    )
+
+
 def _filter_unavailable_tool_calls(
     tool_calls: list[dict[str, Any]],
     tools: Optional[List[Dict[str, Any]]],
@@ -997,9 +1023,17 @@ def chat_completions(req: ChatCompletionRequest):
     requested_max_tokens = int(req.max_tokens or 4096)
     generation_reserve = min(requested_max_tokens, _expert_generation_cap(target_expert))
     prompt_budget = max(256, expert_context_budget - generation_reserve)
+    prompt_messages = list(req.messages)
+    required_tool_instruction = _required_tool_instruction(
+        req.tool_choice, model_tools
+    )
+    if required_tool_instruction:
+        prompt_messages.append(Message(
+            role="user", content=required_tool_instruction
+        ))
     prompt, prepared_prompt_tokens, _compacted = _prepare_prompt(
         _TOKENIZER,
-        req.messages,
+        prompt_messages,
         model_tools,
         execution_state,
         prompt_budget,

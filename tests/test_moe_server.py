@@ -5,6 +5,7 @@ import json
 
 import src.agent.moe_server as moe_server
 from src.agent.moe_server import (
+    ChatCompletionRequest,
     Message,
     _attach_runtime_state,
     _build_execution_state,
@@ -14,8 +15,30 @@ from src.agent.moe_server import (
     _generation_token_budget,
     _parse_qwen_tool_calls,
     _prepare_prompt,
+    _required_tool_instruction,
     _select_model_tools,
 )
+
+
+def test_required_tool_choice_is_preserved_and_rendered_for_local_model() -> None:
+    request = ChatCompletionRequest(
+        model="lance-moe",
+        messages=[Message(role="user", content="continue")],
+        tools=[{
+            "type": "function",
+            "function": {"name": "save_deliverable"},
+        }],
+        tool_choice="required",
+    )
+
+    assert request.tool_choice == "required"
+    instruction = _required_tool_instruction(request.tool_choice, request.tools)
+    assert "exactly one native tool call" in instruction
+    assert "save_deliverable" in instruction
+
+
+def test_optional_tool_choice_does_not_add_required_instruction() -> None:
+    assert _required_tool_instruction(None, []) == ""
 
 
 def _first_call(text: str) -> tuple[str, dict]:
