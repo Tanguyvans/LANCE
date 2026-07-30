@@ -1,0 +1,33 @@
+schema_version: 1
+status: draft-not-authorized
+generated_at: 2026-07-30
+policy:
+  results_separate_from_iot_verified_f1: true
+  oracle_never_exposed_to_agent: true
+  native_suite_metrics_only: true
+  freeze_before_first_official_run: true
+
+suites:
+  autopenbench:
+    repository: https://github.com/lucagioacchini/auto-pen-bench
+    commit: 9c4890a7195896a399339f4b1b0e0c498fdd27cb
+    runlist: benchmarks/external/autopenbench-33.txt
+    expected_cases: 33
+    modes: [blind]
+    repetitions: 1
+    scoring: exact_expected_flag
+    oracle_source: data/games.json
+    oracle_location: controller_only
+    agent_profile: lance-external-full
+  vulhub:
+    repository: https://github.com/vulhub/vulhub
+    commit: aeaf65793f147f29bd50841ef77f4e9cad07ecc7
+    runlist: benchmarks/external/vulhub-330.txt
+    expected_cases: 330
+    modes: [blind]
+    repetitions: 1
+    execution_population: all_pinned_compose_cases
+    scoring_population: cases_with_precommitted_deterministic_checker
+    checker_directory: benchmarks/external/checkers
+    unverified_cases_reported_as: executed_not_scored
+    agent_profile: lance-external-full
