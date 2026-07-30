@@ -1020,6 +1020,32 @@ class TestPrerequisites:
         results = {"graph_analysis": "completed"}
         assert pipeline._check_prerequisites(config, results)
 
+    def test_synthesized_completed_prerequisite(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="t",
+            deliverable_file="03_vuln_analysis.json", tools=["graph"],
+            prerequisites=["recon"],
+        )
+        results = {"recon": "completed:synthesized"}
+        assert pipeline._check_prerequisites(config, results)
+
+    @pytest.mark.parametrize("status", [
+        "failed:Deliverable missing",
+        "blocked:phase_no_observable_actions",
+        "partial",
+    ])
+    def test_unsuccessful_status_is_not_a_completed_prerequisite(
+        self, mock_provider, output_dir, status
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="vuln_analysis", phase=3, prompt_template="t",
+            deliverable_file="03_vuln_analysis.json", tools=["graph"],
+            prerequisites=["recon"],
+        )
+        assert not pipeline._check_prerequisites(config, {"recon": status})
+
     def test_skipped_conditional_counts(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)
         config = AgentConfig(

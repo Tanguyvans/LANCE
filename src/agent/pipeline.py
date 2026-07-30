@@ -6656,8 +6656,13 @@ class Pipeline:
         for prereq_name in config.prerequisites:
             status = results.get(prereq_name)
             if status is not None:
-                if status == "completed" or (
-                    isinstance(status, str) and status.startswith("skipped:")
+                if (
+                    isinstance(status, str)
+                    and (
+                        status == "completed"
+                        or status.startswith("completed:")
+                        or status.startswith("skipped:")
+                    )
                 ):
                     continue
                 return False
