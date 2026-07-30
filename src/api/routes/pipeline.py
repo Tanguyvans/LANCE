@@ -303,6 +303,7 @@ def _batch_thread(req: BatchRequest):
             _public_scenario_split,
             _parse_scenario_ids,
         )
+        from src.agent.execution_profiles import resolve_execution_profile_for_model
         # Validate before importing/constructing any execution machinery. This
         # is the worker-side defense if _batch_thread is called directly.
         selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
