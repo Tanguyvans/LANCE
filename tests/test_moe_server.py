@@ -425,3 +425,40 @@ def test_expert_context_budget_tracks_training_window(monkeypatch) -> None:
     assert _expert_context_budget("recon") == 6144
     assert _expert_context_budget("vuln") == 4096
     assert _expert_context_budget("exploit") == 6144
+
+
+def test_forced_recovery_uses_structured_intrusion_action() -> None:
+    messages = [
+        Message(role="assistant", tool_calls=[{
+            "id": "mqtt-1",
+            "type": "function",
+            "function": {
+                "name": "mqtt_listen",
+                "arguments": '{"broker":"192.168.100.1"}',
+            },
+        }]),
+        Message(
+            role="tool",
+            tool_call_id="mqtt-1",
+            content=json.dumps({
+                "ok": False,
+                "error_kind": "invalid_intrusion_target",
+                "suggested_tool": "mqtt_listen",
+                "suggested_args": {
+                    "broker": "192.168.100.11",
+                    "topic": "#",
+                    "count": 1,
+                    "timeout": 3,
+                },
+            }),
+        ),
+    ]
+    state = moe_server._build_execution_state(messages)
+    tools = [{
+        "type": "function",
+        "function": {"name": "mqtt_listen", "parameters": {}},
+    }]
+    assert moe_server._forced_recovery_tool(state, tools) == (
+        "mqtt_listen",
+        {"broker": "192.168.100.11", "topic": "#", "count": 1, "timeout": 3},
+    )

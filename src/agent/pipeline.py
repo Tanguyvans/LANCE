@@ -101,6 +101,7 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
+COMPACT_RECON_COMPLETION_TOOL = "complete_recon_campaign"
 COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 8
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
@@ -2407,7 +2408,8 @@ class Pipeline:
         # Do NOT inject the prefill into the prompt — it would make the system prompt too large.
 
         # Load and compose prompt
-        system_prompt = load_prompt(config.prompt_template, variables)
+        prompt_template = "intrusion_compact" if local_intrusion_memo else config.prompt_template
+        system_prompt = load_prompt(prompt_template, variables)
 
         # Print header
         print(f"\n{'=' * 60}")
@@ -2498,8 +2500,16 @@ class Pipeline:
             stream_callback=self._model_stream_callback(
                 stream_callback, phase=config.phase, agent=config.name
             ),
-            required_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
-            terminate_after_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
+            required_tool=(
+                COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
+                else COMPACT_RECON_COMPLETION_TOOL if compact_local_recon
+                else "save_deliverable"
+            ),
+            terminate_after_tool=(
+                COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
+                else COMPACT_RECON_COMPLETION_TOOL if compact_local_recon
+                else "save_deliverable"
+            ),
             terminate_on_unavailable_tools=None,
             strict_required_tool=local_intrusion_memo or compact_local_recon,
             force_tool_on_stall=local_intrusion_memo or compact_local_recon,
@@ -4354,6 +4364,19 @@ class Pipeline:
             return targets, entry_points, credentials
 
         expected_targets, expected_entry_points, expected_credentials = _load_expectations()
+        expected_entry_services: dict[str, str] = {}
+        try:
+            raw_context = json.loads(
+                (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
+            )
+            for item in raw_context.get("entry_points", []):
+                if isinstance(item, dict):
+                    ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+                    service = str(item.get("service") or "").strip().casefold()
+                    if ip and service:
+                        expected_entry_services[ip] = service
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
 
         def _progress() -> dict:
             missing_targets = sorted(set(expected_targets) - attempted_targets)
@@ -4435,12 +4458,87 @@ class Pipeline:
                 "intrusion_progress": _progress(),
             }, ensure_ascii=False)
 
+        def _compact_context_result(result: str) -> str:
+            try:
+                payload = json.loads(result)
+                content = json.loads(payload.get("content", "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return result
+            if not isinstance(content, dict):
+                return result
+            compact = {
+                "generated_for": content.get("generated_for"),
+                "entry_points": [
+                    {
+                        key: item.get(key)
+                        for key in ("device_id", "device_ip", "service", "port", "vuln_type")
+                        if item.get(key) not in (None, "")
+                    }
+                    for item in content.get("entry_points", [])
+                    if isinstance(item, dict)
+                ],
+                "all_targets": [
+                    {
+                        key: item.get(key)
+                        for key in ("device_id", "device_ip", "role", "services")
+                        if item.get(key) not in (None, "")
+                    }
+                    for item in content.get("all_targets", [])
+                    if isinstance(item, dict)
+                ],
+                "recovered_credentials": [
+                    {
+                        key: item.get(key)
+                        for key in ("user", "password", "source_ip", "source_device")
+                        if item.get(key) not in (None, "")
+                    }
+                    for item in content.get("recovered_credentials", [])
+                    if isinstance(item, dict)
+                ],
+                "confirmed_exploits": content.get("confirmed_exploits", 0),
+            }
+            return json.dumps({
+                "filename": payload.get("filename", "05_intrusion_context.json"),
+                "content": json.dumps(compact, ensure_ascii=False),
+                "compact_context": True,
+            }, ensure_ascii=False)
+
+        def _suggested_entry_action(name: str, target: str) -> tuple[str, dict] | None:
+            if name == "mqtt_listen" and expected_entry_services.get(target) == "mqtt":
+                return None
+            if name in {"http_get", "curl_headers"} and expected_entry_services.get(target) in {"http", "https"}:
+                return None
+            wanted = "mqtt" if name == "mqtt_listen" else "http"
+            for ip, service in expected_entry_services.items():
+                if service != wanted:
+                    continue
+                if wanted == "mqtt":
+                    return "mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}
+                return name, {"url": f"http://{ip}/"}
+            return None
+
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
                 nonlocal action_calls, context_loaded
+                target = _target_from_args(name, kwargs)
+                if name in {"mqtt_listen", "http_get", "curl_headers"} and target:
+                    suggestion = _suggested_entry_action(name, target)
+                    if suggestion is not None:
+                        suggested_tool, suggested_args = suggestion
+                        return _with_progress(json.dumps({
+                            "ok": False,
+                            "error_kind": "invalid_intrusion_target",
+                            "error": (
+                                f"{name} target {target} does not match the "
+                                "corresponding Phase 5 entry-point service."
+                            ),
+                            "suggested_tool": suggested_tool,
+                            "suggested_args": suggested_args,
+                        }))
                 result = original_fn(**kwargs)
                 if name == "read_deliverable" and kwargs.get("filename") == "05_intrusion_context.json":
                     context_loaded = True
+                    result = _compact_context_result(result)
                 if name in intrusion_action_tools:
                     action_calls += 1
                     target = _target_from_args(name, kwargs)
@@ -4742,14 +4840,14 @@ class Pipeline:
                     )
                 if (
                     strict_compact_completion
-                    and name != "save_deliverable"
+                    and name not in {"save_deliverable", COMPACT_RECON_COMPLETION_TOOL}
                     and not _missing_requirements()
                 ):
                     return _error(
                         "recon_completion_required",
                         "Compact local Recon evidence is complete; only "
-                        "save_deliverable is allowed now.",
-                        allowed_tool="save_deliverable",
+                        "the compact completion tool is allowed now.",
+                        allowed_tool=COMPACT_RECON_COMPLETION_TOOL,
                     )
 
                 if name == "arp_scan":
@@ -4822,10 +4920,37 @@ class Pipeline:
 
             return guarded
 
-        return [
+        wrapped = [
             {**tool, "function": _guard(tool["name"], tool["function"])}
             for tool in selected
         ]
+        if strict_compact_completion:
+            def complete_recon_campaign(**_kwargs):
+                missing = _missing_requirements()
+                if missing:
+                    return _error(
+                        "recon_contract_incomplete",
+                        "Compact Recon cannot finish until the evidence ledger is complete.",
+                        missing_requirements=missing,
+                    )
+                return _with_progress(json.dumps({
+                    "ok": True,
+                    "status": "recon_complete",
+                }))
+            wrapped.append(self._wrap_tool({
+                "name": COMPACT_RECON_COMPLETION_TOOL,
+                "description": (
+                    "Finish compact Recon after the evidence ledger is complete. "
+                    "The orchestrator writes 02_recon.md from recorded scans."
+                ),
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+                "function": complete_recon_campaign,
+            }, phase=2, agent="recon"))
+        return wrapped
 
     @staticmethod
     def _infer_role_from_ports(ports: list) -> str:

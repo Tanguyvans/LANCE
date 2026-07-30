@@ -20,6 +20,7 @@ import gc
 import argparse
 import logging
 import threading
+from pathlib import Path
 from contextlib import nullcontext
 from typing import Optional, List, Dict, Any
 
@@ -64,8 +65,19 @@ _CONTRACT_RECOVERY_TOOLS = frozenset({
 })
 _RECON_CORE_MODEL_TOOLS = frozenset({
     "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
-    "save_deliverable",
+    "save_deliverable", "complete_recon_campaign",
 })
+
+_PROCESS_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+try:
+    import subprocess
+    _SOURCE_COMMIT = subprocess.check_output(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=str(Path(__file__).resolve().parents[2]),
+        text=True, stderr=subprocess.DEVNULL,
+    ).strip()
+except Exception:
+    _SOURCE_COMMIT = os.environ.get("LANCE_SOURCE_COMMIT", "unknown")
 
 _MODEL_IDS = [
     "lance-moe",
@@ -396,6 +408,8 @@ def health():
         "expert_context_tokens": _EXPERT_TRAINING_CONTEXT_TOKENS,
         "expert_generation_caps": _EXPERT_GENERATION_TOKEN_CAPS,
         "contract_recovery": True,
+        "source_commit": _SOURCE_COMMIT,
+        "process_started_at": _PROCESS_STARTED_AT,
     }
 
 
@@ -509,6 +523,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
     rejected_saves = 0
     last_error_kind = ""
     recon_progress: dict[str, Any] = {}
+    forced_action: dict[str, Any] = {}
 
     for message in messages:
         if message.role == "assistant":
@@ -527,6 +542,11 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
             str(message.tool_call_id or ""), (str(message.name or ""), {})
         )
         payload = _result_payload(message.content)
+        if payload.get("suggested_tool") and isinstance(payload.get("suggested_args"), dict):
+            forced_action = {
+                "tool": str(payload["suggested_tool"]),
+                "arguments": dict(payload["suggested_args"]),
+            }
         progress = payload.get("recon_progress")
         has_authoritative_progress = isinstance(progress, dict)
         if has_authoritative_progress:
@@ -563,6 +583,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
         "rejected_saves": rejected_saves,
         "last_error_kind": last_error_kind,
         "recon_progress": recon_progress,
+        "forced_action": forced_action,
     }
 
 
@@ -639,9 +660,17 @@ def _select_model_tools(
     if isinstance(progress, dict) and progress.get("ready_to_save") is True:
         selected = [
             tool for tool in tools
-            if str(tool.get("function", {}).get("name", "")) == "save_deliverable"
+            if str(tool.get("function", {}).get("name", "")) in {
+                "complete_recon_campaign", "save_deliverable"
+            }
         ]
-        log.info("Recon baseline complete: model tool schemas reduced to save-only")
+        if any(
+            str(tool.get("function", {}).get("name", "")) == "complete_recon_campaign"
+            for tool in selected
+        ):
+            log.info("Recon baseline complete: model tool schemas reduced to compact completion")
+        else:
+            log.info("Recon baseline complete: model tool schemas reduced to save-only")
         return selected
     selected = [
         tool for tool in tools
@@ -664,6 +693,12 @@ def _forced_recovery_tool(
         str(tool.get("function", {}).get("name", ""))
         for tool in (tools or []) if isinstance(tool, dict)
     }
+    forced = state.get("forced_action")
+    if isinstance(forced, dict):
+        name = str(forced.get("tool") or "")
+        arguments = forced.get("arguments")
+        if name in available and isinstance(arguments, dict):
+            return name, dict(arguments)
     for item in state.get("outstanding_requirements", []):
         name = str(item.get("tool") or item.get("suggested_tool") or "")
         if not name or name not in available or name not in _CONTRACT_RECOVERY_TOOLS:

@@ -543,7 +543,7 @@ class TestReconToolContract:
         assert read.call_count == expected_read_calls
         if expected_error:
             assert late_read["error_kind"] == expected_error
-            assert late_read["allowed_tool"] == "save_deliverable"
+            assert late_read["allowed_tool"] == "complete_recon_campaign"
         else:
             assert late_read["content"] == "phase1"
 
@@ -2102,8 +2102,8 @@ class TestPhase5Context:
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [
-                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11"},
-                {"device_id": "s1-web", "device_ip": "192.168.100.12"},
+                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11", "service": "mqtt"},
+                {"device_id": "s1-web", "device_ip": "192.168.100.12", "service": "http"},
             ],
             "all_targets": [
                 {"device_id": "s1-mqtt", "device_ip": "192.168.100.11"},
@@ -2150,6 +2150,11 @@ class TestPhase5Context:
         tool_map = {tool["name"]: tool["function"] for tool in tools}
 
         tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        wrong_target = json.loads(tool_map["mqtt_listen"](
+            broker="192.168.100.1", topic="#", count=1
+        ))
+        assert wrong_target["error_kind"] == "invalid_intrusion_target"
+        assert wrong_target["suggested_args"]["broker"] == "192.168.100.11"
         tool_map["mqtt_listen"](broker="192.168.100.11", topic="#", count=1)
         tool_map["http_get"](url="http://192.168.100.12/")
 
@@ -2454,8 +2459,9 @@ class TestPhase5Context:
 
         kwargs = mock_provider.chat_with_tools.call_args.kwargs
         assert status.startswith("failed:")
-        assert kwargs["required_tool"] == "save_deliverable"
-        assert kwargs["terminate_after_tool"] == "save_deliverable"
+        expected_tool = "complete_recon_campaign" if profile == "compact" else "save_deliverable"
+        assert kwargs["required_tool"] == expected_tool
+        assert kwargs["terminate_after_tool"] == expected_tool
         assert kwargs["strict_required_tool"] is expected_strict
         assert kwargs["force_tool_on_stall"] is expected_force
 
