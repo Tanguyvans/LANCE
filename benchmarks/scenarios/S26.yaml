@@ -8,6 +8,10 @@ packs: [f20_heldout_network_paths]
 attack_paths:
 - id: AP26-SHORT
   name: One-pivot path to edge snapshot
+  title: One network pivot to the edge snapshot
+  chain:
+  - {hop: 1, device: s26-edge-entry, action: Authenticate to the directly reachable edge entry host}
+  - {hop: 2, device: s26-edge-snapshot, action: Pivot from the edge entry host to the segmented edge snapshot}
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s26-edge-entry
   - F20-ASSET-L1@s26-edge-snapshot
@@ -15,6 +19,11 @@ attack_paths:
   impact: high
 - id: AP26-DEEP
   name: Two-pivot path to control snapshot
+  title: Two network pivots to the control snapshot
+  chain:
+  - {hop: 1, device: s26-control-entry, action: Authenticate to the directly reachable control entry host}
+  - {hop: 2, device: s26-control-relay, action: Pivot from the control entry host to the control relay}
+  - {hop: 3, device: s26-control-snapshot, action: Pivot from the control relay to the isolated control snapshot}
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s26-control-entry
   - F20-PIVOT-RELAY-L1@s26-control-relay

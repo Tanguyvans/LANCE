@@ -8,6 +8,10 @@ packs: [f20_heldout_network_paths]
 attack_paths:
 - id: AP25-TELEMETRY
   name: Gateway pivot to telemetry archive
+  title: One network pivot from the gateway to the telemetry archive
+  chain:
+  - {hop: 1, device: s25-gateway, action: Authenticate to the directly reachable gateway}
+  - {hop: 2, device: s25-telemetry-archive, action: Pivot from the gateway to the segmented telemetry archive}
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-telemetry-archive
@@ -15,6 +19,10 @@ attack_paths:
   impact: high
 - id: AP25-MAINTENANCE
   name: Gateway pivot to maintenance archive
+  title: One network pivot from the gateway to the maintenance archive
+  chain:
+  - {hop: 1, device: s25-gateway, action: Authenticate to the directly reachable gateway}
+  - {hop: 2, device: s25-maintenance-archive, action: Pivot from the gateway to the segmented maintenance archive}
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s25-gateway
   - F20-ASSET-L1@s25-maintenance-archive

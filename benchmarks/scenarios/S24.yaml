@@ -8,6 +8,11 @@ packs: [f20_heldout_network_paths]
 attack_paths:
 - id: AP24-OPERATIONS-CHAIN
   name: Entry host to isolated operations archive
+  title: Two network pivots to an isolated operations archive
+  chain:
+  - {hop: 1, device: s24-entry, action: Authenticate to the only directly reachable entry host}
+  - {hop: 2, device: s24-relay, action: Pivot into VLAN 130 using the recovered relay credentials}
+  - {hop: 3, device: s24-operations-archive, action: Pivot into VLAN 131 and reach the isolated operations archive}
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s24-entry
   - F20-PIVOT-RELAY-L1@s24-relay

@@ -171,6 +171,20 @@ vulnerabilities:
 attack_paths:
 - id: AP27-CASCADE
   name: Three pivots to the isolated safety archive
+  title: Three network pivots to the isolated safety archive
+  chain:
+  - hop: 1
+    device: s27-field-entry
+    action: Authenticate to the directly reachable field entry host
+  - hop: 2
+    device: s27-zone-relay
+    action: Pivot from the field entry host to the zone relay
+  - hop: 3
+    device: s27-cell-relay
+    action: Pivot from the zone relay to the cell relay
+  - hop: 4
+    device: s27-safety-archive
+    action: Pivot from the cell relay to the isolated safety archive
   vulnerabilities_used:
   - F20-PIVOT-ENTRY@s27-field-entry
   - F20-PIVOT-RELAY-L1@s27-zone-relay
