@@ -148,7 +148,8 @@ Prévisualisation obligatoire de l’orchestrateur :
 
 ```bash
 python3 benchmarks/tools/run_campaign.py --dry-run \
-  --provider <provider> --model <modele_gelé> \
+  --provider minimax --model MiniMax-M2.7 \
+  --baseline-model openai/MiniMax-M2.7 \
   --worker root@<worker-1200> --worker root@<worker-1201> \
   --worker root@<worker-1202> --worker root@<worker-1203>
 ```

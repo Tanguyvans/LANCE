@@ -70,6 +70,29 @@ def test_campaign_resets_and_verifies_between_every_condition(tmp_path):
     ]
 
 
+def test_campaign_uses_separate_lance_and_baseline_model_identifiers(tmp_path):
+    manifest_path = ROOT / "benchmarks/campaigns/paper_v3_4.yaml"
+    manifest = _load_manifest(manifest_path)
+    args = _parser().parse_args([
+        "--manifest", str(manifest_path),
+        "--dry-run",
+        "--model", "MiniMax-M2.7",
+        "--baseline-model", "openai/MiniMax-M2.7",
+        "--state", str(tmp_path / "state.json"),
+    ])
+    runner = CampaignRunner(args, manifest)
+    conditions = _conditions(manifest)
+
+    lance = next(item for item in conditions if item.system == "lance")
+    cai = next(item for item in conditions if item.system == "cai")
+
+    assert runner._agent_command(lance)[-2:] == ["--execution-profile", "auto"]
+    lance_command = runner._agent_command(lance)
+    cai_command = runner._agent_command(cai)
+    assert lance_command[lance_command.index("--model") + 1] == "MiniMax-M2.7"
+    assert cai_command[cai_command.index("--model") + 1] == "openai/MiniMax-M2.7"
+
+
 def test_external_runlists_match_pinned_manifest_counts():
     manifest = yaml.safe_load(
         (ROOT / "benchmarks/external/manifest.yaml").read_text(encoding="utf-8")

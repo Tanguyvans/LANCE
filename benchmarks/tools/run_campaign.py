@@ -194,8 +194,9 @@ class CampaignRunner:
                 "--mode", condition.mode,
                 "--scope", self.args.scope,
             ]
-            if self.args.model:
-                command.extend(["--model", self.args.model])
+            baseline_model = self.args.baseline_model or self.args.model
+            if baseline_model:
+                command.extend(["--model", baseline_model])
             return command
         raise ValueError(f"unsupported campaign system: {condition.system}")
 
@@ -253,6 +254,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--scope", default="192.168.100.0/24")
     parser.add_argument("--provider")
     parser.add_argument("--model")
+    parser.add_argument(
+        "--baseline-model",
+        help="Model identifier used by CAI/VulnBot adapters (for example openai/MiniMax-M2.7).",
+    )
     parser.add_argument("--execution-profile", choices=["auto", "compact", "full"], default="auto")
     parser.add_argument("--only-scenario", action="append")
     parser.add_argument("--only-system", action="append", choices=["lance", "cai", "vulnbot"])
