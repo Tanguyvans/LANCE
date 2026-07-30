@@ -484,6 +484,14 @@ class LLMProvider:
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
                 failed, fallback_used = self._tool_result_metadata(res)
+                if force_tool_on_stall and failed:
+                    try:
+                        error_kind = json.loads(res).get("error_kind")
+                    except (TypeError, ValueError, json.JSONDecodeError, AttributeError):
+                        error_kind = None
+                    if error_kind == "recon_completion_required":
+                        completion_only = True
+                        force_any_tool_next_turn = True
                 if cost_tracker:
                     if failed:
                         cost_tracker.record_tool_error()

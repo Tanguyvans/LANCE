@@ -2446,7 +2446,7 @@ class Pipeline:
             terminate_after_tool=COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo else "save_deliverable",
             terminate_on_unavailable_tools=None,
             strict_required_tool=local_intrusion_memo or compact_local_recon,
-            force_tool_on_stall=local_intrusion_memo,
+            force_tool_on_stall=local_intrusion_memo or compact_local_recon,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",

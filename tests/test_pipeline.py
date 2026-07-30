@@ -1715,6 +1715,57 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 3
         complete.assert_not_called()
 
+    def test_openai_loop_forces_recon_save_after_completion_signal(self):
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        def response(tool_name, call_id):
+            tool_call = MagicMock()
+            tool_call.function.name = tool_name
+            tool_call.function.arguments = '{}'
+            tool_call.id = call_id
+            message = MagicMock(content=None, tool_calls=[tool_call])
+            return MagicMock(
+                choices=[MagicMock(finish_reason="tool_calls", message=message)],
+                usage=None,
+            )
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            response("read_deliverable", "call_read"),
+            response("save_deliverable", "call_save"),
+        ]
+        read = MagicMock(return_value=json.dumps({
+            "ok": False,
+            "error_kind": "recon_completion_required",
+        }))
+        save = MagicMock(return_value='{"status":"saved"}')
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[
+                {"name": "read_deliverable", "description": "read", "input_schema": {}, "function": read},
+                {"name": "save_deliverable", "description": "save", "input_schema": {}, "function": save},
+            ],
+            max_turns=10,
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+            strict_required_tool=True,
+            force_tool_on_stall=True,
+        )
+
+        second_request = provider.client.chat.completions.create.call_args_list[1].kwargs
+        assert second_request["tool_choice"] == "required"
+        assert [
+            tool["function"]["name"] for tool in second_request["tools"]
+        ] == ["save_deliverable"]
+        read.assert_called_once_with()
+        save.assert_called_once_with()
+
     def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
         """Interleaved duplicate calls must switch the model to save-only mode."""
         from src.agent.provider import LLMProvider
@@ -2312,11 +2363,11 @@ class TestPhase5Context:
         assert results["intrusion"] == "completed"
 
     @pytest.mark.parametrize(
-        ("profile", "expected_strict"),
-        [("compact", True), ("full", False)],
+        ("profile", "expected_strict", "expected_force"),
+        [("compact", True, True), ("full", False, False)],
     )
     def test_local_moe_recon_requires_successful_save_only_for_compact(
-        self, mock_provider, output_dir, profile, expected_strict
+        self, mock_provider, output_dir, profile, expected_strict, expected_force
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
@@ -2330,6 +2381,7 @@ class TestPhase5Context:
         assert kwargs["required_tool"] == "save_deliverable"
         assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["strict_required_tool"] is expected_strict
+        assert kwargs["force_tool_on_stall"] is expected_force
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
