@@ -2681,6 +2681,9 @@ class TestPhase5Context:
         assert kwargs["strict_required_tool"] is expected_strict
         assert kwargs["force_completion_on_recon_ready"] is expected_ready_force
         assert kwargs["force_tool_on_stall"] is expected_force
+        if profile == "compact":
+            assert "SHORT narrative seed only" in kwargs["system_prompt"]
+            assert "Do not include tables" in kwargs["system_prompt"]
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")

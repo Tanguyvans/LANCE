@@ -45,6 +45,23 @@ class TestLoadPrompt:
         # Should have resolved the include
         assert "@include" not in prompt
 
+    def test_load_compact_recon_prompt_uses_bounded_save_instruction(self):
+        prompt = load_prompt("recon_compact", {
+            "target_subnet": "192.168.100.0/24",
+            "expected_deliverable": "02_recon.md",
+            "nmap_scan_groups": "router: 22,80",
+            "device_count": "4",
+            "link_count": "3",
+            "cve_count": "0",
+            "top_risk": "router",
+            "previous_deliverables": "01_graph_analysis.md",
+            "scenario_context": "",
+        })
+        assert "SHORT narrative seed only" in prompt
+        assert "Do not include tables" in prompt
+        assert "192.168.100.0/24" in prompt
+        assert "@include" not in prompt
+
     def test_load_graph_analysis_prompt(self):
         variables = {
             "device_count": "10",

@@ -2639,7 +2639,10 @@ class Pipeline:
         # Do NOT inject the prefill into the prompt — it would make the system prompt too large.
 
         # Load and compose prompt
-        prompt_template = "intrusion_compact" if local_intrusion_memo else config.prompt_template
+        prompt_template = (
+            "intrusion_compact" if local_intrusion_memo
+            else ("recon_compact" if compact_local_recon else config.prompt_template)
+        )
         system_prompt = load_prompt(prompt_template, variables)
 
         # Print header
