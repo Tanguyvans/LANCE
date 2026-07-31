@@ -162,8 +162,9 @@ def _phase4_local_verification_tools(
 # ---------------------------------------------------------------------------
 # Phase 4 verification contract.
 # Every canonical Phase 3 finding gets one deterministic, service-aware
-# verification requirement. The model may add probes, but it cannot complete
-# a finding without executing the required probe against the right target.
+# verification requirement. This contract is enforced for compact/local
+# workers; full-capability models receive the same plan as guidance while
+# retaining autonomous tool and probe selection.
 # ---------------------------------------------------------------------------
 
 
@@ -4216,10 +4217,10 @@ class Pipeline:
                             tool for tool in exploit_tools
                             if tool.get("name") == required_probe_tool
                         ]
-                    verification_tools = _phase4_apply_verification_contract(
-                        verification_tools, requirement
-                    )
                     if compact_local_moe:
+                        verification_tools = _phase4_apply_verification_contract(
+                            verification_tools, requirement
+                        )
                         result_text = self.provider.chat_with_tools(
                             system_prompt=load_prompt(
                                 "exploit_device_vuln_memo",
