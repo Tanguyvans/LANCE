@@ -17,6 +17,24 @@ class SealedScenarioError(ValueError):
     """Raised when a local runner is asked to execute a sealed scenario."""
 
 
+def _scenario_split(scenario_id: str) -> str:
+    """Return the trusted catalogue split used in run metadata."""
+    sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
+    if default_export_store().exists(sid):
+        return "lab-export"
+
+    from src.benchmark.catalog import CatalogError, get_scenario
+
+    try:
+        return get_scenario(sid).split
+    except CatalogError:
+        # Legacy public variants such as S1h/S4h are backed by local GT files
+        # but intentionally live outside the immutable numeric catalogue.
+        if (GT_DIR / f"scenario_{sid}.yaml").exists():
+            return "dev-public"
+        raise
+
+
 def _available_scenarios() -> list[str]:
     """Return deployable public scenarios, including legacy hardened variants."""
     from src.benchmark.catalog import list_scenarios
@@ -317,6 +335,7 @@ def run_batch(
 
     for idx, sid in enumerate(scenario_ids, 1):
         scenario_id: int | str = int(sid) if sid.isdigit() else sid
+        benchmark_split = _scenario_split(sid)
         gt_file = resolve_ground_truth_path(sid)
 
         if not gt_file.exists():
@@ -339,7 +358,7 @@ def run_batch(
                 scenario_id=scenario_id,
                 auto_teardown=True,
                 blind=blind,
-                benchmark_split="dev-public",
+                benchmark_split=benchmark_split,
                 execution_profile=execution_profile,
             )
             run_results = pipeline.run()

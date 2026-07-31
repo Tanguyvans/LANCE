@@ -52,3 +52,15 @@ def test_file_viewer_resets_scroll_position_on_each_open():
         reset_on_close = close_modal.index("resetScrollPosition")
         modal_close = close_modal.index("overlay.classList.remove('open');")
         assert reset_on_close < modal_close
+
+
+def test_public_test_scenarios_are_not_hardcoded_as_sealed_in_dashboard():
+    javascript = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
+    sealed_id_start = javascript.index("function isSealedScenarioId")
+    sealed_id_helper = javascript[
+        sealed_id_start : javascript.index("function isSealedScenario(", sealed_id_start)
+    ]
+
+    assert "Number(scenarioId)" not in sealed_id_helper
+    assert "isSealedScenario(scenario)" in sealed_id_helper
+    assert "split: 'test-public', sealed: false" in javascript

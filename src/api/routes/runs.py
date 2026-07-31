@@ -89,8 +89,11 @@ def _is_sealed_run(run_dir: Path) -> bool:
         return True
     if meta is None:
         return False
-    if meta.get("split") == "eval-sealed":
+    split = meta.get("split")
+    if split == "eval-sealed":
         return True
+    if split in {"dev-public", "test-public", "lab-export"}:
+        return False
     scenario_id = meta.get("scenario_id")
     if scenario_id is None:
         return False

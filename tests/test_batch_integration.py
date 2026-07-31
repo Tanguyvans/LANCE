@@ -15,6 +15,7 @@ from src.agent.batch import (
     _parse_scenario_ids,
     _parse_single_scenario_id,
     _print_scenario_summary,
+    _scenario_split,
 )
 
 
@@ -68,6 +69,12 @@ class TestScenarioSelection:
         assert "1h" in selected and "4h" in selected
         assert "19" in selected
         assert "20" in selected and "29" in selected
+
+    def test_public_test_split_is_preserved_in_run_metadata(self):
+        assert _scenario_split("1") == "dev-public"
+        assert _scenario_split("20") == "test-public"
+        assert _scenario_split("29") == "test-public"
+        assert _scenario_split("1h") == "dev-public"
 
 
 class TestBatchMetrics:

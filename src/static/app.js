@@ -278,10 +278,16 @@ const FALLBACK_SCENARIOS = {
     { id: '17', name: 'Stateful Signed OTA', difficulty: 'expert', posture: 'mixed', topology: 'ota_lifecycle', packs: ['f13_ota_advanced'] },
     { id: '18', name: 'Simulated Cloud IAM and SSRF', difficulty: 'expert', posture: 'mixed', topology: 'cloud_iam_ssrf', packs: ['f14_cloud_iam'] },
     { id: '19', name: 'Safe Multi-Protocol OT Cell', difficulty: 'expert', posture: 'mixed', topology: 'ot_multiprotocol', packs: ['f15_ot_protocols'] },
-    ...Array.from({length: 6}, (_, i) => ({
-      id: String(20 + i), name: `Évaluation scellée S${20 + i}`, difficulty: 'sealed',
-      posture: 'unknown', topology: null, packs: [], split: 'eval-sealed', sealed: true,
-    })),
+    { id: '20', name: 'True Network Multi-Hop Pivot', difficulty: 'expert', posture: 'mixed', topology: 'true_multihop', packs: ['f16_true_multihop'], split: 'test-public', sealed: false },
+    { id: '21', name: 'Sparse Low-Prevalence Network', difficulty: 'hard', posture: 'sparse', topology: 'sparse_low_prevalence', packs: ['f17_sparse_low_prevalence'], split: 'test-public', sealed: false },
+    { id: '22', name: 'Exploit Primitive Diversity', difficulty: 'expert', posture: 'mixed', topology: 'exploit_diversity', packs: ['f18_exploit_diversity'], split: 'test-public', sealed: false },
+    { id: '23', name: 'Wireless-to-Firmware Chain', difficulty: 'expert', posture: 'mixed', topology: 'wireless_firmware_chain', packs: ['f19_wireless_firmware'], split: 'test-public', sealed: false },
+    { id: '24', name: 'Dual-Zone Operations Chain', difficulty: 'expert', posture: 'mixed', topology: 'heldout_dual_zone_chain', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
+    { id: '25', name: 'Segmented Fan-Out', difficulty: 'expert', posture: 'mixed', topology: 'heldout_segmented_fanout', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
+    { id: '26', name: 'Asymmetric Pivot Paths', difficulty: 'expert', posture: 'mixed', topology: 'heldout_asymmetric_paths', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
+    { id: '27', name: 'Three-Pivot Cascade', difficulty: 'expert', posture: 'mixed', topology: 'heldout_three_pivot_cascade', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
+    { id: '28', name: 'Provisioning Dependency Chain', difficulty: 'expert', posture: 'mixed', topology: 'heldout_provisioning_chain', packs: ['f21_provisioning_chain'], split: 'test-public', sealed: false },
+    { id: '29', name: 'Large Sparse Control Network', difficulty: 'hard', posture: 'sparse', topology: 'heldout_large_sparse', packs: ['f10_sparse_precision'], split: 'test-public', sealed: false },
     { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
     { id: '4h', name: 'ICS/SCADA (hardened)', difficulty: 'control', posture: 'hardened', topology: 'ics_scada', packs: ['f0_hardened'] },
   ],
@@ -289,22 +295,24 @@ const FALLBACK_SCENARIOS = {
 
 function isSealedScenarioId(value) {
   const scenarioId = String(value || '').trim().replace(/^S/i, '');
-  return /^\d+$/.test(scenarioId) && Number(scenarioId) >= 20 && Number(scenarioId) <= 25;
+  const scenario = (_scenariosData.scenarios || []).find(
+    item => String(item.id) === scenarioId
+  );
+  return isSealedScenario(scenario);
 }
 
 function isSealedScenario(scenario) {
   return Boolean(scenario && (
     scenario.sealed === true ||
-    scenario.split === 'eval-sealed' ||
-    isSealedScenarioId(scenario.id)
+    scenario.split === 'eval-sealed'
   ));
 }
 
 function isSealedRun(run) {
   if (!run) return false;
-  if (run.sealed === true) return true;
-  // Compatibility with historical API responses that predate the explicit
-  // `sealed` marker. The backend remains the authoritative access boundary.
+  if (run.sealed === true || run.split === 'eval-sealed' || run.benchmark_split === 'eval-sealed') {
+    return true;
+  }
   return isSealedScenarioId(run.scenario);
 }
 

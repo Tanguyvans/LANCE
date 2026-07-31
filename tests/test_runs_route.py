@@ -96,6 +96,14 @@ class TestRunVisibility:
 
         assert _visible_files(tmp_path) == []
 
+    def test_public_test_run_is_not_reclassified_as_legacy_sealed(self, tmp_path):
+        (tmp_path / "scenario_meta.json").write_text(
+            json.dumps({"scenario_id": "20", "split": "test-public"})
+        )
+        (tmp_path / "report.md").write_text("public")
+
+        assert _visible_files(tmp_path) == ["report.md", "scenario_meta.json"]
+
 
 class TestSealedSummaryTrustBoundary:
     def test_run_local_summary_is_ignored(self, tmp_path, monkeypatch):
