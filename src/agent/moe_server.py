@@ -649,11 +649,7 @@ def _select_model_tools(
     tools: Optional[List[Dict[str, Any]]],
     state: Optional[dict[str, Any]] = None,
 ) -> Optional[List[Dict[str, Any]]]:
-    """Expose the training-aligned core interface to the Recon adapter.
-
-    The caller retains its complete executable tool map. Only the verbose JSON
-    schemas rendered into the 3B model prompt are reduced.
-    """
+    """Expose the training-aligned executable interface to the Recon adapter."""
     if target_expert != "recon" or not tools:
         return tools
     progress = (state or {}).get("recon_progress", {})
@@ -1119,13 +1115,13 @@ def chat_completions(req: ChatCompletionRequest):
     # Parse potential tool calls
     content, tool_calls = _parse_qwen_tool_calls(response_text)
     tool_calls, rejected_tool_calls = _filter_unavailable_tool_calls(
-        tool_calls, req.tools
+        tool_calls, model_tools
     )
     if rejected_tool_calls:
         log.warning(
-            "Discarded model tool call(s) outside request contract: %s; allowed=%s",
+            "Discarded model tool call(s) outside active model contract: %s; allowed=%s",
             rejected_tool_calls,
-            sorted(_allowed_tool_names(req.tools)),
+            sorted(_allowed_tool_names(model_tools)),
         )
         if not content:
             content = (

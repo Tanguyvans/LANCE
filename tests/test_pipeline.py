@@ -484,14 +484,14 @@ class TestReconToolContract:
         assert calls[0][0] == "ssh_audit"
 
     @pytest.mark.parametrize(
-        ("profile", "expected_cached", "expected_read_calls"),
+        ("profile", "expected_completion_required", "expected_read_calls"),
         [
             ("compact", True, 1),
             ("full", False, 2),
         ],
     )
-    def test_compact_local_moe_reuses_cached_phase1_after_recon_is_ready(
-        self, output_dir, monkeypatch, profile, expected_cached, expected_read_calls
+    def test_compact_local_moe_allows_only_save_after_recon_is_ready(
+        self, output_dir, monkeypatch, profile, expected_completion_required, expected_read_calls
     ):
         import src.agent.tools.graph_tools as graph_tools
 
@@ -541,10 +541,10 @@ class TestReconToolContract:
             filename="01_graph_analysis.md"
         ))
         assert read.call_count == expected_read_calls
-        if expected_cached:
-            assert late_read["already_loaded"] is True
+        if expected_completion_required:
+            assert late_read["error_kind"] == "recon_completion_required"
+            assert late_read["allowed_tool"] == "save_deliverable"
             assert late_read["recon_progress"]["ready_to_save"] is True
-            assert "error_kind" not in late_read
         else:
             assert late_read["content"] == "phase1"
 
@@ -1842,6 +1842,62 @@ class TestRepeatingToolDetector:
         ] == ["save_deliverable"]
         read.assert_called_once_with()
         save.assert_called_once_with()
+
+    def test_openai_loop_forces_recon_save_as_soon_as_progress_is_ready(self):
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        def response(tool_name, call_id):
+            tool_call = MagicMock()
+            tool_call.function.name = tool_name
+            tool_call.function.arguments = "{}"
+            tool_call.id = call_id
+            message = MagicMock(content=None, tool_calls=[tool_call])
+            return MagicMock(
+                choices=[MagicMock(finish_reason="tool_calls", message=message)],
+                usage=None,
+            )
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            response("nmap_scan", "call_scan"),
+            response("save_deliverable", "call_save"),
+        ]
+        scan = MagicMock(return_value=json.dumps({
+            "stdout": "baseline complete",
+            "recon_progress": {"ready_to_save": True},
+        }))
+        save = MagicMock(return_value="{\"status\":\"saved\"}")
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[
+                {"name": "nmap_scan", "description": "scan", "input_schema": {},
+                 "function": scan},
+                {"name": "read_deliverable", "description": "read",
+                 "input_schema": {}, "function": MagicMock()},
+                {"name": "save_deliverable", "description": "save",
+                 "input_schema": {}, "function": save},
+            ],
+            max_turns=10,
+            required_tool="save_deliverable",
+            terminate_after_tool="save_deliverable",
+            strict_required_tool=True,
+            force_tool_on_stall=True,
+        )
+
+        second_request = provider.client.chat.completions.create.call_args_list[1].kwargs
+        assert second_request["tool_choice"] == "required"
+        assert [
+            tool["function"]["name"] for tool in second_request["tools"]
+        ] == ["save_deliverable"]
+        scan.assert_called_once_with()
+        save.assert_called_once_with()
+
 
     def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
         """Interleaved duplicate calls must switch the model to save-only mode."""

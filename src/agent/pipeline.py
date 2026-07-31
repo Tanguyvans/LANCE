@@ -4837,7 +4837,7 @@ class Pipeline:
                     )
                 if (
                     strict_compact_completion
-                    and name not in {"save_deliverable", "read_deliverable"}
+                    and name != "save_deliverable"
                     and not _missing_requirements()
                 ):
                     return _error(

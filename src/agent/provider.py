@@ -486,11 +486,30 @@ class LLMProvider:
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
                 failed, fallback_used = self._tool_result_metadata(res)
+                try:
+                    result_payload = json.loads(res)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    result_payload = {}
+                recon_progress = (
+                    result_payload.get("recon_progress", {})
+                    if isinstance(result_payload, dict) else {}
+                )
+                if (
+                    required_tool == "save_deliverable"
+                    and tc.function.name != required_tool
+                    and isinstance(recon_progress, dict)
+                    and recon_progress.get("ready_to_save") is True
+                ):
+                    # The Recon tool contract is authoritative. As soon as the
+                    # final evidence call completes the baseline, expose and
+                    # require only the terminal save tool on the next turn.
+                    completion_only = True
+                    force_any_tool_next_turn = True
                 if force_tool_on_stall and failed:
-                    try:
-                        error_kind = json.loads(res).get("error_kind")
-                    except (TypeError, ValueError, json.JSONDecodeError, AttributeError):
-                        error_kind = None
+                    error_kind = (
+                        result_payload.get("error_kind")
+                        if isinstance(result_payload, dict) else None
+                    )
                     if error_kind == "recon_completion_required":
                         completion_only = True
                         force_any_tool_next_turn = True
