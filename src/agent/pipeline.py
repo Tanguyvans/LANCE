@@ -1776,6 +1776,48 @@ class Pipeline:
         else:
             surface = surface_payload
         surface = surface if isinstance(surface, list) else []
+
+        # Reuse the broad attack-surface observation as the primary per-device
+        # ledger. A later get_device_info call only fills a device omitted by
+        # that broad result (or fields that were absent); it is not required as
+        # a duplicate observation for every declared node.
+        surface_by_id: dict[str, dict] = {}
+        surface_order: list[str] = []
+        surface_device_ids: set[str] = set()
+        for device in surface:
+            if not isinstance(device, dict) or not device.get("id"):
+                continue
+            device_id = str(device["id"])
+            if device_id not in surface_by_id:
+                surface_order.append(device_id)
+            surface_by_id[device_id] = dict(device)
+            surface_device_ids.add(device_id)
+
+        detailed_device_ids: set[str] = set()
+        for observation in device_details:
+            payload = observation.get("payload")
+            if not isinstance(payload, dict) or not payload.get("id"):
+                continue
+            device_id = str(payload["id"])
+            detailed_device_ids.add(device_id)
+            if device_id not in surface_by_id:
+                surface_order.append(device_id)
+                surface_by_id[device_id] = dict(payload)
+                continue
+            merged = dict(payload)
+            merged.update(surface_by_id[device_id])
+            surface_by_id[device_id] = merged
+
+        surface = [surface_by_id[device_id] for device_id in surface_order]
+        device_coverage = {
+            device_id: (
+                "get_attack_surface"
+                if device_id in surface_device_ids
+                else "get_device_info"
+            )
+            for device_id in surface_order
+            if device_id in surface_device_ids or device_id in detailed_device_ids
+        }
         service_count = sum(
             len(device.get("services", []))
             for device in surface
@@ -1827,6 +1869,7 @@ class Pipeline:
             "risk_scores": risk_scores,
             "risk_scores_note": risk_note,
             "device_details": device_details,
+            "device_coverage": device_coverage,
             "evidence_refs": {
                 tool: observation.get("evidence_ref", "")
                 for tool, observation in latest.items()
@@ -2047,17 +2090,13 @@ class Pipeline:
             str(node.get("id")) for node in projection.get("nodes", [])
             if isinstance(node, dict) and node.get("id")
         }
-        detailed_ids = {
-            str(item.get("args", {}).get("device_id"))
-            for item in projection.get("device_details", [])
-            if isinstance(item, dict) and isinstance(item.get("args"), dict)
-            and item.get("args", {}).get("device_id")
-        }
-        missing_details = sorted(declared_ids - detailed_ids)
-        if missing_details:
+        covered_ids = set(projection.get("device_coverage", {}))
+        missing_coverage = sorted(declared_ids - covered_ids)
+        if missing_coverage:
             return False, (
-                "Graph evidence is incomplete; call get_device_info for every "
-                "declared node. Missing: " + ", ".join(missing_details)
+                "Graph evidence lacks per-device facts. Reuse get_attack_surface "
+                "coverage and call get_device_info only for missing nodes: "
+                + ", ".join(missing_coverage)
             )
         expected.extend(
             f"| {item.get('id')} | {item.get('ip')} |"
@@ -2434,17 +2473,13 @@ class Pipeline:
                         str(node.get("id")) for node in projection.get("nodes", [])
                         if isinstance(node, dict) and node.get("id")
                     }
-                    detailed_ids = {
-                        str(item.get("args", {}).get("device_id"))
-                        for item in projection.get("device_details", [])
-                        if isinstance(item, dict) and isinstance(item.get("args"), dict)
-                        and item.get("args", {}).get("device_id")
-                    }
-                    missing_details = sorted(declared_ids - detailed_ids)
-                    if missing_details:
+                    covered_ids = set(projection.get("device_coverage", {}))
+                    missing_coverage = sorted(declared_ids - covered_ids)
+                    if missing_coverage:
                         valid, validation_error = False, (
-                            "Graph evidence is incomplete; call get_device_info for every "
-                            "declared node. Missing: " + ", ".join(missing_details)
+                            "Graph evidence lacks per-device facts. Reuse "
+                            "get_attack_surface coverage and call get_device_info "
+                            "only for missing nodes: " + ", ".join(missing_coverage)
                         )
                     elif strict_compact_graph:
                         valid, validation_error = self._validate_compact_graph_projection(

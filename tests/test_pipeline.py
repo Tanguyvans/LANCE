@@ -3165,18 +3165,6 @@ class TestInformationPreservingArchitecture:
                 }),
                 "evidence_ref": "tc-graph-risks",
             },
-            {
-                "tool": "get_device_info",
-                "args": {"device_id": "router"},
-                "result": json.dumps({"id": "router", "ip": "192.0.2.1"}),
-                "evidence_ref": "tc-graph-router",
-            },
-            {
-                "tool": "get_device_info",
-                "args": {"device_id": "mqtt"},
-                "result": json.dumps({"id": "mqtt", "ip": "192.0.2.11"}),
-                "evidence_ref": "tc-graph-mqtt",
-            },
         ]
         (pipeline.run_dir / "tool_calls.jsonl").write_text(
             "\n".join(json.dumps(record) for record in records) + "\n"
@@ -3210,6 +3198,54 @@ class TestInformationPreservingArchitecture:
         assert "**Estimated main risk:** Not pre-computed" in captured["content"]
         assert "Attack paths not pre-computed" in captured["content"]
         assert "Risk score 99" not in captured["content"]
+
+    def test_graph_projection_uses_device_info_only_to_fill_surface_gaps(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        records = [
+            {
+                "tool": "get_network_topology",
+                "args": {},
+                "result": json.dumps({
+                    "nodes": [{"id": "router"}, {"id": "mqtt"}],
+                    "edges": [],
+                }),
+                "evidence_ref": "tc-topology",
+            },
+            {
+                "tool": "get_attack_surface",
+                "args": {},
+                "result": json.dumps([{
+                    "id": "router", "ip": "192.0.2.1",
+                    "services": [{"name": "ssh", "port": 22}],
+                }]),
+                "evidence_ref": "tc-surface",
+            },
+            {
+                "tool": "get_device_info",
+                "args": {"device_id": "mqtt"},
+                "result": json.dumps({
+                    "id": "mqtt", "ip": "192.0.2.11",
+                    "services": [{"name": "mqtt", "port": 1883}],
+                }),
+                "evidence_ref": "tc-mqtt-detail",
+            },
+        ]
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(
+            "\n".join(json.dumps(record) for record in records) + "\n"
+        )
+
+        projection = pipeline._build_graph_evidence_projection()
+
+        assert [item["id"] for item in projection["attack_surface"]] == [
+            "router", "mqtt",
+        ]
+        assert projection["device_coverage"] == {
+            "router": "get_attack_surface",
+            "mqtt": "get_device_info",
+        }
+        assert projection["service_count"] == 2
 
     def test_full_local_graph_preserves_autonomous_report(self, output_dir):
         provider = MagicMock()
