@@ -523,6 +523,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
     rejected_saves = 0
     last_error_kind = ""
     recon_progress: dict[str, Any] = {}
+    intrusion_progress: dict[str, Any] = {}
     forced_action: dict[str, Any] = {}
 
     for message in messages:
@@ -547,6 +548,9 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
                 "tool": str(payload["suggested_tool"]),
                 "arguments": dict(payload["suggested_args"]),
             }
+        intrusion = payload.get("intrusion_progress")
+        if isinstance(intrusion, dict):
+            intrusion_progress = intrusion
         progress = payload.get("recon_progress")
         has_authoritative_progress = isinstance(progress, dict)
         if has_authoritative_progress:
@@ -565,9 +569,21 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
                     item for item in payload["missing_requirements"]
                     if isinstance(item, dict)
                 ]
+            if (
+                forced_action
+                and tool_name == forced_action.get("tool")
+                and arguments == forced_action.get("arguments")
+            ):
+                forced_action = {}
             continue
         if tool_name:
             successful_counts[tool_name] = successful_counts.get(tool_name, 0) + 1
+            if (
+                forced_action
+                and tool_name == forced_action.get("tool")
+                and arguments == forced_action.get("arguments")
+            ):
+                forced_action = {}
             if not has_authoritative_progress:
                 outstanding = [
                     item for item in outstanding
@@ -579,6 +595,7 @@ def _build_execution_state(messages: List[Message]) -> dict[str, Any]:
     return {
         "tool_counts": tool_counts,
         "successful_counts": successful_counts,
+        "intrusion_progress": intrusion_progress,
         "outstanding_requirements": outstanding,
         "rejected_saves": rejected_saves,
         "last_error_kind": last_error_kind,
@@ -597,6 +614,12 @@ def _runtime_state_text(state: dict[str, Any]) -> str:
         f"Successful tool calls: {completed_text}.",
         f"Rejected save attempts: {state.get('rejected_saves', 0)}.",
     ]
+    intrusion = state.get("intrusion_progress", {})
+    if isinstance(intrusion, dict) and intrusion.get("missing_targets"):
+        lines.append(
+            "Phase 5 targets still requiring an action: "
+            + ", ".join(str(target) for target in intrusion["missing_targets"])
+        )
     outstanding = state.get("outstanding_requirements", [])
     progress = state.get("recon_progress", {})
     targets = progress.get("targets", []) if isinstance(progress, dict) else []

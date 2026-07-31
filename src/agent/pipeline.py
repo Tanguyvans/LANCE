@@ -2511,6 +2511,7 @@ class Pipeline:
             strict_required_tool=local_intrusion_memo or compact_local_recon,
             force_tool_on_stall=local_intrusion_memo or compact_local_recon,
             force_completion_on_recon_ready=compact_local_recon,
+            reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
@@ -4363,6 +4364,7 @@ class Pipeline:
 
         expected_targets, expected_entry_points, expected_credentials = _load_expectations()
         expected_entry_services: dict[str, str] = {}
+        expected_target_services: dict[str, str] = {}
         try:
             raw_context = json.loads(
                 (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
@@ -4373,6 +4375,17 @@ class Pipeline:
                     service = str(item.get("service") or "").strip().casefold()
                     if ip and service:
                         expected_entry_services[ip] = service
+            for item in raw_context.get("all_targets", []):
+                if isinstance(item, dict):
+                    ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+                    services = {str(port) for port in item.get("services", [])}
+                    role = str(item.get("role") or "").casefold()
+                    if ip:
+                        expected_target_services[ip] = (
+                            "mqtt" if {"1883", "8883"} & services or "mqtt" in role
+                            else "http" if {"80", "443", "8080", "8443"} & services or "web" in role
+                            else "ssh"
+                        )
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             pass
 
@@ -4430,6 +4443,20 @@ class Pipeline:
                 ),
             }
 
+        def _next_target_action(progress: dict) -> tuple[str, dict] | None:
+            missing_targets = progress.get("missing_targets", [])
+            credential = next(iter(expected_credentials), None)
+            if not missing_targets or credential is None:
+                return None
+            target = str(missing_targets[0])
+            user, password = credential
+            return "try_credential", {
+                "ip": target,
+                "service": expected_target_services.get(target, "ssh"),
+                "user": user,
+                "password": password,
+            }
+
         def _with_progress(result: str) -> str:
             try:
                 payload = json.loads(result)
@@ -4443,7 +4470,8 @@ class Pipeline:
             return json.dumps(payload, ensure_ascii=False, default=str)
 
         def _completion_error(kind: str, message: str) -> str:
-            return json.dumps({
+            progress = _progress()
+            payload = {
                 "ok": False,
                 "error_kind": kind,
                 "error": message,
@@ -4453,8 +4481,12 @@ class Pipeline:
                     "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
-                "intrusion_progress": _progress(),
-            }, ensure_ascii=False)
+                "intrusion_progress": progress,
+            }
+            suggestion = _next_target_action(progress)
+            if suggestion is not None:
+                payload["suggested_tool"], payload["suggested_args"] = suggestion
+            return json.dumps(payload, ensure_ascii=False)
 
         def _compact_context_result(result: str) -> str:
             try:

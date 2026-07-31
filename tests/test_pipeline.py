@@ -1912,6 +1912,68 @@ class TestRepeatingToolDetector:
         save.assert_called_once_with()
 
 
+    def test_openai_loop_reopens_compact_intrusion_tools_after_rejected_completion(self):
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        def response(tool_name, call_id):
+            tool_call = MagicMock()
+            tool_call.function.name = tool_name
+            tool_call.function.arguments = "{}"
+            tool_call.id = call_id
+            message = MagicMock(content=None, tool_calls=[tool_call])
+            return MagicMock(
+                choices=[MagicMock(finish_reason="tool_calls", message=message)],
+                usage=None,
+            )
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            response("mqtt_listen", "mqtt-1"),
+            response("mqtt_listen", "mqtt-2"),
+            response("mqtt_listen", "mqtt-3"),
+            response("complete_intrusion_campaign", "complete-1"),
+            response("try_credential", "try-1"),
+            response("complete_intrusion_campaign", "complete-2"),
+        ]
+        mqtt = MagicMock(return_value="{\"status\":\"ok\"}")
+        try_credential = MagicMock(return_value="{\"success\":false}")
+        complete = MagicMock(side_effect=[
+            "{\"ok\":false,\"error_kind\":\"intrusion_contract_incomplete\"}",
+            "{\"ok\":true,\"status\":\"campaign_complete\"}",
+        ])
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[
+                {"name": "mqtt_listen", "description": "mqtt", "input_schema": {},
+                 "function": mqtt},
+                {"name": "try_credential", "description": "try", "input_schema": {},
+                 "function": try_credential},
+                {"name": "complete_intrusion_campaign", "description": "complete",
+                 "input_schema": {}, "function": complete},
+            ],
+            max_turns=10,
+            required_tool="complete_intrusion_campaign",
+            terminate_after_tool="complete_intrusion_campaign",
+            strict_required_tool=True,
+            force_tool_on_stall=True,
+            reopen_intrusion_tools_on_contract_error=True,
+        )
+
+        repair_request = provider.client.chat.completions.create.call_args_list[4].kwargs
+        assert repair_request["tool_choice"] == "required"
+        assert [
+            tool["function"]["name"] for tool in repair_request["tools"]
+        ] == ["mqtt_listen", "try_credential", "complete_intrusion_campaign"]
+        try_credential.assert_called_once_with()
+        assert complete.call_count == 2
+
+
     def test_openai_loop_detects_interleaved_cycle_and_forces_completion(self):
         """Interleaved duplicate calls must switch the model to save-only mode."""
         from src.agent.provider import LLMProvider
@@ -2448,6 +2510,7 @@ class TestPhase5Context:
         assert kwargs["terminate_on_unavailable_tools"] is None
         assert kwargs["strict_required_tool"] is True
         assert kwargs["force_tool_on_stall"] is True
+        assert kwargs["reopen_intrusion_tools_on_contract_error"] is True
         assert "Complete compact campaign" in kwargs["system_prompt"]
         assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
 
@@ -2494,6 +2557,7 @@ class TestPhase5Context:
         assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["terminate_on_unavailable_tools"] is None
         assert kwargs["strict_required_tool"] is False
+        assert kwargs["reopen_intrusion_tools_on_contract_error"] is False
         assert kwargs["force_tool_on_stall"] is False
         assert kwargs["max_turns"] == 80
         assert kwargs["max_tokens"] == 16384

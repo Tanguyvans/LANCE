@@ -146,6 +146,7 @@ class LLMProvider:
         terminate_on_unavailable_tools: set[str] | frozenset[str] | None = None,
         strict_required_tool: bool = False,
         force_tool_on_stall: bool = False,
+        reopen_intrusion_tools_on_contract_error: bool = False,
         force_completion_on_recon_ready: bool = False,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
@@ -153,7 +154,7 @@ class LLMProvider:
         if self.provider == "anthropic":
             return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool, force_tool_on_stall, force_completion_on_recon_ready)
+            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool, force_tool_on_stall, force_completion_on_recon_ready, reopen_intrusion_tools_on_contract_error)
 
     def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
@@ -282,7 +283,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -515,6 +516,19 @@ class LLMProvider:
                     if error_kind == "recon_completion_required":
                         completion_only = True
                         force_any_tool_next_turn = True
+                if (
+                    reopen_intrusion_tools_on_contract_error
+                    and required_tool == "complete_intrusion_campaign"
+                    and tc.function.name == required_tool
+                    and failed
+                    and isinstance(result_payload, dict)
+                    and result_payload.get("error_kind") == "intrusion_contract_incomplete"
+                ):
+                    # Compact Phase 5 may hit the generic repeat guard before
+                    # discovering every target. Re-open action tools after a
+                    # rejected completion so the contract can be repaired.
+                    completion_only = False
+                    force_any_tool_next_turn = True
                 if cost_tracker:
                     if failed:
                         cost_tracker.record_tool_error()
