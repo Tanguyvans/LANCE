@@ -4524,7 +4524,9 @@ class Pipeline:
         attempted_targets: set[str] = set()
         attempted_target_services: set[tuple[str, str]] = set()
         attempted_entry_points: set[str] = set()
-        attempted_credentials: set[tuple[str, str]] = set()
+        # Credential reuse is target-scoped. An attempt on one host must not
+        # satisfy the same credential on another host.
+        attempted_credentials: set[tuple[str, str, str]] = set()
         action_calls = 0
         intrusion_action_tools = {
             "try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers",
@@ -4590,6 +4592,7 @@ class Pipeline:
                     continue
                 credentials[(user, password)] = {
                     "user": user,
+                    "password": password,
                     "source_ip": str(item.get("source_ip") or ""),
                     "source_device": str(item.get("source_device") or ""),
                 }
@@ -4598,6 +4601,7 @@ class Pipeline:
         expected_targets, expected_entry_points, expected_credentials = _load_expectations()
         expected_entry_services: dict[str, set[str]] = {}
         expected_target_services: dict[str, set[str]] = {}
+        expected_credential_service: dict[str, str] = {}
         try:
             raw_context = json.loads(
                 (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
@@ -4626,6 +4630,7 @@ class Pipeline:
                 ip = str(item.get("device_ip") or item.get("ip") or "").strip()
                 if not ip:
                     continue
+                expected_credential_service[ip] = self._compact_intrusion_service(item)
                 role = str(item.get("role") or "").casefold()
                 services = set(role_service.get(role, set()))
                 for raw_port in item.get("services", []):
@@ -4643,6 +4648,7 @@ class Pipeline:
                 ip: set(expected_entry_services.get(ip, set())) or {"ssh"}
                 for ip in expected_targets
             }
+            expected_credential_service = {ip: "ssh" for ip in expected_targets}
 
         def _action_service(name: str, kwargs: dict) -> str:
             if name == "try_credential":
@@ -4660,21 +4666,33 @@ class Pipeline:
             return ""
 
         def _progress() -> dict:
+            missing_credential_pairs = [
+                (target, user, password)
+                for target in sorted(expected_targets)
+                for user, password in sorted(expected_credentials)
+                if (target, user, password) not in attempted_credentials
+            ]
+            # With recovered credentials, target coverage means that every
+            # credential has been tried against that target's primary service.
+            # Do not require unrelated router services just because they are
+            # present in the topology.
             missing_target_services = sorted(
-                f"{ip}:{service}"
-                for ip, services in expected_target_services.items()
-                for service in services
-                if (ip, service) not in attempted_target_services
+                f"{target}:{expected_credential_service.get(target, 'ssh')}"
+                for target in expected_targets
+                if (
+                    missing_credential_pairs
+                    and any(pair[0] == target for pair in missing_credential_pairs)
+                ) or (
+                    not expected_credentials
+                    and (target, expected_credential_service.get(target, "ssh"))
+                    not in attempted_target_services
+                )
             )
             missing_targets = sorted({item.split(":", 1)[0] for item in missing_target_services})
             missing_entry_points = sorted(set(expected_entry_points) - attempted_entry_points)
             missing_credentials = [
-                "{user}@{source}".format(user=meta["user"], source=meta.get("source_ip") or "recovered")
-                for key, meta in sorted(
-                    expected_credentials.items(),
-                    key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")),
-                )
-                if key not in attempted_credentials
+                f"{user}@{target}"
+                for target, user, _password in missing_credential_pairs
             ]
             return {
                 "schema_version": "2",
@@ -4694,8 +4712,22 @@ class Pipeline:
                     for ip in sorted(expected_entry_points)
                 ],
                 "recovered_credentials": [
-                    {"user": meta["user"], "source_ip": meta.get("source_ip", ""), "attempted": key in attempted_credentials}
-                    for key, meta in sorted(expected_credentials.items(), key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")))
+                    {
+                        "user": meta["user"],
+                        "source_ip": meta.get("source_ip", ""),
+                        "targets_attempted": sorted({
+                            target for target, user, password in attempted_credentials
+                            if (user, password) == key
+                        }),
+                        "attempted": any(
+                            (target, *key) in attempted_credentials
+                            for target in expected_targets
+                        ),
+                    }
+                    for key, meta in sorted(
+                        expected_credentials.items(),
+                        key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")),
+                    )
                 ],
                 "attempted_targets": sorted(attempted_targets),
                 "missing_targets": missing_targets,
@@ -4704,26 +4736,38 @@ class Pipeline:
                 "missing_credentials": missing_credentials,
                 "ready_to_complete": (
                     context_loaded and not missing_target_services
-                    and not missing_entry_points and not missing_credentials
+                    and not missing_entry_points
                 ),
             }
 
         def _next_target_action(progress: dict) -> tuple[str, dict] | None:
+            missing_entries = progress.get("missing_entry_points", [])
+            if missing_entries:
+                target = str(missing_entries[0])
+                services = expected_entry_services.get(target, set())
+                service = sorted(services)[0] if services else "http"
+                if service == "mqtt":
+                    return "mqtt_listen", {"broker": target, "topic": "#", "count": 1, "timeout": 3}
+                if service == "telnet":
+                    return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {target} 23"}
+                if service == "ftp":
+                    return "ftp_list", {"url": f"ftp://{target}/"}
+                return "http_get", {"url": f"http://{target}/"}
             missing = progress.get("missing_target_services", [])
             if not missing:
                 return None
             target, service = str(missing[0]).split(":", 1)
-            credential = next(iter(expected_credentials.values()), None)
-            if service == "mqtt":
-                return "mqtt_listen", {"broker": target, "topic": "#", "count": 1, "timeout": 3}
-            if service == "http":
-                return "http_get", {"url": f"http://{target}/"}
-            if service == "telnet":
-                return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {target} 23"}
-            if service == "ftp":
-                return "ftp_list", {"url": f"ftp://{target}/"}
+            credential = next(
+                (
+                    meta for user_password, meta in expected_credentials.items()
+                    if (target, *user_password) not in attempted_credentials
+                ),
+                None,
+            )
             if credential is None:
-                return None
+                return "try_credential", {
+                    "ip": target, "service": service, "user": "root", "password": "root",
+                }
             return "try_credential", {
                 "ip": target, "service": service,
                 "user": credential["user"], "password": credential["password"],
@@ -4755,7 +4799,11 @@ class Pipeline:
                 ),
                 "intrusion_progress": progress,
             }
-            suggestion = _next_target_action(progress)
+            try:
+                suggestion = _next_target_action(progress)
+            except (KeyError, TypeError, ValueError) as exc:
+                log.warning("Unable to build compact Phase 5 suggestion: %s", exc)
+                suggestion = None
             if suggestion is not None:
                 payload["suggested_tool"], payload["suggested_args"] = suggestion
             return json.dumps(payload, ensure_ascii=False)
@@ -4830,6 +4878,20 @@ class Pipeline:
             def guarded(**kwargs):
                 nonlocal action_calls, context_loaded
                 target = _target_from_args(name, kwargs)
+                if name == "try_credential" and target in expected_targets:
+                    requested_service = _action_service(name, kwargs)
+                    expected_service = expected_credential_service.get(target, "ssh")
+                    if requested_service != expected_service:
+                        return _with_progress(json.dumps({
+                            "ok": False,
+                            "error_kind": "invalid_intrusion_target",
+                            "error": (
+                                f"try_credential for {target} must use the primary "
+                                f"service {expected_service}, not {requested_service or 'unknown'}."
+                            ),
+                            "suggested_tool": "try_credential",
+                            "suggested_args": {**kwargs, "service": expected_service},
+                        }))
                 if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and target:
                     suggestion = _suggested_entry_action(name, target)
                     if suggestion is not None:
@@ -4864,7 +4926,7 @@ class Pipeline:
                         user = str(kwargs.get("user") or "").strip()
                         password = str(kwargs.get("password") or "").strip()
                         if user and password:
-                            attempted_credentials.add((user, password))
+                            attempted_credentials.add((target, user, password))
                 return _with_progress(result)
 
             return guarded
@@ -4879,7 +4941,7 @@ class Pipeline:
             if not progress["ready_to_complete"]:
                 return _completion_error(
                     "intrusion_contract_incomplete",
-                    "Phase 5 compact completion requires entry-point coverage, target coverage, and recovered credential reuse attempts.",
+                    "Phase 5 compact completion requires entry-point coverage and one credential reuse attempt for every recovered-credential/target pair.",
                 )
             return json.dumps({
                 "ok": True,
@@ -4895,9 +4957,9 @@ class Pipeline:
             "name": COMPACT_INTRUSION_COMPLETION_TOOL,
             "description": (
                 "Finish compact Phase 5 only after 05_intrusion_context.json "
-                "has been read, every listed target/service and entry point has "
-                "a service-appropriate observable action, and every recovered credential has been "
-                "tried at least once."
+                "has been read, every entry point has a matching probe, and every "
+                "recovered credential has been tried against every target using that "
+                "target's primary service."
             ),
             "input_schema": {
                 "type": "object",
@@ -5654,38 +5716,59 @@ class Pipeline:
         )
         tool_map = {tool["name"]: tool["function"] for tool in tools}
         actions = []
-        covered = set()
+
+        # Reconcile entry-point evidence independently from credential reuse.
+        # An entry probe is not a credential attempt and must not suppress the
+        # later spray against that same device.
         for entry in context.get("entry_points", []):
             if not isinstance(entry, dict):
                 continue
             ip = str(entry.get("device_ip") or entry.get("ip") or "").strip()
             service = str(entry.get("service") or "").strip().casefold()
-            if not ip or ip in covered:
+            if not ip:
                 continue
             if service == "mqtt" and "mqtt_listen" in tool_map:
                 actions.append(("mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}))
             elif service in {"http", "https"} and "http_get" in tool_map:
                 actions.append(("http_get", {"url": f"http://{ip}/"}))
-            else:
-                continue
-            covered.add(ip)
+            elif service == "telnet" and "telnet_connect" in tool_map:
+                actions.append(("telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}))
+            elif service == "ftp" and "ftp_list" in tool_map:
+                actions.append(("ftp_list", {"url": f"ftp://{ip}/"}))
+
         credentials = [
             item for item in context.get("recovered_credentials", [])
             if isinstance(item, dict) and str(item.get("user") or "").strip()
             and str(item.get("password") or "").strip()
         ]
-        for index, target in enumerate(context.get("all_targets", [])):
-            if len(actions) >= COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS or not isinstance(target, dict):
-                break
-            ip = str(target.get("device_ip") or target.get("ip") or "").strip()
-            if not ip or ip in covered or "try_credential" not in tool_map:
-                continue
-            credential = credentials[index % len(credentials)] if credentials else {"user": "root", "password": "root"}
-            actions.append(("try_credential", {
-                "ip": ip, "service": self._compact_intrusion_service(target),
-                "user": str(credential["user"]), "password": str(credential["password"]),
-            }))
-            covered.add(ip)
+        targets = [item for item in context.get("all_targets", []) if isinstance(item, dict)]
+        if "try_credential" in tool_map:
+            if credentials:
+                for target in targets:
+                    ip = str(target.get("device_ip") or target.get("ip") or "").strip()
+                    if not ip:
+                        continue
+                    service = self._compact_intrusion_service(target)
+                    for credential in credentials:
+                        actions.append(("try_credential", {
+                            "ip": ip,
+                            "service": service,
+                            "user": str(credential["user"]),
+                            "password": str(credential["password"]),
+                        }))
+            else:
+                # With no recovered material, retain the bounded baseline used
+                # by compact runs so each declared target is still observable.
+                for target in targets:
+                    ip = str(target.get("device_ip") or target.get("ip") or "").strip()
+                    if ip:
+                        actions.append(("try_credential", {
+                            "ip": ip,
+                            "service": self._compact_intrusion_service(target),
+                            "user": "root",
+                            "password": "root",
+                        }))
+
         executed = 0
         for name, kwargs in actions[:COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS]:
             function = tool_map.get(name)
@@ -5749,70 +5832,143 @@ class Pipeline:
             or int(summary.get("devices_compromised", 0) or 0) > 0
         )
 
-    def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
-        """Guarantee a valid 05_intrusion.json exists after Phase 5.
+    def _compact_intrusion_coverage(self) -> tuple[bool, dict]:
+        """Return compact Phase 5 coverage from the authoritative tool ledger."""
+        ctx_path = self.run_dir / "05_intrusion_context.json"
+        log_path = self.run_dir / "tool_calls.jsonl"
+        try:
+            context = json.loads(ctx_path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return False, {"missing": ["05_intrusion_context.json"]}
+        if not isinstance(context, dict):
+            return False, {"missing": ["invalid context"]}
 
-        Small local models (e.g. gemma) frequently run the whole campaign via
-        tool calls but never call save_deliverable. When the deliverable is
-        missing or invalid, reconstruct it from tool_calls.jsonl so Phase 6 has
-        real data instead of nothing. On success, re-emit a phase_done event so
-        the UI reflects the recovered status instead of the agent's failure.
+        entries = {
+            (
+                str(item.get("device_ip") or item.get("ip") or "").strip(),
+                str(item.get("service") or "").strip().casefold(),
+            )
+            for item in context.get("entry_points", [])
+            if isinstance(item, dict)
+        }
+        target_specs = {}
+        for item in context.get("all_targets", []):
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+            if ip:
+                target_specs[ip] = self._compact_intrusion_service(item)
+        credentials = {
+            (str(item.get("user") or "").strip(), str(item.get("password") or "").strip())
+            for item in context.get("recovered_credentials", [])
+            if isinstance(item, dict) and item.get("user") and item.get("password")
+        }
+        seen_entries: set[tuple[str, str]] = set()
+        entry_targets_without_service = {ip for ip, service in entries if ip and not service}
+        seen_credentials: set[tuple[str, str, str]] = set()
+        seen_targets: set[tuple[str, str]] = set()
+
+        def host_from_url(value: object) -> str:
+            parsed = urlsplit(str(value or "").strip())
+            return parsed.hostname or ""
+
+        def target_from_record(tool: str, args: dict) -> str:
+            for key in ("ip", "host", "broker", "target"):
+                if args.get(key):
+                    return str(args[key]).strip()
+            if tool in {"http_get", "curl_headers", "ftp_list"}:
+                return host_from_url(args.get("url"))
+            if tool == "telnet_connect":
+                match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(args.get("command_string") or ""))
+                return match.group(0) if match else ""
+            return ""
+
+        def tool_service(tool: str, args: dict) -> str:
+            return {
+                "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
+                "telnet_connect": "telnet", "ftp_list": "ftp",
+            }.get(tool, str(args.get("service") or "").casefold())
+
+        if log_path.exists():
+            for line in log_path.read_text(encoding="utf-8").splitlines():
+                try:
+                    record = json.loads(line)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if record.get("phase") not in (5, "5", None):
+                    continue
+                if record.get("phase") is None and record.get("vuln_id"):
+                    continue
+                tool = str(record.get("tool") or "")
+                args = record.get("args") or {}
+                if not isinstance(args, dict):
+                    continue
+                target = target_from_record(tool, args)
+                service = tool_service(tool, args)
+                if (target, service) in entries:
+                    seen_entries.add((target, service))
+                elif target in entry_targets_without_service:
+                    # Older/fallback contexts may omit the service. In that
+                    # case any observable action on the declared entry host is
+                    # the strongest evidence available.
+                    seen_entries.add((target, ""))
+                if target in target_specs:
+                    seen_targets.add((target, service))
+                if tool == "try_credential" and target in target_specs:
+                    user = str(args.get("user") or "").strip()
+                    password = str(args.get("password") or "").strip()
+                    if (user, password) in credentials and service == target_specs[target]:
+                        seen_credentials.add((target, user, password))
+
+        missing_entries = sorted(entries - seen_entries)
+        missing_credentials = sorted(
+            f"{user}@{target}"
+            for target in target_specs
+            for user, password in credentials
+            if (target, user, password) not in seen_credentials
+        )
+        missing_targets = sorted(
+            f"{target}:{service}"
+            for target, service in target_specs.items()
+            if (target, service) not in seen_targets
+            and not credentials
+        )
+        return not missing_entries and not missing_credentials and not missing_targets, {
+            "missing_entry_points": missing_entries,
+            "missing_credentials": missing_credentials,
+            "missing_targets": missing_targets,
+        }
+
+    def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
+        """Reconcile compact Phase 5 from tool evidence without hiding gaps.
+
+        Full profiles keep the model-produced deliverable untouched.  Compact
+        local-MoE runs use the tool ledger as the source of truth; a bounded
+        fallback may complete missing actions, but incomplete coverage is
+        reported as incomplete rather than promoted as a successful phase.
         """
         path = self.run_dir / config.deliverable_file
         validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
+        valid = False
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
-            if valid and not self._uses_compact_local_moe():
-                return
-            if valid and self._uses_compact_local_moe():
-                log.warning(
-                    "Phase 5 local MoE: reconciling valid model deliverable with tool evidence"
-                )
-                data = self._synthesize_intrusion_from_tools(
-                    note="Reconciled from tool_calls.jsonl — local MoE model output is treated as memo-only."
-                )
-                if not self._intrusion_synthesis_has_observable_actions(data):
-                    data = self._recover_compact_intrusion_no_progress(
-                        config, stream_callback
-                    )
-                if not self._intrusion_synthesis_has_observable_actions(data):
-                    self._record_blocked_intrusion_synthesis(
-                        config,
-                        results,
-                        data,
-                        stream_callback=stream_callback,
-                        reason=(
-                            "No observable Phase 5 intrusion action was recorded; "
-                            "only context/completion chatter was available."
-                        ),
-                    )
-                    return
-                path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-                results[config.name] = "completed:synthesized"
-                print(
-                    f"  Reconciled intrusion deliverable from tool calls "
-                    f"({data['summary']['devices_compromised']} compromised, "
-                    f"{data['summary']['credentials_harvested']} creds)"
-                )
-                if stream_callback:
-                    stream_callback({
-                        "type": "phase_done",
-                        "phase": config.phase,
-                        "name": config.name,
-                        "status": "completed:synthesized",
-                        "deliverable": config.deliverable_file,
-                        "cost_usd": 0,
-                        "turns": 0,
-                    })
-                return
-        log.warning(
-            "Phase 5: deliverable missing/invalid — synthesizing from tool calls"
-        )
-        data = self._synthesize_intrusion_from_tools()
-        if self._uses_compact_local_moe() and not self._intrusion_synthesis_has_observable_actions(data):
-            data = self._recover_compact_intrusion_no_progress(
-                config, stream_callback
+        compact = self._uses_compact_local_moe()
+        if valid and not compact:
+            return
+
+        coverage_ok, coverage = (True, {})
+        if compact:
+            coverage_ok, coverage = self._compact_intrusion_coverage()
+            if not coverage_ok:
+                self._run_compact_intrusion_fallback(config, stream_callback)
+                coverage_ok, coverage = self._compact_intrusion_coverage()
+
+        data = self._synthesize_intrusion_from_tools(
+            note=(
+                "Reconciled from tool_calls.jsonl — compact local-MoE output is memo-only."
+                if compact else None
             )
+        )
         if not self._intrusion_synthesis_has_observable_actions(data):
             self._record_blocked_intrusion_synthesis(
                 config,
@@ -5821,12 +5977,37 @@ class Pipeline:
                 stream_callback=stream_callback,
                 reason=(
                     "No observable Phase 5 intrusion action was recorded; "
-                    "refusing to promote an empty synthesized deliverable."
+                    "only context/completion chatter was available."
                 ),
             )
             return
+
+        if compact and not coverage_ok:
+            reason = (
+                "Compact Phase 5 coverage remains incomplete after bounded reconciliation: "
+                + json.dumps(coverage, ensure_ascii=False, sort_keys=True)
+            )
+            data["status"] = "incomplete"
+            data["blocked_reason"] = reason
+            data.setdefault("summary", {})["_note"] = reason
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            results[config.name] = "failed:phase5_contract_incomplete"
+            log.warning(reason)
+            print(f"  Phase 5 synthesis incomplete: {reason}")
+            if stream_callback:
+                stream_callback({
+                    "type": "phase_done",
+                    "phase": config.phase,
+                    "name": config.name,
+                    "status": results[config.name],
+                    "deliverable": config.deliverable_file,
+                    "cost_usd": 0,
+                    "turns": 0,
+                })
+            return
+
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        results[config.name] = "completed:synthesized"
+        results[config.name] = "completed:synthesized" if compact else results.get(config.name, "completed")
         print(
             f"  Synthesized intrusion deliverable from tool calls "
             f"({data['summary']['devices_compromised']} compromised, "
@@ -5837,7 +6018,7 @@ class Pipeline:
                 "type": "phase_done",
                 "phase": config.phase,
                 "name": config.name,
-                "status": "completed:synthesized",
+                "status": results[config.name],
                 "deliverable": config.deliverable_file,
                 "cost_usd": 0,
                 "turns": 0,
@@ -5866,8 +6047,11 @@ class Pipeline:
                 value = str(args.get(key) or "").strip()
                 if value:
                     return value
-            if tool in {"http_get", "curl_headers"}:
+            if tool in {"http_get", "curl_headers", "ftp_list"}:
                 return _host_from_url(args.get("url"))
+            if tool == "telnet_connect":
+                match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(args.get("command_string") or ""))
+                return match.group(0) if match else ""
             return ""
 
         # Map IP -> device_id from the pre-generated intrusion context so the
@@ -5928,7 +6112,7 @@ class Pipeline:
                 elif isinstance(raw, dict):
                     res = raw
                 ip = _target_from_tool(str(tool or ""), args)
-                if tool in {"try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers"} and ip:
+                if tool in {"try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
                 if not (isinstance(res, dict) and res.get("success") and ip):
                     continue

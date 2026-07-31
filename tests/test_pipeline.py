@@ -2294,17 +2294,9 @@ class TestPhase5Context:
         tool_map["try_credential"](
             ip="192.168.100.1", service="ssh", user="root", password="root"
         )
-        incomplete = json.loads(tool_map["complete_intrusion_campaign"]())
-        assert incomplete["ok"] is False
-        assert incomplete["intrusion_progress"]["missing_target_services"] == [
-            "192.168.100.1:http", "192.168.100.1:telnet"
-        ]
-        tool_map["telnet_connect"](
-            command_string="echo quit | timeout 3 nc 192.168.100.1 23"
-        )
-        tool_map["http_get"](url="http://192.168.100.1/")
         complete = json.loads(tool_map["complete_intrusion_campaign"]())
         assert complete["ok"] is True
+        assert complete["intrusion_progress"]["missing_target_services"] == []
 
 
     def test_compact_intrusion_contract_counts_http_mqtt_and_recovered_credentials(
@@ -2318,8 +2310,8 @@ class TestPhase5Context:
                 {"device_id": "s1-web", "device_ip": "192.168.100.12", "service": "http"},
             ],
             "all_targets": [
-                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11"},
-                {"device_id": "s1-web", "device_ip": "192.168.100.12"},
+                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11", "role": "mqtt_broker"},
+                {"device_id": "s1-web", "device_ip": "192.168.100.12", "role": "web_server"},
             ],
             "recovered_credentials": [
                 {
@@ -2373,12 +2365,22 @@ class TestPhase5Context:
         missing_credential = json.loads(tool_map["complete_intrusion_campaign"]())
         assert missing_credential["ok"] is False
         progress = missing_credential["intrusion_progress"]
-        assert progress["missing_targets"] == []
+        assert progress["missing_targets"] == ["192.168.100.11", "192.168.100.12"]
         assert progress["missing_entry_points"] == []
-        assert progress["missing_credentials"] == ["root@192.168.100.11"]
+        assert progress["missing_credentials"] == [
+            "root@192.168.100.11", "root@192.168.100.12"
+        ]
 
         tool_map["try_credential"](
-            ip="192.168.100.12", service="ssh", user="root", password="P@ssw0rd123"
+            ip="192.168.100.11", service="mqtt", user="root", password="P@ssw0rd123"
+        )
+        intermediate = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert intermediate["ok"] is False
+        assert intermediate["intrusion_progress"]["missing_credentials"] == [
+            "root@192.168.100.12"
+        ]
+        tool_map["try_credential"](
+            ip="192.168.100.12", service="http", user="root", password="P@ssw0rd123"
         )
         complete = json.loads(tool_map["complete_intrusion_campaign"]())
         assert complete["ok"] is True

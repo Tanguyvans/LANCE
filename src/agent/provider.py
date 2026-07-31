@@ -522,7 +522,10 @@ class LLMProvider:
                     and tc.function.name == required_tool
                     and failed
                     and isinstance(result_payload, dict)
-                    and result_payload.get("error_kind") == "intrusion_contract_incomplete"
+                    and result_payload.get("error_kind") in {
+                        "intrusion_contract_incomplete",
+                        "intrusion_contract_error",
+                    }
                 ):
                     # Compact Phase 5 may hit the generic repeat guard before
                     # discovering every target. Re-open action tools after a
