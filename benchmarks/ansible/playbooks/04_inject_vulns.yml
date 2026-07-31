@@ -1602,7 +1602,7 @@
           '{{ item.pivot_next_ip | default("") }}'
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
-        label: "{{ item.name }} ({{ item.security_profile }})"
+        label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
         - scenario_id in ['24', '25', '26', '27']
         - item.role in ['heldout_entry', 'heldout_relay_l1', 'heldout_relay_l2']
