@@ -71,6 +71,7 @@ def _build_intrusion_tools() -> list[dict]:
     """Extract bounded Phase 5 action tools from RECON_TOOLS."""
     _intrusion_names = {
         "curl_headers", "http_get", "mqtt_listen", "ssh_exec", "try_credential",
+        "telnet_connect", "ftp_list",
     }
     return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
 
@@ -126,6 +127,7 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
 PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ssh": frozenset({"ssh_login", "try_credential", "ssh_audit", "nmap_scan"}),
     "mqtt": frozenset({"mqtt_listen", "try_credential", "nmap_scan"}),
+    "mqtt-ws": frozenset({"http_request", "http_get", "curl_headers"}),
     "http": frozenset({"http_get", "http_request", "curl_headers"}),
     "https": frozenset({"http_get", "http_request", "curl_headers", "mtls_request"}),
     "telnet": frozenset({"telnet_connect", "try_credential", "nmap_scan"}),
@@ -156,6 +158,152 @@ def _phase4_local_verification_tools(
     if include_deliverable:
         allowed.add("save_deliverable")
     return [tool for tool in tools if tool.get("name") in allowed]
+
+# ---------------------------------------------------------------------------
+# Phase 4 verification contract.
+# Every canonical Phase 3 finding gets one deterministic, service-aware
+# verification requirement. The model may add probes, but it cannot complete
+# a finding without executing the required probe against the right target.
+# ---------------------------------------------------------------------------
+
+
+def _phase4_verification_plan(vuln: dict) -> dict[str, object]:
+    """Return the minimum fresh verification required for one finding."""
+    vuln_type = canonicalize(str(vuln.get("type") or "").casefold())
+    service = str(vuln.get("service") or "").casefold()
+    ip = str(vuln.get("device_ip") or "")
+    port = vuln.get("port")
+    try:
+        port = int(port) if port not in (None, "") else None
+    except (TypeError, ValueError):
+        port = None
+    endpoint = str(vuln.get("endpoint") or "").strip()
+    base_url = f"http://{ip}:{port}" if port and port != 80 else f"http://{ip}"
+    suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
+    url = f"{base_url}{suffix}"
+
+    if vuln_type == "network_exposure" and (service == "mqtt-ws" or port == 9001):
+        return {"tool": "http_request", "target": ip, "port": 9001,
+                "args_hint": {"url": f"http://{ip}:9001/", "method": "GET",
+                    "headers": {"Connection": "Upgrade", "Upgrade": "websocket",
+                        "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}},
+                "success_condition": "HTTP 101 WebSocket upgrade or explicit handshake response"}
+    if vuln_type == "missing_header":
+        return {"tool": "curl_headers", "target": ip, "port": port or 80,
+                "args_hint": {"url": url}, "success_condition": "headers captured"}
+    if vuln_type in {"directory_listing", "data_exposure", "code_injection", "no_auth", "broken_access_control"} and service in {"http", "https"}:
+        return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+                "args_hint": {"url": url}, "success_condition": "affected HTTP endpoint fetched"}
+    if vuln_type in {"info_disclosure", "version_leak"}:
+        if service in {"ssh", "telnet"} or port == 22:
+            return {"tool": "ssh_audit", "target": ip, "port": port or 22,
+                    "args_hint": {"host": ip, "port": port or 22}, "success_condition": "SSH banner or audit output captured"}
+        if service == "mqtt" or port in {1883, 8883}:
+            return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
+                    "args_hint": {"broker": ip, "topic": "$SYS/#", "count": 5, "timeout": 5}, "success_condition": "$SYS metrics or broker version captured"}
+        return {"tool": "curl_headers", "target": ip, "port": port or 80,
+                "args_hint": {"url": url}, "success_condition": "disclosing headers captured"}
+    if vuln_type in {"weak_cipher", "terrapin", "known_cve"}:
+        if service == "ssh" or port == 22:
+            return {"tool": "ssh_audit", "target": ip, "port": port or 22,
+                    "args_hint": {"host": ip, "port": port or 22}, "success_condition": "SSH audit output captured"}
+        if service in {"https", "tls", "mqtts"} or port in {443, 8443, 8883}:
+            return {"tool": "tls_inspect", "target": ip, "port": port or 443,
+                    "args_hint": {"host": ip, "port": port or 443}, "success_condition": "TLS algorithms captured"}
+        return {"tool": "nmap_scan", "target": ip, "port": port,
+                "args_hint": {"target": ip, "ports": str(port or "-"), "skip_discovery": True}, "success_condition": "service/version evidence captured"}
+    if vuln_type == "insecure_protocol":
+        if service == "telnet" or port == 23:
+            return {"tool": "telnet_connect", "target": ip, "port": 23,
+                    "args_hint": {"command_string": f"echo quit | timeout 3 nc {ip} 23"}, "success_condition": "Telnet interaction or banner captured"}
+        if service == "ftp" or port == 21:
+            return {"tool": "ftp_list", "target": ip, "port": 21,
+                    "args_hint": {"url": f"ftp://{ip}/"}, "success_condition": "FTP listing or anonymous response captured"}
+    if vuln_type == "no_auth":
+        if service == "mqtt" or port in {1883, 8883}:
+            return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
+                    "args_hint": {"broker": ip, "topic": "#", "count": 10, "timeout": 8}, "success_condition": "anonymous MQTT connection result captured"}
+        if service == "modbus" or port == 502:
+            return {"tool": "modbus_scan", "target": ip, "port": 502,
+                    "args_hint": {"target": ip}, "success_condition": "Modbus registers or service response captured"}
+        if service in {"http", "https"}:
+            return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+                    "args_hint": {"url": url}, "success_condition": "unauthenticated endpoint fetched"}
+    if vuln_type in {"default_credentials", "privilege_escalation"}:
+        if service == "ssh" or port == 22:
+            return {"tool": "ssh_login", "target": ip, "port": 22,
+                    "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
+        return {"tool": "try_credential", "target": ip, "port": port,
+                "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
+    if service == "mqtt":
+        return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
+                "args_hint": {"broker": ip, "topic": "#", "count": 5, "timeout": 5}, "success_condition": "MQTT service response captured"}
+    if service in {"http", "https"}:
+        return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+                "args_hint": {"url": url}, "success_condition": "HTTP response captured"}
+    return {"tool": "nmap_scan", "target": ip, "port": port,
+            "args_hint": {"target": ip, "ports": str(port or "-"), "skip_discovery": True}, "success_condition": "target service evidence captured"}
+
+
+def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> bool:
+    """Check that a tool call is the required probe for its finding."""
+    if tool != requirement.get("tool"):
+        return False
+    target = str(requirement.get("target") or "")
+    if tool in {"ssh_audit", "nmap_scan", "modbus_scan"} and str(args.get("host") or args.get("target") or "") != target:
+        return False
+    if tool == "mqtt_listen" and str(args.get("broker") or "") != target:
+        return False
+    if tool in {"http_get", "curl_headers", "http_request"}:
+        raw_url = str(args.get("url") or "")
+        if target not in raw_url:
+            return False
+        expected_port = requirement.get("port")
+        if expected_port and expected_port != 80 and f":{expected_port}" not in raw_url:
+            return False
+        endpoint = str(requirement.get("endpoint") or "")
+        if endpoint and endpoint not in raw_url:
+            return False
+    if tool == "telnet_connect" and target not in str(args.get("command_string") or ""):
+        return False
+    if tool == "ftp_list" and target not in str(args.get("url") or ""):
+        return False
+    if tool in {"ssh_login", "try_credential"} and target not in json.dumps(args, ensure_ascii=False):
+        return False
+    if tool == "mqtt_listen" and requirement.get("success_condition", "").startswith("$SYS"):
+        return str(args.get("topic") or "") == "$SYS/#"
+    return True
+
+
+def _phase4_apply_verification_contract(tools: list[dict], requirement: dict) -> list[dict]:
+    """Reject wrong-target probes and require the probe before save."""
+    required_tool = str(requirement.get("tool") or "")
+    required_called = {"value": False}
+    wrapped: list[dict] = []
+    for tool in tools:
+        name = tool.get("name")
+        fn = tool.get("function")
+        if not callable(fn):
+            wrapped.append(tool)
+            continue
+
+        def guarded(*, _name=name, _fn=fn, **kwargs):
+            if _name == required_tool:
+                if not _phase4_requirement_matches(requirement, _name, kwargs):
+                    return json.dumps({"ok": False, "error_kind": "phase4_required_probe_mismatch",
+                        "error": f"This finding requires {_name} against {requirement.get('target')} with the affected port/endpoint.",
+                        "required_probe": requirement}, ensure_ascii=False)
+                required_called["value"] = True
+                return _fn(**kwargs)
+            if _name == "save_deliverable" and not required_called["value"]:
+                return json.dumps({"ok": False, "error_kind": "phase4_required_probe_missing",
+                    "error": f"Run the required Phase 4 probe ({required_tool}) before saving this finding.",
+                    "required_probe": requirement}, ensure_ascii=False)
+            return _fn(**kwargs)
+
+        wrapped.append({**tool, "function": guarded})
+    return wrapped
+
 
 # ---------------------------------------------------------------------------
 # Phase 4 exploit micro-agents: per-category instructions.
@@ -566,6 +714,18 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     "data": stdout.strip().splitlines()[:10],
                 })
                 continue
+            if (
+                vuln_type == "info_disclosure"
+                and str(args.get("topic") or "") == "$SYS/#"
+                and mqtt_ok
+            ):
+                confirmations.append({
+                    "tool": tool,
+                    "level": 2,
+                    "evidence": f"mqtt_listen captured broker $SYS disclosures:\n{stdout[:800]}",
+                    "data": stdout.strip().splitlines()[:10],
+                })
+                continue
             if rc == 5:
                 failures.append("MQTT broker required authentication")
             elif not stdout.strip():
@@ -607,8 +767,14 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             if vuln_type == "directory_listing" and http_ok and "index of" in lower:
                 confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{text[:800]}"})
                 continue
-            if vuln_type in {"data_exposure", "info_disclosure"} and http_ok and _text_has_sensitive_data(text):
+            if vuln_type == "data_exposure" and http_ok and _text_has_sensitive_data(text):
                 confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{text[:800]}"})
+                continue
+            if vuln_type == "info_disclosure" and http_ok and ("server:" in lower or "version" in lower or _text_has_sensitive_data(text)):
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} captured disclosing HTTP metadata/content:\n{text[:800]}"})
+                continue
+            if vuln_type == "missing_header" and http_ok:
+                confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
                 continue
             if vuln_type == "no_auth" and http_ok:
                 login_challenge = any(marker in lower for marker in (
@@ -1876,6 +2042,22 @@ class Pipeline:
             f"**Declared devices:** {projection.get('node_count', 0)}",
             f"**Theoretical attack surface:** {projection.get('service_count', 0)} declared services",
         ]
+        declared_ids = {
+            str(node.get("id")) for node in projection.get("nodes", [])
+            if isinstance(node, dict) and node.get("id")
+        }
+        detailed_ids = {
+            str(item.get("args", {}).get("device_id"))
+            for item in projection.get("device_details", [])
+            if isinstance(item, dict) and isinstance(item.get("args"), dict)
+            and item.get("args", {}).get("device_id")
+        }
+        missing_details = sorted(declared_ids - detailed_ids)
+        if missing_details:
+            return False, (
+                "Graph evidence is incomplete; call get_device_info for every "
+                "declared node. Missing: " + ", ".join(missing_details)
+            )
         expected.extend(
             f"| {item.get('id')} | {item.get('ip')} |"
             for item in projection.get("attack_surface", [])
@@ -2245,15 +2427,28 @@ class Pipeline:
 
                 validator_fn = VALIDATORS.get(config.validator, VALIDATORS["default"])
                 valid, validation_error = validator_fn(attempt_ref)
-                if valid and strict_compact_graph:
-                    projection = json.loads(
-                        (self.run_dir / "01_graph_evidence.json").read_text(
-                            encoding="utf-8"
+                if valid and config.name == "graph_analysis":
+                    projection = self._build_graph_evidence_projection()
+                    declared_ids = {
+                        str(node.get("id")) for node in projection.get("nodes", [])
+                        if isinstance(node, dict) and node.get("id")
+                    }
+                    detailed_ids = {
+                        str(item.get("args", {}).get("device_id"))
+                        for item in projection.get("device_details", [])
+                        if isinstance(item, dict) and isinstance(item.get("args"), dict)
+                        and item.get("args", {}).get("device_id")
+                    }
+                    missing_details = sorted(declared_ids - detailed_ids)
+                    if missing_details:
+                        valid, validation_error = False, (
+                            "Graph evidence is incomplete; call get_device_info for every "
+                            "declared node. Missing: " + ", ".join(missing_details)
                         )
-                    )
-                    valid, validation_error = self._validate_compact_graph_projection(
-                        normalized, projection
-                    )
+                    elif strict_compact_graph:
+                        valid, validation_error = self._validate_compact_graph_projection(
+                            normalized, projection
+                        )
                 elif valid and strict_compact_recon:
                     projection = json.loads(
                         (self.run_dir / "02_recon_evidence.json").read_text(
@@ -2360,7 +2555,8 @@ class Pipeline:
                     "- mqtt_listen(broker, topic, count, timeout) — validate anonymous MQTT entry points\n"
                     "- http_get(url) / curl_headers(url) — validate HTTP entry points and exposed content\n"
                     "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
-                    "- try_credential(ip, service, user, password) — test recovered credentials on a target"
+                    "- try_credential(ip, service, user, password) — test recovered credentials on a target\n"
+                    "- telnet_connect(command_string) / ftp_list(url) — validate Telnet/FTP targets"
                 )
                 variables["intrusion_recon_tool_restriction"] = ""
                 variables["intrusion_entry_validation"] = (
@@ -2379,7 +2575,7 @@ class Pipeline:
                 variables["intrusion_final_phase_title"] = "Complete compact campaign"
                 variables[
                     "intrusion_final_instruction"
-                ] = "Call complete_intrusion_campaign after reading 05_intrusion_context.json and attempting every listed target at least once. Do not stop before the tool reports success."
+                ] = "Call complete_intrusion_campaign after reading 05_intrusion_context.json and performing the required service-appropriate action for every listed target/service. Do not stop before the tool reports success."
             else:
                 variables["intrusion_save_tool"] = "- save_deliverable(filename=\"05_intrusion.json\", content=<full JSON>)"
                 variables["intrusion_completion_rule"] = "Finish with one successful save_deliverable call. If it returns ok=false, repair the archived draft and retry without repeating data gathering."
@@ -3862,56 +4058,19 @@ class Pipeline:
         vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
         all_vulns = vuln_data.get("vulnerabilities", [])
 
-        # 2. Filter vulns that need an exploit agent
+        # 2. Build one exploit task for EVERY canonical Phase 3 finding.
+        # Findings that cannot be confirmed are still tested and receive an
+        # explicit FAILED/ERROR result; they are never silently omitted.
         exploit_tasks: list[dict] = []
         skipped_candidates: list[dict] = []
-        anonymous_mqtt_ips = {
-            finding.get("device_ip")
-            for finding in all_vulns
-            if finding.get("type") == "no_auth"
-            and finding.get("service") == "mqtt"
-            and str(finding.get("exploitation_status", "")).casefold() == "confirmed"
-        }
         for vuln in all_vulns:
-            vuln_type = vuln.get("type", "")
-            if (
-                vuln_type == "default_credentials"
-                and vuln.get("service") == "mqtt"
-                and vuln.get("device_ip") in anonymous_mqtt_ips
-            ):
-                skipped_candidates.append({
-                    "vuln_id": vuln.get("id", ""),
-                    "type": vuln_type,
-                    "reason": "redundant_after_anonymous_mqtt_access",
-                })
-                continue
-            if vuln.get("accepted_for_scoring") is False:
-                skipped_candidates.append({
-                    "vuln_id": vuln.get("id", ""),
-                    "type": vuln_type,
-                    "reason": "unvalidated_claim",
-                })
-                continue
-            category = exploit_category(vuln_type)
-            if is_config_only(vuln_type):
-                service_key = str(vuln.get("service", "")).casefold()
-                if self.execution_profile.routed_tools and service_key in PHASE4_LOCAL_SERVICE_TOOL_NAMES:
-                    category = category or "data_access"
-                else:
-                    skipped_candidates.append({
-                        "vuln_id": vuln.get("id", ""),
-                        "type": vuln_type,
-                        "reason": "configuration_or_detection_only",
-                    })
-                    continue
-            if not category:
-                skipped_candidates.append({
-                    "vuln_id": vuln.get("id", ""),
-                    "type": vuln_type,
-                    "reason": "no_safe_exploit_route",
-                })
-                continue
-            exploit_tasks.append({"vuln": vuln, "category": category})
+            category = exploit_category(str(vuln.get("type") or "")) or "data_access"
+            requirement = _phase4_verification_plan(vuln)
+            exploit_tasks.append({
+                "vuln": vuln,
+                "category": category,
+                "verification": requirement,
+            })
 
         self._phase4_schedule = {
             "candidate_count": len(all_vulns),
@@ -3964,6 +4123,8 @@ class Pipeline:
             severity = vuln.get("severity", "MEDIUM")
             details = vuln.get("details", "")
             evidence = vuln.get("evidence", "")
+            requirement = task.get("verification") or _phase4_verification_plan(vuln)
+            required_probe_tool = str(requirement.get("tool") or "")
 
             deliverable_file = str(_exploit_relpath(device_id, vuln_type, vuln_id))
             deliverable_path = self.run_dir / deliverable_file
@@ -3992,6 +4153,7 @@ class Pipeline:
             variables["vuln_details"] = details
             variables["vuln_evidence"] = evidence[:500]
             variables["exploit_instructions"] = instructions
+            variables["required_verification"] = json.dumps(requirement, ensure_ascii=False)
             variables["expected_deliverable"] = deliverable_file
             set_expected_deliverable(deliverable_file)
             variables["available_skills"] = ""
@@ -4046,6 +4208,17 @@ class Pipeline:
                         )
                     else:
                         verification_tools = exploit_tools
+                    # The required probe is always exposed, even when a legacy
+                    # service/category route would otherwise hide it.
+                    exposed = {tool.get("name") for tool in verification_tools}
+                    if required_probe_tool not in exposed:
+                        verification_tools = verification_tools + [
+                            tool for tool in exploit_tools
+                            if tool.get("name") == required_probe_tool
+                        ]
+                    verification_tools = _phase4_apply_verification_contract(
+                        verification_tools, requirement
+                    )
                     if compact_local_moe:
                         result_text = self.provider.chat_with_tools(
                             system_prompt=load_prompt(
@@ -4068,11 +4241,30 @@ class Pipeline:
                             stream_callback=self._model_stream_callback(
                                 stream_callback, phase=4, agent=phase_name
                             ),
+                            required_tool=required_probe_tool or None,
+                            strict_required_tool=bool(required_probe_tool),
                             repeat_guard=True,
                             terminate_on_unavailable_tools={"save_deliverable"},
                         )
                         records = _tool_records_for_vuln(self.run_dir, vuln_id)
+                        required_observed = any(
+                            _phase4_requirement_matches(
+                                requirement, str(record.get("tool") or ""),
+                                record.get("args") or {},
+                            )
+                            for record in records
+                        )
                         result = _synthesize_exploit_result(vuln, records, result_text)
+                        if not required_observed:
+                            result.update({
+                                "status": "ERROR",
+                                "evidence": (
+                                    f"Required Phase 4 probe was not observed: "
+                                    f"{required_probe_tool} against {device_ip}"
+                                ),
+                                "evidence_level": 0,
+                                "tool_used": required_probe_tool,
+                            })
                         deliverable_path.parent.mkdir(parents=True, exist_ok=True)
                         deliverable_path.write_text(
                             json.dumps(result, indent=2, ensure_ascii=False),
@@ -4294,11 +4486,13 @@ class Pipeline:
         """Require observable Phase 5 progress before compact memo completion."""
         context_loaded = False
         attempted_targets: set[str] = set()
+        attempted_target_services: set[tuple[str, str]] = set()
         attempted_entry_points: set[str] = set()
         attempted_credentials: set[tuple[str, str]] = set()
         action_calls = 0
         intrusion_action_tools = {
             "try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers",
+            "telnet_connect", "ftp_list",
         }
         credential_action_tools = {"try_credential", "ssh_exec"}
 
@@ -4316,8 +4510,11 @@ class Pipeline:
                 value = str(kwargs.get(key) or "").strip()
                 if value:
                     return value
-            if name in {"http_get", "curl_headers"}:
+            if name in {"http_get", "curl_headers", "ftp_list"}:
                 return _host_from_url(kwargs.get("url"))
+            if name == "telnet_connect":
+                match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(kwargs.get("command_string") or ""))
+                return match.group(0) if match else ""
             return ""
 
         def _load_expectations() -> tuple[dict[str, str], dict[str, str], dict[tuple[str, str], dict]]:
@@ -4363,8 +4560,8 @@ class Pipeline:
             return targets, entry_points, credentials
 
         expected_targets, expected_entry_points, expected_credentials = _load_expectations()
-        expected_entry_services: dict[str, str] = {}
-        expected_target_services: dict[str, str] = {}
+        expected_entry_services: dict[str, set[str]] = {}
+        expected_target_services: dict[str, set[str]] = {}
         try:
             raw_context = json.loads(
                 (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
@@ -4374,23 +4571,66 @@ class Pipeline:
                     ip = str(item.get("device_ip") or item.get("ip") or "").strip()
                     service = str(item.get("service") or "").strip().casefold()
                     if ip and service:
-                        expected_entry_services[ip] = service
+                        expected_entry_services.setdefault(ip, set()).add(service)
+            service_by_port = {
+                21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
+                8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
+                9001: "mqtt", 3306: "mysql", 6379: "redis",
+            }
+            role_service = {
+                "router": {"ssh", "telnet", "http"}, "gateway": {"ssh", "http"},
+                "ssh_server": {"ssh"}, "mqtt_broker": {"mqtt"},
+                "web_server": {"http"}, "nodered_server": {"http"},
+                "ftp_server": {"ftp"}, "db_server": {"mysql"},
+                "db_server_v2": {"redis"},
+            }
             for item in raw_context.get("all_targets", []):
-                if isinstance(item, dict):
-                    ip = str(item.get("device_ip") or item.get("ip") or "").strip()
-                    services = {str(port) for port in item.get("services", [])}
-                    role = str(item.get("role") or "").casefold()
-                    if ip:
-                        expected_target_services[ip] = (
-                            "mqtt" if {"1883", "8883"} & services or "mqtt" in role
-                            else "http" if {"80", "443", "8080", "8443"} & services or "web" in role
-                            else "ssh"
-                        )
+                if not isinstance(item, dict):
+                    continue
+                ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+                if not ip:
+                    continue
+                role = str(item.get("role") or "").casefold()
+                services = set(role_service.get(role, set()))
+                for raw_port in item.get("services", []):
+                    try:
+                        port = int(raw_port)
+                    except (TypeError, ValueError):
+                        continue
+                    if port in service_by_port:
+                        services.add(service_by_port[port])
+                if not services:
+                    services = set(expected_entry_services.get(ip, set())) or {"ssh"}
+                expected_target_services[ip] = services
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            pass
+            expected_target_services = {
+                ip: set(expected_entry_services.get(ip, set())) or {"ssh"}
+                for ip in expected_targets
+            }
+
+        def _action_service(name: str, kwargs: dict) -> str:
+            if name == "try_credential":
+                return str(kwargs.get("service") or "").casefold()
+            if name in {"ssh_exec"}:
+                return "ssh"
+            if name in {"mqtt_listen"}:
+                return "mqtt"
+            if name in {"http_get", "curl_headers"}:
+                return "http"
+            if name == "telnet_connect":
+                return "telnet"
+            if name == "ftp_list":
+                return "ftp"
+            return ""
 
         def _progress() -> dict:
-            missing_targets = sorted(set(expected_targets) - attempted_targets)
+            missing_target_services = sorted(
+                f"{ip}:{service}"
+                for ip, services in expected_target_services.items()
+                for service in services
+                if (ip, service) not in attempted_target_services
+            )
+            missing_targets = sorted({item.split(":", 1)[0] for item in missing_target_services})
             missing_entry_points = sorted(set(expected_entry_points) - attempted_entry_points)
             missing_credentials = [
                 "{user}@{source}".format(user=meta["user"], source=meta.get("source_ip") or "recovered")
@@ -4401,60 +4641,56 @@ class Pipeline:
                 if key not in attempted_credentials
             ]
             return {
-                "schema_version": "1",
+                "schema_version": "2",
                 "context_loaded": context_loaded,
                 "action_calls": action_calls,
                 "targets": [
                     {
-                        "target": ip,
-                        "device_id": expected_targets[ip],
-                        "attempted": ip in attempted_targets,
+                        "target": ip, "device_id": expected_targets[ip],
+                        "services": sorted(expected_target_services.get(ip, {"ssh"})),
+                        "attempted_services": sorted({service for target, service in attempted_target_services if target == ip}),
+                        "attempted": ip not in missing_targets,
                     }
                     for ip in sorted(expected_targets)
                 ],
                 "entry_points": [
-                    {
-                        "target": ip,
-                        "device_id": expected_entry_points[ip],
-                        "attempted": ip in attempted_entry_points,
-                    }
+                    {"target": ip, "device_id": expected_entry_points[ip], "attempted": ip in attempted_entry_points}
                     for ip in sorted(expected_entry_points)
                 ],
                 "recovered_credentials": [
-                    {
-                        "user": meta["user"],
-                        "source_ip": meta.get("source_ip", ""),
-                        "attempted": key in attempted_credentials,
-                    }
-                    for key, meta in sorted(
-                        expected_credentials.items(),
-                        key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")),
-                    )
+                    {"user": meta["user"], "source_ip": meta.get("source_ip", ""), "attempted": key in attempted_credentials}
+                    for key, meta in sorted(expected_credentials.items(), key=lambda item: (item[1].get("user", ""), item[1].get("source_ip", "")))
                 ],
                 "attempted_targets": sorted(attempted_targets),
                 "missing_targets": missing_targets,
+                "missing_target_services": missing_target_services,
                 "missing_entry_points": missing_entry_points,
                 "missing_credentials": missing_credentials,
                 "ready_to_complete": (
-                    context_loaded
-                    and not missing_targets
-                    and not missing_entry_points
-                    and not missing_credentials
+                    context_loaded and not missing_target_services
+                    and not missing_entry_points and not missing_credentials
                 ),
             }
 
         def _next_target_action(progress: dict) -> tuple[str, dict] | None:
-            missing_targets = progress.get("missing_targets", [])
-            credential = next(iter(expected_credentials), None)
-            if not missing_targets or credential is None:
+            missing = progress.get("missing_target_services", [])
+            if not missing:
                 return None
-            target = str(missing_targets[0])
-            user, password = credential
+            target, service = str(missing[0]).split(":", 1)
+            credential = next(iter(expected_credentials.values()), None)
+            if service == "mqtt":
+                return "mqtt_listen", {"broker": target, "topic": "#", "count": 1, "timeout": 3}
+            if service == "http":
+                return "http_get", {"url": f"http://{target}/"}
+            if service == "telnet":
+                return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {target} 23"}
+            if service == "ftp":
+                return "ftp_list", {"url": f"ftp://{target}/"}
+            if credential is None:
+                return None
             return "try_credential", {
-                "ip": target,
-                "service": expected_target_services.get(target, "ssh"),
-                "user": user,
-                "password": password,
+                "ip": target, "service": service,
+                "user": credential["user"], "password": credential["password"],
             }
 
         def _with_progress(result: str) -> str:
@@ -4476,8 +4712,8 @@ class Pipeline:
                 "error_kind": kind,
                 "error": message,
                 "instruction": (
-                    "Continue Phase 5 with mqtt_listen/http_get/curl_headers for "
-                    "entry-point validation and try_credential or ssh_exec for "
+                    "Continue Phase 5 with service-appropriate entry-point probes "
+                    "(mqtt_listen/http_get/telnet_connect/ftp_list) and try_credential "
                     "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
@@ -4534,16 +4770,23 @@ class Pipeline:
             }, ensure_ascii=False)
 
         def _suggested_entry_action(name: str, target: str) -> tuple[str, dict] | None:
-            if name == "mqtt_listen" and expected_entry_services.get(target) == "mqtt":
+            wanted = {
+                "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
+                "telnet_connect": "telnet", "ftp_list": "ftp",
+            }.get(name)
+            if not wanted:
                 return None
-            if name in {"http_get", "curl_headers"} and expected_entry_services.get(target) in {"http", "https"}:
+            if wanted in expected_entry_services.get(target, set()):
                 return None
-            wanted = "mqtt" if name == "mqtt_listen" else "http"
-            for ip, service in expected_entry_services.items():
-                if service != wanted:
+            for ip, services in expected_entry_services.items():
+                if wanted not in services:
                     continue
                 if wanted == "mqtt":
                     return "mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}
+                if wanted == "telnet":
+                    return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}
+                if wanted == "ftp":
+                    return "ftp_list", {"url": f"ftp://{ip}/"}
                 return name, {"url": f"http://{ip}/"}
             return None
 
@@ -4551,7 +4794,7 @@ class Pipeline:
             def guarded(**kwargs):
                 nonlocal action_calls, context_loaded
                 target = _target_from_args(name, kwargs)
-                if name in {"mqtt_listen", "http_get", "curl_headers"} and target:
+                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and target:
                     suggestion = _suggested_entry_action(name, target)
                     if suggestion is not None:
                         suggested_tool, suggested_args = suggestion
@@ -4574,8 +4817,13 @@ class Pipeline:
                     target = _target_from_args(name, kwargs)
                     if target:
                         attempted_targets.add(target)
+                        service = _action_service(name, kwargs)
+                        if service:
+                            attempted_target_services.add((target, service))
                         if target in expected_entry_points:
-                            attempted_entry_points.add(target)
+                            expected_services = expected_entry_services.get(target, set())
+                            if not expected_services or service in expected_services:
+                                attempted_entry_points.add(target)
                     if name in credential_action_tools:
                         user = str(kwargs.get("user") or "").strip()
                         password = str(kwargs.get("password") or "").strip()
@@ -4611,8 +4859,8 @@ class Pipeline:
             "name": COMPACT_INTRUSION_COMPLETION_TOOL,
             "description": (
                 "Finish compact Phase 5 only after 05_intrusion_context.json "
-                "has been read, every listed target and entry point has an "
-                "observable action, and every recovered credential has been "
+                "has been read, every listed target/service and entry point has "
+                "a service-appropriate observable action, and every recovered credential has been "
                 "tried at least once."
             ),
             "input_schema": {

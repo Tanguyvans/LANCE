@@ -10,6 +10,8 @@ from src.agent.pipeline import (
     TOOL_GROUPS,
     _has_positive_exploit_evidence,
     _phase4_local_verification_tools,
+    _phase4_verification_plan,
+    _phase4_requirement_matches,
     _local_report_memo_contradicts_context,
     _looks_unusable_model_memo,
     _resolve_model_provider,
@@ -18,6 +20,42 @@ from src.agent.pipeline import (
 from src.agent.registry import AgentConfig, AGENTS
 
 
+
+
+def test_phase4_verification_plan_selects_precise_probe_per_finding():
+    ws = _phase4_verification_plan({
+        "type": "network_exposure", "service": "mqtt-ws",
+        "device_ip": "192.168.100.11", "port": 9001,
+    })
+    assert ws["tool"] == "http_request"
+    assert ws["args_hint"]["url"].endswith(":9001/")
+
+    listing = _phase4_verification_plan({
+        "type": "directory_listing", "service": "http",
+        "device_ip": "192.168.100.12", "port": 80, "endpoint": "/backup/",
+    })
+    assert listing["tool"] == "http_get"
+    assert listing["args_hint"]["url"].endswith("/backup/")
+
+    sys_topics = _phase4_verification_plan({
+        "type": "info_disclosure", "service": "mqtt",
+        "device_ip": "192.168.100.11", "port": 1883,
+    })
+    assert sys_topics["tool"] == "mqtt_listen"
+    assert sys_topics["args_hint"]["topic"] == "$SYS/#"
+
+
+def test_phase4_requirement_rejects_wrong_endpoint_or_transport():
+    requirement = _phase4_verification_plan({
+        "type": "network_exposure", "service": "mqtt-ws",
+        "device_ip": "192.168.100.11", "port": 9001,
+    })
+    assert not _phase4_requirement_matches(
+        requirement, "mqtt_listen", {"broker": "192.168.100.11", "topic": "#"}
+    )
+    assert _phase4_requirement_matches(
+        requirement, "http_request", {"url": "http://192.168.100.11:9001/"}
+    )
 
 
 def test_phase4_nonlocal_tools_are_restricted_to_evaluable_surface():
@@ -2227,6 +2265,48 @@ class TestPhase5Context:
         assert complete["intrusion_progress"]["ready_to_complete"] is True
 
 
+    def test_compact_intrusion_contract_requires_each_target_service(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "all_targets": [
+                {"device_id": "router", "device_ip": "192.168.100.1",
+                 "role": "router", "services": [22, 23, 80]},
+            ],
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": lambda **kwargs: json.dumps({
+                 "filename": kwargs["filename"],
+                 "content": (run_dir / kwargs["filename"]).read_text(),
+             })},
+            {"name": "try_credential", "description": "try", "input_schema": {},
+             "function": lambda **_kwargs: '{"success":false}'},
+            {"name": "telnet_connect", "description": "telnet", "input_schema": {},
+             "function": lambda **_kwargs: '{"return_code":124}'},
+            {"name": "http_get", "description": "http", "input_schema": {},
+             "function": lambda **_kwargs: '{"status_code":200}'},
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        tool_map["try_credential"](
+            ip="192.168.100.1", service="ssh", user="root", password="root"
+        )
+        incomplete = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert incomplete["ok"] is False
+        assert incomplete["intrusion_progress"]["missing_target_services"] == [
+            "192.168.100.1:http", "192.168.100.1:telnet"
+        ]
+        tool_map["telnet_connect"](
+            command_string="echo quit | timeout 3 nc 192.168.100.1 23"
+        )
+        tool_map["http_get"](url="http://192.168.100.1/")
+        complete = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert complete["ok"] is True
+
+
     def test_compact_intrusion_contract_counts_http_mqtt_and_recovered_credentials(
         self, mock_provider, output_dir
     ):
@@ -3085,6 +3165,18 @@ class TestInformationPreservingArchitecture:
                 }),
                 "evidence_ref": "tc-graph-risks",
             },
+            {
+                "tool": "get_device_info",
+                "args": {"device_id": "router"},
+                "result": json.dumps({"id": "router", "ip": "192.0.2.1"}),
+                "evidence_ref": "tc-graph-router",
+            },
+            {
+                "tool": "get_device_info",
+                "args": {"device_id": "mqtt"},
+                "result": json.dumps({"id": "mqtt", "ip": "192.0.2.11"}),
+                "evidence_ref": "tc-graph-mqtt",
+            },
         ]
         (pipeline.run_dir / "tool_calls.jsonl").write_text(
             "\n".join(json.dumps(record) for record in records) + "\n"
@@ -3753,12 +3845,12 @@ class TestInformationPreservingArchitecture:
         aggregate = json.loads(
             (pipeline.run_dir / "04_exploitation.json").read_text()
         )
-        assert pipeline._phase4_execution_status == (
-            "skipped:no_safely_exploitable_candidates"
-        )
-        assert aggregate["summary"]["total_tested"] == 0
-        assert aggregate["summary"]["skipped_count"] == 1
-        assert aggregate["summary"]["errors"] == 0
+        assert pipeline._phase4_execution_status is None
+        assert aggregate["summary"]["total_tested"] == 1
+        assert aggregate["summary"]["candidate_count"] == 1
+        assert aggregate["summary"]["skipped_count"] == 0
+        assert aggregate["summary"]["errors"] == 1
+        assert aggregate["tests"][0]["status"] == "ERROR"
 
     def test_phase4_compact_worker_receives_local_exploit_instructions(
         self, output_dir, monkeypatch
@@ -3786,33 +3878,32 @@ class TestInformationPreservingArchitecture:
             "vulnerabilities": [finding],
         }))
 
-        def nmap_scan(**kwargs):
+        def telnet_connect(**kwargs):
             return json.dumps({
-                "stdout": "23/tcp open telnet",
+                "stdout": "OpenWrt telnet banner",
                 "stderr": "",
                 "return_code": 0,
             })
 
         monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [{
-            "name": "nmap_scan",
-            "description": "scan",
+            "name": "telnet_connect",
+            "description": "telnet",
             "input_schema": {},
-            "function": nmap_scan,
+            "function": telnet_connect,
         }])
 
         def chat_with_tools(*, system_prompt, tools, **kwargs):
             assert "telnet" in system_prompt.lower()
             result = tools[0]["function"](
-                target="192.0.2.1", ports="23", skip_discovery=True
+                command_string="echo quit | timeout 3 nc 192.0.2.1 23"
             )
             with (pipeline.run_dir / "tool_calls.jsonl").open(
                 "a", encoding="utf-8"
             ) as handle:
                 handle.write(json.dumps({
-                    "tool": "nmap_scan",
+                    "tool": "telnet_connect",
                     "args": {
-                        "target": "192.0.2.1", "ports": "23",
-                        "skip_discovery": True,
+                        "command_string": "echo quit | timeout 3 nc 192.0.2.1 23",
                     },
                     "result": result,
                     "vuln_id": "VULN-001",

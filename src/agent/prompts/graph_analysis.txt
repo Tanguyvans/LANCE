@@ -17,8 +17,9 @@ Your role is to produce a theoretical mapping and a scan plan for Phase 2 (activ
 2. Identify the THEORETICAL attack surface with get_attack_surface (returns each device's exposed services as compact service:port pairs)
 3. Analyze critical attack paths with get_attack_paths
 4. Retrieve risk scores with get_risk_scores
-5. ONLY for the 3-5 highest-risk devices, retrieve full details with get_device_info
-   WARNING: Do NOT call get_device_info for every device — the topology and attack surface already give you enough data for the deliverable.
+5. Retrieve full details with get_device_info for EVERY device in the declared
+   topology. The deliverable and downstream phases require a complete
+   per-device ledger; do not omit routers, servers, or low-risk nodes.
 
 ## Deliverable format ({{expected_deliverable}})
 You MUST use this EXACT template structure. Fill in all tables and sections with real data.
