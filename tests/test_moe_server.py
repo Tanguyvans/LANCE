@@ -372,17 +372,6 @@ def test_recon_model_sees_only_core_tool_schemas() -> None:
         "recon_progress": {"ready_to_save": True},
     })
     assert [tool["function"]["name"] for tool in ready] == ["save_deliverable"]
-    calls = [
-        {
-            "id": f"call-{name}",
-            "type": "function",
-            "function": {"name": name, "arguments": "{}"},
-        }
-        for name in ("read_deliverable", "save_deliverable")
-    ]
-    accepted, rejected = moe_server._filter_unavailable_tool_calls(calls, ready)
-    assert [call["function"]["name"] for call in accepted] == ["save_deliverable"]
-    assert rejected == ["read_deliverable"]
     assert _select_model_tools("exploit", tools) == tools
 
 

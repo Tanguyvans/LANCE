@@ -1843,7 +1843,16 @@ class TestRepeatingToolDetector:
         read.assert_called_once_with()
         save.assert_called_once_with()
 
-    def test_openai_loop_forces_recon_save_as_soon_as_progress_is_ready(self):
+    @pytest.mark.parametrize(
+        ("force_ready", "expected_tools", "expected_required"),
+        [
+            (True, ["save_deliverable"], True),
+            (False, ["nmap_scan", "read_deliverable", "save_deliverable"], False),
+        ],
+    )
+    def test_openai_loop_scopes_recon_ready_completion_to_opt_in(
+        self, force_ready, expected_tools, expected_required
+    ):
         from src.agent.provider import LLMProvider
 
         provider = LLMProvider.__new__(LLMProvider)
@@ -1888,13 +1897,17 @@ class TestRepeatingToolDetector:
             terminate_after_tool="save_deliverable",
             strict_required_tool=True,
             force_tool_on_stall=True,
+            force_completion_on_recon_ready=force_ready,
         )
 
         second_request = provider.client.chat.completions.create.call_args_list[1].kwargs
-        assert second_request["tool_choice"] == "required"
+        if expected_required:
+            assert second_request["tool_choice"] == "required"
+        else:
+            assert "tool_choice" not in second_request
         assert [
             tool["function"]["name"] for tool in second_request["tools"]
-        ] == ["save_deliverable"]
+        ] == expected_tools
         scan.assert_called_once_with()
         save.assert_called_once_with()
 
@@ -2501,11 +2514,12 @@ class TestPhase5Context:
         assert results["intrusion"] == "completed"
 
     @pytest.mark.parametrize(
-        ("profile", "expected_strict", "expected_force"),
-        [("compact", True, True), ("full", False, False)],
+        ("profile", "expected_strict", "expected_force", "expected_ready_force"),
+        [("compact", True, True, True), ("full", False, False, False)],
     )
     def test_local_moe_recon_requires_successful_save_only_for_compact(
-        self, mock_provider, output_dir, profile, expected_strict, expected_force
+        self, mock_provider, output_dir, profile, expected_strict, expected_force,
+        expected_ready_force
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
@@ -2519,6 +2533,7 @@ class TestPhase5Context:
         assert kwargs["required_tool"] == "save_deliverable"
         assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["strict_required_tool"] is expected_strict
+        assert kwargs["force_completion_on_recon_ready"] is expected_ready_force
         assert kwargs["force_tool_on_stall"] is expected_force
 
 class TestPipelineRun:
