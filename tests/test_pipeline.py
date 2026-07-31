@@ -484,14 +484,14 @@ class TestReconToolContract:
         assert calls[0][0] == "ssh_audit"
 
     @pytest.mark.parametrize(
-        ("profile", "expected_error", "expected_read_calls"),
+        ("profile", "expected_cached", "expected_read_calls"),
         [
-            ("compact", "recon_completion_required", 1),
-            ("full", None, 2),
+            ("compact", True, 1),
+            ("full", False, 2),
         ],
     )
-    def test_only_compact_local_moe_locks_tools_after_recon_is_ready(
-        self, output_dir, monkeypatch, profile, expected_error, expected_read_calls
+    def test_compact_local_moe_reuses_cached_phase1_after_recon_is_ready(
+        self, output_dir, monkeypatch, profile, expected_cached, expected_read_calls
     ):
         import src.agent.tools.graph_tools as graph_tools
 
@@ -541,9 +541,10 @@ class TestReconToolContract:
             filename="01_graph_analysis.md"
         ))
         assert read.call_count == expected_read_calls
-        if expected_error:
-            assert late_read["error_kind"] == expected_error
-            assert late_read["allowed_tool"] == "complete_recon_campaign"
+        if expected_cached:
+            assert late_read["already_loaded"] is True
+            assert late_read["recon_progress"]["ready_to_save"] is True
+            assert "error_kind" not in late_read
         else:
             assert late_read["content"] == "phase1"
 
@@ -2459,9 +2460,8 @@ class TestPhase5Context:
 
         kwargs = mock_provider.chat_with_tools.call_args.kwargs
         assert status.startswith("failed:")
-        expected_tool = "complete_recon_campaign" if profile == "compact" else "save_deliverable"
-        assert kwargs["required_tool"] == expected_tool
-        assert kwargs["terminate_after_tool"] == expected_tool
+        assert kwargs["required_tool"] == "save_deliverable"
+        assert kwargs["terminate_after_tool"] == "save_deliverable"
         assert kwargs["strict_required_tool"] is expected_strict
         assert kwargs["force_tool_on_stall"] is expected_force
 

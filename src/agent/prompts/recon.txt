@@ -42,6 +42,11 @@ Before saving, obtain all of the following. Their order is entirely your choice:
 3. The theoretical device context from read_deliverable("01_graph_analysis.md").
 4. The minimum per-device port coverage listed below.
 
+Read the Phase 1 deliverable once and keep that result in context. If a later turn
+reports that it is already loaded, do not request it again. As soon as
+`recon_progress.ready_to_save` is true, stop gathering evidence and call
+save_deliverable immediately with the completed report; do not announce or defer the save.
+
 ## Port coverage baseline
 The ledger is a minimum evidence baseline, not a prescribed sequence of calls.
 

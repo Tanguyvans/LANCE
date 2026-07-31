@@ -101,7 +101,6 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
-COMPACT_RECON_COMPLETION_TOOL = "complete_recon_campaign"
 COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 8
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
@@ -2502,12 +2501,10 @@ class Pipeline:
             ),
             required_tool=(
                 COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
-                else COMPACT_RECON_COMPLETION_TOOL if compact_local_recon
                 else "save_deliverable"
             ),
             terminate_after_tool=(
                 COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
-                else COMPACT_RECON_COMPLETION_TOOL if compact_local_recon
                 else "save_deliverable"
             ),
             terminate_on_unavailable_tools=None,
@@ -4840,14 +4837,14 @@ class Pipeline:
                     )
                 if (
                     strict_compact_completion
-                    and name not in {"save_deliverable", COMPACT_RECON_COMPLETION_TOOL}
+                    and name not in {"save_deliverable", "read_deliverable"}
                     and not _missing_requirements()
                 ):
                     return _error(
                         "recon_completion_required",
                         "Compact local Recon evidence is complete; only "
-                        "the compact completion tool is allowed now.",
-                        allowed_tool=COMPACT_RECON_COMPLETION_TOOL,
+                        "save_deliverable is allowed now.",
+                        allowed_tool="save_deliverable",
                     )
 
                 if name == "arp_scan":
@@ -4868,6 +4865,19 @@ class Pipeline:
                     return _with_progress(result)
 
                 if name == "read_deliverable":
+                    if (
+                        strict_compact_completion
+                        and kwargs.get("filename") == "01_graph_analysis.md"
+                        and "read_phase1" in completed_calls
+                    ):
+                        return _with_progress(json.dumps({
+                            "filename": "01_graph_analysis.md",
+                            "already_loaded": True,
+                            "content": (
+                                "Phase 1 context was already loaded successfully. "
+                                "Reuse the earlier tool result and finish 02_recon.md."
+                            ),
+                        }))
                     result = original_fn(**kwargs)
                     if (
                         kwargs.get("filename") == "01_graph_analysis.md"
@@ -4924,32 +4934,6 @@ class Pipeline:
             {**tool, "function": _guard(tool["name"], tool["function"])}
             for tool in selected
         ]
-        if strict_compact_completion:
-            def complete_recon_campaign(**_kwargs):
-                missing = _missing_requirements()
-                if missing:
-                    return _error(
-                        "recon_contract_incomplete",
-                        "Compact Recon cannot finish until the evidence ledger is complete.",
-                        missing_requirements=missing,
-                    )
-                return _with_progress(json.dumps({
-                    "ok": True,
-                    "status": "recon_complete",
-                }))
-            wrapped.append(self._wrap_tool({
-                "name": COMPACT_RECON_COMPLETION_TOOL,
-                "description": (
-                    "Finish compact Recon after the evidence ledger is complete. "
-                    "The orchestrator writes 02_recon.md from recorded scans."
-                ),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"summary": {"type": "string"}},
-                    "additionalProperties": False,
-                },
-                "function": complete_recon_campaign,
-            }, phase=2, agent="recon"))
         return wrapped
 
     @staticmethod

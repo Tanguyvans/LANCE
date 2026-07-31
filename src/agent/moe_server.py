@@ -65,7 +65,7 @@ _CONTRACT_RECOVERY_TOOLS = frozenset({
 })
 _RECON_CORE_MODEL_TOOLS = frozenset({
     "arp_scan", "nmap_discovery", "nmap_scan", "read_deliverable",
-    "save_deliverable", "complete_recon_campaign",
+    "save_deliverable",
 })
 
 _PROCESS_STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -660,17 +660,9 @@ def _select_model_tools(
     if isinstance(progress, dict) and progress.get("ready_to_save") is True:
         selected = [
             tool for tool in tools
-            if str(tool.get("function", {}).get("name", "")) in {
-                "complete_recon_campaign", "save_deliverable"
-            }
+            if str(tool.get("function", {}).get("name", "")) == "save_deliverable"
         ]
-        if any(
-            str(tool.get("function", {}).get("name", "")) == "complete_recon_campaign"
-            for tool in selected
-        ):
-            log.info("Recon baseline complete: model tool schemas reduced to compact completion")
-        else:
-            log.info("Recon baseline complete: model tool schemas reduced to save-only")
+        log.info("Recon baseline complete: model tool schemas reduced to save-only")
         return selected
     selected = [
         tool for tool in tools
