@@ -18,6 +18,8 @@ Phase 5 of 6 — compact intrusion reconciliation. The context file is authorita
 - Do not call mqtt_listen on a non-MQTT target. Do not invent targets or credentials.
 - Finish only with complete_intrusion_campaign(summary=<short summary>).
 - Do not call ssh_exec unless a successful credential result provides a compromised host.
+- Treat a credential as successful only when the tool result explicitly proves authenticated access (success=true and authenticated is not false). HTTP 2xx or MQTT messages available anonymously do not validate credentials.
+- Never claim a compromise, pivot, crown jewel, or chain from an attempted login; only report evidence returned by tools.
 </constraints>
 
 <instructions>

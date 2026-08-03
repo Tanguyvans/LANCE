@@ -24,6 +24,11 @@ from datetime import datetime, timezone
 from src.cve_lookup import query_nvd
 
 _ANSI_ESC = re.compile(r'\x1b\[[0-9;]*[mK]')
+_SSH_LEGACY_OPTIONS = [
+    "-o", "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1",
+    "-o", "HostKeyAlgorithms=+ssh-rsa",
+    "-o", "Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc",
+]
 
 
 def _run(cmd: list[str], timeout: int = 30) -> dict:
@@ -191,6 +196,7 @@ def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) ->
         "-o", "StrictHostKeyChecking=no",
         "-o", "ConnectTimeout=10",
         "-o", "BatchMode=no",
+        *_SSH_LEGACY_OPTIONS,
         f"-p{port}",
         f"{user}@{ip}",
         command,
@@ -219,44 +225,56 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
             "-o", "StrictHostKeyChecking=no",
             "-o", "ConnectTimeout=10",
             "-o", "BatchMode=no",
+            *_SSH_LEGACY_OPTIONS,
             f"-p{p}",
             f"{user}@{ip}",
             "echo __ok__",
         ]
         result = _run(cmd, timeout=15)
         success = result["return_code"] == 0 and "__ok__" in result["stdout"]
-        return json.dumps({"success": success, "service": "ssh", "port": p,
+        return json.dumps({"success": success, "authenticated": success, "service": "ssh", "port": p,
                            "stdout": result["stdout"][:200], "stderr": result["stderr"][:200]})
 
     if service == "http":
         p = port or 80
         url = f"http://{ip}:{p}/"
-        cmd = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-               "--connect-timeout", "10", "-u", f"{user}:{password}", url]
-        result = _run(cmd, timeout=15)
+        probe = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                 "--connect-timeout", "10", url]
+        anonymous = _run(probe, timeout=15)
+        auth_probe = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+                      "--connect-timeout", "10", "-u", f"{user}:{password}", url]
+        result = _run(auth_probe, timeout=15)
+        anon_code = anonymous["stdout"].strip()
         code = result["stdout"].strip()
-        success = code not in ("401", "403", "000", "")
-        return json.dumps({"success": success, "service": "http", "port": p,
-                           "http_code": code})
+        auth_required = anon_code in ("401", "403")
+        success = auth_required and code not in ("401", "403", "000", "")
+        return json.dumps({"success": success, "authenticated": success, "service": "http", "port": p,
+                           "http_code": code, "unauthenticated_http_code": anon_code,
+                           "anonymous_access": not auth_required and anon_code not in ("000", "")})
 
     if service == "ftp":
         p = port or 21
-        cmd = ["curl", "-s", "--ftp-pasv", "--connect-timeout", "10",
-               "-u", f"{user}:{password}", f"ftp://{ip}:{p}/", "--head"]
-        result = _run(cmd, timeout=15)
-        success = result["return_code"] == 0
-        return json.dumps({"success": success, "service": "ftp", "port": p,
+        url = f"ftp://{ip}:{p}/"
+        anonymous = _run(["curl", "-s", "--ftp-pasv", "--connect-timeout", "10", url, "--head"], timeout=15)
+        result = _run(["curl", "-s", "--ftp-pasv", "--connect-timeout", "10",
+                       "-u", f"{user}:{password}", url, "--head"], timeout=15)
+        anonymous_access = anonymous["return_code"] == 0
+        success = result["return_code"] == 0 and not anonymous_access
+        return json.dumps({"success": success, "authenticated": success, "service": "ftp", "port": p,
+                           "anonymous_access": anonymous_access,
                            "stdout": result["stdout"][:200], "stderr": result["stderr"][:100]})
 
     if service == "mqtt":
         p = port or 1883
-        cmd = ["mosquitto_sub", "-h", ip, "-p", str(p),
-               "-u", user, "-P", password,
-               "-t", "$SYS/#", "-C", "1", "--quiet", "-W", "5"]
-        result = _run(cmd, timeout=10)
-        success = result["return_code"] == 0
-        return json.dumps({"success": success, "service": "mqtt", "port": p,
-                           "stdout": result["stdout"][:200]})
+        base = ["mosquitto_sub", "-h", ip, "-p", str(p), "-t", "$SYS/#", "-C", "1", "--quiet", "-W", "5"]
+        anonymous = _run(base, timeout=10)
+        auth = _run(base + ["-u", user, "-P", password], timeout=10)
+        anon_observed = anonymous["return_code"] == 0 or bool(anonymous["stdout"].strip())
+        auth_observed = auth["return_code"] == 0 or bool(auth["stdout"].strip())
+        success = (not anon_observed) and auth_observed
+        return json.dumps({"success": success, "authenticated": success, "service": "mqtt", "port": p,
+                           "stdout": auth["stdout"][:200], "anonymous_access": anon_observed,
+                           "auth_required": not anon_observed})
 
     if service == "telnet":
         p = port or 23
@@ -267,7 +285,7 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
         result = _run(cmd, timeout=12)
         stdout = result["stdout"]
         success = "uid=" in stdout or "$" in stdout or "#" in stdout
-        return json.dumps({"success": success, "service": "telnet", "port": p,
+        return json.dumps({"success": success, "authenticated": success, "service": "telnet", "port": p,
                            "stdout": stdout[:300]})
 
     if service == "redis":
@@ -279,7 +297,7 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
         result = _run(cmd, timeout=10)
         stdout = result["stdout"]
         success = "+OK" in stdout or "+PONG" in stdout
-        return json.dumps({"success": success, "service": "redis", "port": p,
+        return json.dumps({"success": success, "authenticated": success, "service": "redis", "port": p,
                            "stdout": stdout[:300]})
 
     if service == "mysql":
@@ -289,7 +307,7 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
                "-e", "SELECT user,host FROM mysql.user LIMIT 5;", "2>/dev/null"]
         result = _run(cmd, timeout=12)
         success = result["return_code"] == 0 and "ERROR" not in result["stderr"]
-        return json.dumps({"success": success, "service": "mysql", "port": p,
+        return json.dumps({"success": success, "authenticated": success, "service": "mysql", "port": p,
                            "stdout": result["stdout"][:300], "stderr": result["stderr"][:100]})
 
     return json.dumps({"success": False, "error": f"Unsupported service: {service}. Use ssh|http|ftp|mqtt|telnet|redis|mysql"})

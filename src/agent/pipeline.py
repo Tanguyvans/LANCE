@@ -733,6 +733,19 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 failures.append("mqtt_listen did not capture messages")
             continue
 
+        if (
+            tool == "telnet_connect"
+            and rc == 124
+            and vuln_type == "insecure_protocol"
+            and expected_port == 23
+        ):
+            confirmations.append({
+                "tool": tool,
+                "level": 2,
+                "evidence": "telnet_connect kept a TCP session open until timeout on insecure telnet port 23",
+            })
+            continue
+
         if any(marker in lower for marker in ("timed out", "timeout")) or rc == 124:
             errors.append(f"{tool} timed out")
             continue
@@ -800,8 +813,6 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         if tool == "telnet_connect":
             if rc == 0 and text:
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"telnet_connect reached the service:\n{text[:800]}"})
-            elif rc == 124:
-                errors.append("telnet_connect timed out")
             else:
                 failures.append("telnet_connect did not establish useful interaction")
             continue
@@ -825,7 +836,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             continue
 
         if tool == "ssh_audit":
-            if rc == 0 and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
+            if rc in (0, 3) and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported weak SSH configuration:\n{text[:800]}"})
             else:
                 failures.append("ssh_audit did not report an exploitable SSH weakness")
@@ -4530,6 +4541,7 @@ class Pipeline:
         # Credential reuse is target-scoped. An attempt on one host must not
         # satisfy the same credential on another host.
         attempted_credentials: set[tuple[str, str, str]] = set()
+        successful_accesses: set[tuple[str, str]] = set()
         action_calls = 0
         intrusion_action_tools = {
             "try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers",
@@ -4697,6 +4709,7 @@ class Pipeline:
                 f"{user}@{target}"
                 for target, user, _password in missing_credential_pairs
             ]
+            missing_successful_access = bool(expected_credentials) and not successful_accesses
             return {
                 "schema_version": "2",
                 "context_loaded": context_loaded,
@@ -4737,9 +4750,14 @@ class Pipeline:
                 "missing_target_services": missing_target_services,
                 "missing_entry_points": missing_entry_points,
                 "missing_credentials": missing_credentials,
+                "successful_accesses": [
+                    {"target": target, "service": service}
+                    for target, service in sorted(successful_accesses)
+                ],
+                "missing_successful_access": missing_successful_access,
                 "ready_to_complete": (
                     context_loaded and not missing_target_services
-                    and not missing_entry_points
+                    and not missing_entry_points and not missing_successful_access
                 ),
             }
 
@@ -4768,9 +4786,7 @@ class Pipeline:
                 None,
             )
             if credential is None:
-                return "try_credential", {
-                    "ip": target, "service": service, "user": "root", "password": "root",
-                }
+                return None
             return "try_credential", {
                 "ip": target, "service": service,
                 "user": credential["user"], "password": credential["password"],
@@ -4877,6 +4893,19 @@ class Pipeline:
                 return name, {"url": f"http://{ip}/"}
             return None
 
+        def _result_proves_access(name: str, raw_result: object) -> bool:
+            try:
+                payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return False
+            if not isinstance(payload, dict):
+                return False
+            if name == "try_credential":
+                return payload.get("success") is True and payload.get("authenticated", True) is not False
+            if name == "ssh_exec":
+                return payload.get("success") is True or payload.get("return_code") == 0
+            return False
+
         def _guard(name: str, original_fn):
             def guarded(**kwargs):
                 nonlocal action_calls, context_loaded
@@ -4910,6 +4939,10 @@ class Pipeline:
                             "suggested_args": suggested_args,
                         }))
                 result = original_fn(**kwargs)
+                if name in credential_action_tools and _result_proves_access(name, result):
+                    service = _action_service(name, kwargs)
+                    if target and service:
+                        successful_accesses.add((target, service))
                 if name == "read_deliverable" and kwargs.get("filename") == "05_intrusion_context.json":
                     context_loaded = True
                     result = _compact_context_result(result)
@@ -4944,7 +4977,7 @@ class Pipeline:
             if not progress["ready_to_complete"]:
                 return _completion_error(
                     "intrusion_contract_incomplete",
-                    "Phase 5 compact completion requires entry-point coverage and one credential reuse attempt for every recovered-credential/target pair.",
+                    "Phase 5 compact completion requires entry-point coverage, credential reuse attempts, and at least one authenticated access result when recovered credentials exist.",
                 )
             return json.dumps({
                 "ok": True,
@@ -4962,7 +4995,8 @@ class Pipeline:
                 "Finish compact Phase 5 only after 05_intrusion_context.json "
                 "has been read, every entry point has a matching probe, and every "
                 "recovered credential has been tried against every target using that "
-                "target's primary service."
+                "target's primary service, with at least one tool result proving "
+                "authenticated access."
             ),
             "input_schema": {
                 "type": "object",
@@ -5759,18 +5793,6 @@ class Pipeline:
                             "user": str(credential["user"]),
                             "password": str(credential["password"]),
                         }))
-            else:
-                # With no recovered material, retain the bounded baseline used
-                # by compact runs so each declared target is still observable.
-                for target in targets:
-                    ip = str(target.get("device_ip") or target.get("ip") or "").strip()
-                    if ip:
-                        actions.append(("try_credential", {
-                            "ip": ip,
-                            "service": self._compact_intrusion_service(target),
-                            "user": "root",
-                            "password": "root",
-                        }))
 
         executed = 0
         for name, kwargs in actions[:COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS]:
@@ -6060,10 +6082,14 @@ class Pipeline:
         # Map IP -> device_id from the pre-generated intrusion context so the
         # synthesized deliverable carries real device names, not blanks.
         ip_to_id: dict = {}
+        entry_point_ips: set[str] = set()
         ctx_path = self.run_dir / "05_intrusion_context.json"
         if ctx_path.exists():
             try:
                 ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+                for entry in ctx.get("entry_points", []):
+                    if isinstance(entry, dict) and entry.get("device_ip"):
+                        entry_point_ips.add(str(entry["device_ip"]))
                 for entry in (ctx.get("entry_points", []) + ctx.get("all_targets", [])):
                     did, dip = entry.get("device_id"), entry.get("device_ip")
                     if dip and did and dip not in ip_to_id:
@@ -6117,31 +6143,29 @@ class Pipeline:
                 ip = _target_from_tool(str(tool or ""), args)
                 if tool in {"try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
-                if not (isinstance(res, dict) and res.get("success") and ip):
+                authenticated = (
+                    isinstance(res, dict)
+                    and res.get("success") is True
+                    and res.get("authenticated", True) is not False
+                )
+                if not (authenticated and ip):
                     continue
 
                 if tool == "try_credential":
                     user = args.get("user", "")
                     pwd = args.get("password", "")
                     svc = args.get("service") or res.get("service", "")
-                    ckey = (ip, user, pwd, svc)
-                    if ckey not in seen_cred:
-                        seen_cred.add(ckey)
-                        creds.append({
-                            "user": user, "password": pwd, "service": svc,
-                            "source_ip": ip, "source_device": ip_to_id.get(ip, ""),
-                        })
                     comp = compromised.setdefault(ip, {
                         "device_id": ip_to_id.get(ip, ""), "device_ip": ip,
                         "access_method": f"try_credential:{svc}:{user}:{pwd}",
-                        "access_via": "entry_point",
+                        "access_via": "entry_point" if ip in entry_point_ips else "lateral_movement",
                         "data_exfiltrated": "", "credentials_found": [],
                     })
                 elif tool == "ssh_exec":
                     comp = compromised.setdefault(ip, {
                         "device_id": ip_to_id.get(ip, ""), "device_ip": ip,
                         "access_method": "ssh_exec",
-                        "access_via": "entry_point",
+                        "access_via": "entry_point" if ip in entry_point_ips else "lateral_movement",
                         "data_exfiltrated": "", "credentials_found": [],
                     })
                     out = (res.get("stdout") or "").strip()
@@ -6149,19 +6173,9 @@ class Pipeline:
                         comp["data_exfiltrated"] = out[:500]
 
         devices = list(compromised.values())
-        chains = [{
-            "id": f"chain_{i + 1}",
-            "hops": [{
-                "hop_index": 1,
-                "device_id": d["device_id"],
-                "device_ip": d["device_ip"],
-                "access_method": d["access_method"],
-                "commands_run": [],
-                "output_summary": d["data_exfiltrated"][:400],
-                "pivot_to": None,
-            }],
-            "crown_jewel_reached": None,
-        } for i, d in enumerate(devices)]
+        # Independent authenticated logins are evidence of access, not pivots.
+        # Only emit chains when explicit lateral-movement evidence exists.
+        chains: list[dict] = []
 
         return {
             "summary": {
@@ -6169,7 +6183,7 @@ class Pipeline:
                 "devices_attempted": len(attempted | set(compromised)),
                 "credentials_harvested": len(creds),
                 "crown_jewels_reached": [],
-                "total_hops": len(devices),
+                "total_hops": 0,
                 "_note": note or "Synthesized from tool_calls.jsonl — model emitted no deliverable.",
             },
             "credential_pool": creds,

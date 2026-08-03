@@ -143,6 +143,27 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         if "timeout" in kwargs:
             effective_timeout = int(kwargs["timeout"]) + 5
 
+        # Legacy embedded SSH services frequently only offer SHA-1 KEX/ciphers.
+        # Add compatibility flags for the declarative ssh_login tool while
+        # preserving any explicit model-supplied options and command autonomy.
+        if tool_def["name"] == "ssh_login" and command == "bash" and "-c" in fixed_args:
+            command_string = next((str(v) for v in positional_values if str(v).strip()), "")
+            if command_string and "KexAlgorithms=" not in command_string:
+                legacy = (
+                    "-o KexAlgorithms=+diffie-hellman-group14-sha1,"
+                    "diffie-hellman-group-exchange-sha1 "
+                    "-o HostKeyAlgorithms=+ssh-rsa "
+                    "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc "
+                )
+                command_string = command_string.replace("ssh ", "ssh " + legacy, 1)
+                first_value = next((str(x) for x in positional_values if str(x).strip()), "")
+                positional_values = [
+                    command_string if str(v) == first_value else v
+                    for v in positional_values
+                ]
+                cmd = [command] + list(fixed_args)
+                cmd.extend(positional_values)
+
         from src.agent.tools.recon_tools import _run
         result = _run(cmd, timeout=effective_timeout)
 
