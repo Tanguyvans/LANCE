@@ -2348,7 +2348,7 @@ class TestPhase5Context:
                 "name": "try_credential",
                 "description": "try",
                 "input_schema": {},
-                "function": lambda **_kwargs: json.dumps({"success": False}),
+                "function": lambda **_kwargs: json.dumps({"success": True, "authenticated": True}),
             },
         ])
         tool_map = {tool["name"]: tool["function"] for tool in tools}
@@ -2385,6 +2385,11 @@ class TestPhase5Context:
         complete = json.loads(tool_map["complete_intrusion_campaign"]())
         assert complete["ok"] is True
         assert complete["intrusion_progress"]["ready_to_complete"] is True
+        assert complete["intrusion_progress"]["missing_successful_access"] is False
+        assert complete["intrusion_progress"]["successful_accesses"] == [
+            {"target": "192.168.100.11", "service": "mqtt"},
+            {"target": "192.168.100.12", "service": "http"},
+        ]
 
     def test_compact_intrusion_completion_is_logged(
         self, mock_provider, output_dir
