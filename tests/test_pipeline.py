@@ -2391,6 +2391,60 @@ class TestPhase5Context:
             {"target": "192.168.100.12", "service": "http"},
         ]
 
+    def test_compact_intrusion_rejects_wrong_ports_and_authenticated_mqtt_entry_credentials(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{
+                "device_id": "mqtt", "device_ip": "192.168.100.11",
+                "service": "mqtt", "port": 1883, "vuln_type": "no_auth",
+            }],
+            "all_targets": [{
+                "device_id": "mqtt", "device_ip": "192.168.100.11",
+                "role": "mqtt_broker", "services": [1883],
+            }],
+            "recovered_credentials": [{
+                "user": "root", "password": "root",
+                "source_ip": "192.168.100.11",
+            }],
+        }))
+        mqtt = MagicMock(return_value=json.dumps({"return_code": 0, "stdout": "msg"}))
+        credential = MagicMock(return_value=json.dumps({
+            "success": True, "authenticated": True, "service": "mqtt", "port": 1883,
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": lambda **kwargs: json.dumps({
+                 "filename": kwargs["filename"],
+                 "content": (run_dir / kwargs["filename"]).read_text(),
+             })},
+            {"name": "mqtt_listen", "description": "mqtt", "input_schema": {}, "function": mqtt},
+            {"name": "try_credential", "description": "try", "input_schema": {}, "function": credential},
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+
+        anonymous_error = json.loads(tool_map["mqtt_listen"](
+            broker="192.168.100.11", username="root", password="root"
+        ))
+        assert anonymous_error["error_kind"] == "anonymous_entry_requires_no_credentials"
+        mqtt.assert_not_called()
+
+        port_error = json.loads(tool_map["try_credential"](
+            ip="192.168.100.11", service="mqtt", user="root", password="root", port=80
+        ))
+        assert port_error["error_kind"] == "invalid_intrusion_port"
+        credential.assert_not_called()
+
+        tool_map["mqtt_listen"](broker="192.168.100.11", topic="#", count=1)
+        tool_map["try_credential"](
+            ip="192.168.100.11", service="mqtt", user="root", password="root", port=1883
+        )
+        complete = json.loads(tool_map["complete_intrusion_campaign"]())
+        assert complete["ok"] is True
+
     def test_compact_intrusion_completion_is_logged(
         self, mock_provider, output_dir
     ):

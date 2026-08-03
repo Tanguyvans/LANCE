@@ -103,7 +103,8 @@ def test_compact_generic_phases_keep_required_tools_and_remove_noise():
         "save_deliverable", "http_get", "mqtt_listen", "sqlmap", "nuclei_scan",
         "searchsploit", "get_network_topology", "get_device_info",
         "get_attack_surface", "get_attack_paths", "get_risk_scores",
-        "search_knowledge", "ssh_exec", "try_credential",
+        "search_knowledge", "ftp_list", "ssh_exec", "ssh_login",
+        "telnet_connect", "try_credential",
     ]
     tools = [{"name": name} for name in names]
 
@@ -124,8 +125,9 @@ def test_compact_generic_phases_keep_required_tools_and_remove_noise():
     }
     assert {"sqlmap", "nuclei_scan", "searchsploit"}.isdisjoint(compact_recon)
     assert compact_intrusion == {
-        "http_get", "mqtt_listen", "read_deliverable", "save_deliverable",
-        "ssh_exec", "try_credential",
+        "ftp_list", "http_get", "mqtt_listen", "read_deliverable",
+        "save_deliverable", "ssh_exec", "ssh_login", "telnet_connect",
+        "try_credential",
     }
     assert compact_report == {
         "read_deliverable", "save_deliverable",

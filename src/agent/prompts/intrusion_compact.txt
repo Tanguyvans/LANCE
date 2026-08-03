@@ -16,6 +16,9 @@ Phase 5 of 6 — compact intrusion reconciliation. The context file is authorita
   mqtt entry -> mqtt_listen(broker=<entry IP>), HTTP entry -> http_get or curl_headers(url=http://<entry IP>/).
 - Then call try_credential on every all_targets IP using each recovered credential and the target primary service. An entry-point probe does not count as credential reuse.
 - Do not call mqtt_listen on a non-MQTT target. Do not invent targets or credentials.
+- For try_credential, use the target primary service and exact port from 05_intrusion_context.json; never guess or reuse a port from another service.
+- For an entry point marked no_auth, probe anonymously: omit username/password from mqtt_listen and HTTP probes.
+- After a rejected completion, execute a new suggested action before retrying completion; never repeat completion with unchanged progress.
 - Finish only with complete_intrusion_campaign(summary=<short summary>).
 - Do not call ssh_exec unless a successful credential result provides a compromised host.
 - Treat a credential as successful only when the tool result explicitly proves authenticated access (success=true and authenticated is not false). HTTP 2xx or MQTT messages available anonymously do not validate credentials.

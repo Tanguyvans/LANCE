@@ -154,8 +154,9 @@ COMPACT_PHASE_TOOL_NAMES: dict[int, frozenset[str]] = {
         "save_deliverable",
     }),
     5: frozenset({
-        "curl_headers", "http_get", "mqtt_listen", "read_deliverable",
-        "save_deliverable", "ssh_exec", "try_credential",
+        "curl_headers", "ftp_list", "http_get", "mqtt_listen",
+        "read_deliverable", "save_deliverable", "ssh_exec", "ssh_login",
+        "telnet_connect", "try_credential",
     }),
     6: frozenset({
         "list_deliverables", "read_deliverable", "save_deliverable",

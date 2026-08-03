@@ -5,6 +5,7 @@ import json
 import ipaddress
 import logging
 import re
+import shlex
 import subprocess
 import threading
 from collections.abc import Callable
@@ -4542,12 +4543,14 @@ class Pipeline:
         # satisfy the same credential on another host.
         attempted_credentials: set[tuple[str, str, str]] = set()
         successful_accesses: set[tuple[str, str]] = set()
+        completion_attempts = 0
+        last_completion_signature: tuple | None = None
         action_calls = 0
         intrusion_action_tools = {
-            "try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers",
+            "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers",
             "telnet_connect", "ftp_list",
         }
-        credential_action_tools = {"try_credential", "ssh_exec"}
+        credential_action_tools = {"try_credential", "ssh_exec", "ssh_login"}
 
         def _host_from_url(value: object) -> str:
             raw = str(value or "").strip()
@@ -4565,7 +4568,7 @@ class Pipeline:
                     return value
             if name in {"http_get", "curl_headers", "ftp_list"}:
                 return _host_from_url(kwargs.get("url"))
-            if name == "telnet_connect":
+            if name in {"telnet_connect", "ssh_login"}:
                 match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(kwargs.get("command_string") or ""))
                 return match.group(0) if match else ""
             return ""
@@ -4615,8 +4618,10 @@ class Pipeline:
 
         expected_targets, expected_entry_points, expected_credentials = _load_expectations()
         expected_entry_services: dict[str, set[str]] = {}
+        expected_entry_anonymous: set[str] = set()
         expected_target_services: dict[str, set[str]] = {}
         expected_credential_service: dict[str, str] = {}
+        expected_credential_port: dict[str, int] = {}
         try:
             raw_context = json.loads(
                 (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
@@ -4627,10 +4632,16 @@ class Pipeline:
                     service = str(item.get("service") or "").strip().casefold()
                     if ip and service:
                         expected_entry_services.setdefault(ip, set()).add(service)
+                        if str(item.get("vuln_type") or "").strip().casefold() == "no_auth":
+                            expected_entry_anonymous.add(ip)
             service_by_port = {
                 21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
                 8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
                 9001: "mqtt", 3306: "mysql", 6379: "redis",
+            }
+            default_port_by_service = {
+                "ftp": 21, "ssh": 22, "telnet": 23, "http": 80,
+                "mqtt": 1883, "mysql": 3306, "redis": 6379,
             }
             role_service = {
                 "router": {"ssh", "telnet", "http"}, "gateway": {"ssh", "http"},
@@ -4658,17 +4669,28 @@ class Pipeline:
                 if not services:
                     services = set(expected_entry_services.get(ip, set())) or {"ssh"}
                 expected_target_services[ip] = services
+                primary = expected_credential_service[ip]
+                candidate_ports = []
+                for raw_port in item.get("services", []):
+                    try:
+                        candidate = int(raw_port)
+                    except (TypeError, ValueError):
+                        continue
+                    if service_by_port.get(candidate) == primary:
+                        candidate_ports.append(candidate)
+                expected_credential_port[ip] = min(candidate_ports) if candidate_ports else default_port_by_service.get(primary, 22)
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             expected_target_services = {
                 ip: set(expected_entry_services.get(ip, set())) or {"ssh"}
                 for ip in expected_targets
             }
             expected_credential_service = {ip: "ssh" for ip in expected_targets}
+            expected_credential_port = {ip: 22 for ip in expected_targets}
 
         def _action_service(name: str, kwargs: dict) -> str:
             if name == "try_credential":
                 return str(kwargs.get("service") or "").casefold()
-            if name in {"ssh_exec"}:
+            if name in {"ssh_exec", "ssh_login"}:
                 return "ssh"
             if name in {"mqtt_listen"}:
                 return "mqtt"
@@ -4875,7 +4897,7 @@ class Pipeline:
         def _suggested_entry_action(name: str, target: str) -> tuple[str, dict] | None:
             wanted = {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
-                "telnet_connect": "telnet", "ftp_list": "ftp",
+                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh",
             }.get(name)
             if not wanted:
                 return None
@@ -4902,8 +4924,11 @@ class Pipeline:
                 return False
             if name == "try_credential":
                 return payload.get("success") is True and payload.get("authenticated", True) is not False
-            if name == "ssh_exec":
-                return payload.get("success") is True or payload.get("return_code") == 0
+            if name in {"ssh_exec", "ssh_login"}:
+                if payload.get("success") is True or payload.get("return_code") == 0:
+                    return True
+                stdout = str(payload.get("stdout") or payload.get("output") or "").casefold()
+                return name == "ssh_login" and bool(re.search(r"\buid=\d+", stdout))
             return False
 
         def _guard(name: str, original_fn):
@@ -4912,6 +4937,25 @@ class Pipeline:
                 target = _target_from_args(name, kwargs)
                 if name == "try_credential" and target in expected_targets:
                     requested_service = _action_service(name, kwargs)
+                    expected_port = expected_credential_port.get(target)
+                    raw_port = kwargs.get("port")
+                    if raw_port not in (None, "") and expected_port is not None:
+                        try:
+                            requested_port = int(raw_port)
+                        except (TypeError, ValueError):
+                            requested_port = None
+                        if requested_port != expected_port:
+                            suggested = {**kwargs, "port": expected_port}
+                            return _with_progress(json.dumps({
+                                "ok": False,
+                                "error_kind": "invalid_intrusion_port",
+                                "error": (
+                                    f"try_credential for {target} must use port {expected_port} "
+                                    f"for service {expected_credential_service.get(target, 'ssh')}."
+                                ),
+                                "suggested_tool": "try_credential",
+                                "suggested_args": suggested,
+                            }))
                     expected_service = expected_credential_service.get(target, "ssh")
                     if requested_service != expected_service:
                         return _with_progress(json.dumps({
@@ -4924,7 +4968,22 @@ class Pipeline:
                             "suggested_tool": "try_credential",
                             "suggested_args": {**kwargs, "service": expected_service},
                         }))
-                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and target:
+                if (
+                    name == "mqtt_listen"
+                    and target in expected_entry_anonymous
+                    and any(kwargs.get(key) not in (None, "") for key in ("username", "user", "password"))
+                ):
+                    return _with_progress(json.dumps({
+                        "ok": False,
+                        "error_kind": "anonymous_entry_requires_no_credentials",
+                        "error": "This MQTT entry point is documented as anonymous; omit username/password.",
+                        "suggested_tool": "mqtt_listen",
+                        "suggested_args": {
+                            "broker": target, "topic": kwargs.get("topic", "#"),
+                            "count": kwargs.get("count", 1), "timeout": kwargs.get("timeout", 3),
+                        },
+                    }))
+                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list", "ssh_login"} and target:
                     suggestion = _suggested_entry_action(name, target)
                     if suggestion is not None:
                         suggested_tool, suggested_args = suggestion
@@ -4961,6 +5020,12 @@ class Pipeline:
                     if name in credential_action_tools:
                         user = str(kwargs.get("user") or "").strip()
                         password = str(kwargs.get("password") or "").strip()
+                        if name == "ssh_login":
+                            command_string = str(kwargs.get("command_string") or "")
+                            password_match = re.search(r"sshpass\s+-p\s+([^\s]+)", command_string)
+                            user_match = re.search(r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b", command_string)
+                            password = password or (password_match.group(1) if password_match else "")
+                            user = user or (user_match.group(1) if user_match else "")
                         if user and password:
                             attempted_credentials.add((target, user, password))
                 return _with_progress(result)
@@ -4968,7 +5033,23 @@ class Pipeline:
             return guarded
 
         def complete_intrusion_campaign(**_kwargs):
+            nonlocal completion_attempts, last_completion_signature
             progress = _progress()
+            signature = (
+                tuple(progress.get("missing_entry_points", [])),
+                tuple(progress.get("missing_credentials", [])),
+                tuple(progress.get("missing_target_services", [])),
+                tuple(progress.get("successful_accesses", [])),
+                progress.get("action_calls", 0),
+            )
+            repeated_without_progress = last_completion_signature == signature
+            completion_attempts += 1
+            last_completion_signature = signature
+            if repeated_without_progress and not progress.get("ready_to_complete"):
+                return _completion_error(
+                    "intrusion_no_progress",
+                    "No Phase 5 progress occurred since the previous completion attempt; execute one suggested action before retrying.",
+                )
             if not context_loaded:
                 return _completion_error(
                     "intrusion_context_required",
@@ -5752,8 +5833,7 @@ class Pipeline:
             self.execution_profile, config.phase, self._resolve_tools(config)
         )
         tool_map = {tool["name"]: tool["function"] for tool in tools}
-        actions = []
-
+        entry_actions = []
         # Reconcile entry-point evidence independently from credential reuse.
         # An entry probe is not a credential attempt and must not suppress the
         # later spray against that same device.
@@ -5765,13 +5845,36 @@ class Pipeline:
             if not ip:
                 continue
             if service == "mqtt" and "mqtt_listen" in tool_map:
-                actions.append(("mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}))
+                entry_actions.append(("mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}))
             elif service in {"http", "https"} and "http_get" in tool_map:
-                actions.append(("http_get", {"url": f"http://{ip}/"}))
+                entry_actions.append(("http_get", {"url": f"http://{ip}/"}))
             elif service == "telnet" and "telnet_connect" in tool_map:
-                actions.append(("telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}))
+                entry_actions.append(("telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}))
             elif service == "ftp" and "ftp_list" in tool_map:
-                actions.append(("ftp_list", {"url": f"ftp://{ip}/"}))
+                entry_actions.append(("ftp_list", {"url": f"ftp://{ip}/"}))
+            elif service == "ssh" and "ssh_login" in tool_map:
+                # Use only credentials already recovered in the authoritative
+                # context; never invent a login for the fallback.
+                matching = next(
+                    (item for item in context.get("recovered_credentials", [])
+                     if isinstance(item, dict) and str(item.get("source_ip") or "") == ip),
+                    None,
+                )
+                if matching is not None:
+                    user = str(matching.get("user") or "")
+                    password = str(matching.get("password") or "")
+                    if user and password:
+                        command = (
+                            f"sshpass -p {shlex.quote(password)} ssh "
+                            "-o StrictHostKeyChecking=no "
+                            "-o UserKnownHostsFile=/dev/null "
+                            "-o ConnectTimeout=5 "
+                            "-o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1 "
+                            "-o HostKeyAlgorithms=+ssh-rsa "
+                            "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc "
+                            f"{shlex.quote(user)}@{ip} 'id'"
+                        )
+                        entry_actions.append(("ssh_login", {"command_string": command}))
 
         credentials = [
             item for item in context.get("recovered_credentials", [])
@@ -5779,20 +5882,25 @@ class Pipeline:
             and str(item.get("password") or "").strip()
         ]
         targets = [item for item in context.get("all_targets", []) if isinstance(item, dict)]
-        if "try_credential" in tool_map:
-            if credentials:
+        credential_actions = []
+        if "try_credential" in tool_map and credentials:
+            # Round-robin by target so the bounded fallback improves breadth
+            # instead of spending its entire budget on the first host.
+            for credential_index in range(len(credentials)):
                 for target in targets:
                     ip = str(target.get("device_ip") or target.get("ip") or "").strip()
                     if not ip:
                         continue
                     service = self._compact_intrusion_service(target)
-                    for credential in credentials:
-                        actions.append(("try_credential", {
-                            "ip": ip,
-                            "service": service,
-                            "user": str(credential["user"]),
-                            "password": str(credential["password"]),
-                        }))
+                    credential = credentials[credential_index]
+                    credential_actions.append(("try_credential", {
+                        "ip": ip,
+                        "service": service,
+                        "user": str(credential["user"]),
+                        "password": str(credential["password"]),
+                    }))
+
+        actions = entry_actions + credential_actions
 
         executed = 0
         for name, kwargs in actions[:COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS]:
@@ -5877,12 +5985,29 @@ class Pipeline:
             if isinstance(item, dict)
         }
         target_specs = {}
+        target_ports: dict[str, int] = {}
+        service_ports = {
+            21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
+            8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
+            9001: "mqtt", 3306: "mysql", 6379: "redis",
+        }
+        default_ports = {"ftp": 21, "ssh": 22, "telnet": 23, "http": 80, "mqtt": 1883, "mysql": 3306, "redis": 6379}
         for item in context.get("all_targets", []):
             if not isinstance(item, dict):
                 continue
             ip = str(item.get("device_ip") or item.get("ip") or "").strip()
             if ip:
-                target_specs[ip] = self._compact_intrusion_service(item)
+                service = self._compact_intrusion_service(item)
+                target_specs[ip] = service
+                ports = []
+                for raw_port in item.get("services", []):
+                    try:
+                        port = int(raw_port)
+                    except (TypeError, ValueError):
+                        continue
+                    if service_ports.get(port) == service:
+                        ports.append(port)
+                target_ports[ip] = min(ports) if ports else default_ports.get(service, 22)
         credentials = {
             (str(item.get("user") or "").strip(), str(item.get("password") or "").strip())
             for item in context.get("recovered_credentials", [])
@@ -5903,7 +6028,7 @@ class Pipeline:
                     return str(args[key]).strip()
             if tool in {"http_get", "curl_headers", "ftp_list"}:
                 return host_from_url(args.get("url"))
-            if tool == "telnet_connect":
+            if tool in {"telnet_connect", "ssh_login"}:
                 match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(args.get("command_string") or ""))
                 return match.group(0) if match else ""
             return ""
@@ -5930,18 +6055,32 @@ class Pipeline:
                     continue
                 target = target_from_record(tool, args)
                 service = tool_service(tool, args)
-                if (target, service) in entries:
+                expected_port = target_ports.get(target)
+                supplied_port = args.get("port")
+                port_valid = True
+                if tool == "try_credential" and supplied_port not in (None, ""):
+                    try:
+                        port_valid = int(supplied_port) == expected_port
+                    except (TypeError, ValueError):
+                        port_valid = False
+                if port_valid and (target, service) in entries:
                     seen_entries.add((target, service))
-                elif target in entry_targets_without_service:
+                elif port_valid and target in entry_targets_without_service:
                     # Older/fallback contexts may omit the service. In that
                     # case any observable action on the declared entry host is
                     # the strongest evidence available.
                     seen_entries.add((target, ""))
-                if target in target_specs:
+                if target in target_specs and port_valid:
                     seen_targets.add((target, service))
-                if tool == "try_credential" and target in target_specs:
+                if tool in {"try_credential", "ssh_login"} and target in target_specs and port_valid:
                     user = str(args.get("user") or "").strip()
                     password = str(args.get("password") or "").strip()
+                    if tool == "ssh_login":
+                        command_string = str(args.get("command_string") or "")
+                        password_match = re.search(r"sshpass\s+-p\s+([^\s]+)", command_string)
+                        user_match = re.search(r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b", command_string)
+                        password = password or (password_match.group(1) if password_match else "")
+                        user = user or (user_match.group(1) if user_match else "")
                     if (user, password) in credentials and service == target_specs[target]:
                         seen_credentials.add((target, user, password))
 
@@ -6074,7 +6213,7 @@ class Pipeline:
                     return value
             if tool in {"http_get", "curl_headers", "ftp_list"}:
                 return _host_from_url(args.get("url"))
-            if tool == "telnet_connect":
+            if tool in {"telnet_connect", "ssh_login"}:
                 match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(args.get("command_string") or ""))
                 return match.group(0) if match else ""
             return ""
@@ -6141,12 +6280,16 @@ class Pipeline:
                 elif isinstance(raw, dict):
                     res = raw
                 ip = _target_from_tool(str(tool or ""), args)
-                if tool in {"try_credential", "ssh_exec", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
+                if tool in {"try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
+                stdout = str(res.get("stdout") or res.get("output") or "") if isinstance(res, dict) else ""
                 authenticated = (
                     isinstance(res, dict)
-                    and res.get("success") is True
                     and res.get("authenticated", True) is not False
+                    and (
+                        res.get("success") is True
+                        or (tool == "ssh_login" and (res.get("return_code") == 0 or re.search(r"\buid=\d+", stdout.casefold())))
+                    )
                 )
                 if not (authenticated and ip):
                     continue
@@ -6161,10 +6304,10 @@ class Pipeline:
                         "access_via": "entry_point" if ip in entry_point_ips else "lateral_movement",
                         "data_exfiltrated": "", "credentials_found": [],
                     })
-                elif tool == "ssh_exec":
+                elif tool in {"ssh_exec", "ssh_login"}:
                     comp = compromised.setdefault(ip, {
                         "device_id": ip_to_id.get(ip, ""), "device_ip": ip,
-                        "access_method": "ssh_exec",
+                        "access_method": tool,
                         "access_via": "entry_point" if ip in entry_point_ips else "lateral_movement",
                         "data_exfiltrated": "", "credentials_found": [],
                     })
