@@ -2445,6 +2445,49 @@ class TestPhase5Context:
         complete = json.loads(tool_map["complete_intrusion_campaign"]())
         assert complete["ok"] is True
 
+    def test_compact_intrusion_rejects_invented_credentials(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "all_targets": [{
+                "device_id": "mqtt", "device_ip": "192.168.100.11",
+                "role": "mqtt_broker", "services": [1883],
+            }],
+            "recovered_credentials": [{
+                "user": "root", "password": "recovered",
+                "source_ip": "192.168.100.10",
+            }],
+        }))
+        credential = MagicMock(return_value=json.dumps({
+            "success": True, "authenticated": True, "service": "mqtt", "port": 1883,
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": lambda **kwargs: json.dumps({
+                 "filename": kwargs["filename"],
+                 "content": (run_dir / kwargs["filename"]).read_text(),
+             })},
+            {"name": "try_credential", "description": "try", "input_schema": {},
+             "function": credential},
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+
+        rejected = json.loads(tool_map["try_credential"](
+            ip="192.168.100.11", service="mqtt", user="admin", password="smartcity",
+            port=1883,
+        ))
+        assert rejected["error_kind"] == "unknown_intrusion_credential"
+        credential.assert_not_called()
+
+        tool_map["try_credential"](
+            ip="192.168.100.11", service="mqtt", user="root", password="recovered",
+            port=1883,
+        )
+        assert credential.call_count == 1
+
     def test_compact_intrusion_completion_is_logged(
         self, mock_provider, output_dir
     ):

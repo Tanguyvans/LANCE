@@ -4702,6 +4702,27 @@ class Pipeline:
                 return "ftp"
             return ""
 
+        def _credential_from_args(name: str, kwargs: dict) -> tuple[str, str]:
+            """Extract an explicitly supplied credential from a compact action."""
+            user = str(kwargs.get("user") or "").strip()
+            password = str(kwargs.get("password") or "").strip()
+            if name == "ssh_login":
+                command_string = str(kwargs.get("command_string") or "")
+                password_match = re.search(
+                    r"sshpass\s+-p\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s]+))",
+                    command_string,
+                )
+                user_match = re.search(
+                    r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b",
+                    command_string,
+                )
+                password = password or next(
+                    (group for group in (password_match.groups() if password_match else ()) if group),
+                    "",
+                )
+                user = user or (user_match.group(1) if user_match else "")
+            return user, password
+
         def _progress() -> dict:
             missing_credential_pairs = [
                 (target, user, password)
@@ -4968,6 +4989,22 @@ class Pipeline:
                             "suggested_tool": "try_credential",
                             "suggested_args": {**kwargs, "service": expected_service},
                         }))
+                    user, password = _credential_from_args(name, kwargs)
+                    if expected_credentials and (user, password) not in expected_credentials:
+                        suggestion = _next_target_action(_progress())
+                        payload = {
+                            "ok": False,
+                            "error_kind": "unknown_intrusion_credential",
+                            "error": (
+                                "Only credentials recovered in 05_intrusion_context.json may be tried; "
+                                "invented credentials are rejected."
+                            ),
+                            "suggested_tool": "try_credential",
+                            "suggested_args": {"ip": target, "service": expected_service},
+                        }
+                        if suggestion is not None and suggestion[0] == "try_credential":
+                            payload["suggested_args"] = suggestion[1]
+                        return _with_progress(json.dumps(payload))
                 if (
                     name == "mqtt_listen"
                     and target in expected_entry_anonymous
@@ -5018,14 +5055,7 @@ class Pipeline:
                             if not expected_services or service in expected_services:
                                 attempted_entry_points.add(target)
                     if name in credential_action_tools:
-                        user = str(kwargs.get("user") or "").strip()
-                        password = str(kwargs.get("password") or "").strip()
-                        if name == "ssh_login":
-                            command_string = str(kwargs.get("command_string") or "")
-                            password_match = re.search(r"sshpass\s+-p\s+([^\s]+)", command_string)
-                            user_match = re.search(r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b", command_string)
-                            password = password or (password_match.group(1) if password_match else "")
-                            user = user or (user_match.group(1) if user_match else "")
+                        user, password = _credential_from_args(name, kwargs)
                         if user and password:
                             attempted_credentials.add((target, user, password))
                 return _with_progress(result)
@@ -6194,6 +6224,7 @@ class Pipeline:
         log_path = self.run_dir / "tool_calls.jsonl"
         compromised: dict = {}
         creds: list = []
+        allowed_credentials: set[tuple[str, str]] = set()
         seen_cred: set = set()
         attempted: set = set()  # all IPs touched by Phase 5 action tools
 
@@ -6218,6 +6249,26 @@ class Pipeline:
                 return match.group(0) if match else ""
             return ""
 
+        def _credential_from_tool(tool: str, args: dict) -> tuple[str, str]:
+            user = str(args.get("user") or "").strip()
+            password = str(args.get("password") or "").strip()
+            if tool == "ssh_login":
+                command_string = str(args.get("command_string") or "")
+                password_match = re.search(
+                    r"sshpass\s+-p\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s]+))",
+                    command_string,
+                )
+                user_match = re.search(
+                    r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b",
+                    command_string,
+                )
+                password = password or next(
+                    (group for group in (password_match.groups() if password_match else ()) if group),
+                    "",
+                )
+                user = user or (user_match.group(1) if user_match else "")
+            return user, password
+
         # Map IP -> device_id from the pre-generated intrusion context so the
         # synthesized deliverable carries real device names, not blanks.
         ip_to_id: dict = {}
@@ -6241,6 +6292,8 @@ class Pipeline:
                     svc = str(cred.get("service", ""))
                     source_ip = str(cred.get("source_ip", ""))
                     ckey = (source_ip, user, pwd, svc)
+                    if user and pwd:
+                        allowed_credentials.add((user, pwd))
                     if user and ckey not in seen_cred:
                         seen_cred.add(ckey)
                         creds.append({
@@ -6291,6 +6344,10 @@ class Pipeline:
                         or (tool == "ssh_login" and (res.get("return_code") == 0 or re.search(r"\buid=\d+", stdout.casefold())))
                     )
                 )
+                if tool in {"try_credential", "ssh_exec", "ssh_login"}:
+                    supplied_credential = _credential_from_tool(str(tool), args)
+                    if supplied_credential not in allowed_credentials:
+                        authenticated = False
                 if not (authenticated and ip):
                     continue
 
