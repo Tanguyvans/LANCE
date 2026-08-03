@@ -2634,7 +2634,8 @@ class TestPhase5Context:
         pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
 
         final = json.loads((run_dir / "05_intrusion.json").read_text())
-        assert results["intrusion"] == "completed:synthesized"
+        assert results["intrusion"] == "failed:phase5_contract_incomplete"
+        assert final["status"] == "incomplete"
         assert final["summary"]["devices_compromised"] == 0
         assert final["summary"]["devices_attempted"] == 1
         assert final["compromised_devices"] == []
@@ -2688,6 +2689,10 @@ class TestPhase5Context:
                     "admin@192.168.100.12",
                     "admin@192.168.100.13",
                 ],
+                "missing_credential_keys": [
+                    ["192.168.100.12", "admin", "admin"],
+                    ["192.168.100.13", "admin", "admin"],
+                ],
                 "missing_targets": [],
             }),
         )
@@ -2709,6 +2714,52 @@ class TestPhase5Context:
                 "password": "admin",
             },
         ]
+
+    def test_compact_coverage_does_not_count_credential_as_entry_probe(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [
+                {"device_id": "s1-web", "device_ip": "192.168.100.12", "service": "http"},
+                {"device_id": "s1-ssh", "device_ip": "192.168.100.13", "service": "ssh"},
+            ],
+            "all_targets": [
+                {"device_id": "s1-web", "device_ip": "192.168.100.12", "role": "web_server", "services": [80]},
+                {"device_id": "s1-ssh", "device_ip": "192.168.100.13", "role": "ssh_server", "services": [22]},
+            ],
+            "recovered_credentials": [{"user": "root", "password": "root"}],
+        }))
+        calls = [
+            {
+                "phase": 5,
+                "tool": "try_credential",
+                "args": {"ip": "192.168.100.12", "service": "http", "user": "root", "password": "root", "port": 80},
+                "result": json.dumps({"success": True, "authenticated": True}),
+            },
+            {
+                "phase": 5,
+                "tool": "try_credential",
+                "args": {"ip": "192.168.100.13", "service": "ssh", "user": "root", "password": "root", "port": 22},
+                "result": json.dumps({"success": True, "authenticated": True}),
+            },
+        ]
+        (run_dir / "tool_calls.jsonl").write_text(
+            "".join(json.dumps(item) + "\n" for item in calls)
+        )
+
+        coverage_ok, coverage = pipeline._compact_intrusion_coverage()
+
+        assert coverage_ok is False
+        assert coverage["missing_entry_points"] == [
+            ("192.168.100.12", "http"),
+            ("192.168.100.13", "ssh"),
+        ]
+        assert coverage["missing_credential_keys"] == []
+
 
     def test_intrusion_synthesis_blocks_context_only_trace(
         self, mock_provider, output_dir, monkeypatch

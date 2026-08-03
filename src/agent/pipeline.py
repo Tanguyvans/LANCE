@@ -2658,9 +2658,11 @@ class Pipeline:
                 variables["intrusion_recon_tool_restriction"] = ""
                 variables["intrusion_entry_validation"] = (
                     "## Compact entry validation — mandatory before credential reuse\n\n"
-                    "- For an MQTT no_auth entry point, call mqtt_listen once.\n"
-                    "- For an HTTP directory_listing or data-exposure entry point, call http_get or curl_headers once.\n"
-                    "- Then use try_credential against the remaining context targets. "
+                    "- Perform exactly one service-appropriate probe for every entry point in 05_intrusion_context.json: "
+                    "mqtt_listen for MQTT, http_get/curl_headers for HTTP, telnet_connect for Telnet, and ssh_login "
+                    "with the recovered source credential for SSH.\n"
+                    "- Complete all entry-point probes before credential reuse. Then use try_credential against "
+                    "every target with every recovered credential. "
                     "These are authorized Phase 5 actions, not Phase 2 scanning."
                 )
                 variables["intrusion_save_tool"] = (
@@ -4599,6 +4601,10 @@ class Pipeline:
             "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers",
             "telnet_connect", "ftp_list",
         }
+        entry_probe_tools = {
+            "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
+            "ftp_list", "ssh_login",
+        }
         credential_action_tools = {"try_credential", "ssh_exec", "ssh_login"}
 
         def _host_from_url(value: object) -> str:
@@ -4801,6 +4807,10 @@ class Pipeline:
                 f"{user}@{target}"
                 for target, user, _password in missing_credential_pairs
             ]
+            missing_credential_keys = [
+                [target, user, password]
+                for target, user, password in missing_credential_pairs
+            ]
             missing_successful_access = bool(expected_credentials) and not successful_accesses
             return {
                 "schema_version": "2",
@@ -4842,6 +4852,7 @@ class Pipeline:
                 "missing_target_services": missing_target_services,
                 "missing_entry_points": missing_entry_points,
                 "missing_credentials": missing_credentials,
+                "missing_credential_keys": missing_credential_keys,
                 "successful_accesses": [
                     {"target": target, "service": service}
                     for target, service in sorted(successful_accesses)
@@ -5099,7 +5110,7 @@ class Pipeline:
                         service = _action_service(name, kwargs)
                         if service:
                             attempted_target_services.add((target, service))
-                        if target in expected_entry_points:
+                        if name in entry_probe_tools and target in expected_entry_points:
                             expected_services = expected_entry_services.get(target, set())
                             if not expected_services or service in expected_services:
                                 attempted_entry_points.add(target)
@@ -5934,6 +5945,15 @@ class Pipeline:
             None if missing_credentials is None
             else {str(item) for item in missing_credentials}
         )
+        missing_credential_keys = coverage.get("missing_credential_keys") if isinstance(coverage, dict) else None
+        if missing_credential_keys is None:
+            missing_credential_key_set = None
+        else:
+            missing_credential_key_set = {
+                (str(item[0]), str(item[1]), str(item[2]))
+                for item in missing_credential_keys
+                if isinstance(item, (list, tuple)) and len(item) >= 3
+            }
 
         entry_actions = []
         # Reconcile entry-point evidence independently from credential reuse.
@@ -5999,7 +6019,11 @@ class Pipeline:
                     service = self._compact_intrusion_service(target)
                     credential = credentials[credential_index]
                     user = str(credential["user"])
-                    if (
+                    password = str(credential["password"])
+                    if missing_credential_key_set is not None:
+                        if (ip, user, password) not in missing_credential_key_set:
+                            continue
+                    elif (
                         missing_credential_labels is not None
                         and f"{user}@{ip}" not in missing_credential_labels
                     ):
@@ -6008,7 +6032,7 @@ class Pipeline:
                         "ip": ip,
                         "service": service,
                         "user": user,
-                        "password": str(credential["password"]),
+                        "password": password,
                     }))
 
         actions = entry_actions + credential_actions
@@ -6143,13 +6167,16 @@ class Pipeline:
                 match = re.search(r"(?:\d{1,3}\.){3}\d{1,3}", str(args.get("command_string") or ""))
                 return match.group(0) if match else ""
             return ""
-
         def tool_service(tool: str, args: dict) -> str:
             return {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
-                "telnet_connect": "telnet", "ftp_list": "ftp",
+                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh",
             }.get(tool, str(args.get("service") or "").casefold())
 
+        entry_probe_tools = {
+            "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
+            "ftp_list", "ssh_login",
+        }
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
                 try:
@@ -6174,9 +6201,9 @@ class Pipeline:
                         port_valid = int(supplied_port) == expected_port
                     except (TypeError, ValueError):
                         port_valid = False
-                if port_valid and (target, service) in entries:
+                if port_valid and tool in entry_probe_tools and (target, service) in entries:
                     seen_entries.add((target, service))
-                elif port_valid and target in entry_targets_without_service:
+                elif port_valid and tool in entry_probe_tools and target in entry_targets_without_service:
                     # Older/fallback contexts may omit the service. In that
                     # case any observable action on the declared entry host is
                     # the strongest evidence available.
@@ -6202,6 +6229,12 @@ class Pipeline:
             for user, password in credentials
             if (target, user, password) not in seen_credentials
         )
+        missing_credential_keys = [
+            [target, user, password]
+            for target in sorted(target_specs)
+            for user, password in sorted(credentials)
+            if (target, user, password) not in seen_credentials
+        ]
         missing_targets = sorted(
             f"{target}:{service}"
             for target, service in target_specs.items()
@@ -6210,6 +6243,7 @@ class Pipeline:
         )
         return not missing_entries and not missing_credentials and not missing_targets, {
             "missing_entry_points": missing_entries,
+            "missing_credential_keys": missing_credential_keys,
             "missing_credentials": missing_credentials,
             "missing_targets": missing_targets,
         }
