@@ -184,7 +184,7 @@ def _phase4_verification_plan(vuln: dict) -> dict[str, object]:
     suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
     url = f"{base_url}{suffix}"
 
-    if vuln_type == "network_exposure" and (service == "mqtt-ws" or port == 9001):
+    if vuln_type in {"network_exposure", "no_auth"} and (service == "mqtt-ws" or port == 9001):
         return {"tool": "http_request", "target": ip, "port": 9001,
                 "args_hint": {"url": f"http://{ip}:9001/", "method": "GET",
                     "headers": {"Connection": "Upgrade", "Upgrade": "websocket",
@@ -444,11 +444,52 @@ def _exploit_relpath(device_id: str, vuln_type: str, vuln_id: str) -> Path:
     return Path("04_exploits") / device_id / f"{vuln_type}_{safe_vuln_id}.json"
 
 
+def _extract_endpoint_paths(*values: object) -> list[str]:
+    """Extract distinct HTTP paths while retaining every affected endpoint."""
+    paths: list[str] = []
+
+    def add(value: object) -> None:
+        if isinstance(value, (list, tuple, set)):
+            for item in value:
+                add(item)
+            return
+        text = str(value or "").strip()
+        if not text:
+            return
+        urls = re.findall(r"https?://[^\s,'\"<>]+", text)
+        if urls:
+            for raw_url in urls:
+                try:
+                    path = urlsplit(raw_url.rstrip(".,);'\"")).path or "/"
+                except ValueError:
+                    continue
+                if path not in paths:
+                    paths.append(path)
+            return
+        for part in re.split(r"\s*,\s*", text):
+            part = part.strip().rstrip(".,);'\"")
+            if part.startswith("/") and part not in paths:
+                paths.append(part or "/")
+
+    for value in values:
+        add(value)
+    return paths
+
+
 def _enrich_finding_structure(finding: dict) -> dict:
     """Fill deterministic strict-v3 structure without inventing observations."""
     service = str(finding.get("service", "")).strip().casefold()
     if service and not str(finding.get("protocol", "")).strip():
         finding["protocol"] = "udp" if service in {"coap", "snmp", "bacnet"} else "tcp"
+    if service in {"http", "https"}:
+        endpoints = _extract_endpoint_paths(
+            finding.get("endpoints"), finding.get("endpoint"),
+            finding.get("details"), finding.get("evidence"),
+        )
+        if endpoints:
+            finding["endpoints"] = endpoints
+            if not str(finding.get("endpoint", "")).strip():
+                finding["endpoint"] = endpoints[0]
     if not str(finding.get("endpoint", "")).strip():
         text = f"{finding.get('details', '')} {finding.get('evidence', '')}"
         match = re.search(r"https?://[^\s,]+", text)
@@ -489,6 +530,10 @@ def _make_test_entry(
         ),
         "protocol": result.get("protocol") or vuln.get("protocol", ""),
         "endpoint": result.get("endpoint") or vuln.get("endpoint", ""),
+        "endpoints": _extract_endpoint_paths(
+            result.get("endpoints"), result.get("endpoint"),
+            vuln.get("endpoints"), vuln.get("endpoint"),
+        ),
         "product": result.get("product") or vuln.get("product", ""),
         "version": result.get("version") or vuln.get("version", ""),
         "status": status,
@@ -760,7 +805,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 status_code = _http_status(text)
             http_ok = 200 <= status_code < 300 if isinstance(status_code, int) else (rc == 0 and bool(text))
             if (
-                vuln_type == "network_exposure"
+                vuln_type in {"network_exposure", "no_auth"}
                 and service == "mqtt-ws"
                 and status_code == 101
             ):
@@ -870,6 +915,9 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         "port": port,
         "protocol": vuln.get("protocol", ""),
         "endpoint": vuln.get("endpoint", ""),
+        "endpoints": _extract_endpoint_paths(
+            vuln.get("endpoints"), vuln.get("endpoint"),
+        ),
         "product": vuln.get("product", ""),
         "version": vuln.get("version", ""),
         "tools_used": list(dict.fromkeys(tools_used)),
@@ -3916,7 +3964,7 @@ class Pipeline:
                 key: finding.get(key)
                 for key in (
                     "device_id", "device_ip", "type", "severity", "service",
-                    "port", "protocol", "endpoint", "product", "version",
+                    "port", "protocol", "endpoint", "endpoints", "product", "version",
                 )
             }
 

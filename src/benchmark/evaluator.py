@@ -738,7 +738,7 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
         "service": _normalized_services(finding.get("services", finding.get("service"))),
         "port": _normalized_values(finding.get("ports", finding.get("port")), integer=True),
         "protocol": _normalized_values(finding.get("protocols", finding.get("protocol"))),
-        "endpoint": _normalized_endpoints(finding.get("endpoints", finding.get("endpoint"))),
+        "endpoint": _normalized_endpoints(finding.get("endpoints") or finding.get("endpoint")),
         "product": _normalized_values(finding.get("products", finding.get("product"))),
     }
 
@@ -1526,6 +1526,7 @@ def _phase3_detection_finding(finding: dict, verification_status: str) -> dict:
         "port": finding.get("port"),
         "protocol": finding.get("protocol", ""),
         "endpoint": finding.get("endpoint", ""),
+        "endpoints": finding.get("endpoints", []),
         "product": finding.get("product", ""),
         "version": finding.get("version", ""),
         "details": finding.get("details", ""),
@@ -1614,6 +1615,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                 "port": t.get("port") if t.get("port") is not None else (p3 or {}).get("port"),
                 "protocol": t.get("protocol") or (p3 or {}).get("protocol", ""),
                 "endpoint": t.get("endpoint") or (p3 or {}).get("endpoint", ""),
+                "endpoints": t.get("endpoints") or (p3 or {}).get("endpoints", []),
                 "product": t.get("product") or (p3 or {}).get("product", ""),
                 "version": t.get("version") or (p3 or {}).get("version", ""),
                 "details": (

@@ -129,7 +129,7 @@ Your device has role = **{{device_role}}**.
      * Never mark `no_auth` based on 403 or a redirect.
    - If return_code=7 (connection refused): still document the attempt, then skip remaining paths for this device
    - If stdout contains "Index of" or lists files → type=directory_listing, severity=HIGH
-   - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL. IMPORTANT: if MULTIPLE paths on the same device expose credentials (e.g. /backup/ AND /config/ both have sensitive data), create ONE single data_exposure finding and list all affected paths in evidence. Do NOT create one finding per path.
+   - If stdout contains passwords, keys, or tokens → type=data_exposure, severity=CRITICAL. IMPORTANT: if MULTIPLE paths on the same device expose credentials (e.g. /backup/ AND /config/ both have sensitive data), create ONE single data_exposure finding, list all affected paths in evidence, and populate the `endpoints` array with every affected path. Do NOT create one finding per path.
    - **FIRMWARE BINARY IS NOT DATA_EXPOSURE**: If the HTTP path /firmware/ lists a .bin or .img file — this is type=insecure_update (already handled). A firmware binary IS NOT sensitive data. Do NOT create data_exposure for a downloadable firmware file. data_exposure requires passwords/API keys/tokens/PII to be present in the response body.
    - **DIRECTORY LISTING IS NOT DATA_EXPOSURE**: A directory listing (Index of) showing filenames like `db_backup_2024.sql`, `config.tar.gz`, `credentials.txt` is type=directory_listing ONLY. Do NOT create an additional data_exposure finding based on the filename alone. To create data_exposure, you MUST actually download the file and read actual credentials/tokens from its content. For camera_server and nvr_server roles: cameras do not run databases — NEVER create data_exposure for SQL backup filenames seen in a directory listing.
    - If /admin or /api/* returns 200 without auth → type=no_auth, severity=HIGH
@@ -500,7 +500,8 @@ STRICT JSON with this structure:
       "service": "ssh",
       "port": 22,
       "protocol": "tcp",
-      "endpoint": "exact affected path or empty string",
+      "endpoint": "primary exact affected path or empty string",
+      "endpoints": ["all affected HTTP paths when one finding covers multiple paths"],
       "product": "observed product name or empty string",
       "version": "observed version or empty string",
       "details": "Vulnerability description",

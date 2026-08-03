@@ -681,11 +681,11 @@ def _extract_mqtt_websocket(entries: list[dict], device: dict, svc_name: str) ->
         result = _parse_result(entry)
         if result.get("status_code") == 101:
             return [_make_finding(
-                device, "network_exposure", "MEDIUM", "mqtt-ws", 9001,
+                device, "no_auth", "HIGH", "mqtt-ws", 9001,
                 "MQTT WebSocket listener accepts an unauthenticated HTTP upgrade",
                 "HTTP 101 Switching Protocols returned for a WebSocket upgrade on port 9001",
                 status="confirmed",
-                technique="Complete an MQTT CONNECT over the accepted WebSocket before claiming MQTT no_auth",
+                technique="Connect to the MQTT broker over the accepted unauthenticated WebSocket",
                 tools=["http_request"],
             )]
     for entry in entries:

@@ -16,6 +16,8 @@ from src.agent.pipeline import (
     _looks_unusable_model_memo,
     _resolve_model_provider,
     _synthesize_exploit_result,
+    _enrich_finding_structure,
+    _make_test_entry,
 )
 from src.agent.registry import AgentConfig, AGENTS
 
@@ -29,6 +31,13 @@ def test_phase4_verification_plan_selects_precise_probe_per_finding():
     })
     assert ws["tool"] == "http_request"
     assert ws["args_hint"]["url"].endswith(":9001/")
+
+    ws_no_auth = _phase4_verification_plan({
+        "type": "no_auth", "service": "mqtt-ws",
+        "device_ip": "192.168.100.11", "port": 9001,
+    })
+    assert ws_no_auth["tool"] == "http_request"
+    assert ws_no_auth["args_hint"]["url"].endswith(":9001/")
 
     listing = _phase4_verification_plan({
         "type": "directory_listing", "service": "http",
@@ -143,6 +152,48 @@ def test_synthesize_exploit_result_accepts_evaluable_scan_and_socket_evidence():
     assert ssh["evidence_level"] == 2
     assert tcp["status"] == "EXPLOITED"
     assert tcp["evidence_level"] == 2
+
+
+def test_synthesize_exploit_result_accepts_unauthenticated_mqtt_websocket_upgrade():
+    result = _synthesize_exploit_result(
+        {
+            "id": "VULN-WS",
+            "device_ip": "192.168.100.11",
+            "type": "no_auth",
+            "service": "mqtt-ws",
+            "port": 9001,
+        },
+        [{
+            "tool": "http_request",
+            "args": {"url": "http://192.168.100.11:9001/"},
+            "result": json.dumps({
+                "status_code": 101,
+                "headers": {"Upgrade": "websocket"},
+            }),
+            "evidence_ref": "tc-ws",
+        }],
+    )
+    assert result["status"] == "EXPLOITED"
+    assert result["evidence_level"] == 2
+
+
+def test_http_data_exposure_preserves_all_endpoints():
+    finding = _enrich_finding_structure({
+        "device_ip": "192.168.100.12",
+        "service": "http",
+        "type": "data_exposure",
+        "endpoint": "/backup/db_backup_2024-01-15.sql",
+        "details": (
+            "Retrieved http://192.168.100.12/backup/db_backup_2024-01-15.sql "
+            "and http://192.168.100.12/config/app.config"
+        ),
+    })
+    assert finding["endpoints"] == [
+        "/backup/db_backup_2024-01-15.sql",
+        "/config/app.config",
+    ]
+    entry = _make_test_entry(finding, status="CONFIRMED", result={})
+    assert entry["endpoints"] == finding["endpoints"]
 
 
 def test_exploit_prompt_requires_fresh_phase4_verification():
@@ -382,10 +433,11 @@ class TestScannerEvidenceExtraction:
         )
 
         assert len(findings) == 1
-        assert findings[0]["type"] == "network_exposure"
+        assert findings[0]["type"] == "no_auth"
+        assert findings[0]["severity"] == "HIGH"
         assert findings[0]["exploitation_status"] == "confirmed"
-        assert "network_exposure" in CANONICAL_TYPES
-        assert "network_exposure" not in NOISE_TYPES
+        assert "no_auth" in CANONICAL_TYPES
+        assert "no_auth" not in NOISE_TYPES
 
     def test_phase2_recon_versions_restore_filtered_ssh_banner(self, tmp_path):
         from src.agent import scanner as scanner_mod
