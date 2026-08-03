@@ -104,6 +104,7 @@ SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
 COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 8
+COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS = 4
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
@@ -5911,6 +5912,29 @@ class Pipeline:
             self.execution_profile, config.phase, self._resolve_tools(config)
         )
         tool_map = {tool["name"]: tool["function"] for tool in tools}
+        # Reconcile only the coverage that is still missing from the
+        # authoritative Phase 5 ledger.  The previous implementation always
+        # replayed every entry point before spraying credentials, so its fixed
+        # eight-action budget could never reach the final missing pairs.
+        try:
+            coverage_ok, coverage = self._compact_intrusion_coverage()
+        except Exception:
+            coverage_ok, coverage = False, {}
+        missing_entry_points = coverage.get("missing_entry_points") if isinstance(coverage, dict) else None
+        if missing_entry_points is None:
+            missing_entry_keys = None
+        else:
+            missing_entry_keys = {
+                (str(item[0]), str(item[1]))
+                for item in missing_entry_points
+                if isinstance(item, (list, tuple)) and len(item) >= 2
+            }
+        missing_credentials = coverage.get("missing_credentials") if isinstance(coverage, dict) else None
+        missing_credential_labels = (
+            None if missing_credentials is None
+            else {str(item) for item in missing_credentials}
+        )
+
         entry_actions = []
         # Reconcile entry-point evidence independently from credential reuse.
         # An entry probe is not a credential attempt and must not suppress the
@@ -5920,7 +5944,10 @@ class Pipeline:
                 continue
             ip = str(entry.get("device_ip") or entry.get("ip") or "").strip()
             service = str(entry.get("service") or "").strip().casefold()
-            if not ip:
+            if not ip or (
+                missing_entry_keys is not None
+                and (ip, service) not in missing_entry_keys
+            ):
                 continue
             if service == "mqtt" and "mqtt_listen" in tool_map:
                 entry_actions.append(("mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}))
@@ -5971,10 +5998,16 @@ class Pipeline:
                         continue
                     service = self._compact_intrusion_service(target)
                     credential = credentials[credential_index]
+                    user = str(credential["user"])
+                    if (
+                        missing_credential_labels is not None
+                        and f"{user}@{ip}" not in missing_credential_labels
+                    ):
+                        continue
                     credential_actions.append(("try_credential", {
                         "ip": ip,
                         "service": service,
-                        "user": str(credential["user"]),
+                        "user": user,
                         "password": str(credential["password"]),
                     }))
 
@@ -6201,9 +6234,15 @@ class Pipeline:
         coverage_ok, coverage = (True, {})
         if compact:
             coverage_ok, coverage = self._compact_intrusion_coverage()
-            if not coverage_ok:
-                self._run_compact_intrusion_fallback(config, stream_callback)
-                coverage_ok, coverage = self._compact_intrusion_coverage()
+            fallback_round = 0
+            while not coverage_ok and fallback_round < COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS:
+                fallback_round += 1
+                executed = self._run_compact_intrusion_fallback(config, stream_callback)
+                next_ok, next_coverage = self._compact_intrusion_coverage()
+                if next_ok or executed <= 0 or next_coverage == coverage:
+                    coverage_ok, coverage = next_ok, next_coverage
+                    break
+                coverage_ok, coverage = next_ok, next_coverage
 
         data = self._synthesize_intrusion_from_tools(
             note=(

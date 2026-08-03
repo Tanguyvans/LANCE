@@ -2646,6 +2646,70 @@ class TestPhase5Context:
             "source_device": "s1-mqtt",
         }]
 
+    def test_compact_intrusion_fallback_prioritizes_missing_credential_targets(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [],
+            "all_targets": [
+                {"device_id": "s1-router", "device_ip": "192.168.100.1", "role": "router"},
+                {"device_id": "s1-mqtt", "device_ip": "192.168.100.11", "role": "mqtt_broker"},
+                {"device_id": "s1-web", "device_ip": "192.168.100.12", "role": "web_server"},
+                {"device_id": "s1-ssh", "device_ip": "192.168.100.13", "role": "ssh_server"},
+            ],
+            "recovered_credentials": [
+                {"user": "admin", "password": "admin", "source_ip": "192.168.100.13"},
+                {"user": "root", "password": "P@ssw0rd123", "source_ip": "192.168.100.11"},
+                {"user": "root", "password": "root", "source_ip": "192.168.100.13"},
+            ],
+        }))
+        calls = []
+
+        def try_credential(**kwargs):
+            calls.append(kwargs)
+            return json.dumps({"success": False, "authenticated": False})
+
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda _config: [{
+            "name": "try_credential",
+            "description": "try",
+            "input_schema": {},
+            "function": try_credential,
+        }])
+        monkeypatch.setattr(
+            pipeline,
+            "_compact_intrusion_coverage",
+            lambda: (False, {
+                "missing_entry_points": [],
+                "missing_credentials": [
+                    "admin@192.168.100.12",
+                    "admin@192.168.100.13",
+                ],
+                "missing_targets": [],
+            }),
+        )
+
+        executed = pipeline._run_compact_intrusion_fallback(AGENTS["intrusion"])
+
+        assert executed == 2
+        assert calls == [
+            {
+                "ip": "192.168.100.12",
+                "service": "http",
+                "user": "admin",
+                "password": "admin",
+            },
+            {
+                "ip": "192.168.100.13",
+                "service": "ssh",
+                "user": "admin",
+                "password": "admin",
+            },
+        ]
+
     def test_intrusion_synthesis_blocks_context_only_trace(
         self, mock_provider, output_dir, monkeypatch
     ):
