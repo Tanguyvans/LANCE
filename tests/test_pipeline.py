@@ -2775,6 +2775,146 @@ class TestPhase5Context:
         assert calls[1][0] == "try_credential"
 
 
+    def test_compact_post_access_harvest_runs_after_authenticated_ssh(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        calls = []
+
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "phase": 5,
+            "tool": "try_credential",
+            "args": {
+                "ip": "192.0.2.10",
+                "service": "ssh",
+                "user": "admin",
+                "password": "admin",
+            },
+            "result": json.dumps({
+                "success": True,
+                "authenticated": True,
+                "service": "ssh",
+                "stdout": "__ok__",
+            }),
+        }) + "\n")
+
+        def ssh_exec(**kwargs):
+            calls.append(kwargs)
+            return json.dumps({
+                "success": True,
+                "return_code": 0,
+                "stdout": 'uid=1000(admin) {"db_user":"root","db_pass":"secret"}',
+            })
+
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda _config: [{
+            "name": "ssh_exec",
+            "description": "ssh",
+            "input_schema": {},
+            "function": ssh_exec,
+        }])
+
+        executed = pipeline._run_compact_intrusion_post_access(AGENTS["intrusion"])
+
+        assert executed == 1
+        assert calls[0]["ip"] == "192.0.2.10"
+        assert calls[0]["user"] == "admin"
+        assert "config.json" in calls[0]["command"]
+
+    def test_compact_intrusion_synthesis_reconstructs_harvest_and_chains(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [
+                {"device_id": "s1-router", "device_ip": "192.0.2.1", "service": "telnet"},
+                {"device_id": "s1-ssh", "device_ip": "192.0.2.10", "service": "ssh"},
+            ],
+            "all_targets": [
+                {"device_id": "s1-router", "device_ip": "192.0.2.1", "role": "router", "services": [22, 23]},
+                {"device_id": "s1-ssh", "device_ip": "192.0.2.10", "role": "ssh_server", "services": [22]},
+            ],
+            "recovered_credentials": [
+                {"user": "root", "password": "root", "source_ip": "192.0.2.1", "source_device": "s1-router"},
+                {"user": "admin", "password": "admin", "source_ip": "192.0.2.10", "source_device": "s1-ssh"},
+            ],
+            "attack_chains": [{
+                "chain": "s1-router -> s1-ssh",
+                "src_device": "s1-router",
+                "src_ip": "192.0.2.1",
+                "dst_device": "s1-ssh",
+                "dst_ip": "192.0.2.10",
+                "pivot_vuln": "VULN-006",
+                "target_vuln_ids": ["VULN-010"],
+            }],
+        }))
+        records = [
+            {
+                "phase": 5,
+                "tool": "try_credential",
+                "args": {
+                    "ip": "192.0.2.1", "service": "ssh",
+                    "user": "root", "password": "root",
+                },
+                "result": json.dumps({
+                    "success": True, "authenticated": True,
+                    "service": "ssh", "stdout": "__ok__",
+                }),
+            },
+            {
+                "phase": 5,
+                "tool": "ssh_exec",
+                "args": {
+                    "ip": "192.0.2.1", "user": "root",
+                    "password": "root", "command": "id",
+                },
+                "result": json.dumps({
+                    "success": True, "return_code": 0,
+                    "stdout": 'uid=0(root) {"db_user":"dbadmin","db_pass":"db-secret"}',
+                }),
+            },
+            {
+                "phase": 5,
+                "tool": "ssh_login",
+                "args": {
+                    "command_string": "sshpass -p admin ssh admin@192.0.2.10 'id'",
+                },
+                "result": json.dumps({
+                    "return_code": 0, "stdout": "uid=1000(admin)",
+                }),
+            },
+        ]
+        (run_dir / "tool_calls.jsonl").write_text(
+            "".join(json.dumps(record) + "\n" for record in records)
+        )
+
+        data = pipeline._synthesize_intrusion_from_tools()
+
+        assert data["summary"]["credentials_harvested"] == 3
+        assert any(
+            credential["password"] == "db-secret"
+            for credential in data["credential_pool"]
+        )
+        assert data["compromised_devices"][0]["credentials_found"][0]["password"] == "db-secret"
+        assert len(data["chains"]) == 1
+        assert [hop["device_id"] for hop in data["chains"][0]["hops"]] == [
+            "s1-router", "s1-ssh",
+        ]
+        assert data["summary"]["total_hops"] == 1
+
+    def test_compact_post_access_recovery_is_disabled_for_full_profile(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        assert pipeline._run_compact_intrusion_post_access(AGENTS["intrusion"]) == 0
+
     def test_compact_coverage_does_not_count_credential_as_entry_probe(
         self, mock_provider, output_dir
     ):

