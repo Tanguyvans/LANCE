@@ -103,7 +103,7 @@ RECON_READ_ONLY_TOOL_NAMES = frozenset({
 SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
-COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 8
+COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 64
 COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS = 4
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
@@ -236,7 +236,7 @@ def _phase4_verification_plan(vuln: dict) -> dict[str, object]:
         if service == "ssh" or port == 22:
             return {"tool": "ssh_login", "target": ip, "port": 22,
                     "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
-        return {"tool": "try_credential", "target": ip, "port": port,
+        return {"tool": "try_credential", "target": ip, "port": port, "service": service or "http",
                 "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
     if service == "mqtt":
         return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
@@ -257,6 +257,20 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         return False
     if tool == "mqtt_listen" and str(args.get("broker") or "") != target:
         return False
+    if tool == "try_credential":
+        expected_service = str(requirement.get("service") or "").casefold()
+        actual_service = str(args.get("service") or "").casefold()
+        if expected_service and actual_service != expected_service:
+            if {expected_service, actual_service} != {"mysql", "mariadb"}:
+                return False
+        expected_port = requirement.get("port")
+        actual_port = args.get("port")
+        if expected_port not in (None, "") and actual_port not in (None, ""):
+            try:
+                if int(actual_port) != int(expected_port):
+                    return False
+            except (TypeError, ValueError):
+                return False
     if tool in {"http_get", "curl_headers", "http_request"}:
         raw_url = str(args.get("url") or "")
         if target not in raw_url:
@@ -3489,7 +3503,10 @@ class Pipeline:
             print("  [dry-run] Skipping scanner")
             return
 
-        scanner_results = run_scanner(self.run_dir, surface, stream_callback)
+        scanner_results = run_scanner(
+            self.run_dir, surface, stream_callback,
+            compact=self._uses_compact_local_moe(),
+        )
         if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
                 scanner_results, surface, stream_callback
@@ -3901,6 +3918,33 @@ class Pipeline:
                 else:
                     vulns = []
                 add_candidates(vulns if isinstance(vulns, list) else [], f.name, "model")
+                if self._uses_compact_local_moe():
+                    try:
+                        from src.agent.scanner import extract_findings
+                        device_id = f.stem.replace("03_device_", "")
+                        scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
+                        if scan_path.exists():
+                            scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
+                            surface = json.loads(get_attack_surface())
+                            if isinstance(surface, dict):
+                                surface = surface.get("nodes", [])
+                            fallback_device = next(
+                                (d for d in surface if d.get("id") == device_id),
+                                {"id": device_id, "ip": "", "role": ""},
+                            )
+                            compact_findings = extract_findings(
+                                scan_data, fallback_device, compact=True
+                            )
+                            add_candidates(
+                                [finding for finding in compact_findings
+                                 if finding.get("type") in {"default_credentials", "insecure_update"}],
+                                scan_path.name, "scanner_compact",
+                            )
+                    except Exception as compact_exc:
+                        log.warning(
+                            "Compact scanner findings unavailable for %s: %s",
+                            f.name, compact_exc,
+                        )
             except Exception as exc:
                 log.warning(
                     "Failed to parse %s: %s — falling back to scanner findings",
@@ -5689,7 +5733,10 @@ class Pipeline:
             print(f"  [+] Followup scan: {device_id} ({ip})")
 
             # 1. Targeted nmap scan
-            mini_scan = run_scanner(self.run_dir, [device], stream_callback)
+            mini_scan = run_scanner(
+                self.run_dir, [device], stream_callback,
+                compact=self._uses_compact_local_moe(),
+            )
             scan_data = mini_scan.get(device_id, {})
 
             # Prepare scan results for prompt
@@ -6994,7 +7041,10 @@ class Pipeline:
                     _add_cred(user, pwd, exp)
 
             for exp in confirmed:
-                texts = [exp.get("evidence", ""), exp.get("description", "")]
+                texts = [exp.get("evidence", "")]
+                # Descriptions may contain examples or hints, not recovered secrets.
+                if not self._uses_compact_local_moe():
+                    texts.append(exp.get("description", ""))
                 de = exp.get("data_extracted")
                 if isinstance(de, list):
                     texts.extend(str(x) for x in de)

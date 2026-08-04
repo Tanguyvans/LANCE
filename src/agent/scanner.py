@@ -1037,6 +1037,81 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
             )]
     return []
 
+def _extract_mysql_default_credentials_compact(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Detect an empty MySQL/MariaDB root password from the NSE result."""
+    if str(device.get("role", "")).casefold() not in {"db_server", "database", "mysql_server"}:
+        return []
+    for entry in entries:
+        if entry.get("tool") != "nmap_scan":
+            continue
+        kwargs = entry.get("kwargs", {})
+        if "mysql-empty-password" not in str(kwargs.get("scripts", "")):
+            continue
+        result = _parse_result(entry)
+        stdout = str(result.get("stdout", ""))
+        lower = stdout.casefold()
+        if result.get("return_code", -1) != 0:
+            continue
+        port_open = bool(re.search(r"\b3306/tcp\s+open\b", lower))
+        empty_password = any(marker in lower for marker in (
+            "empty password", "no password", "blank password",
+            "root account has an empty", "root account has empty",
+            "without password", "without a password",
+        ))
+        if port_open and empty_password:
+            return [_make_finding(
+                device, "default_credentials", "CRITICAL", "mysql", 3306,
+                "MySQL/MariaDB root account accepts an empty password",
+                stdout[:800],
+                status="confirmed",
+                technique="Connect as root with an empty password and query the users table",
+                tools=["try_credential"],
+            )]
+    return []
+
+
+def _extract_insecure_update_compact(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Detect an active OTA endpoint or unsigned firmware listing on gateways."""
+    role = str(device.get("role", "")).casefold()
+    if role not in {"gateway", "iot_gateway"}:
+        return []
+
+    update_evidence: list[str] = []
+    firmware_evidence: list[str] = []
+    for entry in entries:
+        if entry.get("tool") != "curl_headers":
+            continue
+        url = str(entry.get("kwargs", {}).get("url", ""))
+        result = _parse_result(entry)
+        stdout = str(result.get("stdout", ""))
+        if result.get("return_code", -1) != 0:
+            continue
+        status_match = re.search(r"HTTP/\S+\s+(\d{3})", stdout[:300])
+        status_code = int(status_match.group(1)) if status_match else None
+        path = urlsplit(url).path.casefold()
+        if path.rstrip("/") == "/update" and status_code in {200, 201, 202, 204, 405}:
+            update_evidence.append(f"{url}: HTTP {status_code}")
+        if path.rstrip("/") in {"/firmware", "/firmware/"} and "index of" in stdout.casefold():
+            if not re.search(r"\.(?:sha256|sha512|sig|asc)\b", stdout, re.IGNORECASE):
+                firmware_evidence.append(f"{url}: unsigned firmware listing")
+
+    if not update_evidence and not firmware_evidence:
+        return []
+    evidence = "\n".join((update_evidence + firmware_evidence)[:4])
+    return [_make_finding(
+        device, "insecure_update", "MEDIUM", "http", 80,
+        "Firmware update endpoint or unsigned firmware is exposed without a verifiable signature",
+        evidence,
+        status="confirmed" if update_evidence else "suspected",
+        technique="Verify an unauthenticated POST to /update and enforce signed firmware validation",
+        tools=["http_get", "http_request"],
+        endpoint="/update" if update_evidence else "/firmware/",
+    )]
+
 
 def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
     """Redis port 6379 open → no_auth HIGH confirmed, data_exposure MEDIUM if keys present."""
@@ -1268,8 +1343,10 @@ FINDING_EXTRACTORS = [
 ]
 
 
-def extract_findings(scan_results: dict[str, list[dict]], device: dict) -> list[dict]:
-    """Apply all extractors on scan results, return deduplicated findings."""
+def extract_findings(
+    scan_results: dict[str, list[dict]], device: dict, *, compact: bool = False
+) -> list[dict]:
+    """Apply extractors on scan results, optionally adding compact fallbacks."""
     findings: list[dict] = []
     all_entries: list[dict] = []
     for svc_entries in scan_results.values():
@@ -1281,6 +1358,19 @@ def extract_findings(scan_results: dict[str, list[dict]], device: dict) -> list[
             findings.extend(new)
         except Exception as e:
             log.warning("Extractor %s failed for %s: %s", extractor.__name__, device.get("id"), e)
+
+    if compact:
+        for extractor in (
+            _extract_mysql_default_credentials_compact,
+            _extract_insecure_update_compact,
+        ):
+            try:
+                findings.extend(extractor(all_entries, device, ""))
+            except Exception as e:
+                log.warning(
+                    "Compact extractor %s failed for %s: %s",
+                    extractor.__name__, device.get("id"), e,
+                )
 
     # Dedup by (type, port)
     seen: set[tuple] = set()
@@ -1307,6 +1397,8 @@ def run_scanner(
     run_dir: Path,
     devices: list[dict],
     stream_callback=None,
+    *,
+    compact: bool = False,
 ) -> dict[str, dict]:
     """Run Phase 3a: scan all devices, save raw results, extract trivial findings.
 
@@ -1345,7 +1437,7 @@ def run_scanner(
         )
 
         # Extract trivial findings
-        findings = extract_findings(scan_results, device)
+        findings = extract_findings(scan_results, device, compact=compact)
 
         # Save findings as fallback 03_device_*.json (LLM will overwrite if it succeeds)
         fallback_path = run_dir / f"03_device_{device_id}.json"
