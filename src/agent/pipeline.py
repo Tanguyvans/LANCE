@@ -4719,6 +4719,7 @@ class Pipeline:
         attempted_targets: set[str] = set()
         attempted_target_services: set[tuple[str, str]] = set()
         attempted_entry_points: set[str] = set()
+        anonymous_target_services: set[tuple[str, str]] = set()
         # Credential reuse is target-scoped. An attempt on one host must not
         # satisfy the same credential on another host.
         attempted_credentials: set[tuple[str, str, str]] = set()
@@ -4871,6 +4872,10 @@ class Pipeline:
             expected_credential_service = {ip: "ssh" for ip in expected_targets}
             expected_credential_port = {ip: 22 for ip in expected_targets}
 
+        for ip in expected_entry_anonymous:
+            service = expected_credential_service.get(ip)
+            if service:
+                anonymous_target_services.add((ip, service))
         def _action_service(name: str, kwargs: dict) -> str:
             if name == "try_credential":
                 return str(kwargs.get("service") or "").casefold()
@@ -4912,7 +4917,11 @@ class Pipeline:
                 (target, user, password)
                 for target in sorted(expected_targets)
                 for user, password in sorted(expected_credentials)
-                if (target, user, password) not in attempted_credentials
+                if (
+                    (target, expected_credential_service.get(target, "ssh"))
+                    not in anonymous_target_services
+                    and (target, user, password) not in attempted_credentials
+                )
             ]
             # With recovered credentials, target coverage means that every
             # credential has been tried against that target's primary service.
@@ -4927,6 +4936,8 @@ class Pipeline:
                 ) or (
                     not expected_credentials
                     and (target, expected_credential_service.get(target, "ssh"))
+                    not in anonymous_target_services
+                    and (target, expected_credential_service.get(target, "ssh"))
                     not in attempted_target_services
                 )
             )
@@ -4940,7 +4951,12 @@ class Pipeline:
                 [target, user, password]
                 for target, user, password in missing_credential_pairs
             ]
-            missing_successful_access = bool(expected_credentials) and not successful_accesses
+            requires_authenticated_access = bool(expected_credentials) and any(
+                (target, expected_credential_service.get(target, "ssh"))
+                not in anonymous_target_services
+                for target in expected_targets
+            )
+            missing_successful_access = requires_authenticated_access and not successful_accesses
             return {
                 "schema_version": "2",
                 "context_loaded": context_loaded,
@@ -5232,6 +5248,18 @@ class Pipeline:
                             "suggested_args": suggested_args,
                         }))
                 result = original_fn(**kwargs)
+                if name == "try_credential" and target in expected_targets:
+                    try:
+                        payload = result if isinstance(result, dict) else json.loads(result)
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        payload = {}
+                    service = _action_service(name, kwargs)
+                    primary = expected_credential_service.get(target, "")
+                    if service == primary and isinstance(payload, dict) and (
+                        payload.get("anonymous_access") is True
+                        or payload.get("auth_required") is False
+                    ):
+                        anonymous_target_services.add((target, service))
                 if name in credential_action_tools and _result_proves_access(name, result):
                     service = _action_service(name, kwargs)
                     if target and service:
@@ -6047,16 +6075,53 @@ class Pipeline:
             return "redis"
         return "ssh"
 
+    def _load_compact_intrusion_context(self) -> dict | None:
+        """Load compact Phase 5 context from disk or its authoritative ledger."""
+        ctx_path = self.run_dir / "05_intrusion_context.json"
+        context = None
+        try:
+            context = json.loads(ctx_path.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+        if isinstance(context, dict):
+            return context
+
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if not log_path.exists():
+            return None
+        for line in reversed(log_path.read_text(encoding="utf-8").splitlines()):
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            args = record.get("args") or {}
+            if record.get("tool") != "read_deliverable" or not isinstance(args, dict):
+                continue
+            if args.get("filename") != "05_intrusion_context.json":
+                continue
+            raw_result = record.get("result")
+            if isinstance(raw_result, str):
+                try:
+                    raw_result = json.loads(raw_result)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+            if not isinstance(raw_result, dict):
+                continue
+            raw_content = raw_result.get("content")
+            if isinstance(raw_content, str):
+                try:
+                    raw_content = json.loads(raw_content)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+            if isinstance(raw_content, dict):
+                return raw_content
+        return None
+
     def _run_compact_intrusion_fallback(self, config, stream_callback=None) -> int:
         """Run a bounded baseline only after a compact local-model stall."""
         if not self._uses_compact_local_moe():
             return 0
-        try:
-            context = json.loads(
-                (self.run_dir / "05_intrusion_context.json").read_text(encoding="utf-8")
-            )
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return 0
+        context = self._load_compact_intrusion_context()
         if not isinstance(context, dict):
             return 0
         tools = filter_profile_tools(
@@ -6381,12 +6446,8 @@ class Pipeline:
 
     def _compact_intrusion_coverage(self) -> tuple[bool, dict]:
         """Return compact Phase 5 coverage from the authoritative tool ledger."""
-        ctx_path = self.run_dir / "05_intrusion_context.json"
         log_path = self.run_dir / "tool_calls.jsonl"
-        try:
-            context = json.loads(ctx_path.read_text(encoding="utf-8"))
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            return False, {"missing": ["05_intrusion_context.json"]}
+        context = self._load_compact_intrusion_context()
         if not isinstance(context, dict):
             return False, {"missing": ["invalid context"]}
 
@@ -6422,6 +6483,15 @@ class Pipeline:
                     if service_ports.get(port) == service:
                         ports.append(port)
                 target_ports[ip] = min(ports) if ports else default_ports.get(service, 22)
+        anonymous_target_services: set[tuple[str, str]] = set()
+        for item in context.get("entry_points", []):
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+            service = str(item.get("service") or "").strip().casefold()
+            if item.get("vuln_type") == "no_auth" and target_specs.get(ip) == service:
+                anonymous_target_services.add((ip, service))
+
         credentials = {
             (str(item.get("user") or "").strip(), str(item.get("password") or "").strip())
             for item in context.get("recovered_credentials", [])
@@ -6472,6 +6542,16 @@ class Pipeline:
                     continue
                 target = target_from_record(tool, args)
                 service = tool_service(tool, args)
+                if tool == "try_credential" and target in target_specs and service == target_specs[target]:
+                    try:
+                        payload = json.loads(record.get("result", "{}"))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        payload = {}
+                    if isinstance(payload, dict) and (
+                        payload.get("anonymous_access") is True
+                        or payload.get("auth_required") is False
+                    ):
+                        anonymous_target_services.add((target, service))
                 expected_port = target_ports.get(target)
                 supplied_port = args.get("port")
                 port_valid = True
@@ -6500,18 +6580,21 @@ class Pipeline:
             f"{user}@{target}"
             for target in target_specs
             for user, password in credentials
-            if (target, user, password) not in seen_credentials
+            if (target, target_specs[target]) not in anonymous_target_services
+            and (target, user, password) not in seen_credentials
         )
         missing_credential_keys = [
             [target, user, password]
             for target in sorted(target_specs)
             for user, password in sorted(credentials)
-            if (target, user, password) not in seen_credentials
+            if (target, target_specs[target]) not in anonymous_target_services
+            and (target, user, password) not in seen_credentials
         ]
         missing_targets = sorted(
             f"{target}:{service}"
             for target, service in target_specs.items()
             if (target, service) not in seen_targets
+            and (target, service) not in anonymous_target_services
             and not credentials
         )
         return not missing_entries and not missing_credentials and not missing_targets, {
@@ -6553,8 +6636,7 @@ class Pipeline:
             # Coverage completion used to terminate compact Phase 5 before any
             # post-compromise collection. Run the idempotent SSH harvest before
             # reconstructing the authoritative deliverable.
-            if coverage_ok:
-                self._run_compact_intrusion_post_access(config, stream_callback)
+            self._run_compact_intrusion_post_access(config, stream_callback)
 
         data = self._synthesize_intrusion_from_tools(
             note=(
@@ -6707,6 +6789,13 @@ class Pipeline:
         entry_evidence: dict[str, str] = {}
         context_data: dict = {}
         ctx_path = self.run_dir / "05_intrusion_context.json"
+        if compact_synthesis and not ctx_path.exists():
+            context_from_ledger = self._load_compact_intrusion_context()
+            if isinstance(context_from_ledger, dict):
+                try:
+                    ctx_path.write_text(json.dumps(context_from_ledger, ensure_ascii=False), encoding="utf-8")
+                except OSError:
+                    pass
         if ctx_path.exists():
             try:
                 ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
