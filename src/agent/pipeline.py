@@ -267,6 +267,24 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         endpoint = str(requirement.get("endpoint") or "")
         if endpoint and endpoint not in raw_url:
             return False
+        # Compact MQTT-WebSocket verification needs a real upgrade request;
+        # accepting the URL alone lets a plain GET satisfy the required probe
+        # while producing no useful Phase 4 evidence.
+        if tool == "http_request" and requirement.get("port") == 9001:
+            hint = requirement.get("args_hint") or {}
+            expected_method = str(hint.get("method") or "").upper()
+            if expected_method and str(args.get("method") or "").upper() != expected_method:
+                return False
+            expected_headers = {
+                str(key).casefold(): str(value)
+                for key, value in (hint.get("headers") or {}).items()
+            }
+            supplied_headers = {
+                str(key).casefold(): str(value)
+                for key, value in (args.get("headers") or {}).items()
+            }
+            if any(supplied_headers.get(key) != value for key, value in expected_headers.items()):
+                return False
     if tool == "telnet_connect" and target not in str(args.get("command_string") or ""):
         return False
     if tool == "ftp_list" and target not in str(args.get("url") or ""):
@@ -2622,6 +2640,9 @@ class Pipeline:
             config.name == "recon" and self._uses_compact_local_moe()
         )
         if local_intrusion_memo:
+            tools = self._ensure_compact_intrusion_tools(
+                tools, phase=config.phase, agent=config.name
+            )
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
         if local_intrusion_memo:
@@ -2651,6 +2672,7 @@ class Pipeline:
                     "- read_deliverable(filename) — read only the intrusion context\n"
                     "- mqtt_listen(broker, topic, count, timeout) — validate anonymous MQTT entry points\n"
                     "- http_get(url) / curl_headers(url) — validate HTTP entry points and exposed content\n"
+                    "- ssh_login(command_string) — validate SSH entry points with the recovered source credential\n"
                     "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
                     "- try_credential(ip, service, user, password) — test recovered credentials on a target\n"
                     "- telnet_connect(command_string) / ftp_list(url) — validate Telnet/FTP targets"
@@ -4356,6 +4378,33 @@ class Pipeline:
                             )
                             for record in records
                         )
+                        if not required_observed:
+                            fallback_tool = next(
+                                (
+                                    tool for tool in verification_tools
+                                    if tool.get("name") == required_probe_tool
+                                    and callable(tool.get("function"))
+                                ),
+                                None,
+                            )
+                            fallback_args = dict(requirement.get("args_hint") or {})
+                            if fallback_tool is not None and fallback_args:
+                                try:
+                                    fallback_tool["function"](**fallback_args)
+                                except Exception as exc:
+                                    log.warning(
+                                        "Compact Phase 4 fallback probe failed for %s: %s",
+                                        vuln_id,
+                                        exc,
+                                    )
+                                records = _tool_records_for_vuln(self.run_dir, vuln_id)
+                                required_observed = any(
+                                    _phase4_requirement_matches(
+                                        requirement, str(record.get("tool") or ""),
+                                        record.get("args") or {},
+                                    )
+                                    for record in records
+                                )
                         result = _synthesize_exploit_result(vuln, records, result_text)
                         if not required_observed:
                             result.update({
@@ -4577,6 +4626,42 @@ class Pipeline:
             "A wider scan or several complementary scans also satisfy a row."
         )
         return "\n".join(lines)
+
+    def _ensure_compact_intrusion_tools(
+        self,
+        tools: list[dict],
+        *,
+        phase: int | str | None = None,
+        agent: str | None = None,
+    ) -> list[dict]:
+        """Add compact-only tools omitted from the bounded intrusion group."""
+        if any(tool.get("name") == "ssh_login" for tool in tools):
+            return tools
+        ssh_tool = next((tool for tool in RECON_TOOLS if tool.get("name") == "ssh_login"), None)
+        if ssh_tool is None:
+            return tools
+        return [*tools, self._wrap_tool(ssh_tool, phase=phase, agent=agent)]
+
+    @staticmethod
+    def _compact_ssh_entry_action(
+        target: str, expected_credentials: dict[tuple[str, str], dict]
+    ) -> tuple[str, dict] | None:
+        """Build an SSH entry probe from a credential recovered in context."""
+        for (user, password), metadata in expected_credentials.items():
+            if str(metadata.get("source_ip") or "") != target:
+                continue
+            command = (
+                f"sshpass -p {shlex.quote(password)} ssh "
+                "-o StrictHostKeyChecking=no "
+                "-o UserKnownHostsFile=/dev/null "
+                "-o ConnectTimeout=5 "
+                "-o KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1 "
+                "-o HostKeyAlgorithms=+ssh-rsa "
+                "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc "
+                f"{shlex.quote(user)}@{target} 'id'"
+            )
+            return "ssh_login", {"command_string": command}
+        return None
 
     def _apply_compact_intrusion_tool_contract(
         self,
@@ -4876,6 +4961,10 @@ class Pipeline:
                     return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {target} 23"}
                 if service == "ftp":
                     return "ftp_list", {"url": f"ftp://{target}/"}
+                if service == "ssh":
+                    return self._compact_ssh_entry_action(
+                        target, expected_credentials
+                    )
                 return "http_get", {"url": f"http://{target}/"}
             missing = progress.get("missing_target_services", [])
             if not missing:
@@ -4915,7 +5004,7 @@ class Pipeline:
                 "error": message,
                 "instruction": (
                     "Continue Phase 5 with service-appropriate entry-point probes "
-                    "(mqtt_listen/http_get/telnet_connect/ftp_list) and try_credential "
+                    "(mqtt_listen/http_get/telnet_connect/ftp_list/ssh_login) and try_credential "
                     "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
@@ -4993,6 +5082,10 @@ class Pipeline:
                     return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}
                 if wanted == "ftp":
                     return "ftp_list", {"url": f"ftp://{ip}/"}
+                if wanted == "ssh":
+                    action = self._compact_ssh_entry_action(ip, expected_credentials)
+                    if action is not None:
+                        return action
                 return name, {"url": f"http://{ip}/"}
             return None
 
@@ -5114,7 +5207,7 @@ class Pipeline:
                             expected_services = expected_entry_services.get(target, set())
                             if not expected_services or service in expected_services:
                                 attempted_entry_points.add(target)
-                    if name in credential_action_tools:
+                    if name in credential_action_tools and name != "ssh_login":
                         user, password = _credential_from_args(name, kwargs)
                         if user and password:
                             attempted_credentials.add((target, user, password))
@@ -5922,6 +6015,9 @@ class Pipeline:
         tools = filter_profile_tools(
             self.execution_profile, config.phase, self._resolve_tools(config)
         )
+        tools = self._ensure_compact_intrusion_tools(
+            tools, phase=config.phase, agent=config.name
+        )
         tool_map = {tool["name"]: tool["function"] for tool in tools}
         # Reconcile only the coverage that is still missing from the
         # authoritative Phase 5 ledger.  The previous implementation always
@@ -6210,15 +6306,9 @@ class Pipeline:
                     seen_entries.add((target, ""))
                 if target in target_specs and port_valid:
                     seen_targets.add((target, service))
-                if tool in {"try_credential", "ssh_login"} and target in target_specs and port_valid:
+                if tool == "try_credential" and target in target_specs and port_valid:
                     user = str(args.get("user") or "").strip()
                     password = str(args.get("password") or "").strip()
-                    if tool == "ssh_login":
-                        command_string = str(args.get("command_string") or "")
-                        password_match = re.search(r"sshpass\s+-p\s+([^\s]+)", command_string)
-                        user_match = re.search(r"\b([A-Za-z0-9_.-]+)@(?:\d{1,3}\.){3}\d{1,3}\b", command_string)
-                        password = password or (password_match.group(1) if password_match else "")
-                        user = user or (user_match.group(1) if user_match else "")
                     if (user, password) in credentials and service == target_specs[target]:
                         seen_credentials.add((target, user, password))
 

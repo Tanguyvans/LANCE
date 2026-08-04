@@ -62,8 +62,13 @@ def test_phase4_requirement_rejects_wrong_endpoint_or_transport():
     assert not _phase4_requirement_matches(
         requirement, "mqtt_listen", {"broker": "192.168.100.11", "topic": "#"}
     )
+    assert not _phase4_requirement_matches(
+        requirement,
+        "http_request",
+        {"url": "http://192.168.100.11:9001/", "method": "GET", "headers": {}},
+    )
     assert _phase4_requirement_matches(
-        requirement, "http_request", {"url": "http://192.168.100.11:9001/"}
+        requirement, "http_request", requirement["args_hint"]
     )
 
 
@@ -2715,6 +2720,61 @@ class TestPhase5Context:
             },
         ]
 
+    def test_compact_intrusion_fallback_probes_ssh_entry_before_credentials(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [
+                {
+                    "device_id": "s1-ssh",
+                    "device_ip": "192.0.2.10",
+                    "service": "ssh",
+                    "port": 22,
+                },
+            ],
+            "all_targets": [
+                {
+                    "device_id": "s1-ssh",
+                    "device_ip": "192.0.2.10",
+                    "role": "ssh_server",
+                    "services": [22],
+                },
+            ],
+            "recovered_credentials": [
+                {
+                    "user": "admin",
+                    "password": "admin",
+                    "source_ip": "192.0.2.10",
+                },
+            ],
+        }))
+        calls = []
+
+        def ssh_login(**kwargs):
+            calls.append(("ssh_login", kwargs))
+            return json.dumps({"return_code": 0, "stdout": "uid=1000(admin)"})
+
+        def try_credential(**kwargs):
+            calls.append(("try_credential", kwargs))
+            return json.dumps({"success": False, "authenticated": False})
+
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda _config: [
+            {"name": "ssh_login", "description": "ssh", "input_schema": {}, "function": ssh_login},
+            {"name": "try_credential", "description": "try", "input_schema": {}, "function": try_credential},
+        ])
+
+        executed = pipeline._run_compact_intrusion_fallback(AGENTS["intrusion"])
+
+        assert executed == 2
+        assert calls[0][0] == "ssh_login"
+        assert "admin@192.0.2.10" in calls[0][1]["command_string"]
+        assert calls[1][0] == "try_credential"
+
+
     def test_compact_coverage_does_not_count_credential_as_entry_probe(
         self, mock_provider, output_dir
     ):
@@ -2851,6 +2911,7 @@ class TestPhase5Context:
         assert status.startswith("failed:")
         assert "try_credential" in tool_names
         assert "ssh_exec" in tool_names
+        assert "ssh_login" in tool_names
         assert "mqtt_listen" in tool_names
         assert "http_get" in tool_names
         assert "curl_headers" in tool_names
@@ -2910,6 +2971,7 @@ class TestPhase5Context:
         assert kwargs["strict_required_tool"] is False
         assert kwargs["reopen_intrusion_tools_on_contract_error"] is False
         assert kwargs["force_tool_on_stall"] is False
+        assert "ssh_login" not in {tool["name"] for tool in kwargs["tools"]}
         assert kwargs["max_turns"] == 80
         assert kwargs["max_tokens"] == 16384
 
