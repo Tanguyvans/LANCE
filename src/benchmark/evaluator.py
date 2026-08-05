@@ -2310,6 +2310,20 @@ def evaluate(
         result.quality_path_coverage = None
     result.quality_attack_path_credit = round(result.quality_attack_path_credit, 3)
 
+    def collapse_consecutive_devices(devices: list[str]) -> list[str]:
+        """Collapse repeated hops on one device into one logical visit.
+
+        Ground-truth paths may contain the same device more than once when
+        several vulnerabilities are exercised on that host. Phase 5 chains
+        usually record the host once, so requiring a repeated device hop would
+        make an otherwise valid chain impossible to verify.
+        """
+        collapsed: list[str] = []
+        for device in devices:
+            if device and (not collapsed or collapsed[-1] != device):
+                collapsed.append(device)
+        return collapsed
+
     intrusion_file = run_dir / "05_intrusion.json"
     observed_chains: list[list[str]] = []
     if intrusion_file.is_file():
@@ -2320,7 +2334,7 @@ def evaluate(
                     str(hop.get("device_id") or hop.get("device_ip") or "").strip()
                     for hop in (chain.get("hops", []) or [])
                 ]
-                observed_chains.append([device for device in devices if device])
+                observed_chains.append(collapse_consecutive_devices(devices))
             result.intrusion_paths_available = True
         except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
             result.intrusion_paths_available = False
@@ -2332,7 +2346,7 @@ def evaluate(
             device = raw.split(" (", 1)[0].strip()
             if device and device.casefold() != "internet":
                 devices.append(device)
-        return devices
+        return collapse_consecutive_devices(devices)
 
     def is_subsequence(expected: list[str], observed: list[str]) -> bool:
         position = 0

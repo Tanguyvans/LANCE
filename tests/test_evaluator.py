@@ -779,6 +779,82 @@ class TestEvaluatePathCoverage:
         assert result.verified_attack_paths == 0
         assert result.path_matches[0]["all_findings_verified"] is False
 
+    def test_verified_path_collapses_repeated_device_hops(self, tmp_path):
+        """Several vulnerabilities on one host still form one logical hop."""
+        ip = "192.168.100.12"
+        findings = [
+            _finding(id="F1", ip=ip, type="no_auth"),
+            _finding(id="F2", ip=ip, type="data_exposure"),
+        ]
+        for finding, endpoint, port in zip(findings, ("/", "/backup.sql"), (80, 8080)):
+            finding.update(service="http", port=port, protocol="tcp", endpoint=endpoint)
+        run_dir = _write_run(tmp_path, findings)
+        (run_dir / "04_exploitation.json").write_text(json.dumps({
+            "tests": [
+                {
+                    "vuln_id": "F1", "device_ip": ip, "vuln_type": "no_auth",
+                    "severity": "high", "service": "http", "port": 80,
+                    "protocol": "tcp", "endpoint": "/", "status": "CONFIRMED",
+                    "evidence": "anonymous response", "tool_used": "http_get",
+                    "tools_used": ["http_get"], "evidence_refs": ["tc-f1"],
+                    "data_extracted": ["anonymous response"],
+                },
+                {
+                    "vuln_id": "F2", "device_ip": ip, "vuln_type": "data_exposure",
+                    "severity": "high", "service": "http", "port": 8080,
+                    "protocol": "tcp", "endpoint": "/backup.sql", "status": "CONFIRMED",
+                    "evidence": "backup contents", "tool_used": "http_get",
+                    "tools_used": ["http_get"], "evidence_refs": ["tc-f2"],
+                    "data_extracted": ["backup contents"],
+                },
+            ],
+        }))
+        (run_dir / "tool_calls.jsonl").write_text(
+            json.dumps({
+                "evidence_ref": "tc-f1", "tool": "http_get",
+                "args": {"url": f"http://{ip}/"},
+                "result": {"success": True, "return_code": 0, "status_code": 200, "body": "anonymous response"},
+            }) + "\n" + json.dumps({
+                "evidence_ref": "tc-f2", "tool": "http_get",
+                "args": {"url": f"http://{ip}:8080/backup.sql"},
+                "result": {"success": True, "return_code": 0, "status_code": 200, "body": "backup contents"},
+            }) + "\n"
+        )
+        (run_dir / "05_intrusion.json").write_text(json.dumps({
+            "chains": [{
+                "hops": [
+                    {"device_id": "s1-router"},
+                    {"device_id": "s1-web"},
+                ],
+            }],
+        }))
+        paths = [{
+            "id": "P1",
+            "chain": [
+                {"device": "s1-web"},
+                {"device": "s1-web"},
+            ],
+            "vulnerabilities_used": ["V1", "V2"],
+        }]
+
+        result = evaluate(
+            run_dir,
+            _write_gt(
+                tmp_path,
+                [
+                    _gt(id="V1", ip=ip, device="s1-web"),
+                    _gt(id="V2", ip=ip, device="s1-web", category="data_exposure"),
+                ],
+                attack_paths=paths,
+            ),
+        )
+
+        assert result.path_matches[0]["all_findings_verified"] is True
+        assert result.path_matches[0]["expected_devices"] == ["s1-web"]
+        assert result.path_matches[0]["verified_by_intrusion_chain"] is True
+        assert result.verified_attack_paths == 1
+        assert result.verified_path_coverage == 1.0
+
 
 class TestEvaluateMhrContinued:
 
