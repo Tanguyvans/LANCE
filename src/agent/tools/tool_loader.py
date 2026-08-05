@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 from pathlib import Path
 from typing import Any, Callable
 
@@ -101,6 +102,36 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
     max_output = tool_def.get("max_output")
 
     def generated_fn(**kwargs: Any) -> str:
+        # Compact local models occasionally use the structured credential
+        # shape (ip/user/password/command) for ssh_login. Normalize that
+        # shape instead of silently dropping all arguments and running
+        # `bash -c` without a command.
+        if tool_def["name"] == "ssh_login" and not kwargs.get("command_string"):
+            ip = str(kwargs.get("ip") or "").strip()
+            user = str(kwargs.get("user") or "").strip()
+            password = str(kwargs.get("password") or "")
+            remote_command = str(kwargs.get("command") or "id").strip() or "id"
+            if ip and user and password:
+                try:
+                    port = int(kwargs.get("port") or 22)
+                except (TypeError, ValueError):
+                    port = 22
+                kwargs = {
+                    "command_string": (
+                        f"sshpass -p {shlex.quote(password)} ssh "
+                        "-o StrictHostKeyChecking=no "
+                        "-o UserKnownHostsFile=/dev/null "
+                        "-o ConnectTimeout=5 "
+                        f"-p {port} {shlex.quote(user)}@{ip} "
+                        f"{shlex.quote(remote_command)}"
+                    ),
+                }
+            else:
+                return json.dumps({
+                    "stdout": "",
+                    "stderr": "ssh_login requires command_string or ip/user/password",
+                    "return_code": 2,
+                })
         cmd = [command] + list(fixed_args)
         positional_values = []
 

@@ -137,6 +137,22 @@ class TestBuildSubprocessFunction:
         assert parsed["stdout"] == "test"
         assert parsed["return_code"] == 0
 
+    @patch("src.agent.tools.recon_tools._run")
+    def test_ssh_login_accepts_structured_arguments(self, mock_run):
+        mock_run.return_value = {"stdout": "uid=1000(admin)", "stderr": "", "return_code": 0}
+        data = load_tool_yaml(DEFINITIONS_DIR / "ssh_login.yaml")
+        fn = build_subprocess_function(data)
+
+        result = fn(ip="192.0.2.10", user="admin", password="admin", command="id")
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[:2] == ["bash", "-c"]
+        command = cmd[2]
+        assert "UserKnownHostsFile=/dev/null" in command
+        assert "admin@192.0.2.10" in command
+        assert "id" in command
+        assert json.loads(result)["return_code"] == 0
+
 
 class TestLoadAllTools:
     """Test loading all tools from the definitions directory."""

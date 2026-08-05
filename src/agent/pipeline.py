@@ -2706,7 +2706,7 @@ class Pipeline:
                 )
                 variables[
                     "intrusion_completion_rule"
-                ] = "Finish with one successful complete_intrusion_campaign call. If it returns ok=false, continue with the required Phase 5 tools; the orchestrator derives the JSON deliverable."
+                ] = "Finish with one successful complete_intrusion_campaign call. The tool validates the ledger and commits 05_intrusion.json. If it returns ok=false, continue with the required Phase 5 tools and retry only after making progress."
                 variables["intrusion_final_phase_title"] = "Complete compact campaign"
                 variables[
                     "intrusion_final_instruction"
@@ -2850,6 +2850,31 @@ class Pipeline:
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
         )
+        # Compact local models sometimes stop immediately after the last
+        # successful action and omit the required terminal tool call.  If the
+        # authoritative ledger is already complete, invoke that explicit
+        # terminal once so the deliverable is committed by the same contract
+        # the model was asked to satisfy.
+        if local_intrusion_memo and not self._compact_intrusion_completion_succeeded():
+            try:
+                coverage_ready, _ = self._compact_intrusion_coverage()
+            except Exception:
+                coverage_ready = False
+            if coverage_ready:
+                completion_tool = next(
+                    (
+                        tool for tool in tools
+                        if tool.get("name") == COMPACT_INTRUSION_COMPLETION_TOOL
+                    ),
+                    None,
+                )
+                if completion_tool and callable(completion_tool.get("function")):
+                    try:
+                        completion_tool["function"](
+                            summary="Finalize Phase 5 from the completed authoritative ledger."
+                        )
+                    except Exception as exc:
+                        log.warning("Compact Phase 5 terminal guard failed: %s", exc)
         # usage will be recorded after validation
 
         # Validate deliverable
@@ -4733,7 +4758,7 @@ class Pipeline:
         }
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login",
+            "ftp_list", "ssh_login", "try_credential",
         }
         credential_action_tools = {"try_credential", "ssh_exec", "ssh_login"}
 
@@ -5101,7 +5126,7 @@ class Pipeline:
                 "all_targets": [
                     {
                         key: item.get(key)
-                        for key in ("device_id", "device_ip", "role", "services")
+                        for key in ("device_id", "device_ip", "role", "primary_service", "services")
                         if item.get(key) not in (None, "")
                     }
                     for item in content.get("all_targets", [])
@@ -5315,9 +5340,24 @@ class Pipeline:
                     "intrusion_contract_incomplete",
                     "Phase 5 compact completion requires entry-point coverage, credential reuse attempts, and at least one authenticated access result when recovered credentials exist.",
                 )
+            finalized = False
+            if self._uses_compact_local_moe():
+                finalized = self._write_compact_intrusion_deliverable(
+                    note=(
+                        "Committed by complete_intrusion_campaign from the "
+                        "authoritative Phase 5 tool ledger."
+                    )
+                )
+                if not finalized:
+                    return _completion_error(
+                        "intrusion_no_observable_actions",
+                        "Phase 5 coverage is complete but no observable intrusion action was recorded for the deliverable.",
+                    )
             return json.dumps({
                 "ok": True,
                 "status": "campaign_complete",
+                "deliverable": "05_intrusion.json",
+                "finalized": finalized,
                 "intrusion_progress": progress,
             }, ensure_ascii=False)
 
@@ -5332,7 +5372,7 @@ class Pipeline:
                 "has been read, every entry point has a matching probe, and every "
                 "recovered credential has been tried against every target using that "
                 "target's primary service, with at least one tool result proving "
-                "authenticated access."
+                "authenticated access. A successful call commits 05_intrusion.json."
             ),
             "input_schema": {
                 "type": "object",
@@ -6051,6 +6091,9 @@ class Pipeline:
 
     @staticmethod
     def _compact_intrusion_service(target: dict) -> str:
+        explicit = str(target.get("primary_service") or "").strip().casefold()
+        if explicit:
+            return explicit
         role = str(target.get("role") or "").strip().casefold()
         services = {
             "router": "ssh", "gateway": "ssh", "ssh_server": "ssh",
@@ -6501,6 +6544,7 @@ class Pipeline:
         seen_entries: set[tuple[str, str]] = set()
         entry_targets_without_service = {ip for ip, service in entries if ip and not service}
         seen_credentials: set[tuple[str, str, str]] = set()
+        successful_accesses: set[tuple[str, str]] = set()
         seen_targets: set[tuple[str, str]] = set()
 
         def host_from_url(value: object) -> str:
@@ -6520,12 +6564,12 @@ class Pipeline:
         def tool_service(tool: str, args: dict) -> str:
             return {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
-                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh",
+                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh", "ssh_exec": "ssh",
             }.get(tool, str(args.get("service") or "").casefold())
 
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login",
+            "ftp_list", "ssh_login", "try_credential",
         }
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
@@ -6561,6 +6605,22 @@ class Pipeline:
                         port_valid = int(supplied_port) == expected_port
                     except (TypeError, ValueError):
                         port_valid = False
+                if (
+                    tool in {"try_credential", "ssh_exec", "ssh_login"}
+                    and target in target_specs
+                    and service == target_specs.get(target)
+                    and port_valid
+                ):
+                    try:
+                        payload = json.loads(record.get("result", "{}"))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        payload = {}
+                    if isinstance(payload, dict) and (
+                        (tool == "try_credential" and payload.get("success") is True and payload.get("authenticated", True) is not False)
+                        or (tool in {"ssh_exec", "ssh_login"} and (payload.get("success") is True or payload.get("return_code") == 0))
+                        or (tool == "ssh_login" and re.search(r"\buid=\d+", str(payload.get("stdout") or payload.get("output") or "")))
+                    ):
+                        successful_accesses.add((target, service))
                 if port_valid and tool in entry_probe_tools and (target, service) in entries:
                     seen_entries.add((target, service))
                 elif port_valid and tool in entry_probe_tools and target in entry_targets_without_service:
@@ -6598,12 +6658,59 @@ class Pipeline:
             and (target, service) not in anonymous_target_services
             and not credentials
         )
-        return not missing_entries and not missing_credentials and not missing_targets, {
+        requires_successful_access = bool(credentials) and any(
+            (target, service) not in anonymous_target_services
+            for target, service in target_specs.items()
+        )
+        missing_successful_access = requires_successful_access and not successful_accesses
+        return not missing_entries and not missing_credentials and not missing_targets and not missing_successful_access, {
             "missing_entry_points": missing_entries,
+            "missing_successful_access": missing_successful_access,
+            "successful_accesses": [
+                {"target": target, "service": service}
+                for target, service in sorted(successful_accesses)
+            ],
             "missing_credential_keys": missing_credential_keys,
             "missing_credentials": missing_credentials,
             "missing_targets": missing_targets,
         }
+
+    def _compact_intrusion_completion_succeeded(self) -> bool:
+        """Return whether compact Phase 5 called its terminal successfully."""
+        log_path = self.run_dir / "tool_calls.jsonl"
+        if not log_path.exists():
+            return False
+        for line in reversed(log_path.read_text(encoding="utf-8").splitlines()):
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if record.get("tool") != COMPACT_INTRUSION_COMPLETION_TOOL:
+                continue
+            if record.get("phase") not in (5, "5", None):
+                continue
+            payload = record.get("result")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+            if isinstance(payload, dict) and payload.get("ok") is True:
+                return True
+        return False
+
+    def _write_compact_intrusion_deliverable(self, *, note: str) -> bool:
+        """Commit the compact Phase 5 artifact from the authoritative ledger."""
+        data = self._synthesize_intrusion_from_tools(note=note)
+        if not self._intrusion_synthesis_has_observable_actions(data):
+            return False
+        data["status"] = "completed"
+        data["completion_source"] = COMPACT_INTRUSION_COMPLETION_TOOL
+        path = self.run_dir / "05_intrusion.json"
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        validator = VALIDATORS.get("json_valid", VALIDATORS["default"])
+        valid, _ = validator("05_intrusion.json")
+        return valid
 
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Reconcile compact Phase 5 from tool evidence without hiding gaps.
@@ -6619,6 +6726,29 @@ class Pipeline:
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
         compact = self._uses_compact_local_moe()
+        terminal_completed = compact and self._compact_intrusion_completion_succeeded()
+        if terminal_completed:
+            already_reported = results.get(config.name) == "completed"
+            self._run_compact_intrusion_post_access(config, stream_callback)
+            if self._write_compact_intrusion_deliverable(
+                note=(
+                    "Committed by complete_intrusion_campaign from the "
+                    "authoritative Phase 5 tool ledger."
+                )
+            ):
+                results[config.name] = "completed"
+                if stream_callback and not already_reported:
+                    stream_callback({
+                        "type": "phase_done",
+                        "phase": config.phase,
+                        "name": config.name,
+                        "status": results[config.name],
+                        "deliverable": config.deliverable_file,
+                        "cost_usd": 0,
+                        "turns": 0,
+                    })
+                return
+            terminal_completed = False
         if valid and not compact:
             return
 
@@ -6656,6 +6786,30 @@ class Pipeline:
                     "only context/completion chatter was available."
                 ),
             )
+            return
+
+        if compact and coverage_ok and not terminal_completed:
+            reason = (
+                "Compact Phase 5 executed observable actions but did not "
+                "complete the required complete_intrusion_campaign terminal call."
+            )
+            data["status"] = "incomplete"
+            data["blocked_reason"] = reason
+            data.setdefault("summary", {})["_note"] = reason
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            results[config.name] = "failed:phase5_completion_missing"
+            log.warning(reason)
+            print(f"  Phase 5 completion missing: {reason}")
+            if stream_callback:
+                stream_callback({
+                    "type": "phase_done",
+                    "phase": config.phase,
+                    "name": config.name,
+                    "status": results[config.name],
+                    "deliverable": config.deliverable_file,
+                    "cost_usd": 0,
+                    "turns": 0,
+                })
             return
 
         if compact and not coverage_ok:
@@ -7247,6 +7401,18 @@ class Pipeline:
         # All devices in the network — full target list for credential spraying.
         # get_attack_surface() returns a bare JSON list in scenario mode and a
         # dict with a "nodes" key otherwise — normalise both shapes.
+        role_primary_services = {
+            "router": "ssh", "gateway": "ssh", "ssh_server": "ssh",
+            "mqtt_broker": "mqtt", "web_server": "http",
+            "nodered_server": "http", "camera": "http",
+            "ftp_server": "ftp", "db_server": "mysql", "db_server_v2": "redis",
+        }
+        entry_primary_services = {
+            str(item.get("device_ip") or item.get("ip") or "").strip():
+            str(item.get("service") or "").strip().casefold()
+            for item in unique_entries
+            if isinstance(item, dict) and item.get("service")
+        }
         all_targets: list = []
         try:
             surface = json.loads(get_attack_surface())
@@ -7260,6 +7426,7 @@ class Pipeline:
                         "device_id": node.get("id") or node.get("name"),
                         "device_ip": ip,
                         "role": node.get("role"),
+                        "primary_service": role_primary_services.get(str(node.get("role") or "").strip().casefold()) or entry_primary_services.get(str(ip).strip()),
                         "services": [
                             (s.get("port") if isinstance(s, dict) else s)
                             for s in node.get("services", [])
@@ -7280,6 +7447,7 @@ class Pipeline:
                         "device_id": exp.get("device_id"),
                         "device_ip": ip,
                         "role": None,
+                        "primary_service": str(exp.get("service") or "").strip().casefold() or None,
                         "services": [exp.get("port")] if exp.get("port") else [],
                     })
 

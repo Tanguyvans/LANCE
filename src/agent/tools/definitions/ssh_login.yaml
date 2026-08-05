@@ -16,5 +16,29 @@ parameters:
   - name: "command_string"
     type: "string"
     description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
-    required: true
+    required: false
     format: "positional"
+  # Some compact local models emit the structured form used by try_credential
+  # instead of the historical command_string form. The loader normalizes it
+  # to the same safe sshpass command before execution.
+  - name: "ip"
+    type: "string"
+    description: "Target IP for the structured form"
+    required: false
+  - name: "user"
+    type: "string"
+    description: "SSH username for the structured form"
+    required: false
+  - name: "password"
+    type: "string"
+    description: "SSH password for the structured form"
+    required: false
+  - name: "command"
+    type: "string"
+    description: "Remote command for the structured form; defaults to id"
+    required: false
+  - name: "port"
+    type: "integer"
+    description: "SSH port for the structured form; defaults to 22"
+    required: false
+    default: 22

@@ -2567,6 +2567,130 @@ class TestPhase5Context:
         assert log_entry["phase"] == 5
         assert log_entry["agent"] == "intrusion"
 
+
+    def test_compact_intrusion_terminal_commits_deliverable(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{
+                "device_id": "s1-ssh",
+                "device_ip": "192.0.2.10",
+                "service": "ssh",
+                "port": 22,
+            }],
+            "all_targets": [{
+                "device_id": "s1-ssh",
+                "device_ip": "192.0.2.10",
+                "role": "ssh_server",
+                "services": [22],
+            }],
+            "recovered_credentials": [{"user": "admin", "password": "admin"}],
+        }))
+        base_tools = [
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": lambda **kwargs: json.dumps({
+                 "filename": kwargs["filename"],
+                 "content": (run_dir / kwargs["filename"]).read_text(),
+             })},
+            {"name": "ssh_login", "description": "ssh", "input_schema": {},
+             "function": lambda **_kwargs: json.dumps({
+                 "return_code": 0, "stdout": "uid=1000(admin)",
+             })},
+            {"name": "try_credential", "description": "try", "input_schema": {},
+             "function": lambda **_kwargs: json.dumps({
+                 "success": True, "authenticated": True, "service": "ssh", "port": 22,
+             })},
+        ]
+        tools = pipeline._apply_compact_intrusion_tool_contract(
+            [pipeline._wrap_tool(tool, phase=5, agent="intrusion") for tool in base_tools],
+            phase=5,
+            agent="intrusion",
+        )
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        tool_map["ssh_login"](
+            command_string="sshpass -p admin ssh admin@192.0.2.10 'id'"
+        )
+        tool_map["try_credential"](
+            ip="192.0.2.10", service="ssh", user="admin", password="admin", port=22
+        )
+        complete = json.loads(tool_map["complete_intrusion_campaign"]())
+
+        assert complete["ok"] is True
+        assert complete["finalized"] is True
+        assert complete["deliverable"] == "05_intrusion.json"
+        final = json.loads((run_dir / "05_intrusion.json").read_text())
+        assert final["status"] == "completed"
+        assert final["completion_source"] == "complete_intrusion_campaign"
+        assert final["summary"]["devices_attempted"] == 1
+
+    def test_compact_intrusion_service_prefers_explicit_context_service(self):
+        assert Pipeline._compact_intrusion_service({
+            "primary_service": "mqtt",
+            "services": [22, 1883],
+        }) == "mqtt"
+
+    def test_compact_intrusion_run_agent_finalizes_completed_ledger(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{
+                "device_id": "s1-mqtt",
+                "device_ip": "192.0.2.11",
+                "service": "mqtt",
+                "port": 1883,
+                "vuln_type": "no_auth",
+            }],
+            "all_targets": [{
+                "device_id": "s1-mqtt",
+                "device_ip": "192.0.2.11",
+                "role": "mqtt_broker",
+                "primary_service": "mqtt",
+                "services": [1883],
+            }],
+            "recovered_credentials": [],
+        }))
+
+        def fake_chat_with_tools(**kwargs):
+            tool_map = {tool["name"]: tool["function"] for tool in kwargs["tools"]}
+            tool_map["read_deliverable"](filename="05_intrusion_context.json")
+            tool_map["mqtt_listen"](broker="192.0.2.11", topic="#", count=1)
+            return "model stopped after actions"
+
+        def fake_resolve(config):
+            base_tools = [
+                {"name": "read_deliverable", "description": "read", "input_schema": {},
+                 "function": lambda **kwargs: json.dumps({
+                     "filename": kwargs["filename"],
+                     "content": (run_dir / kwargs["filename"]).read_text(),
+                 })},
+                {"name": "mqtt_listen", "description": "mqtt", "input_schema": {},
+                 "function": lambda **_kwargs: json.dumps({"return_code": 0, "stdout": "msg"})},
+            ]
+            return [
+                pipeline._wrap_tool(tool, phase=config.phase, agent=config.name)
+                for tool in base_tools
+            ]
+
+        monkeypatch.setattr(pipeline, "_resolve_tools", fake_resolve)
+        mock_provider.chat_with_tools.side_effect = fake_chat_with_tools
+
+        status = pipeline._run_agent(AGENTS["intrusion"])
+
+        assert status == "completed"
+        final = json.loads((run_dir / "05_intrusion.json").read_text())
+        assert final["status"] == "completed"
+        assert final["completion_source"] == "complete_intrusion_campaign"
+
     def test_local_moe_intrusion_rewrites_hallucinated_compromise(
         self, mock_provider, output_dir
     ):
@@ -2915,7 +3039,7 @@ class TestPhase5Context:
         pipeline = Pipeline(provider=mock_provider, execution_profile="full")
         assert pipeline._run_compact_intrusion_post_access(AGENTS["intrusion"]) == 0
 
-    def test_compact_coverage_does_not_count_credential_as_entry_probe(
+    def test_compact_coverage_counts_matching_credential_as_entry_probe(
         self, mock_provider, output_dir
     ):
         mock_provider.provider = "local-moe"
@@ -2953,11 +3077,8 @@ class TestPhase5Context:
 
         coverage_ok, coverage = pipeline._compact_intrusion_coverage()
 
-        assert coverage_ok is False
-        assert coverage["missing_entry_points"] == [
-            ("192.168.100.12", "http"),
-            ("192.168.100.13", "ssh"),
-        ]
+        assert coverage_ok is True
+        assert coverage["missing_entry_points"] == []
         assert coverage["missing_credential_keys"] == []
 
 
@@ -3064,7 +3185,7 @@ class TestPhase5Context:
         assert kwargs["force_tool_on_stall"] is True
         assert kwargs["reopen_intrusion_tools_on_contract_error"] is True
         assert "Complete compact campaign" in kwargs["system_prompt"]
-        assert "orchestrator derives the JSON deliverable" in kwargs["system_prompt"]
+        assert "commits 05_intrusion.json" in kwargs["system_prompt"]
 
 
     def test_compact_intrusion_defers_failed_phase_event_until_reconciliation(

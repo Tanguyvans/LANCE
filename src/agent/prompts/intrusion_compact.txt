@@ -32,9 +32,9 @@ Phase 5 of 6 — compact intrusion reconciliation. The context file is authorita
 1. Read 05_intrusion_context.json.
 2. Validate every listed entry point with its matching protocol.
 3. Attempt every listed target with every recovered credential, using the primary service implied by the target role/ports.
-4. Complete compact campaign: call complete_intrusion_campaign once the progress tool reports readiness.
+4. Complete compact campaign: call complete_intrusion_campaign once the ledger is ready; a successful call commits 05_intrusion.json.
 </instructions>
 
 <output>
-Use tool calls only. The orchestrator derives the JSON deliverable and writes 05_intrusion.json from the authoritative tool ledger.
+Use tool calls only. The successful complete_intrusion_campaign call validates the authoritative tool ledger and commits 05_intrusion.json.
 </output>
