@@ -105,6 +105,16 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
                 float(s[name]) for s in positive if s.get(name) is not None
             ))
             for name in (
+                "phase5_target_attempt_coverage", "phase5_target_coverage",
+                "phase5_compromise_rate", "phase5_hop_coverage",
+                "phase5_pivot_success_rate", "phase5_chain_faithfulness",
+            )
+        },
+        **{
+            f"macro_{name}": _round_optional(_mean(
+                float(s[name]) for s in positive if s.get(name) is not None
+            ))
+            for name in (
                 "mhr_1", "mhr_2", "mhr_3",
                 "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
                 "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
@@ -181,6 +191,18 @@ def aggregate_evaluations(
                 "mhr_2_verified": None,
                 "mhr_3_verified": None,
                 "run_score_stddev_pct": None,
+                "phase5_target_attempt_coverage": None,
+                "phase5_target_coverage": None,
+                "phase5_compromise_rate": None,
+                "phase5_hop_coverage": None,
+                "phase5_pivot_success_rate": None,
+                "phase5_chain_faithfulness": None,
+                "phase5_targets_total": 0,
+                "phase5_targets_attempted": 0,
+                "phase5_targets_compromised": 0,
+                "phase5_expected_hops": 0,
+                "phase5_observed_hops": 0,
+                "phase5_verified_hops": 0,
                 "run_score_min_pct": None,
                 "run_score_max_pct": None,
             })
@@ -264,6 +286,9 @@ def aggregate_evaluations(
                     "mhr_1", "mhr_2", "mhr_3",
                     "mhr_1_credited", "mhr_2_credited", "mhr_3_credited",
                     "mhr_1_verified", "mhr_2_verified", "mhr_3_verified",
+                    "phase5_target_attempt_coverage", "phase5_target_coverage",
+                    "phase5_compromise_rate", "phase5_hop_coverage",
+                    "phase5_pivot_success_rate", "phase5_chain_faithfulness",
                 )
             },
             "run_score_stddev_pct": (

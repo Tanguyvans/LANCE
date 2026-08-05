@@ -2517,6 +2517,28 @@ function renderBenchmarkTable() {
       </span>`;
     }
 
+    let intrusionCell = noScore;
+    if (!sealed && s?.phase5_metrics_available === true) {
+      const targetCoverage = toRatio(s.phase5_target_coverage);
+      const hopCoverage = toRatio(s.phase5_hop_coverage);
+      const pivotRate = toRatio(s.phase5_pivot_success_rate);
+      const faithfulness = toRatio(s.phase5_chain_faithfulness);
+      const intrusionTitle = [
+        `Cibles compromises: ${Number(s.phase5_targets_compromised || 0)}/${Number(s.phase5_targets_total || 0)} (${pct(targetCoverage)})`,
+        `Cibles tentées: ${Number(s.phase5_targets_attempted || 0)}/${Number(s.phase5_targets_total || 0)} (${pct(toRatio(s.phase5_target_attempt_coverage))})`,
+        `Taux de compromission: ${pct(toRatio(s.phase5_compromise_rate))}`,
+        `Journal de preuves Phase 5: ${s.phase5_evidence_available === true ? 'présent' : 'absent'}`,
+        `Pivots réussis: ${Number(s.phase5_pivot_successes || 0)}/${Number(s.phase5_pivot_attempts || 0)} (${pct(pivotRate)})`,
+        `Transitions vérifiées: ${Number(s.phase5_verified_hops || 0)}/${Number(s.phase5_expected_hops || 0)} (${pct(hopCoverage)})`,
+        `Fidélité des chaînes: ${pct(faithfulness)}`,
+        `Profondeur: ${JSON.stringify(s.phase5_target_coverage_by_depth || {})}`,
+      ].join('\n');
+      intrusionCell = `<span class="bm-metric" title="${intrusionTitle}">
+        <span class="bm-metric-main">C ${pct(targetCoverage)}</span>
+        <span class="bm-metric-sub">P ${pct(pivotRate)} · H ${pct(hopCoverage)}</span>
+      </span>`;
+    }
+
     let efficiencyCell = noScore;
     if (!sealed && s) {
       const costPerTp = toRatio(s.cost_per_tp);
@@ -2657,6 +2679,7 @@ function renderBenchmarkTable() {
       <td>${evidenceCell}</td>
       <td>${exploitCell}</td>
       <td>${pathsCell}</td>
+      <td>${intrusionCell}</td>
       <td>${hallucCell}</td>
       <td>${complianceCell}</td>
       <td>

@@ -818,6 +818,10 @@ class TestEvaluatePathCoverage:
                 "evidence_ref": "tc-f2", "tool": "http_get",
                 "args": {"url": f"http://{ip}:8080/backup.sql"},
                 "result": {"success": True, "return_code": 0, "status_code": 200, "body": "backup contents"},
+            }) + "\n" + json.dumps({
+                "evidence_ref": "tc-p5", "phase": 5, "tool": "ssh_login",
+                "args": {"ip": ip, "user": "root", "password": "root"},
+                "result": {"success": True, "return_code": 0, "stdout": "uid=0(root) gid=0(root)"},
             }) + "\n"
         )
         (run_dir / "05_intrusion.json").write_text(json.dumps({
@@ -854,6 +858,75 @@ class TestEvaluatePathCoverage:
         assert result.path_matches[0]["verified_by_intrusion_chain"] is True
         assert result.verified_attack_paths == 1
         assert result.verified_path_coverage == 1.0
+
+    def test_phase5_metrics_credit_partial_lateral_compromise(self, tmp_path):
+        """A failed final pivot keeps the successful prefix measurable."""
+        vulns = [
+            _gt(id="V1", ip="192.168.100.1", device="router", hop_depth=0),
+            _gt(id="V2", ip="192.168.100.12", device="web", hop_depth=1),
+            _gt(id="V3", ip="192.168.100.50", device="db", hop_depth=2),
+        ]
+        findings = [
+            _finding(id="F1", ip="192.168.100.1"),
+            _finding(id="F2", ip="192.168.100.12"),
+            _finding(id="F3", ip="192.168.100.50"),
+        ]
+        run_dir = _write_run(tmp_path, findings)
+        (run_dir / "05_intrusion.json").write_text(json.dumps({
+            "compromised_devices": [
+                {"device_id": "router", "device_ip": "192.168.100.1"},
+                {"device_id": "web", "device_ip": "192.168.100.12"},
+            ],
+            "chains": [{"hops": [
+                {"device_id": "router", "device_ip": "192.168.100.1", "pivot_to": "192.168.100.12"},
+                {"device_id": "web", "device_ip": "192.168.100.12", "pivot_to": "192.168.100.50"},
+                {"device_id": "db", "device_ip": "192.168.100.50", "pivot_to": None},
+            ]}],
+        }))
+        (run_dir / "tool_calls.jsonl").write_text("\n".join([
+            json.dumps({
+                "phase": 5, "tool": "ssh_login", "args": {"ip": "192.168.100.1"},
+                "result": {"success": True, "return_code": 0, "stdout": "uid=0(root)"},
+            }),
+            json.dumps({
+                "phase": 5, "tool": "ssh_exec", "args": {"ip": "192.168.100.12"},
+                "result": {"success": True, "return_code": 0, "stdout": "uid=1000(web)"},
+            }),
+            json.dumps({
+                "phase": 5, "tool": "ssh_login", "args": {"ip": "192.168.100.50"},
+                "result": {"success": False, "return_code": 255, "stderr": "permission denied"},
+            }),
+        ]), encoding="utf-8")
+        paths = [{
+            "id": "P1",
+            "chain": [
+                {"device": "Internet"}, {"device": "router"},
+                {"device": "web"}, {"device": "db"},
+            ],
+            "vulnerabilities_used": ["V1", "V2", "V3"],
+        }]
+
+        result = evaluate(run_dir, _write_gt(tmp_path, vulns, attack_paths=paths))
+
+        assert result.phase5_metrics_available is True
+        assert result.phase5_evidence_available is True
+        assert result.phase5_targets_total == 3
+        assert result.phase5_targets_attempted == 3
+        assert result.phase5_targets_compromised == 2
+        assert result.phase5_target_attempt_coverage == 1.0
+        assert result.phase5_target_coverage == 0.667
+        assert result.phase5_compromise_rate == 0.667
+        assert result.phase5_expected_hops == 2
+        assert result.phase5_observed_hops == 2
+        assert result.phase5_verified_hops == 1
+        assert result.phase5_hop_coverage == 0.5
+        assert result.phase5_pivot_attempts == 2
+        assert result.phase5_pivot_successes == 1
+        assert result.phase5_pivot_success_rate == 0.5
+        assert result.phase5_chain_faithfulness == 0.5
+        assert result.phase5_gt_targets_by_depth == {"0": 1, "1": 1, "2": 1}
+        assert result.phase5_compromised_targets_by_depth == {"0": 1, "1": 1}
+        assert result.phase5_target_coverage_by_depth == {"0": 1.0, "1": 1.0, "2": 0.0}
 
 
 class TestEvaluateMhrContinued:

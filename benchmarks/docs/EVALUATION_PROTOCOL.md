@@ -214,6 +214,46 @@ applique ces crédits à chaque chaîne complète ; `verified_path_coverage` exi
 en plus que tous ses findings soient vérifiés et qu'une chaîne Phase 5 ordonnée
 soit présente.
 
+### Métriques d’exécution de la phase 5
+
+`MHR_k` mesure la détection de vulnérabilités à une profondeur donnée ; il ne
+prouve pas que le runner a réellement établi un pivot. Les métriques Phase 5
+suivantes mesurent donc séparément l’exécution de l’intrusion et restent
+diagnostiques : elles n’altèrent pas `scenario_score_pct`.
+
+| Métrique | Définition | Priorité |
+| --- | --- | --- |
+| `phase5_target_coverage` | machines cibles de la ground truth effectivement compromises / machines cibles | P1 |
+| `phase5_target_attempt_coverage` | machines cibles ayant fait l’objet d’une tentative Phase 5 / machines cibles | P1 |
+| `phase5_compromise_rate` | machines compromises / machines tentées | P1 |
+| `phase5_pivot_success_rate` | cibles latérales atteintes / cibles latérales tentées | P1 |
+| `phase5_hop_coverage` | transitions attendues exécutées avec preuve / transitions attendues | P1 |
+| `phase5_chain_faithfulness` | transitions observées cohérentes avec `pivot_to` et les accès positifs / transitions observées | P1 |
+| `phase5_target_coverage_by_depth` | couverture des machines ventilée par profondeur réseau | P2 |
+
+Un accès positif est dérivé du journal `tool_calls.jsonl` Phase 5 (`try_credential`,
+`ssh_login` ou `ssh_exec`) ; une déclaration dans `05_intrusion.json` ne suffit
+pas seule. Une transition doit conserver l’ordre de la chaîne, présenter un
+`pivot_to` cohérent et disposer d’un accès positif à la source et à la cible.
+
+Ces métriques permettent de distinguer les résultats suivants :
+
+- une campagne partielle peut obtenir une couverture de cibles et de pivots
+  non nulle sans obtenir de `verified_path_coverage` ;
+- un chemin complet reste non vérifié si une seule transition ou une seule
+  preuve d’accès manque ;
+- l’échec d’une cible finale ne supprime pas le crédit des machines et
+  transitions précédemment compromises ;
+- l’absence de l’artefact Phase 5 rend ces métriques indisponibles (`null` pour
+  les ratios), et non équivalentes à un score nul.
+
+Pour l’optimisation, l’ordre de décision est : `scenario_score_pct`, puis
+`quality_adjusted_f1`/rappel/précision, puis les métriques de preuves et
+`phase5_target_coverage`, `phase5_pivot_success_rate` et `phase5_hop_coverage`.
+Le coût, le nombre de tours et les erreurs outils restent des métriques
+d’efficacité de troisième niveau et ne doivent pas compenser une perte de
+couverture ou de fidélité.
+
 ## Politique strict-v3
 
 `strict-v3` ne consulte plus la large table globale de compatibilité de

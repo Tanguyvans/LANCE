@@ -402,6 +402,29 @@ class EvaluationResult:
     intrusion_paths_available: bool = False
     path_matches: list[dict] = field(default_factory=list)
 
+    # Phase 5 intrusion execution diagnostics. These are deliberately kept
+    # separate from the official strict-v3 score: a partial campaign can be
+    # useful even when it does not complete every attack path.
+    phase5_metrics_available: bool = False
+    phase5_evidence_available: bool = False
+    phase5_targets_total: int = 0
+    phase5_targets_attempted: int = 0
+    phase5_targets_compromised: int = 0
+    phase5_target_attempt_coverage: float | None = None
+    phase5_target_coverage: float | None = None
+    phase5_compromise_rate: float | None = None
+    phase5_expected_hops: int = 0
+    phase5_observed_hops: int = 0
+    phase5_verified_hops: int = 0
+    phase5_hop_coverage: float | None = None
+    phase5_pivot_attempts: int = 0
+    phase5_pivot_successes: int = 0
+    phase5_pivot_success_rate: float | None = None
+    phase5_chain_faithfulness: float | None = None
+    phase5_gt_targets_by_depth: dict[str, int] = field(default_factory=dict)
+    phase5_compromised_targets_by_depth: dict[str, int] = field(default_factory=dict)
+    phase5_target_coverage_by_depth: dict[str, float] = field(default_factory=dict)
+
     # Details
     matches: list[dict] = field(default_factory=list)
     unmatched_llm: list[dict] = field(default_factory=list)
@@ -844,6 +867,321 @@ def _compute_mhr_credit(matches: list[dict], k: int, *, verified: bool = False) 
     else:
         value = sum(float(match.get("match_credit", 0.0)) for match in eligible) / len(eligible)
     return round(value, 3)
+
+# Phase 5 is evaluated from the authoritative tool ledger where available.
+# The deliverable describes the campaign, but a model declaration alone is not
+# enough to turn a target or a pivot into a successful compromise.
+_PHASE5_ATTEMPT_TOOLS: frozenset[str] = frozenset({
+    "try_credential", "ssh_login", "ssh_exec", "mqtt_listen", "http_get",
+    "curl_headers", "telnet_connect", "ftp_list", "redis_cmd", "mysql_query",
+})
+_PHASE5_COMPROMISE_TOOLS: frozenset[str] = frozenset({
+    "try_credential", "ssh_login", "ssh_exec",
+})
+_PHASE5_IP_RE = re.compile(r"(?<![0-9])(?:\d{1,3}\.){3}\d{1,3}(?![0-9])")
+
+
+def _phase5_result(record: dict) -> dict:
+    raw = record.get("result")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+    return {}
+
+
+def _phase5_record_targets(record: dict) -> set[str]:
+    """Extract target aliases from a Phase 5 tool call.
+
+    Tool arguments use different names (``ip``, ``broker``, ``url`` or a
+    command string). Restrict extraction to target-shaped fields so a leaked
+    credential's ``source_ip`` cannot be mistaken for the target.
+    """
+    args = record.get("args") or {}
+    if not isinstance(args, dict):
+        return set()
+    aliases: set[str] = set()
+    direct_keys = ("ip", "target_ip", "device_ip", "target", "host", "broker")
+    text_keys = (*direct_keys, "url", "command_string", "command")
+    for key in text_keys:
+        value = args.get(key)
+        if value in (None, ""):
+            continue
+        text = str(value).strip()
+        if key in direct_keys and text:
+            aliases.add(text.casefold())
+        aliases.update(match.casefold() for match in _PHASE5_IP_RE.findall(text))
+    return aliases
+
+
+def _phase5_access_success(record: dict) -> bool:
+    """Return a conservative machine-access success verdict."""
+    tool = str(record.get("tool") or "").strip()
+    if tool not in _PHASE5_COMPROMISE_TOOLS:
+        return False
+    result = _phase5_result(record)
+    if not result or result.get("authenticated") is False or result.get("error"):
+        return False
+    success = result.get("success")
+    if isinstance(success, bool):
+        return success
+    if tool in {"ssh_login", "ssh_exec"}:
+        return (
+            result.get("return_code") == 0
+            or bool(re.search(r"\buid=\d+\b|\bgid=\d+\b|__ok__", str(
+                result.get("stdout") or result.get("output") or ""
+            ), re.IGNORECASE))
+        )
+    return False
+
+
+def _phase5_node_aliases(*values: object) -> set[str]:
+    aliases: set[str] = set()
+    for value in values:
+        if value in (None, ""):
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        aliases.add(text.casefold())
+        aliases.add(text.split(" (", 1)[0].strip().casefold())
+        aliases.update(match.casefold() for match in _PHASE5_IP_RE.findall(text))
+    return aliases
+
+
+def _compute_phase5_metrics(
+    run_dir: Path,
+    gt_vulns: list[dict],
+    gt_attack_paths: list[dict],
+    tool_calls: list[dict],
+) -> dict:
+    """Compute evidence-backed partial and complete Phase 5 outcomes.
+
+    ``phase5_target_coverage`` answers "how many GT target machines were
+    actually accessed?". ``phase5_hop_coverage`` answers "how many distinct
+    expected transitions were executed and evidenced?". They intentionally do
+    not require every target or every path to succeed.
+    """
+    empty: dict = {
+        "phase5_metrics_available": False,
+        "phase5_evidence_available": False,
+        "phase5_targets_total": 0,
+        "phase5_targets_attempted": 0,
+        "phase5_targets_compromised": 0,
+        "phase5_target_attempt_coverage": None,
+        "phase5_target_coverage": None,
+        "phase5_compromise_rate": None,
+        "phase5_expected_hops": 0,
+        "phase5_observed_hops": 0,
+        "phase5_verified_hops": 0,
+        "phase5_hop_coverage": None,
+        "phase5_pivot_attempts": 0,
+        "phase5_pivot_successes": 0,
+        "phase5_pivot_success_rate": None,
+        "phase5_chain_faithfulness": None,
+        "phase5_gt_targets_by_depth": {},
+        "phase5_compromised_targets_by_depth": {},
+        "phase5_target_coverage_by_depth": {},
+        "observed_chains": [],
+        "verified_expected_paths": [],
+    }
+    intrusion_file = run_dir / "05_intrusion.json"
+    if not intrusion_file.is_file():
+        return empty
+    try:
+        intrusion_data = json.loads(intrusion_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return empty
+    if not isinstance(intrusion_data, dict):
+        return empty
+
+    phase5_records = [
+        record for record in tool_calls
+        if record.get("phase") in (5, "5")
+    ]
+    attempted_aliases: set[str] = set()
+    access_aliases: set[str] = set()
+    for record in phase5_records:
+        tool = str(record.get("tool") or "").strip()
+        targets = _phase5_record_targets(record)
+        if tool in _PHASE5_ATTEMPT_TOOLS:
+            attempted_aliases.update(targets)
+        if _phase5_access_success(record):
+            access_aliases.update(targets)
+
+    node_alias_to_canonical: dict[str, str] = {}
+
+    def register_node(canonical: str, *values: object) -> None:
+        canonical = canonical.strip().casefold()
+        if not canonical:
+            return
+        for alias in _phase5_node_aliases(*values, canonical):
+            node_alias_to_canonical.setdefault(alias, canonical)
+
+    target_nodes: set[str] = set()
+    target_depths: dict[str, int] = {}
+    for vuln in gt_vulns:
+        device = str(vuln.get("device") or vuln.get("ip") or "").strip()
+        if not device:
+            continue
+        canonical = device.split(" (", 1)[0].strip().casefold()
+        register_node(canonical, device, vuln.get("ip"))
+        target_nodes.add(canonical)
+        try:
+            depth = max(0, int(vuln.get("hop_depth", 0)))
+        except (TypeError, ValueError):
+            depth = 0
+        target_depths[canonical] = min(target_depths.get(canonical, depth), depth)
+
+    expected_chains: list[list[str]] = []
+    expected_edges: set[tuple[str, str]] = set()
+    for path in gt_attack_paths:
+        nodes: list[str] = []
+        for hop in path.get("chain", []) or []:
+            raw = str(hop.get("device", "")).strip()
+            if not raw or raw.casefold() == "internet":
+                continue
+            base = raw.split(" (", 1)[0].strip().casefold()
+            register_node(base, raw)
+            if not nodes or nodes[-1] != base:
+                nodes.append(base)
+        expected_chains.append(nodes)
+        expected_edges.update(zip(nodes, nodes[1:]))
+
+    def canonical_for_aliases(aliases: set[str]) -> str:
+        for alias in aliases:
+            if alias in node_alias_to_canonical:
+                return node_alias_to_canonical[alias]
+        return next(iter(aliases), "")
+
+    attempted_nodes = {
+        canonical_for_aliases({alias})
+        for alias in attempted_aliases
+        if canonical_for_aliases({alias})
+    }
+    access_nodes = {
+        canonical_for_aliases({alias})
+        for alias in access_aliases
+        if canonical_for_aliases({alias})
+    }
+
+    context_entry_nodes: set[str] = set()
+    context_file = run_dir / "05_intrusion_context.json"
+    if context_file.is_file():
+        try:
+            context = json.loads(context_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            context = {}
+        if isinstance(context, dict):
+            for entry in context.get("entry_points", []) or []:
+                if isinstance(entry, dict):
+                    aliases = _phase5_node_aliases(
+                        entry.get("device_id"), entry.get("device_ip"), entry.get("ip")
+                    )
+                    canonical = canonical_for_aliases(aliases)
+                    if canonical:
+                        context_entry_nodes.add(canonical)
+
+    observed_chains: list[list[str]] = []
+    observed_edges: set[tuple[str, str]] = set()
+    valid_edges: set[tuple[str, str]] = set()
+    for chain in intrusion_data.get("chains", []) or []:
+        if not isinstance(chain, dict):
+            continue
+        logical_hops: list[dict] = []
+        for hop in chain.get("hops", []) or []:
+            if not isinstance(hop, dict):
+                continue
+            aliases = _phase5_node_aliases(
+                hop.get("device_id"), hop.get("device_ip"), hop.get("ip")
+            )
+            node = canonical_for_aliases(aliases)
+            if not node:
+                continue
+            pivot_aliases = _phase5_node_aliases(hop.get("pivot_to"))
+            if logical_hops and logical_hops[-1]["node"] == node:
+                # Several vulnerabilities may be represented as repeated
+                # entries on one host; keep the most informative pivot field.
+                if pivot_aliases:
+                    logical_hops[-1]["pivot_aliases"] = pivot_aliases
+                continue
+            logical_hops.append({
+                "node": node,
+                "aliases": aliases,
+                "pivot_aliases": pivot_aliases,
+            })
+        nodes = [hop["node"] for hop in logical_hops]
+        observed_chains.append(nodes)
+        if nodes and not context_entry_nodes:
+            context_entry_nodes.add(nodes[0])
+        for source, target in zip(logical_hops, logical_hops[1:]):
+            edge = (source["node"], target["node"])
+            observed_edges.add(edge)
+            pivot_ok = bool(source["pivot_aliases"] & target["aliases"])
+            source_access = source["node"] in access_nodes or source["node"] in context_entry_nodes
+            target_access = target["node"] in access_nodes
+            if pivot_ok and source_access and target_access:
+                valid_edges.add(edge)
+
+    entry_nodes = context_entry_nodes
+    lateral_attempts = attempted_nodes - entry_nodes
+    lateral_successes = access_nodes - entry_nodes
+    target_attempted = target_nodes & attempted_nodes
+    target_compromised = target_nodes & access_nodes
+
+    gt_depth_counts: Counter[str] = Counter(str(depth) for depth in target_depths.values())
+    compromised_depth_counts: Counter[str] = Counter(
+        str(target_depths[node]) for node in target_compromised if node in target_depths
+    )
+    depth_coverage = {
+        depth: round(compromised_depth_counts.get(depth, 0) / count, 3)
+        for depth, count in sorted(gt_depth_counts.items()) if count
+    }
+    verified_expected_paths: list[bool] = []
+    for expected in expected_chains:
+        sequence_observed = False
+        for observed in observed_chains:
+            position = 0
+            for node in observed:
+                if position < len(expected) and node == expected[position]:
+                    position += 1
+            if position == len(expected) and expected:
+                sequence_observed = True
+                break
+        edges_verified = all(edge in valid_edges for edge in zip(expected, expected[1:]))
+        target_verified = bool(expected) and expected[-1] in access_nodes
+        verified_expected_paths.append(sequence_observed and edges_verified and target_verified)
+
+    targets_total = len(target_nodes)
+    targets_attempted = len(target_attempted)
+    targets_compromised = len(target_compromised)
+    return {
+        "phase5_metrics_available": True,
+        "phase5_evidence_available": bool(phase5_records),
+        "phase5_targets_total": targets_total,
+        "phase5_targets_attempted": targets_attempted,
+        "phase5_targets_compromised": targets_compromised,
+        "phase5_target_attempt_coverage": round(targets_attempted / targets_total, 3) if targets_total else None,
+        "phase5_target_coverage": round(targets_compromised / targets_total, 3) if targets_total else None,
+        "phase5_compromise_rate": round(targets_compromised / targets_attempted, 3) if targets_attempted else None,
+        "phase5_expected_hops": len(expected_edges),
+        "phase5_observed_hops": len(observed_edges),
+        "phase5_verified_hops": len(expected_edges & valid_edges),
+        "phase5_hop_coverage": round(len(expected_edges & valid_edges) / len(expected_edges), 3) if expected_edges else None,
+        "phase5_pivot_attempts": len(lateral_attempts),
+        "phase5_pivot_successes": len(lateral_successes),
+        "phase5_pivot_success_rate": round(len(lateral_successes) / len(lateral_attempts), 3) if lateral_attempts else None,
+        "phase5_chain_faithfulness": round(len(valid_edges) / len(observed_edges), 3) if observed_edges else None,
+        "phase5_gt_targets_by_depth": dict(sorted(gt_depth_counts.items())),
+        "phase5_compromised_targets_by_depth": dict(sorted(compromised_depth_counts.items())),
+        "phase5_target_coverage_by_depth": depth_coverage,
+        "observed_chains": observed_chains,
+        "verified_expected_paths": verified_expected_paths,
+    }
 
 
 def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
@@ -2324,20 +2662,22 @@ def evaluate(
                 collapsed.append(device)
         return collapsed
 
-    intrusion_file = run_dir / "05_intrusion.json"
-    observed_chains: list[list[str]] = []
-    if intrusion_file.is_file():
-        try:
-            intrusion_data = json.loads(intrusion_file.read_text(encoding="utf-8"))
-            for chain in intrusion_data.get("chains", []) or []:
-                devices = [
-                    str(hop.get("device_id") or hop.get("device_ip") or "").strip()
-                    for hop in (chain.get("hops", []) or [])
-                ]
-                observed_chains.append(collapse_consecutive_devices(devices))
-            result.intrusion_paths_available = True
-        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
-            result.intrusion_paths_available = False
+    phase5_metrics = _compute_phase5_metrics(
+        run_dir, gt_vulns, gt_attack_paths, tool_calls
+    )
+    for field_name in (
+        "phase5_metrics_available", "phase5_evidence_available",
+        "phase5_targets_total", "phase5_targets_attempted",
+        "phase5_targets_compromised", "phase5_target_attempt_coverage",
+        "phase5_target_coverage", "phase5_compromise_rate",
+        "phase5_expected_hops", "phase5_observed_hops", "phase5_verified_hops",
+        "phase5_hop_coverage", "phase5_pivot_attempts",
+        "phase5_pivot_successes", "phase5_pivot_success_rate",
+        "phase5_chain_faithfulness", "phase5_gt_targets_by_depth",
+        "phase5_compromised_targets_by_depth", "phase5_target_coverage_by_depth",
+    ):
+        setattr(result, field_name, phase5_metrics[field_name])
+    result.intrusion_paths_available = phase5_metrics["phase5_metrics_available"]
 
     def normalized_expected_devices(path: dict) -> list[str]:
         devices: list[str] = []
@@ -2348,21 +2688,14 @@ def evaluate(
                 devices.append(device)
         return collapse_consecutive_devices(devices)
 
-    def is_subsequence(expected: list[str], observed: list[str]) -> bool:
-        position = 0
-        for item in observed:
-            if position < len(expected) and item == expected[position]:
-                position += 1
-        return position == len(expected)
-
     if result.evidence_contract_compatible and result.intrusion_paths_available and result.total_attack_paths:
-        for path_match, attack_path in zip(result.path_matches, gt_attack_paths):
+        for path_index, (path_match, attack_path) in enumerate(zip(result.path_matches, gt_attack_paths)):
             expected_devices = normalized_expected_devices(attack_path)
             verified = (
                 path_match["detected"]
                 and path_match["all_findings_verified"]
                 and bool(expected_devices)
-                and any(is_subsequence(expected_devices, chain) for chain in observed_chains)
+                and bool(phase5_metrics["verified_expected_paths"][path_index])
             )
             path_match["expected_devices"] = expected_devices
             path_match["verified_by_intrusion_chain"] = verified
@@ -2656,6 +2989,38 @@ def print_report(result: EvaluationResult) -> None:
             for d, n in result.gt_at_depth.items()
         )
         print(f"    Breakdown by depth          : {depth_breakdown}")
+    print(f"{'─'*60}")
+    print("  PHASE 5 INTRUSION EXECUTION")
+    if result.phase5_metrics_available:
+        print(
+            f"    Evidence ledger               : "
+            f"{'present' if result.phase5_evidence_available else 'absent'}"
+        )
+        print(
+            f"    Target coverage              : {_fmt_mhr(result.phase5_target_coverage)}  "
+            f"({result.phase5_targets_compromised}/{result.phase5_targets_total})"
+        )
+        print(
+            f"    Target attempt coverage     : {_fmt_mhr(result.phase5_target_attempt_coverage)}  "
+            f"({result.phase5_targets_attempted}/{result.phase5_targets_total})"
+        )
+        print(
+            f"    Compromise rate              : {_fmt_mhr(result.phase5_compromise_rate)}"
+        )
+        print(
+            f"    Pivot success rate           : {_fmt_mhr(result.phase5_pivot_success_rate)}  "
+            f"({result.phase5_pivot_successes}/{result.phase5_pivot_attempts})"
+        )
+        print(
+            f"    Verified hop coverage        : {_fmt_mhr(result.phase5_hop_coverage)}  "
+            f"({result.phase5_verified_hops}/{result.phase5_expected_hops})"
+        )
+        print(
+            f"    Chain faithfulness           : "
+            f"{_fmt_mhr(result.phase5_chain_faithfulness)}"
+        )
+    else:
+        print("    Phase 5 execution metrics   : N/A")
     print(f"{'─'*60}")
 
     # Counts breakdown

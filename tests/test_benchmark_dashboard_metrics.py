@@ -28,6 +28,14 @@ def test_evaluation_contract_contains_dashboard_quality_metrics():
         "quality_path_coverage",
         "verified_path_coverage",
         "mhr_1_credited",
+        "phase5_metrics_available",
+        "phase5_target_coverage",
+        "phase5_target_attempt_coverage",
+        "phase5_compromise_rate",
+        "phase5_hop_coverage",
+        "phase5_pivot_success_rate",
+        "phase5_chain_faithfulness",
+        "phase5_target_coverage_by_depth",
         "mhr_1_verified",
         "cost_per_tp",
         "cost_per_expected_vulnerability",
@@ -46,7 +54,7 @@ def test_benchmark_dashboard_renders_strict_v3_metric_groups():
     html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
     javascript = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
 
-    for heading in ("Q-F1/Spec", "Preuves", "Exploit.", "Chemins", "Effic."):
+    for heading in ("Q-F1/Spec", "Preuves", "Exploit.", "Chemins", "Intrusion", "Effic."):
         assert heading in html
 
     for metric in (
@@ -62,6 +70,14 @@ def test_benchmark_dashboard_renders_strict_v3_metric_groups():
         "cost_per_tp",
         "cost_per_expected_vulnerability",
         "turns_per_tp",
+        "phase5_target_coverage",
+        "phase5_hop_coverage",
+        "phase5_pivot_success_rate",
+        "phase5_chain_faithfulness",
+        "phase5_target_coverage_by_depth",
+        "phase5_target_attempt_coverage",
+        "phase5_compromise_rate",
+        "phase5_evidence_available",
     ):
         assert metric in javascript
 

@@ -70,6 +70,10 @@ class TestScenarioMacroAggregation:
             "mhr_1": 1.0,
             "mhr_1_credited": 0.75,
             "mhr_1_verified": 0.5,
+            "phase5_target_coverage": 0.75,
+            "phase5_hop_coverage": 0.5,
+            "phase5_pivot_success_rate": 1.0,
+            "phase5_chain_faithfulness": 1.0,
         })
         second = _evaluation("2", score=50.0, f1=0.5)
         second.update({
@@ -78,6 +82,10 @@ class TestScenarioMacroAggregation:
             "mhr_1": 0.5,
             "mhr_1_credited": 0.25,
             "mhr_1_verified": 0.0,
+            "phase5_target_coverage": 0.25,
+            "phase5_hop_coverage": 0.0,
+            "phase5_pivot_success_rate": 0.0,
+            "phase5_chain_faithfulness": 0.5,
         })
 
         aggregate = aggregate_evaluations([first, second])
@@ -87,6 +95,11 @@ class TestScenarioMacroAggregation:
         assert aggregate["macro_mhr_1"] == 0.75
         assert aggregate["macro_mhr_1_credited"] == 0.5
         assert aggregate["macro_mhr_1_verified"] == 0.25
+
+        assert aggregate["macro_phase5_target_coverage"] == 0.5
+        assert aggregate["macro_phase5_hop_coverage"] == 0.25
+        assert aggregate["macro_phase5_pivot_success_rate"] == 0.5
+        assert aggregate["macro_phase5_chain_faithfulness"] == 0.75
 
     def test_reports_run_dispersion_within_scenario(self):
         aggregate = aggregate_evaluations([
