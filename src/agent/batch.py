@@ -118,6 +118,48 @@ def _parse_single_scenario_id(value: int | str) -> str:
     return scenario_ids[0]
 
 
+def _phase5_summary(
+    run_dir: Path,
+    pipeline_results: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return an explicit Phase 5 status for batch reporting."""
+    pipeline_status = None
+    if isinstance(pipeline_results, dict):
+        pipeline_status = pipeline_results.get("intrusion")
+
+    artifact_status = None
+    blocked_reason = None
+    artifact_path = Path(run_dir) / "05_intrusion.json"
+    try:
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        artifact = {}
+    if isinstance(artifact, dict):
+        artifact_status = artifact.get("status")
+        blocked_reason = artifact.get("blocked_reason")
+
+    incomplete = (
+        artifact_status == "incomplete"
+        or str(pipeline_status or "").startswith((
+            "failed:phase5_",
+            "blocked:phase5_",
+        ))
+    )
+    if incomplete:
+        status = "incomplete"
+    elif artifact_status == "completed" or str(pipeline_status or "").startswith("completed"):
+        status = "completed"
+    else:
+        status = pipeline_status or artifact_status or "unknown"
+
+    return {
+        "status": status,
+        "pipeline_status": pipeline_status,
+        "artifact_status": artifact_status,
+        "blocked_reason": blocked_reason,
+    }
+
+
 def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
     """Return stable per-run metrics with the strict-v3 scenario score as primary."""
     specificity = evaluation.specificity
@@ -290,6 +332,14 @@ def _aggregate_batch_results(
         "tool_error_rate": round(tool_errors / tool_calls, 3) if tool_calls else None,
         "scenarios_evaluated": len(completed),
         "scenarios_skipped": len(expected) - len(completed),
+        "phase5_incomplete_scenarios": [
+            str(result.get("scenario_id"))
+            for result in results
+            if result.get("phase5_status") == "incomplete"
+        ],
+        "phase5_incomplete_count": sum(
+            1 for result in results if result.get("phase5_status") == "incomplete"
+        ),
     }
 
 
@@ -317,6 +367,7 @@ def run_batch(
         raise ValueError(f"No valid scenario IDs found in --batch '{batch_arg}'")
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    batch_id = f"batch-{timestamp}"
     batch_dir = OUTPUT_DIR / f"batch_{timestamp}"
     batch_dir.mkdir(parents=True, exist_ok=True)
 
@@ -362,6 +413,17 @@ def run_batch(
                 execution_profile=execution_profile,
             )
             run_results = pipeline.run()
+            try:
+                pipeline._update_run_meta({
+                    "batch": {
+                        "batch_id": batch_id,
+                        "batch_index": idx,
+                        "batch_total": len(scenario_ids),
+                        "scenario_id": sid,
+                    }
+                })
+            except Exception:
+                pass
         except Exception as exc:
             failed_run_dir = getattr(pipeline, "run_dir", None)
             tracker = getattr(pipeline, "tracker", None)
@@ -381,12 +443,18 @@ def run_batch(
         run_dir = pipeline.run_dir
         cost = round(pipeline.tracker.total_cost(), 4)
 
+        phase5 = _phase5_summary(run_dir, run_results)
         entry: dict = {
+            "batch_id": batch_id,
+            "batch_index": idx,
+            "batch_total": len(scenario_ids),
             "scenario_id": sid,
             "run_dir": str(run_dir),
             "pipeline_results": run_results,
+            "phase5": phase5,
+            "phase5_status": phase5["status"],
             "cost_usd": cost,
-            "status": "ok",
+            "status": "phase5_incomplete" if phase5["status"] == "incomplete" else "ok",
         }
 
         try:
@@ -396,7 +464,11 @@ def run_batch(
             entry["metrics"] = _evaluation_metrics(ev)
         except Exception as exc:
             print(f"  [!] Evaluation failed: {exc}")
-            entry["status"] = "evaluation_failed"
+            entry["status"] = (
+                "phase5_incomplete"
+                if entry.get("phase5_status") == "incomplete"
+                else "evaluation_failed"
+            )
             entry["reason"] = str(exc)
 
         results.append(entry)
@@ -405,6 +477,7 @@ def run_batch(
     aggregate = _aggregate_batch_results(evaluation_results, results, scenario_ids)
 
     summary = {
+        "batch_id": batch_id,
         "batch_timestamp": timestamp,
         "model": getattr(provider, "model", None),
         **profile_resolution.metadata(),
@@ -420,6 +493,13 @@ def run_batch(
 
 
 def _print_scenario_summary(sid: str, entry: dict) -> None:
+    if entry.get("status") == "phase5_incomplete":
+        reason = entry.get("phase5", {}).get("blocked_reason") or "completion contract incomplete"
+        print(
+            "  S{}: Phase 5 incomplete ({}). Cost=".format(sid, reason)
+            + "$" + "{:.4f}".format(entry.get("cost_usd", 0))
+        )
+        return
     m = entry.get("metrics")
     cost = entry.get("cost_usd", 0)
     if m:

@@ -148,15 +148,28 @@ class LLMProvider:
         force_tool_on_stall: bool = False,
         reopen_intrusion_tools_on_contract_error: bool = False,
         force_completion_on_recon_ready: bool = False,
+        recover_required_tool_on_stall: bool = False,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         if self.provider == "anthropic":
-            return self._anthropic_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool)
+            return self._anthropic_loop(
+                system_prompt, user_message, tools, tool_map, max_turns,
+                cost_tracker, max_tokens, stream_callback, required_tool,
+                terminate_after_tool, repeat_guard, terminal_unavailable_tools,
+                strict_required_tool, recover_required_tool_on_stall,
+            )
         else:
-            return self._openai_loop(system_prompt, user_message, tools, tool_map, max_turns, cost_tracker, max_tokens, stream_callback, required_tool, terminate_after_tool, repeat_guard, terminal_unavailable_tools, strict_required_tool, force_tool_on_stall, force_completion_on_recon_ready, reopen_intrusion_tools_on_contract_error)
+            return self._openai_loop(
+                system_prompt, user_message, tools, tool_map, max_turns, cost_tracker,
+                max_tokens, stream_callback, required_tool, terminate_after_tool,
+                repeat_guard, terminal_unavailable_tools, strict_required_tool,
+                force_tool_on_stall, force_completion_on_recon_ready,
+                reopen_intrusion_tools_on_contract_error,
+                recover_required_tool_on_stall,
+            )
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -198,7 +211,10 @@ class LLMProvider:
             if not tool_calls:
                 if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
                     no_tool_stalls += 1
-                    if no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD:
+                    if (
+                        no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD
+                        and not recover_required_tool_on_stall
+                    ):
                         log.warning(
                             "Required tool %s was not called after %d no-tool turns",
                             required_tool, no_tool_stalls,
@@ -283,7 +299,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -385,7 +401,10 @@ class LLMProvider:
             if not message.tool_calls:
                 if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
                     no_tool_stalls += 1
-                    if no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD:
+                    if (
+                        no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD
+                        and not recover_required_tool_on_stall
+                    ):
                         log.warning(
                             "Required tool %s was not called after %d no-tool turns",
                             required_tool, no_tool_stalls,

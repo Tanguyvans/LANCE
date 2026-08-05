@@ -13,6 +13,7 @@ from src.agent.batch import (
     _aggregate_batch_results,
     _evaluation_metrics,
     _parse_scenario_ids,
+    _phase5_summary,
     _parse_single_scenario_id,
     _print_scenario_summary,
     _scenario_split,
@@ -75,6 +76,26 @@ class TestScenarioSelection:
         assert _scenario_split("20") == "test-public"
         assert _scenario_split("29") == "test-public"
         assert _scenario_split("1h") == "dev-public"
+
+
+class TestBatchPhase5Reporting:
+    def test_incomplete_phase5_is_exposed_separately_from_evaluation_metrics(self, tmp_path):
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / "05_intrusion.json").write_text(
+            '{"status":"incomplete","blocked_reason":"completion missing"}',
+            encoding="utf-8",
+        )
+
+        summary = _phase5_summary(
+            run_dir,
+            {"intrusion": "failed:phase5_completion_missing"},
+        )
+
+        assert summary["status"] == "incomplete"
+        assert summary["artifact_status"] == "incomplete"
+        assert summary["pipeline_status"] == "failed:phase5_completion_missing"
+        assert summary["blocked_reason"] == "completion missing"
 
 
 class TestBatchMetrics:

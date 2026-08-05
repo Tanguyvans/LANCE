@@ -2638,6 +2638,8 @@ class Pipeline:
 
     def _run_agent(self, config: AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
+        if config.name == "intrusion":
+            self._compact_intrusion_runtime_tools = None
         # Set skill filter for this phase (hard filtering)
         filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
         set_skill_filter(filter_tags)
@@ -2663,6 +2665,7 @@ class Pipeline:
             tools = self._apply_compact_intrusion_tool_contract(
                 tools, phase=config.phase, agent=config.name
             )
+            self._compact_intrusion_runtime_tools = tools
 
         # Build prompt variables
         variables = {**self.context}
@@ -2846,35 +2849,16 @@ class Pipeline:
             force_tool_on_stall=local_intrusion_memo or compact_local_recon,
             force_completion_on_recon_ready=compact_local_recon,
             reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
+            recover_required_tool_on_stall=local_intrusion_memo,
             # Recon has its own topology-aware progress contract.  The generic
             # save-only cycle guard can otherwise deadlock it after an early save.
             repeat_guard=config.name != "recon",
         )
         # Compact local models sometimes stop immediately after the last
-        # successful action and omit the required terminal tool call.  If the
-        # authoritative ledger is already complete, invoke that explicit
-        # terminal once so the deliverable is committed by the same contract
-        # the model was asked to satisfy.
-        if local_intrusion_memo and not self._compact_intrusion_completion_succeeded():
-            try:
-                coverage_ready, _ = self._compact_intrusion_coverage()
-            except Exception:
-                coverage_ready = False
-            if coverage_ready:
-                completion_tool = next(
-                    (
-                        tool for tool in tools
-                        if tool.get("name") == COMPACT_INTRUSION_COMPLETION_TOOL
-                    ),
-                    None,
-                )
-                if completion_tool and callable(completion_tool.get("function")):
-                    try:
-                        completion_tool["function"](
-                            summary="Finalize Phase 5 from the completed authoritative ledger."
-                        )
-                    except Exception as exc:
-                        log.warning("Compact Phase 5 terminal guard failed: %s", exc)
+        # successful action and omit the required terminal tool call. The
+        # guarded controller helper commits it only when the ledger is complete.
+        if local_intrusion_memo:
+            self._invoke_compact_intrusion_completion(tools, stream_callback)
         # usage will be recorded after validation
 
         # Validate deliverable
@@ -5315,6 +5299,26 @@ class Pipeline:
         def complete_intrusion_campaign(**_kwargs):
             nonlocal completion_attempts, last_completion_signature
             progress = _progress()
+            # Controller fallback calls are persisted in the authoritative
+            # ledger but do not update this closure's in-memory counters.
+            try:
+                ledger_ready, ledger_coverage = self._compact_intrusion_coverage()
+            except Exception:
+                ledger_ready, ledger_coverage = False, {}
+            if ledger_ready and not progress.get("ready_to_complete"):
+                progress = dict(progress)
+                progress.update({
+                    "missing_entry_points": ledger_coverage.get("missing_entry_points", []),
+                    "missing_credentials": ledger_coverage.get("missing_credentials", []),
+                    "missing_credential_keys": ledger_coverage.get("missing_credential_keys", []),
+                    "missing_targets": ledger_coverage.get("missing_targets", []),
+                    "missing_target_services": ledger_coverage.get("missing_targets", []),
+                    "successful_accesses": ledger_coverage.get("successful_accesses", []),
+                    "missing_successful_access": ledger_coverage.get(
+                        "missing_successful_access", False
+                    ),
+                    "ready_to_complete": True,
+                })
             signature = (
                 tuple(progress.get("missing_entry_points", [])),
                 tuple(progress.get("missing_credentials", [])),
@@ -5388,6 +5392,78 @@ class Pipeline:
         }
         wrapped.append(self._wrap_tool(completion_tool, phase=phase, agent=agent))
         return wrapped
+
+    def _invoke_compact_intrusion_completion(
+        self,
+        tools: list[dict] | None,
+        stream_callback: Callable[[dict], None] | None = None,
+    ) -> bool:
+        """Commit compact Phase 5 when the authoritative ledger is complete."""
+        if not self._uses_compact_local_moe() or not tools:
+            return False
+        if self._compact_intrusion_completion_succeeded():
+            return True
+        try:
+            coverage_ready, _ = self._compact_intrusion_coverage()
+        except Exception:
+            coverage_ready = False
+        if not coverage_ready:
+            return False
+        completion_tool = next(
+            (tool for tool in tools if tool.get("name") == COMPACT_INTRUSION_COMPLETION_TOOL),
+            None,
+        )
+        if not completion_tool or not callable(completion_tool.get("function")):
+            return False
+
+        def invoke(tool: dict, **kwargs):
+            name = tool.get("name")
+            if stream_callback:
+                stream_callback({"type": "tool_call", "name": name, "args": kwargs})
+            try:
+                result = tool["function"](**kwargs)
+            except Exception as exc:
+                log.warning("Compact Phase 5 terminal guard failed: %s", exc)
+                result = json.dumps({"ok": False, "error": str(exc)})
+            if not isinstance(result, str):
+                result = json.dumps(result, ensure_ascii=False, default=str)
+            if stream_callback:
+                stream_callback({
+                    "type": "tool_result",
+                    "name": name,
+                    "result": result[:2000],
+                })
+            return result
+
+        result = invoke(
+            completion_tool,
+            summary="Finalize Phase 5 from the completed authoritative ledger.",
+        )
+        try:
+            payload = json.loads(result)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if (
+            isinstance(payload, dict)
+            and payload.get("error_kind") == "intrusion_context_required"
+        ):
+            read_tool = next(
+                (tool for tool in tools if tool.get("name") == "read_deliverable"),
+                None,
+            )
+            if read_tool and callable(read_tool.get("function")):
+                invoke(read_tool, filename="05_intrusion_context.json")
+                result = invoke(
+                    completion_tool,
+                    summary="Finalize Phase 5 from the completed authoritative ledger.",
+                )
+        try:
+            payload = json.loads(result)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        return self._compact_intrusion_completion_succeeded() or (
+            isinstance(payload, dict) and payload.get("ok") is True
+        )
 
     def _apply_recon_tool_contract(self, tools: list[dict]) -> list[dict]:
         """Enforce Recon invariants without prescribing the model's strategy.
@@ -6768,6 +6844,31 @@ class Pipeline:
             # post-compromise collection. Run the idempotent SSH harvest before
             # reconstructing the authoritative deliverable.
             self._run_compact_intrusion_post_access(config, stream_callback)
+            if coverage_ok and not terminal_completed:
+                terminal_completed = self._invoke_compact_intrusion_completion(
+                    getattr(self, "_compact_intrusion_runtime_tools", None),
+                    stream_callback,
+                )
+            if terminal_completed:
+                if self._write_compact_intrusion_deliverable(
+                    note=(
+                        "Committed by complete_intrusion_campaign after "
+                        "controller recovery completed the authoritative ledger."
+                    )
+                ):
+                    results[config.name] = "completed"
+                    if stream_callback:
+                        stream_callback({
+                            "type": "phase_done",
+                            "phase": config.phase,
+                            "name": config.name,
+                            "status": results[config.name],
+                            "deliverable": config.deliverable_file,
+                            "cost_usd": 0,
+                            "turns": 0,
+                        })
+                    return
+                terminal_completed = False
 
         data = self._synthesize_intrusion_from_tools(
             note=(

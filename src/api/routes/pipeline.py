@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from uuid import uuid4
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -294,6 +295,7 @@ def _batch_thread(req: BatchRequest):
             _aggregate_batch_results,
             _evaluation_metrics,
             _parse_scenario_ids,
+            _phase5_summary,
             _scenario_split,
         )
         from src.agent.execution_profiles import resolve_execution_profile_for_model
@@ -320,9 +322,17 @@ def _batch_thread(req: BatchRequest):
         results = []
         evaluation_results = []
         total = len(batch_ids)
+        batch_id = f"batch-{uuid4().hex[:12]}"
 
         profile_resolution = resolve_execution_profile_for_model(req.execution_profile, req.model)
-        _push({"type": "batch_start", "total": total, "ids": batch_ids, "execution_profile": profile_resolution.profile.name, "execution_profile_policy": req.execution_profile})
+        _push({
+            "type": "batch_start",
+            "batch_id": batch_id,
+            "total": total,
+            "ids": batch_ids,
+            "execution_profile": profile_resolution.profile.name,
+            "execution_profile_policy": req.execution_profile,
+        })
 
         for idx, sid in enumerate(batch_ids, 1):
             if _state.get("stop_event") and _state["stop_event"].is_set():
@@ -330,12 +340,19 @@ def _batch_thread(req: BatchRequest):
 
             gt_file = resolve_ground_truth_path(sid)
             benchmark_split = _scenario_split(sid)
-            _push({"type": "batch_scenario_start", "scenario_id": sid, "index": idx, "total": total})
+            _push({
+                "type": "batch_scenario_start",
+                "batch_id": batch_id,
+                "scenario_id": sid,
+                "index": idx,
+                "total": total,
+            })
             _state["scenario_id"] = sid
 
             def make_callback(scenario_id):
                 def callback(event: dict):
                     ev = dict(event)
+                    ev["batch_id"] = batch_id
                     ev["batch_scenario_id"] = scenario_id
                     _push(ev)
                     t = ev.get("type")
@@ -362,15 +379,29 @@ def _batch_thread(req: BatchRequest):
                     execution_profile=req.execution_profile,
                     manage_scenario=not default_export_store().exists(sid),
                 )
-                pipeline.run(
+                run_results = pipeline.run(
                     stream_callback=make_callback(sid),
                     stop_event=_state.get("stop_event"),
                 )
+                try:
+                    pipeline._update_run_meta({
+                        "batch": {
+                            "batch_id": batch_id,
+                            "batch_index": idx,
+                            "batch_total": total,
+                            "scenario_id": sid,
+                        }
+                    })
+                except Exception:
+                    pass
             except Exception as exc:
                 failed_run_dir = getattr(pipeline, "run_dir", None)
                 tracker = getattr(pipeline, "tracker", None)
                 cost = round(tracker.total_cost(), 4) if tracker is not None else 0.0
                 entry = {
+                    "batch_id": batch_id,
+                    "batch_index": idx,
+                    "batch_total": total,
                     "scenario_id": sid,
                     "run_dir": str(failed_run_dir) if failed_run_dir else None,
                     "cost_usd": cost,
@@ -381,6 +412,7 @@ def _batch_thread(req: BatchRequest):
                 results.append(entry)
                 _push({
                     "type": "batch_scenario_done",
+                    "batch_id": batch_id,
                     "scenario_id": sid,
                     "index": idx,
                     "total": total,
@@ -406,18 +438,30 @@ def _batch_thread(req: BatchRequest):
                 except Exception as exc:
                     evaluation_error = str(exc)
 
+            phase5 = _phase5_summary(run_dir, run_results)
             entry = {
+                "batch_id": batch_id,
+                "batch_index": idx,
+                "batch_total": total,
                 "scenario_id": sid,
                 "run_dir": str(run_dir),
+                "pipeline_results": run_results,
+                "phase5": phase5,
+                "phase5_status": phase5["status"],
                 "cost_usd": cost,
                 "metrics": metrics,
-                "status": "ok" if metrics else "evaluation_failed",
+                "status": (
+                    "phase5_incomplete"
+                    if phase5["status"] == "incomplete"
+                    else ("ok" if metrics else "evaluation_failed")
+                ),
             }
             if evaluation_error:
                 entry["reason"] = evaluation_error
             results.append(entry)
             _push({
                 "type": "batch_scenario_done",
+                "batch_id": batch_id,
                 "scenario_id": sid,
                 "index": idx,
                 "total": total,
@@ -429,8 +473,13 @@ def _batch_thread(req: BatchRequest):
 
         aggregate = _aggregate_batch_results(evaluation_results, results, batch_ids)
 
-        _push({"type": "batch_done", "results": results, "aggregate": aggregate,
-               "total_cost_usd": aggregate.get("total_cost_usd", 0)})
+        _push({
+            "type": "batch_done",
+            "batch_id": batch_id,
+            "results": results,
+            "aggregate": aggregate,
+            "total_cost_usd": aggregate.get("total_cost_usd", 0),
+        })
 
     except Exception as exc:
         q = _state["queue"]

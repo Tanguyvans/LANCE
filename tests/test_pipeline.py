@@ -1887,6 +1887,52 @@ class TestRepeatingToolDetector:
         assert provider.client.chat.completions.create.call_count == 3
         complete.assert_not_called()
 
+    def test_openai_loop_recovers_compact_required_tool_after_stalls(self):
+        """Compact Phase 5 keeps forcing an action instead of returning after 3 stalls."""
+        from src.agent.provider import LLMProvider
+
+        provider = LLMProvider.__new__(LLMProvider)
+        provider.provider = "openrouter"
+        provider.model = "test"
+
+        empty_message = MagicMock(content=None, tool_calls=None)
+        terminal_call = MagicMock()
+        terminal_call.function.name = "complete_intrusion_campaign"
+        terminal_call.function.arguments = "{}"
+        terminal_call.id = "call_complete"
+        terminal_message = MagicMock(content=None, tool_calls=[terminal_call])
+
+        provider.client = MagicMock()
+        provider.client.chat.completions.create.side_effect = [
+            MagicMock(choices=[MagicMock(finish_reason="stop", message=empty_message)], usage=None),
+            MagicMock(choices=[MagicMock(finish_reason="stop", message=empty_message)], usage=None),
+            MagicMock(choices=[MagicMock(finish_reason="stop", message=empty_message)], usage=None),
+            MagicMock(choices=[MagicMock(finish_reason="tool_calls", message=terminal_message)], usage=None),
+        ]
+        complete = MagicMock(return_value='{"ok": true}')
+
+        provider.chat_with_tools(
+            system_prompt="sys",
+            user_message="go",
+            tools=[{
+                "name": "complete_intrusion_campaign",
+                "description": "complete",
+                "input_schema": {},
+                "function": complete,
+            }],
+            max_turns=10,
+            required_tool="complete_intrusion_campaign",
+            terminate_after_tool="complete_intrusion_campaign",
+            strict_required_tool=True,
+            force_tool_on_stall=True,
+            recover_required_tool_on_stall=True,
+        )
+
+        assert provider.client.chat.completions.create.call_count == 4
+        complete.assert_called_once_with()
+        for call in provider.client.chat.completions.create.call_args_list[1:]:
+            assert call.kwargs["tool_choice"] == "required"
+
     def test_openai_loop_forces_recon_save_after_completion_signal(self):
         from src.agent.provider import LLMProvider
 
@@ -2776,6 +2822,71 @@ class TestPhase5Context:
             "source_device": "s1-mqtt",
         }]
 
+    def test_compact_intrusion_controller_finalizes_after_fallback(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{
+                "device_id": "mqtt",
+                "device_ip": "192.0.2.11",
+                "service": "mqtt",
+                "port": 1883,
+                "vuln_type": "no_auth",
+            }],
+            "all_targets": [{
+                "device_id": "mqtt",
+                "device_ip": "192.0.2.11",
+                "role": "mqtt_broker",
+                "services": [1883],
+            }],
+            "recovered_credentials": [],
+        }))
+
+        def read_deliverable(**kwargs):
+            return json.dumps({
+                "filename": kwargs["filename"],
+                "content": (run_dir / kwargs["filename"]).read_text(),
+            })
+
+        def mqtt_listen(**_kwargs):
+            return json.dumps({"return_code": 0, "stdout": "message"})
+
+        base_tools = [
+            {"name": "read_deliverable", "description": "read", "input_schema": {},
+             "function": read_deliverable},
+            {"name": "mqtt_listen", "description": "mqtt", "input_schema": {},
+             "function": mqtt_listen},
+        ]
+        monkeypatch.setattr(
+            pipeline,
+            "_resolve_tools",
+            lambda _config: [
+                pipeline._wrap_tool(tool, phase=5, agent="intrusion")
+                for tool in base_tools
+            ],
+        )
+        runtime_tools = pipeline._apply_compact_intrusion_tool_contract(
+            [
+                pipeline._wrap_tool(tool, phase=5, agent="intrusion")
+                for tool in base_tools
+            ],
+            phase=5,
+            agent="intrusion",
+        )
+        pipeline._compact_intrusion_runtime_tools = runtime_tools
+
+        executed = pipeline._run_compact_intrusion_fallback(AGENTS["intrusion"])
+        assert executed == 1
+        assert pipeline._invoke_compact_intrusion_completion(runtime_tools) is True
+
+        final = json.loads((run_dir / "05_intrusion.json").read_text())
+        assert final["status"] == "completed"
+        assert final["completion_source"] == "complete_intrusion_campaign"
+
     def test_compact_intrusion_fallback_prioritizes_missing_credential_targets(
         self, mock_provider, output_dir, monkeypatch
     ):
@@ -3184,6 +3295,7 @@ class TestPhase5Context:
         assert kwargs["strict_required_tool"] is True
         assert kwargs["force_tool_on_stall"] is True
         assert kwargs["reopen_intrusion_tools_on_contract_error"] is True
+        assert kwargs["recover_required_tool_on_stall"] is True
         assert "Complete compact campaign" in kwargs["system_prompt"]
         assert "commits 05_intrusion.json" in kwargs["system_prompt"]
 
@@ -3232,6 +3344,7 @@ class TestPhase5Context:
         assert kwargs["strict_required_tool"] is False
         assert kwargs["reopen_intrusion_tools_on_contract_error"] is False
         assert kwargs["force_tool_on_stall"] is False
+        assert kwargs["recover_required_tool_on_stall"] is False
         assert "ssh_login" not in {tool["name"] for tool in kwargs["tools"]}
         assert kwargs["max_turns"] == 80
         assert kwargs["max_tokens"] == 16384
