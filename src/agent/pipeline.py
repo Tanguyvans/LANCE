@@ -2780,6 +2780,7 @@ class Pipeline:
                     "- read_deliverable(filename) — read only the intrusion context\n"
                     "- mqtt_listen(broker, topic, count, timeout) — validate anonymous MQTT entry points\n"
                     "- http_get(url) / curl_headers(url) — validate HTTP entry points and exposed content\n"
+                    "- nmap_scan(target, ports=\"502\", scripts=\"modbus-discover\", skip_discovery=true) — validate Modbus entry points read-only\n"
                     "- ssh_login(command_string) — validate SSH entry points with the recovered source credential\n"
                     "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
                     "- try_credential(ip, service, user, password) — test recovered credentials on a target\n"
@@ -2789,7 +2790,7 @@ class Pipeline:
                 variables["intrusion_entry_validation"] = (
                     "## Compact entry validation — mandatory before credential reuse\n\n"
                     "- Perform exactly one service-appropriate probe for every entry point in 05_intrusion_context.json: "
-                    "mqtt_listen for MQTT, http_get/curl_headers for HTTP, telnet_connect for Telnet, and ssh_login "
+                    "mqtt_listen for MQTT, http_get/curl_headers for HTTP, nmap_scan with ports=502 and scripts=modbus-discover for Modbus, telnet_connect for Telnet, and ssh_login "
                     "with the recovered source credential for SSH.\n"
                     "- Complete all entry-point probes before credential reuse. Then use try_credential against "
                     "every target with every recovered credential. "
@@ -4852,12 +4853,14 @@ class Pipeline:
         agent: str | None = None,
     ) -> list[dict]:
         """Add compact-only tools omitted from the bounded intrusion group."""
-        if any(tool.get("name") == "ssh_login" for tool in tools):
-            return tools
-        ssh_tool = next((tool for tool in RECON_TOOLS if tool.get("name") == "ssh_login"), None)
-        if ssh_tool is None:
-            return tools
-        return [*tools, self._wrap_tool(ssh_tool, phase=phase, agent=agent)]
+        present = {str(tool.get("name")) for tool in tools}
+        missing = {"ssh_login", "nmap_scan"} - present
+        extras = [
+            self._wrap_tool(tool, phase=phase, agent=agent)
+            for tool in RECON_TOOLS
+            if tool.get("name") in missing
+        ]
+        return [*tools, *extras]
 
     @staticmethod
     def _compact_ssh_entry_action(
@@ -4902,11 +4905,11 @@ class Pipeline:
         action_calls = 0
         intrusion_action_tools = {
             "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers",
-            "telnet_connect", "ftp_list",
+            "telnet_connect", "ftp_list", "nmap_scan",
         }
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login", "try_credential",
+            "ftp_list", "ssh_login", "try_credential", "nmap_scan",
         }
         credential_action_tools = {"try_credential", "ssh_exec", "ssh_login"}
 
@@ -4995,18 +4998,18 @@ class Pipeline:
             service_by_port = {
                 21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
                 8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
-                9001: "mqtt", 3306: "mysql", 6379: "redis",
+                9001: "mqtt", 502: "modbus", 3306: "mysql", 6379: "redis",
             }
             default_port_by_service = {
                 "ftp": 21, "ssh": 22, "telnet": 23, "http": 80,
-                "mqtt": 1883, "mysql": 3306, "redis": 6379,
+                "mqtt": 1883, "modbus": 502, "mysql": 3306, "redis": 6379,
             }
             role_service = {
                 "router": {"ssh", "telnet", "http"}, "gateway": {"ssh", "http"},
                 "ssh_server": {"ssh"}, "mqtt_broker": {"mqtt"},
                 "web_server": {"http"}, "nodered_server": {"http"},
                 "ftp_server": {"ftp"}, "db_server": {"mysql"},
-                "db_server_v2": {"redis"},
+                "db_server_v2": {"redis"}, "modbus_server": {"modbus"},
             }
             for item in raw_context.get("all_targets", []):
                 if not isinstance(item, dict):
@@ -5062,6 +5065,11 @@ class Pipeline:
                 return "telnet"
             if name == "ftp_list":
                 return "ftp"
+            if name == "nmap_scan":
+                ports = {part.strip() for part in str(kwargs.get("ports") or "").split(",")}
+                scripts = str(kwargs.get("scripts") or "").casefold()
+                if "502" in ports or "modbus-discover" in scripts:
+                    return "modbus"
             return ""
 
         def _credential_from_args(name: str, kwargs: dict) -> tuple[str, str]:
@@ -5198,6 +5206,11 @@ class Pipeline:
                     return self._compact_ssh_entry_action(
                         target, expected_credentials
                     )
+                if service == "modbus":
+                    return "nmap_scan", {
+                        "target": target, "ports": "502",
+                        "scripts": "modbus-discover", "skip_discovery": True,
+                    }
                 return "http_get", {"url": f"http://{target}/"}
             missing = progress.get("missing_target_services", [])
             if not missing:
@@ -5237,7 +5250,7 @@ class Pipeline:
                 "error": message,
                 "instruction": (
                     "Continue Phase 5 with service-appropriate entry-point probes "
-                    "(mqtt_listen/http_get/telnet_connect/ftp_list/ssh_login) and try_credential "
+                    "(mqtt_listen/http_get/nmap_scan[Modbus]/telnet_connect/ftp_list/ssh_login) and try_credential "
                     "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
@@ -5300,7 +5313,7 @@ class Pipeline:
         def _suggested_entry_action(name: str, target: str) -> tuple[str, dict] | None:
             wanted = {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
-                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh",
+                "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh", "nmap_scan": "modbus",
             }.get(name)
             if not wanted:
                 return None
@@ -5319,6 +5332,11 @@ class Pipeline:
                     action = self._compact_ssh_entry_action(ip, expected_credentials)
                     if action is not None:
                         return action
+                if wanted == "modbus":
+                    return "nmap_scan", {
+                        "target": ip, "ports": "502",
+                        "scripts": "modbus-discover", "skip_discovery": True,
+                    }
                 return name, {"url": f"http://{ip}/"}
             return None
 
@@ -5406,7 +5424,7 @@ class Pipeline:
                             "count": kwargs.get("count", 1), "timeout": kwargs.get("timeout", 3),
                         },
                     }))
-                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list", "ssh_login"} and target:
+                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list", "nmap_scan", "ssh_login"} and target:
                     suggestion = _suggested_entry_action(name, target)
                     if suggestion is not None:
                         suggested_tool, suggested_args = suggestion
@@ -6340,6 +6358,7 @@ class Pipeline:
             "mqtt_broker": "mqtt", "web_server": "http",
             "nodered_server": "http", "camera": "http",
             "ftp_server": "ftp", "db_server": "mysql", "db_server_v2": "redis",
+            "modbus_server": "modbus",
         }
         if role in services:
             return services[role]
@@ -6350,6 +6369,8 @@ class Pipeline:
             return "mqtt"
         if 80 in ports or 443 in ports:
             return "http"
+        if 502 in ports:
+            return "modbus"
         if 21 in ports:
             return "ftp"
         if 3306 in ports:
@@ -6468,6 +6489,11 @@ class Pipeline:
                 entry_actions.append(("telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}))
             elif service == "ftp" and "ftp_list" in tool_map:
                 entry_actions.append(("ftp_list", {"url": f"ftp://{ip}/"}))
+            elif service == "modbus" and "nmap_scan" in tool_map:
+                entry_actions.append(("nmap_scan", {
+                    "target": ip, "ports": "502",
+                    "scripts": "modbus-discover", "skip_discovery": True,
+                }))
             elif service == "ssh" and "ssh_login" in tool_map:
                 # Use only credentials already recovered in the authoritative
                 # context; never invent a login for the fallback.
@@ -6748,9 +6774,9 @@ class Pipeline:
         service_ports = {
             21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
             8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
-            9001: "mqtt", 3306: "mysql", 6379: "redis",
+            9001: "mqtt", 502: "modbus", 3306: "mysql", 6379: "redis",
         }
-        default_ports = {"ftp": 21, "ssh": 22, "telnet": 23, "http": 80, "mqtt": 1883, "mysql": 3306, "redis": 6379}
+        default_ports = {"ftp": 21, "ssh": 22, "telnet": 23, "http": 80, "mqtt": 1883, "modbus": 502, "mysql": 3306, "redis": 6379}
         for item in context.get("all_targets", []):
             if not isinstance(item, dict):
                 continue
@@ -6802,6 +6828,12 @@ class Pipeline:
                 return match.group(0) if match else ""
             return ""
         def tool_service(tool: str, args: dict) -> str:
+            if tool == "nmap_scan":
+                ports = {part.strip() for part in str(args.get("ports") or "").split(",")}
+                scripts = str(args.get("scripts") or "").casefold()
+                if "502" in ports or "modbus-discover" in scripts:
+                    return "modbus"
+                return ""
             return {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
                 "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh", "ssh_exec": "ssh",
@@ -6809,7 +6841,7 @@ class Pipeline:
 
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login", "try_credential",
+            "ftp_list", "ssh_login", "try_credential", "nmap_scan",
         }
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
@@ -6844,6 +6876,29 @@ class Pipeline:
                     try:
                         port_valid = int(supplied_port) == expected_port
                     except (TypeError, ValueError):
+                        port_valid = False
+                if tool == "nmap_scan":
+                    requested_ports = {
+                        part.strip() for part in str(args.get("ports") or "").split(",")
+                    }
+                    requested_scripts = str(args.get("scripts") or "").casefold()
+                    port_valid = (
+                        "502" in requested_ports
+                        and "modbus-discover" in requested_scripts
+                    )
+                    raw_result = record.get("result")
+                    try:
+                        result_payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        result_payload = None
+                    if isinstance(result_payload, dict):
+                        port_valid = port_valid and not (
+                            result_payload.get("ok") is False
+                            or result_payload.get("status") == "ERROR"
+                            or result_payload.get("return_code") not in (None, 0)
+                            or bool(result_payload.get("error"))
+                        )
+                    elif isinstance(raw_result, str) and raw_result.startswith("Error"):
                         port_valid = False
                 if (
                     tool in {"try_credential", "ssh_exec", "ssh_login"}

@@ -2744,6 +2744,67 @@ class TestPhase5Context:
         assert final["completion_source"] == "complete_intrusion_campaign"
         assert final["summary"]["devices_attempted"] == 1
 
+    def test_compact_intrusion_modbus_probe_and_full_surface(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        run_dir = pipeline.run_dir
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [{
+                "device_id": "s4-plc",
+                "device_ip": "192.168.100.15",
+                "service": "modbus",
+                "port": 502,
+                "vuln_type": "no_auth",
+            }],
+            "all_targets": [{
+                "device_id": "s4-plc",
+                "device_ip": "192.168.100.15",
+                "role": "modbus_server",
+                "services": [502],
+            }],
+            "recovered_credentials": [],
+        }))
+        tools = pipeline._apply_compact_intrusion_tool_contract([
+            {
+                "name": "read_deliverable", "description": "read", "input_schema": {},
+                "function": lambda **kwargs: json.dumps({
+                    "filename": kwargs["filename"],
+                    "content": (run_dir / kwargs["filename"]).read_text(),
+                }),
+            },
+            {
+                "name": "nmap_scan", "description": "nmap", "input_schema": {},
+                "function": lambda **_kwargs: json.dumps({
+                    "return_code": 0,
+                    "stdout": "502/tcp open modbus\n| modbus-discover",
+                }),
+            },
+        ])
+        tool_map = {tool["name"]: tool["function"] for tool in tools}
+        tool_map["read_deliverable"](filename="05_intrusion_context.json")
+        probe = json.loads(tool_map["nmap_scan"](
+            target="192.168.100.15", ports="502",
+            scripts="modbus-discover", skip_discovery=True,
+        ))
+        assert probe["intrusion_progress"]["missing_entry_points"] == []
+
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "phase": 5,
+            "tool": "nmap_scan",
+            "args": {
+                "target": "192.168.100.15", "ports": "502",
+                "scripts": "modbus-discover", "skip_discovery": True,
+            },
+            "result": json.dumps({
+                "return_code": 0, "stdout": "502/tcp open modbus\n| modbus-discover",
+            }),
+        }) + "\n")
+        coverage_ok, coverage = pipeline._compact_intrusion_coverage()
+        assert coverage_ok is True
+        assert coverage["missing_entry_points"] == []
+        assert "nmap_scan" not in {tool["name"] for tool in TOOL_GROUPS["intrusion"]}
+
     def test_compact_intrusion_service_prefers_explicit_context_service(self):
         assert Pipeline._compact_intrusion_service({
             "primary_service": "mqtt",
