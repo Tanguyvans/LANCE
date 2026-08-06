@@ -1195,6 +1195,17 @@ class TestPrerequisites:
         results = {"recon": "completed:synthesized"}
         assert pipeline._check_prerequisites(config, results)
 
+    def test_phase4_worker_errors_keep_validated_results_usable(self, mock_provider, output_dir):
+        pipeline = Pipeline(provider=mock_provider)
+        config = AgentConfig(
+            name="intrusion", phase=5, prompt_template="t",
+            deliverable_file="05_intrusion.json", tools=["graph"],
+            prerequisites=["exploitation"],
+        )
+        assert pipeline._check_prerequisites(
+            config, {"exploitation": "executed_with_worker_errors"}
+        )
+
     @pytest.mark.parametrize("status", [
         "failed:Deliverable missing",
         "blocked:phase_no_observable_actions",

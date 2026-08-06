@@ -8986,6 +8986,11 @@ class Pipeline:
                         status == "completed"
                         or status.startswith("completed:")
                         or status.startswith("skipped:")
+                        # Phase 4 aggregates independent per-vulnerability
+                        # workers. A worker failure is recorded in the
+                        # validated artifact while the remaining findings
+                        # are still usable by Phase 5/6.
+                        or status == "executed_with_worker_errors"
                     )
                 ):
                     continue
