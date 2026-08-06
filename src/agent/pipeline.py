@@ -1163,6 +1163,9 @@ class Pipeline:
             self.target_network = BENCHMARK_SUBNET
         self.tracker = CostTracker(model=provider.model)
         self.context: dict = {}
+        # Set by run(); shared with phase workers so a dashboard stop request
+        # can cancel queued work instead of waiting for the whole phase.
+        self._stop_event = None
 
         # Create timestamped run directory
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -1187,6 +1190,8 @@ class Pipeline:
                 Event types: pipeline_start, phase_start, text_chunk, tool_call,
                 tool_result, turn_done, phase_done, pipeline_done.
         """
+        self._stop_event = stop_event if self._uses_compact_local_moe() else None
+
         # Load lab context — discovery mode, scenario topology, or physical lab
         if self.target_network is not None:
             from src.agent.tools.graph_tools import load_discovery_context
@@ -4625,7 +4630,7 @@ class Pipeline:
         """Run per-vuln exploit micro-agents in parallel, then aggregate results."""
         import threading
         import time as _time
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import CancelledError, ThreadPoolExecutor, wait
 
         # 1. Read the Phase 3 vulnerability queue
         vuln_path = self.run_dir / "03_vuln_analysis.json"
@@ -4685,11 +4690,18 @@ class Pipeline:
         print(f"{'=' * 60}\n")
 
         # Per-device locks to avoid concurrent connections to same host
+        stop_event = (
+            getattr(self, "_stop_event", None)
+            if self._uses_compact_local_moe() else None
+        )
         from collections import defaultdict
         device_locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
         _locks_guard = threading.Lock()
         worker_errors: list[str] = []
         worker_error_lock = threading.Lock()
+
+        def _stop_requested() -> bool:
+            return bool(stop_event is not None and stop_event.is_set())
 
         def _record_worker_error(message: str) -> None:
             with worker_error_lock:
@@ -4833,7 +4845,10 @@ class Pipeline:
                             strict_required_tool=bool(required_probe_tool),
                             repeat_guard=True,
                             terminate_on_unavailable_tools={"save_deliverable"},
+                            stop_event=stop_event,
                         )
+                        if _stop_requested():
+                            return
                         records = _tool_records_for_vuln(self.run_dir, vuln_id)
                         required_observed = any(
                             _phase4_requirement_matches(
@@ -4983,11 +4998,38 @@ class Pipeline:
         def _run_with_stagger(args):
             idx, task = args
             if idx > 0:
-                _time.sleep(min(idx * 0.5, 5))  # 0.5s stagger, max 5s
+                delay = min(idx * 0.5, 5)  # 0.5s stagger, max 5s
+                if stop_event is not None:
+                    if stop_event.wait(delay):
+                        return
+                else:
+                    _time.sleep(delay)
             _run_single_exploit(task)
 
-        with ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), 8))) as pool:
-            list(pool.map(_run_with_stagger, enumerate(exploit_tasks)))
+        pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), 8)))
+        futures = [
+            pool.submit(_run_with_stagger, item)
+            for item in enumerate(exploit_tasks)
+        ]
+        pending = set(futures)
+        try:
+            while pending:
+                if _stop_requested():
+                    for future in pending:
+                        future.cancel()
+                done, pending = wait(pending, timeout=0.25)
+                for future in done:
+                    try:
+                        future.result()
+                    except CancelledError:
+                        pass
+                    except Exception as exc:
+                        _record_worker_error(f"phase4 worker: {exc}")
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+
+        if _stop_requested():
+            self._phase4_execution_status = "stopped"
 
         if worker_errors and self._phase4_execution_status is None:
             self._phase4_execution_status = "executed_with_worker_errors"

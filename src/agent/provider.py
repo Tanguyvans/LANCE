@@ -162,6 +162,7 @@ class LLMProvider:
         reopen_intrusion_tools_on_contract_error: bool = False,
         force_completion_on_recon_ready: bool = False,
         recover_required_tool_on_stall: bool = False,
+        stop_event=None,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
@@ -171,6 +172,7 @@ class LLMProvider:
                 cost_tracker, max_tokens, stream_callback, required_tool,
                 terminate_after_tool, repeat_guard, terminal_unavailable_tools,
                 strict_required_tool, recover_required_tool_on_stall,
+                stop_event,
             )
         else:
             return self._openai_loop(
@@ -180,9 +182,10 @@ class LLMProvider:
                 force_tool_on_stall, force_completion_on_recon_ready,
                 reopen_intrusion_tools_on_contract_error,
                 recover_required_tool_on_stall,
+                stop_event,
             )
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -196,6 +199,10 @@ class LLMProvider:
         terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
 
         for turn in range(max_turns):
+            if stop_event is not None and stop_event.is_set():
+                if stream_callback:
+                    stream_callback({"type": "turn_done", "turn": turn, "final": True, "terminated_by": "stop"})
+                return "(stopped by user)"
             log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
             if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
                 completion_only = True
@@ -287,6 +294,10 @@ class LLMProvider:
                     return json.dumps({"ok": False, "error": f"Tool {tc.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
                 return self._execute_tool(tc.name, tc.input, tool_map)
 
+            if stop_event is not None and stop_event.is_set():
+                if stream_callback:
+                    stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": "stop"})
+                return "(stopped by user)"
             if stream_callback:
                 for tc in tool_calls: stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
             terminate_now = False
@@ -316,7 +327,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -336,6 +347,10 @@ class LLMProvider:
         ]
 
         for turn in range(max_turns):
+            if stop_event is not None and stop_event.is_set():
+                if stream_callback:
+                    stream_callback({"type": "turn_done", "turn": turn, "final": True, "terminated_by": "stop"})
+                return "(stopped by user)"
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
             if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
                 completion_only = True
@@ -512,6 +527,10 @@ class LLMProvider:
             terminate_now = False
             completion_only_at_turn = completion_only
             for tc in message.tool_calls:
+                if stop_event is not None and stop_event.is_set():
+                    if stream_callback:
+                        stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": "stop"})
+                    return "(stopped by user)"
                 try: args = json.loads(tc.function.arguments) if tc.function.arguments else {}
                 except: args = {}
                 if stream_callback: stream_callback({"type": "tool_call", "name": tc.function.name, "args": args})
