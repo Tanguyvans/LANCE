@@ -1278,6 +1278,30 @@ class TestEvidenceMetrics:
         assert result.exploitation_coverage == 0
         assert result.matches[0]["phase4_verification"] == "not_tested"
 
+    def test_phase4_skipped_direct_compact_finding_is_detection_only(self, tmp_path):
+        finding = {
+            **_finding(id="F1"),
+            "compact_requires_verification": False,
+            "compact_detection_only": True,
+            "exploitation_status": "confirmed",
+            "evidence": "OpenSSH banner observed by nmap",
+        }
+        run_dir = _write_run(tmp_path, [finding])
+        (run_dir / "04_exploitation.json").write_text(json.dumps({
+            "tests": [{
+                "vuln_id": "F1",
+                "status": "SKIPPED",
+                "vuln_type": "info_disclosure",
+            }],
+        }))
+
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
+
+        assert result.total_llm_findings == 1
+        assert result.true_positives == 1
+        assert result.exploitation_coverage == 0
+        assert result.matches[0]["phase4_verification"] == "not_tested"
+
     def test_phase4_error_without_phase3_finding_is_not_positive(self, tmp_path):
         run_dir = _write_run(tmp_path, [])
         (run_dir / "04_exploitation.json").write_text(json.dumps({

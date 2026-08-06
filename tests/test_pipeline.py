@@ -4599,6 +4599,77 @@ class TestInformationPreservingArchitecture:
             for candidate in raw["candidates"]
         )
 
+    def test_compact_observations_require_phase2_support_and_defer_exploitation(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+
+        ssh_finding = {
+            "id": "ssh-observation",
+            "device_id": "device-a",
+            "device_ip": "192.0.2.20",
+            "type": "info_disclosure",
+            "severity": "LOW",
+            "service": "ssh",
+            "port": 22,
+            "protocol": "tcp",
+            "details": "SSH banner is disclosed",
+            "evidence": "OpenSSH 9.2 banner",
+            "exploitation_status": "confirmed",
+        }
+        header_finding = {
+            "id": "header-observation",
+            "device_id": "device-a",
+            "device_ip": "192.0.2.20",
+            "type": "missing_header",
+            "severity": "LOW",
+            "service": "http",
+            "port": 80,
+            "protocol": "tcp",
+            "details": "Security headers are missing",
+            "evidence": "X-Frame-Options is absent",
+            "exploitation_status": "confirmed",
+        }
+        (pipeline.run_dir / "03_device_device-a.json").write_text(json.dumps({
+            "vulnerabilities": [ssh_finding, header_finding],
+        }))
+        (pipeline.run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "tool": "nmap_scan",
+            "phase": 2,
+            "args": {"target": "192.0.2.20", "ports": "22"},
+            "result": json.dumps({
+                "stdout": "22/tcp open ssh OpenSSH 9.2",
+                "return_code": 0,
+            }),
+        }) + "\n")
+
+        pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+        canonical = json.loads(
+            (pipeline.run_dir / "03_vuln_analysis.json").read_text()
+        )
+        observations = json.loads(
+            (pipeline.run_dir / "03_config_observations.json").read_text()
+        )
+        assert len(canonical["vulnerabilities"]) == 1
+        assert canonical["vulnerabilities"][0]["type"] == "info_disclosure"
+        assert canonical["vulnerabilities"][0]["compact_detection_only"] is True
+        assert [item["type"] for item in observations["observations"]] == [
+            "missing_header"
+        ]
+
+        pipeline._run_exploit_agents(AGENTS["exploitation"])
+        aggregate = json.loads(
+            (pipeline.run_dir / "04_exploitation.json").read_text()
+        )
+        assert pipeline._phase4_schedule["scheduled_count"] == 0
+        assert pipeline._phase4_schedule["skipped_count"] == 1
+        assert aggregate["summary"]["skipped_count"] == 1
+        assert aggregate["tests"][0]["status"] == "SKIPPED"
+
     def test_log_regression_unverified_cves_stay_raw_not_canonical(
         self, mock_provider, output_dir, monkeypatch
     ):

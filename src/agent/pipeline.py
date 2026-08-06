@@ -4017,6 +4017,120 @@ class Pipeline:
             finding["compact_requires_verification"] = True
             finding["compact_required_probe"] = "safe_http_validation"
 
+    @staticmethod
+    def _compact_observation_has_tool_evidence(
+        finding: dict, tool_records: list[dict]
+    ) -> bool:
+        """Return whether a compact report-only observation has phase-2 support.
+
+        Compact models can identify useful low-severity observations, but their
+        model output must not be enough by itself to promote one into the
+        canonical queue. This check only accepts evidence from the archived
+        phase-2 tool log, keeping phase 4 from influencing its own input.
+        """
+        target = str(finding.get("device_ip") or finding.get("ip") or "").strip()
+        vuln_type = str(finding.get("type") or "").casefold()
+        service = str(finding.get("service") or "").casefold()
+        if not target or vuln_type not in {"info_disclosure", "missing_header"}:
+            return False
+
+        try:
+            finding_port = int(finding.get("port"))
+        except (TypeError, ValueError):
+            finding_port = 443 if service == "https" else 80
+
+        def _payload(record: dict):
+            result = record.get("result")
+            if isinstance(result, str):
+                try:
+                    return json.loads(result)
+                except (TypeError, ValueError):
+                    return result
+            return result
+
+        def _successful(payload) -> bool:
+            if isinstance(payload, dict):
+                if payload.get("ok") is False or str(payload.get("status", "")).casefold() in {
+                    "error", "failed", "failure"
+                }:
+                    return False
+                return payload.get("return_code") in (None, 0)
+            return not str(payload or "").casefold().startswith("error")
+
+        def _output(payload) -> str:
+            if isinstance(payload, dict):
+                parts = [
+                    payload.get(key, "")
+                    for key in ("stdout", "output", "headers", "body", "data")
+                ]
+                return "\n".join(str(part) for part in parts if part)
+            return str(payload or "")
+
+        def _record_target(args: dict) -> str:
+            for key in ("target", "ip", "host", "broker"):
+                value = args.get(key)
+                if value:
+                    return str(value).strip()
+            for key in ("url", "uri"):
+                value = args.get(key)
+                if value:
+                    try:
+                        return str(urlsplit(str(value)).hostname or "").strip()
+                    except ValueError:
+                        return ""
+            return ""
+
+        for record in tool_records:
+            if record.get("phase") not in (2, "2"):
+                continue
+            tool = str(record.get("tool") or record.get("name") or "").casefold()
+            args = record.get("args") or record.get("kwargs") or {}
+            if not isinstance(args, dict) or _record_target(args) != target:
+                continue
+            payload = _payload(record)
+            if not _successful(payload):
+                continue
+            output = _output(payload)
+            output_lower = output.casefold()
+
+            if vuln_type == "missing_header":
+                if tool == "curl_headers" and (
+                    "http/" in output_lower
+                    or "strict-transport-security" in output_lower
+                    or "x-frame-options" in output_lower
+                    or "content-security-policy" in output_lower
+                ):
+                    return True
+                continue
+
+            if service == "mqtt":
+                if tool == "mqtt_listen" and (
+                    "$sys" in output_lower or "mosquitto" in output_lower
+                ):
+                    return True
+                continue
+
+            if service == "ssh":
+                if tool == "nmap_scan" and re.search(
+                    r"(?im)\b22/tcp\s+open\s+ssh\b", output
+                ) and re.search(r"(?i)(openssh|dropbear|ssh)", output):
+                    return True
+                if tool == "ssh_audit" and re.search(
+                    r"(?i)(openssh|dropbear|ssh)", output
+                ):
+                    return True
+                continue
+
+            if service in {"http", "https", "web"}:
+                if tool == "nmap_scan" and re.search(
+                    rf"(?im)\b{finding_port}/tcp\s+open\s+https?\b", output
+                ) and re.search(r"(?i)(nginx|apache|http|iis)", output):
+                    return True
+                if tool == "curl_headers" and "server:" in output_lower:
+                    return True
+
+        return False
+
     def _aggregate_device_vulns(
         self,
         config: AgentConfig,
@@ -4129,6 +4243,17 @@ class Pipeline:
 
         records_by_id = {r["candidate_id"]: r for r in raw_records}
         cve_search_evidence = self._load_cve_search_evidence()
+        compact_tool_records: list[dict] = []
+        if compact_mode:
+            tool_log = self.run_dir / "tool_calls.jsonl"
+            if tool_log.exists():
+                for line in tool_log.read_text(encoding="utf-8").splitlines():
+                    try:
+                        record = json.loads(line)
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(record, dict):
+                        compact_tool_records.append(record)
 
         for finding in all_vulns:
             finding["type"] = canonicalize(finding.get("type", ""))
@@ -4231,8 +4356,17 @@ class Pipeline:
                 )
                 continue
             if compact_mode and finding.get("compact_report_only"):
+                if self._compact_observation_has_tool_evidence(
+                    finding, compact_tool_records
+                ):
+                    finding["compact_detection_only"] = True
+                    finding["compact_exploitation_priority"] = "deferred"
+                    eligible.append(finding)
+                    continue
                 record["decision"] = "excluded_from_canonical"
-                record["decision_reason"] = "compact configuration observation kept outside exploitation queue"
+                record["decision_reason"] = (
+                    "compact configuration observation lacks sufficient phase-2 tool evidence"
+                )
                 observation = json.loads(json.dumps(finding, ensure_ascii=False, default=str))
                 observation.pop("_candidate_id", None)
                 compact_observations.append(observation)
@@ -4400,12 +4534,23 @@ class Pipeline:
         vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
         all_vulns = vuln_data.get("vulnerabilities", [])
 
-        # 2. Build one exploit task for EVERY canonical Phase 3 finding.
-        # Findings that cannot be confirmed are still tested and receive an
-        # explicit FAILED/ERROR result; they are never silently omitted.
+        # 2. Build exploit tasks for canonical findings. Direct compact
+        # observations remain in the detection queue, but are deliberately
+        # not sent to exploit agents because they do not need an intrusive
+        # verification to be useful and scoring them as exploitation would
+        # reintroduce the compact hallucination problem.
         exploit_tasks: list[dict] = []
         skipped_candidates: list[dict] = []
         for vuln in all_vulns:
+            if self._uses_compact_local_moe() and vuln.get("compact_detection_only"):
+                skipped_candidates.append({
+                    "vuln_id": vuln.get("id", ""),
+                    "reason": (
+                        "direct compact observation retained for detection; "
+                        "exploitation deferred"
+                    ),
+                })
+                continue
             category = exploit_category(str(vuln.get("type") or "")) or "data_access"
             requirement = _phase4_verification_plan(vuln, compact=self._uses_compact_local_moe())
             exploit_tasks.append({

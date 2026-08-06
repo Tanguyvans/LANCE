@@ -1936,6 +1936,14 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                         p3, "conflicting_direct_phase3_evidence",
                     ))
                 continue
+            if status == "SKIPPED":
+                if (
+                    p3
+                    and not p3.get("compact_requires_verification")
+                    and p3.get("type", "") not in NOISE_TYPES
+                ):
+                    findings.append(_phase3_detection_finding(p3, "not_tested"))
+                continue
             if status in _ERROR_PHASE4_STATUSES or (
                 not is_legacy_findings and status not in _EXPLOITED_PHASE4_STATUSES
             ):
