@@ -15,6 +15,7 @@
 
   vars:
     scenario_id: "1"
+    source_scenario_id: "{{ scenario_id }}"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
 
@@ -307,7 +308,7 @@
                  grep -q 'bridge_password' /etc/mosquitto/conf.d/bridge.conf &&
                  echo OK || echo FAIL"
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: scenario_id == "7" and item.role == 'mqtt_broker'
+      when: source_scenario_id == "7" and item.role == 'mqtt_broker'
       register: s7_bridge_check
       changed_when: false
       failed_when: false
@@ -320,7 +321,7 @@
                  curl -s http://127.0.0.1/backup/cloud_db_backup.sql | grep -qi 'INSERT INTO users' &&
                  echo OK || echo FAIL"
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: scenario_id == "7" and item.role == 'web_upload'
+      when: source_scenario_id == "7" and item.role == 'web_upload'
       register: s7_backup_check
       changed_when: false
       failed_when: false
@@ -563,7 +564,7 @@
       loop_control:
         label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
-        - scenario_id in ['14', '21', '29']
+        - source_scenario_id in ['14', '21', '29']
         - (item.security_profile | default('vulnerable')) != 'vulnerable'
       register: s14_control_checks
       changed_when: false
@@ -578,7 +579,7 @@
       loop_control:
         label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
       when:
-        - scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
+        - source_scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
         - item.simulator is defined
       register: simulator_service_checks
       changed_when: false
@@ -611,7 +612,7 @@
         else
           echo FAIL
         fi
-      when: scenario_id == '15'
+      when: source_scenario_id == '15'
       register: s15_behavior_check
       changed_when: false
       failed_when: false
@@ -643,7 +644,7 @@
         else
           echo FAIL
         fi
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
       register: s16_behavior_check
       changed_when: false
       failed_when: false
@@ -685,7 +686,7 @@
           && printf '%s' "${restored_status}" | grep -q '"version": "2"' \
           && [ "${shared_key}" = 200 ] && [ "${isolated_rollback}" = 409 ] \
           && [ "${invalid}" = 400 ]; then echo OK; else echo FAIL; fi
-      when: scenario_id == '17'
+      when: source_scenario_id == '17'
       register: s17_behavior_check
       changed_when: false
       failed_when: false
@@ -711,7 +712,7 @@
         if [ "${direct}" = OK ] && printf '%s' "${ssrf}" | grep -q 'metadata-object-admin-token' \
           && printf '%s' "${secret}" | grep -q 'CITY-CONTROL-SECRET-S18' \
           && [ "${limited}" = 403 ] && [ "${hardened}" = 403 ]; then echo OK; else echo FAIL; fi
-      when: scenario_id == '18'
+      when: source_scenario_id == '18'
       register: s18_behavior_check
       changed_when: false
       failed_when: false
@@ -759,7 +760,7 @@
           && printf '%s' "${opc_restore}" | grep -q '^OK' \
           && printf '%s' "${bac_restore}" | grep -q 'BACNET OK' \
           && printf '%s' "${modbus}" | grep -q 'MODBUS OK'; then echo OK; else echo FAIL; fi
-      when: scenario_id == '19'
+      when: source_scenario_id == '19'
       register: s19_behavior_check
       changed_when: false
       failed_when: false
@@ -784,7 +785,7 @@
           && [ "${config}" -gt 0 ]; then echo OK; else echo FAIL; fi
       args:
         executable: /bin/bash
-      when: scenario_id == '20'
+      when: source_scenario_id == '20'
       register: s20_behavior_check
       changed_when: false
       failed_when: false
@@ -800,7 +801,7 @@
           && printf '%s' "${backup}" | grep -q 'S21-only-fixture-password'; then echo OK; else echo FAIL; fi
       args:
         executable: /bin/bash
-      when: scenario_id == '21'
+      when: source_scenario_id == '21'
       register: s21_behavior_check
       changed_when: false
       failed_when: false
@@ -837,7 +838,7 @@
           then echo OK; else echo FAIL; fi
       args:
         executable: /bin/bash
-      when: scenario_id == '22'
+      when: source_scenario_id == '22'
       register: s22_behavior_check
       changed_when: false
       failed_when: false
@@ -876,7 +877,7 @@
           && [ "${recovery_control}" = 400 ]; then echo OK; else echo FAIL; fi
       args:
         executable: /bin/bash
-      when: scenario_id == '23'
+      when: source_scenario_id == '23'
       register: s23_behavior_check
       changed_when: false
       failed_when: false
@@ -920,7 +921,7 @@
         echo OK
       args:
         executable: /bin/bash
-      when: scenario_id in ['24', '25', '26', '27']
+      when: source_scenario_id in ['24', '25', '26', '27']
       register: heldout_network_behavior_check
       changed_when: false
       failed_when: false
@@ -961,7 +962,7 @@
           && [ "${maintenance_control}" = 403 ]; then echo OK; else echo FAIL; fi
       args:
         executable: /bin/bash
-      when: scenario_id == '28'
+      when: source_scenario_id == '28'
       register: s28_behavior_check
       changed_when: false
       failed_when: false
@@ -995,24 +996,24 @@
         _check_redis_ok:  "{{ 'FAIL' not in (redis_ping_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_modbus_ok: "{{ 'FAIL' not in (modbus_svc_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_s14_ok: >-
-          {{ scenario_id not in ['14', '21', '29'] or
+          {{ source_scenario_id not in ['14', '21', '29'] or
              (('OK' in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' '))) and
               ('FAIL' not in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' ')))) }}
         _check_simulators_ok: >-
-          {{ scenario_id not in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28'] or
+          {{ source_scenario_id not in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28'] or
              (('OK' in (simulator_service_checks.results | default([]) | map(attribute='stdout', default='') | join(' '))) and
               ('FAIL' not in (simulator_service_checks.results | default([]) | map(attribute='stdout', default='') | join(' ')))) }}
-        _check_s15_ok: "{{ scenario_id != '15' or 'OK' in (s15_behavior_check.stdout | default('')) }}"
-        _check_s16_ok: "{{ scenario_id != '16' or 'OK' in (s16_behavior_check.stdout | default('')) }}"
-        _check_s17_ok: "{{ scenario_id != '17' or 'OK' in (s17_behavior_check.stdout | default('')) }}"
-        _check_s18_ok: "{{ scenario_id != '18' or 'OK' in (s18_behavior_check.stdout | default('')) }}"
-        _check_s19_ok: "{{ scenario_id != '19' or 'OK' in (s19_behavior_check.stdout | default('')) }}"
-        _check_s20_ok: "{{ scenario_id != '20' or 'OK' in (s20_behavior_check.stdout | default('')) }}"
-        _check_s21_ok: "{{ scenario_id != '21' or 'OK' in (s21_behavior_check.stdout | default('')) }}"
-        _check_s22_ok: "{{ scenario_id != '22' or 'OK' in (s22_behavior_check.stdout | default('')) }}"
-        _check_s23_ok: "{{ scenario_id != '23' or 'OK' in (s23_behavior_check.stdout | default('')) }}"
-        _check_s24_s27_ok: "{{ scenario_id not in ['24', '25', '26', '27'] or 'OK' in (heldout_network_behavior_check.stdout | default('')) }}"
-        _check_s28_ok: "{{ scenario_id != '28' or 'OK' in (s28_behavior_check.stdout | default('')) }}"
+        _check_s15_ok: "{{ source_scenario_id != '15' or 'OK' in (s15_behavior_check.stdout | default('')) }}"
+        _check_s16_ok: "{{ source_scenario_id != '16' or 'OK' in (s16_behavior_check.stdout | default('')) }}"
+        _check_s17_ok: "{{ source_scenario_id != '17' or 'OK' in (s17_behavior_check.stdout | default('')) }}"
+        _check_s18_ok: "{{ source_scenario_id != '18' or 'OK' in (s18_behavior_check.stdout | default('')) }}"
+        _check_s19_ok: "{{ source_scenario_id != '19' or 'OK' in (s19_behavior_check.stdout | default('')) }}"
+        _check_s20_ok: "{{ source_scenario_id != '20' or 'OK' in (s20_behavior_check.stdout | default('')) }}"
+        _check_s21_ok: "{{ source_scenario_id != '21' or 'OK' in (s21_behavior_check.stdout | default('')) }}"
+        _check_s22_ok: "{{ source_scenario_id != '22' or 'OK' in (s22_behavior_check.stdout | default('')) }}"
+        _check_s23_ok: "{{ source_scenario_id != '23' or 'OK' in (s23_behavior_check.stdout | default('')) }}"
+        _check_s24_s27_ok: "{{ source_scenario_id not in ['24', '25', '26', '27'] or 'OK' in (heldout_network_behavior_check.stdout | default('')) }}"
+        _check_s28_ok: "{{ source_scenario_id != '28' or 'OK' in (s28_behavior_check.stdout | default('')) }}"
 
     - name: Calculer le statut global de vérification
       ansible.builtin.set_fact:

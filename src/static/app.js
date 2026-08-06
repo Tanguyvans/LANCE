@@ -1461,7 +1461,7 @@ async function deployScenario() {
   }
   if (document.getElementById('btn-start').disabled) { addLog({type:'warn', message:'Un run est déjà en cours'}); return; }
   if (selectedScenarioMetadata()?.deployment_supported === false) {
-    addLog({type:'warn', message:'Cet export Scenario Lab est disponible pour analyse, sans provisionnement Proxmox automatique'});
+    addLog({type:'warn', message:'Cet export Scenario Lab n’est pas marqué comme déployable'});
     return;
   }
 
@@ -1506,7 +1506,7 @@ async function teardownScenario() {
     return;
   }
   if (selectedScenarioMetadata()?.deployment_supported === false) {
-    addLog({type:'warn', message:'Cet export ne possède aucune ressource Proxmox à arrêter'});
+    addLog({type:'warn', message:'Cet export ne possède pas de lease Proxmox actif à arrêter'});
     return;
   }
   const btn = document.getElementById('btn-teardown');

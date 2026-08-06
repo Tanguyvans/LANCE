@@ -1,8 +1,9 @@
-"""Immutable preview bundles for generated benchmark scenarios.
+"""Immutable bundles for generated benchmark scenarios.
 
-Bundles live outside ``benchmarks/`` and cannot be deployed by the current
-pipeline.  They keep topology, expected findings, and future injection inputs
-together so generated variants cannot silently alter official presets.
+Bundles live outside ``benchmarks/`` and keep topology, expected findings, and
+injection inputs together so generated variants cannot silently alter official
+presets.  An exported bundle can subsequently be materialized by the runtime
+deployment adapter without changing the official catalogue.
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ from src.benchmark.strict_v3 import derive_matching_contract
 
 
 GENERATOR_MARKER = "lance.scenario-generator"
-GENERATOR_VERSION = 2
+GENERATOR_VERSION = 3
 VARIANT_ID_RE = re.compile(r"^gen-[a-z0-9]+-[a-f0-9]{10}$")
 SEVERITY_WEIGHTS = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 META_FIELDS = {"scenarios", "applies_to", "key"}
@@ -37,21 +38,10 @@ OPERATIONS = {
     "swap_profiles": {"id": "swap_profiles", "label": "Permutation de profils compatibles"},
 }
 
-BLUEPRINTS = {
-    "api-authorization": {
-        "id": "api-authorization",
-        "short_id": "api",
-        "label": "API multi-tenant",
-        "source_scenario_id": "15",
-        "allowed_operations": ["rotate_ips", "rename_hosts", "swap_profiles"],
-    },
-    "ota-lifecycle": {
-        "id": "ota-lifecycle",
-        "short_id": "ota",
-        "label": "Cycle de mise à jour OTA",
-        "source_scenario_id": "17",
-        "allowed_operations": ["rotate_ips", "rename_hosts"],
-    },
+BLUEPRINT_ALIASES = {
+    # Preserve the IDs used by existing dashboard links and generated bundles.
+    "15": {"id": "api-authorization", "short_id": "api"},
+    "17": {"id": "ota-lifecycle", "short_id": "ota"},
 }
 
 
@@ -115,10 +105,110 @@ class ScenarioGenerator:
                 "id": item["id"],
                 "label": item["label"],
                 "source_scenario_id": item["source_scenario_id"],
+                "deployment_supported": item["deployment_supported"],
                 "operations": [OPERATIONS[op] for op in item["allowed_operations"]],
             }
-            for item in BLUEPRINTS.values()
+            for item in self._blueprints().values()
+            if item["deployment_supported"]
         ]
+
+    def _blueprints(self) -> dict[str, dict[str, Any]]:
+        """Build the Lab registry from the immutable scenario catalogue."""
+        result: dict[str, dict[str, Any]] = {}
+        deployable_source_ids = self._deployable_source_ids()
+        for path in self._scenario_paths():
+            scenario = _load_yaml(path)
+            sid = str(scenario.get("scenario_id", path.stem.removeprefix("S")))
+            alias = BLUEPRINT_ALIASES.get(sid, {})
+            blueprint_id = alias.get("id", f"scenario-{_slug(sid)}")
+            if blueprint_id in result:
+                previous = result[blueprint_id]["source_scenario_id"]
+                raise ScenarioGeneratorError(
+                    f"Duplicate generator blueprint {blueprint_id!r} for S{previous} and S{sid}"
+                )
+            topology = _load_yaml(
+                self.benchmarks_root / "topologies" / f"{scenario['topology']}.yaml"
+            )
+            packs = [
+                _load_yaml(self.benchmarks_root / "packs" / "definitions" / f"{pack}.yaml")
+                for pack in scenario.get("packs", [])
+            ]
+            result[blueprint_id] = {
+                "id": blueprint_id,
+                "short_id": alias.get("short_id", f"s{_slug(sid)}"),
+                "label": scenario.get("name", f"Scenario {sid}"),
+                "source_scenario_id": sid,
+                "deployment_supported": sid in deployable_source_ids,
+                "allowed_operations": self._supported_operations(scenario, topology, packs),
+            }
+        return result
+
+    def _deployable_source_ids(self) -> set[str]:
+        """Return scenario IDs understood by the runtime Ansible catalogue."""
+        ids: set[str] = set()
+        for filename, key in (
+            ("main.yml", "scenarios"),
+            ("scenarios_v2.yml", "scenarios_v2"),
+        ):
+            data = _load_yaml(self.benchmarks_root / "ansible" / "group_vars" / "all" / filename)
+            ids.update(str(scenario_id) for scenario_id in (data.get(key) or {}))
+        return ids
+
+    def _scenario_paths(self) -> list[Path]:
+        """Return every scenario source in a stable human-oriented order.
+
+        The directory also contains historical variants such as ``S1h`` and
+        ``S4h``.  They remain discoverable internally, while the public Lab
+        registry filters them out because they are absent from the runtime
+        Ansible catalogue and therefore cannot support an executable run.
+        """
+        scenario_dir = self.benchmarks_root / "scenarios"
+        paths = list(scenario_dir.glob("S*.yaml"))
+        return sorted(paths, key=self._scenario_path_sort_key)
+
+    @staticmethod
+    def _scenario_path_sort_key(path: Path) -> tuple[int, str]:
+        suffix = path.stem.removeprefix("S")
+        match = re.fullmatch(r"(\d+)(.*)", suffix)
+        if match is None:
+            return (2**31 - 1, suffix.lower())
+        return (int(match.group(1)), match.group(2).lower())
+
+    @staticmethod
+    def _supported_operations(scenario, topology, packs) -> list[str]:
+        services = topology.get("services", [])
+        operations: list[str] = []
+        zones: dict[str, int] = {}
+        for service in services:
+            try:
+                zone = str(ipaddress.ip_network(f"{service['ip']}/24", strict=False))
+            except (KeyError, ValueError):
+                continue
+            zones[zone] = zones.get(zone, 0) + 1
+        if any(count > 1 for count in zones.values()):
+            operations.append("rotate_ips")
+        if services:
+            operations.append("rename_hosts")
+
+        has_device_selector = any(
+            (template.get("applies_to") or {}).get("devices")
+            for pack in packs
+            for collection in ("vulnerabilities", "controls")
+            for templates in (pack.get(collection, {}) or {}).values()
+            for template in templates
+        )
+        groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for service in services:
+            groups.setdefault((service.get("role", ""), service.get("simulator", "")), []).append(service)
+        has_profile_pair = any(
+            left.get("security_profile") != right.get("security_profile")
+            for group in groups.values()
+            for index, left in enumerate(group)
+            for right in group[index + 1:]
+        )
+        if has_profile_pair and not has_device_selector:
+            operations.append("swap_profiles")
+        return operations
 
     def list_variants(self) -> list[dict[str, Any]]:
         if not self.storage_root.exists():
@@ -162,10 +252,12 @@ class ScenarioGenerator:
     def generate(self, blueprint_id: str, seed: int, operation: str) -> dict[str, Any]:
         blueprint = self._blueprint(blueprint_id)
         self._validate_request(blueprint, seed, operation)
-        source_scenario, source_topology, packs = self._load_blueprint(blueprint)
+        source_scenario, source_topology, packs, source_ground_truth = self._load_blueprint(blueprint)
         blueprint = {
             **blueprint,
-            "source_hash": self._blueprint_hash(source_scenario, source_topology, packs),
+            "source_hash": self._blueprint_hash(
+                source_scenario, source_topology, packs, source_ground_truth
+            ),
         }
         spec = {
             "action": "generate",
@@ -183,11 +275,12 @@ class ScenarioGenerator:
         topology, names = self._resolve_topology(
             source_topology, blueprint["source_scenario_id"], f"g{digest[:8]}", variant_id
         )
-        topology, operation_names = self._apply_operation(topology, operation, seed)
-        names = {old: operation_names.get(new, new) for old, new in names.items()}
-        scenario = self._new_scenario(variant_id, blueprint, source_scenario, names)
+        topology, mutation = self._apply_operation(topology, operation, seed)
+        mutation["names"] = {old: mutation["names"].get(new, new) for old, new in names.items()}
+        scenario = self._new_scenario(variant_id, blueprint, source_scenario, mutation)
         bundle = self._compile(
-            variant_id, blueprint, scenario, topology, packs, seed, operation, None, names
+            variant_id, blueprint, scenario, topology, packs, source_ground_truth,
+            seed, operation, None, mutation,
         )
         self._write_bundle(bundle)
         return self.get_variant(variant_id)
@@ -196,8 +289,10 @@ class ScenarioGenerator:
         parent = self._load_bundle(source_variant_id)
         blueprint = self._blueprint(parent["manifest"]["blueprint_id"])
         self._validate_request(blueprint, seed, operation)
-        source_scenario, source_topology, packs = self._load_blueprint(blueprint)
-        source_hash = self._blueprint_hash(source_scenario, source_topology, packs)
+        source_scenario, source_topology, packs, source_ground_truth = self._load_blueprint(blueprint)
+        source_hash = self._blueprint_hash(
+            source_scenario, source_topology, packs, source_ground_truth
+        )
         if source_hash != parent["manifest"].get("source_blueprint_hash"):
             raise ScenarioGeneratorError(
                 "Blueprint changed since the parent variant was generated"
@@ -216,9 +311,9 @@ class ScenarioGenerator:
         if self._variant_dir(variant_id).is_dir():
             return self.get_variant(variant_id)
 
-        topology, names = self._apply_operation(copy.deepcopy(parent["topology"]), operation, seed)
+        topology, mutation = self._apply_operation(copy.deepcopy(parent["topology"]), operation, seed)
         topology["id"] = variant_id
-        scenario = copy.deepcopy(parent["scenario"])
+        scenario = self._remap_value(copy.deepcopy(parent["scenario"]), mutation)
         scenario.update({
             "scenario_id": variant_id,
             "name": f"{blueprint['label']} / {digest[:6]}",
@@ -226,8 +321,8 @@ class ScenarioGenerator:
             "mutation": {"operation": operation, "seed": seed},
         })
         bundle = self._compile(
-            variant_id, blueprint, scenario, topology, packs, seed, operation,
-            source_variant_id, names,
+            variant_id, blueprint, scenario, topology, packs, source_ground_truth,
+            seed, operation, source_variant_id, mutation,
         )
         self._write_bundle(bundle)
         return self.get_variant(variant_id)
@@ -235,7 +330,7 @@ class ScenarioGenerator:
     def get_variant(self, variant_id: str) -> dict[str, Any]:
         bundle = self._load_bundle(variant_id)
         gt = bundle["ground_truth"]
-        blueprint = BLUEPRINTS[bundle["manifest"]["blueprint_id"]]
+        blueprint = self._blueprints()[bundle["manifest"]["blueprint_id"]]
         return {
             **self._summary(bundle),
             "scenario": bundle["scenario"],
@@ -278,6 +373,12 @@ class ScenarioGenerator:
                 "security_profile": service.get("security_profile", "vulnerable"),
                 "vuln_count": vuln_counts.get(service["name"], 0),
             })
+        for external in topology.get("external_nodes", []):
+            nodes.append({
+                "id": external, "label": external, "ip": None,
+                "type": "external", "role": "external", "services": [],
+                "vuln_count": 0,
+            })
         edges = [{
             "id": f"{link['source']}-{link['target']}", "source": link["source"],
             "target": link["target"], "protocol": link.get("protocol", "ethernet"),
@@ -290,10 +391,14 @@ class ScenarioGenerator:
         }
 
     def _blueprint(self, blueprint_id: str) -> dict[str, Any]:
-        try:
-            return BLUEPRINTS[blueprint_id]
-        except KeyError as exc:
-            raise ScenarioGeneratorError(f"Unknown generator blueprint: {blueprint_id}") from exc
+        blueprint = self._blueprints().get(blueprint_id)
+        if blueprint is None:
+            raise ScenarioGeneratorError(f"Unknown generator blueprint: {blueprint_id}")
+        if not blueprint["deployment_supported"]:
+            raise ScenarioGeneratorError(
+                f"Scenario source S{blueprint['source_scenario_id']} is not deployable by Ansible"
+            )
+        return blueprint
 
     @staticmethod
     def _validate_request(blueprint: dict[str, Any], seed: int, operation: str) -> None:
@@ -305,21 +410,22 @@ class ScenarioGenerator:
     def _load_blueprint(self, blueprint: dict[str, Any]):
         sid = blueprint["source_scenario_id"]
         scenario = _load_yaml(self.benchmarks_root / "scenarios" / f"S{sid}.yaml")
-        if int(scenario.get("schema_version", 1)) < 2:
-            raise ScenarioGeneratorError("Generator blueprints require schema-v2 scenarios")
         topology = _load_yaml(self.benchmarks_root / "topologies" / f"{scenario['topology']}.yaml")
         packs = [
-            _load_yaml(self.benchmarks_root / "packs" / "definitions" / f"{pack}.yaml")
+            {**_load_yaml(self.benchmarks_root / "packs" / "definitions" / f"{pack}.yaml"), "__pack_id": pack}
             for pack in scenario.get("packs", [])
         ]
-        return scenario, topology, packs
+        gt_path = self.benchmarks_root / "ground_truth" / f"scenario_{sid}.yaml"
+        ground_truth = _load_yaml(gt_path) if gt_path.exists() else {}
+        return scenario, topology, packs, ground_truth
 
     @staticmethod
-    def _blueprint_hash(scenario, topology, packs) -> str:
+    def _blueprint_hash(scenario, topology, packs, ground_truth) -> str:
         return _canonical_hash({
             "scenario": scenario,
             "topology": topology,
             "packs": packs,
+            "ground_truth": ground_truth,
         })
 
     @staticmethod
@@ -342,9 +448,15 @@ class ScenarioGenerator:
                 "source_name_template": raw["name_template"], "name": new,
             })
         links = []
+        external_nodes: set[str] = set()
         for raw in source.get("links", []):
             left, right = str(raw["source"]).format(sid=sid), str(raw["target"]).format(sid=sid)
-            links.append({**copy.deepcopy(raw), "source": names.get(left, left), "target": names.get(right, right)})
+            resolved_left, resolved_right = names.get(left, left), names.get(right, right)
+            if resolved_left not in names.values():
+                external_nodes.add(resolved_left)
+            if resolved_right not in names.values():
+                external_nodes.add(resolved_right)
+            links.append({**copy.deepcopy(raw), "source": resolved_left, "target": resolved_right})
         existing_edges = {(link["source"], link["target"]) for link in links}
         for service in services:
             edge = (new_router, service["name"])
@@ -363,11 +475,13 @@ class ScenarioGenerator:
             "description": source.get("description", ""), "deployment_status": "preview",
             "base_vmid": None, "source_base_vmid": source.get("base_vmid"),
             "router": router, "services": services, "links": links, "subnets": subnets,
+            "external_nodes": sorted(external_nodes),
         }, names)
 
     @staticmethod
     def _apply_operation(topology, operation: str, seed: int):
-        services, rng, names = topology.get("services", []), random.Random(seed), {}
+        services, rng = topology.get("services", []), random.Random(seed)
+        mutation = {"names": {}, "ips": {}, "profile_pairs": []}
         if operation == "rotate_ips":
             zones: dict[str, list[dict[str, Any]]] = {}
             for service in services:
@@ -383,6 +497,7 @@ class ScenarioGenerator:
                 ips = [item["ip"] for item in zone]
                 offset = rng.randrange(1, len(ips))
                 for service, ip in zip(zone, ips[offset:] + ips[:offset]):
+                    mutation["ips"][service["ip"]] = ip
                     service["ip"] = ip
         elif operation == "rename_hosts":
             if not services:
@@ -391,10 +506,11 @@ class ScenarioGenerator:
             old = service["name"]
             token = hashlib.sha256(f"{seed}:{old}".encode()).hexdigest()[:4]
             service["name"] = f"{old}-r{token}"
-            names[old] = service["name"]
+            mutation["names"][old] = service["name"]
             for link in topology.get("links", []):
-                link["source"] = names.get(link["source"], link["source"])
-                link["target"] = names.get(link["target"], link["target"])
+                link["source"] = mutation["names"].get(link["source"], link["source"])
+                link["target"] = mutation["names"].get(link["target"], link["target"])
+            topology["external_nodes"] = [mutation["names"].get(node, node) for node in topology.get("external_nodes", [])]
         elif operation == "swap_profiles":
             groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
             for service in services:
@@ -407,33 +523,70 @@ class ScenarioGenerator:
                 raise ScenarioGeneratorError("No compatible security profiles can be swapped")
             left, right = pairs[rng.randrange(len(pairs))]
             left["security_profile"], right["security_profile"] = right["security_profile"], left["security_profile"]
-            names.update({left["name"]: right["name"], right["name"]: left["name"]})
+            mutation["names"].update({left["name"]: right["name"], right["name"]: left["name"]})
+            mutation["profile_pairs"].append([left["name"], right["name"]])
         else:
             raise ScenarioGeneratorError(f"Unknown mutation operation: {operation}")
-        return topology, names
-
-    def _new_scenario(self, variant_id, blueprint, source, names):
-        return {
-            "schema_version": 1, "scenario_id": variant_id, "kind": "generated-scenario",
-            "name": f"{blueprint['label']} / {variant_id.rsplit('-', 1)[-1][:6]}",
-            "difficulty": source.get("difficulty", "custom"), "posture": source.get("posture", "mixed"),
-            "source_scenario_id": blueprint["source_scenario_id"], "blueprint_id": blueprint["id"],
-            "topology_file": "topology.yaml", "packs": copy.deepcopy(source.get("packs", [])),
-            "attack_paths": self._remap_devices(source.get("attack_paths", []), names),
-            "bonus_types": copy.deepcopy(source.get("bonus_types", [])),
-        }
+        return topology, mutation
 
     @staticmethod
-    def _remap_devices(paths, names):
-        result = copy.deepcopy(paths)
-        for path in result:
-            for hop in path.get("chain", []):
-                hop["device"] = names.get(hop.get("device"), hop.get("device"))
+    def _remap_value(value, mutation):
+        names = mutation.get("names", {})
+        ips = mutation.get("ips", {})
+        if isinstance(value, dict):
+            return {key: ScenarioGenerator._remap_value(item, mutation) for key, item in value.items()}
+        if isinstance(value, list):
+            return [ScenarioGenerator._remap_value(item, mutation) for item in value]
+        if not isinstance(value, str):
+            return copy.deepcopy(value)
+        if value in names:
+            return names[value]
+        if value in ips:
+            return ips[value]
+        result = value
+        for old, new in sorted({**names, **ips}.items(), key=lambda pair: len(pair[0]), reverse=True):
+            result = result.replace(old, new)
         return result
 
-    def _compile(self, variant_id, blueprint, scenario, topology, packs, seed, operation, parent, names):
-        gt = self._compose(scenario, topology, packs, blueprint["source_scenario_id"])
-        gt["attack_paths"] = self._resolve_paths(scenario.get("attack_paths", []), gt["vulnerabilities"], variant_id, names)
+    @staticmethod
+    def _canonical_device(value, names, known):
+        text = re.sub(r"\s+\([^)]*\)$", "", str(value)).strip()
+        return names.get(text, text)
+
+    def _new_scenario(self, variant_id, blueprint, source, mutation):
+        scenario = self._remap_value(copy.deepcopy(source), mutation)
+        scenario.update({
+            "schema_version": max(1, int(source.get("schema_version", 1))),
+            "scenario_id": variant_id,
+            "kind": "generated-scenario",
+            "name": f"{blueprint['label']} / {variant_id.rsplit('-', 1)[-1][:6]}",
+            "source_scenario_id": blueprint["source_scenario_id"],
+            "blueprint_id": blueprint["id"],
+            "topology_file": "topology.yaml",
+        })
+        return scenario
+
+    def _compile(self, variant_id, blueprint, scenario, topology, packs, source_ground_truth,
+                 seed, operation, parent, mutation):
+        known = {
+            topology.get("router", {}).get("name"),
+            *(item.get("name") for item in topology.get("services", [])),
+            *topology.get("external_nodes", []),
+        }
+        external_nodes = set(topology.get("external_nodes", []))
+        for path in scenario.get("attack_paths", []):
+            for hop in path.get("chain", []):
+                device = re.sub(r"\s+\([^)]*\)$", "", str(hop.get("device", ""))).strip()
+                if device and device not in known:
+                    external_nodes.add(device)
+        topology["external_nodes"] = sorted(external_nodes)
+        gt = self._compose(
+            scenario, topology, packs, source_ground_truth, blueprint["source_scenario_id"], mutation
+        )
+        gt["attack_paths"] = self._resolve_paths(
+            scenario.get("attack_paths", []), gt["vulnerabilities"], variant_id,
+            mutation, source_ground_truth, topology,
+        )
         gt["scoring"]["total_attack_paths"] = len(gt["attack_paths"])
         scenario["attack_paths"] = copy.deepcopy(gt["attack_paths"])
         injection = self._injection_plan(variant_id, topology, gt)
@@ -462,24 +615,71 @@ class ScenarioGenerator:
                 "ground_truth": gt, "injection_plan": injection,
                 "verification_plan": verification, "matching_contracts": contracts}
 
-    def _compose(self, scenario, topology, packs, source_sid: str):
+    def _compose(self, scenario, topology, packs, source_ground_truth, source_sid: str, mutation):
         vulns, controls = [], []
+        vuln_index = control_index = 0
+        source_vulns = source_ground_truth.get("vulnerabilities", [])
+        source_controls = source_ground_truth.get("controls", [])
+
+        def source_id(items, index):
+            return items[index].get("id") if index < len(items) else None
+
+        router = topology.get("router", {})
+        router_service = {
+            **router,
+            "role": "router",
+            "source_name": router.get("source_name", router.get("name", "")),
+            "source_name_template": router.get("name_template", router.get("name", "")),
+            "security_profile": router.get("security_profile", "vulnerable"),
+        }
         for pack in packs:
+            pack_id = str(pack.get("__pack_id", pack.get("id", "pack")))
             for service in topology.get("services", []):
                 for template in pack.get("vulnerabilities", {}).get(service["role"], []):
                     if self._matches(template, service, source_sid):
-                        vulns.append(self._materialize(template, service))
+                        vulns.append(self._materialize(
+                            template, service, pack_id, "vulnerability", vuln_index,
+                            source_id(source_vulns, vuln_index),
+                        ))
+                        vuln_index += 1
                 for template in pack.get("controls", {}).get(service["role"], []):
                     if self._matches(template, service, source_sid):
-                        controls.append(self._materialize(template, service))
-        services = [{key: item[key] for key in ("name", "ip", "role", "security_profile", "simulator", "vmid_offset") if key in item}
-                    for item in topology.get("services", [])]
+                        controls.append(self._materialize(
+                            template, service, pack_id, "control", control_index,
+                            source_id(source_controls, control_index),
+                        ))
+                        control_index += 1
+            for template in pack.get("vulnerabilities", {}).get("router", []):
+                if self._matches(template, router_service, source_sid):
+                    vulns.append(self._materialize(
+                        template, router_service, pack_id, "vulnerability", vuln_index,
+                        source_id(source_vulns, vuln_index),
+                    ))
+                    vuln_index += 1
+            for template in pack.get("controls", {}).get("router", []):
+                if self._matches(template, router_service, source_sid):
+                    controls.append(self._materialize(
+                        template, router_service, pack_id, "control", control_index,
+                        source_id(source_controls, control_index),
+                    ))
+                    control_index += 1
+
+        services = [{key: item[key] for key in (
+            "name", "ip", "role", "security_profile", "simulator", "vmid_offset"
+        ) if key in item} for item in topology.get("services", [])]
+        router_output = {key: router.get(key) for key in (
+            "name", "ip", "type", "security_profile"
+        ) if key in router}
+        if source_vulns and len(vulns) != len(source_vulns):
+            vulns = self._legacy_findings(source_vulns, topology, mutation, "vulnerability")
+        if source_controls and len(controls) != len(source_controls):
+            controls = self._legacy_findings(source_controls, topology, mutation, "control")
         return {
             "schema_version": 1, "scenario_id": scenario["scenario_id"], "scenario_name": scenario["name"],
             "difficulty": scenario.get("difficulty", "custom"), "description": topology.get("description", ""),
-            "topology": {"deployment_status": "preview",
-                         "router": {key: topology["router"].get(key) for key in ("name", "ip", "type")},
+            "topology": {"deployment_status": "preview", "router": router_output,
                          "services": services, "links": copy.deepcopy(topology.get("links", [])),
+                         "external_nodes": copy.deepcopy(topology.get("external_nodes", [])),
                          "subnets": copy.deepcopy(topology.get("subnets", []))},
             "vulnerabilities": vulns, "controls": controls, "attack_paths": [],
             "scoring": {"total_vulnerabilities": len(vulns), "total_controls": len(controls),
@@ -487,6 +687,44 @@ class ScenarioGenerator:
                         "max_weighted_score": sum(SEVERITY_WEIGHTS.get(v.get("severity", "low").lower(), 1) for v in vulns)},
             "bonus_types": copy.deepcopy(scenario.get("bonus_types", [])),
         }
+
+    @staticmethod
+    def _legacy_findings(source_items, topology, mutation, kind):
+        router = topology.get("router", {})
+        devices = [router, *topology.get("services", [])]
+        by_source_name = {
+            item.get("source_name"): item["name"]
+            for item in devices if item.get("source_name")
+        }
+        by_name = {item["name"]: item for item in devices}
+        by_source_name.update(mutation.get("names", {}))
+        ip_map = {
+            item.get("ip"): item.get("ip")
+            for item in devices if item.get("ip")
+        }
+        for source in source_items:
+            source_device = re.sub(r"\s+\([^)]*\)$", "", str(source.get("device", ""))).strip()
+            current_device = by_source_name.get(source_device, source_device)
+            target = by_name.get(current_device)
+            if target is None:
+                raise ScenarioGeneratorError(
+                    f"Legacy finding references an unknown device: {source_device}"
+                )
+            if source.get("ip"):
+                ip_map[source["ip"]] = target["ip"]
+        remap = {"names": by_source_name, "ips": ip_map}
+        result = []
+        for source in source_items:
+            item = ScenarioGenerator._remap_value(copy.deepcopy(source), remap)
+            source_id = str(source.get("id", ""))
+            key = str(source.get("template_key") or source_id.split("@", 1)[0]).strip()
+            item["template_key"] = key
+            item["id"] = f"{key}@{_slug(item['device'])}"
+            item["security_profile"] = by_name[item["device"]].get(
+                "security_profile", item.get("security_profile", "vulnerable")
+            )
+            result.append(item)
+        return result
 
     @staticmethod
     def _matches(template, service, sid: str):
@@ -509,10 +747,8 @@ class ScenarioGenerator:
         return True
 
     @staticmethod
-    def _materialize(template, service):
-        key = str(template.get("key", "")).strip()
-        if not key:
-            raise ScenarioGeneratorError("Generated packs require stable template keys")
+    def _materialize(template, service, pack_id, kind, index, legacy_source_id=None):
+        key = str(template.get("key") or legacy_source_id or f"{pack_id}:{kind}:{index}").strip()
         ip = service["ip"]
         result = {"id": f"{key}@{_slug(service['name'])}", "device": service["name"],
                   "ip": ip, "role": service["role"],
@@ -529,22 +765,48 @@ class ScenarioGenerator:
         return result
 
     @staticmethod
-    def _resolve_paths(paths, vulns, variant_id: str, names):
+    def _resolve_paths(paths, vulns, variant_id: str, mutation, source_ground_truth, topology):
+        by_id = {vuln["id"]: vuln for vuln in vulns}
         by_key: dict[str, list[dict[str, Any]]] = {}
         for vuln in vulns:
             by_key.setdefault(vuln["template_key"], []).append(vuln)
+        by_source_id = {
+            source["id"]: current
+            for source, current in zip(source_ground_truth.get("vulnerabilities", []), vulns)
+            if source.get("id")
+        }
+        known = {
+            topology.get("router", {}).get("name"),
+            *(item.get("name") for item in topology.get("services", [])),
+            *topology.get("external_nodes", []),
+        }
+        names = mutation.get("names", {})
         result = copy.deepcopy(paths)
         for index, path in enumerate(result, 1):
             path["id"] = f"PGEN-{variant_id.rsplit('-', 1)[-1].upper()}-{index}"
             resolved = []
             for old_id in path.get("vulnerabilities_used", []):
-                candidates = by_key.get(str(old_id).split("@", 1)[0], [])
+                old_id = str(old_id)
+                candidates = []
+                if old_id in by_id:
+                    candidates = [by_id[old_id]]
+                elif old_id in by_source_id:
+                    candidates = [by_source_id[old_id]]
+                else:
+                    base, _, suffix = old_id.partition("@")
+                    candidates = list(by_key.get(base, []))
+                    if suffix:
+                        current_suffix = _slug(names.get(suffix, suffix))
+                        candidates = [item for item in candidates if _slug(item["device"]) == current_suffix]
                 if len(candidates) != 1:
                     raise ScenarioGeneratorError(f"Attack-path finding does not resolve: {old_id}")
                 resolved.append(candidates[0]["id"])
             path["vulnerabilities_used"] = resolved
             for hop in path.get("chain", []):
-                hop["device"] = names.get(hop.get("device"), hop.get("device"))
+                device = ScenarioGenerator._canonical_device(hop.get("device"), names, known)
+                if device not in known:
+                    raise ScenarioGeneratorError(f"Attack path references an unknown device: {device}")
+                hop["device"] = device
         return result
 
     @staticmethod
@@ -555,12 +817,14 @@ class ScenarioGenerator:
             vulnerabilities.setdefault(item["device"], []).append(item["template_key"])
         for item in gt["controls"]:
             controls.setdefault(item["device"], []).append(item["template_key"])
+        router = {**topology.get("router", {}), "role": "router"}
+        items = [router, *topology.get("services", [])]
         fixtures = [{"device": item["name"], "ip": item["ip"], "role": item["role"],
                      "provider": "benchmark_simulator" if item.get("simulator") else "unresolved",
                      "mode": item.get("simulator"), "security_profile": item.get("security_profile", "vulnerable"),
                      "vulnerability_keys": sorted(vulnerabilities.get(item["name"], [])),
                      "control_keys": sorted(controls.get(item["name"], []))}
-                    for item in topology.get("services", [])]
+                    for item in items]
         return {"schema_version": 1, "scenario_id": variant_id,
                 "deployment_status": "preview", "fixtures": fixtures}
 
@@ -593,10 +857,10 @@ class ScenarioGenerator:
         router, services = topology["router"], topology.get("services", [])
         names = [router["name"], *[item["name"] for item in services]]
         ips = [router["ip"], *[item["ip"] for item in services]]
-        offsets = [item.get("vmid_offset") for item in services]
+        offsets = [item.get("vmid_offset") for item in services if item.get("vmid_offset") is not None]
         if len(names) != len(set(names)) or len(ips) != len(set(ips)) or len(offsets) != len(set(offsets)):
             raise ScenarioGeneratorError("Generated topology identifiers are not unique")
-        nodes = set(names)
+        nodes = set(names) | set(topology.get("external_nodes", []))
         if any(link["source"] not in nodes or link["target"] not in nodes for link in topology.get("links", [])):
             raise ScenarioGeneratorError("Generated topology contains a dangling link")
         target_by_name = {item["name"]: item for item in services} | {router["name"]: router}
@@ -614,7 +878,8 @@ class ScenarioGenerator:
             if any(device not in nodes for device in path_devices):
                 raise ScenarioGeneratorError("Attack path references an unknown device")
             if any(
-                not ScenarioGenerator._is_reachable(left, right, topology.get("links", []))
+                left not in topology.get("external_nodes", []) and right not in topology.get("external_nodes", [])
+                and not ScenarioGenerator._is_reachable(left, right, topology.get("links", []))
                 for left, right in zip(path_devices, path_devices[1:])
             ):
                 raise ScenarioGeneratorError("Attack path crosses disconnected topology components")
@@ -727,6 +992,7 @@ class ScenarioGenerator:
             "simulators": dict(sorted(simulators.items())),
             "link_count": len(topology.get("links", [])),
             "protocols": dict(sorted(protocols.items())),
+            "external_nodes": sorted(topology.get("external_nodes", [])),
             "subnets": sorted(topology.get("subnets", [])),
         }
 

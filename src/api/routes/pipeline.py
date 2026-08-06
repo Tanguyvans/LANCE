@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
+from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 
 router = APIRouter()
 
@@ -109,7 +110,7 @@ def _pipeline_thread(req: StartRequest):
             max_cost_usd=req.max_cost_usd,
             phase_models=req.phase_models,
             custom_config=custom_config,
-            manage_scenario=not default_export_store().exists(req.scenario_id or ""),
+            manage_scenario=True,
             target_network=req.target_network,
             blind=req.blind,
             execution_profile=req.execution_profile,
@@ -198,12 +199,6 @@ async def start_pipeline(req: StartRequest):
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if req.deploy_only and default_export_store().exists(req.scenario_id):
-            raise HTTPException(
-                status_code=400,
-                detail="Scenario Lab exports support dashboard analysis, not Proxmox provisioning",
-            )
-
     from datetime import datetime
     from src.agent.execution_profiles import resolve_execution_profile_for_model
     profile_resolution = resolve_execution_profile_for_model(
@@ -377,7 +372,7 @@ def _batch_thread(req: BatchRequest):
                     blind=req.blind,
                     benchmark_split=benchmark_split,
                     execution_profile=req.execution_profile,
-                    manage_scenario=not default_export_store().exists(sid),
+                    manage_scenario=True,
                 )
                 run_results = pipeline.run(
                     stream_callback=make_callback(sid),
@@ -562,12 +557,6 @@ async def teardown_scenario(req: TeardownRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if default_export_store().exists(req.scenario_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Scenario Lab exports do not own Proxmox resources to tear down",
-        )
-
     with _state_lock:
         if _state["running"]:
             raise HTTPException(
@@ -585,6 +574,8 @@ async def teardown_scenario(req: TeardownRequest):
     _state["loop"] = asyncio.get_running_loop()
 
     def _run():
+        deployment = GeneratedScenarioDeployment.from_lease(req.scenario_id)
+        exported = default_export_store().exists(req.scenario_id)
         cmd = [
             "ansible-playbook",
             "benchmarks/ansible/playbooks/99_teardown.yml",
@@ -594,9 +585,19 @@ async def teardown_scenario(req: TeardownRequest):
         ]
         try:
             try:
-                result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
-                success = result.returncode == 0
-                output = (result.stdout + result.stderr).strip()
+                if exported and deployment is None:
+                    success = False
+                    output = "Aucun lease de déploiement actif pour cet export Scenario Lab"
+                else:
+                    if deployment is not None:
+                        cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
+                        source_scenario_id = deployment.source_scenario_id
+                    else:
+                        source_scenario_id = str(req.scenario_id)
+                    cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
+                    result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+                    success = result.returncode == 0
+                    output = (result.stdout + result.stderr).strip()
             except subprocess.TimeoutExpired:
                 success = False
                 output = "Teardown timeout (300s)"
@@ -604,6 +605,8 @@ async def teardown_scenario(req: TeardownRequest):
                 success = False
                 output = "ansible-playbook not found"
 
+            if success and deployment is not None:
+                deployment.release()
             loop = _state.get("loop")
             q = _state.get("queue")
             if loop and q:

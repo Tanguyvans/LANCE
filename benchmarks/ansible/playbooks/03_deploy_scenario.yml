@@ -17,6 +17,7 @@
 
   vars:
     scenario_id: "1"   # override avec --extra-vars "scenario_id=2"
+    source_scenario_id: "{{ scenario_id }}"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     max_vmid_offset: "{{ benchmark_scenarios[scenario_id].services | map(attribute='vmid_offset') | max | int }}"
     # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
@@ -32,7 +33,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         vmid={{ base_vmid }}
-        expected='s{{ scenario_id }}-router'
+        expected='{{ router_name | default("s" ~ scenario_id ~ "-router") }}'
         if qm status "$vmid" >/dev/null 2>&1; then
           actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
           [ "$actual" = "$expected" ] || {
@@ -59,7 +60,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         vmid={{ base_vmid | int + item.vmid_offset }}
-        expected='s{{ scenario_id }}-{{ item.name }}'
+        expected='{{ item.deploy_name | default("s" ~ scenario_id ~ "-" ~ item.name) }}'
         if pct status "$vmid" >/dev/null 2>&1; then
           actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
           [ "$actual" = "$expected" ] || {
@@ -177,14 +178,14 @@
     - name: Cloner le template OpenWrt pour le router du scénario
       ansible.builtin.command: >-
         qm clone {{ tpl_openwrt_vmid }} {{ base_vmid }}
-        --name s{{ scenario_id }}-router
+        --name {{ router_name | default("s" ~ scenario_id ~ "-router") }}
         --full
       when: router_check.rc != 0
 
     - name: "[S13] Ajouter NIC trunk VLAN 10/20/30 au routeur (net2 — ne pas écraser le WAN net1)"
       ansible.builtin.command: >-
         qm set {{ base_vmid }} --net2 virtio,bridge={{ benchmark_bridge }},trunks=10;20;30
-      when: scenario_id == '13' and router_check.rc != 0
+      when: source_scenario_id == '13' and router_check.rc != 0
 
     - name: Démarrer le router OpenWrt
       ansible.builtin.command: qm start {{ base_vmid }}
@@ -221,7 +222,7 @@
     - name: Cloner le template Debian pour chaque service
       ansible.builtin.command: >-
         pct clone {{ tpl_debian_vmid }} {{ base_vmid | int + item.vmid_offset }}
-        --hostname s{{ scenario_id }}-{{ item.name }}
+        --hostname {{ item.deploy_name | default("s" ~ scenario_id ~ "-" ~ item.name) }}
         --full
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
@@ -301,7 +302,7 @@
           ip route replace 192.168.20.0/24 via {{ benchmark_gateway }} dev eth1 2>/dev/null || true
           ip route replace 192.168.30.0/24 via {{ benchmark_gateway }} dev eth1 2>/dev/null || true
         "
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: true
       failed_when: false
 
@@ -311,9 +312,9 @@
           ══════════════════════════════════════════════════════════
           Scénario S{{ scenario_id }} — {{ benchmark_scenarios[scenario_id].name }} déployé
           ──────────────────────────────────────────────────────────
-          {{ base_vmid }}  s{{ scenario_id }}-router  192.168.100.1  (OpenWrt WAN=DHCP)
+          {{ base_vmid }}  {{ router_name | default("s" ~ scenario_id ~ "-router") }}  192.168.100.1  (OpenWrt WAN=DHCP)
           {% for svc in benchmark_scenarios[scenario_id].services %}
-          {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  {{ svc.ip }}  [{{ 'OK' if ct_ping.results[loop.index0].rc == 0 else 'NO PING' }}]
+          {{ base_vmid | int + svc.vmid_offset }}  {{ svc.deploy_name | default("s" ~ scenario_id ~ "-" ~ svc.name) }}  {{ svc.ip }}  [{{ 'OK' if ct_ping.results[loop.index0].rc == 0 else 'NO PING' }}]
           {% endfor %}
           ──────────────────────────────────────────────────────────
           Prochaine étape : 04_inject_vulns.yml --extra-vars "scenario_id={{ scenario_id }}"

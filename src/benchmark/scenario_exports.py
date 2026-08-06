@@ -121,9 +121,9 @@ class ExportedScenarioStore:
             "source_scenario_id": manifest["source_scenario_id"],
             "blueprint_id": manifest["blueprint_id"],
             "exported_at": datetime.now(timezone.utc).isoformat(),
-            # Lab exports can be analysed from the dashboard but the current
-            # Proxmox playbooks only provision official numeric presets.
-            "deployment_supported": False,
+            # The pipeline provisions exports through a runtime Ansible
+            # overlay; the immutable official catalogue remains untouched.
+            "deployment_supported": True,
             "artifact_hashes": hashes,
             "export_hash": _canonical_hash(hashes),
         }
@@ -235,7 +235,7 @@ class ExportedScenarioStore:
             "exported_at": manifest["exported_at"],
             "exported": True,
             "deletable": True,
-            "deployment_supported": bool(manifest.get("deployment_supported", False)),
+            "deployment_supported": True,
             "vulnerability_count": len(ground_truth.get("vulnerabilities", [])),
             "control_count": len(ground_truth.get("controls", [])),
         }

@@ -16,7 +16,13 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from src.benchmark.scenario_exports import resolve_ground_truth_path, resolve_scenario_path, resolve_topology_path
+from src.benchmark.scenario_exports import (
+    default_export_store,
+    resolve_ground_truth_path,
+    resolve_scenario_path,
+    resolve_topology_path,
+)
+from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.execution_profiles import (
@@ -1110,6 +1116,7 @@ class Pipeline:
         self.benchmark_split = self.benchmark_split or "unassigned"
         self.sealed = self.benchmark_split == "eval-sealed"
         self.manage_scenario = bool(manage_scenario)
+        self._generated_deployment: GeneratedScenarioDeployment | None = None
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
@@ -1522,6 +1529,7 @@ class Pipeline:
     def _run_playbook(self, playbook: str, stream_callback, event_type_start: str, event_type_done: str, extra_msg: str = "") -> bool:
         """Run an Ansible playbook and return True on success."""
         repo_root = Path(__file__).resolve().parents[2]
+        deployment = self._generated_deployment
         cmd = [
             "ansible-playbook",
             f"benchmarks/ansible/playbooks/{playbook}",
@@ -1529,6 +1537,12 @@ class Pipeline:
             "--vault-password-file", "/root/.vault_pass",
             "--extra-vars", f"scenario_id={self.scenario_id}",
         ]
+        if deployment is not None:
+            cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
+            source_scenario_id = deployment.source_scenario_id
+        else:
+            source_scenario_id = str(self.scenario_id)
+        cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
         print(f"\n{'=' * 60}")
         print(f"ANSIBLE: {playbook} (scenario {self.scenario_id})")
         print(f"{'=' * 60}\n")
@@ -1571,6 +1585,8 @@ class Pipeline:
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
         """Deploy and configure benchmark scenario VMs before pipeline starts."""
+        if self.scenario_id is not None and default_export_store().exists(str(self.scenario_id)):
+            self._generated_deployment = GeneratedScenarioDeployment.prepare(str(self.scenario_id))
         # Pre-teardown any running scenario to avoid conflicts on shared network
         self._teardown_all_running_scenarios(stream_callback)
 
@@ -1598,6 +1614,20 @@ class Pipeline:
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:
         """Teardown any currently running scenario before deploying a new one."""
         repo_root = Path(__file__).resolve().parents[2]
+        current_scenario_id = str(self.scenario_id) if self.scenario_id is not None else None
+
+        # Generated variants use dynamic VMID ranges, so they are tracked by
+        # local leases rather than by the official numeric catalogue.
+        for active in GeneratedScenarioDeployment.active_leases():
+            if active.scenario_id == current_scenario_id:
+                continue
+            log.info("Pre-teardown of running generated scenario %s", active.scenario_id)
+            old_id, old_deployment = self.scenario_id, self._generated_deployment
+            self.scenario_id = active.scenario_id
+            self._generated_deployment = active
+            self._run_teardown(stream_callback)
+            self.scenario_id, self._generated_deployment = old_id, old_deployment
+
         # Load the historical inventory and the independently versioned v2
         # additions. main.yml is intentionally kept host-local on the master VM.
         all_yml = repo_root / "benchmarks/ansible/group_vars/all/main.yml"
@@ -1647,8 +1677,11 @@ class Pipeline:
             self._run_teardown(stream_callback)
             self.scenario_id = old_id
 
-    def _run_teardown(self, stream_callback: Callable[[dict], None] | None = None) -> None:
+    def _run_teardown(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
         """Run 99_teardown.yml to clean up benchmark VMs after pipeline completes."""
+        if self._generated_deployment is None and self.scenario_id is not None:
+            self._generated_deployment = GeneratedScenarioDeployment.from_lease(str(self.scenario_id))
+        deployment = self._generated_deployment
         print(f"\n{'=' * 60}")
         print(f"TEARDOWN: Suppression du scénario S{self.scenario_id}")
         print(f"{'=' * 60}\n")
@@ -1667,6 +1700,12 @@ class Pipeline:
             "--vault-password-file", "/root/.vault_pass",
             "--extra-vars", f"scenario_id={self.scenario_id}",
         ]
+        if deployment is not None:
+            cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
+            source_scenario_id = deployment.source_scenario_id
+        else:
+            source_scenario_id = str(self.scenario_id)
+        cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
 
         import os
         env = os.environ.copy()
@@ -1688,7 +1727,7 @@ class Pipeline:
         except subprocess.TimeoutExpired:
             success = False
             output = f"Teardown timeout ({pb_timeout}s)"
-            log.error("Teardown timeout for scenario %d", self.scenario_id)
+            log.error("Teardown timeout for scenario %s", self.scenario_id)
         except FileNotFoundError:
             success = False
             output = "ansible-playbook not found — teardown skipped"
@@ -1701,6 +1740,11 @@ class Pipeline:
                 "success": success,
                 "output": output,
             })
+        if success and deployment is not None:
+            deployment.release()
+            if self._generated_deployment is deployment:
+                self._generated_deployment = None
+        return success
 
     def _save_ground_truth(self):
         """Generate a custom development GT after the worker has finished.

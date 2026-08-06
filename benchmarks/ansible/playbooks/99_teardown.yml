@@ -8,6 +8,7 @@
 
   vars:
     scenario_id: "1"
+    source_scenario_id: "{{ scenario_id }}"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     max_vmid_offset: "{{ benchmark_scenarios[scenario_id].services | map(attribute='vmid_offset') | max | int }}"
     # Plage dynamique : router (base+0) jusqu'au plus grand vmid_offset
@@ -19,7 +20,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         vmid={{ base_vmid }}
-        expected='s{{ scenario_id }}-router'
+        expected='{{ router_name | default("s" ~ scenario_id ~ "-router") }}'
         if qm status "$vmid" >/dev/null 2>&1; then
           actual=$(qm config "$vmid" | awk -F': ' '$1 == "name" {print $2; exit}')
           [ "$actual" = "$expected" ] || {
@@ -41,7 +42,7 @@
       ansible.builtin.shell: |
         set -euo pipefail
         vmid={{ base_vmid | int + item.vmid_offset }}
-        expected='s{{ scenario_id }}-{{ item.name }}'
+        expected='{{ item.deploy_name | default("s" ~ scenario_id ~ "-" ~ item.name) }}'
         if pct status "$vmid" >/dev/null 2>&1; then
           actual=$(pct config "$vmid" | awk -F': ' '$1 == "hostname" {print $2; exit}')
           [ "$actual" = "$expected" ] || {

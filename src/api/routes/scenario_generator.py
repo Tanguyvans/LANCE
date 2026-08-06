@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.benchmark.scenario_exports import ScenarioExportError
+from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 from src.benchmark.scenario_generator import ScenarioGenerator, ScenarioGeneratorError
 
 
@@ -63,6 +64,11 @@ def get_generated_scenario(variant_id: str):
 def delete_generated_scenario(variant_id: str):
     from src.api.routes import pipeline
 
+    if GeneratedScenarioDeployment.from_lease(variant_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete a generated scenario while its Proxmox deployment is active",
+        )
     if pipeline._state.get("running") and pipeline._state.get("scenario_id") == variant_id:
         raise HTTPException(
             status_code=409,
@@ -96,6 +102,11 @@ def export_generated_scenario(variant_id: str):
 def delete_exported_scenario(variant_id: str):
     from src.api.routes import pipeline
 
+    if GeneratedScenarioDeployment.from_lease(variant_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete an exported scenario while its Proxmox deployment is active",
+        )
     if pipeline._state.get("running") and pipeline._state.get("scenario_id") == variant_id:
         raise HTTPException(
             status_code=409,

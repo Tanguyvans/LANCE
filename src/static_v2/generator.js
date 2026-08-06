@@ -186,13 +186,23 @@ async function mutateGeneratedScenario() {
 
 async function previewGeneratedScenario() {
   if (!scenarioLab.selected) return;
-  state.generatedVariant = scenarioLab.selected.id;
-  state.scenario = null;
+  const variantId = scenarioLab.selected.id;
+  try {
+    await scenarioGeneratorFetch(
+      '/api/scenario-generator/' + encodeURIComponent(variantId) + '/export',
+      {method: 'POST'},
+    );
+  } catch (error) {
+    log(`Export failed: ${error.message}`, 'error');
+    return;
+  }
+  state.generatedVariant = variantId;
+  state.scenario = variantId;
   document.querySelectorAll('.s-btn').forEach(button => button.classList.remove('active'));
   document.getElementById('generatorModal').classList.add('hidden');
-  document.getElementById('phaseLabel').textContent = 'GENERATED PREVIEW';
+  document.getElementById('phaseLabel').textContent = 'GENERATED SCENARIO';
   await loadTopology();
-  log(`Preview ${state.generatedVariant}`, 'phase');
+  log(`Scenario ${state.generatedVariant} exported and ready to run`, 'success');
 }
 
 document.getElementById('btnGenerator').addEventListener('click', async () => {
@@ -213,14 +223,4 @@ document.getElementById('btnPreviewScenario').addEventListener('click', previewG
 
 if (window.location.hash === "#scenario-lab") {
   document.getElementById("btnGenerator").click();
-}
-
-// Generated bundles are previews until the generic Ansible compiler exists.
-for (const id of ['btnRun', 'btnTeardown']) {
-  document.getElementById(id).addEventListener('click', event => {
-    if (!state.generatedVariant) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    log('Generated previews are not deployable', 'warn');
-  }, true);
 }

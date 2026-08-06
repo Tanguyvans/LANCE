@@ -5,6 +5,7 @@ MODE="${1:?mode required}"
 PROFILE="${2:?profile required}"
 NAME="${3:?name required}"
 ALLOWED_FETCH_HOSTS="${4:-}"
+ALLOWED_METADATA_SOURCE="${ALLOWED_FETCH_HOSTS%%,*}"
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
@@ -62,11 +63,12 @@ if [ "${MODE}" = "cloud_metadata" ]; then
   cat > /usr/local/sbin/nato-benchmark-metadata-firewall <<'EOF'
 #!/bin/sh
 set -eu
-iptables -C INPUT -p tcp --dport 8080 -s 192.168.100.11 -j ACCEPT 2>/dev/null || \
-  iptables -I INPUT 1 -p tcp --dport 8080 -s 192.168.100.11 -j ACCEPT
+iptables -C INPUT -p tcp --dport 8080 -s __ALLOWED_METADATA_SOURCE__ -j ACCEPT 2>/dev/null || \
+  iptables -I INPUT 1 -p tcp --dport 8080 -s __ALLOWED_METADATA_SOURCE__ -j ACCEPT
 iptables -C INPUT -p tcp --dport 8080 -j REJECT 2>/dev/null || \
   iptables -I INPUT 2 -p tcp --dport 8080 -j REJECT
 EOF
+  sed -i "s/__ALLOWED_METADATA_SOURCE__/${ALLOWED_METADATA_SOURCE}/g" /usr/local/sbin/nato-benchmark-metadata-firewall
   chmod 0755 /usr/local/sbin/nato-benchmark-metadata-firewall
   cat > /etc/systemd/system/nato-benchmark-metadata-firewall.service <<'EOF'
 [Unit]

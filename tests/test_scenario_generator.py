@@ -63,7 +63,7 @@ def test_generate_creates_isolated_complete_bundle(generator: ScenarioGenerator)
     assert manifest["mutation_policy"] == "generated-only"
     assert manifest["source_scenario_id"] == "15"
     assert len(manifest["source_blueprint_hash"]) == 64
-    assert manifest["generator_version"] == 2
+    assert manifest["generator_version"] == 3
 
 
 def test_generated_topology_preserves_blueprint_structure(generator: ScenarioGenerator):
@@ -193,7 +193,7 @@ def test_export_publishes_dashboard_bundle_and_preserves_source(generator: Scena
 
     assert exported["exported"] is True
     assert exported["deletable"] is True
-    assert exported["deployment_supported"] is False
+    assert exported["deployment_supported"] is True
     assert stored["scenario"]["topology"] == generated["id"]
     assert (
         stored["topology"]["router"]["name_template"]
@@ -263,3 +263,83 @@ def test_generator_router_is_registered_in_api_main():
     source = (REPO_ROOT / "src" / "api" / "main.py").read_text(encoding="utf-8")
     assert "scenario_generator.router" in source
     assert "prefix=\"/api/scenario-generator\"" in source
+
+
+def test_blueprints_are_derived_from_the_complete_scenario_catalogue(generator: ScenarioGenerator):
+    all_source_ids = {
+        str((_load(path)).get("scenario_id", path.stem.removeprefix("S")))
+        for path in (REPO_ROOT / "benchmarks" / "scenarios").glob("S*.yaml")
+    }
+    source_ids = {scenario_id for scenario_id in all_source_ids if scenario_id.isdigit()}
+    blueprints = generator.list_blueprints()
+
+    assert {item["source_scenario_id"] for item in blueprints} == source_ids
+    assert {item["id"] for item in blueprints} >= {"api-authorization", "ota-lifecycle", "scenario-1"}
+    assert all(item["deployment_supported"] for item in blueprints)
+    assert {"1h", "4h"}.isdisjoint({item["source_scenario_id"] for item in blueprints})
+    assert all(item["operations"] for item in blueprints)
+
+
+def test_every_catalogue_blueprint_can_generate_a_variant(generator: ScenarioGenerator):
+    blueprints = generator.list_blueprints()
+
+    for index, blueprint in enumerate(blueprints):
+        operation = blueprint["operations"][0]
+        generated = generator.generate(blueprint["id"], 1000 + index, operation["id"])
+        assert generated["source_scenario_id"] == blueprint["source_scenario_id"]
+        assert generated["operation"] == operation["id"]
+
+
+def test_non_deployable_historical_sources_are_not_generation_inputs(generator: ScenarioGenerator):
+    with pytest.raises(ScenarioGeneratorError, match="not deployable by Ansible"):
+        generator.generate("scenario-1h", 1001, "rename_hosts")
+
+
+def test_legacy_paths_and_external_nodes_are_mutable(generator: ScenarioGenerator):
+    generated = generator.generate("scenario-11", 101, "rename_hosts")
+    bundle = generator._load_bundle(generated["id"])
+    graph = generator.get_topology_graph(generated["id"])
+
+    assert generated["vulnerability_count"] > 0
+    assert "Internet" in bundle["topology"]["external_nodes"]
+    assert any(node["id"] == "Internet" and node["type"] == "external" for node in graph["nodes"])
+    assert all(
+        hop["device"] in bundle["topology"]["external_nodes"]
+        or hop["device"] in {item["name"] for item in bundle["topology"]["services"]}
+        or hop["device"] == bundle["topology"]["router"]["name"]
+        for path in bundle["ground_truth"]["attack_paths"]
+        for hop in path["chain"]
+    )
+
+
+def test_heldout_duplicate_template_keys_resolve_by_device(generator: ScenarioGenerator):
+    generated = generator.generate("scenario-25", 102, "rotate_ips")
+    bundle = generator._load_bundle(generated["id"])
+    asset_findings = {
+        item["id"] for item in bundle["ground_truth"]["vulnerabilities"]
+        if item["template_key"] == "F20-ASSET-L1"
+    }
+    used = {
+        finding_id
+        for path in bundle["ground_truth"]["attack_paths"]
+        for finding_id in path["vulnerabilities_used"]
+        if finding_id in asset_findings
+    }
+
+    assert len(asset_findings) == 2
+    assert used == asset_findings
+
+
+def test_mutation_preserves_and_remaps_scenario_credentials(generator: ScenarioGenerator):
+    generated = generator.generate("scenario-20", 103, "rotate_ips")
+    bundle = generator._load_bundle(generated["id"])
+    targets = {
+        item["name"]: item["ip"] for item in bundle["topology"]["services"]
+    }
+
+    assert bundle["scenario"]["initial_credentials"]
+    assert bundle["scenario"]["excluded_vulnerabilities"][0].startswith("F16-ENTRY-CREDS@")
+    assert all(
+        credential["device_id"] in targets and targets[credential["device_id"]] == credential["ip"]
+        for credential in bundle["scenario"]["initial_credentials"]
+    )

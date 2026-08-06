@@ -17,6 +17,7 @@
 
   vars:
     scenario_id: "1"
+    source_scenario_id: "{{ scenario_id }}"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
     # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
 
@@ -874,14 +875,14 @@
           chmod 644 /etc/mosquitto/conf.d/bridge.conf
           systemctl reload mosquitto 2>/dev/null || true
           echo "[OK] Config bridge MQTT avec credentials créée"
-      when: scenario_id == "7"
+      when: source_scenario_id == "7"
 
     - name: "[mqtt_broker / S7] Push + exécuter dans chaque CT concerned"
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_mqtt_bridge_s7.sh /tmp/populate_bridge.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_bridge.sh
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: scenario_id == "7" and item.role == 'mqtt_broker'
+      when: source_scenario_id == "7" and item.role == 'mqtt_broker'
       changed_when: true
 
 
@@ -931,14 +932,14 @@
           NGINX
           nginx -t && systemctl reload nginx
           echo "[OK] Backup SQL cloud exposé dans /backup/"
-      when: scenario_id == "7"
+      when: source_scenario_id == "7"
 
     - name: "[web_upload / S7] Push + exécuter dans chaque CT concerné"
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/populate_webupload_s7.sh /tmp/populate_s7.sh
         pct exec {{ base_vmid | int + item.vmid_offset }} -- bash /tmp/populate_s7.sh
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: scenario_id == "7" and item.role == 'web_upload'
+      when: source_scenario_id == "7" and item.role == 'web_upload'
       changed_when: true
 
 

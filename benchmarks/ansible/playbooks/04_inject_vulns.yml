@@ -19,7 +19,10 @@
 
   vars:
     scenario_id: "1"
+    source_scenario_id: "{{ scenario_id }}"
     base_vmid: "{{ benchmark_scenario_vmid_ranges[scenario_id] | int }}"
+    cloud_metadata_ip: "192.168.100.12"
+    cloud_web_ip: "192.168.100.11"
     proxmox_tmp_ip: "192.168.100.254"   # IP temp sur vmbr1 pour joindre OpenWrt
     # benchmark_scenarios fusionne main.yml (S1-S13) et scenarios_v2.yml (S14-S29)
 
@@ -55,7 +58,7 @@
           sleep 1
           ss -tlnp | grep 3142 && echo ACN_OK || echo ACN_FAIL
         "
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       register: acng_result
       changed_when: false
       failed_when: "'ACN_FAIL' in acng_result.stdout or acng_result.rc != 0"
@@ -103,19 +106,19 @@
           /etc/init.d/network restart >/dev/null 2>&1 &
           sleep 1
           exit 0
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
 
     - name: "[S13] Pousser + exécuter la config réseau sur OpenWrt (connexion peut chuter)"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'cat > /tmp/s13_openwrt_net.sh' < /tmp/s13_openwrt_net.sh
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'sh /tmp/s13_openwrt_net.sh' 2>/dev/null || true
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: true
 
     - name: "[S13] Attendre la fin du network restart (15s)"
       ansible.builtin.pause:
         seconds: 15
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
 
     - name: "[S13] Vérifier eth2.20 avec IP 192.168.20.1 (retry 15×5s)"
       ansible.builtin.shell: >-
@@ -126,7 +129,7 @@
       until: vlan_up.rc == 0 and 'ok' in vlan_up.stdout
       retries: 15
       delay: 5
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: false
 
     - name: "[S13] Écrire le script de configuration pare-feu OpenWrt (UCI fw4 + règles inter-VLAN)"
@@ -213,13 +216,13 @@
           uci commit firewall
           /etc/init.d/firewall restart
           echo FW_OK
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
 
     - name: "[S13] Pousser + exécuter la config pare-feu sur OpenWrt"
       ansible.builtin.shell: |
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 root@{{ benchmark_gateway }} 'cat > /tmp/s13_openwrt_fw.sh' < /tmp/s13_openwrt_fw.sh
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 root@{{ benchmark_gateway }} 'sh /tmp/s13_openwrt_fw.sh'
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: true
       register: fw_result
       failed_when: "'FW_OK' not in fw_result.stdout"
@@ -235,7 +238,7 @@
            grep -q "ip link set eth2 up" /etc/rc.local 2>/dev/null || printf "#!/bin/sh\nip link set eth2 up\nexit 0\n" > /etc/rc.local
            chmod +x /etc/rc.local
            echo VULN_OK'
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: true
       register: vuln_result
       failed_when: "'VULN_OK' not in vuln_result.stdout"
@@ -245,7 +248,7 @@
         printf 'Acquire::http::Proxy "http://192.168.100.200:3142/";\nAcquire::ForceIPv4 "true";\n' > /tmp/s13_01proxy
         pct push {{ base_vmid | int + item.vmid_offset }} /tmp/s13_01proxy /etc/apt/apt.conf.d/01proxy
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       changed_when: true
 
     - name: "[S13] Vérifier connectivité CT→proxy (VLAN→LAN 192.168.100.200:3142)"
@@ -255,7 +258,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }}"
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
       register: proxy_check
       changed_when: false
       failed_when: false
@@ -266,7 +269,7 @@
       loop: "{{ proxy_check.results }}"
       loop_control:
         label: "{{ item.item.name }}"
-      when: scenario_id == '13'
+      when: source_scenario_id == '13'
 
     - name: "[S13] FAIL si au moins un CT ne peut pas joindre apt-cacher-ng"
       ansible.builtin.fail:
@@ -274,7 +277,7 @@
       loop: "{{ proxy_check.results }}"
       loop_control:
         label: "{{ item.item.name }}"
-      when: scenario_id == '13' and item.rc != 0
+      when: source_scenario_id == '13' and item.rc != 0
 
 
     # ════════════════════════════════════════════════════
@@ -312,7 +315,7 @@
       when:
         - item.role == 'mqtt_broker'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
-        - scenario_id != '21'
+        - source_scenario_id != '21'
       changed_when: true
 
 
@@ -371,7 +374,7 @@
       when:
         - item.role == 'web_server'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
-        - scenario_id != '21'
+        - source_scenario_id != '21'
       changed_when: true
 
 
@@ -917,7 +920,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'mqtt_broker'
-        - scenario_id in ['1', '6']
+        - source_scenario_id in ['1', '6']
       changed_when: true
 
     # ── .env exposé via HTTP — S6, S7 ──
@@ -938,7 +941,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role in ['web_server', 'web_upload']
-        - scenario_id in ['6', '7']
+        - source_scenario_id in ['6', '7']
       changed_when: true
 
     # ── robots.txt exposant des paths internes — S4, S6 ──
@@ -957,7 +960,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role in ['web_server', 'web_upload', 'iot_gateway']
-        - scenario_id in ['4', '6']
+        - source_scenario_id in ['4', '6']
       changed_when: true
 
     # ── SSRF via interface web — S4 (webapp) ──
@@ -980,7 +983,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'web_upload'
-        - scenario_id == '4'
+        - source_scenario_id == '4'
       changed_when: true
 
     # ── Privilege escalation : SUID binary + cron writable — S3 (jetson), S7 (edge-compute) ──
@@ -1005,7 +1008,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.role == 'ssh_server'
-        - scenario_id in ['3', '7']
+        - source_scenario_id in ['3', '7']
       changed_when: true
 
     # ── BACnet/IP sans auth (port 47808/UDP) — S5 (HVAC) ──
@@ -1049,7 +1052,7 @@
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       when:
         - item.name is defined and item.name is search('hvac')
-        - scenario_id == '5'
+        - source_scenario_id == '5'
       changed_when: true
 
 
@@ -1542,7 +1545,7 @@
         src: "{{ playbook_dir }}/../files/configure_s14_control.sh"
         dest: /tmp/configure_s14_control.sh
         mode: "0755"
-      when: scenario_id in ['14', '21', '29']
+      when: source_scenario_id in ['14', '21', '29']
 
     - name: "[S14] Configurer les services hardened et near-miss"
       ansible.builtin.shell: |
@@ -1553,7 +1556,7 @@
       loop_control:
         label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
-        - scenario_id in ['14', '21', '29']
+        - source_scenario_id in ['14', '21', '29']
         - (item.security_profile | default('vulnerable')) != 'vulnerable'
       changed_when: true
 
@@ -1566,7 +1569,7 @@
         src: "{{ playbook_dir }}/../files/configure_s20_pivot.sh"
         dest: /tmp/configure_s20_pivot.sh
         mode: "0755"
-      when: scenario_id == '20'
+      when: source_scenario_id == '20'
 
     - name: "[S20] Configurer les hôtes SSH d'entrée, relais et contrôle"
       ansible.builtin.shell: |
@@ -1576,7 +1579,7 @@
       loop_control:
         label: "{{ item.name }}"
       when:
-        - scenario_id == '20'
+        - source_scenario_id == '20'
         - item.role in ['pivot_entry', 'pivot_relay', 'pivot_decoy']
       changed_when: true
 
@@ -1589,7 +1592,7 @@
         src: "{{ playbook_dir }}/../files/configure_heldout_pivot.sh"
         dest: /tmp/configure_heldout_pivot.sh
         mode: "0755"
-      when: scenario_id in ['24', '25', '26', '27']
+      when: source_scenario_id in ['24', '25', '26', '27']
 
     - name: "[S24-S27] Configurer les pivots vulnérables et hardened"
       ansible.builtin.shell: |
@@ -1598,13 +1601,13 @@
           bash /tmp/configure_heldout_pivot.sh \
           '{{ item.role }}' \
           '{{ item.security_profile }}' \
-          '{{ scenario_id }}' \
+          '{{ source_scenario_id }}' \
           '{{ item.pivot_next_ip | default("") }}'
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }} ({{ item.security_profile | default('vulnerable') }})"
       when:
-        - scenario_id in ['24', '25', '26', '27']
+        - source_scenario_id in ['24', '25', '26', '27']
         - item.role in ['heldout_entry', 'heldout_relay_l1', 'heldout_relay_l2']
       changed_when: true
 
@@ -1617,7 +1620,7 @@
         src: "{{ playbook_dir }}/../files/configure_s21_sparse.sh"
         dest: /tmp/configure_s21_sparse.sh
         mode: "0755"
-      when: scenario_id == '21'
+      when: source_scenario_id == '21'
 
     - name: "[S21] Configurer uniquement les deux services vulnérables déclarés"
       ansible.builtin.shell: |
@@ -1627,7 +1630,7 @@
       loop_control:
         label: "{{ item.name }}"
       when:
-        - scenario_id == '21'
+        - source_scenario_id == '21'
         - (item.security_profile | default('vulnerable')) == 'vulnerable'
       changed_when: true
 
@@ -1641,13 +1644,13 @@
         src: "{{ playbook_dir }}/../files/generate_s16_pki.sh"
         dest: /tmp/generate_s16_pki.sh
         mode: "0755"
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
 
     - name: "[S16] Générer CA, certificats clients, CRL et clé clonée dans le CT CA"
       ansible.builtin.shell: |
         pct push {{ base_vmid | int + 1 }} /tmp/generate_s16_pki.sh /tmp/generate_s16_pki.sh
         pct exec {{ base_vmid | int + 1 }} -- bash /tmp/generate_s16_pki.sh
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
       register: s16_pki_generation
       changed_when: true
       failed_when: s16_pki_generation.rc != 0 or 'PKI_OK' not in s16_pki_generation.stdout
@@ -1665,7 +1668,7 @@
         pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.crt /tmp/s16-pki/device-b.crt
         pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.key /tmp/s16-pki/device-b.key
         pct pull {{ base_vmid | int + 1 }} /etc/nato-pki/device-b.public-key.sha256 /tmp/s16-pki/device-b.public-key.sha256
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
       changed_when: true
 
     - name: "[S16] Installer le certificat serveur mTLS (device-api)"
@@ -1676,7 +1679,7 @@
         pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/server.crt /etc/nato-pki/server.crt
         pct push {{ base_vmid | int + 3 }} /tmp/s16-pki/server.key /etc/nato-pki/server.key
         pct exec {{ base_vmid | int + 3 }} -- chmod 0600 /etc/nato-pki/server.key
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
       changed_when: true
 
     - name: "[S16] Installer le bundle rejouable sur le service d'enrôlement"
@@ -1686,7 +1689,7 @@
         pct push {{ base_vmid | int + 2 }} /tmp/s16-pki/device-b.crt /etc/nato-pki/device-b.crt
         pct push {{ base_vmid | int + 2 }} /tmp/s16-pki/device-b.key /etc/nato-pki/device-b.key
         pct exec {{ base_vmid | int + 2 }} -- chmod 0600 /etc/nato-pki/device-b.key
-      when: scenario_id == '16'
+      when: source_scenario_id == '16'
       changed_when: true
 
     - name: "[S16] Installer l'identité propre à chaque fixture device"
@@ -1701,7 +1704,7 @@
       loop_control:
         label: "{{ item.name }}"
       when:
-        - scenario_id == '16'
+        - source_scenario_id == '16'
         - item.role == 'pki_device'
       changed_when: true
 
@@ -1718,7 +1721,7 @@
       loop:
         - {src: benchmark_simulator.py, dest: benchmark_simulator.py}
         - {src: install_benchmark_simulator.sh, dest: install_benchmark_simulator.sh}
-      when: scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
+      when: source_scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
 
     - name: "[S15-S28] Installer et démarrer chaque simulateur"
       ansible.builtin.shell: |
@@ -1728,13 +1731,13 @@
           bash /tmp/install_benchmark_simulator.sh \
           '{{ item.simulator }}' \
           '{{ item.security_profile | default("vulnerable") }}' \
-          's{{ scenario_id }}-{{ item.name }}' \
-          '{{ "192.168.100.12" if scenario_id == "18" else "" }}'
+          '{{ item.deploy_name | default("s" ~ scenario_id ~ "-" ~ item.name) }}' \
+          '{{ cloud_metadata_ip if item.simulator == "cloud_web" else cloud_web_ip if item.simulator == "cloud_metadata" else "" }}'
       loop: "{{ benchmark_scenarios[scenario_id].services }}"
       loop_control:
         label: "{{ item.name }} ({{ item.simulator | default('no-simulator') }})"
       when:
-        - scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
+        - source_scenario_id in ['15', '16', '17', '18', '19', '20', '22', '23', '24', '25', '26', '27', '28']
         - item.simulator is defined
       register: simulator_installation
       changed_when: true
@@ -1747,7 +1750,7 @@
       loop_control:
         label: "{{ item.name }}"
       when:
-        - scenario_id in ['20', '24', '25', '26', '27']
+        - source_scenario_id in ['20', '24', '25', '26', '27']
         - item.bootstrap_ip is defined
       changed_when: true
 
@@ -1772,7 +1775,7 @@
           {% for svc in benchmark_scenarios[scenario_id].services %}
           {{ base_vmid | int + svc.vmid_offset }}  s{{ scenario_id }}-{{ svc.name }}  [{{ svc.role }}]
           {% endfor %}
-          {{ base_vmid }}  s{{ scenario_id }}-router  {{ benchmark_scenarios[scenario_id].router_vulns | join(', ') }}
+          {{ base_vmid }}  {{ router_name | default("s" ~ scenario_id ~ "-router") }}  {{ benchmark_scenarios[scenario_id].router_vulns | join(', ') }}
           ──────────────────────────────────────────────────────────
           Prochaine étape : lancer le pipeline LLM sur ce scénario
           ══════════════════════════════════════════════════════════
