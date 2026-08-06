@@ -2811,6 +2811,21 @@ class TestPhase5Context:
             "services": [22, 1883],
         }) == "mqtt"
 
+    def test_compact_intrusion_proxy_error_returns_for_ledger_recovery(
+        self, mock_provider, output_dir
+    ):
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        mock_provider.chat_with_tools.side_effect = ConnectionError("proxy unavailable")
+
+        status = pipeline._run_agent(AGENTS["intrusion"])
+
+        assert status.startswith("failed:")
+        assert "05_intrusion.json" not in {
+            path.name for path in pipeline.run_dir.iterdir()
+        }
+
     def test_compact_intrusion_run_agent_finalizes_completed_ledger(
         self, mock_provider, output_dir, monkeypatch
     ):

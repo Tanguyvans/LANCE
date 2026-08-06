@@ -2918,34 +2918,43 @@ class Pipeline:
 
         # Run agent with cost tracking
         self.tracker.start_phase(config.name)
-        result_text = self.provider.chat_with_tools(
-            system_prompt=system_prompt,
-            user_message=config.user_message,
-            tools=tools,
-            max_turns=max_turns,
-            max_tokens=max_tokens,
-            cost_tracker=self.tracker,
-            stream_callback=self._model_stream_callback(
-                stream_callback, phase=config.phase, agent=config.name
-            ),
-            required_tool=(
-                COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
-                else "save_deliverable"
-            ),
-            terminate_after_tool=(
-                COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
-                else "save_deliverable"
-            ),
-            terminate_on_unavailable_tools=None,
-            strict_required_tool=local_intrusion_memo or compact_local_recon,
-            force_tool_on_stall=local_intrusion_memo or compact_local_recon,
-            force_completion_on_recon_ready=compact_local_recon,
-            reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
-            recover_required_tool_on_stall=local_intrusion_memo,
-            # Recon has its own topology-aware progress contract.  The generic
-            # save-only cycle guard can otherwise deadlock it after an early save.
-            repeat_guard=config.name != "recon",
-        )
+        try:
+            result_text = self.provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=config.user_message,
+                tools=tools,
+                max_turns=max_turns,
+                max_tokens=max_tokens,
+                cost_tracker=self.tracker,
+                stream_callback=self._model_stream_callback(
+                    stream_callback, phase=config.phase, agent=config.name
+                ),
+                required_tool=(
+                    COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
+                    else "save_deliverable"
+                ),
+                terminate_after_tool=(
+                    COMPACT_INTRUSION_COMPLETION_TOOL if local_intrusion_memo
+                    else "save_deliverable"
+                ),
+                terminate_on_unavailable_tools=None,
+                strict_required_tool=local_intrusion_memo or compact_local_recon,
+                force_tool_on_stall=local_intrusion_memo or compact_local_recon,
+                force_completion_on_recon_ready=compact_local_recon,
+                reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
+                recover_required_tool_on_stall=local_intrusion_memo,
+                # Recon has its own topology-aware progress contract.  The generic
+                # save-only cycle guard can otherwise deadlock it after an early save.
+                repeat_guard=config.name != "recon",
+            )
+        except Exception as exc:
+            if not local_intrusion_memo:
+                raise
+            # A local proxy outage must not strand Phase 5 inside the provider
+            # loop. The authoritative tool ledger is reconciled immediately by
+            # _ensure_intrusion_deliverable after this method returns.
+            log.warning("Compact Phase 5 model call failed; switching to ledger recovery: %s", exc)
+            result_text = f"(compact local-MoE call failed: {type(exc).__name__})"
         # Compact local models sometimes stop immediately after the last
         # successful action and omit the required terminal tool call. The
         # guarded controller helper commits it only when the ledger is complete.

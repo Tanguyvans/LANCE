@@ -461,6 +461,18 @@ class TestProvider:
         assert provider.model == "mistral-7b"
         assert provider.provider == "openrouter"
 
+    def test_local_moe_init_uses_bounded_proxy_timeout_and_retry(self):
+        import openai
+        with patch("src.agent.provider._resolve_provider_cfg", return_value={
+            "base_url": "http://proxy.invalid/v1",
+            "api_key_env": "",
+            "default_model": "lance-moe",
+        }), patch.object(openai, "OpenAI") as openai_cls:
+            provider = LLMProvider(provider="local-moe", model="lance-moe")
+
+        assert provider._retry_limit == 1
+        assert openai_cls.call_args.kwargs["timeout"] == 60.0
+
     def test_invalid_provider(self):
         with pytest.raises(ValueError, match="Unknown provider"):
             LLMProvider(provider="invalid")

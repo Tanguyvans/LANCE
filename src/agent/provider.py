@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 _RETRYABLE_CODES = {429, 500, 502, 503, 529}
 _MAX_RETRIES = 5
 _RETRY_BASE_DELAY = 5.0  # seconds
+_LOCAL_MOE_API_TIMEOUT = 60.0
+_LOCAL_MOE_MAX_RETRIES = 1
 
 # Exception type names that indicate a network-level connection failure (no HTTP code)
 _RETRYABLE_EXC_NAMES = {"APIConnectionError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout"}
@@ -29,10 +31,11 @@ def _is_network_error(exc: Exception) -> bool:
     return type(exc).__name__ in _RETRYABLE_EXC_NAMES or isinstance(exc, (ConnectionError, TimeoutError))
 
 
-def _call_with_retry(fn, *args, **kwargs):
+def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, **kwargs):
     """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529) and connection errors."""
     last_exc = None
-    for attempt in range(_MAX_RETRIES + 1):
+    retry_limit = max(0, int(max_retries))
+    for attempt in range(retry_limit + 1):
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
@@ -42,9 +45,9 @@ def _call_with_retry(fn, *args, **kwargs):
                 if resp is not None:
                     code = getattr(resp, "status_code", None)
             retryable = (code in _RETRYABLE_CODES) or (code is None and _is_network_error(exc))
-            if retryable and attempt < _MAX_RETRIES:
+            if retryable and attempt < retry_limit:
                 delay = _RETRY_BASE_DELAY * (2 ** attempt)
-                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code or type(exc).__name__, attempt + 1, _MAX_RETRIES, delay, exc)
+                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code or type(exc).__name__, attempt + 1, retry_limit, delay, exc)
                 time.sleep(delay)
                 last_exc = exc
                 continue
@@ -109,10 +112,20 @@ class LLMProvider:
                 raise ValueError(f"Unknown provider: {provider}. Available: {known}")
             import openai
             api_key_env = cfg.get("api_key_env") or ""
+            request_timeout = (
+                _LOCAL_MOE_API_TIMEOUT
+                if provider == "local-moe"
+                else API_TIMEOUT
+            )
             self.client = openai.OpenAI(
                 base_url=cfg["base_url"],
                 api_key=os.environ.get(api_key_env) or "not-needed",
-                timeout=API_TIMEOUT,
+                timeout=request_timeout,
+            )
+            self._retry_limit = (
+                _LOCAL_MOE_MAX_RETRIES
+                if provider == "local-moe"
+                else _MAX_RETRIES
             )
             self.model = model or cfg.get("default_model") or ""
 
@@ -195,7 +208,11 @@ class LLMProvider:
             }
             if active_api_tools:
                 request_kwargs["tools"] = active_api_tools
-            response = _call_with_retry(self.client.messages.create, **request_kwargs)
+            response = _call_with_retry(
+                self.client.messages.create,
+                max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                **request_kwargs,
+            )
             text_parts = []
             tool_calls = []
             for block in response.content:
@@ -337,6 +354,7 @@ class LLMProvider:
                         force_any_tool_next_turn = False
                 response = _call_with_retry(
                     self.client.chat.completions.create,
+                    max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
                     **request_kwargs,
                 )
             except Exception as exc:
@@ -375,7 +393,13 @@ class LLMProvider:
             if choice.finish_reason == "error":
                 if malformed_retries < 2:
                     malformed_retries += 1
-                    fallback = _call_with_retry(self.client.chat.completions.create, model=self.model, messages=messages, max_tokens=max_tokens)
+                    fallback = _call_with_retry(
+                        self.client.chat.completions.create,
+                        max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                        model=self.model,
+                        messages=messages,
+                        max_tokens=max_tokens,
+                    )
                     if fallback.choices:
                         if cost_tracker and fallback.usage:
                             cost_tracker.record_turn(input_tokens=fallback.usage.prompt_tokens or 0, output_tokens=fallback.usage.completion_tokens or 0)
