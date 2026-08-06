@@ -1929,6 +1929,7 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
             if status in _FAILED_PHASE4_STATUSES:
                 if (
                     _phase3_has_direct_evidence(p3)
+                    and not p3.get("compact_requires_verification")
                     and p3.get("type", "") not in NOISE_TYPES
                 ):
                     findings.append(_phase3_detection_finding(
@@ -1938,7 +1939,11 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
             if status in _ERROR_PHASE4_STATUSES or (
                 not is_legacy_findings and status not in _EXPLOITED_PHASE4_STATUSES
             ):
-                if p3 and p3.get("type", "") not in NOISE_TYPES:
+                if (
+                    p3
+                    and not p3.get("compact_requires_verification")
+                    and p3.get("type", "") not in NOISE_TYPES
+                ):
                     findings.append(_phase3_detection_finding(
                         p3, "error" if status in _ERROR_PHASE4_STATUSES else "unknown_status",
                     ))
@@ -1981,7 +1986,11 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
         # before scheduling every candidate. Absence of a test is not negative
         # evidence, so retain those Phase 3 findings as unverified detections.
         for p3_index, p3 in enumerate(p3_findings):
-            if p3_index not in tested_p3_indices and p3.get("type", "") not in NOISE_TYPES:
+            if (
+                p3_index not in tested_p3_indices
+                and not p3.get("compact_requires_verification")
+                and p3.get("type", "") not in NOISE_TYPES
+            ):
                 findings.append(_phase3_detection_finding(p3, "not_tested"))
 
         return findings

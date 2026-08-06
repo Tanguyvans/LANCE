@@ -24,6 +24,75 @@ from src.agent.registry import AgentConfig, AGENTS
 
 
 
+def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full_mode():
+    from src.agent import scanner as scanner_mod
+
+    entries = [{
+        "tool": "nmap_scan",
+        "kwargs": {"target": "192.0.2.20", "ports": "102"},
+        "result": json.dumps({
+            "stdout": "102/tcp open iso-tsap Siemens S7",
+            "return_code": 0,
+        }),
+    }]
+    device = {"id": "ot", "ip": "192.0.2.20", "role": "ot_opcua_server"}
+
+    full = scanner_mod.extract_findings({"nmap": entries}, device)
+    compact = scanner_mod.extract_findings({"nmap": entries}, device, compact=True)
+    full_ot = next(finding for finding in full if finding["type"] == "no_auth")
+    compact_ot = next(finding for finding in compact if finding["type"] == "no_auth")
+
+    assert full_ot["exploitation_status"] == "confirmed"
+    assert compact_ot["exploitation_status"] == "suspected"
+    assert compact_ot["compact_evidence_kind"] == "open_service"
+    assert compact_ot["compact_required_probe"] == "protocol_response"
+
+    listing = [{
+        "tool": "curl_headers",
+        "kwargs": {"url": "http://192.0.2.20/backup/"},
+        "result": json.dumps({
+            "stdout": "HTTP/1.1 200 OK\n<h1>Index of /</h1>",
+            "return_code": 0,
+        }),
+    }]
+    web = {"id": "web", "ip": "192.0.2.20", "role": "web_server"}
+    assert any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web))
+    assert not any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web, compact=True))
+
+
+def test_compact_phase4_protocol_contract_rejects_open_port_only():
+    vuln = {
+        "type": "no_auth", "service": "s7comm",
+        "device_ip": "192.0.2.20", "port": 102,
+    }
+    compact_plan = _phase4_verification_plan(vuln, compact=True)
+    full_plan = _phase4_verification_plan(vuln)
+
+    assert compact_plan["tool"] == "nmap_scan"
+    assert compact_plan["required_port"] == 102
+    assert compact_plan["required_scripts"] == "s7-info"
+    assert _phase4_requirement_matches(
+        compact_plan, "nmap_scan",
+        {"target": "192.0.2.20", "ports": "102", "scripts": "s7-info"},
+    )
+    assert not _phase4_requirement_matches(
+        compact_plan, "nmap_scan",
+        {"target": "192.0.2.20", "ports": "102", "scripts": "banner"},
+    )
+    assert "required_scripts" not in full_plan
+
+    record = [{
+        "tool": "nmap_scan",
+        "args": {"target": "192.0.2.20", "ports": "102", "scripts": "s7-info"},
+        "result": json.dumps({
+            "stdout": "102/tcp open iso-tsap",
+            "return_code": 0,
+        }),
+    }]
+    assert _synthesize_exploit_result(vuln, record)["status"] == "EXPLOITED"
+    assert _synthesize_exploit_result(vuln, record, compact=True)["status"] == "FAILED"
+
+
 def test_phase4_verification_plan_selects_precise_probe_per_finding():
     ws = _phase4_verification_plan({
         "type": "network_exposure", "service": "mqtt-ws",

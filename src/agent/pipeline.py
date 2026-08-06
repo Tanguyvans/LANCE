@@ -139,7 +139,7 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ftp": frozenset({"ftp_list", "try_credential", "nmap_scan"}),
     "snmp": frozenset({"nmap_scan"}),
     "coap": frozenset({"nmap_scan", "udp_send"}),
-    "modbus": frozenset({"modbus_scan"}),
+    "modbus": frozenset({"modbus_scan", "nmap_scan"}),
     "opcua": frozenset({"tcp_send", "nmap_scan"}),
     "bacnet": frozenset({"udp_send", "nmap_scan"}),
 }
@@ -170,7 +170,9 @@ def _phase4_local_verification_tools(
 # ---------------------------------------------------------------------------
 
 
-def _phase4_verification_plan(vuln: dict) -> dict[str, object]:
+def _phase4_verification_plan(
+    vuln: dict, *, compact: bool = False
+) -> dict[str, object]:
     """Return the minimum fresh verification required for one finding."""
     vuln_type = canonicalize(str(vuln.get("type") or "").casefold())
     service = str(vuln.get("service") or "").casefold()
@@ -227,8 +229,21 @@ def _phase4_verification_plan(vuln: dict) -> dict[str, object]:
             return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
                     "args_hint": {"broker": ip, "topic": "#", "count": 10, "timeout": 8}, "success_condition": "anonymous MQTT connection result captured"}
         if service == "modbus" or port == 502:
+            if compact:
+                return {"tool": "nmap_scan", "target": ip, "port": 502,
+                        "required_port": 502, "required_scripts": "modbus-discover",
+                        "args_hint": {"target": ip, "ports": "502",
+                                      "scripts": "modbus-discover", "skip_discovery": True},
+                        "success_condition": "Modbus protocol response or authentication-disabled marker"}
             return {"tool": "modbus_scan", "target": ip, "port": 502,
                     "args_hint": {"target": ip}, "success_condition": "Modbus registers or service response captured"}
+        if compact and port in {102, 44818}:
+            script = "s7-info" if port == 102 else "enip-info"
+            return {"tool": "nmap_scan", "target": ip, "port": port,
+                    "required_port": port, "required_scripts": script,
+                    "args_hint": {"target": ip, "ports": str(port),
+                                  "scripts": script, "skip_discovery": True},
+                    "success_condition": "Protocol response or authentication-disabled marker"}
         if service in {"http", "https"}:
             return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
                     "args_hint": {"url": url}, "success_condition": "unauthenticated endpoint fetched"}
@@ -255,6 +270,15 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
     target = str(requirement.get("target") or "")
     if tool in {"ssh_audit", "nmap_scan", "modbus_scan"} and str(args.get("host") or args.get("target") or "") != target:
         return False
+    if tool == "nmap_scan":
+        required_port = requirement.get("required_port")
+        if required_port not in (None, ""):
+            requested_ports = str(args.get("ports") or "")
+            if str(required_port) not in {part.strip() for part in requested_ports.split(",") if part.strip()}:
+                return False
+        required_scripts = str(requirement.get("required_scripts") or "").strip()
+        if required_scripts and required_scripts not in str(args.get("scripts") or ""):
+            return False
     if tool == "mqtt_listen" and str(args.get("broker") or "") != target:
         return False
     if tool == "try_credential":
@@ -713,7 +737,24 @@ def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:
     return records
 
 
-def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str = "") -> dict:
+
+def _compact_http_listing_matches(vuln: dict, text: str, args: dict) -> bool:
+    """Require the HTTP body listing path to match the requested endpoint."""
+    requested = str(args.get("url") or "")
+    requested_path = urlsplit(requested).path or str(vuln.get("endpoint") or "/")
+    requested_path = requested_path.rstrip("/") or "/"
+    match = re.search(r"(?is)index\s+of\s+([^<\r\n]+)", text or "")
+    if not match:
+        return False
+    listed_path = match.group(1).strip().strip(chr(34))
+    if listed_path.startswith(("http://", "https://")):
+        listed_path = urlsplit(listed_path).path or "/"
+    elif not listed_path.startswith("/"):
+        listed_path = "/" + listed_path
+    return (listed_path.rstrip("/") or "/") == requested_path
+
+
+def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str = "", *, compact: bool = False) -> dict:
     """Build a Phase 4 result from observed tool output only.
 
     Local MoE models still decide which verification tools to call. This helper
@@ -858,7 +899,10 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 failures.append(f"{tool} reached an authenticated or forbidden endpoint")
                 continue
             if vuln_type == "directory_listing" and http_ok and "index of" in lower:
-                confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{text[:800]}"})
+                if compact and not _compact_http_listing_matches(vuln, text, args):
+                    failures.append(f"{tool} returned a listing for a different path")
+                else:
+                    confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{text[:800]}"})
                 continue
             if vuln_type == "data_exposure" and http_ok and _text_has_sensitive_data(text):
                 confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{text[:800]}"})
@@ -867,7 +911,24 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} captured disclosing HTTP metadata/content:\n{text[:800]}"})
                 continue
             if vuln_type == "missing_header" and http_ok:
-                confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
+                if compact:
+                    required_headers = set(re.findall(
+                        r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
+                        str(vuln.get("details") or ""),
+                    ))
+                    missing_headers = [header for header in required_headers if header not in lower]
+                    if missing_headers:
+                        confirmations.append({
+                            "tool": tool, "level": 1,
+                            "evidence": f"{tool} confirmed missing headers: {chr(44).join(sorted(missing_headers))}\n{text[:800]}",
+                        })
+                    else:
+                        failures.append(f"{tool} did not prove a missing security header")
+                else:
+                    confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
+                continue
+            if compact and vuln_type in {"code_injection", "insecure_update"} and http_ok:
+                failures.append(f"{tool} confirmed endpoint reachability but not the claimed impact")
                 continue
             if vuln_type == "no_auth" and http_ok:
                 login_challenge = any(marker in lower for marker in (
@@ -906,6 +967,23 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 "vulnerable", "vulners", "cve-", "anonymous login allowed",
                 "authentication disabled", "default credential", "terrapin",
             ))
+            if compact and vuln_type == "no_auth" and expected_port in {102, 44818}:
+                protocol_markers = (
+                    "authentication disabled", "no authentication", "anonymous",
+                    "unauthenticated", "read/write without", "no auth",
+                )
+                if rc == 0 and open_service and any(marker in lower for marker in protocol_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned protocol-level authentication evidence:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} did not prove unauthenticated access on protocol port {expected_port}")
+                continue
+            if compact and vuln_type == "no_auth" and expected_port == 502:
+                protocol_markers = ("modbus", "unit id", "register", "authentication disabled", "no authentication")
+                if rc == 0 and open_service and any(marker in lower for marker in protocol_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned Modbus protocol evidence:\n{text[:800]}"})
+                else:
+                    failures.append("Modbus probe did not return protocol evidence")
+                continue
             if rc == 0 and open_service and vuln_type in {"no_auth", "insecure_protocol", "info_disclosure"}:
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} confirmed an exposed service consistent with {vuln_type}:\n{text[:800]}"})
             elif rc == 0 and open_service and vulnerable_marker:
@@ -915,6 +993,19 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             continue
 
         if tool == "ssh_audit":
+            if compact and vuln_type == "info_disclosure":
+                if rc in (0, 3) and re.search(r"(?i)(?:banner:|openssh\s+[0-9]|version disclosure|custom service message)", text):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured an SSH banner disclosure:\n{text[:800]}"})
+                else:
+                    failures.append("ssh_audit did not capture a banner/version disclosure")
+                continue
+            if compact and vuln_type == "known_cve":
+                claimed_cves = [str(cve).casefold() for cve in (vuln.get("cve_ids") or [])]
+                if rc in (0, 3) and any(cve and cve in lower for cve in claimed_cves):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured the claimed CVE identifier:\n{text[:800]}"})
+                else:
+                    failures.append("ssh_audit did not provide CVE-specific evidence")
+                continue
             if rc in (0, 3) and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported weak SSH configuration:\n{text[:800]}"})
             else:
@@ -3875,6 +3966,56 @@ class Pipeline:
                 }
         return evidence
 
+    @staticmethod
+    def _apply_compact_finding_policy(finding: dict) -> None:
+        """Apply compact evidence metadata without changing full-mode findings."""
+        vuln_type = str(finding.get("type") or "").casefold()
+        service = str(finding.get("service") or "").casefold()
+        try:
+            port = int(finding.get("port"))
+        except (TypeError, ValueError):
+            port = None
+        status = str(finding.get("exploitation_status") or "").casefold()
+        evidence = str(finding.get("evidence") or "")
+        direct = status == "confirmed" and bool(evidence.strip())
+        finding.setdefault("compact_confidence", "direct" if direct else "suspected")
+        finding.setdefault("compact_evidence_kind", "direct_observation" if direct else "heuristic")
+        finding.setdefault("compact_requires_verification", not direct)
+
+        if vuln_type == "missing_header" or (
+            vuln_type == "info_disclosure"
+            and str(finding.get("severity") or "").upper() == "LOW"
+        ):
+            finding["compact_report_only"] = True
+            finding["compact_requires_verification"] = False
+
+        if vuln_type == "no_auth" and (
+            port in {102, 502, 44818, 5683}
+            or service in {"modbus", "s7comm", "ethernet/ip", "coap"}
+        ):
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "open_service"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "protocol_response"
+
+        if vuln_type == "code_injection" and not re.search(
+            r"(?i)(?:uid=|command\s+output|executed|shell\s+opened|rce\s+confirmed)",
+            evidence,
+        ):
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "endpoint_presence"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "safe_http_validation"
+
+        if vuln_type == "insecure_update":
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "endpoint_presence"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "safe_http_validation"
+
     def _aggregate_device_vulns(
         self,
         config: AgentConfig,
@@ -3887,6 +4028,7 @@ class Pipeline:
         inspectable. 03_vuln_analysis.json stays backward-compatible and is
         the canonical projection consumed by exploitation and evaluation.
         """
+        compact_mode = self._uses_compact_local_moe()
         all_vulns: list[dict] = []
         raw_records: list[dict] = []
         candidate_seq = 0
@@ -3990,6 +4132,8 @@ class Pipeline:
         for finding in all_vulns:
             finding["type"] = canonicalize(finding.get("type", ""))
             _enrich_finding_structure(finding)
+            if compact_mode:
+                self._apply_compact_finding_policy(finding)
             port = finding.get("port")
             if isinstance(port, str) and port.isdigit():
                 finding["port"] = int(port)
@@ -4063,6 +4207,7 @@ class Pipeline:
             log.debug("device_id remap skipped: %s", exc)
 
         eligible: list[dict] = []
+        compact_observations: list[dict] = []
         for finding in all_vulns:
             record = records_by_id[finding["_candidate_id"]]
             vuln_type = finding.get("type", "")
@@ -4083,6 +4228,13 @@ class Pipeline:
                     "CVE claim is not corroborated as compatible by the archived "
                     f"cve_search result ({finding.get('cve_claim_status', 'unverified')})"
                 )
+                continue
+            if compact_mode and finding.get("compact_report_only"):
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = "compact configuration observation kept outside exploitation queue"
+                observation = json.loads(json.dumps(finding, ensure_ascii=False, default=str))
+                observation.pop("_candidate_id", None)
+                compact_observations.append(observation)
                 continue
             eligible.append(finding)
 
@@ -4185,8 +4337,20 @@ class Pipeline:
             encoding="utf-8",
         )
 
+        if compact_mode:
+            for index, observation in enumerate(compact_observations, 1):
+                observation["id"] = f"OBS-{index:03d}"
+            (self.run_dir / "03_config_observations.json").write_text(
+                json.dumps({
+                    "schema_version": "1",
+                    "observations": compact_observations,
+                }, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
         result = {
             "vulnerabilities": final,
+            **({"configuration_observations": compact_observations} if compact_mode else {}),
             "attack_chain_hints": self._detect_attack_chains(final),
             "summary": {
                 "total": len(final),
@@ -4242,7 +4406,7 @@ class Pipeline:
         skipped_candidates: list[dict] = []
         for vuln in all_vulns:
             category = exploit_category(str(vuln.get("type") or "")) or "data_access"
-            requirement = _phase4_verification_plan(vuln)
+            requirement = _phase4_verification_plan(vuln, compact=self._uses_compact_local_moe())
             exploit_tasks.append({
                 "vuln": vuln,
                 "category": category,
@@ -4300,7 +4464,7 @@ class Pipeline:
             severity = vuln.get("severity", "MEDIUM")
             details = vuln.get("details", "")
             evidence = vuln.get("evidence", "")
-            requirement = task.get("verification") or _phase4_verification_plan(vuln)
+            requirement = task.get("verification") or _phase4_verification_plan(vuln, compact=self._uses_compact_local_moe())
             required_probe_tool = str(requirement.get("tool") or "")
 
             deliverable_file = str(_exploit_relpath(device_id, vuln_type, vuln_id))
@@ -4458,7 +4622,7 @@ class Pipeline:
                                     )
                                     for record in records
                                 )
-                        result = _synthesize_exploit_result(vuln, records, result_text)
+                        result = _synthesize_exploit_result(vuln, records, result_text, compact=True)
                         if not required_observed:
                             result.update({
                                 "status": "ERROR",
@@ -6099,7 +6263,7 @@ class Pipeline:
                 exploit_file = best
             else:
                 if tool_records:
-                    semantic_result = _synthesize_exploit_result(vuln, tool_records)
+                    semantic_result = _synthesize_exploit_result(vuln, tool_records, compact=self._uses_compact_local_moe())
                     semantic_status = str(semantic_result.get("status", "ERROR")).upper()
                     final_status = "CONFIRMED" if semantic_status == "EXPLOITED" else semantic_status
                     if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
@@ -6133,7 +6297,7 @@ class Pipeline:
             *(str(value).strip() for value in (tools_used or [])),
         ]))
         status = str(result.get("status", "ERROR")).upper()
-        semantic_result = _synthesize_exploit_result(vuln, tool_records or [])
+        semantic_result = _synthesize_exploit_result(vuln, tool_records or [], compact=self._uses_compact_local_moe())
         semantic_status = str(semantic_result.get("status", "ERROR")).upper()
         if status == "EXPLOITED" and semantic_status == "EXPLOITED":
             return _make_test_entry(
@@ -7898,9 +8062,15 @@ class Pipeline:
         # --- Load Phase 3 vulnerabilities ---
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         phase3_vulns: list[dict] = []
+        compact_observations: list[dict] = []
         if vuln_path.exists():
             data = json.loads(vuln_path.read_text(encoding="utf-8"))
             phase3_vulns = data.get("vulnerabilities", [])
+            compact_observations = (
+                data.get("configuration_observations", [])
+                if self._uses_compact_local_moe()
+                else []
+            )
 
         # --- Load Phase 4 exploitation results ---
         exploit_path = self.run_dir / "04_exploitation.json"
@@ -7996,6 +8166,7 @@ class Pipeline:
             "device_count": assessed_device_count,
             "devices_with_findings": len(device_list),
             "total_vulnerabilities": total_vulns,
+            **({"configuration_observations": compact_observations} if compact_observations else {}),
             "severity_breakdown": global_sev,
             "phase4_summary": phase4_summary,
             "phase4_tests": phase4_tests[:120],
@@ -8051,6 +8222,7 @@ class Pipeline:
         # Load phase 3 vulnerabilities
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         phase3_vulns: list[dict] = []
+        compact_observations: list[dict] = []
         if vuln_path.exists():
             data = json.loads(vuln_path.read_text(encoding="utf-8"))
             phase3_vulns = data.get("vulnerabilities", [])
@@ -8101,6 +8273,28 @@ class Pipeline:
             "|----|--------|------|----------|---------|--------|----------|\n"
             + "\n".join(sec5_rows)
         )
+
+        if compact_observations:
+            observation_rows = []
+            for observation in compact_observations:
+                title = (
+                    observation.get("details")
+                    or observation.get("evidence")
+                    or ""
+                )[:120].replace("|", "/")
+                observation_rows.append(
+                    f"| {observation.get("id", "")} | "
+                    f"{observation.get("device_id", "")} "
+                    f"({observation.get("device_ip", "")}) | "
+                    f"{observation.get("type", "")} | "
+                    f"{(observation.get("severity") or "").upper()} | {title} |"
+                )
+            sec5 += (
+                "\n\n### Configuration observations (not exploitation candidates)\n\n"
+                "| ID | Device | Type | Severity | Observation |\n"
+                "|----|--------|------|----------|-------------|\n"
+                + "\n".join(observation_rows)
+            )
 
         # --- Section 6.1: Exploitation summary ---
         total_tested = phase4_summary.get("total_tested", len(phase3_vulns))

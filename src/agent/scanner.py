@@ -455,7 +455,9 @@ def _extract_missing_headers(entries: list[dict], device: dict, svc_name: str) -
     return []
 
 
-def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+def _extract_directory_listing(
+    entries: list[dict], device: dict, svc_name: str, *, strict_paths: bool = False
+) -> list[dict]:
     """'Index of' in curl body → directory_listing MEDIUM (config issue, not a direct exploit).
 
     Skipped for web_upload devices: their /uploads/ directory is intentionally browsable
@@ -473,6 +475,24 @@ def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str)
         stdout = result.get("stdout", "")
         if "Index of" in stdout:
             url = entry.get("kwargs", {}).get("url", "")
+            if strict_paths:
+                requested_path = urlsplit(url).path or "/"
+                requested_path = requested_path.rstrip("/") or "/"
+                heading = re.search(
+                    r"(?is)index\s+of\s+([^<\r\n]+)", stdout
+                )
+                if heading:
+                    listed_path = heading.group(1).strip().strip(chr(34))
+                    if listed_path.startswith(("http://", "https://")):
+                        listed_path = urlsplit(listed_path).path or "/"
+                    elif not listed_path.startswith("/"):
+                        listed_path = "/" + listed_path
+                    listed_path = listed_path.rstrip("/") or "/"
+                    if listed_path != requested_path:
+                        # Some appliances return the root directory listing for
+                        # every unknown path. Do not attribute that root body to
+                        # /backup/, /config/, etc. in compact mode.
+                        continue
             paths_found.append(url)
     if paths_found:
         specific_paths = [
@@ -488,6 +508,76 @@ def _extract_directory_listing(entries: list[dict], device: dict, svc_name: str)
     return findings
 
 
+def _apply_compact_evidence_contract(findings: list[dict]) -> list[dict]:
+    """Annotate/downgrade scanner heuristics used by the compact profile.
+
+    Full-capability profiles use the original extractor output unchanged. The
+    compact profile keeps every raw candidate but requires a fresh protocol or
+    application proof before a heuristic can become a confirmed finding.
+    """
+    for finding in findings:
+        vuln_type = str(finding.get("type") or "").casefold()
+        service = str(finding.get("service") or "").casefold()
+        try:
+            port = int(finding.get("port"))
+        except (TypeError, ValueError):
+            port = None
+        status = str(finding.get("exploitation_status") or "").casefold()
+        evidence = str(finding.get("evidence") or "")
+
+        finding["compact_confidence"] = (
+            "direct" if status == "confirmed" else "suspected"
+        )
+        finding["compact_evidence_kind"] = (
+            "direct_observation" if status == "confirmed" else "heuristic"
+        )
+        finding["compact_requires_verification"] = status != "confirmed"
+
+        # Low-value configuration observations remain available in the raw
+        # registry/report, but do not consume compact exploitation slots.
+        if (
+            vuln_type == "missing_header"
+            or (
+                vuln_type == "info_disclosure"
+                and str(finding.get("severity", "")).upper() == "LOW"
+            )
+        ):
+            finding["compact_report_only"] = True
+            finding["compact_requires_verification"] = False
+
+        # An open OT/CoAP port identifies a service, not an authentication
+        # bypass. Force protocol-level verification in compact mode.
+        if vuln_type == "no_auth" and (
+            port in {102, 502, 44818, 5683}
+            or service in {"modbus", "s7comm", "ethernet/ip", "coap"}
+        ):
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "open_service"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "protocol_response"
+
+        # Endpoint existence (200/400/405) is not proof of command execution.
+        if vuln_type == "code_injection" and not re.search(
+            r"(?i)(?:uid=|command\s+output|executed|shell\s+opened|rce\s+confirmed)",
+            evidence,
+        ):
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "endpoint_presence"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "safe_http_validation"
+
+        # A reachable OTA endpoint is not evidence that an unsigned update was
+        # accepted. Keep it as a candidate until the request is validated.
+        if vuln_type == "insecure_update":
+            finding["exploitation_status"] = "suspected"
+            finding["compact_confidence"] = "suspected"
+            finding["compact_evidence_kind"] = "endpoint_presence"
+            finding["compact_requires_verification"] = True
+            finding["compact_required_probe"] = "safe_http_validation"
+
+    return findings
 def _extract_http_data_exposure(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
     """Sensitive content (actual credentials, API keys) in HTTP responses → data_exposure CRITICAL.
 
@@ -1354,7 +1444,10 @@ def extract_findings(
 
     for extractor in FINDING_EXTRACTORS:
         try:
-            new = extractor(all_entries, device, "")
+            if compact and extractor is _extract_directory_listing:
+                new = extractor(all_entries, device, "", strict_paths=True)
+            else:
+                new = extractor(all_entries, device, "")
             findings.extend(new)
         except Exception as e:
             log.warning("Extractor %s failed for %s: %s", extractor.__name__, device.get("id"), e)
@@ -1371,6 +1464,8 @@ def extract_findings(
                     "Compact extractor %s failed for %s: %s",
                     extractor.__name__, device.get("id"), e,
                 )
+
+        findings = _apply_compact_evidence_contract(findings)
 
     # Dedup by (type, port)
     seen: set[tuple] = set()

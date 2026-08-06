@@ -1229,6 +1229,24 @@ class TestEvidenceMetrics:
             "evidence": "direct tool output",
         })
 
+    def test_compact_unverified_candidate_is_not_restored_after_phase4_error(self, tmp_path):
+        finding = {
+            **_finding(id="F1"),
+            "compact_requires_verification": True,
+            "compact_confidence": "suspected",
+            "exploitation_status": "suspected",
+            "evidence": "102/tcp open iso-tsap",
+        }
+        run_dir = _write_run(tmp_path, [finding])
+        (run_dir / "04_exploitation.json").write_text(json.dumps({
+            "tests": [{"vuln_id": "F1", "status": "ERROR"}],
+        }))
+
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
+
+        assert result.total_llm_findings == 0
+        assert result.false_negatives == 1
+
     def test_phase4_error_keeps_suspected_phase3_as_unverified_detection(self, tmp_path):
         finding = {
             **_finding(id="F1"),
