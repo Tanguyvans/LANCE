@@ -3983,7 +3983,7 @@ class Pipeline:
         finding.setdefault("compact_evidence_kind", "direct_observation" if direct else "heuristic")
         finding.setdefault("compact_requires_verification", not direct)
 
-        if vuln_type == "missing_header" or (
+        if vuln_type in {"missing_header", "directory_listing"} or (
             vuln_type == "info_disclosure"
             and str(finding.get("severity") or "").upper() == "LOW"
         ):
@@ -4031,8 +4031,44 @@ class Pipeline:
         target = str(finding.get("device_ip") or finding.get("ip") or "").strip()
         vuln_type = str(finding.get("type") or "").casefold()
         service = str(finding.get("service") or "").casefold()
-        if not target or vuln_type not in {"info_disclosure", "missing_header"}:
+        if not target or vuln_type not in {
+            "info_disclosure", "missing_header", "directory_listing"
+        }:
             return False
+
+        if vuln_type == "info_disclosure":
+            finding_text = " ".join(
+                str(finding.get(key) or "")
+                for key in ("details", "evidence", "endpoint", "endpoints")
+            ).casefold()
+            if service == "ssh":
+                # A passive OpenSSH/Dropbear version is asset metadata, not a
+                # score-worthy compact finding by itself. Keep specific
+                # banners or explicit OS/version disclosures.
+                if not re.search(
+                    r"(custom|non[- ]standard|service returns|"
+                    r"operating system|os\s+(?:and\s+)?version|"
+                    r"version\s+(?:and\s+)?os)",
+                    finding_text,
+                ):
+                    return False
+            elif service in {"http", "https", "web"}:
+                # Generic Server: nginx is likewise only configuration
+                # metadata. Promote disclosures tied to a sensitive resource.
+                if not re.search(
+                    r"(robots\.txt|sensitive|internal|backup|config|"
+                    r"credential|password|secret|token|private)",
+                    finding_text,
+                ):
+                    return False
+            elif service == "mqtt":
+                if not re.search(
+                    r"(credential|password|secret|token|sensitive)",
+                    finding_text,
+                ):
+                    return False
+            else:
+                return False
 
         try:
             finding_port = int(finding.get("port"))
@@ -4093,12 +4129,24 @@ class Pipeline:
             output = _output(payload)
             output_lower = output.casefold()
 
-            if vuln_type == "missing_header":
+            if vuln_type in {"missing_header", "directory_listing"}:
                 if tool == "curl_headers" and (
-                    "http/" in output_lower
-                    or "strict-transport-security" in output_lower
-                    or "x-frame-options" in output_lower
-                    or "content-security-policy" in output_lower
+                    (
+                        vuln_type == "missing_header"
+                        and (
+                            "http/" in output_lower
+                            or "strict-transport-security" in output_lower
+                            or "x-frame-options" in output_lower
+                            or "content-security-policy" in output_lower
+                        )
+                    )
+                    or (
+                        vuln_type == "directory_listing"
+                        and (
+                            "index of" in output_lower
+                            or "directory listing" in output_lower
+                        )
+                    )
                 ):
                     return True
                 continue

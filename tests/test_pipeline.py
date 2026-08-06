@@ -4616,9 +4616,27 @@ class TestInformationPreservingArchitecture:
             "service": "ssh",
             "port": 22,
             "protocol": "tcp",
-            "details": "SSH banner is disclosed",
-            "evidence": "OpenSSH 9.2 banner",
+            "details": "SSH banner discloses a custom service message",
+            "evidence": "SSH service returns: 'Not allowed at this time'",
             "exploitation_status": "confirmed",
+        }
+        generic_ssh_finding = {
+            **ssh_finding,
+            "id": "generic-ssh-observation",
+            "device_id": "device-b",
+            "device_ip": "192.0.2.21",
+            "details": "SSH banner discloses software version",
+            "evidence": "22/tcp open ssh OpenSSH 9.2",
+        }
+        generic_http_finding = {
+            **ssh_finding,
+            "id": "generic-http-observation",
+            "device_id": "device-c",
+            "device_ip": "192.0.2.22",
+            "service": "http",
+            "port": 80,
+            "details": "Server version disclosure (nginx)",
+            "evidence": "Server: nginx",
         }
         header_finding = {
             "id": "header-observation",
@@ -4633,8 +4651,21 @@ class TestInformationPreservingArchitecture:
             "evidence": "X-Frame-Options is absent",
             "exploitation_status": "confirmed",
         }
+        directory_finding = {
+            **header_finding,
+            "id": "directory-observation",
+            "type": "directory_listing",
+            "details": "Directory listing enabled on /backup/",
+            "evidence": "'Index of' found at /backup/",
+        }
         (pipeline.run_dir / "03_device_device-a.json").write_text(json.dumps({
-            "vulnerabilities": [ssh_finding, header_finding],
+            "vulnerabilities": [ssh_finding, header_finding, directory_finding],
+        }))
+        (pipeline.run_dir / "03_device_device-b.json").write_text(json.dumps({
+            "vulnerabilities": [generic_ssh_finding],
+        }))
+        (pipeline.run_dir / "03_device_device-c.json").write_text(json.dumps({
+            "vulnerabilities": [generic_http_finding],
         }))
         (pipeline.run_dir / "tool_calls.jsonl").write_text(json.dumps({
             "tool": "nmap_scan",
@@ -4642,6 +4673,22 @@ class TestInformationPreservingArchitecture:
             "args": {"target": "192.0.2.20", "ports": "22"},
             "result": json.dumps({
                 "stdout": "22/tcp open ssh OpenSSH 9.2",
+                "return_code": 0,
+            }),
+        }) + "\n" + json.dumps({
+            "tool": "nmap_scan",
+            "phase": 2,
+            "args": {"target": "192.0.2.21", "ports": "22"},
+            "result": json.dumps({
+                "stdout": "22/tcp open ssh OpenSSH 9.2",
+                "return_code": 0,
+            }),
+        }) + "\n" + json.dumps({
+            "tool": "nmap_scan",
+            "phase": 2,
+            "args": {"target": "192.0.2.22", "ports": "80"},
+            "result": json.dumps({
+                "stdout": "80/tcp open http nginx",
                 "return_code": 0,
             }),
         }) + "\n")
@@ -4657,9 +4704,15 @@ class TestInformationPreservingArchitecture:
         assert len(canonical["vulnerabilities"]) == 1
         assert canonical["vulnerabilities"][0]["type"] == "info_disclosure"
         assert canonical["vulnerabilities"][0]["compact_detection_only"] is True
-        assert [item["type"] for item in observations["observations"]] == [
-            "missing_header"
-        ]
+        assert {
+            (item["device_ip"], item["type"])
+            for item in observations["observations"]
+        } == {
+            ("192.0.2.20", "missing_header"),
+            ("192.0.2.20", "directory_listing"),
+            ("192.0.2.21", "info_disclosure"),
+            ("192.0.2.22", "info_disclosure"),
+        }
 
         pipeline._run_exploit_agents(AGENTS["exploitation"])
         aggregate = json.loads(
