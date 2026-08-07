@@ -812,29 +812,6 @@ chaînes est elle aussi souvent indisponible faute de chaîne observable. Ces
 résultats indiquent que l'exécution et la traçabilité de l'intrusion restent un
 axe d'amélioration distinct de la détection des failles.
 
-\section{Recommandations d'évolution du projet}
-
-\begin{enumerate}
-  \item \textbf{Compléter la campagne compacte.} Les runs LANCE-MoE compact
-        terminés couvrent actuellement S1 à S5, avec un fort déséquilibre en
-        faveur de S1. Il faut maintenant répéter les scénarios de profondeur,
-        de faible prévalence et de contrôles négatifs pour rendre l'agrégation
-        représentative du catalogue.
-  \item \textbf{Exposer le rappel par sévérité.} Ajouter les variantes binaire,
-        créditée et de qualité à \metric{EvaluationResult} et à l'agrégateur.
-  \item \textbf{Compléter les profondeurs historiques.} Vérifier S2, S3 et les
-        scénarios dont les chemins décrivent des pivots mais dont les failles
-        restent annotées à profondeur zéro.
-  \item \textbf{Conserver \NA{}.} Ne jamais convertir automatiquement une
-        métrique inapplicable ou un artefact absent en zéro ; le zéro doit
-        signifier qu'un dénominateur était défini et qu'aucun succès n'a été
-        obtenu.
-  \item \textbf{Tester les chaînes logiques plates.} Pour S28 et les scénarios
-        similaires, publier la couverture de chemin en plus du MHR, car la
-        difficulté vient de l'ordre des dépendances et non de la profondeur
-        réseau.
-\end{enumerate}
-
 \section{Conclusion}
 
 Le Q-F1 sous \metric{strict-v3} est la métrique centrale la plus informative
