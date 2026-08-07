@@ -27,7 +27,7 @@
 \setlist[itemize]{leftmargin=1.5em,itemsep=0.2em,topsep=0.3em}
 \setlist[enumerate]{leftmargin=1.7em,itemsep=0.25em,topsep=0.3em}
 \renewcommand{\arraystretch}{1.18}
-\newcommand{\metric}[1]{\texttt{#1}}
+\newcommand{\metric}[1]{\texttt{\detokenize{#1}}}
 \newcommand{\NA}{\textsc{n/a}}
 \newcommand{\sourcepath}[1]{\nolinkurl{#1}}
 
@@ -180,8 +180,8 @@ couverture de chemin.
 
 \subsection{Métriques Phase~5}
 
-Les succès Phase~5 sont dérivés de \texttt{tool_calls.jsonl}, et non du seul
-fichier déclaratif \texttt{05_intrusion.json}. Les appels d'accès reconnus
+Les succès Phase~5 sont dérivés de \metric{tool_calls.jsonl}, et non du seul
+fichier déclaratif \metric{05_intrusion.json}. Les appels d'accès reconnus
 doivent produire un résultat explicitement positif.
 
 \begin{center}
@@ -200,7 +200,7 @@ Fidélité de chaîne & $|V|/|O|$ & Transitions déclarées cohérentes avec les
 \end{center}
 
 Une transition valide respecte l'ordre de la chaîne, le champ
-\texttt{pivot_to} et les preuves d'accès à la source et à la cible. Un chemin
+\metric{pivot_to} et les preuves d'accès à la source et à la cible. Un chemin
 est \emph{vérifié} seulement si toutes ses failles ont $v_i=1$, ses transitions
 sont valides et sa cible finale possède un accès positif.
 
@@ -277,7 +277,7 @@ Couverture sauts P5 & $0.000\pm0.000$ & $0.000\pm0.000$ & $0.057\pm0.070$ & $0.0
   \item \textbf{Renforcer la preuve} pour réduire l'écart entre F1 de détection,
         Q-F1 et F1 vérifié.
   \item \textbf{Fiabiliser Phase~5} : produire des accès positifs traçables,
-        renseigner \texttt{pivot_to} et vérifier l'ordre des transitions.
+        renseigner \metric{pivot_to} et vérifier l'ordre des transitions.
   \item \textbf{Comparer des versions homogènes} sur davantage de scénarios,
         avec plusieurs répétitions par commit et des macro-moyennes.
   \item \textbf{Compléter les annotations de profondeur} afin que le MHR couvre
