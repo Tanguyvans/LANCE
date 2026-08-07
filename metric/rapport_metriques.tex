@@ -6,43 +6,34 @@
 \usepackage{lmodern}
 \usepackage{microtype}
 \usepackage[a4paper,margin=2.2cm]{geometry}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath}
 \usepackage{booktabs}
-\usepackage{longtable}
 \usepackage{tabularx}
 \usepackage{array}
 \usepackage{enumitem}
 \usepackage{xcolor}
-\usepackage{tikz}
-\usetikzlibrary{arrows.meta,positioning,fit}
 \usepackage[hidelinks]{hyperref}
 
 \definecolor{primary}{HTML}{244A73}
 \definecolor{secondary}{HTML}{537895}
-\definecolor{lightblue}{HTML}{EAF1F7}
-\definecolor{lightgray}{HTML}{F4F5F6}
-\definecolor{warning}{HTML}{8A5A00}
-\definecolor{critical}{HTML}{A61B1B}
-
 \hypersetup{
-  pdftitle={Rapport descriptif des metriques d'amelioration de LANCE},
+  pdftitle={Synthèse des métriques d'amélioration de LANCE},
   pdfauthor={Projet LANCE},
   colorlinks=true,
   linkcolor=primary,
   urlcolor=secondary
 }
 
-\setlist[itemize]{leftmargin=1.5em,itemsep=0.25em,topsep=0.4em}
-\setlist[enumerate]{leftmargin=1.7em,itemsep=0.25em,topsep=0.4em}
+\setlist[itemize]{leftmargin=1.5em,itemsep=0.2em,topsep=0.3em}
+\setlist[enumerate]{leftmargin=1.7em,itemsep=0.25em,topsep=0.3em}
 \renewcommand{\arraystretch}{1.18}
 \newcommand{\metric}[1]{\texttt{#1}}
 \newcommand{\NA}{\textsc{n/a}}
 \newcommand{\sourcepath}[1]{\nolinkurl{#1}}
-\newcommand{\good}{\textcolor{primary}{\textbf{Recommandé}}}
 
-\title{\textbf{Rapport descriptif des métriques représentatives\\
-pour l'amélioration des modèles LANCE}\\[0.5em]
-\large Q-F1, politique strict-v3, hallucination, sévérité, MHR et intrusion}
+\title{\textbf{Synthèse des métriques représentatives\\
+pour l'amélioration des modèles LANCE}\\[0.4em]
+\large Q-F1, hallucination, sévérité, MHR et intrusion}
 \author{Projet LANCE}
 \date{7 août 2026}
 
@@ -50,809 +41,275 @@ pour l'amélioration des modèles LANCE}\\[0.5em]
 \maketitle
 
 \begin{abstract}
-Ce rapport formalise les métriques jugées les plus représentatives pour suivre
-l'amélioration des modèles dans LANCE. La mesure primaire des scénarios
-positifs est le \emph{Quality-adjusted F1} (Q-F1) sous la politique
-\metric{strict-v3}. Elle ne récompense pas seulement la présence d'une bonne
-étiquette : elle combine la qualité de l'association à la vérité terrain,
-l'exactitude de la sévérité et la force de la vérification expérimentale. Le
-taux d'hallucination mesure les prédictions adjugées comme faux positifs. Le
-\emph{Multi-Hop Reach} (MHR) mesure la récupération des failles situées au-delà
-d'une ou plusieurs transitions réseau. Enfin, les métriques de Phase~5
-mesurent l'exécution effective de l'intrusion : cibles tentées et compromises,
-pivots réussis, transitions vérifiées et fidélité des chaînes.
+La métrique centrale de LANCE est le \emph{Quality-adjusted F1} (Q-F1) sous
+\metric{strict-v3}. Elle combine qualité de l'association à la vérité terrain,
+exactitude de la sévérité et niveau de preuve. Elle doit être lue avec le taux
+d'hallucination, le rappel des failles critiques et hautes, le
+\emph{Multi-Hop Reach} (MHR) et les métriques d'intrusion de Phase~5.
 
-Le catalogue courant, version~3.2.0, contient 29 scénarios, 288 vulnérabilités,
-88 contrôles négatifs et 67 chemins d'attaque. L'inventaire récupéré directement
-sur \texttt{nato-master} le 7 août 2026 contient 142 runs de benchmark, dont 95
-runs LANCE-MoE. Le présent rapport détaille ces campagnes et calcule les
-résultats sur les runs LANCE-MoE terminés avec le profil \metric{compact}, sans
-mélanger les essais historiques d’autres modèles.
+Le catalogue~3.2.0 contient 29 scénarios, 288 vulnérabilités, 88 contrôles
+négatifs et 67 chemins d'attaque. Sur \texttt{nato-master}, 95 runs LANCE-MoE
+sont répertoriés, dont 60 terminés. Le sous-ensemble comparable
+\metric{compact} comprend 48 runs terminés et 44 scores exploitables. Les
+résultats montrent une détection déjà utile, mais une hallucination élevée sur
+plusieurs scénarios et très peu de transitions réseau vérifiées.
 \end{abstract}
 
-\tableofcontents
-\newpage
+\section{Lecture recommandée}
 
-\section{Objectif et périmètre}
-
-L'objectif n'est pas de réduire la qualité d'un modèle à un score unique, mais
-de disposer d'un petit ensemble de mesures complémentaires qui répondent à des
-questions distinctes :
-
-\begin{enumerate}
-  \item le modèle retrouve-t-il les failles attendues sans en inventer ?
-  \item les associations restent-elles correctes lorsque plusieurs failles
-        partagent un hôte ou un service ?
-  \item le modèle estime-t-il correctement l'impact, notamment pour les failles
-        critiques et hautes ?
-  \item ses affirmations sont-elles soutenues par une observation ou une
-        exploitation traçable ?
-  \item récupère-t-il les failles cachées derrière des pivots ?
-  \item exécute-t-il réellement ces pivots, au lieu de seulement les décrire ?
-\end{enumerate}
-
-Le présent document décrit le comportement du code au 7 août 2026. Les sources
-normatives principales sont l'évaluateur, les contrats de matching, le
-catalogue, les vérités terrain et les journaux importés. Les anciens résultats
-du papier, fondés sur un F1 antérieur, ne sont pas assimilés au Q-F1 actuel.
-
-\subsection{Versions de référence}
+Un score unique ne suffit pas. Le tableau suivant regroupe les mesures à suivre
+et la question à laquelle chacune répond.
 
 \begin{center}
-\begin{tabularx}{\textwidth}{@{}lX@{}}
+\begin{tabularx}{\textwidth}{@{}p{3.2cm}XX@{}}
 \toprule
-Élément & Version ou source de référence \\
+Capacité & Métrique & Interprétation \\
 \midrule
-Catalogue du benchmark & \metric{benchmark\_version = 3.2.0} dans
-  \sourcepath{benchmarks/catalog.yaml} \\
-Politique de scoring & \metric{strict-v3} \\
-Contrat de métriques & \metric{strict-v3.3} \\
-Contrat de preuves & \metric{evidence-v2} \\
-Contrats de matching & schéma \metric{strict-v3.2} dans
-  \sourcepath{benchmarks/ground_truth/matching_contracts.yaml} \\
-Implémentation & \sourcepath{src/benchmark/evaluator.py},
-  \sourcepath{src/benchmark/strict_v3.py} et
-  \sourcepath{src/benchmark/metric_contract.py} \\
-Résultats accessibles & API courante de \texttt{nato-master}, endpoints
-  \sourcepath{/api/runs/benchmark} et \sourcepath{/api/runs} \\
+Qualité globale & Q-F1 & Détection corrigée par le matching, la sévérité et la preuve. \\
+Contrôles propres & Spécificité & Absence de faux positifs sur les scénarios négatifs. \\
+Fiabilité & Hallucination & Part des prédictions adjugées comme faux positifs. \\
+Impact & Rappel par sévérité & Récupération des failles critiques, hautes, moyennes et faibles. \\
+Profondeur & $\mathrm{MHR}_k$ & Rappel des failles situées à une profondeur réseau d'au moins $k$. \\
+Intrusion & Couverture Phase~5 & Cibles compromises, pivots et transitions réellement prouvés. \\
+Chaîne complète & Chemin vérifié & Failles prouvées et chaîne Phase~5 exécutée dans le bon ordre. \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-Un run ne peut recevoir les métriques dépendantes de la preuve que si son
-\texttt{run\_meta.json} annonce exactement les versions de contrat attendues.
-Une version absente ou ancienne échoue fermée : les champs deviennent
-indisponibles plutôt que d'être reconstruits silencieusement avec des règles
-qui n'existaient pas au moment du run.
-
-\section{Vue d'ensemble des métriques}
-
-\begin{center}
-\newcolumntype{L}[1]{>{\hsize=#1\hsize\raggedright\arraybackslash}X}
-
-\begin{tabularx}{\textwidth}{@{} L{0.6} L{0.8} L{1.6} @{}}
-\toprule
-Question & Métrique principale & Interprétation \\
-\midrule
-Qualité globale positive & Q-F1 & Détection corrigée par la qualité du matching, la sévérité et la vérification. \\
-\addlinespace
-Scénario sans faille & Spécificité & Contrôle propre : 1 si aucun faux positif, 0 sinon. \\
-\addlinespace
-Fausses affirmations & Taux d'hallucination & Part des prédictions adjugées qui sont des faux positifs, hors bonus acceptés. \\
-\addlinespace
-Impact retrouvé & F1 ajusté sévérité et rappel par classe & Exactitude de la classe d'impact et récupération des failles critiques, hautes, moyennes et faibles. \\
-\addlinespace
-Profondeur de découverte & $\mathrm{MHR}_k$ & Rappel des failles dont la profondeur réseau est au moins $k$. \\
-\addlinespace
-Intrusion réelle & Couverture de cibles, pivots et sauts & Actions Phase~5 soutenues par les appels outils, indépendamment de la simple détection. \\
-\addlinespace
-Chemin complet & Couverture de chemin vérifiée & Toutes les failles du chemin sont vérifiées et la chaîne ordonnée Phase~5 est prouvée. \\
-\bottomrule
-\end{tabularx}
-\end{center}
-
-    Pour piloter une amélioration, la lecture recommandée est hiérarchique :
+Pour piloter les améliorations, il faut lire dans cet ordre :
 
 \begin{enumerate}
-  \item \textbf{score officiel du scénario}, c'est-à-dire Q-F1 corrigé par les
-        contrôles négatifs pour un scénario positif, ou spécificité pour un
-        scénario sans vulnérabilité ;
-  \item \textbf{Q-F1, rappel, précision et hallucination}, afin de comprendre
-        si le gain provient d'une meilleure couverture ou d'une prise de risque ;
-  \item \textbf{sévérité et preuves}, notamment le rappel des classes critique
-        et haute, le F1 vérifié et la fidélité des preuves ;
-  \item \textbf{MHR et Phase~5}, pour distinguer raisonnement en profondeur et
-        exécution réelle ;
-  \item \textbf{coût, tours et erreurs outils}, qui mesurent l'efficacité mais
-        ne doivent pas compenser une perte de couverture ou de fidélité.
+  \item score officiel, Q-F1, rappel et hallucination ;
+  \item rappel CRITICAL/HIGH, F1 vérifié et fidélité des preuves ;
+  \item MHR et Phase~5 pour séparer découverte profonde et intrusion réelle ;
+  \item coût, nombre de tours et erreurs outils, sans leur permettre de
+        compenser une baisse de qualité.
 \end{enumerate}
 
 \section{Q-F1 et politique \texttt{strict-v3}}
 
-\subsection{Association un-à-un avec la vérité terrain}
+\subsection{Principe}
 
-La politique \metric{strict-v3} remplace la grande table de compatibilité
-globale des politiques historiques par un contrat explicite pour chaque faille.
-Une association candidate exige d'abord la même adresse cible. Elle peut ensuite
-être rejetée si le type, le service, le port, le protocole, l'endpoint, le
-produit ou la version contredit le contrat.
+Chaque finding est associé au plus une fois à la vérité terrain. L'adresse
+cible doit correspondre ; le type, le service, le port, le protocole,
+l'endpoint, le produit et la version peuvent invalider l'association. Les CVE
+sont contrôlées dans un catalogue hors ligne versionné.
 
-Chaque association admise reçoit un crédit $a_i \in [0.5,1]$ :
-
-\begin{itemize}
-  \item $a_i=1$ pour une CVE cible validée ou pour un type principal dont toute
-        la structure déclarée correspond ;
-  \item pour un type principal avec structure incomplète,
-        $a_i=0.75+0.25r_i$, où $r_i$ est la proportion des contraintes
-        structurelles effectivement renseignées et correctes ;
-  \item pour un type secondaire explicitement accepté,
-        $a_i=0.5+0.25r_i$ ;
-  \item toute contradiction structurelle ou tout crédit inférieur à 0.5 est
-        rejeté.
-\end{itemize}
-
-Les CVE sont liées à la cible et vérifiées dans un catalogue hors ligne
-versionné. Une CVE inconnue, future, associée au mauvais produit ou à une
-version non applicable ne reçoit pas de correspondance valide.
-
-Le code construit ensuite un graphe biparti entre failles attendues et findings
-du modèle. Un finding ne peut être consommé qu'une fois, ce qui empêche une
-prédiction vague de couvrir plusieurs entrées de vérité terrain. Parmi les
-arêtes admissibles, le matching maximise actuellement la cardinalité puis le
-poids, lequel privilégie CVE, structure exacte, type exact, sévérité correcte et
-findings non réservés aux bonus.
-
-
-\subsection{Facteur de sévérité}
-
-Les classes sont ordonnées
-\[
-\text{INFO}=0,\quad \text{LOW}=1,\quad \text{MEDIUM}=2,\quad
-\text{HIGH}=3,\quad \text{CRITICAL}=4.
-\]
-Pour une faille associée, le facteur de sévérité vaut
-\begin{equation}
-  s_i=\max\!\left(0.25,\;1-0.25\left|r_i^{GT}-r_i^{M}\right|\right),
-\end{equation}
-où $r_i^{GT}$ est le rang attendu et $r_i^{M}$ le rang annoncé par le modèle.
-
-\begin{center}
-\begin{tabular}{@{}ccccc@{}}
-\toprule
-Écart de rang & 0 & 1 & 2 & $\geq 3$ \\
-\midrule
-Facteur $s_i$ & 1.00 & 0.75 & 0.50 & 0.25 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-La pénalité est symétrique : surestimer et sous-estimer d'un même nombre de
-classes produit le même facteur. Cette symétrie est utile pour mesurer la
-calibration, mais le rappel spécifique des failles critiques doit être publié
-en complément car une sous-estimation critique peut être opérationnellement
-plus grave qu'une surestimation.
-
-\subsection{Crédit de vérification}
-
-Le crédit $v_i$ mesure la profondeur de preuve :
+Pour chaque vrai positif associé $i$, trois facteurs sont appliqués :
 
 \begin{itemize}
-  \item $v_i=1$ si le finding possède un niveau d'exécution suffisant et un
-        appel outil lié dont le résultat est explicitement positif ;
-  \item $v_i=0.5$ pour une observation directe ou une preuve déclarée, sans
-        exploitation positive traçable ;
-  \item $v_i=0.25$ pour une hypothèse non prouvée ou un test indéterminé.
+  \item $a_i\in[0.5,1]$ : qualité du matching, de secondaire accepté à exact ;
+  \item $s_i\in\{1,0.75,0.5,0.25\}$ : pénalité selon l'écart de sévérité ;
+  \item $v_i\in\{1,0.5,0.25\}$ : exploitation positive traçable, observation
+        directe, ou hypothèse non prouvée.
 \end{itemize}
 
-Une erreur d'outil n'est pas une preuve négative. À l'inverse, un statut
-\texttt{FAILED} ou \texttt{NOT\_EXPLOITABLE} réfute le finding, sauf si une
-preuve directe de Phase~3 existe déjà ; dans ce conflit, seule la détection est
-conservée.
+Le crédit de qualité et le Q-F1 sont :
+\begin{align}
+  q_i &= a_i s_i v_i, & QTP &= \sum_{i\in TP} q_i,\\
+  P_Q &= \frac{QTP}{TP+FP}, & R_Q &= \frac{QTP}{|GT|},\\
+  Q\text{-}F1 &= \frac{2P_QR_Q}{P_Q+R_Q}.
+\end{align}
 
-\subsection{Formule du Q-F1}
+Une association partielle, une mauvaise sévérité ou une preuve faible réduit
+donc le score. Pour diagnostiquer une baisse, LANCE conserve les étages
+\metric{detection_f1}, \metric{credited_f1},
+\metric{severity_adjusted_f1}, \metric{quality_adjusted_f1} et
+\metric{verified_f1}.
 
-Pour chaque vrai positif associé $i$, le crédit de qualité est
-\begin{equation}
-  q_i=a_i\,s_i\,v_i.
-\end{equation}
-On définit le nombre continu de vrais positifs de qualité
-\begin{equation}
-  QTP=\sum_{i\in TP}q_i.
-\end{equation}
-La précision et le rappel ajustés valent ensuite
-\begin{equation}
-  P_Q=\frac{QTP}{TP+FP},\qquad
-  R_Q=\frac{QTP}{|GT|},
-\end{equation}
-puis
-\begin{equation}
-  \boxed{Q\text{-}F1=\frac{2P_QR_Q}{P_Q+R_Q}}.
-\end{equation}
+\subsection{Contrôles négatifs}
 
-Cette construction a trois propriétés importantes. Une association partielle
-ne compte pas comme un vrai positif complet ; une mauvaise sévérité réduit le
-score même si le type est bon ; une détection non prouvée reste utile mais vaut
-moins qu'une exploitation traçable.
-
-\subsection{Contrôles négatifs et score officiel}
-
-Pour les contrôles négatifs exprimables par la taxonomie,
+Pour $N_{ctrl}$ contrôles évaluables dont $V_{ctrl}$ sont violés :
 \begin{equation}
-  \mathrm{Spec}_{ctrl}=\frac{N_{ctrl}-V_{ctrl}}{N_{ctrl}},
+  \mathrm{Spec}_{ctrl}=\frac{N_{ctrl}-V_{ctrl}}{N_{ctrl}}.
 \end{equation}
-où $V_{ctrl}$ est le nombre de contrôles violés. Sur un scénario positif, le
-score officiel est
+Sur un scénario positif, le score officiel est :
 \begin{equation}
   \mathrm{Score}_{sc}=100\times Q\text{-}F1\times
   \left(0.8+0.2\,\mathrm{Spec}_{ctrl}\right).
 \end{equation}
-La pénalité supplémentaire est ainsi bornée à 20\,\%. La violation produit
-déjà un faux positif ; ce facteur évite qu'un unique contrôle efface toute la
-détection positive.
+Sur un scénario sans vulnérabilité, la spécificité vaut 1 en l'absence de faux
+positif et 0 sinon. Un contrôle non exprimable est marqué \metric{unevaluable},
+jamais crédité par défaut.
 
-Pour un scénario à vérité terrain positive vide, un F1 est indéfini. L'unité de
-mesure devient le run de contrôle : spécificité égale à 1 s'il ne contient
-aucun faux positif, et 0 sinon. Les contrôles impossibles à exprimer avec la
-taxonomie sont marqués \metric{unevaluable} et ne deviennent jamais des succès
-par défaut.
+\section{Fiabilité des prédictions}
 
-\subsection{Métriques de décomposition}
-
-Pour expliquer une variation de Q-F1, quatre étages doivent être conservés :
-
-\begin{itemize}
-  \item \metric{detection\_f1} : chaque association admise vaut 1 ;
-  \item \metric{credited\_f1} : application du seul crédit $a_i$ ;
-  \item \metric{severity\_adjusted\_f1} : application de $a_i s_i$ ;
-  \item \metric{quality\_adjusted\_f1} : application complète de $a_i s_i v_i$ ;
-  \item \metric{verified\_f1} : seuls les TP possédant une exploitation positive
-        reliée à un appel outil valent 1.
-\end{itemize}
-
-Une baisse entre deux étages localise le problème : contrat trop vague,
-calibration de sévérité, ou absence de preuve.
-
-\section{Hallucination et fidélité des preuves}
-
-\subsection{Taux d'hallucination}
-
-L'évaluateur utilise la définition opérationnelle
+Le taux d'hallucination opérationnel est :
 \begin{equation}
   H=\frac{FP}{TP+FP}=1-P,
 \end{equation}
-où les bonus acceptés sont exclus des faux positifs. Sous \metric{strict-v3},
-un bonus n'est accepté que s'il est explicitement autorisé, traçable,
-dédupliqué et situé sous les plafonds global et par type.
+après exclusion des bonus explicitement acceptés. Il mesure une prédiction non
+associée, pas nécessairement un contenu inventé. Si le modèle ne prédit rien,
+$H=0$ ; cette valeur doit donc toujours être accompagnée du rappel et du nombre
+de prédictions. Les CVE malformées, inconnues ou inapplicables disposent de
+compteurs séparés.
 
-Le mot « hallucination » doit ici être compris comme « prédiction adjugée non
-associée », et non comme une preuve philosophique que le contenu a été inventé.
-Une vraie faille absente de la vérité terrain peut être un bonus légitime ; une
-faille réelle mais mal structurée peut être rejetée ; une prédiction sans preuve
-peut correspondre au bon type tout en restant de faible qualité.
+La qualité des preuves complète ce taux avec quatre indicateurs : couverture
+des preuves déclarées, couverture des preuves d'exécution, traçabilité vers un
+appel outil compatible et fidélité des affirmations structurées. Le taux de
+contradiction signale les affirmations explicitement réfutées par les outils.
 
-Trois précautions sont indispensables :
-
-\begin{itemize}
-  \item si le modèle ne prédit rien, $H=0$ dans l'implémentation ; ce zéro ne
-        représente pas un bon modèle et doit toujours être lu avec le rappel et
-        le nombre de prédictions ;
-  \item \metric{unmatched\_finding\_rate} inclut les faux positifs et les bonus
-        avant adjudication finale, alors que $H$ exclut les bonus acceptés ;
-  \item les CVE invalides disposent de compteurs séparés
-        (malformées, inconnues ou inapplicables) et doivent être rapportées.
-\end{itemize}
-
-\subsection{Fidélité et traçabilité}
-
-L'hallucination par matching ne suffit pas à vérifier le contenu d'un finding.
-Le contrat de preuve ajoute notamment :
-
-\begin{itemize}
-  \item \metric{declared\_evidence\_coverage} : part des findings contenant un
-        extrait de preuve ;
-  \item \metric{execution\_evidence\_coverage} : part des findings dont le
-        niveau recalculé est au moins 2 ;
-  \item \metric{traceable\_evidence\_coverage} : part des findings liés à un
-        appel outil compatible en nom et en cible ;
-  \item \metric{evidence\_faithfulness} : affirmations structurées soutenues
-        divisées par toutes les affirmations vérifiables ;
-  \item \metric{evidence\_contradiction\_rate} : affirmations explicitement
-        contredites divisées par les affirmations vérifiables.
-\end{itemize}
-
-Les cibles, types, succès d'exploitation, données extraites et CVE sont
-évalués. Les descriptions libres et remédiations ne le sont pas, afin de ne pas
-réintroduire un juge sémantique non déterministe.
-
-\section{Sévérité et récupération des failles}
-
-\subsection{Mesures déjà implémentées}
-
-Le projet expose actuellement le nombre de
-\metric{severity\_mismatches}, le \metric{severity\_adjusted\_f1}, le Q-F1 et
-un ancien score pondéré par la sévérité attendue. Pour ce score pondéré, les
-poids de vérité terrain sont : CRITICAL=4, HIGH=3, MEDIUM=2 et LOW=1 ; chaque
-TP contribue son poids multiplié par $a_i s_i$.
-
-Le \metric{severity\_adjusted\_f1} est préférable au seul score pondéré pour
-comparer les modèles, car il conserve une pénalité explicite des faux positifs
-et des faux négatifs. Le score pondéré reste utile pour estimer la part du
-risque attendu effectivement couverte.
-
-\subsection{Rappel par classe de sévérité}
-
-Pour répondre directement à la question « quelles failles récupère le modèle ? »,
-il est recommandé d'ajouter au résumé agrégé le rappel par classe :
+Le rappel par classe de sévérité est indispensable, en particulier pour
+CRITICAL et HIGH :
 \begin{equation}
-  R_{\sigma}=\frac{\left|\{g\in GT:\operatorname{sev}(g)=\sigma
-  \land g\text{ associé}\}\right|}
-  {\left|\{g\in GT:\operatorname{sev}(g)=\sigma\}\right|},
+  R_{\sigma}=
+  \frac{|\{g\in GT:\operatorname{sev}(g)=\sigma\land g\text{ associé}\}|}
+       {|\{g\in GT:\operatorname{sev}(g)=\sigma\}|}.
 \end{equation}
-avec $\sigma\in\{\text{CRITICAL,HIGH,MEDIUM,LOW}\}$. Une version créditée peut
-remplacer le numérateur par la somme des $a_i$, et une version de qualité par la
-somme des $a_i s_i v_i$.
+Il convient de publier une macro-moyenne par scénario en plus de la
+micro-moyenne, car les grands scénarios dominent autrement le résultat.
 
-Cette ventilation n'est pas encore un champ natif d'\metric{EvaluationResult}.
-Elle est néanmoins reconstructible à partir de \metric{matches}.
+\section{Profondeur réseau et intrusion}
 
-\subsection{Distribution du catalogue courant}
+\subsection{Multi-Hop Reach}
+
+Avec $d(g)$ la profondeur réseau d'une faille et une cible directement
+accessible définie à $d=0$ :
+\begin{equation}
+  \mathrm{MHR}_k=
+  \frac{|\{g\in GT:d(g)\geq k\land g\text{ associé}\}|}
+       {|\{g\in GT:d(g)\geq k\}|},\qquad k\geq1.
+\end{equation}
+Une valeur est \NA{} si aucune faille n'atteint la profondeur $k$. Les variantes
+créditée et vérifiée pondèrent respectivement par $a_i$ et exigent $v_i=1$.
+
+Le MHR mesure la découverte d'une faille profonde, pas l'exécution du pivot.
+Il dépend aussi de la qualité des annotations \metric{hop_depth} : une chaîne
+logique sur réseau plat ou une profondeur absente doit être mesurée par la
+couverture de chemin.
+
+\subsection{Métriques Phase~5}
+
+Les succès Phase~5 sont dérivés de \texttt{tool_calls.jsonl}, et non du seul
+fichier déclaratif \texttt{05_intrusion.json}. Les appels d'accès reconnus
+doivent produire un résultat explicitement positif.
 
 \begin{center}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-Split & Scénarios & CRITICAL & HIGH & MEDIUM & LOW \\
-\midrule
-\metric{dev-public} & 19 & 44 & 121 & 66 & 21 \\
-\metric{test-public} & 10 & 10 & 24 & 2 & 0 \\
-\midrule
-Total & 29 & 54 & 145 & 68 & 21 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Le split de test est volontairement concentré sur les classes haute et
-critique. Le rappel macro par scénario est donc nécessaire en plus d'un rappel
-micro : sans macro-moyenne, les grands scénarios de développement domineraient
-le résultat.
-
-\section{Multi-Hop Reach (MHR)}
-
-\subsection{Définition}
-
-La convention est \texttt{hop\_depth}=0 pour une cible directement accessible depuis le point d'entrée. En notant $d(g)$ le \texttt{hop\_depth} d'une vérité terrain $g \in GT$, on définit pour $k \ge 1$ :
-\begin{equation}
-\mathrm{MHR}_k = \frac{|\{g \in GT : d(g) \ge k \land g \text{ associé}\}|}{|\{g \in GT : d(g) \ge k\}|}.
-\end{equation}
-
-Ainsi, $\mathrm{MHR}_1$ n'est pas le rappel global : il mesure uniquement les
-failles nécessitant au moins une transition ou un nouveau point de vue réseau.
-Si aucune faille n'existe à une profondeur au moins égale à $k$, la valeur est
-\NA{}, jamais zéro.
-
-Deux variantes complètent le rappel binaire :
-\begin{align}
-  \mathrm{MHR}^{cred}_k & =
-  \frac{\sum_{d(g_i)\geq k}a_i}{|\{g:d(g)\geq k\}|},\\
-  \mathrm{MHR}^{ver}_k & =
-  \frac{|\{g_i:d(g_i)\geq k,\;v_i=1\}|}{|\{g:d(g)\geq k\}|}.
-\end{align}
-
-Le premier révèle les associations approximatives en profondeur ; le second
-exige une vérification complète. Le MHR ne prouve cependant pas que le pivot a
-été exécuté : un mode informé peut connaître une cible profonde sans avoir
-établi une session latérale. C'est pourquoi les métriques Phase~5 doivent être
-rapportées séparément.
-
-\subsection{Limites de la profondeur réseau}
-
-\begin{itemize}
-  \item Les scénarios plats ont un MHR indéfini même s'ils contiennent une
-        chaîne logique longue.
-  \item Le scénario S28 enchaîne quatre dépendances de provisioning sur un
-        réseau plat ; sa difficulté est captée par la couverture de chemin, pas
-        par le MHR.
-  \item Plusieurs anciens ground truths, notamment S3, décrivent des chemins de
-        pivot mais conservent des profondeurs de vulnérabilité à zéro. Le MHR ne
-        peut pas reconstruire automatiquement une profondeur absente.
-  \item Une moyenne de MHR doit ignorer les valeurs \NA{} mais ne doit jamais
-        convertir un scénario absent en succès. Pour une suite officielle, les
-        profils attendus absents gardent un score de scénario nul.
-\end{itemize}
-
-\section{Métriques d'intrusion de Phase 5}
-
-\subsection{Pourquoi les séparer du MHR}
-
-Le MHR répond à « la faille profonde a-t-elle été trouvée ? ». Les métriques de
-Phase~5 répondent à « l'agent a-t-il réellement tenté et réussi les accès et
-transitions ? ». Un fichier \texttt{05\_intrusion.json} déclaratif ne suffit
-pas : les succès sont dérivés du journal \texttt{tool\_calls.jsonl}.
-
-Les outils d'accès positif reconnus sont actuellement
-\texttt{try\_credential}, \texttt{ssh\_login} et \texttt{ssh\_exec}. Un résultat
-doit être explicitement positif, sans erreur ni authentification négative. Les
-outils de reconnaissance ou de protocole peuvent prouver une tentative, mais
-pas à eux seuls une compromission de machine.
-
-\subsection{Définitions}
-
-Soient $T$ les machines cibles de la vérité terrain, $A$ les cibles ayant reçu
-une tentative Phase~5, $C$ les cibles avec accès positif, $E$ les transitions
-attendues, $O$ les transitions déclarées et $V$ les transitions valides.
-
-\begin{center}
-\begin{tabularx}{\textwidth}{@{} >{\raggedright\arraybackslash}X p{3.2cm} >{\raggedright\arraybackslash}X @{}}
+\begin{tabularx}{\textwidth}{@{}p{4.2cm}p{3.0cm}X@{}}
 \toprule
 Métrique & Formule & Sens \\
 \midrule
-\metric{phase5\_target\_attempt\_coverage} & $|T\cap A|/|T|$ & Couverture de l'effort d'intrusion. \\
-\addlinespace
-\metric{phase5\_target\_coverage} & $|T\cap C|/|T|$ & Cibles attendues effectivement compromises. \\
-\addlinespace
-\metric{phase5\_compromise\_rate} & $|T\cap C|/|T\cap A|$ & Rendement des tentatives sur les cibles. \\
-\addlinespace
-\metric{phase5\_pivot\_success\_rate} & pivots latéraux réussis/tentés & Capacité de mouvement latéral, hors point d'entrée. \\
-\addlinespace
-\metric{phase5\_hop\_coverage} & $|E\cap V|/|E|$ & Part des transitions attendues exécutées avec preuve. \\
-\addlinespace
-\metric{phase5\_chain\_faithfulness} & $|V|/|O|$ & Cohérence des transitions annoncées avec les accès positifs et \texttt{pivot\_to}. \\
-\addlinespace
-\metric{phase5\_target\_coverage\_by\_depth} & $|C_d|/|T_d|$ & Couverture des machines ventilée par profondeur. \\
+Tentatives cibles & $|T\cap A|/|T|$ & Cibles ayant reçu une tentative. \\
+Couverture cibles & $|T\cap C|/|T|$ & Cibles effectivement compromises. \\
+Taux de compromission & $|T\cap C|/|T\cap A|$ & Rendement des tentatives. \\
+Succès des pivots & pivots réussis/tentés & Mouvement latéral hors point d'entrée. \\
+Couverture des sauts & $|E\cap V|/|E|$ & Transitions attendues exécutées et prouvées. \\
+Fidélité de chaîne & $|V|/|O|$ & Transitions déclarées cohérentes avec les preuves. \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-Une transition n'est valide que si l'ordre de chaîne est respecté, si le champ
-\texttt{pivot\_to} de la source désigne la cible, et si l'accès à la source et à
-la cible est prouvé. Le point d'entrée peut être crédité par le contexte initial
-de Phase~5 ; les cibles latérales exigent un appel d'accès positif.
+Une transition valide respecte l'ordre de la chaîne, le champ
+\texttt{pivot_to} et les preuves d'accès à la source et à la cible. Un chemin
+est \emph{vérifié} seulement si toutes ses failles ont $v_i=1$, ses transitions
+sont valides et sa cible finale possède un accès positif.
 
-\subsection{Chemins complets}
+L'absence d'artefact rend la métrique indisponible ; un artefact présent sans
+preuve positive donne zéro. Un échec final n'efface pas les cibles et
+transitions intermédiaires déjà prouvées.
 
-\metric{path\_coverage} exige que toutes les vulnérabilités référencées par un
-chemin soient associées. \metric{quality\_path\_coverage} attribue à chaque
-chemin le minimum des produits $a_i v_i$ de ses findings : le maillon le plus
-faible borne donc le crédit du chemin.
+\section{Périmètre du benchmark}
 
-\metric{verified\_path\_coverage} est plus strict : toutes les failles doivent
-avoir $v_i=1$, les machines doivent apparaître dans le bon ordre en Phase~5,
-toutes les transitions doivent être valides et la cible finale doit posséder un
-accès positif. Une campagne partielle peut donc obtenir une couverture de
-cibles ou de sauts non nulle tout en gardant une couverture de chemin vérifiée
-nulle.
+Le catalogue~3.2.0 couvre 19 scénarios \metric{dev-public} et 10 scénarios
+\metric{test-public}. La vérité terrain comprend 54 failles CRITICAL, 145 HIGH,
+68 MEDIUM et 21 LOW. Les familles les plus fréquentes sont les mauvaises
+configurations (70), l'exposition de données (54), l'absence
+d'authentification (50) et les credentials par défaut (41).
 
-\subsection{Zéro, indisponible et échec partiel}
+Les scénarios vont des réseaux plats aux cascades de trois pivots et couvrent
+notamment IoT/OT, PKI, OTA, IAM/SSRF, protocoles industriels, chemins
+multi-sauts et environnements à faible prévalence. Cette hétérogénéité justifie
+une macro-moyenne par scénario et une ventilation par profondeur et sévérité.
 
-\begin{itemize}
-  \item absence ou illisibilité de \texttt{05\_intrusion.json} : ratios Phase~5
-        indisponibles ;
-  \item artefact présent, dénominateur défini, aucune preuve positive : zéro ;
-  \item aucun pivot latéral tenté : taux de réussite des pivots indisponible,
-        et non égal à zéro ;
-  \item échec de la cible finale : les cibles et transitions intermédiaires
-        réussies conservent leur crédit.
-\end{itemize}
+Les références normatives sont \metric{strict-v3} pour le scoring,
+\metric{strict-v3.3} pour le contrat de métriques,
+\metric{evidence-v2} pour les preuves et \metric{strict-v3.2} pour le matching.
+Une version absente ou obsolète échoue fermée : les métriques dépendantes de la
+preuve deviennent indisponibles.
 
-\section{Topologies, scénarios et types de failles}
+\section{Résultats LANCE-MoE disponibles}
 
-\subsection{Quatre archétypes de lecture}
-
-\begin{figure}[ht]
-\centering
-\begin{tikzpicture}[
-  node/.style={draw=primary,rounded corners,fill=lightblue,minimum width=1.6cm,
-    minimum height=0.65cm,font=\small},
-  zone/.style={draw=secondary,dashed,rounded corners,inner sep=5pt},
-  edge/.style={-{Latex[length=2mm]},thick,draw=secondary},
-  blocked/.style={-{Latex[length=2mm]},dashed,draw=warning}
-]
-  \node[node] (a1) at (0,2.2) {Attaquant};
-  \node[node] (f1) at (0,1.0) {Services};
-  \draw[edge] (a1)--node[right,font=\scriptsize]{direct} (f1);
-  \node[font=\small\bfseries] at (0,0.25) {Plat};
-
-  \node[node] (a2) at (4,2.2) {Attaquant};
-  \node[node] (g2) at (4,1.2) {Hub/GW};
-  \node[node] (s2) at (4,0.25) {Périphériques};
-  \draw[edge] (a2)--(g2);
-  \draw[edge] (g2)--(s2);
-  \node[font=\small\bfseries] at (4,-0.5) {Hub ou gateway};
-
-  \node[node] (a3) at (8,2.2) {Attaquant};
-  \node[node] (z31) at (8,1.2) {IT/DMZ};
-  \node[node] (z32) at (8,0.25) {IoT/OT};
-  \draw[edge] (a3)--(z31);
-  \draw[blocked] (z31)--node[right,font=\scriptsize]{pivot} (z32);
-  \node[font=\small\bfseries] at (8,-0.5) {Segmenté};
-
-  \node[node] (a4) at (12,2.2) {Entrée};
-  \node[node] (p41) at (12,1.35) {Pivot 1};
-  \node[node] (p42) at (12,0.5) {Pivot 2};
-  \node[node] (p43) at (12,-0.35) {Actif};
-  \draw[edge] (a4)--(p41);
-  \draw[edge] (p41)--(p42);
-  \draw[edge] (p42)--(p43);
-  \node[font=\small\bfseries] at (12,-1.1) {Cascade};
-\end{tikzpicture}
-\caption{Archétypes topologiques couverts par les scénarios. Les variantes
-spécialisées ajoutent des protocoles, des contrôles durcis ou des dépendances
-logiques.}
-\end{figure}
-
-\subsection{Familles S1--S13 : réseaux IoT/OT généraux}
-
-\small
-\begin{longtable}{@{}p{0.7cm}p{2.6cm}p{3.5cm}p{0.7cm}p{0.7cm}p{7.0cm}@{}}
-\toprule
-ID & Topologie & Rôle principal & GT & $d_{max}$ & Familles de failles \\
-\midrule
-\endfirsthead
-\toprule
-ID & Topologie & Rôle principal & GT & $d_{max}$ & Familles de failles \\
-\midrule
-\endhead
-S1 & Flat & Réseau IoT directement accessible & 12 & 0 & Authentification,
-exposition de données, mauvaises configurations, divulgation, en-têtes et
-crypto faible. \\
-S2 & Gateway & Gateway exposée et services associés & 13 & 0 & Credentials,
-misconfiguration, données, divulgation, CVE et mise à jour non sûre. \\
-S3 & NATO lab & Réplique multiprotocole du laboratoire & 18 & 0 & Authentification,
-données, divulgation, CVE/crypto, mise à jour et élévation de privilèges. \\
-S4 & ICS/SCADA segmenté & Convergence IT/OT, Modbus et historien & 18 & 2 &
-Injection, CVE, données, credentials, services sans auth, crypto et OTA. \\
-S5 & Smart Building & Caméras, NVR, HVAC et contrôle d'accès & 15 & 1 &
-Credentials, absence d'authentification, données, divulgation et mauvaises
-configurations. \\
-S6 & Star & Hub Node-RED de domotique & 16 & 1 & Authentification, données,
-divulgation, CVE, mauvaises configurations et mises à jour. \\
-S7 & Edge--Cloud & Pivot edge vers API et base cloud & 14 & 3 & Injection,
-CVE/crypto, secrets, credentials, OTA et post-exploitation. \\
-S8 & Multi-zone & Chaîne IT--IoT--OT & 14 & 3 & Injection, CVE, données,
-credentials, absence d'authentification et firmware non sûr. \\
-S9 & Mesh IoT & MQTT, CoAP et SNMP distribués & 11 & 0 & Authentification,
-données, divulgation et mauvaises configurations protocolaires. \\
-S10 & Flat variants & Variantes Node-RED et FTP & 13 & 0 & Injection,
-credentials, absence d'authentification, données et misconfiguration. \\
-S11 & Smart City 3 zones & 15 VMs, zones conceptuelles IT/IoT/OT & 23 & 2 &
-Injection, CVE/crypto, données, auth, OTA et mauvaises configurations. \\
-S12 & Smart City large & 35 VMs, stress de passage à l'échelle & 42 & 2 & Même
-spectre que S11 avec forte densité de failles critiques et hautes. \\
-S13 & VLAN segmenté & 17 VMs et règles inter-zones strictes & 20 & 2 & Injection,
-authentification, données, misconfiguration et crypto faible. \\
-\bottomrule
-\end{longtable}
-\normalsize
-
-S1h et S4h sont deux variantes historiques durcies à vérité terrain positive
-vide. Elles ne figurent pas parmi les 29 entrées du catalogue courant ; elles
-servent à mesurer les faux positifs, mais leurs fichiers de vérité terrain ne
-déclarent pas encore de contrôles négatifs structurés.
-
-\subsection{Familles S14--S23 : propriétés ciblées}
-
-\small
-\begin{longtable}{@{}p{0.7cm}p{3.0cm}p{4.4cm}p{0.7cm}p{0.8cm}p{5.8cm}@{}}
-\toprule
-ID & Topologie & Propriété isolée & GT & Ctrl & Types de failles \\
-\midrule
-\endfirsthead
-\toprule
-ID & Topologie & Propriété isolée & GT & Ctrl & Types de failles \\
-\midrule
-\endhead
-S14 & Sparse hardened & Précision parmi des services ressemblants & 4 & 8 & MQTT
-anonyme, backup exposé, credentials SSH et Redis sans auth. \\
-S15 & API multi-tenant & Autorisation après authentification & 3 & 4 & Lecture
-inter-tenant, mass assignment et contournement de scope JWT. \\
-S16 & Device PKI & Cycle d'identité et mTLS & 4 & 3 & Clé CA exposée, rejeu
-d'enrôlement, certificat révoqué accepté et clé clonée. \\
-S17 & OTA signée & État, signature et rollback & 4 & 4 & Firmware obsolète,
-rollback signé, métadonnées hors signature et secret partagé. \\
-S18 & Cloud IAM/SSRF & Métadonnées et privilèges cloud simulés & 3 & 3 & SSRF,
-jeton sur-privilégié et lecture de secrets. \\
-S19 & OT multiprotocole & OPC UA, BACnet et Modbus sûrs & 5 & 2 & Crypto faible,
-écritures sans auth et divulgation de contrôleur. \\
-S20 & True multihop & Deux pivots L2 imposés & 4 & 3 & Credentials de saut,
-secrets de relais et export final sans auth. \\
-S21 & Sparse low prevalence & Deux positifs parmi seize services & 2 & 18 & MQTT
-anonyme et backup web exposé. \\
-S22 & Exploit diversity & Quatre primitives bornées & 4 & 4 & Bypass de login,
-path traversal, injection de commande et rôle privilégié. \\
-S23 & Wireless--firmware & Découverte radio simulée vers récupération OTA & 4 & 4 &
-Jeton de join, rejeu, clé de récupération et firmware non signé. \\
-\bottomrule
-\end{longtable}
-\normalsize
-
-\subsection{Familles S24--S29 : test public de généralisation}
-
-\small
-\begin{longtable}{@{}p{0.7cm}p{3.2cm}p{4.8cm}p{0.7cm}p{0.8cm}p{5.4cm}@{}}
-\toprule
-ID & Topologie & Propriété isolée & GT & Ctrl & Types de failles \\
-\midrule
-\endfirsthead
-\toprule
-ID & Topologie & Propriété isolée & GT & Ctrl & Types de failles \\
-\midrule
-\endhead
-S24 & Dual-zone chain & Deux pivots vers une archive isolée & 3 & 2 & Credentials
-de saut et exposition de données finale. \\
-S25 & Segmented fan-out & Une gateway ouvre deux actifs distincts & 3 & 3 &
-Credentials de gateway et deux expositions de données. \\
-S26 & Asymmetric paths & Chemins parallèles de profondeurs différentes & 5 & 2 &
-Credentials de relais et actifs exposés aux profondeurs 1 et 2. \\
-S27 & Three-pivot cascade & Trois pivots SSH successifs & 4 & 2 & Credentials
-réutilisés et archive de sûreté exposée à profondeur 3. \\
-S28 & Provisioning chain & Quatre dépendances logiques sur réseau plat & 4 & 4 &
-Divulgation de code, rejeu, clé de maintenance et contrôle d'accès cassé. \\
-S29 & Large sparse control & Trois positifs et vingt-deux contrôles & 3 & 22 &
-MQTT anonyme, backup exposé et Redis sans auth. \\
-\bottomrule
-\end{longtable}
-\normalsize
-
-
-\subsection{Couverture agrégée des failles}
-
-Les 288 vulnérabilités du catalogue se répartissent principalement entre
-mauvaises configurations (70), exposition de données (54), absence
-d'authentification (50), credentials par défaut (41), divulgation
-d'information (16), injection de code (13), mise à jour non sûre (12), crypto
-faible (10), CVE (9), contrôle d'accès cassé (4), élévation de privilèges (4),
-en-têtes manquants (3) et bypass d'authentification (2).
-
-Cette distribution montre pourquoi une macro-moyenne par scénario est
-nécessaire : une micro-moyenne serait dominée par les packs historiques de
-misconfiguration et par S12, au détriment des scénarios ciblés PKI, IAM, OTA,
-OT et chemins profonds.
-
-\section{Résultats courants sur \texttt{nato-master}}
-
-\subsection{Inventaire exhaustif récupéré}
-
-L'inventaire a été relu directement depuis les endpoints
-\sourcepath{/api/runs/benchmark} et \sourcepath{/api/runs} le 7 août 2026.
-L'index de benchmark contient 142 runs et l'inventaire brut 145 entrées. Les
-résultats détaillés ci-dessous se concentrent sur LANCE-MoE, qui représente 95
-runs dans l'index. Les autres essais historiques ne sont pas intégrés au
-tableau de performance.
-
-\begin{center}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Scénario & Terminés & Partiels & Incomplets & Total \\
-\midrule
-S1 & 44 & 5 & 19 & 68 \\
-S2 & 4 & 0 & 0 & 4 \\
-S3 & 5 & 1 & 0 & 6 \\
-S4 & 6 & 5 & 4 & 15 \\
-S5 & 1 & 0 & 1 & 2 \\
-\midrule
-Total & 60 & 11 & 24 & 95 \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Le cas S1 est donc représenté par 68 exécutions LANCE-MoE enregistrées sur la
-VM, dont 44 terminées. Parmi les 95 runs, 67 utilisent explicitement le profil
-\metric{compact}, 27 appartiennent aux campagnes antérieures sans profil
-déclaré et un essai incomplet utilise le profil \metric{full}.
-
-\subsection{Résultats des runs LANCE-MoE \texttt{compact} terminés}
-
-Afin de ne pas mélanger les anciens modes d'exécution, les agrégats portent
-uniquement sur les runs satisfaisant simultanément : modèle
-\metric{lance-moe}, statut \metric{done} et profil \metric{compact}. Cette
-cohorte comprend 48 runs terminés entre le 29 juillet et le 7 août 2026. Quatre
-runs S1 ne possèdent pas de score exploitable dans l'index ; les moyennes sont
-donc calculées sur 44 runs scorés.
-
-Les résultats couvrent 34 commits différents. Ils décrivent l'historique de la
-campagne d'amélioration et sa dispersion, et non les performances d'une unique
-version figée du modèle. Le nombre $n$ indique successivement les runs terminés
-et les runs possédant la métrique.
+L'inventaire \texttt{nato-master} du 7 août 2026 contient 95 runs LANCE-MoE :
+60 terminés, 11 partiels et 24 incomplets. Pour éviter de mélanger les anciens
+modes, le tableau porte uniquement sur les runs \metric{compact} terminés : 48
+runs, dont 44 scorés, répartis sur 34 commits.
 
 \begin{table}[htbp]
 \centering
 \small
-\begingroup
 \setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.25}
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.2cm}*{5}{>{\centering\arraybackslash}X}@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.0cm}*{5}{>{\centering\arraybackslash}X}@{}}
 \toprule
 Métrique & S1 & S2 & S3 & S4 & S5 \\
 \midrule
 Runs terminés/scorés & 32/28 & 4/4 & 5/5 & 6/6 & 1/1 \\
 Q-F1 & $0.654\pm0.169$ & $0.473\pm0.077$ & $0.475\pm0.030$ & $0.466\pm0.036$ & 0.500 \\
 F1 détection & $0.826\pm0.102$ & $0.542\pm0.123$ & $0.493\pm0.026$ & $0.565\pm0.047$ & 0.500 \\
-F1 sévérité & $0.826\pm0.102$ & $0.530\pm0.116$ & $0.493\pm0.026$ & $0.560\pm0.048$ & 0.500 \\
 Hallucination & $0.216\pm0.122$ & $0.526\pm0.100$ & $0.537\pm0.103$ & $0.378\pm0.160$ & 0.600 \\
+$\mathrm{MHR}_1$ & \NA{} & \NA{} & \NA{} & $0.500\pm0.102$ & 0.333 \\
+Couverture cibles P5 & $0.321\pm0.187$ & $0.167\pm0.000$ & $0.175\pm0.061$ & $0.146\pm0.047$ & 0.125 \\
+Couverture sauts P5 & $0.000\pm0.000$ & $0.000\pm0.000$ & $0.057\pm0.070$ & $0.000\pm0.000$ & 0.000 \\
 \bottomrule
 \end{tabularx}
-\endgroup
 \end{table}
 
-La forte dispersion de S1 est cohérente avec une campagne qui traverse de
-nombreuses révisions successives. Les valeurs ne doivent donc pas être lues
-comme un intervalle de confiance sur un modèle immuable. S2, S3 et S5 restent
-également peu répétés ; leur moyenne est beaucoup moins robuste que celle de
-S1.
+\subsection{Constats clés}
 
-\subsection{MHR et exécution de l'intrusion}
+\begin{itemize}
+  \item S1 obtient le meilleur Q-F1 moyen (0.654), mais sa dispersion reflète
+        de nombreuses révisions successives.
+  \item L'hallucination dépasse 0.5 sur S2, S3 et S5 ; la précision reste donc
+        un axe prioritaire en dehors de S1.
+  \item S4 est le seul scénario répété avec des profondeurs 1 et 2 annotées ;
+        son $\mathrm{MHR}_1$ vaut 0.500 et son $\mathrm{MHR}_2$ 0.708.
+  \item La couverture des cibles Phase~5 reste faible (0.125 à 0.321) et la
+        couverture des sauts est presque nulle.
+  \item Les faibles effectifs de S2 à S5 et les 34 commits représentés
+        interdisent d'interpréter ces moyennes comme la performance d'une
+        version figée.
+\end{itemize}
 
-\small
-\begin{center}
-\begin{tabularx}{\textwidth}{@{}c>{\centering\arraybackslash}p{1.1cm}*{4}{>{\centering\arraybackslash}X}@{}}
-\toprule
-Sc. & $n$ scoré & $\mathrm{MHR}_1$ & $\mathrm{MHR}_2$ & Couverture cibles P5 & Couverture sauts P5 \\
-\midrule
-S1 & 28 & \NA{} & \NA{} & $0.321\pm0.187$ & $0.000\pm0.000$ \\
-S2 & 4 & \NA{} & \NA{} & $0.167\pm0.000$ & $0.000\pm0.000$ \\
-S3 & 5 & \NA{} & \NA{} & $0.175\pm0.061$ & $0.057\pm0.070$ \\
-S4 & 6 & $0.500\pm0.102$ & $0.708\pm0.093$ & $0.146\pm0.047$ & $0.000\pm0.000$ \\
-S5 & 1 & 0.333 & \NA{} & 0.125 & 0.000 \\
-\bottomrule
-\end{tabularx}
-\end{center}
-\normalsize
+\section{Priorités d'amélioration}
 
-Le MHR est indisponible pour S1--S3 parce que leurs vérités terrain ne
-contiennent pas de faille annotée à profondeur au moins 1. S4 est le seul
-scénario de cette cohorte qui fournisse à la fois plusieurs répétitions et des
-profondeurs 1 et 2 ; il atteint respectivement 0.500 et 0.708 en moyenne.
-
-Les métriques Phase~5 montrent une couverture partielle des cibles, mais très
-peu de transitions vérifiées. Le taux de réussite des pivots n'est défini que
-sur une partie des runs : dix S1 atteignent en moyenne $0.300\pm0.332$, tandis
-que les sous-ensembles évaluables de S2 à S5 restent à zéro. La fidélité des
-chaînes est elle aussi souvent indisponible faute de chaîne observable. Ces
-résultats indiquent que l'exécution et la traçabilité de l'intrusion restent un
-axe d'amélioration distinct de la détection des failles.
+\begin{enumerate}
+  \item \textbf{Réduire les faux positifs} sur S2, S3 et S5 sans sacrifier le
+        rappel, en analysant les findings non associés et les CVE invalides.
+  \item \textbf{Renforcer la preuve} pour réduire l'écart entre F1 de détection,
+        Q-F1 et F1 vérifié.
+  \item \textbf{Fiabiliser Phase~5} : produire des accès positifs traçables,
+        renseigner \texttt{pivot_to} et vérifier l'ordre des transitions.
+  \item \textbf{Comparer des versions homogènes} sur davantage de scénarios,
+        avec plusieurs répétitions par commit et des macro-moyennes.
+  \item \textbf{Compléter les annotations de profondeur} afin que le MHR couvre
+        correctement tous les scénarios multi-sauts.
+\end{enumerate}
 
 \section{Conclusion}
 
-Le Q-F1 sous \metric{strict-v3} est la métrique centrale la plus informative
-pour améliorer LANCE : il récompense une faille bien associée, correctement
-classée et soutenue par une preuve. Il doit être lu avec le taux
-d'hallucination et le rappel par sévérité pour éviter qu'un gain apparent ne
-provienne d'une stratégie trop agressive ou de l'abandon des failles critiques.
+Le Q-F1 est le meilleur indicateur central pour LANCE, à condition de toujours
+l'accompagner de l'hallucination, du rappel CRITICAL/HIGH et de la fidélité des
+preuves. Le MHR mesure la découverte en profondeur ; seules les métriques
+Phase~5 démontrent l'intrusion réelle.
 
-Le MHR complète cette lecture en isolant la récupération des failles profondes,
-mais il ne démontre pas une intrusion. La couverture de cibles, le taux de
-pivot, la couverture des sauts, la fidélité des chaînes et la couverture de
-chemin vérifiée sont nécessaires pour mesurer l'exécution réelle. Ensemble, ces
-mesures distinguent quatre capacités qui ne doivent pas être confondues : voir
-une faille, l'associer correctement, la prouver et atteindre réellement sa
-cible à travers le réseau.
-
-Les résultats actuellement accessibles décrivent une campagne de développement
-active : 95 runs LANCE-MoE sont présents, dont 60 terminés. Le sous-ensemble
-homogène \metric{compact} comprend 48 runs terminés et 44 scores exploitables,
-principalement concentrés sur S1. Ces nombres doivent être conservés avec les
-résultats afin de ne pas confondre volume d'expérimentation, couverture des
-scénarios et performance d'une version donnée.
+La campagne disponible indique que la priorité n'est pas seulement de détecter
+davantage, mais de produire des findings plus précis, mieux prouvés et suivis
+de transitions réseau traçables. Les prochains comparatifs doivent isoler une
+version donnée du modèle et équilibrer la couverture des scénarios.
 
 \appendix
-\section{Sources internes parcourues}
+\section{Sources internes principales}
 
 \begin{itemize}
-  \item \sourcepath{src/benchmark/evaluator.py}
-  \item \sourcepath{src/benchmark/strict_v3.py}
-  \item \sourcepath{src/benchmark/metric_contract.py}
-  \item \sourcepath{src/benchmark/aggregate.py}
-  \item \sourcepath{benchmarks/docs/EVALUATION_PROTOCOL.md}
-  \item \sourcepath{benchmarks/docs/ARCHITECTURES.md}
-  \item \sourcepath{benchmarks/catalog.yaml}
-  \item \sourcepath{benchmarks/scenarios/*.yaml}
-  \item \sourcepath{benchmarks/topologies/*.yaml}
-  \item \sourcepath{benchmarks/packs/definitions/*.yaml}
-  \item \sourcepath{benchmarks/ground_truth/scenario_*.yaml}
-  \item \sourcepath{benchmarks/ground_truth/matching_contracts.yaml}
-  \item \sourcepath{tests/test_evaluator_strict_v3.py}
-  \item \sourcepath{tests/test_benchmark_aggregate.py}
+  \item \sourcepath{src/benchmark/evaluator.py},
+        \sourcepath{src/benchmark/strict_v3.py} et
+        \sourcepath{src/benchmark/metric_contract.py} ;
+  \item \sourcepath{benchmarks/catalog.yaml},
+        \sourcepath{benchmarks/ground_truth/matching_contracts.yaml} et les
+        vérités terrain \sourcepath{benchmarks/ground_truth/scenario_*.yaml} ;
+  \item \sourcepath{benchmarks/docs/EVALUATION_PROTOCOL.md} et
+        \sourcepath{benchmarks/docs/ARCHITECTURES.md} ;
   \item API \texttt{nato-master} : \sourcepath{/api/runs/benchmark} et
-        \sourcepath{/api/runs}, inventaire récupéré le 7 août 2026
+        \sourcepath{/api/runs}, inventaire du 7 août 2026.
 \end{itemize}
 
 \end{document}
