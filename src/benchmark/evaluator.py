@@ -1555,6 +1555,17 @@ def _semantic_output_supports_finding(tool: str, result: dict, finding: dict | N
             and bool(stdout.strip())
         )
 
+    if tool == "ssh_audit":
+        return has_return_code and return_code in {0, 3} and any(
+            marker in text for marker in ("[fail]", "[warn]", "cve-", "terrapin")
+        )
+
+    if tool == "telnet_connect":
+        expected_port = _normalize_port((finding or {}).get("port"))
+        if expected_port == 23 and has_return_code and return_code == 124:
+            return not any(marker in text for marker in ("connection refused", "no route", "unable to connect"))
+        return has_return_code and return_code == 0 and bool(stdout.strip())
+
     if any(marker in text for marker in (
         "connection refused", "permission denied", "access denied", "noauth",
         "authentication required", "unauthorized", "timed out", "timeout",
@@ -1573,12 +1584,6 @@ def _semantic_output_supports_finding(tool: str, result: dict, finding: dict | N
         return has_return_code and bool(stdout.strip()) and "denied" not in text and "error" not in text
     if tool == "ftp_list":
         return has_return_code and bool(stdout.strip()) and "failed" not in text
-    if tool == "telnet_connect":
-        return has_return_code and bool(stdout.strip())
-    if tool == "ssh_audit":
-        return has_return_code and any(
-            marker in text for marker in ("[fail]", "[warn]", "cve-", "terrapin")
-        )
     if tool in {"modbus_scan", "nmap_scan", "nmap_discovery"}:
         if not has_return_code or not text.strip():
             return False
@@ -1668,7 +1673,15 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
         return_code = result.get("return_code")
         if isinstance(return_code, int) and not isinstance(return_code, bool):
             if return_code not in {0, 27}:
-                return False
+                normal_nonzero = (
+                    _canonical_tool_name(tool) == "ssh_audit" and return_code == 3
+                ) or (
+                    _canonical_tool_name(tool) == "telnet_connect"
+                    and _normalize_port((finding or {}).get("port")) == 23
+                    and return_code == 124
+                )
+                if not normal_nonzero:
+                    return False
         supported_tools = {
             "mqtt_listen", "ssh_login", "ssh_exec", "redis_cmd", "mysql_query",
             "ftp_list", "telnet_connect", "ssh_audit", "modbus_scan",

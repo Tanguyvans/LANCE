@@ -22,6 +22,8 @@ from src.benchmark.evaluator import (
     _load_tool_call_records,
     _normalize_port,
     _phase3_has_direct_evidence,
+    _tool_call_outcome,
+    _semantic_output_supports_finding,
     evaluate,
     match_vuln,
 )
@@ -46,6 +48,37 @@ from src.benchmark.metric_contract import (
 )
 def test_normalize_port(value, expected):
     assert _normalize_port(value) == expected
+
+def test_phase4_semantic_contract_accepts_ssh_audit_exit_code_three():
+    assert _semantic_output_supports_finding(
+        "ssh_audit", {"stdout": "[fail] weak cipher", "return_code": 3},
+        {"type": "weak_cipher", "port": 22},
+    )
+
+
+def test_phase4_semantic_contract_accepts_telnet_timeout_on_port_23():
+    assert _semantic_output_supports_finding(
+        "telnet_connect", {"stdout": "", "stderr": "", "return_code": 124},
+        {"type": "insecure_protocol", "port": 23},
+    )
+
+
+def test_phase4_semantic_contract_rejects_telnet_timeout_on_other_port():
+    assert not _semantic_output_supports_finding(
+        "telnet_connect", {"stdout": "", "stderr": "timeout", "return_code": 124},
+        {"type": "insecure_protocol", "port": 80},
+    )
+
+
+def test_phase4_tool_call_outcome_preserves_special_exit_codes():
+    assert _tool_call_outcome(
+        {"tool": "ssh_audit", "result": json.dumps({"stdout": "[fail]", "return_code": 3})},
+        {"type": "weak_cipher", "port": 22},
+    ) is True
+    assert _tool_call_outcome(
+        {"tool": "telnet_connect", "result": json.dumps({"stdout": "", "return_code": 124})},
+        {"type": "insecure_protocol", "port": 23},
+    ) is True
 
 
 def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguration",

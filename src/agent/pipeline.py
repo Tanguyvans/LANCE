@@ -176,6 +176,30 @@ def _phase4_local_verification_tools(
 # ---------------------------------------------------------------------------
 
 
+def _normalise_phase4_endpoint(value: object) -> str:
+    """Return a safe path for a deterministic Phase 4 HTTP probe.
+
+    Device memos are model-authored and occasionally leave Markdown or prose
+    punctuation attached to a path (for example ``/uploads/:``). Passing that
+    value verbatim turns a valid finding into a guaranteed 404. Keep query
+    strings intact, but remove only terminal prose punctuation.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith(("http://", "https://")):
+        parsed = urlsplit(raw)
+        raw = parsed.path or "/"
+        if parsed.query:
+            raw = f"{raw}?{parsed.query}"
+    raw = raw.strip().strip("`'\".,;)]}")
+    if "?" not in raw and raw.endswith(":"):
+        raw = raw[:-1]
+    if raw and not raw.startswith("/"):
+        raw = f"/{raw}"
+    return raw or "/"
+
+
 def _phase4_verification_plan(
     vuln: dict, *, compact: bool = False
 ) -> dict[str, object]:
@@ -188,7 +212,7 @@ def _phase4_verification_plan(
         port = int(port) if port not in (None, "") else None
     except (TypeError, ValueError):
         port = None
-    endpoint = str(vuln.get("endpoint") or "").strip()
+    endpoint = _normalise_phase4_endpoint(vuln.get("endpoint"))
     base_url = f"http://{ip}:{port}" if port and port != 80 else f"http://{ip}"
     suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
     url = f"{base_url}{suffix}"
@@ -257,6 +281,11 @@ def _phase4_verification_plan(
         if service == "ssh" or port == 22:
             return {"tool": "ssh_login", "target": ip, "port": 22,
                     "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
+        if service in {"mysql", "mariadb"} or port == 3306:
+            return {"tool": "mysql_query", "target": ip, "port": port or 3306,
+                    "args_hint": {"host": ip, "user": "root",
+                                  "query": "SELECT USER(), CURRENT_USER();"},
+                    "success_condition": "query succeeds without a password"}
         return {"tool": "try_credential", "target": ip, "port": port, "service": service or "http",
                 "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
     if service == "mqtt":
@@ -274,7 +303,7 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
     if tool != requirement.get("tool"):
         return False
     target = str(requirement.get("target") or "")
-    if tool in {"ssh_audit", "nmap_scan", "modbus_scan"} and str(args.get("host") or args.get("target") or "") != target:
+    if tool in {"ssh_audit", "nmap_scan", "modbus_scan", "mysql_query"} and str(args.get("host") or args.get("target") or "") != target:
         return False
     if tool == "nmap_scan":
         required_port = requirement.get("required_port")
@@ -301,6 +330,10 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
                     return False
             except (TypeError, ValueError):
                 return False
+    if tool == "mysql_query":
+        expected_user = str((requirement.get("args_hint") or {}).get("user") or "").strip()
+        if expected_user and str(args.get("user") or "").strip() != expected_user:
+            return False
     if tool in {"http_get", "curl_headers", "http_request"}:
         raw_url = str(args.get("url") or "")
         if target not in raw_url:
@@ -933,8 +966,17 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 else:
                     confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
                 continue
-            if compact and vuln_type in {"code_injection", "insecure_update"} and http_ok:
-                failures.append(f"{tool} confirmed endpoint reachability but not the claimed impact")
+            if compact and vuln_type == "code_injection" and http_ok:
+                failures.append(f"{tool} confirmed endpoint reachability but not the claimed injection impact")
+                continue
+            if compact and vuln_type == "insecure_update" and http_ok:
+                update_markers = (
+                    "update accepted", "firmware", "ota", "signature", "upgrade",
+                )
+                if any(marker in lower for marker in update_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned an update/firmware acceptance marker:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} confirmed endpoint reachability but not update acceptance")
                 continue
             if vuln_type == "no_auth" and http_ok:
                 login_challenge = any(marker in lower for marker in (
@@ -952,8 +994,21 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         if tool in {"ssh_login", "ssh_exec", "try_credential"}:
             if (result.get("success") is True) or (rc == 0 and re.search(r"\buid=|login successful|welcome", lower)):
                 confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed command/login success:\n{text[:800]}"})
-            elif "permission denied" in lower or result.get("success") is False:
+            elif (
+                "permission denied" in lower
+                or result.get("success") is False
+                or (rc is not None and rc != 0)
+                or any(marker in lower for marker in ("connection closed", "authentication failed", "auth failed"))
+            ):
                 failures.append(f"{tool} authentication failed")
+            continue
+
+        if tool == "mysql_query":
+            mysql_error_markers = ("access denied", "authentication", "error", "unknown database")
+            if rc == 0 and text and not any(marker in lower for marker in mysql_error_markers):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"mysql_query succeeded without an authentication error:\n{text[:800]}"})
+            else:
+                failures.append("mysql_query did not prove passwordless database access")
             continue
 
         if tool == "telnet_connect":
@@ -4816,6 +4871,9 @@ class Pipeline:
                             tool for tool in exploit_tools
                             if tool.get("name") == required_probe_tool
                         ]
+                    if compact_local_moe and required_probe_tool:
+                        verification_tools = [tool for tool in verification_tools
+                                              if tool.get("name") == required_probe_tool]
                     if compact_local_moe:
                         verification_tools = _phase4_apply_verification_contract(
                             verification_tools, requirement

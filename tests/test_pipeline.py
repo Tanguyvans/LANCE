@@ -123,6 +123,64 @@ def test_phase4_verification_plan_selects_precise_probe_per_finding():
     assert sys_topics["args_hint"]["topic"] == "$SYS/#"
 
 
+def test_phase4_compact_probes_repair_http_endpoint_and_mysql_auth_check():
+    upload = _phase4_verification_plan({
+        "type": "code_injection", "service": "http",
+        "device_ip": "192.168.100.12", "port": 80, "endpoint": "/uploads/:",
+    }, compact=True)
+    assert upload["args_hint"]["url"].endswith("/uploads/")
+
+    mysql = _phase4_verification_plan({
+        "type": "default_credentials", "service": "mysql",
+        "device_ip": "192.168.100.17", "port": 3306,
+    }, compact=True)
+    assert mysql["tool"] == "mysql_query"
+    assert mysql["args_hint"]["user"] == "root"
+    assert _phase4_requirement_matches(mysql, "mysql_query", mysql["args_hint"])
+    assert not _phase4_requirement_matches(
+        mysql, "mysql_query", {**mysql["args_hint"], "user": "admin"}
+    )
+
+    result = _synthesize_exploit_result(
+        {"type": "default_credentials", "service": "mysql", "port": 3306},
+        [{
+            "tool": "mysql_query",
+            "args": mysql["args_hint"],
+            "result": json.dumps({"stdout": "root@localhost", "return_code": 0}),
+        }],
+        compact=True,
+    )
+    assert result["status"] == "EXPLOITED"
+
+
+def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failure():
+    update = _synthesize_exploit_result(
+        {"type": "insecure_update", "service": "http", "port": 80},
+        [{
+            "tool": "http_get",
+            "args": {"url": "http://192.168.100.13/update"},
+            "result": json.dumps({
+                "stdout": '{"status":"update accepted","version":"2.1.4"}',
+                "return_code": 0,
+            }),
+        }],
+        compact=True,
+    )
+    assert update["status"] == "EXPLOITED"
+
+    ssh = _synthesize_exploit_result(
+        {"type": "default_credentials", "service": "ssh", "port": 22},
+        [{
+            "tool": "ssh_login",
+            "args": {"command_string": "sshpass -p admin ssh admin@192.168.100.11 id"},
+            "result": json.dumps({
+                "stdout": "", "stderr": "Connection closed by remote host", "return_code": 255,
+            }),
+        }],
+        compact=True,
+    )
+    assert ssh["status"] == "FAILED"
+
 def test_phase4_requirement_rejects_wrong_endpoint_or_transport():
     requirement = _phase4_verification_plan({
         "type": "network_exposure", "service": "mqtt-ws",
@@ -4916,10 +4974,26 @@ class TestInformationPreservingArchitecture:
             "description": "telnet",
             "input_schema": {},
             "function": telnet_connect,
+        }, {
+            "name": "http_get",
+            "description": "http",
+            "input_schema": {},
+            "function": telnet_connect,
+        }, {
+            "name": "try_credential",
+            "description": "credentials",
+            "input_schema": {},
+            "function": telnet_connect,
+        }, {
+            "name": "search_knowledge",
+            "description": "search",
+            "input_schema": {},
+            "function": telnet_connect,
         }])
 
         def chat_with_tools(*, system_prompt, tools, **kwargs):
             assert "telnet" in system_prompt.lower()
+            assert [tool["name"] for tool in tools] == ["telnet_connect"]
             result = tools[0]["function"](
                 command_string="echo quit | timeout 3 nc 192.0.2.1 23"
             )
