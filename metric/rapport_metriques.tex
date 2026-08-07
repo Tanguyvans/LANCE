@@ -759,21 +759,25 @@ campagne d'amélioration et sa dispersion, et non les performances d'une unique
 version figée du modèle. Le nombre $n$ indique successivement les runs terminés
 et les runs possédant la métrique.
 
+\begin{table}[htbp]
+\centering
 \small
-\begin{center}
-\begin{tabularx}{\textwidth}{@{}c>{\centering\arraybackslash}p{1.5cm}*{4}{>{\centering\arraybackslash}X}@{}}
+\begingroup
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{3.2cm}*{5}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Sc. & $n$ terminé/scoré & Q-F1 & F1 détection & F1 sévérité & Hallucination \\
+Métrique & S1 & S2 & S3 & S4 & S5 \\
 \midrule
-S1 & 32/28 & $0.654\pm0.169$ & $0.826\pm0.102$ & $0.826\pm0.102$ & $0.216\pm0.122$ \\
-S2 & 4/4 & $0.473\pm0.077$ & $0.542\pm0.123$ & $0.530\pm0.116$ & $0.526\pm0.100$ \\
-S3 & 5/5 & $0.475\pm0.030$ & $0.493\pm0.026$ & $0.493\pm0.026$ & $0.537\pm0.103$ \\
-S4 & 6/6 & $0.466\pm0.036$ & $0.565\pm0.047$ & $0.560\pm0.048$ & $0.378\pm0.160$ \\
-S5 & 1/1 & 0.500 & 0.500 & 0.500 & 0.600 \\
+Runs terminés/scorés & 32/28 & 4/4 & 5/5 & 6/6 & 1/1 \\
+Q-F1 & $0.654\pm0.169$ & $0.473\pm0.077$ & $0.475\pm0.030$ & $0.466\pm0.036$ & 0.500 \\
+F1 détection & $0.826\pm0.102$ & $0.542\pm0.123$ & $0.493\pm0.026$ & $0.565\pm0.047$ & 0.500 \\
+F1 sévérité & $0.826\pm0.102$ & $0.530\pm0.116$ & $0.493\pm0.026$ & $0.560\pm0.048$ & 0.500 \\
+Hallucination & $0.216\pm0.122$ & $0.526\pm0.100$ & $0.537\pm0.103$ & $0.378\pm0.160$ & 0.600 \\
 \bottomrule
 \end{tabularx}
-\end{center}
-\normalsize
+\endgroup
+\end{table}
 
 La forte dispersion de S1 est cohérente avec une campagne qui traverse de
 nombreuses révisions successives. Les valeurs ne doivent donc pas être lues
