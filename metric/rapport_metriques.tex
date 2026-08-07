@@ -63,11 +63,11 @@ mesurent l'exécution effective de l'intrusion : cibles tentées et compromises,
 pivots réussis, transitions vérifiées et fidélité des chaînes.
 
 Le catalogue courant, version~3.2.0, contient 29 scénarios, 288 vulnérabilités,
-88 contrôles négatifs et 67 chemins d'attaque. Les 14 exécutions importées de
-la machine \texttt{nato-master} ne portent toutefois que l'ancien contrat
-\metric{strict-v2}. Elles permettent une analyse partielle de la détection, de
-la sévérité, de l'hallucination et du MHR, mais le garde-fou de compatibilité
-interdit correctement de leur attribuer un Q-F1 officiel \metric{strict-v3.3}.
+88 contrôles négatifs et 67 chemins d'attaque. L'inventaire récupéré directement
+sur \texttt{nato-master} le 7 août 2026 contient 142 runs de benchmark, dont 95
+runs LANCE-MoE. Le présent rapport détaille ces campagnes et calcule les
+résultats sur les runs LANCE-MoE terminés avec le profil \metric{compact}, sans
+mélanger les essais historiques d’autres modèles.
 \end{abstract}
 
 \tableofcontents
@@ -113,8 +113,8 @@ Contrats de matching & schéma \metric{strict-v3.2} dans
 Implémentation & \sourcepath{src/benchmark/evaluator.py},
   \sourcepath{src/benchmark/strict_v3.py} et
   \sourcepath{src/benchmark/metric_contract.py} \\
-Résultats accessibles & snapshot
-  \sourcepath{output/imported/nato-master-2026-07-16} \\
+Résultats accessibles & API courante de \texttt{nato-master}, endpoints
+  \sourcepath{/api/runs/benchmark} et \sourcepath{/api/runs} \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -713,113 +713,113 @@ nécessaire : une micro-moyenne serait dominée par les packs historiques de
 misconfiguration et par S12, au détriment des scénarios ciblés PKI, IAM, OTA,
 OT et chemins profonds.
 
-\section{Résultats accessibles sur \texttt{nato-master}}
+\section{Résultats courants sur \texttt{nato-master}}
 
-\subsection{Périmètre et compatibilité}
+\subsection{Inventaire exhaustif récupéré}
 
-Le snapshot du 16 juillet 2026 contient 14 runs : onze sur S1, un sur S2, un
-sur S4 et un sur S12. Il couvre DeepSeek V4 Flash, Qwen~2.5 0.5B, LANCE-MoE et
-LANCE-QLoRA. Il ne couvre donc que quatre scénarios sur 29 et ne permet aucune
-conclusion globale sur les nouvelles familles S14--S29.
+L'inventaire a été relu directement depuis les endpoints
+\sourcepath{/api/runs/benchmark} et \sourcepath{/api/runs} le 7 août 2026.
+L'index de benchmark contient 142 runs et l'inventaire brut 145 entrées. Les
+résultats détaillés ci-dessous se concentrent sur LANCE-MoE, qui représente 95
+runs dans l'index. Les autres essais historiques ne sont pas intégrés au
+tableau de performance.
 
-Tous les \texttt{run\_meta.json} sont antérieurs aux champs
-\metric{metric\_contract\_version=strict-v3.3} et
-\metric{evidence\_contract\_version=evidence-v2}. Le recalcul a été effectué
-avec l'association \metric{strict-v3} actuelle, mais les métriques dépendantes
-de la preuve échouent fermées. En particulier :
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Scénario & Terminés & Partiels & Incomplets & Total \\
+\midrule
+S1 & 44 & 5 & 19 & 68 \\
+S2 & 4 & 0 & 0 & 4 \\
+S3 & 5 & 1 & 0 & 6 \\
+S4 & 6 & 5 & 4 & 15 \\
+S5 & 1 & 0 & 1 & 2 \\
+\midrule
+Total & 60 & 11 & 24 & 95 \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\begin{itemize}
-  \item le Q-F1, le F1 vérifié, les MHR vérifiés et la qualité de chemin sont
-        \NA{} ;
-  \item le F1 de détection, le F1 crédité, le F1 ajusté sévérité,
-        l'hallucination et le MHR binaire restent calculables ;
-  \item les valeurs ci-dessous sont diagnostiques et ne constituent pas un
-        classement officiel de modèles.
-\end{itemize}
+Le cas S1 est donc représenté par 68 exécutions LANCE-MoE enregistrées sur la
+VM, dont 44 terminées. Parmi les 95 runs, 67 utilisent explicitement le profil
+\metric{compact}, 27 appartiennent aux campagnes antérieures sans profil
+déclaré et un essai incomplet utilise le profil \metric{full}.
 
-\subsection{Réévaluation partielle avec le matching actuel}
+\subsection{Résultats des runs LANCE-MoE \texttt{compact} terminés}
 
-Les répétitions d'un même couple modèle--scénario sont moyennées sans sélection
-du meilleur run. L'écart affiché est l'écart-type population des runs
-accessibles.
+Afin de ne pas mélanger les anciens modes d'exécution, les agrégats portent
+uniquement sur les runs satisfaisant simultanément : modèle
+\metric{lance-moe}, statut \metric{done} et profil \metric{compact}. Cette
+cohorte comprend 48 runs terminés entre le 29 juillet et le 7 août 2026. Quatre
+runs S1 ne possèdent pas de score exploitable dans l'index ; les moyennes sont
+donc calculées sur 44 runs scorés.
+
+Les résultats couvrent 34 commits différents. Ils décrivent l'historique de la
+campagne d'amélioration et sa dispersion, et non les performances d'une unique
+version figée du modèle. Le nombre $n$ indique successivement les runs terminés
+et les runs possédant la métrique.
 
 \small
 \begin{center}
-\begin{tabularx}{\textwidth}{@{}cXc*{4}{>{\centering\arraybackslash}p{2.15cm}}@{}}
+\begin{tabularx}{\textwidth}{@{}c>{\centering\arraybackslash}p{1.5cm}*{4}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Sc. & Modèle & $n$ & F1 détection & F1 crédité & F1 sévérité & Hallucination \\
+Sc. & $n$ terminé/scoré & Q-F1 & F1 détection & F1 sévérité & Hallucination \\
 \midrule
-S1 & DeepSeek V4 Flash & 2 & $0.774\pm0.000$ & $0.688\pm0.002$ &
-$0.688\pm0.002$ & $0.368\pm0.000$ \\
-S1 & LANCE-MoE & 3 & $0.690\pm0.134$ & $0.618\pm0.113$ &
-$0.618\pm0.113$ & $0.290\pm0.080$ \\
-S1 & LANCE-QLoRA & 2 & $0.138\pm0.005$ & $0.127\pm0.005$ &
-$0.127\pm0.005$ & $0.584\pm0.084$ \\
-S1 & Qwen 2.5 0.5B & 4 & $0.803\pm0.020$ & $0.716\pm0.019$ &
-$0.716\pm0.019$ & $0.272\pm0.008$ \\
-S2 & DeepSeek V4 Flash & 1 & 0.611 & 0.545 & 0.533 & 0.522 \\
-S4 & Qwen 2.5 0.5B & 1 & 0.476 & 0.425 & 0.425 & 0.583 \\
-S12 & DeepSeek V4 Flash & 1 & 0.383 & 0.349 & 0.338 & 0.744 \\
+S1 & 32/28 & $0.654\pm0.169$ & $0.826\pm0.102$ & $0.826\pm0.102$ & $0.216\pm0.122$ \\
+S2 & 4/4 & $0.473\pm0.077$ & $0.542\pm0.123$ & $0.530\pm0.116$ & $0.526\pm0.100$ \\
+S3 & 5/5 & $0.475\pm0.030$ & $0.493\pm0.026$ & $0.493\pm0.026$ & $0.537\pm0.103$ \\
+S4 & 6/6 & $0.466\pm0.036$ & $0.565\pm0.047$ & $0.560\pm0.048$ & $0.378\pm0.160$ \\
+S5 & 1/1 & 0.500 & 0.500 & 0.500 & 0.600 \\
 \bottomrule
 \end{tabularx}
 \end{center}
 \normalsize
 
-Deux lectures sont possibles sans surinterpréter ces données. Premièrement,
-l'écart entre F1 de détection et F1 crédité est systématique : les anciennes
-sorties contiennent des associations de type correct mais structurellement
-incomplètes selon les nouveaux contrats. Deuxièmement, le taux d'hallucination
-augmente fortement sur les scénarios plus difficiles S2, S4 et S12. Ces
-observations doivent guider la génération de données d'entraînement : structure
-service/port/endpoint explicite, abstention lorsque la preuve manque, et
-priorisation des observations vérifiables.
+La forte dispersion de S1 est cohérente avec une campagne qui traverse de
+nombreuses révisions successives. Les valeurs ne doivent donc pas être lues
+comme un intervalle de confiance sur un modèle immuable. S2, S3 et S5 restent
+également peu répétés ; leur moyenne est beaucoup moins robuste que celle de
+S1.
 
-\subsection{MHR disponible}
+\subsection{MHR et exécution de l'intrusion}
 
-S1 et S2 n'ont pas de vulnérabilité annotée à profondeur au moins 1 ; leur MHR
-est donc \NA{}. Deux runs exposent une profondeur exploitable :
-
+\small
 \begin{center}
-\begin{tabular}{@{}clcc@{}}
+\begin{tabularx}{\textwidth}{@{}c>{\centering\arraybackslash}p{1.1cm}*{4}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Scénario & Modèle & $\mathrm{MHR}_1$ & $\mathrm{MHR}_2$ \\
+Sc. & $n$ scoré & $\mathrm{MHR}_1$ & $\mathrm{MHR}_2$ & Couverture cibles P5 & Couverture sauts P5 \\
 \midrule
-S4 & Qwen 2.5 0.5B & 0.250 & 0.250 \\
-S12 & DeepSeek V4 Flash & 0.862 & 0.923 \\
+S1 & 28 & \NA{} & \NA{} & $0.321\pm0.187$ & $0.000\pm0.000$ \\
+S2 & 4 & \NA{} & \NA{} & $0.167\pm0.000$ & $0.000\pm0.000$ \\
+S3 & 5 & \NA{} & \NA{} & $0.175\pm0.061$ & $0.057\pm0.070$ \\
+S4 & 6 & $0.500\pm0.102$ & $0.708\pm0.093$ & $0.146\pm0.047$ & $0.000\pm0.000$ \\
+S5 & 1 & 0.333 & \NA{} & 0.125 & 0.000 \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
+\normalsize
 
-Le fait que $\mathrm{MHR}_2$ puisse être supérieur à $\mathrm{MHR}_1$ n'est
-pas anormal : ce sont des rappels conditionnels sur deux sous-ensembles
-différents. Les failles à profondeur exactement 1 peuvent être plus difficiles
-ou plus nombreuses que celles à profondeur au moins 2.
+Le MHR est indisponible pour S1--S3 parce que leurs vérités terrain ne
+contiennent pas de faille annotée à profondeur au moins 1. S4 est le seul
+scénario de cette cohorte qui fournisse à la fois plusieurs répétitions et des
+profondeurs 1 et 2 ; il atteint respectivement 0.500 et 0.708 en moyenne.
 
-\subsection{Intrusion Phase 5 disponible}
-
-Treize runs sur quatorze possèdent un fichier \texttt{05\_intrusion.json}.
-Avec les règles actuelles, aucun de ces artefacts historiques ne fournit un
-accès positif Phase~5 qualifiant sur une cible de vérité terrain : la couverture
-de cibles et la couverture des sauts valent zéro lorsque leur dénominateur est
-défini, tandis que le taux de réussite des pivots est généralement \NA{} faute
-de tentative latérale reconnue.
-
-Ce résultat ne signifie pas nécessairement que les rapports historiques ne
-décrivent aucune intrusion. Il signifie plus précisément qu'ils ne satisfont
-pas le contrat actuel de preuve : phase~5 explicite dans le journal, outil
-d'accès reconnu, cible cohérente et résultat positif structuré. Cette différence
-illustre la raison d'être des nouvelles métriques : une narration ou un
-deliverable présent ne doit pas être confondu avec une compromission prouvée.
-
+Les métriques Phase~5 montrent une couverture partielle des cibles, mais très
+peu de transitions vérifiées. Le taux de réussite des pivots n'est défini que
+sur une partie des runs : dix S1 atteignent en moyenne $0.300\pm0.332$, tandis
+que les sous-ensembles évaluables de S2 à S5 restent à zéro. La fidélité des
+chaînes est elle aussi souvent indisponible faute de chaîne observable. Ces
+résultats indiquent que l'exécution et la traçabilité de l'intrusion restent un
+axe d'amélioration distinct de la détection des failles.
 
 \section{Recommandations d'évolution du projet}
 
 \begin{enumerate}
-  \item \textbf{Produire des runs compatibles.} Ajouter systématiquement les
-        versions \metric{strict-v3.3} et \metric{evidence-v2} aux métadonnées,
-        puis rejouer au moins S1, S4, S12, S14, S20, S21, S27 et S29. Cet
-        échantillon couvre plat, segmenté, grande échelle, contrôles négatifs,
-        deux pivots, faible prévalence, trois pivots et grand réseau clairsemé.
+  \item \textbf{Compléter la campagne compacte.} Les runs LANCE-MoE compact
+        terminés couvrent actuellement S1 à S5, avec un fort déséquilibre en
+        faveur de S1. Il faut maintenant répéter les scénarios de profondeur,
+        de faible prévalence et de contrôles négatifs pour rendre l'agrégation
+        représentative du catalogue.
   \item \textbf{Exposer le rappel par sévérité.} Ajouter les variantes binaire,
         créditée et de qualité à \metric{EvaluationResult} et à l'agrégateur.
   \item \textbf{Compléter les profondeurs historiques.} Vérifier S2, S3 et les
@@ -851,11 +851,12 @@ mesures distinguent quatre capacités qui ne doivent pas être confondues : voir
 une faille, l'associer correctement, la prouver et atteindre réellement sa
 cible à travers le réseau.
 
-Les résultats actuellement accessibles sont utiles comme diagnostic de
-migration, pas comme bilan strict-v3 : aucun des 14 runs importés n'est
-compatible avec les contrats de preuve actuels. La prochaine étape expérimentale
-prioritaire est donc de produire une campagne multi-scénarios estampillée
-\metric{strict-v3.3/evidence-v2}.
+Les résultats actuellement accessibles décrivent une campagne de développement
+active : 95 runs LANCE-MoE sont présents, dont 60 terminés. Le sous-ensemble
+homogène \metric{compact} comprend 48 runs terminés et 44 scores exploitables,
+principalement concentrés sur S1. Ces nombres doivent être conservés avec les
+résultats afin de ne pas confondre volume d'expérimentation, couverture des
+scénarios et performance d'une version donnée.
 
 \appendix
 \section{Sources internes parcourues}
@@ -875,7 +876,8 @@ prioritaire est donc de produire une campagne multi-scénarios estampillée
   \item \sourcepath{benchmarks/ground_truth/matching_contracts.yaml}
   \item \sourcepath{tests/test_evaluator_strict_v3.py}
   \item \sourcepath{tests/test_benchmark_aggregate.py}
-  \item \sourcepath{output/imported/nato-master-2026-07-16/remote_snapshot_manifest.json}
+  \item API \texttt{nato-master} : \sourcepath{/api/runs/benchmark} et
+        \sourcepath{/api/runs}, inventaire récupéré le 7 août 2026
 \end{itemize}
 
 \end{document}
