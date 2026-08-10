@@ -893,15 +893,25 @@
       failed_when: false
       changed_when: true
 
-    - name: "[OpenWrt] Durcir root hors scénarios avec vulnérabilité routeur"
+    - name: "[OpenWrt] Vérifier SSH root et la présence de passwd avant durcissement"
       ansible.builtin.shell: >-
         ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
         root@{{ benchmark_gateway }}
-        'echo "root:{{ benchmark_openwrt_hardened_root_password | default("NATO-Benchmark-Router-2026!") }}" | chpasswd'
+        "id -u && command -v passwd"
+      register: openwrt_passwd_check
+      when: (benchmark_scenarios[scenario_id].router_vulns | default([]) | length) == 0
+      changed_when: false
+
+    - name: "[OpenWrt] Durcir root hors scénarios avec vulnérabilité routeur"
+      ansible.builtin.shell: >-
+        printf '%s\n%s\n'
+        '{{ benchmark_openwrt_hardened_root_password | default("NATO-Benchmark-Router-2026!") }}'
+        '{{ benchmark_openwrt_hardened_root_password | default("NATO-Benchmark-Router-2026!") }}'
+        | ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10
+        root@{{ benchmark_gateway }} "passwd root"
       when: (benchmark_scenarios[scenario_id].router_vulns | default([]) | length) == 0
       no_log: true
       changed_when: true
-
 
     # ════════════════════════════════════════════════════
     # NOUVELLES VULNÉRABILITÉS — diversification benchmark

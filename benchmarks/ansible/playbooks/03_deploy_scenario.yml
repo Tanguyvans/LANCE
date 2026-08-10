@@ -29,6 +29,43 @@
         msg: "scenario_id={{ scenario_id }} non défini. Valeurs valides : {{ benchmark_scenarios.keys() | sort | join(', ') }}"
       when: scenario_id not in benchmark_scenarios
 
+    # S13 utilise un trunk 802.1Q sur vmbr1. Le bridge peut exister depuis
+    # une initialisation précédente sans que la configuration VLAN ait été
+    # rechargée dans le noyau : on rend ce prérequis auto-réparant ici.
+    - name: "[S13] Déclarer vmbr1 VLAN-aware dans la configuration Proxmox"
+      ansible.builtin.blockinfile:
+        path: /etc/network/interfaces
+        marker: "# {mark} ANSIBLE MANAGED - vmbr1 vlan-aware"
+        insertafter: "# Bridge interne pour les VMs benchmark"
+        block: |
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+      register: s13_vlan_config
+      when: source_scenario_id == '13'
+
+    - name: "[S13] Lire l'état runtime VLAN de vmbr1"
+      ansible.builtin.command: cat /sys/class/net/{{ benchmark_bridge }}/bridge/vlan_filtering
+      register: s13_vlan_runtime_before
+      changed_when: false
+      failed_when: false
+      when: source_scenario_id == '13'
+
+    - name: "[S13] Recharger vmbr1 si sa configuration VLAN n'est pas active"
+      ansible.builtin.command: ifreload -a
+      changed_when: true
+      when:
+        - source_scenario_id == '13'
+        - s13_vlan_config.changed or (s13_vlan_runtime_before.stdout | default('') | trim) != '1'
+
+    - name: "[S13] Vérifier que vmbr1 est VLAN-aware au niveau runtime"
+      ansible.builtin.command: cat /sys/class/net/{{ benchmark_bridge }}/bridge/vlan_filtering
+      register: s13_vlan_runtime
+      changed_when: false
+      retries: 3
+      delay: 2
+      until: s13_vlan_runtime.rc == 0 and (s13_vlan_runtime.stdout | trim) == '1'
+      when: source_scenario_id == '13'
+
     - name: Vérifier que le VMID routeur existant appartient au scénario
       ansible.builtin.shell: |
         set -euo pipefail

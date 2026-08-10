@@ -104,11 +104,27 @@
         block: |
               bridge-vlan-aware yes
               bridge-vids 2-4094
+      register: bridge_vlan_config
 
-    - name: Activer le bridge vmbr1 immédiatement (sans reboot)
+    - name: Verifier etat runtime VLAN de vmbr1 avant rechargement
+      ansible.builtin.command: cat /sys/class/net/{{ benchmark_bridge }}/bridge/vlan_filtering
+      register: bridge_vlan_runtime_before
+      changed_when: false
+      failed_when: false
+
+    - name: Activer ou recharger le bridge vmbr1 immediatement (sans reboot)
       ansible.builtin.command: ifreload -a
-      when: bridge_check.rc != 0
+      when:
+        - bridge_check.rc != 0 or bridge_vlan_config.changed or (bridge_vlan_runtime_before.stdout | default('') | trim) != '1'
       changed_when: true
+
+    - name: Verifier que vmbr1 est VLAN-aware au niveau runtime
+      ansible.builtin.command: cat /sys/class/net/{{ benchmark_bridge }}/bridge/vlan_filtering
+      register: bridge_vlan_runtime
+      changed_when: false
+      retries: 3
+      delay: 2
+      until: bridge_vlan_runtime.rc == 0 and (bridge_vlan_runtime.stdout | trim) == '1'
 
     - name: Activer le forwarding IP (pour le routage entre VMs)
       ansible.posix.sysctl:
