@@ -372,6 +372,61 @@
     <button id="sl-generate">Générer</button>
   </div>
 
+  <section id="sl-builder-panel" aria-labelledby="sl-builder-title">
+    <div class="sl-panel-heading-row">
+      <div>
+        <div class="sl-panel-heading" id="sl-builder-title">Construire un scénario</div>
+        <div id="sl-builder-status">Choisissez une topologie, ajoutez les nœuds puis les failles compatibles.</div>
+      </div>
+    </div>
+    <div id="sl-builder-controls">
+      <label class="sl-field">
+        <span>Topologie</span>
+        <select id="sl-builder-topology"></select>
+      </label>
+      <label class="sl-field">
+        <span>Nom du scénario</span>
+        <input id="sl-builder-name" type="text" maxlength="120" placeholder="Ex. chaîne web → SSH">
+      </label>
+      <label class="sl-field">
+        <span>Exécution</span>
+        <select id="sl-builder-execution">
+          <option value="preview">Prévisualisation</option>
+          <option value="auto">Déployable si compatible</option>
+        </select>
+      </label>
+      <label class="sl-field sl-seed-field">
+        <span>Seed</span>
+        <input id="sl-builder-seed" type="number" min="0" max="2147483647">
+      </label>
+      <button id="sl-builder-compose">Composer</button>
+      <button id="sl-builder-random" class="secondary-btn">Générer aléatoirement</button>
+    </div>
+    <div id="sl-builder-random-controls">
+      <span>Aléatoire :</span>
+      <label>Nœuds <input id="sl-random-min-nodes" type="number" min="1" max="32" value="2"></label>
+      <span>à</span>
+      <input id="sl-random-max-nodes" type="number" min="1" max="32" value="5" aria-label="Nombre maximum de nœuds">
+      <label>Failles <input id="sl-random-min-vulns" type="number" min="1" max="128" value="2"></label>
+      <span>à</span>
+      <input id="sl-random-max-vulns" type="number" min="1" max="128" value="6" aria-label="Nombre maximum de failles">
+    </div>
+    <div id="sl-builder-grid">
+      <section class="sl-builder-column" aria-labelledby="sl-builder-nodes-title">
+        <div class="sl-panel-heading" id="sl-builder-nodes-title">Nœuds disponibles</div>
+        <div id="sl-builder-nodes"><div class="sl-empty">Chargement…</div></div>
+      </section>
+      <section class="sl-builder-column" aria-labelledby="sl-builder-candidates-title">
+        <div class="sl-panel-heading" id="sl-builder-candidates-title">Failles compatibles</div>
+        <div id="sl-builder-candidates"><div class="sl-empty">Ajoutez un nœud pour afficher ses failles.</div></div>
+      </section>
+      <section class="sl-builder-column" aria-labelledby="sl-builder-selection-title">
+        <div class="sl-panel-heading" id="sl-builder-selection-title">Sélection courante</div>
+        <div id="sl-builder-selection"><div class="sl-empty">Aucun nœud sélectionné.</div></div>
+      </section>
+    </div>
+  </section>
+
   <div id="sl-body">
     <section id="sl-variants-panel" aria-labelledby="sl-variants-title">
       <div class="sl-panel-heading" id="sl-variants-title">Variantes générées</div>

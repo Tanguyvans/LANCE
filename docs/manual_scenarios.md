@@ -22,6 +22,27 @@ La même opération est disponible via POST /api/scenario-generator/compose avec
 
 La composition ne produit un bundle exécutable que si l’adaptateur ansible-proxmox sait associer chaque rôle et chaque Ground Truth à un provider réel. Le bundle peut ensuite être lancé directement avec son ID gen-custom-... dans le pipeline. L’export dashboard reste réservé aux variantes historiques ; les scénarios manuels utilisent leur bundle local et leur lease VMID.
 
+## Construction depuis le dashboard
+
+La vue **Scenario Lab** propose désormais un builder interactif :
+
+1. choisir une topologie ;
+2. ajouter les nœuds un par un ;
+3. afficher uniquement les vulnérabilités compatibles avec chaque nœud (rôle, profil, service, port et protocole) ;
+4. ajouter ou retirer les vulnérabilités individuellement ;
+5. composer un bundle validé en mode prévisualisation ou déployable si le profil d’exécution le permet.
+
+Le bouton **Générer aléatoirement** utilise une seed et sélectionne un sous-ensemble cohérent de nœuds reliés ainsi que des findings compatibles. Le résultat passe par le même compositeur et les mêmes validations que la composition manuelle.
+
+Les endpoints correspondants sont :
+
+- GET /api/scenario-generator/builder/topologies
+- GET /api/scenario-generator/builder/catalog/<topology_id>
+- POST /api/scenario-generator/builder/compose
+- POST /api/scenario-generator/builder/random
+
+Les sources officielles sous benchmarks/ restent inchangées. Les bundles manuels sont stockés sous output/generated_scenarios/ et les variantes exécutables apparaissent dans le sélecteur de scénarios du dashboard.
+
 ## Structure d’une spécification
 
     schema_version: 3

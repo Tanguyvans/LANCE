@@ -9,11 +9,14 @@ from pydantic import BaseModel, Field
 from src.benchmark.scenario_exports import ScenarioExportError
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 from src.benchmark.scenario_alterations import alteration_catalog
+from src.benchmark.scenario_builder import ScenarioBuilder, ScenarioBuilderError
 from src.benchmark.scenario_generator import ScenarioGenerator, ScenarioGeneratorError
 
 
 router = APIRouter()
 generator = ScenarioGenerator()
+builder = ScenarioBuilder()
+
 class GenerateRequest(BaseModel):
     blueprint_id: str
     seed: int = Field(ge=0, le=2**31 - 1)
@@ -32,10 +35,34 @@ class ComposeRequest(BaseModel):
     scenario: dict[str, Any]
 
 
+class BuilderFindingRequest(BaseModel):
+    node_id: str = Field(min_length=1, max_length=64)
+    candidate_id: str = Field(min_length=1, max_length=160)
+
+
+class BuilderComposeRequest(BaseModel):
+    topology_id: str = Field(min_length=1, max_length=64)
+    selected_nodes: list[str] = Field(default_factory=list, max_length=64)
+    findings: list[BuilderFindingRequest] = Field(default_factory=list, max_length=128)
+    name: str = Field(default="", max_length=120)
+    description: str = Field(default="", max_length=500)
+    seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    execution_profile: str = Field(default="preview", max_length=32)
+
+
+class BuilderRandomRequest(BaseModel):
+    topology_id: str | None = Field(default=None, max_length=64)
+    seed: int = Field(default=0, ge=0, le=2**31 - 1)
+    min_nodes: int = Field(default=2, ge=1, le=32)
+    max_nodes: int = Field(default=5, ge=1, le=32)
+    min_vulnerabilities: int = Field(default=2, ge=1, le=128)
+    max_vulnerabilities: int = Field(default=6, ge=1, le=128)
+    execution_profile: str = Field(default="preview", max_length=32)
+
 def _call(action):
     try:
         return action()
-    except (ScenarioGeneratorError, ScenarioExportError) as exc:
+    except (ScenarioGeneratorError, ScenarioExportError, ScenarioBuilderError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -57,6 +84,54 @@ def list_alterations():
 @router.post("/compose", status_code=201)
 def compose_manual_scenario(request: ComposeRequest):
     return _call(lambda: generator.compose_custom(request.scenario))
+
+
+@router.get("/builder/topologies")
+def list_builder_topologies():
+    return {"topologies": builder.list_topologies()}
+
+
+@router.get("/builder/catalog/{topology_id}")
+def get_builder_catalog(topology_id: str):
+    return _call(lambda: builder.catalog(topology_id))
+
+
+@router.post("/builder/compose", status_code=201)
+def compose_builder_scenario(request: BuilderComposeRequest):
+    def action():
+        spec, selection = builder.build_spec(
+            topology_id=request.topology_id,
+            selected_nodes=request.selected_nodes,
+            findings=[item.dict() for item in request.findings],
+            name=request.name or None,
+            description=request.description or None,
+            seed=request.seed,
+            execution_profile=request.execution_profile,
+        )
+        result = generator.compose_custom(spec)
+        result["builder"] = selection
+        return result
+
+    return _call(action)
+
+
+@router.post("/builder/random", status_code=201)
+def compose_random_builder_scenario(request: BuilderRandomRequest):
+    def action():
+        spec, selection = builder.random_spec(
+            topology_id=request.topology_id,
+            seed=request.seed,
+            min_nodes=request.min_nodes,
+            max_nodes=request.max_nodes,
+            min_vulnerabilities=request.min_vulnerabilities,
+            max_vulnerabilities=request.max_vulnerabilities,
+            execution_profile=request.execution_profile,
+        )
+        result = generator.compose_custom(spec)
+        result["builder"] = selection
+        return result
+
+    return _call(action)
 
 
 @router.post("", status_code=201)

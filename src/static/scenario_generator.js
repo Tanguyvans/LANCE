@@ -6,6 +6,13 @@ const _scenarioLab = {
   selected: null,
   loading: null,
   graph: null,
+  builder: {
+    topologies: [],
+    catalog: null,
+    selectedNodes: new Set(),
+    findings: new Map(),
+    loading: null,
+  },
 };
 
 function _scenarioLabSeed() {
@@ -211,6 +218,252 @@ async function selectScenarioLabVariant(variantId) {
   }
 }
 
+function _setScenarioBuilderStatus(message, type = 'info') {
+  const status = document.getElementById('sl-builder-status');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.type = type;
+}
+
+function _builderFindingKey(nodeId, candidateId) {
+  return String(nodeId) + '::' + String(candidateId);
+}
+
+function _builderNodeById(nodeId) {
+  return (_scenarioLab.builder.catalog?.nodes || []).find(
+    node => node.id === nodeId
+  ) || null;
+}
+
+function _renderScenarioBuilderNodes() {
+  const container = document.getElementById('sl-builder-nodes');
+  const nodes = (_scenarioLab.builder.catalog?.nodes || []).filter(node => !node.router);
+  if (!nodes.length) {
+    container.innerHTML = '<div class="sl-empty">Aucun nœud disponible.</div>';
+    return;
+  }
+  const router = (_scenarioLab.builder.catalog?.nodes || []).find(node => node.router);
+  const routerLabel = router
+    ? '<div class="sl-builder-node"><input type="checkbox" checked disabled><div><strong>Routeur inclus</strong><small>' +
+      escapeHtml(router.name) + ' · ' + escapeHtml(router.ip || '') + '</small></div></div>'
+    : '';
+  container.innerHTML = routerLabel + nodes.map(node => {
+    const checked = _scenarioLab.builder.selectedNodes.has(node.id) ? ' checked' : '';
+    const services = (node.services || []).join(', ') || 'service non référencé';
+    return '<label class="sl-builder-node"><input type="checkbox" data-builder-node="' +
+      escapeHtml(node.id) + '"' + checked + '><div><strong>' +
+      escapeHtml(node.name) + '</strong><small>' + escapeHtml(node.role) + ' · ' +
+      escapeHtml(services) + ' · ' + node.candidate_count + ' failles compatibles</small></div></label>';
+  }).join('');
+  container.querySelectorAll('[data-builder-node]').forEach(input => {
+    input.addEventListener('change', () => {
+      const nodeId = input.dataset.builderNode;
+      if (input.checked) {
+        _scenarioLab.builder.selectedNodes.add(nodeId);
+      } else {
+        _scenarioLab.builder.selectedNodes.delete(nodeId);
+        for (const key of _scenarioLab.builder.findings.keys()) {
+          if (key.startsWith(nodeId + '::')) _scenarioLab.builder.findings.delete(key);
+        }
+      }
+      _renderScenarioBuilderNodes();
+      _renderScenarioBuilderCandidates();
+      _renderScenarioBuilderSelection();
+    });
+  });
+}
+
+function _renderScenarioBuilderCandidates() {
+  const container = document.getElementById('sl-builder-candidates');
+  const selected = (_scenarioLab.builder.catalog?.nodes || []).filter(
+    node => _scenarioLab.builder.selectedNodes.has(node.id)
+  );
+  if (!selected.length) {
+    container.innerHTML = '<div class="sl-empty">Ajoutez un nœud pour afficher ses failles.</div>';
+    return;
+  }
+  container.innerHTML = selected.map(node => {
+    const heading = '<div class="sl-builder-group"><strong>' + escapeHtml(node.name) +
+      '</strong><small>' + escapeHtml(node.role) + '</small></div>';
+    const candidates = (node.candidates || []).map(candidate => {
+      const key = _builderFindingKey(node.id, candidate.candidate_id);
+      const chosen = _scenarioLab.builder.findings.has(key);
+      return '<div class="sl-builder-candidate' + (chosen ? ' is-selected' : '') + '">' +
+        '<div><strong>' + escapeHtml(candidate.title) + '</strong><small>' +
+        escapeHtml(String(candidate.severity).toUpperCase()) + ' · ' +
+        escapeHtml(candidate.category) + (candidate.scenario_scope?.length
+          ? ' · scope historique : ' + escapeHtml(candidate.scenario_scope.join(', '))
+          : '') + '</small></div><button type="button" data-builder-finding="' +
+        escapeHtml(key) + '">' + (chosen ? 'Retirer' : 'Ajouter') + '</button></div>';
+    }).join('');
+    return heading + (candidates || '<div class="sl-empty">Aucune faille compatible avec ce nœud.</div>');
+  }).join('');
+  container.querySelectorAll('[data-builder-finding]').forEach(button => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.builderFinding;
+      const separator = key.indexOf('::');
+      const nodeId = key.slice(0, separator);
+      const candidateId = key.slice(separator + 2);
+      const node = _builderNodeById(nodeId);
+      const candidate = (node?.candidates || []).find(
+        item => item.candidate_id === candidateId
+      );
+      if (!node || !candidate) return;
+      if (_scenarioLab.builder.findings.has(key)) {
+        _scenarioLab.builder.findings.delete(key);
+      } else {
+        _scenarioLab.builder.findings.set(key, {
+          nodeId, candidateId, node, candidate,
+        });
+      }
+      _renderScenarioBuilderCandidates();
+      _renderScenarioBuilderSelection();
+    });
+  });
+}
+
+function _renderScenarioBuilderSelection() {
+  const container = document.getElementById('sl-builder-selection');
+  const selected = Array.from(_scenarioLab.builder.selectedNodes)
+    .map(nodeId => _builderNodeById(nodeId))
+    .filter(Boolean);
+  const findings = Array.from(_scenarioLab.builder.findings.values());
+  if (!selected.length && !findings.length) {
+    container.innerHTML = '<div class="sl-empty">Aucun nœud sélectionné.</div>';
+    return;
+  }
+  const nodes = selected.map(node =>
+    '<div class="sl-builder-selected"><div><strong>' + escapeHtml(node.name) +
+    '</strong><small>' + escapeHtml(node.role) + '</small></div><button type="button" data-builder-remove-node="' +
+    escapeHtml(node.id) + '">Retirer</button></div>'
+  ).join('');
+  const selectedFindings = findings.map(item =>
+    '<div class="sl-builder-selected"><div><span class="severity">' +
+    escapeHtml(String(item.candidate.severity).toUpperCase()) + '</span> ' +
+    escapeHtml(item.candidate.title) + '<small>' + escapeHtml(item.node.name) +
+    '</small></div><button type="button" data-builder-remove-finding="' +
+    escapeHtml(_builderFindingKey(item.nodeId, item.candidateId)) + '">Retirer</button></div>'
+  ).join('');
+  container.innerHTML = (nodes || '') + (selectedFindings || '');
+  container.querySelectorAll('[data-builder-remove-node]').forEach(button => {
+    button.addEventListener('click', () => {
+      _scenarioLab.builder.selectedNodes.delete(button.dataset.builderRemoveNode);
+      for (const key of _scenarioLab.builder.findings.keys()) {
+        if (key.startsWith(button.dataset.builderRemoveNode + '::')) {
+          _scenarioLab.builder.findings.delete(key);
+        }
+      }
+      _renderScenarioBuilderNodes();
+      _renderScenarioBuilderCandidates();
+      _renderScenarioBuilderSelection();
+    });
+  });
+  container.querySelectorAll('[data-builder-remove-finding]').forEach(button => {
+    button.addEventListener('click', () => {
+      _scenarioLab.builder.findings.delete(button.dataset.builderRemoveFinding);
+      _renderScenarioBuilderCandidates();
+      _renderScenarioBuilderSelection();
+    });
+  });
+}
+
+async function _loadScenarioBuilderCatalog(topologyId) {
+  const data = await _scenarioLabRequest(
+    '/api/scenario-generator/builder/catalog/' + encodeURIComponent(topologyId)
+  );
+  _scenarioLab.builder.catalog = data;
+  _scenarioLab.builder.selectedNodes = new Set();
+  _scenarioLab.builder.findings = new Map();
+  _renderScenarioBuilderNodes();
+  _renderScenarioBuilderCandidates();
+  _renderScenarioBuilderSelection();
+  _setScenarioBuilderStatus(
+    data.topology.name + ' · sélectionnez les nœuds puis les failles compatibles'
+  );
+}
+
+async function _loadScenarioBuilder() {
+  const data = await _scenarioLabRequest('/api/scenario-generator/builder/topologies');
+  _scenarioLab.builder.topologies = data.topologies || [];
+  const select = document.getElementById('sl-builder-topology');
+  const previous = select.value;
+  select.innerHTML = _scenarioLab.builder.topologies.map(topology =>
+    '<option value="' + escapeHtml(topology.id) + '">' +
+    escapeHtml(topology.name) + ' · ' + topology.candidate_count + ' failles</option>'
+  ).join('');
+  const chosen = _scenarioLab.builder.topologies.some(item => item.id === previous)
+    ? previous
+    : _scenarioLab.builder.topologies[0]?.id;
+  if (!chosen) {
+    _setScenarioBuilderStatus('Aucune topologie disponible.', 'error');
+    return;
+  }
+  select.value = chosen;
+  await _loadScenarioBuilderCatalog(chosen);
+}
+
+async function _composeScenarioBuilder() {
+  const button = document.getElementById('sl-builder-compose');
+  const topologyId = document.getElementById('sl-builder-topology').value;
+  button.disabled = true;
+  _setScenarioBuilderStatus('Composition et validation…');
+  try {
+    const result = await _scenarioLabRequest('/api/scenario-generator/builder/compose', {
+      method: 'POST',
+      body: JSON.stringify({
+        topology_id: topologyId,
+        selected_nodes: Array.from(_scenarioLab.builder.selectedNodes),
+        findings: Array.from(_scenarioLab.builder.findings.values()).map(item => ({
+          node_id: item.nodeId,
+          candidate_id: item.candidateId,
+        })),
+        name: document.getElementById('sl-builder-name').value,
+        seed: Number(document.getElementById('sl-builder-seed').value) || 0,
+        execution_profile: document.getElementById('sl-builder-execution').value,
+      }),
+    });
+    await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
+    await selectScenarioLabVariant(result.id);
+    _setScenarioBuilderStatus(result.id + ' créé et validé.', 'success');
+    addLog({type: 'info', message: 'Scénario manuel créé : ' + result.id});
+  } catch (error) {
+    _setScenarioBuilderStatus('Composition impossible : ' + error.message, 'error');
+    addLog({type: 'error', message: 'Scenario Lab : ' + error.message});
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function _randomScenarioBuilder() {
+  const button = document.getElementById('sl-builder-random');
+  button.disabled = true;
+  _setScenarioBuilderStatus('Génération aléatoire et validation…');
+  const value = id => Number(document.getElementById(id).value) || 1;
+  try {
+    const result = await _scenarioLabRequest('/api/scenario-generator/builder/random', {
+      method: 'POST',
+      body: JSON.stringify({
+        topology_id: document.getElementById('sl-builder-topology').value || null,
+        seed: Number(document.getElementById('sl-builder-seed').value) || 0,
+        min_nodes: value('sl-random-min-nodes'),
+        max_nodes: value('sl-random-max-nodes'),
+        min_vulnerabilities: value('sl-random-min-vulns'),
+        max_vulnerabilities: value('sl-random-max-vulns'),
+        execution_profile: document.getElementById('sl-builder-execution').value,
+      }),
+    });
+    await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
+    await selectScenarioLabVariant(result.id);
+    _setScenarioBuilderStatus(result.id + ' généré avec des combinaisons compatibles.', 'success');
+    addLog({type: 'info', message: 'Scénario aléatoire créé : ' + result.id});
+  } catch (error) {
+    _setScenarioBuilderStatus('Génération impossible : ' + error.message, 'error');
+    addLog({type: 'error', message: 'Scenario Lab : ' + error.message});
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function _loadScenarioLab() {
   const [blueprints, variants] = await Promise.all([
     _scenarioLabRequest('/api/scenario-generator/blueprints'),
@@ -234,6 +487,7 @@ async function _loadScenarioLab() {
   _refreshScenarioLabOperations();
   _renderScenarioLabVariants();
   _renderScenarioLabDetails(_scenarioLab.selected);
+  await _loadScenarioBuilder();
   _setScenarioLabStatus(
     `${_scenarioLab.blueprints.length} blueprints · ${_scenarioLab.variants.length} variantes · ${_scenarioLab.variants.filter(item => item.exported).length} exports dashboard`,
   );
@@ -395,6 +649,7 @@ async function _deleteScenarioLabVariant() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('sl-builder-seed').value = _scenarioLabSeed();
   document.getElementById('sl-seed').value = _scenarioLabSeed();
   document.getElementById('sl-mutation-seed').value = _scenarioLabSeed();
   document.getElementById('sl-blueprint').addEventListener(
@@ -420,6 +675,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sl-delete-variant').addEventListener(
     'click',
     _deleteScenarioLabVariant,
+  );
+  document.getElementById('sl-builder-topology').addEventListener('change', () => {
+    _loadScenarioBuilderCatalog(document.getElementById('sl-builder-topology').value)
+      .catch(error => _setScenarioBuilderStatus('Catalogue indisponible : ' + error.message, 'error'));
+  });
+  document.getElementById('sl-builder-compose').addEventListener(
+    'click',
+    _composeScenarioBuilder,
+  );
+  document.getElementById('sl-builder-random').addEventListener(
+    'click',
+    _randomScenarioBuilder,
   );
   document.getElementById('sl-fit').addEventListener('click', () => {
     if (_scenarioLab.graph) {

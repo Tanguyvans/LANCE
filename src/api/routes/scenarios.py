@@ -9,8 +9,10 @@ from fastapi import APIRouter
 
 from src.benchmark.catalog import EVAL_SEALED, load_catalog, load_eval_profile
 from src.benchmark.scenario_exports import default_export_store
+from src.benchmark.scenario_generator import ScenarioGenerator
 
 router = APIRouter()
+generated_scenarios = ScenarioGenerator()
 
 ROOT = Path(__file__).resolve().parents[3]
 BENCHMARKS = ROOT / "benchmarks"
@@ -123,6 +125,28 @@ def list_scenarios():
             "kind": "scenario-lab-export",
         }
 
+
+    # Manual builder variants are directly executable through their trusted
+    # generated bundle; they do not need a dashboard export copy.
+    for variant in generated_scenarios.list_variants():
+        if variant.get("operation") != "manual":
+            continue
+        scenarios_by_id[variant["id"]] = {
+            "id": variant["id"],
+            "name": variant["name"],
+            "difficulty": "custom",
+            "posture": "mixed",
+            "topology": variant["id"],
+            "packs": [],
+            "split": "lab-manual",
+            "sealed": False,
+            "kind": "scenario-lab-manual",
+            "exported": False,
+            "deletable": False,
+            "deployment_supported": bool(variant.get("deployable")),
+            "vulnerability_count": variant.get("vulnerability_count", 0),
+            "control_count": variant.get("control_count", 0),
+        }
 
     scenarios = sorted(scenarios_by_id.values(), key=_scenario_sort_key)
 

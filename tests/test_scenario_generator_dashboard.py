@@ -37,6 +37,16 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
 
     assert 'data-view="scenario-lab"' in html
+    for element_id in (
+        "sl-builder-topology",
+        "sl-builder-name",
+        "sl-builder-compose",
+        "sl-builder-random",
+        "sl-builder-nodes",
+        "sl-builder-candidates",
+        "sl-builder-selection",
+    ):
+        assert f'id="{element_id}"' in html
     assert 'id="scenario-lab-view"' in html
     assert 'id="sl-blueprint"' in html
     assert 'id="sl-operation"' in html
@@ -56,6 +66,9 @@ def test_classic_dashboard_controller_connects_generator_api_and_preview_graph()
         encoding="utf-8"
     )
     app = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "/builder/topologies" in javascript
+    assert "/builder/catalog/" in javascript
+    assert "/builder/random" in javascript
 
     assert "/api/scenario-generator/blueprints" in javascript
     assert "/mutations" in javascript
