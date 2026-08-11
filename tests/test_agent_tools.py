@@ -470,8 +470,8 @@ class TestProvider:
         }), patch.object(openai, "OpenAI") as openai_cls:
             provider = LLMProvider(provider="local-moe", model="lance-moe")
 
-        assert provider._retry_limit == 1
-        assert openai_cls.call_args.kwargs["timeout"] == 60.0
+        assert provider._retry_limit == 2
+        assert openai_cls.call_args.kwargs["timeout"] == 90.0
 
     def test_invalid_provider(self):
         with pytest.raises(ValueError, match="Unknown provider"):

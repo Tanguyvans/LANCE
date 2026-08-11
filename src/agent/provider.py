@@ -19,8 +19,8 @@ log = logging.getLogger(__name__)
 _RETRYABLE_CODES = {429, 500, 502, 503, 529}
 _MAX_RETRIES = 5
 _RETRY_BASE_DELAY = 5.0  # seconds
-_LOCAL_MOE_API_TIMEOUT = 60.0
-_LOCAL_MOE_MAX_RETRIES = 1
+_LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "90"))
+_LOCAL_MOE_MAX_RETRIES = int(os.environ.get("LANCE_LOCAL_MOE_MAX_RETRIES", "2"))
 
 # Exception type names that indicate a network-level connection failure (no HTTP code)
 _RETRYABLE_EXC_NAMES = {"APIConnectionError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout"}

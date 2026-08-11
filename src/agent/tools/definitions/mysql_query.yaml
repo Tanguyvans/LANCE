@@ -28,3 +28,10 @@ parameters:
     required: true
     flag: "-e"
     format: "flag"
+  - name: "skip_ssl"
+    type: "boolean"
+    description: "Disable TLS for a lab target whose certificate cannot be validated; use only for the bounded Phase 4 credential probe."
+    required: false
+    default: false
+    flag: "--skip-ssl"
+    format: "boolean_flag"

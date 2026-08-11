@@ -68,29 +68,29 @@ def test_compact_phase4_protocol_contract_rejects_open_port_only():
     compact_plan = _phase4_verification_plan(vuln, compact=True)
     full_plan = _phase4_verification_plan(vuln)
 
-    assert compact_plan["tool"] == "nmap_scan"
-    assert compact_plan["required_port"] == 102
-    assert compact_plan["required_scripts"] == "s7-info"
+    assert compact_plan["tool"] == "tcp_send"
+    assert compact_plan["port"] == 102
+    assert compact_plan["required_payload"]
     assert _phase4_requirement_matches(
-        compact_plan, "nmap_scan",
-        {"target": "192.0.2.20", "ports": "102", "scripts": "s7-info"},
+        compact_plan, "tcp_send", compact_plan["args_hint"]
     )
     assert not _phase4_requirement_matches(
-        compact_plan, "nmap_scan",
-        {"target": "192.0.2.20", "ports": "102", "scripts": "banner"},
+        compact_plan, "tcp_send",
+        {**compact_plan["args_hint"], "payload_hex": "00"},
     )
-    assert "required_scripts" not in full_plan
+    assert "required_payload" not in full_plan
 
     record = [{
-        "tool": "nmap_scan",
-        "args": {"target": "192.0.2.20", "ports": "102", "scripts": "s7-info"},
+        "tool": "tcp_send",
+        "args": compact_plan["args_hint"],
         "result": json.dumps({
-            "stdout": "102/tcp open iso-tsap",
+            "received_bytes": 4,
+            "received_hex": "03000016",
             "return_code": 0,
         }),
     }]
     assert _synthesize_exploit_result(vuln, record)["status"] == "EXPLOITED"
-    assert _synthesize_exploit_result(vuln, record, compact=True)["status"] == "FAILED"
+    assert _synthesize_exploit_result(vuln, record, compact=True)["status"] == "EXPLOITED"
 
 
 def test_phase4_verification_plan_selects_precise_probe_per_finding():
@@ -138,6 +138,9 @@ def test_phase4_compact_probes_repair_http_endpoint_and_mysql_auth_check():
     assert mysql["args_hint"]["user"] == "root"
     assert _phase4_requirement_matches(mysql, "mysql_query", mysql["args_hint"])
     assert not _phase4_requirement_matches(
+        mysql, "mysql_query", {**mysql["args_hint"], "skip_ssl": False}
+    )
+    assert not _phase4_requirement_matches(
         mysql, "mysql_query", {**mysql["args_hint"], "user": "admin"}
     )
 
@@ -153,8 +156,66 @@ def test_phase4_compact_probes_repair_http_endpoint_and_mysql_auth_check():
     assert result["status"] == "EXPLOITED"
 
 
+def test_phase4_compact_selects_bounded_snmp_coap_and_ftp_probes():
+    snmp = _phase4_verification_plan({
+        "type": "default_credentials", "service": "snmp",
+        "device_ip": "192.0.2.15", "port": 161,
+    }, compact=True)
+    assert snmp["tool"] == "udp_send"
+    assert snmp["args_hint"]["encoding"] == "hex"
+    assert _phase4_requirement_matches(snmp, "udp_send", snmp["args_hint"])
+    assert _synthesize_exploit_result(
+        {"type": "default_credentials", "service": "snmp", "port": 161},
+        [{
+            "tool": "udp_send", "args": snmp["args_hint"],
+            "result": json.dumps({"received_bytes": 32, "received_hex": "3020", "return_code": 0}),
+        }], compact=True,
+    )["status"] == "EXPLOITED"
+
+    coap = _phase4_verification_plan({
+        "type": "no_auth", "service": "coap",
+        "device_ip": "192.0.2.14", "port": 5683,
+    }, compact=True)
+    assert coap["tool"] == "udp_send"
+    assert coap["args_hint"]["timeout"] == 5
+    assert _phase4_requirement_matches(coap, "udp_send", coap["args_hint"])
+
+    ftp = _phase4_verification_plan({
+        "type": "data_exposure", "service": "ftp",
+        "device_ip": "192.0.2.22", "port": 21,
+    }, compact=True)
+    assert ftp["tool"] == "ftp_list"
+    assert _synthesize_exploit_result(
+        {"type": "data_exposure", "service": "ftp", "port": 21},
+        [{
+            "tool": "ftp_list", "args": ftp["args_hint"],
+            "result": json.dumps({"stdout": "drwxr-xr-x config\ndrwxr-xr-x backup", "return_code": 0}),
+        }], compact=True,
+    )["status"] == "EXPLOITED"
+
+
+def test_phase4_known_cve_without_matching_audit_evidence_is_inconclusive():
+    result = _synthesize_exploit_result(
+        {
+            "type": "known_cve", "service": "ssh", "port": 22,
+            "cve_ids": ["CVE-2021-36369"],
+        },
+        [{
+            "tool": "ssh_audit",
+            "args": {"host": "192.0.2.20", "port": 22},
+            "result": json.dumps({
+                "stdout": "[warn] vulnerable to Terrapin (CVE-2023-48795)",
+                "return_code": 3,
+            }),
+        }],
+        compact=True,
+    )
+    assert result["status"] == "ERROR"
+    assert "CVE-specific" in result["evidence"]
+
+
 def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failure():
-    update = _synthesize_exploit_result(
+    get_only = _synthesize_exploit_result(
         {"type": "insecure_update", "service": "http", "port": 80},
         [{
             "tool": "http_get",
@@ -162,6 +223,24 @@ def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failur
             "result": json.dumps({
                 "stdout": '{"status":"update accepted","version":"2.1.4"}',
                 "return_code": 0,
+            }),
+        }],
+        compact=True,
+    )
+    assert get_only["status"] == "FAILED"
+
+    update = _synthesize_exploit_result(
+        {"type": "insecure_update", "service": "http", "port": 80},
+        [{
+            "tool": "http_request",
+            "args": {
+                "url": "http://192.168.100.13/update",
+                "method": "POST",
+                "body": '{"firmware":"phase4-probe","signature":""}',
+            },
+            "result": json.dumps({
+                "status_code": 200,
+                "body": '{"status":"update accepted"}',
             }),
         }],
         compact=True,
@@ -4994,6 +5073,8 @@ class TestInformationPreservingArchitecture:
         def chat_with_tools(*, system_prompt, tools, **kwargs):
             assert "telnet" in system_prompt.lower()
             assert [tool["name"] for tool in tools] == ["telnet_connect"]
+            assert kwargs["force_tool_on_stall"] is True
+            assert kwargs["recover_required_tool_on_stall"] is True
             result = tools[0]["function"](
                 command_string="echo quit | timeout 3 nc 192.0.2.1 23"
             )
@@ -5022,3 +5103,55 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["confirmed"] == 1
         assert aggregate["summary"]["errors"] == 0
         assert aggregate["tests"][0]["evidence_refs"] == ["tc-phase4-telnet"]
+
+    def test_phase4_compact_fallback_runs_after_provider_timeout(
+        self, output_dir
+    ):
+        provider = MagicMock()
+        provider.provider = "local-moe"
+        provider.model = "lance-moe"
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        finding = {
+            "id": "VULN-TIMEOUT",
+            "device_id": "router",
+            "device_ip": "192.0.2.1",
+            "type": "insecure_protocol",
+            "severity": "MEDIUM",
+            "service": "telnet",
+            "port": 23,
+            "protocol": "tcp",
+            "endpoint": "",
+            "details": "Telnet is exposed",
+            "evidence": "23/tcp open",
+            "exploitation_status": "confirmed",
+            "cve_ids": [],
+        }
+        (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+            "vulnerabilities": [finding],
+        }))
+
+        def telnet_connect(**kwargs):
+            return json.dumps({
+                "stdout": "OpenWrt telnet banner",
+                "stderr": "",
+                "return_code": 0,
+            })
+
+        tool = pipeline._wrap_tool({
+            "name": "telnet_connect",
+            "description": "telnet",
+            "input_schema": {},
+            "function": telnet_connect,
+        }, phase=4, agent="exploitation")
+        pipeline._resolve_tools = lambda config: [tool]
+        provider.chat_with_tools.side_effect = TimeoutError("local provider timeout")
+
+        pipeline._run_exploit_agents(AGENTS["exploitation"])
+
+        aggregate = json.loads(
+            (pipeline.run_dir / "04_exploitation.json").read_text()
+        )
+        assert provider.chat_with_tools.call_count == 1
+        assert aggregate["summary"]["confirmed"] == 1
+        assert aggregate["summary"]["errors"] == 0
+        assert aggregate["tests"][0]["evidence_refs"]
