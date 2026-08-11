@@ -23,6 +23,16 @@ from typing import Any
 import yaml
 
 from src.benchmark.scenario_exports import ExportedScenarioStore
+from src.benchmark.scenario_composer import ScenarioComposer, spec_hash
+from src.benchmark.scenario_spec import ScenarioSpecError
+from src.benchmark.scenario_alterations import (
+    ALTERATION_CATALOG,
+    ScenarioAlterationError,
+    apply_postcomposition,
+    apply_precomposition,
+    build_alteration_plan,
+    normalize_alterations,
+)
 from src.benchmark.strict_v3 import derive_matching_contract
 
 
@@ -36,6 +46,11 @@ OPERATIONS = {
     "rotate_ips": {"id": "rotate_ips", "label": "Rotation des adresses IP"},
     "rename_hosts": {"id": "rename_hosts", "label": "Renommage faible des hôtes"},
     "swap_profiles": {"id": "swap_profiles", "label": "Permutation de profils compatibles"},
+    **{
+        key: {"id": key, "label": value["label"]}
+        for key, value in ALTERATION_CATALOG.items()
+        if key not in {"rotate_ips", "rename_hosts", "swap_profiles"}
+    },
 }
 
 BLUEPRINT_ALIASES = {
@@ -208,6 +223,10 @@ class ScenarioGenerator:
         )
         if has_profile_pair and not has_device_selector:
             operations.append("swap_profiles")
+        operations.extend(
+            alteration_id for alteration_id in ALTERATION_CATALOG
+            if alteration_id not in operations
+        )
         return operations
 
     def list_variants(self) -> list[dict[str, Any]]:
@@ -230,7 +249,12 @@ class ScenarioGenerator:
 
     def export_variant(self, variant_id: str) -> dict[str, Any]:
         """Publish one trusted preview bundle for use in the dashboard."""
-        return self.export_store.publish(self._load_bundle(variant_id))
+        bundle = self._load_bundle(variant_id)
+        if bundle["manifest"].get("mutation_policy") == "manual":
+            raise ScenarioGeneratorError(
+                "Manual scenarios are executed directly from their generated ID; dashboard export is not supported"
+            )
+        return self.export_store.publish(bundle)
 
     def delete_export(self, variant_id: str) -> dict[str, Any]:
         """Remove a dashboard export without deleting its Lab source variant."""
@@ -285,7 +309,75 @@ class ScenarioGenerator:
         self._write_bundle(bundle)
         return self.get_variant(variant_id)
 
-    def mutate(self, source_variant_id: str, seed: int, operation: str) -> dict[str, Any]:
+    def compose_custom(self, raw_spec: dict[str, Any]) -> dict[str, Any]:
+        """Compose a manually authored scenario without changing benchmarks/."""
+        try:
+            composed = ScenarioComposer(self.repo_root).compose(raw_spec)
+        except ScenarioSpecError as exc:
+            raise ScenarioGeneratorError(str(exc)) from exc
+
+        digest = spec_hash(composed["source_spec"])
+        variant_id = f"gen-custom-{digest[:10]}"
+        if self._variant_dir(variant_id).is_dir():
+            return self.get_variant(variant_id)
+
+        artifacts = {
+            "scenario.yaml": composed["scenario"],
+            "topology.yaml": composed["topology"],
+            "ground_truth.yaml": composed["ground_truth"],
+            "injection_plan.yaml": composed["injection_plan"],
+            "verification_plan.yaml": composed["verification_plan"],
+            "matching_contracts.yaml": composed["matching_contracts"],
+            "execution_plan.yaml": composed["execution_plan"],
+            "alteration_plan.yaml": composed["alteration_plan"],
+        }
+        hashes = {
+            name: hashlib.sha256(_yaml_bytes(value)).hexdigest()
+            for name, value in artifacts.items()
+        }
+        manifest = {
+            "schema_version": 1,
+            "kind": "generated-scenario",
+            "generated_by": GENERATOR_MARKER,
+            "generator_version": GENERATOR_VERSION,
+            "variant_id": variant_id,
+            "blueprint_id": "custom",
+            "source_scenario_id": "custom",
+            "source_blueprint_hash": digest,
+            "parent_variant_id": None,
+            "seed": None,
+            "operation": "manual",
+            "mutation_policy": "manual",
+            "deployment_status": composed["execution_plan"].get("status", "preview"),
+            "deployable": composed["execution_plan"].get("status") == "ready",
+            "execution_adapter": composed["execution_plan"]["adapter"],
+            "execution_profile": composed["execution_plan"]["profile"],
+            "alteration_count": len(composed["alteration_plan"]["alterations"]),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "artifact_hashes": hashes,
+            "topology_signature": self._topology_signature(composed["topology"]),
+            "bundle_hash": _canonical_hash(hashes),
+        }
+        self._write_bundle({
+            "manifest": manifest,
+            "scenario": composed["scenario"],
+            "topology": composed["topology"],
+            "ground_truth": composed["ground_truth"],
+            "injection_plan": composed["injection_plan"],
+            "verification_plan": composed["verification_plan"],
+            "matching_contracts": composed["matching_contracts"],
+            "execution_plan": composed["execution_plan"],
+            "alteration_plan": composed["alteration_plan"],
+        })
+        return self.get_variant(variant_id)
+
+    def mutate(
+        self,
+        source_variant_id: str,
+        seed: int,
+        operation: str,
+        parameters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         parent = self._load_bundle(source_variant_id)
         blueprint = self._blueprint(parent["manifest"]["blueprint_id"])
         self._validate_request(blueprint, seed, operation)
@@ -304,6 +396,7 @@ class ScenarioGenerator:
             "parent_hash": parent["manifest"]["bundle_hash"],
             "seed": seed,
             "operation": operation,
+            "parameters": copy.deepcopy(parameters or {}),
             "version": GENERATOR_VERSION,
         }
         digest = _canonical_hash(spec)
@@ -311,14 +404,20 @@ class ScenarioGenerator:
         if self._variant_dir(variant_id).is_dir():
             return self.get_variant(variant_id)
 
-        topology, mutation = self._apply_operation(copy.deepcopy(parent["topology"]), operation, seed)
+        topology, mutation = self._apply_operation(
+            copy.deepcopy(parent["topology"]), operation, seed, parameters
+        )
         topology["id"] = variant_id
         scenario = self._remap_value(copy.deepcopy(parent["scenario"]), mutation)
         scenario.update({
             "scenario_id": variant_id,
             "name": f"{blueprint['label']} / {digest[:6]}",
             "parent_variant_id": source_variant_id,
-            "mutation": {"operation": operation, "seed": seed},
+            "mutation": {
+                "operation": operation,
+                "seed": seed,
+                "parameters": copy.deepcopy(parameters or {}),
+            },
         })
         bundle = self._compile(
             variant_id, blueprint, scenario, topology, packs, source_ground_truth,
@@ -330,7 +429,8 @@ class ScenarioGenerator:
     def get_variant(self, variant_id: str) -> dict[str, Any]:
         bundle = self._load_bundle(variant_id)
         gt = bundle["ground_truth"]
-        blueprint = self._blueprints()[bundle["manifest"]["blueprint_id"]]
+        blueprint_id = bundle["manifest"]["blueprint_id"]
+        blueprint = self._blueprints().get(blueprint_id, {"allowed_operations": []})
         return {
             **self._summary(bundle),
             "scenario": bundle["scenario"],
@@ -339,6 +439,25 @@ class ScenarioGenerator:
                 "service_count": len(bundle["topology"].get("services", [])),
                 "link_count": len(bundle["topology"].get("links", [])),
             },
+            "alteration_plan": copy.deepcopy(bundle.get("alteration_plan", {
+                "schema_version": 1,
+                "status": "ready",
+                "alterations": (
+                    [{
+                        "type": bundle["manifest"].get("alteration_type"),
+                        "parameters": copy.deepcopy(
+                            bundle["manifest"].get("alteration_parameters", {})
+                        ),
+                    }]
+                    if bundle["manifest"].get("alteration_type")
+                    else []
+                ),
+            })),
+            "execution": copy.deepcopy(bundle.get("execution_plan", {
+                "adapter": bundle["manifest"].get("execution_adapter"),
+                "profile": bundle["manifest"].get("execution_profile"),
+                "status": "unknown",
+            })),
             "ground_truth": {
                 "vulnerabilities": [
                     {key: item.get(key) for key in ("id", "title", "device", "severity")}
@@ -349,6 +468,7 @@ class ScenarioGenerator:
                     for item in gt.get("controls", [])
                 ],
                 "attack_path_count": len(gt.get("attack_paths", [])),
+                "tool_policy": copy.deepcopy(gt.get("tool_policy", {})),
             },
             "allowed_operations": [OPERATIONS[op] for op in blueprint["allowed_operations"]],
         }
@@ -385,7 +505,8 @@ class ScenarioGenerator:
         } for link in topology.get("links", [])]
         subnets = topology.get("subnets", [])
         return {
-            "variant_id": variant_id, "generated": True, "deployable": False,
+            "variant_id": variant_id, "generated": True,
+            "deployable": bool(bundle["manifest"].get("deployable", False)),
             "nodes": nodes, "edges": edges,
             "subnet": subnets[0] if subnets else "", "subnets": subnets,
         }
@@ -479,7 +600,12 @@ class ScenarioGenerator:
         }, names)
 
     @staticmethod
-    def _apply_operation(topology, operation: str, seed: int):
+    def _apply_operation(
+        topology,
+        operation: str,
+        seed: int,
+        parameters: dict[str, Any] | None = None,
+    ):
         services, rng = topology.get("services", []), random.Random(seed)
         mutation = {"names": {}, "ips": {}, "profile_pairs": []}
         if operation == "rotate_ips":
@@ -525,6 +651,29 @@ class ScenarioGenerator:
             left["security_profile"], right["security_profile"] = right["security_profile"], left["security_profile"]
             mutation["names"].update({left["name"]: right["name"], right["name"]: left["name"]})
             mutation["profile_pairs"].append([left["name"], right["name"]])
+        elif operation in ALTERATION_CATALOG:
+            request = {
+                "type": operation,
+                "parameters": copy.deepcopy(parameters or {}),
+            }
+            try:
+                scenario_probe, topology, alteration_mutation = apply_precomposition(
+                    {}, topology, [request], seed
+                )
+            except ScenarioAlterationError as exc:
+                raise ScenarioGeneratorError(str(exc)) from exc
+            mutation.update(alteration_mutation)
+            mutation["alteration_request"] = request
+            mutation["scenario_updates"] = {
+                key: copy.deepcopy(value)
+                for key, value in scenario_probe.items()
+                if key in {
+                    "tool_policy", "metadata", "initial_credentials", "alterations",
+                    "lifecycle", "environment", "identity", "detection", "evaluation",
+                    "objectives", "constraints", "compatibility", "data_fixtures",
+                    "failure_modes",
+                }
+            }
         else:
             raise ScenarioGeneratorError(f"Unknown mutation operation: {operation}")
         return topology, mutation
@@ -564,6 +713,9 @@ class ScenarioGenerator:
             "blueprint_id": blueprint["id"],
             "topology_file": "topology.yaml",
         })
+        scenario.update(copy.deepcopy(mutation.get("scenario_updates", {})))
+        if mutation.get("alteration_request"):
+            scenario["alterations"] = [copy.deepcopy(mutation["alteration_request"])]
         return scenario
 
     def _compile(self, variant_id, blueprint, scenario, topology, packs, source_ground_truth,
@@ -588,7 +740,19 @@ class ScenarioGenerator:
             mutation, source_ground_truth, topology,
         )
         gt["scoring"]["total_attack_paths"] = len(gt["attack_paths"])
-        scenario["attack_paths"] = copy.deepcopy(gt["attack_paths"])
+        if operation in ALTERATION_CATALOG:
+            request = mutation.get("alteration_request", {
+                "type": operation,
+                "parameters": {},
+            })
+            try:
+                gt, altered_paths = apply_postcomposition(
+                    gt, gt["attack_paths"], topology, scenario, [request], seed
+                )
+            except ScenarioAlterationError as exc:
+                raise ScenarioGeneratorError(str(exc)) from exc
+            gt["attack_paths"] = altered_paths
+            scenario["attack_paths"] = copy.deepcopy(altered_paths)
         injection = self._injection_plan(variant_id, topology, gt)
         verification = self._verification_plan(variant_id, gt)
         self._validate(scenario, topology, gt, injection)
@@ -606,6 +770,9 @@ class ScenarioGenerator:
             "blueprint_id": blueprint["id"], "source_scenario_id": blueprint["source_scenario_id"],
             "source_blueprint_hash": blueprint["source_hash"],
             "parent_variant_id": parent, "seed": seed, "operation": operation,
+            "alteration_type": operation if operation in ALTERATION_CATALOG else None,
+            "alteration_parameters": copy.deepcopy(mutation.get("alteration_request", {}).get("parameters", {})),
+            "alteration_count": 1 if operation in ALTERATION_CATALOG else 0,
             "mutation_policy": "generated-only", "deployment_status": "preview", "deployable": False,
             "created_at": datetime.now(timezone.utc).isoformat(), "artifact_hashes": hashes,
             "topology_signature": self._topology_signature(topology),
@@ -680,12 +847,23 @@ class ScenarioGenerator:
             "topology": {"deployment_status": "preview", "router": router_output,
                          "services": services, "links": copy.deepcopy(topology.get("links", [])),
                          "external_nodes": copy.deepcopy(topology.get("external_nodes", [])),
-                         "subnets": copy.deepcopy(topology.get("subnets", []))},
+                         "subnets": copy.deepcopy(topology.get("subnets", [])),
+                         "network_conditions": copy.deepcopy(topology.get("network_conditions", {}))},
             "vulnerabilities": vulns, "controls": controls, "attack_paths": [],
             "scoring": {"total_vulnerabilities": len(vulns), "total_controls": len(controls),
                         "total_attack_paths": 0, "weights": SEVERITY_WEIGHTS,
                         "max_weighted_score": sum(SEVERITY_WEIGHTS.get(v.get("severity", "low").lower(), 1) for v in vulns)},
             "bonus_types": copy.deepcopy(scenario.get("bonus_types", [])),
+            "lifecycle": copy.deepcopy(scenario.get("lifecycle", {})),
+            "environment": copy.deepcopy(scenario.get("environment", {})),
+            "identity": copy.deepcopy(scenario.get("identity", {})),
+            "detection": copy.deepcopy(scenario.get("detection", {})),
+            "evaluation": copy.deepcopy(scenario.get("evaluation", {})),
+            "objectives": copy.deepcopy(scenario.get("objectives", [])),
+            "constraints": copy.deepcopy(scenario.get("constraints", {})),
+            "compatibility": copy.deepcopy(scenario.get("compatibility", {})),
+            "data_fixtures": copy.deepcopy(scenario.get("data_fixtures", [])),
+            "failure_modes": copy.deepcopy(scenario.get("failure_modes", [])),
         }
 
     @staticmethod
@@ -896,6 +1074,10 @@ class ScenarioGenerator:
             files = {"scenario.yaml": "scenario", "topology.yaml": "topology",
                      "ground_truth.yaml": "ground_truth", "injection_plan.yaml": "injection_plan",
                      "verification_plan.yaml": "verification_plan", "matching_contracts.yaml": "matching_contracts"}
+            if "execution_plan" in bundle:
+                files["execution_plan.yaml"] = "execution_plan"
+            if "alteration_plan" in bundle:
+                files["alteration_plan.yaml"] = "alteration_plan"
             for filename, key in files.items():
                 (temp / filename).write_bytes(_yaml_bytes(bundle[key]))
             (temp / "manifest.yaml").write_bytes(_yaml_bytes(bundle["manifest"]))
@@ -910,15 +1092,18 @@ class ScenarioGenerator:
         if path.is_symlink() or not path.is_dir():
             raise ScenarioGeneratorError(f"Generated scenario not found: {variant_id}")
         manifest = _load_yaml(path / "manifest.yaml")
-        if (manifest.get("kind"), manifest.get("generated_by"), manifest.get("variant_id"), manifest.get("mutation_policy")) != (
-            "generated-scenario", GENERATOR_MARKER, variant_id, "generated-only"
-        ):
+        if (manifest.get("kind"), manifest.get("generated_by"), manifest.get("variant_id")) != (
+            "generated-scenario", GENERATOR_MARKER, variant_id
+        ) or manifest.get("mutation_policy") not in {"generated-only", "manual"}:
             raise ScenarioGeneratorError("Scenario is not a trusted generated bundle")
         if manifest.get("generator_version") != GENERATOR_VERSION:
             raise ScenarioGeneratorError("Generated bundle version is not supported")
         files = {"scenario": "scenario.yaml", "topology": "topology.yaml", "ground_truth": "ground_truth.yaml",
                  "injection_plan": "injection_plan.yaml", "verification_plan": "verification_plan.yaml",
                  "matching_contracts": "matching_contracts.yaml"}
+        if manifest.get("mutation_policy") == "manual":
+            files["execution_plan"] = "execution_plan.yaml"
+            files["alteration_plan"] = "alteration_plan.yaml"
         artifacts = {}
         for key, filename in files.items():
             artifact = path / filename
@@ -946,6 +1131,9 @@ class ScenarioGenerator:
         manifest, gt = bundle["manifest"], bundle["ground_truth"]
         return {"id": manifest["variant_id"], "name": bundle["scenario"]["name"], "kind": manifest["kind"],
                 "blueprint_id": manifest["blueprint_id"], "source_scenario_id": manifest["source_scenario_id"],
+                "execution_adapter": manifest.get("execution_adapter"),
+                "execution_profile": manifest.get("execution_profile"),
+                "alteration_count": int(manifest.get("alteration_count", 0) or 0),
                 "parent_variant_id": manifest.get("parent_variant_id"), "seed": manifest["seed"],
                 "operation": manifest["operation"], "created_at": manifest["created_at"],
                 "deployment_status": manifest["deployment_status"], "deployable": manifest["deployable"],

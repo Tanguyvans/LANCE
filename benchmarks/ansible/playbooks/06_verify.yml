@@ -996,7 +996,9 @@
         _check_redis_ok:  "{{ 'FAIL' not in (redis_ping_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_modbus_ok: "{{ 'FAIL' not in (modbus_svc_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
         _check_s14_ok: >-
-          {{ source_scenario_id not in ['14', '21', '29'] or
+          {{ (manual_scenario | default(false) | bool and
+              (manual_expected_control_count | default(0) | int == 0)) or
+             source_scenario_id not in ['14', '21', '29'] or
              (('OK' in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' '))) and
               ('FAIL' not in (s14_control_checks.results | default([]) | map(attribute='stdout', default='') | join(' ')))) }}
         _check_simulators_ok: >-

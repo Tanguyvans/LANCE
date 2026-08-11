@@ -22,6 +22,9 @@ def _scenario_split(scenario_id: str) -> str:
     sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
     if default_export_store().exists(sid):
         return "lab-export"
+    from src.benchmark.scenario_deployment import ManualScenarioDeployment
+    if ManualScenarioDeployment.exists(sid):
+        return "lab-manual"
 
     from src.benchmark.catalog import CatalogError, get_scenario
 
@@ -87,10 +90,16 @@ def _parse_scenario_ids(batch_arg: str) -> list[str]:
                         f"S{sid} must run through the external sealed controller"
                     )
                 resolved.append(descriptor.id)
-            elif default_export_store().exists(sid) or (GT_DIR / f"scenario_{sid}.yaml").exists():
-                resolved.append(sid)
             else:
-                raise ValueError(f"Unknown public scenario variant: S{sid}")
+                from src.benchmark.scenario_deployment import ManualScenarioDeployment
+                if (
+                    default_export_store().exists(sid)
+                    or (GT_DIR / f"scenario_{sid}.yaml").exists()
+                    or ManualScenarioDeployment.exists(sid)
+                ):
+                    resolved.append(sid)
+                else:
+                    raise ValueError(f"Unknown public scenario variant: S{sid}")
         if not resolved:
             raise ValueError(f"No valid scenario IDs found in --batch '{batch_arg}'")
         return list(dict.fromkeys(resolved))

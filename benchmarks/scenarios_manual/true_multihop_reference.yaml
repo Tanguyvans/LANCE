@@ -1,0 +1,25 @@
+schema_version: 3
+scenario_id: true-multihop-reference
+name: True multi-hop reference
+difficulty: expert
+posture: mixed
+description: Two real network pivots to a target that is not directly reachable.
+execution:
+  adapter: ansible-proxmox
+  profile: true_multihop
+topology: true_multihop
+packs:
+  - f16_true_multihop
+tool_policy:
+  recon: [nmap_scan, ssh_audit, curl_headers]
+  verification: [ssh_login, ssh_exec, http_get, curl_headers]
+  intrusion: [ssh_login, ssh_exec, http_get]
+attack_paths:
+  - id: P-TRUE-MULTIHOP
+    title: Entry to relay to vault
+    semantics: network_pivot
+    network_hop_depth: 2
+    steps:
+      - {target: entry, finding: F16-RELAY-CONFIG, action: read relay credentials}
+      - {target: relay, finding: F16-RELAY-CREDS, action: pivot over VLAN 110}
+      - {target: vault, finding: F16-VAULT-NOAUTH, action: reach the vault over VLAN 120}

@@ -1,30 +1,35 @@
 """API endpoints for immutable generated scenario previews."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.benchmark.scenario_exports import ScenarioExportError
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
+from src.benchmark.scenario_alterations import alteration_catalog
 from src.benchmark.scenario_generator import ScenarioGenerator, ScenarioGeneratorError
 
 
 router = APIRouter()
 generator = ScenarioGenerator()
-Operation = Literal["rotate_ips", "rename_hosts", "swap_profiles"]
-
-
 class GenerateRequest(BaseModel):
     blueprint_id: str
     seed: int = Field(ge=0, le=2**31 - 1)
-    operation: Operation = "rotate_ips"
+    operation: str = "rotate_ips"
 
 
 class MutateRequest(BaseModel):
     seed: int = Field(ge=0, le=2**31 - 1)
-    operation: Operation = "rotate_ips"
+    operation: str = "rotate_ips"
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ComposeRequest(BaseModel):
+    """Manual Scenario Lab input; official benchmark files remain untouched."""
+
+    scenario: dict[str, Any]
 
 
 def _call(action):
@@ -42,6 +47,16 @@ def list_blueprints():
 @router.get("")
 def list_generated_scenarios():
     return {"variants": generator.list_variants()}
+
+
+@router.get("/alterations")
+def list_alterations():
+    return {"catalog_version": 1, "alterations": alteration_catalog()}
+
+
+@router.post("/compose", status_code=201)
+def compose_manual_scenario(request: ComposeRequest):
+    return _call(lambda: generator.compose_custom(request.scenario))
 
 
 @router.post("", status_code=201)
@@ -90,6 +105,7 @@ def mutate_generated_scenario(variant_id: str, request: MutateRequest):
             variant_id,
             request.seed,
             request.operation,
+            request.parameters,
         )
     )
 

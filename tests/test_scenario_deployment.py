@@ -1,9 +1,10 @@
+import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
 
-from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
+from src.benchmark.scenario_deployment import GeneratedScenarioDeployment, ManualScenarioDeployment
 from src.benchmark.scenario_generator import ScenarioGenerator
 from src.agent.pipeline import Pipeline
 
@@ -121,4 +122,80 @@ def test_legacy_export_uses_source_suffixes_with_generated_hostnames(tmp_path):
     assert {item["name"] for item in runtime["services"]} >= {"mqtt", "web", "ssh"}
     assert all(item["deploy_name"].startswith("g") for item in runtime["services"])
     assert runtime["router_vulns"] == ["telnet"]
+    deployment.release()
+
+
+def test_manual_profiles_allocate_distinct_runtime_overlays(tmp_path):
+    from src.benchmark.scenario_spec import load_scenario_spec
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    flat = generator.compose_custom(load_scenario_spec(ROOT / "benchmarks/scenarios_manual/flat_logical_chain.yaml"))
+    multihop = generator.compose_custom(load_scenario_spec(ROOT / "benchmarks/scenarios_manual/true_multihop_reference.yaml"))
+    state_root = tmp_path / "deployments"
+
+    left = ManualScenarioDeployment.prepare(
+        flat["id"], generated_root=generator.storage_root, state_root=state_root,
+    )
+    right = ManualScenarioDeployment.prepare(
+        multihop["id"], generated_root=generator.storage_root, state_root=state_root,
+    )
+    flat_overlay = yaml.safe_load(left.overlay_path.read_text(encoding="utf-8"))
+    multi_overlay = yaml.safe_load(right.overlay_path.read_text(encoding="utf-8"))
+
+    assert left.source_scenario_id == "14"
+    assert left.execution_profile == "flat_roles"
+    assert right.source_scenario_id == "20"
+    assert right.execution_profile == "true_multihop"
+    assert flat_overlay["manual_scenario"] is True
+    assert flat_overlay["manual_expected_control_count"] == 0
+    assert multi_overlay["manual_expected_control_count"] == 3
+    assert left.base_vmid + left.max_vmid_offset < right.base_vmid
+
+    left.release()
+    right.release()
+
+
+def test_manual_execution_rejects_an_unknown_runtime_role():
+    from src.benchmark.scenario_composer import ScenarioComposer
+    from src.benchmark.scenario_spec import ScenarioSpecError, load_scenario_spec
+
+    spec = load_scenario_spec(ROOT / "benchmarks/scenarios_manual/flat_logical_chain.yaml")
+    spec["attack_paths"] = []
+    spec["topology"] = {
+        "ref": "flat",
+        "overrides": {
+            "services": [{
+                "name_template": "s{sid}-unknown",
+                "vmid_offset": 1,
+                "ip": "192.168.100.11",
+                "role": "unknown_role",
+            }],
+        },
+    }
+    with pytest.raises(ScenarioSpecError, match="No execution provider"):
+        ScenarioComposer(ROOT).compose(spec)
+
+
+def test_pipeline_passes_manual_overlay_and_provider_profile_to_ansible(tmp_path, monkeypatch):
+    from src.benchmark.scenario_spec import load_scenario_spec
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(load_scenario_spec(ROOT / "benchmarks/scenarios_manual/flat_logical_chain.yaml"))
+    deployment = ManualScenarioDeployment.prepare(
+        variant["id"], generated_root=generator.storage_root, state_root=tmp_path / "deployments",
+    )
+    import src.agent.pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "runs")
+    provider = MagicMock(model="test-model", provider="test-provider")
+    pipeline = Pipeline(provider=provider, scenario_id=variant["id"], dry_run=True)
+    pipeline._generated_deployment = deployment
+
+    completed = MagicMock(returncode=0, stdout="ok", stderr="")
+    with patch("src.agent.pipeline.subprocess.run", return_value=completed) as run:
+        assert pipeline._run_playbook("04_inject_vulns.yml", None, "start", "done")
+
+    command = run.call_args.args[0]
+    assert f"@{deployment.overlay_path}" in command
+    assert "source_scenario_id=14" in command
     deployment.release()

@@ -1,0 +1,25 @@
+schema_version: 3
+scenario_id: flat-logical-chain
+name: Flat logical chain
+difficulty: medium
+posture: vulnerable
+description: Flat network, but each exploitation step requires an artifact from the preceding step.
+execution:
+  adapter: ansible-proxmox
+  profile: flat_roles
+topology: flat
+packs:
+  - manual_flat_chain
+tool_policy:
+  recon: [nmap_scan, curl_headers, mqtt_listen]
+  verification: [curl_headers, ssh_login, mqtt_listen]
+  intrusion: [curl_headers, ssh_login, ssh_exec, mqtt_listen]
+attack_paths:
+  - id: P-FLAT-CHAIN
+    title: Web backup to SSH to MQTT
+    semantics: logical_chain
+    network_hop_depth: 0
+    steps:
+      - {target: web, finding: MANUAL-WEB-BACKUP, action: recover credentials}
+      - {target: ssh, finding: MANUAL-SSH-CREDENTIALS, action: login with recovered credentials}
+      - {target: mqtt, finding: MANUAL-MQTT-EXPORT, action: subscribe to the final export}

@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
+from src.benchmark.tool_registry import SERVICE_ALIASES
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -180,24 +182,7 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
     ],
 }
 
-# Service name aliases → SCAN_MATRIX key
-SERVICE_ALIASES: dict[str, str] = {
-    "ssh": "ssh",
-    "http": "http", "https": "https", "http-alt": "http",
-    "mqtt": "mqtt",
-    "telnet": "telnet",
-    "mysql": "mysql", "mariadb": "mysql",
-    "modbus": "modbus",
-    "redis": "redis",
-    "ftp": "ftp",
-    "snmp": "snmp",
-    "coap": "coap",
-    "ldap": "ldap",
-    "opcua": "opcua",
-    "bacnet": "bacnet",
-    "port-9001": "mqtt",  # MQTT WebSocket
-}
-
+# Service aliases are shared with manual scenario compatibility validation.
 
 # ---------------------------------------------------------------------------
 # Scanner
@@ -1494,6 +1479,7 @@ def run_scanner(
     stream_callback=None,
     *,
     compact: bool = False,
+    allowed_tool_names: set[str] | None = None,
 ) -> dict[str, dict]:
     """Run Phase 3a: scan all devices, save raw results, extract trivial findings.
 
@@ -1501,7 +1487,11 @@ def run_scanner(
     """
     from src.agent.tools.recon_tools import RECON_TOOLS
 
-    tools_map = {t["name"]: t["function"] for t in RECON_TOOLS}
+    tools_map = {
+        t["name"]: t["function"]
+        for t in RECON_TOOLS
+        if allowed_tool_names is None or t["name"] in allowed_tool_names
+    }
     scans_dir = run_dir / "03_scans"
     scans_dir.mkdir(parents=True, exist_ok=True)
 

@@ -25,9 +25,21 @@ from src.benchmark.scenario_exports import (
 
 
 DEPLOYMENT_ROOT = REPO_ROOT / "output" / "scenario_deployments"
+MANUAL_SCENARIO_ROOT = REPO_ROOT / "output" / "generated_scenarios"
+MANUAL_SCENARIO_ID_RE = re.compile(r"^gen-custom-[a-f0-9]{10}$")
 LEASES_DIRNAME = "leases"
 OVERLAYS_DIRNAME = "overlays"
 DYNAMIC_BASE_VMID = 700
+MANUAL_ARTIFACTS = {
+    "scenario": "scenario.yaml",
+    "topology": "topology.yaml",
+    "ground_truth": "ground_truth.yaml",
+    "injection_plan": "injection_plan.yaml",
+    "verification_plan": "verification_plan.yaml",
+    "matching_contracts": "matching_contracts.yaml",
+    "execution_plan": "execution_plan.yaml",
+    "alteration_plan": "alteration_plan.yaml",
+}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -243,6 +255,207 @@ class GeneratedScenarioDeployment:
             self.lease_path.unlink(missing_ok=True)
             self.overlay_path.unlink(missing_ok=True)
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _yaml_bytes(value: Any) -> bytes:
+    return yaml.safe_dump(value, allow_unicode=True, sort_keys=False).encode("utf-8")
+
+
+def _canonical_hash(value: Any) -> str:
+    import json
+    return __import__("hashlib").sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _load_manual_bundle(scenario_id: str, generated_root: Path) -> dict[str, Any]:
+    sid = str(scenario_id)
+    if not MANUAL_SCENARIO_ID_RE.fullmatch(sid):
+        raise ScenarioExportError("Invalid manual generated scenario identifier")
+    root = generated_root.resolve()
+    path = (root / sid).resolve()
+    if path.parent != root or path.is_symlink() or not path.is_dir():
+        raise ScenarioExportError(f"Manual generated scenario not found: {sid}")
+    manifest = _load_yaml(path / "manifest.yaml")
+    if (
+        manifest.get("kind"),
+        manifest.get("generated_by"),
+        manifest.get("variant_id"),
+        manifest.get("mutation_policy"),
+    ) != ("generated-scenario", "lance.scenario-generator", sid, "manual"):
+        raise ScenarioExportError("Scenario is not a trusted manual generated bundle")
+    if not manifest.get("deployable"):
+        raise ScenarioExportError("Manual generated scenario has no executable adapter")
+    artifacts: dict[str, Any] = {}
+    hashes = manifest.get("artifact_hashes", {})
+    for key, filename in MANUAL_ARTIFACTS.items():
+        artifact = path / filename
+        if artifact.is_symlink() or not artifact.is_file():
+            raise ScenarioExportError(f"Missing manual generated artifact: {filename}")
+        if __import__("hashlib").sha256(artifact.read_bytes()).hexdigest() != hashes.get(filename):
+            raise ScenarioExportError(f"Manual generated artifact was modified: {filename}")
+        artifacts[key] = _load_yaml(artifact)
+    if _canonical_hash(hashes) != manifest.get("bundle_hash"):
+        raise ScenarioExportError("Manual generated bundle hash is invalid")
+    return {"manifest": manifest, **artifacts}
+
+
+@dataclass
+class ManualScenarioDeployment(GeneratedScenarioDeployment):
+    """Runtime lease produced directly from a manually composed bundle."""
+
+    execution_profile: str = ""
+
+    @property
+    def is_manual(self) -> bool:
+        return True
+
+    @classmethod
+    def exists(
+        cls,
+        scenario_id: str,
+        *,
+        generated_root: Path | None = None,
+    ) -> bool:
+        sid = str(scenario_id)
+        root = (generated_root or MANUAL_SCENARIO_ROOT).resolve()
+        path = root / sid
+        return bool(
+            MANUAL_SCENARIO_ID_RE.fullmatch(sid)
+            and path.parent == root
+            and path.is_dir()
+            and not path.is_symlink()
+            and (path / "manifest.yaml").is_file()
+        )
+
+    @classmethod
+    def prepare(
+        cls,
+        scenario_id: str,
+        *,
+        generated_root: Path | None = None,
+        state_root: Path | None = None,
+        repo_root: Path = REPO_ROOT,
+    ) -> "ManualScenarioDeployment":
+        sid = str(scenario_id)
+        bundle = _load_manual_bundle(sid, (generated_root or MANUAL_SCENARIO_ROOT))
+        topology = bundle["topology"]
+        router = topology.get("router") or {}
+        services = topology.get("services") or []
+        plan = bundle["execution_plan"]
+        source_sid = str(plan.get("source_scenario_id", ""))
+        if plan.get("adapter") != "ansible-proxmox" or plan.get("status") != "ready":
+            raise ScenarioExportError("Manual scenario execution plan is not ready")
+        if not source_sid.isdigit():
+            raise ScenarioExportError("Manual execution plan has no numeric provider profile")
+        if not router.get("name") or not router.get("ip") or not services:
+            raise ScenarioExportError("Manual topology cannot be deployed")
+        ranges, scenarios = _catalog(repo_root)
+        source_scenario = scenarios.get(source_sid)
+        if source_scenario is None:
+            raise ScenarioExportError(f"Provider source scenario S{source_sid} is absent from the Ansible catalogue")
+
+        normalized_services = []
+        for raw in services:
+            item = copy.deepcopy(raw)
+            concrete_name = str(item.get("name", ""))
+            if not concrete_name:
+                raise ScenarioExportError("Manual service has no concrete name")
+            item["name"] = _service_suffix(concrete_name, source_sid, concrete_name)
+            item["deploy_name"] = concrete_name
+            item.pop("name_template", None)
+            normalized_services.append(item)
+
+        try:
+            max_offset = max(int(item["vmid_offset"]) for item in normalized_services)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ScenarioExportError("Manual topology contains an invalid vmid_offset") from exc
+        root = (state_root or DEPLOYMENT_ROOT).resolve()
+        leases = root / LEASES_DIRNAME
+        overlays = root / OVERLAYS_DIRNAME
+        leases.mkdir(parents=True, exist_ok=True)
+        overlays.mkdir(parents=True, exist_ok=True)
+        lease_path = leases / f"{sid}.yaml"
+        lock_path = root / ".allocation.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            lease = _read_optional(lease_path)
+            if lease and (
+                str(lease.get("scenario_id")) != sid
+                or str(lease.get("source_scenario_id")) != source_sid
+                or int(lease.get("max_vmid_offset", -1)) != max_offset
+            ):
+                raise ScenarioExportError(f"VMID lease for {sid} does not match the manual topology")
+            base_vmid = int(lease["base_vmid"]) if lease else _allocate_base(
+                ranges, scenarios, leases, max_offset
+            )
+            lease_data = {
+                "schema_version": 1,
+                "kind": "manual-scenario-deployment",
+                "scenario_id": sid,
+                "source_scenario_id": source_sid,
+                "execution_adapter": plan["adapter"],
+                "execution_profile": plan["profile"],
+                "base_vmid": base_vmid,
+                "max_vmid_offset": max_offset,
+                "router_name": str(router["name"]),
+                "bundle_root": str((generated_root or MANUAL_SCENARIO_ROOT).resolve()),
+            }
+            lease_path.write_text(
+                yaml.safe_dump(lease_data, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            overlay_path = overlays / f"{sid}.yaml"
+            cloud_metadata_ip = next(
+                (str(item["ip"]) for item in normalized_services
+                 if item.get("simulator") == "cloud_metadata"),
+                "192.168.100.12",
+            )
+            cloud_web_ip = next(
+                (str(item["ip"]) for item in normalized_services
+                 if item.get("simulator") == "cloud_web"),
+                "192.168.100.11",
+            )
+            overlay = {
+                "scenario_id": sid,
+                "source_scenario_id": source_sid,
+                "generated_scenario": True,
+                "manual_scenario": True,
+                "manual_execution_adapter": plan["adapter"],
+                "manual_execution_profile": plan["profile"],
+                "manual_expected_control_count": int(plan.get("manual_expected_control_count", 0)),
+                "scenario_lab_config": {
+                    key: copy.deepcopy(bundle["scenario"].get(key, {}))
+                    for key in (
+                        "lifecycle", "environment", "identity", "detection", "evaluation",
+                        "objectives", "constraints", "compatibility", "data_fixtures",
+                        "failure_modes",
+                    )
+                    if bundle["scenario"].get(key) not in (None, {}, [])
+                },
+                "router_name": str(router["name"]),
+                "cloud_metadata_ip": cloud_metadata_ip,
+                "cloud_web_ip": cloud_web_ip,
+                "benchmark_scenario_vmid_ranges": {sid: base_vmid},
+                "benchmark_scenarios": {
+                    sid: {
+                        "name": bundle["scenario"].get("name", topology.get("name", sid)),
+                        "router_vulns": [],
+                        "router_name": str(router["name"]),
+                        "services": normalized_services,
+                    }
+                },
+            }
+            overlay_path.write_text(
+                yaml.safe_dump(overlay, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+        return cls(
+            sid, source_sid, base_vmid, max_offset, overlay_path, lease_path, root,
+            str(plan["profile"]),
+        )
 
 
 def _read_optional(path: Path) -> dict[str, Any] | None:

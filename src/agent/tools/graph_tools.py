@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from src.benchmark.scenario_exports import resolve_scenario_path, resolve_topology_path
+from src.benchmark.tool_registry import ROLE_SERVICES
 import yaml as _yaml
 
 from src.loader import build_graph, load_yaml
@@ -90,51 +91,10 @@ def load_lab_context() -> dict:
     }
 
 
+# Shared with manual scenario composition and tool compatibility validation.
 _ROLE_SERVICES: dict[str, list[dict]] = {
-    "router":        [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
-    "mqtt_broker":   [{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
-    "mqtt_broker_v2":[{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
-    "web_server":    [{"name": "http", "port": 80, "protocol": "tcp"}],
-    "web_server_v2": [{"name": "http", "port": 80, "protocol": "tcp"}],
-    "web_upload":    [{"name": "http", "port": 80, "protocol": "tcp"}],
-    "ssh_server":    [{"name": "ssh", "port": 22, "protocol": "tcp"}],
-    "ssh_server_v2": [{"name": "ssh", "port": 22, "protocol": "tcp"}],
-    "db_server":     [{"name": "mysql", "port": 3306, "protocol": "tcp"}],
-    "db_server_v2":  [{"name": "redis", "port": 6379, "protocol": "tcp"}],
-    "iot_gateway":   [{"name": "ssh", "port": 22, "protocol": "tcp"}, {"name": "http", "port": 80, "protocol": "tcp"}],
-    "ldap_server":   [{"name": "ldap", "port": 389, "protocol": "tcp"}],
-    "nfs_server":    [{"name": "nfs", "port": 2049, "protocol": "tcp"}],
-    "ftp_server":    [{"name": "ftp", "port": 21, "protocol": "tcp"}],
-    "nodered_server":[{"name": "http", "port": 1880, "protocol": "tcp"}],
-    "camera_server": [{"name": "http", "port": 80, "protocol": "tcp"}],
-    "nvr_server":    [{"name": "ssh", "port": 22, "protocol": "tcp"}],
-    "coap_server":   [{"name": "coap", "port": 5683, "protocol": "udp"}],
-    "snmp_server":   [{"name": "snmp", "port": 161, "protocol": "udp"}],
-    "modbus_server": [{"name": "modbus", "port": 502, "protocol": "tcp"}],
-    "api_identity_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "api_tenant_server":   [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "api_data_store":      [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "api_event_broker":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "api_admin_portal":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "pki_ca_server":         [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "pki_enrollment_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "pki_mtls_server":       [{"name": "https", "port": 8443, "protocol": "tcp"}],
-    "pki_registry":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "pki_device":            [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ota_repository": [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ota_server":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ota_device":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ota_signer":     [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ota_monitor":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "cloud_web_server":      [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "cloud_metadata_server": [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "cloud_control_plane":   [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "cloud_worker":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "cloud_audit":           [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ot_hmi":          [{"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ot_opcua_server": [{"name": "opcua", "port": 4840, "protocol": "tcp"}, {"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ot_bacnet_server":[{"name": "bacnet", "port": 47808, "protocol": "udp"}, {"name": "http", "port": 8080, "protocol": "tcp"}],
-    "ot_historian":    [{"name": "http", "port": 8080, "protocol": "tcp"}],
+    role: [dict(service) for service in services]
+    for role, services in ROLE_SERVICES.items()
 }
 
 def load_scenario_topology(scenario_id: int | str) -> dict:
@@ -169,7 +129,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     # Build nodes with role-based services
     nodes: list[dict] = []
     if router:
-        router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
+        router_name = (router.get("name") or router.get("name_template", "s{sid}-router")).format(sid=sid)
         nodes.append({
             "id": router_name,
             "name": router_name,
@@ -181,7 +141,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
         })
     for svc in services:
         role = svc.get("role", "")
-        device_name = svc.get("name_template", "s{sid}-device").format(sid=sid)
+        device_name = (svc.get("name") or svc.get("name_template", "s{sid}-device")).format(sid=sid)
         nodes.append({
             "id": device_name,
             "name": device_name,
@@ -206,7 +166,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
                 seen_edges.add(key)
                 edges.append({"source": source, "target": target})
     if not edges and router:
-        router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
+        router_name = (router.get("name") or router.get("name_template", "s{sid}-router")).format(sid=sid)
         edges = [
             {"source": router_name, "target": node["id"]}
             for node in nodes

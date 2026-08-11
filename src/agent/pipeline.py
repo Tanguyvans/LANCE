@@ -22,7 +22,8 @@ from src.benchmark.scenario_exports import (
     resolve_scenario_path,
     resolve_topology_path,
 )
-from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
+from src.benchmark.scenario_deployment import GeneratedScenarioDeployment, ManualScenarioDeployment
+from src.benchmark.tool_registry import INTERNAL_TOOLS, tool_policy_for_phase
 
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.execution_profiles import (
@@ -1171,11 +1172,15 @@ class Pipeline:
         self.benchmark_split = self.benchmark_split or "unassigned"
         self.sealed = self.benchmark_split == "eval-sealed"
         self.manage_scenario = bool(manage_scenario)
-        self._generated_deployment: GeneratedScenarioDeployment | None = None
+        self._generated_deployment: GeneratedScenarioDeployment | ManualScenarioDeployment | None = None
         self.auto_teardown = auto_teardown
         self.max_cost_usd = max_cost_usd
         self.phase_models = phase_models or {}
         self.custom_config = custom_config
+        # A manual scenario may narrow the tools available in each phase.
+        # It never grants capabilities beyond the normal runtime config.
+        self.scenario_tool_policy: dict = {}
+        self.scenario_lab_config: dict = {}
         self.blind = blind
         self.target_network = target_network
         self.max_tool_calls: int | None = None
@@ -1246,6 +1251,8 @@ class Pipeline:
                 tool_result, turn_done, phase_done, pipeline_done.
         """
         self._stop_event = stop_event if self._uses_compact_local_moe() else None
+        self.scenario_tool_policy = self._load_scenario_tool_policy(self.scenario_id)
+        self._load_scenario_runtime_limits(self.scenario_id)
 
         # Load lab context — discovery mode, scenario topology, or physical lab
         if self.target_network is not None:
@@ -1274,6 +1281,8 @@ class Pipeline:
             "scenario_context": "",
             "network_topology_edges": "",
             "execution_profile": self.execution_profile.name,
+            "tool_policy": self.scenario_tool_policy,
+            "scenario_lab_config": self.scenario_lab_config,
         }
 
         # Build compact edge list from whatever topology is available
@@ -1645,8 +1654,12 @@ class Pipeline:
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
         """Deploy and configure benchmark scenario VMs before pipeline starts."""
-        if self.scenario_id is not None and default_export_store().exists(str(self.scenario_id)):
-            self._generated_deployment = GeneratedScenarioDeployment.prepare(str(self.scenario_id))
+        if self.scenario_id is not None:
+            scenario_id = str(self.scenario_id)
+            if default_export_store().exists(scenario_id):
+                self._generated_deployment = GeneratedScenarioDeployment.prepare(scenario_id)
+            elif ManualScenarioDeployment.exists(scenario_id):
+                self._generated_deployment = ManualScenarioDeployment.prepare(scenario_id)
         # Pre-teardown any running scenario to avoid conflicts on shared network
         self._teardown_all_running_scenarios(stream_callback)
 
@@ -1977,12 +1990,83 @@ class Pipeline:
             "Known target hosts — scan ALL using the VLAN IPs below (not 192.168.100.x):",
         ]
         if router:
-            router_name = router.get("name_template", "s{sid}-router").format(sid=sid)
+            router_name = (router.get("name") or router.get("name_template", "s{sid}-router")).format(sid=sid)
             lines.append(f"  - {router_name} ({router_ip}) — role: router")
         for svc in topology.get("services", []):
-            name = svc.get("name_template", "s{sid}-device").format(sid=sid)
+            name = (svc.get("name") or svc.get("name_template", "s{sid}-device")).format(sid=sid)
             lines.append(f"  - {name} ({svc['ip']}) — role: {svc['role']}")
         return "\n".join(lines)
+
+    def _load_scenario_tool_policy(self, scenario_id: int | str | None) -> dict:
+        """Load an authored tool allowlist without consulting Ground Truth."""
+        if scenario_id is None:
+            return {}
+        try:
+            scenario_path = resolve_scenario_path(scenario_id)
+            if not scenario_path.exists():
+                return {}
+            scenario = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) or {}
+            policy = scenario.get("tool_policy", {})
+            return policy if isinstance(policy, dict) else {}
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            log.warning("Unable to load tool policy for scenario %s: %s", scenario_id, exc)
+            return {}
+
+    def _load_scenario_runtime_limits(self, scenario_id: int | str | None) -> None:
+        """Load execution limits authored by the Scenario Lab.
+
+        A scenario budget can only narrow the process-level budget. This keeps
+        manual/generated scenarios from granting themselves more calls than a
+        sealed execution context or an operator configured on the pipeline.
+        """
+        if scenario_id is None:
+            return
+        try:
+            scenario_path = resolve_scenario_path(scenario_id)
+            if not scenario_path.exists():
+                return
+            scenario = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(scenario, dict):
+                return
+            self.scenario_lab_config = {
+                key: scenario.get(key)
+                for key in (
+                    "lifecycle", "environment", "identity", "detection", "evaluation",
+                    "objectives", "constraints", "compatibility", "data_fixtures",
+                    "failure_modes",
+                )
+                if scenario.get(key) not in (None, {}, [])
+            }
+            metadata = scenario.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            budget = scenario.get("tool_budget") or metadata.get("tool_budget") or {}
+            if isinstance(budget, dict):
+                value = budget.get("max_calls", budget.get("max_tool_calls"))
+                if not isinstance(value, bool) and value is not None:
+                    value = int(value)
+                    if value < 1:
+                        raise ValueError("max_calls must be >= 1")
+                    self.max_tool_calls = (
+                        value if self.max_tool_calls is None
+                        else min(self.max_tool_calls, value)
+                    )
+            execution_constraints = (
+                self.scenario_lab_config.get("constraints", {}).get("execution", {})
+                if isinstance(self.scenario_lab_config.get("constraints"), dict)
+                else {}
+            )
+            attempt_budget = execution_constraints.get("attempt_budget", {})
+            if isinstance(attempt_budget, dict):
+                attempts = attempt_budget.get("max_attempts", attempt_budget.get("max_calls"))
+                if attempts is not None and not isinstance(attempts, bool):
+                    attempts = int(attempts)
+                    if attempts >= 1:
+                        self.max_tool_calls = (
+                            attempts if self.max_tool_calls is None
+                            else min(self.max_tool_calls, attempts)
+                        )
+        except (OSError, UnicodeError, ValueError, TypeError, yaml.YAMLError) as exc:
+            log.warning("Unable to load tool budget for scenario %s: %s", scenario_id, exc)
 
     @staticmethod
     def _strip_code_fences(text: str) -> str:
@@ -3597,8 +3681,24 @@ class Pipeline:
         stream_callback: Callable[[dict], None] | None = None,
     ) -> None:
         """Deterministic local-MoE CVE/version pass with auditable tool ledger."""
+        recon_policy = tool_policy_for_phase(
+            self.scenario_tool_policy, "recon"
+        )
+        cve_enabled = recon_policy is None or "cve_search" in recon_policy
         records: list[dict] = []
         log_path = self.run_dir / "tool_calls.jsonl"
+        if not cve_enabled:
+            (self.run_dir / "03_cve_validation.json").write_text(
+                json.dumps({
+                    "mode": "local_moe_deterministic",
+                    "queries": 0,
+                    "compatible_cves": 0,
+                    "records": [],
+                    "status": "skipped_by_scenario_tool_policy",
+                }, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return
         for device in surface:
             if not isinstance(device, dict):
                 continue
@@ -3717,9 +3817,14 @@ class Pipeline:
             print("  [dry-run] Skipping scanner")
             return
 
+        scanner_kwargs = {"compact": self._uses_compact_local_moe()}
+        recon_policy = tool_policy_for_phase(
+            self.scenario_tool_policy, "recon"
+        )
+        if recon_policy is not None:
+            scanner_kwargs["allowed_tool_names"] = recon_policy
         scanner_results = run_scanner(
-            self.run_dir, surface, stream_callback,
-            compact=self._uses_compact_local_moe(),
+            self.run_dir, surface, stream_callback, **scanner_kwargs
         )
         if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
@@ -3739,7 +3844,13 @@ class Pipeline:
             "mtls_request", "tls_inspect",
         }
         recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
-        analysis_tools = [self._wrap_tool(t, phase=3, agent="vuln_analysis") for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+        analysis_candidates = self._apply_scenario_tool_policy(
+            recon_limited + skill_tools + DELIVERABLE_TOOLS, 3
+        )
+        analysis_tools = [
+            self._wrap_tool(t, phase=3, agent="vuln_analysis")
+            for t in analysis_candidates
+        ]
 
         def _analyze_device(device: dict):
             device_id = device["id"]
@@ -5201,6 +5312,11 @@ class Pipeline:
         """Add compact-only tools omitted from the bounded intrusion group."""
         present = {str(tool.get("name")) for tool in tools}
         missing = {"ssh_login", "nmap_scan"} - present
+        intrusion_policy = tool_policy_for_phase(
+            self.scenario_tool_policy, "intrusion"
+        )
+        if intrusion_policy is not None:
+            missing &= intrusion_policy
         extras = [
             self._wrap_tool(tool, phase=phase, agent=agent)
             for tool in RECON_TOOLS
@@ -6384,7 +6500,10 @@ class Pipeline:
 
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
         recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
-        analysis_tools = [self._wrap_tool(t) for t in recon_limited + skill_tools + DELIVERABLE_TOOLS]
+        analysis_candidates = self._apply_scenario_tool_policy(
+            recon_limited + skill_tools + DELIVERABLE_TOOLS, 3
+        )
+        analysis_tools = [self._wrap_tool(t) for t in analysis_candidates]
 
         for host in new_hosts:
             ip = host.get("ip", "")
@@ -6405,9 +6524,14 @@ class Pipeline:
             print(f"  [+] Followup scan: {device_id} ({ip})")
 
             # 1. Targeted nmap scan
+            scanner_kwargs = {"compact": self._uses_compact_local_moe()}
+            recon_policy = tool_policy_for_phase(
+                self.scenario_tool_policy, "recon"
+            )
+            if recon_policy is not None:
+                scanner_kwargs["allowed_tool_names"] = recon_policy
             mini_scan = run_scanner(
-                self.run_dir, [device], stream_callback,
-                compact=self._uses_compact_local_moe(),
+                self.run_dir, [device], stream_callback, **scanner_kwargs
             )
             scan_data = mini_scan.get(device_id, {})
 
@@ -9012,7 +9136,29 @@ class Pipeline:
                         seen_names.add(ref)
                         break
 
-        return tools
+        return self._apply_scenario_tool_policy(tools, config.phase)
+
+    def _apply_scenario_tool_policy(
+        self, tools: list[dict], phase: int | str | None
+    ) -> list[dict]:
+        """Apply a manual scenario allowlist after normal tool resolution."""
+        try:
+            phase_number = int(phase) if phase is not None else None
+        except (TypeError, ValueError):
+            phase_number = None
+        phase_name = {
+            2: "recon",
+            3: "recon",
+            4: "verification",
+            5: "intrusion",
+        }.get(phase_number)
+        if phase_name is None:
+            return tools
+        allowed = tool_policy_for_phase(self.scenario_tool_policy, phase_name)
+        if allowed is None:
+            return tools
+        allowed.update(INTERNAL_TOOLS)
+        return [tool for tool in tools if tool.get("name") in allowed]
 
     def _wrap_tool(self, tool: dict, *, phase: int | str | None = None, agent: str | None = None) -> dict:
         """Wrap a tool function to log its calls and results to tool_calls.jsonl."""

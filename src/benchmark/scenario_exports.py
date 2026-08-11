@@ -25,6 +25,8 @@ EXPORT_VERSION = 1
 EXPORTED_ID_RE = re.compile(r"^gen-[a-z0-9]+-[a-f0-9]{10}$")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EXPORT_ROOT = REPO_ROOT / "output" / "exported_scenarios"
+DEFAULT_GENERATED_ROOT = REPO_ROOT / "output" / "generated_scenarios"
+MANUAL_GENERATED_ID_RE = re.compile(r"^gen-custom-[a-f0-9]{10}$")
 
 _ARTIFACTS = {
     "scenario": "scenario.yaml",
@@ -245,11 +247,29 @@ def default_export_store() -> ExportedScenarioStore:
     return ExportedScenarioStore()
 
 
+def _manual_artifact_path(scenario_id: int | str, artifact: str) -> Path | None:
+    sid = str(scenario_id)
+    if not MANUAL_GENERATED_ID_RE.fullmatch(sid):
+        return None
+    filename = _ARTIFACTS.get(artifact)
+    if filename is None:
+        return None
+    root = DEFAULT_GENERATED_ROOT.resolve()
+    directory = (root / sid).resolve()
+    if directory.parent != root or directory.is_symlink() or not directory.is_dir():
+        return None
+    path = directory / filename
+    return path if path.is_file() and not path.is_symlink() else None
+
+
 def resolve_scenario_path(scenario_id: int | str) -> Path:
     sid = str(scenario_id).removeprefix("S").removeprefix("s")
     store = default_export_store()
     if store.exists(sid):
         return store.artifact_path(sid, "scenario")
+    manual = _manual_artifact_path(sid, "scenario")
+    if manual is not None:
+        return manual
     return REPO_ROOT / "benchmarks" / "scenarios" / f"S{sid}.yaml"
 
 
@@ -258,6 +278,9 @@ def resolve_topology_path(scenario_id: int | str, topology_id: str) -> Path:
     store = default_export_store()
     if store.exists(sid):
         return store.artifact_path(sid, "topology")
+    manual = _manual_artifact_path(sid, "topology")
+    if manual is not None:
+        return manual
     return REPO_ROOT / "benchmarks" / "topologies" / f"{topology_id}.yaml"
 
 
@@ -266,4 +289,7 @@ def resolve_ground_truth_path(scenario_id: int | str) -> Path:
     store = default_export_store()
     if store.exists(sid):
         return store.artifact_path(sid, "ground_truth")
+    manual = _manual_artifact_path(sid, "ground_truth")
+    if manual is not None:
+        return manual
     return REPO_ROOT / "benchmarks" / "ground_truth" / f"scenario_{sid}.yaml"

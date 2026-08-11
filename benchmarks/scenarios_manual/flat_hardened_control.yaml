@@ -1,0 +1,22 @@
+schema_version: 3
+scenario_id: flat-hardened-control
+name: Flat hardened control
+difficulty: control
+posture: hardened
+description: The same flat service shape with explicit negative controls.
+execution:
+  adapter: ansible-proxmox
+  profile: flat_roles
+topology:
+  ref: flat
+  overrides:
+    router: {security_profile: hardened}
+    services:
+      - {name_template: 's{sid}-mqtt', vmid_offset: 1, ip: 192.168.100.11, role: mqtt_broker, security_profile: hardened}
+      - {name_template: 's{sid}-web', vmid_offset: 2, ip: 192.168.100.12, role: web_server, security_profile: hardened}
+      - {name_template: 's{sid}-ssh', vmid_offset: 3, ip: 192.168.100.13, role: ssh_server, security_profile: hardened}
+packs:
+  - manual_flat_chain
+tool_policy:
+  recon: [nmap_scan, curl_headers, mqtt_listen]
+  verification: [curl_headers, ssh_login, mqtt_listen]

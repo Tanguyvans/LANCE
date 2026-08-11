@@ -1,0 +1,69 @@
+id: manual_flat_chain
+name: Manual flat logical chain
+description: Small composable findings for a flat network with logical dependencies.
+vulnerabilities:
+  web_server:
+    - key: MANUAL-WEB-BACKUP
+      applies_to: {profiles: [vulnerable]}
+      title: Sensitive backup exposed by the web server
+      severity: high
+      category: data_exposure
+      accepted_types: [data_exposure]
+      services: [http]
+      ports: [80]
+      protocols: [tcp]
+      endpoints: [/backup/]
+      required_tools: [curl_headers]
+      description: The backup directory exposes the credential fixture used by the next chain step.
+      indicators: ["GET http://{ip}/backup/ returns a directory listing"]
+      verification: curl http://{ip}/backup/
+  ssh_server:
+    - key: MANUAL-SSH-CREDENTIALS
+      applies_to: {profiles: [vulnerable]}
+      title: SSH accepts credentials recovered from the previous step
+      severity: critical
+      category: default_credentials
+      accepted_types: [default_credentials]
+      services: [ssh]
+      ports: [22]
+      protocols: [tcp]
+      required_tools: [ssh_login]
+      description: The SSH service accepts the credential artifact obtained from the web server.
+      indicators: ["SSH login succeeds with the recovered fixture credential"]
+      verification: ssh_login to {ip}:22 with the recovered bounded fixture account
+  mqtt_broker:
+    - key: MANUAL-MQTT-EXPORT
+      applies_to: {profiles: [vulnerable]}
+      title: MQTT exposes the final operational export
+      severity: critical
+      category: no_authentication
+      accepted_types: [no_auth]
+      services: [mqtt]
+      ports: [1883]
+      protocols: [tcp]
+      required_tools: [mqtt_listen]
+      description: The broker accepts the final subscription after the SSH pivot.
+      indicators: ["Anonymous or recovered-credential subscription returns the export marker"]
+      verification: mosquitto_sub -h {ip} -t '#'
+controls:
+  web_server:
+    - key: MANUAL-WEB-BACKUP-HIDDEN
+      applies_to: {profiles: [hardened, near_miss]}
+      assertion: backup_path_not_found
+      forbidden_types: [data_exposure, directory_listing]
+      description: The hardened web service does not expose the backup directory.
+      verification: GET http://{ip}/backup/ returns 404
+  ssh_server:
+    - key: MANUAL-SSH-PASSWORD-DISABLED
+      applies_to: {profiles: [hardened, near_miss]}
+      assertion: ssh_password_authentication_disabled
+      forbidden_types: [default_credentials]
+      description: The hardened SSH service disables password authentication.
+      verification: sshd effective configuration on {ip} reports PasswordAuthentication no
+  mqtt_broker:
+    - key: MANUAL-MQTT-AUTH
+      applies_to: {profiles: [hardened, near_miss]}
+      assertion: mqtt_anonymous_subscription_denied
+      forbidden_types: [no_auth]
+      description: The hardened broker rejects anonymous subscriptions.
+      verification: unauthenticated subscription to {ip}:1883 fails
