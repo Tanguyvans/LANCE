@@ -352,6 +352,16 @@
 
 <!-- ── Scenario Lab view ─────────────────────────────────────────────────── -->
 <div id="scenario-lab-view" hidden>
+  <nav id="sl-section-nav" role="tablist" aria-label="Sections du Scenario Lab">
+    <button id="sl-tab-variants" class="sl-section-tab active" type="button" role="tab" aria-selected="true" aria-controls="sl-toolbar sl-body" data-sl-section="variants">
+      <span>Scenario Lab</span>
+      <small>Scénarios altérés et visualisation</small>
+    </button>
+    <button id="sl-tab-builder" class="sl-section-tab" type="button" role="tab" aria-selected="false" aria-controls="sl-builder-panel" data-sl-section="builder">
+      <span>Construire un scénario</span>
+      <small>Composition manuelle ou aléatoire</small>
+    </button>
+  </nav>
   <div id="sl-toolbar">
     <div>
       <div id="sl-title">Scenario Lab</div>
@@ -372,7 +382,7 @@
     <button id="sl-generate">Générer</button>
   </div>
 
-  <section id="sl-builder-panel" aria-labelledby="sl-builder-title">
+  <section id="sl-builder-panel" aria-labelledby="sl-builder-title" hidden>
     <div class="sl-panel-heading-row">
       <div>
         <div class="sl-panel-heading" id="sl-builder-title">Construire un scénario</div>

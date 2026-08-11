@@ -37,6 +37,9 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
 
     assert 'data-view="scenario-lab"' in html
+    assert 'id="sl-section-nav"' in html
+    assert 'id="sl-tab-variants"' in html
+    assert 'id="sl-tab-builder"' in html
     for element_id in (
         "sl-builder-topology",
         "sl-builder-name",
@@ -57,6 +60,8 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     assert 'id="sl-delete-variant"' in html
     assert 'id="btn-delete-exported-scenario"' in html
     assert 'id="sl-cy"' in html
+    assert 'data-sl-section="variants"' in html
+    assert 'data-sl-section="builder"' in html
     assert '<script src="/static/scenario_generator.js"></script>' in html
     assert 'href="/v2#scenario-lab"' not in html
 
@@ -78,6 +83,7 @@ def test_classic_dashboard_controller_connects_generator_api_and_preview_graph()
     assert "deleteSelectedExportedScenario" in app
     assert "/topology" in javascript
     assert "cytoscape({" in javascript
+    assert "_setScenarioLabSection" in javascript
     assert "deployment_status" in javascript
     assert "scenario-lab-view" in app
     assert "if (isScenarioLab && typeof openScenarioLab" in app

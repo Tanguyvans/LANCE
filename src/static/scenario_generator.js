@@ -25,6 +25,29 @@ function _setScenarioLabStatus(message, type = 'info') {
   status.dataset.type = type;
 }
 
+function _setScenarioLabSection(section) {
+  const builderActive = section === 'builder';
+  const toolbar = document.getElementById('sl-toolbar');
+  const body = document.getElementById('sl-body');
+  const builderPanel = document.getElementById('sl-builder-panel');
+  const tabs = document.querySelectorAll('[data-sl-section]');
+  tabs.forEach(button => {
+    const active = button.dataset.slSection === section;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  toolbar.hidden = builderActive;
+  body.hidden = builderActive;
+  builderPanel.hidden = !builderActive;
+  _scenarioLab.section = builderActive ? 'builder' : 'variants';
+  if (!builderActive && _scenarioLab.graph) {
+    requestAnimationFrame(() => {
+      _scenarioLab.graph.resize();
+      _scenarioLab.graph.fit(undefined, 45);
+    });
+  }
+}
+
 async function _scenarioLabRequest(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -423,6 +446,7 @@ async function _composeScenarioBuilder() {
       }),
     });
     await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
+    _setScenarioLabSection('variants');
     await selectScenarioLabVariant(result.id);
     _setScenarioBuilderStatus(result.id + ' créé et validé.', 'success');
     addLog({type: 'info', message: 'Scénario manuel créé : ' + result.id});
@@ -453,6 +477,7 @@ async function _randomScenarioBuilder() {
       }),
     });
     await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
+    _setScenarioLabSection('variants');
     await selectScenarioLabVariant(result.id);
     _setScenarioBuilderStatus(result.id + ' généré avec des combinaisons compatibles.', 'success');
     addLog({type: 'info', message: 'Scénario aléatoire créé : ' + result.id});
@@ -649,6 +674,10 @@ async function _deleteScenarioLabVariant() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-sl-section]').forEach(button => {
+    button.addEventListener('click', () => _setScenarioLabSection(button.dataset.slSection));
+  });
+  _setScenarioLabSection('variants');
   document.getElementById('sl-builder-seed').value = _scenarioLabSeed();
   document.getElementById('sl-seed').value = _scenarioLabSeed();
   document.getElementById('sl-mutation-seed').value = _scenarioLabSeed();
