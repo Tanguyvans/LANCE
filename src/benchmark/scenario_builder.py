@@ -44,7 +44,22 @@ class ScenarioBuilder:
         self.repo_root = (repo_root or Path(__file__).resolve().parents[2]).resolve()
         self.benchmarks_root = self.repo_root / "benchmarks"
 
+    def _ensure_catalog_sources(self) -> None:
+        missing = []
+        topologies_dir = self.benchmarks_root / "topologies"
+        packs_dir = self.benchmarks_root / "packs" / "definitions"
+        if not topologies_dir.is_dir() or not any(topologies_dir.glob("*.yaml")):
+            missing.append("benchmarks/topologies")
+        if not packs_dir.is_dir() or not any(packs_dir.glob("*.yaml")):
+            missing.append("benchmarks/packs/definitions")
+        if missing:
+            raise ScenarioBuilderError(
+                "Scenario Lab catalogue unavailable; missing "
+                + ", ".join(missing)
+            )
+
     def list_topologies(self) -> list[dict[str, Any]]:
+        self._ensure_catalog_sources()
         result = []
         for path in sorted((self.benchmarks_root / "topologies").glob("*.yaml")):
             topology = _load_yaml(path)

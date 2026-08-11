@@ -72,13 +72,12 @@ ENV YSOSERIAL_JAR=/opt/tools/ysoserial.jar
 # Copy compiled Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Application source (benchmarks and tests excluded via .dockerignore)
+# Application source and the benchmark catalogue used by Scenario Lab and the
+# scenario composer. Tests, runtime data, and generated output stay excluded.
 COPY src/ ./src/
+COPY benchmarks/topologies/ ./benchmarks/topologies/
+COPY benchmarks/packs/definitions/ ./benchmarks/packs/definitions/
 COPY infrastructure/ ./infrastructure/
-
-# Override static files with the Docker-specific frontend (no benchmark, no scenario management)
-COPY src/static_docker/index.html ./src/static/index.html
-COPY src/static_docker/app.js ./src/static/app.js
 
 # Persistent directories (mounted as volumes at runtime)
 RUN mkdir -p data output/agent

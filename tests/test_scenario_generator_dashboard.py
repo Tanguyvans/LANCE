@@ -87,3 +87,14 @@ def test_classic_dashboard_controller_connects_generator_api_and_preview_graph()
     assert "deployment_status" in javascript
     assert "scenario-lab-view" in app
     assert "if (isScenarioLab && typeof openScenarioLab" in app
+
+def test_docker_image_keeps_canonical_scenario_lab_assets():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    assert "COPY benchmarks/topologies/ ./benchmarks/topologies/" in dockerfile
+    assert "COPY benchmarks/packs/definitions/ ./benchmarks/packs/definitions/" in dockerfile
+    assert "static_docker" not in dockerfile
+    assert "benchmarks/" in dockerignore
+    assert "!benchmarks/topologies/**" in dockerignore
+    assert "!benchmarks/packs/definitions/**" in dockerignore

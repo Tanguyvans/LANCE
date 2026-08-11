@@ -98,3 +98,9 @@ def test_random_builder_is_seeded_and_keeps_findings_on_selected_nodes():
     assert first_selection["findings"]
     assert {item["node_id"] for item in first_selection["findings"]} <= selected
     assert len(first_selection["findings"]) <= 4
+
+def test_builder_reports_missing_catalog_sources(tmp_path: Path):
+    builder = ScenarioBuilder(tmp_path)
+
+    with pytest.raises(ScenarioBuilderError, match="catalogue unavailable"):
+        builder.list_topologies()

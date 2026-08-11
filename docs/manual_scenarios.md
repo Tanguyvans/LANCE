@@ -43,6 +43,12 @@ Les endpoints correspondants sont :
 
 Les sources officielles sous benchmarks/ restent inchangées. Les bundles manuels sont stockés sous output/generated_scenarios/ et les variantes exécutables apparaissent dans le sélecteur de scénarios du dashboard.
 
+## Déploiement Docker
+
+L’image Docker sert le frontend canonique sous src/static et embarque les topologies ainsi que les packs de vulnérabilités sous benchmarks/. Le fork src/static_docker n’est plus copié dans l’image.
+
+Après une mise à jour du builder, il faut reconstruire l’image puis recréer le conteneur afin que le frontend et le catalogue soient servis depuis la même version.
+
 ## Structure d’une spécification
 
     schema_version: 3

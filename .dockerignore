@@ -10,6 +10,12 @@ __pycache__
 .pytest_cache
 .mypy_cache
 benchmarks/
+!benchmarks/
+!benchmarks/topologies/
+!benchmarks/topologies/**
+!benchmarks/packs/
+!benchmarks/packs/definitions/
+!benchmarks/packs/definitions/**
 tests/
 output/
 data/

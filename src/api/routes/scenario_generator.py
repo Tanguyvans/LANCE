@@ -88,7 +88,7 @@ def compose_manual_scenario(request: ComposeRequest):
 
 @router.get("/builder/topologies")
 def list_builder_topologies():
-    return {"topologies": builder.list_topologies()}
+    return _call(lambda: {"topologies": builder.list_topologies()})
 
 
 @router.get("/builder/catalog/{topology_id}")
