@@ -93,6 +93,35 @@ def test_builder_defaults_to_exportable_auto_profile(tmp_path: Path):
     assert variant["deployable"] is True
 
 
+def test_iot_gateway_builder_scenario_uses_the_ansible_provider(tmp_path: Path):
+    builder = _builder()
+    catalog = builder.catalog("gateway")
+    gateway = next(node for node in catalog["nodes"] if node["role"] == "iot_gateway")
+    candidate = gateway["candidates"][0]
+    spec, _ = builder.build_spec(
+        topology_id="gateway",
+        selected_nodes=[gateway["id"]],
+        findings=[{"node_id": gateway["id"], "candidate_id": candidate["candidate_id"]}],
+        seed=99,
+    )
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(spec)
+
+    assert variant["deployable"] is True
+    assert variant["execution"]["profile"] == "flat_roles"
+    assert variant["execution"]["service_fixtures"][0]["role"] == "iot_gateway"
+
+
+def test_random_builder_rejects_non_executable_topologies_cleanly():
+    with pytest.raises(ScenarioBuilderError, match="no compatible executable"):
+        _builder().random_spec(
+            topology_id="cloud_iam_ssrf",
+            seed=3,
+            min_nodes=1,
+            max_nodes=1,
+        )
+
 def test_builder_rejects_findings_for_unselected_or_incompatible_nodes():
     builder = _builder()
     catalog = builder.catalog("flat")

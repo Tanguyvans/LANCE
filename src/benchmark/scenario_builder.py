@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 
+from src.benchmark.manual_execution import FLAT_ROLE_PROVIDERS
 from src.benchmark.tool_registry import service_descriptors
 
 
@@ -65,13 +66,26 @@ class ScenarioBuilder:
             topology = _load_yaml(path)
             topology_id = str(topology.get("id") or path.stem)
             nodes = self._nodes(topology)
-            candidates = sum(len(self._candidates_for_node(node, topology_id)) for node in nodes)
+            candidate_sets = [
+                (node, self._candidates_for_node(node, topology_id))
+                for node in nodes
+            ]
+            candidates = sum(len(items) for _, items in candidate_sets)
+            executable_candidates = sum(
+                len(items)
+                for node, items in candidate_sets
+                if not node["router"]
+                and not node.get("simulator")
+                and node["role"] in FLAT_ROLE_PROVIDERS
+                and self._flat_runtime_topology(topology)
+            )
             result.append({
                 "id": topology_id,
                 "name": str(topology.get("name") or topology_id),
                 "description": str(topology.get("description") or ""),
                 "node_count": max(0, len(nodes) - 1),
                 "candidate_count": candidates,
+                "executable_candidate_count": executable_candidates,
                 "has_links": bool(topology.get("links")),
             })
         return result
@@ -221,6 +235,42 @@ class ScenarioBuilder:
             "execution_profile": str(execution_profile or "auto"),
         }
 
+
+    @staticmethod
+    def _flat_runtime_topology(topology: dict[str, Any]) -> bool:
+        router = topology.get("router") or {}
+        return (
+            str(router.get("type", "openwrt")) == "openwrt"
+            and router.get("ip") == "192.168.100.1"
+            and topology.get("network_mode") in {None, "flat"}
+            and not topology.get("reachability_policy")
+            and not topology.get("observability")
+        )
+
+    def _random_eligible_nodes(
+        self,
+        topology: dict[str, Any],
+        topology_id: str,
+        execution_profile: str,
+    ) -> list[dict[str, Any]]:
+        eligible = [
+            node
+            for node in self._nodes(topology)
+            if not node["router"] and self._candidates_for_node(node, topology_id)
+        ]
+        if execution_profile == "preview":
+            return eligible
+        if execution_profile in {"auto", "flat_roles"}:
+            if not self._flat_runtime_topology(topology):
+                return []
+            return [
+                node
+                for node in eligible
+                if not node.get("simulator")
+                and node["role"] in FLAT_ROLE_PROVIDERS
+            ]
+        return eligible
+
     def random_spec(
         self,
         *,
@@ -233,24 +283,44 @@ class ScenarioBuilder:
         execution_profile: str = "auto",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         rng = random.Random(int(seed))
-        topology_ids = [item["id"] for item in self.list_topologies()]
+        execution_profile = str(execution_profile or "auto")
+        topologies = self.list_topologies() if not topology_id else []
         if topology_id:
             chosen_topology_id = str(topology_id)
         else:
-            viable = [
-                item["id"] for item in self.list_topologies()
-                if item["candidate_count"] > 0
-            ]
+            if execution_profile == "preview":
+                viable = [
+                    item["id"] for item in topologies
+                    if item["candidate_count"] > 0
+                ]
+            elif execution_profile in {"auto", "flat_roles"}:
+                viable = [
+                    item["id"] for item in topologies
+                    if item.get("executable_candidate_count", 0) > 0
+                ]
+            else:
+                viable = [
+                    item["id"] for item in topologies
+                    if item["candidate_count"] > 0
+                ]
             if not viable:
-                raise ScenarioBuilderError("No topology has compatible vulnerability candidates")
+                if execution_profile == "preview":
+                    raise ScenarioBuilderError("No topology has compatible vulnerability candidates")
+                raise ScenarioBuilderError(
+                    f"No topology has compatible executable vulnerability candidates for {execution_profile}"
+                )
             chosen_topology_id = rng.choice(viable)
         topology = self._topology(chosen_topology_id)
-        nodes = self._nodes(topology)
-        eligible = [
-            node for node in nodes
-            if not node["router"] and self._candidates_for_node(node, chosen_topology_id)
-        ]
+        eligible = self._random_eligible_nodes(
+            topology,
+            chosen_topology_id,
+            execution_profile,
+        )
         if not eligible:
+            if execution_profile != "preview":
+                raise ScenarioBuilderError(
+                    f"Topology {chosen_topology_id} has no compatible executable vulnerable service node for {execution_profile}"
+                )
             raise ScenarioBuilderError(
                 f"Topology {chosen_topology_id} has no compatible vulnerable service node"
             )

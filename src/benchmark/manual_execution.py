@@ -22,11 +22,22 @@ ADAPTER_ID = "ansible-proxmox"
 # otherwise a Ground Truth could claim a state that the runtime never creates.
 FLAT_ROLE_PROVIDERS: dict[str, dict[str, Any]] = {
     "mqtt_broker": {"provider": "ansible.debian_role", "control": True},
+    "mqtt_broker_v2": {"provider": "ansible.debian_role", "control": False},
     "web_server": {"provider": "ansible.debian_role", "control": True},
+    "web_server_v2": {"provider": "ansible.debian_role", "control": False},
+    "web_upload": {"provider": "ansible.debian_role", "control": False},
     "ssh_server": {"provider": "ansible.debian_role", "control": True},
+    "ssh_server_v2": {"provider": "ansible.debian_role", "control": False},
     "db_server_v2": {"provider": "ansible.debian_role", "control": True},
     "db_server": {"provider": "ansible.debian_role", "control": False},
     "modbus_server": {"provider": "ansible.debian_role", "control": False},
+    "iot_gateway": {"provider": "ansible.debian_role", "control": False},
+    "camera_server": {"provider": "ansible.debian_role", "control": False},
+    "nvr_server": {"provider": "ansible.debian_role", "control": False},
+    "ftp_server": {"provider": "ansible.debian_role", "control": False},
+    "snmp_server": {"provider": "ansible.debian_role", "control": False},
+    "coap_server": {"provider": "ansible.debian_role", "control": False},
+    "nodered_server": {"provider": "ansible.debian_role", "control": False},
 }
 
 MULTIHOP_ROLES = {
