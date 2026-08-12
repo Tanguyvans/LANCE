@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.benchmark.scenario_exports import resolve_ground_truth_path
+from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -66,6 +66,14 @@ def _read_run_meta(run_dir: Path) -> dict[str, Any] | None:
 
 def _normalized_scenario_id(value: object) -> str:
     return str(value).strip().removeprefix("S").removeprefix("s")
+
+
+def _is_trusted_exported_scenario(scenario_id: str) -> bool:
+    """Recognize exported oracles without trusting run-local files."""
+    try:
+        return default_export_store().exists(scenario_id)
+    except Exception:
+        return False
 
 
 def _scenario_descriptor(run_dir: Path):
@@ -425,15 +433,18 @@ def score_run(run_id: str):
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Evaluation failed: {exc}") from exc
 
-    from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
-    try:
-        scenario_id = _parse_single_scenario_id(scenario_id)
-    except SealedScenarioError as exc:
-        # Defense in depth if a future sealed ID falls outside the numeric range
-        # used by _is_sealed_run.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    exported_scenario = _is_trusted_exported_scenario(scenario_id)
+
+    if not exported_scenario:
+        from src.agent.batch import SealedScenarioError, _parse_single_scenario_id
+        try:
+            scenario_id = _parse_single_scenario_id(scenario_id)
+        except SealedScenarioError as exc:
+            # Defense in depth if a future sealed ID falls outside the numeric range
+            # used by _is_sealed_run.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Public scores resolve the oracle only from the trusted evaluator store.
     # A run-local ground_truth.yaml is intentionally ignored.
@@ -445,7 +456,10 @@ def score_run(run_id: str):
         gt_data = yaml.safe_load(gt_path.read_text(encoding="utf-8")) or {}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Invalid trusted ground truth: {exc}") from exc
-    if str(gt_data.get("scenario_id")) != str(scenario_id):
+    # Official scenarios must match their requested ID exactly.  Exported
+    # custom bundles are trusted through ExportedScenarioStore; older bundles
+    # may still contain the logical composer ID in their ground truth.
+    if not exported_scenario and str(gt_data.get("scenario_id")) != str(scenario_id):
         raise HTTPException(status_code=500, detail="Trusted ground truth scenario mismatch")
 
     vuln_file = run_dir / "03_vuln_analysis.json"
@@ -505,7 +519,7 @@ def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):
             gt_data = yaml.safe_load(gt_path.read_text(encoding="utf-8")) or {}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Invalid trusted ground truth: {exc}") from exc
-        if str(gt_data.get("scenario_id")) != scenario_id:
+        if not _is_trusted_exported_scenario(scenario_id) and str(gt_data.get("scenario_id")) != scenario_id:
             raise HTTPException(status_code=500, detail="Trusted ground truth scenario mismatch")
 
     bench_llm_file = run_dir / "benchmark_llm.json"

@@ -324,6 +324,30 @@ class ScenarioGenerator:
         if self._variant_dir(variant_id).is_dir():
             return self.get_variant(variant_id)
 
+        # ScenarioComposer renders device names from the logical scenario ID,
+        # while the generated bundle is addressed by its content ID.  Rebind
+        # artifact-level scenario references so the exported oracle can be
+        # resolved and scored by the public API.
+        logical_id = str(composed["ground_truth"].get("scenario_id", ""))
+        composed["scenario"].update({
+            "scenario_id": variant_id,
+            "topology": variant_id,
+        })
+        composed["topology"]["id"] = variant_id
+        composed["ground_truth"]["scenario_id"] = variant_id
+        for artifact_name in ("injection_plan", "verification_plan"):
+            composed[artifact_name]["scenario_id"] = variant_id
+
+        previous_contracts = composed["matching_contracts"]
+        entries = copy.deepcopy(previous_contracts.get("scenarios", {}).get(logical_id, {}))
+        composed["matching_contracts"] = {
+            "schema_version": "strict-v3.2",
+            "source_hashes": {
+                variant_id: hashlib.sha256(_yaml_bytes(composed["ground_truth"])).hexdigest(),
+            },
+            "scenarios": {variant_id: entries},
+        }
+
         artifacts = {
             "scenario.yaml": composed["scenario"],
             "topology.yaml": composed["topology"],

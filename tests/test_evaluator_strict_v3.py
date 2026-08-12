@@ -83,6 +83,35 @@ def _write(tmp_path: Path, findings, vulnerabilities=None, *, controls=None, bon
     return run, gt
 
 
+def test_legacy_export_without_source_hash_uses_trusted_manifest(monkeypatch, tmp_path):
+    run, source_gt = _write(tmp_path, [_finding()])
+    export_dir = tmp_path / "exports" / "gen-custom-legacy"
+    export_dir.mkdir(parents=True)
+    ground_truth = export_dir / "ground_truth.yaml"
+    ground_truth.write_bytes(source_gt.read_bytes())
+    (export_dir / "matching_contracts.yaml").write_text(yaml.safe_dump({
+        "schema_version": "strict-v3.2",
+        "source_hashes": {},
+        "scenarios": {"test": {"V1": {}}},
+    }))
+
+    class TrustedStore:
+        def exists(self, scenario_id):
+            return scenario_id == "gen-custom-legacy"
+
+        def artifact_path(self, scenario_id, artifact):
+            assert scenario_id == "gen-custom-legacy"
+            assert artifact == "ground_truth"
+            return ground_truth
+
+    import src.benchmark.scenario_exports as scenario_exports
+    monkeypatch.setattr(scenario_exports, "default_export_store", lambda: TrustedStore())
+
+    result = evaluate(run, ground_truth, policy=STRICT_V3)
+
+    assert result.scenario_score_pct == 50.0
+
+
 def test_public_matching_catalog_covers_every_ground_truth_entry():
     root = Path(__file__).resolve().parents[1] / "benchmarks" / "ground_truth"
     catalog = yaml.safe_load((root / "matching_contracts.yaml").read_text())

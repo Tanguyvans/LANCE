@@ -2032,6 +2032,21 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
     )
 
 
+def _is_trusted_exported_ground_truth(ground_truth_file: Path) -> bool:
+    """Validate provenance before accepting a legacy exported contract."""
+    try:
+        from src.benchmark.scenario_exports import default_export_store
+
+        scenario_id = ground_truth_file.parent.name
+        store = default_export_store()
+        if not store.exists(scenario_id):
+            return False
+        trusted_path = store.artifact_path(scenario_id, "ground_truth")
+        return trusted_path.resolve() == ground_truth_file.resolve()
+    except Exception:
+        return False
+
+
 def evaluate(
     run_dir: Path,
     ground_truth_file: Path,
@@ -2054,6 +2069,11 @@ def evaluate(
                     raise ValueError(f"Unsupported strict-v3 contract schema: {contract_file}")
                 expected_hash = str((contract_data.get("source_hashes", {}) or {}).get(scenario_id, ""))
                 actual_hash = hashlib.sha256(ground_truth_file.read_bytes()).hexdigest()
+                # A pre-fix custom export can have a valid, immutable contract
+                # but no source hash.  Its full export manifest is verified before
+                # allowing this narrowly scoped compatibility fallback.
+                if not expected_hash and _is_trusted_exported_ground_truth(ground_truth_file):
+                    expected_hash = actual_hash
                 if not expected_hash or expected_hash != actual_hash:
                     raise ValueError(
                         f"Stale strict-v3 contract for S{scenario_id}; regenerate {contract_file}"

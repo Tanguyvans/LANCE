@@ -1,11 +1,15 @@
 """Tests for src/api/routes/runs.py helper functions."""
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
 from src.api.routes import runs
+from src.benchmark.scenario_generator import ScenarioGenerator
+from src.benchmark.scenario_spec import load_scenario_spec
+
 from src.api.routes.runs import (
     _extract_commit,
     _load_sealed_summary,
@@ -253,6 +257,34 @@ class TestRunEndpoints:
         assert result["scenario_id"] == "1h"
         assert result["is_zero_gt"] is True
         assert result["scenario_score_pct"] == 100.0
+
+    def test_exported_custom_scenario_can_be_scored(self, tmp_path, monkeypatch):
+        root = Path(__file__).resolve().parents[1]
+        generator = ScenarioGenerator(root, tmp_path / "generated", tmp_path / "exports")
+        spec = load_scenario_spec(root / "benchmarks" / "scenarios_manual" / "flat_logical_chain.yaml")
+        generated = generator.compose_custom(spec)
+        generator.export_variant(generated["id"])
+
+        output_dir = tmp_path / "output"
+        run_dir = output_dir / "custom-run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "scenario_meta.json").write_text(json.dumps({
+            "scenario_id": generated["id"],
+            "split": "dev-public",
+        }))
+        (run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": []}))
+        monkeypatch.setattr(runs, "OUTPUT_DIR", output_dir)
+        monkeypatch.setattr(runs, "default_export_store", lambda: generator.export_store)
+        monkeypatch.setattr(
+            runs,
+            "resolve_ground_truth_path",
+            lambda scenario_id: generator.export_store.artifact_path(scenario_id, "ground_truth"),
+        )
+
+        score = score_run("custom-run")
+
+        assert score["scenario_id"] == generated["id"]
+        assert score["is_zero_gt"] is False
 
     def test_benchmark_row_exposes_evaluation_failure(self, tmp_path, monkeypatch):
         run_dir = tmp_path / "public-run"

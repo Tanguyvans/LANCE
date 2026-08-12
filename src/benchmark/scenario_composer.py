@@ -50,6 +50,11 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return value
 
 
+def _yaml_bytes(value: Any) -> bytes:
+    """Serialize an artifact exactly as it is persisted in a bundle."""
+    return yaml.safe_dump(value, allow_unicode=True, sort_keys=False).encode("utf-8")
+
+
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(value).lower()).strip("-")
 
@@ -519,7 +524,12 @@ class ScenarioComposer:
                 "required_tools": list(item.get("required_tools", [])),
                 "contract_source": contract["contract_source"],
             }
-        return {"schema_version": "strict-v3.2", "source_hashes": {}, "scenarios": {scenario_id: entries}}
+        source_hash = hashlib.sha256(_yaml_bytes(gt)).hexdigest()
+        return {
+            "schema_version": "strict-v3.2",
+            "source_hashes": {scenario_id: source_hash},
+            "scenarios": {scenario_id: entries},
+        }
 
     @staticmethod
     def _validate_bundle(spec, topology, gt, contracts, injection):

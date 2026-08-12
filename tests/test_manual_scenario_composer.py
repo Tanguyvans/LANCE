@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+
+import yaml
 
 import pytest
 
@@ -69,6 +72,13 @@ def test_manual_composition_is_stored_as_an_executable_bundle(tmp_path: Path):
     assert result["execution"]["profile"] == "flat_roles"
     assert (generator.storage_root / result["id"] / "execution_plan.yaml").is_file()
     assert (generator.storage_root / result["id"] / "matching_contracts.yaml").is_file()
+    bundle_dir = generator.storage_root / result["id"]
+    ground_truth_bytes = (bundle_dir / "ground_truth.yaml").read_bytes()
+    ground_truth = yaml.safe_load(ground_truth_bytes)
+    contracts = yaml.safe_load((bundle_dir / "matching_contracts.yaml").read_text(encoding="utf-8"))
+    assert ground_truth["scenario_id"] == result["id"]
+    assert contracts["scenarios"].keys() == {result["id"]}
+    assert contracts["source_hashes"][result["id"]] == hashlib.sha256(ground_truth_bytes).hexdigest()
     assert generator.get_variant(result["id"])["ground_truth"]["attack_path_count"] == 1
 
 
