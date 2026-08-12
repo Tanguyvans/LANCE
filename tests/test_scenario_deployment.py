@@ -243,3 +243,29 @@ def test_pipeline_selects_manual_adapter_for_exported_builder_bundle(tmp_path, m
     assert isinstance(pipeline._generated_deployment, ManualScenarioDeployment)
     assert pipeline._generated_deployment.execution_profile == "flat_roles"
     pipeline._generated_deployment.release()
+
+
+def test_api_builder_bundle_gets_an_s15_runtime_overlay(tmp_path):
+    from src.benchmark.scenario_builder import ScenarioBuilder
+
+    builder = ScenarioBuilder(ROOT)
+    spec, _ = builder.random_spec(
+        topology_id="api_authorization",
+        seed=7,
+        min_nodes=1,
+        max_nodes=1,
+        min_vulnerabilities=2,
+        max_vulnerabilities=3,
+    )
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(spec)
+    deployment = ManualScenarioDeployment.prepare(
+        variant["id"],
+        generated_root=generator.storage_root,
+        state_root=tmp_path / "deployments",
+    )
+    overlay = yaml.safe_load(deployment.overlay_path.read_text(encoding="utf-8"))
+    assert deployment.source_scenario_id == "15"
+    assert deployment.execution_profile == "api_simulator"
+    assert len(overlay["benchmark_scenarios"][variant["id"]]["services"]) == 6
+    deployment.release()

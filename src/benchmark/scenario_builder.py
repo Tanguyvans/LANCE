@@ -15,7 +15,11 @@ from typing import Any
 
 import yaml
 
-from src.benchmark.manual_execution import FLAT_ROLE_PROVIDERS
+from src.benchmark.manual_execution import (
+    API_SIMULATOR_PROVIDERS,
+    FLAT_ROLE_PROVIDERS,
+    is_api_simulator_topology,
+)
 from src.benchmark.tool_registry import service_descriptors
 
 
@@ -71,13 +75,24 @@ class ScenarioBuilder:
                 for node in nodes
             ]
             candidates = sum(len(items) for _, items in candidate_sets)
+            api_runtime = is_api_simulator_topology(topology)
+            flat_runtime = self._flat_runtime_topology(topology)
             executable_candidates = sum(
                 len(items)
                 for node, items in candidate_sets
                 if not node["router"]
-                and not node.get("simulator")
-                and node["role"] in FLAT_ROLE_PROVIDERS
-                and self._flat_runtime_topology(topology)
+                and (
+                    (
+                        api_runtime
+                        and node["role"] in API_SIMULATOR_PROVIDERS
+                        and node.get("simulator") == API_SIMULATOR_PROVIDERS[node["role"]]["simulator"]
+                    )
+                    or (
+                        flat_runtime
+                        and not node.get("simulator")
+                        and node["role"] in FLAT_ROLE_PROVIDERS
+                    )
+                )
             )
             result.append({
                 "id": topology_id,
@@ -185,7 +200,14 @@ class ScenarioBuilder:
                 "device": node["source_name"].format(sid=logical_id),
             })
 
-        selected_raw = [copy.deepcopy(node["_raw"]) for node in selected_services]
+        runtime_complete = (
+            str(execution_profile or "auto") in {"auto", "api_simulator"}
+            and is_api_simulator_topology(topology)
+        )
+        selected_raw = [
+            copy.deepcopy(node["_raw"])
+            for node in (services if runtime_complete else selected_services)
+        ]
         selected_source_names = {
             str(item.get("name_template") or item.get("name") or "")
             for item in selected_raw
@@ -260,7 +282,23 @@ class ScenarioBuilder:
         ]
         if execution_profile == "preview":
             return eligible
-        if execution_profile in {"auto", "flat_roles"}:
+        if execution_profile == "api_simulator":
+            if not is_api_simulator_topology(topology):
+                return []
+            return [
+                node
+                for node in eligible
+                if node["role"] in API_SIMULATOR_PROVIDERS
+                and node.get("simulator") == API_SIMULATOR_PROVIDERS[node["role"]]["simulator"]
+            ]
+        if execution_profile == "auto" and is_api_simulator_topology(topology):
+            return [
+                node
+                for node in eligible
+                if node["role"] in API_SIMULATOR_PROVIDERS
+                and node.get("simulator") == API_SIMULATOR_PROVIDERS[node["role"]]["simulator"]
+            ]
+        if execution_profile == "auto" or execution_profile == "flat_roles":
             if not self._flat_runtime_topology(topology):
                 return []
             return [

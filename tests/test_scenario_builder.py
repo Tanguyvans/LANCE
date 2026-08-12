@@ -175,3 +175,26 @@ def test_builder_reports_missing_catalog_sources(tmp_path: Path):
 
     with pytest.raises(ScenarioBuilderError, match="catalogue unavailable"):
         builder.list_topologies()
+
+
+def test_api_authorization_random_generation_uses_the_s15_simulator(tmp_path: Path):
+    builder = _builder()
+    topology = next(item for item in builder.list_topologies() if item["id"] == "api_authorization")
+    assert topology["executable_candidate_count"] == 3
+
+    spec, selection = builder.random_spec(
+        topology_id="api_authorization",
+        seed=7,
+        min_nodes=1,
+        max_nodes=5,
+        min_vulnerabilities=2,
+        max_vulnerabilities=10,
+    )
+    assert len(spec["topology"]["overrides"]["services"]) == 6
+    assert selection["random"]["vulnerability_count"] <= 3
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(spec)
+    assert variant["deployable"] is True
+    assert variant["execution_profile"] == "api_simulator"
+    assert variant["execution"]["source_scenario_id"] == "15"

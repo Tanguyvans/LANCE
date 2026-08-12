@@ -9,6 +9,7 @@ artifacts and the runtime deployment overlay.
 from __future__ import annotations
 
 import copy
+from collections import Counter
 from typing import Any
 
 from src.benchmark.scenario_spec import ScenarioSpecError
@@ -40,6 +41,71 @@ FLAT_ROLE_PROVIDERS: dict[str, dict[str, Any]] = {
     "nodered_server": {"provider": "ansible.debian_role", "control": False},
 }
 
+# S15 is a real benchmark provider even though its services are implemented by
+# the deterministic simulator runtime rather than by Debian role installers.
+# Keep this contract explicit: the simulator needs the complete control-plane
+# topology and the source-15 playbooks know these exact role/simulator pairs.
+API_SIMULATOR_PROVIDERS: dict[str, dict[str, Any]] = {
+    "api_identity_server": {
+        "provider": "ansible.s15_api_simulator",
+        "simulator": "api_identity",
+        "control": True,
+    },
+    "api_tenant_server": {
+        "provider": "ansible.s15_api_simulator",
+        "simulator": "api_tenant",
+        "control": True,
+    },
+    "api_data_store": {
+        "provider": "ansible.s15_api_simulator",
+        "simulator": "api_data_store",
+        "control": True,
+    },
+    "api_event_broker": {
+        "provider": "ansible.s15_api_simulator",
+        "simulator": "api_event_broker",
+        "control": True,
+    },
+    "api_admin_portal": {
+        "provider": "ansible.s15_api_simulator",
+        "simulator": "api_portal",
+        "control": True,
+    },
+}
+
+
+def is_api_simulator_topology(topology: dict[str, Any]) -> bool:
+    """Return whether a topology matches the complete S15 simulator contract."""
+    services = topology.get("services", []) or []
+    if not services:
+        return False
+    actual_counts = Counter()
+    for item in services:
+        role = str(item.get("role", ""))
+        provider = API_SIMULATOR_PROVIDERS.get(role)
+        if provider is None or item.get("simulator") != provider["simulator"]:
+            return False
+        actual_counts[role] += 1
+    return dict(actual_counts) == API_SIMULATOR_ROLE_COUNTS
+
+API_SIMULATOR_ROLE_COUNTS = {
+    "api_identity_server": 1,
+    "api_tenant_server": 2,
+    "api_data_store": 1,
+    "api_event_broker": 1,
+    "api_admin_portal": 1,
+}
+API_SIMULATOR_VULNERABILITY_KEYS = {
+    "F11-IDOR",
+    "F11-MASS-ASSIGNMENT",
+    "F11-JWT-SCOPE",
+}
+API_SIMULATOR_CONTROL_KEYS = {
+    "C11-IDENTITY-BADLOGIN",
+    "C11-NO-TOKEN",
+    "C11-TENANT-ISOLATION",
+}
+
 MULTIHOP_ROLES = {
     "pivot_entry",
     "pivot_relay",
@@ -57,6 +123,17 @@ PROFILE_DEFINITIONS: dict[str, dict[str, Any]] = {
         "source_scenario_id": "20",
         "description": "The existing two-pivot VLAN provider and verifier",
         "capabilities": ["network_pivot", "vlan_routing", "role_injection", "control_injection"],
+    },
+    "api_simulator": {
+        "source_scenario_id": "15",
+        "description": "Deterministic multi-tenant IoT API simulator with authorization controls",
+        "capabilities": [
+            "flat_topology",
+            "api_authorization",
+            "simulator",
+            "role_injection",
+            "control_injection",
+        ],
     },
     "preview": {
         "source_scenario_id": "preview",
@@ -169,6 +246,79 @@ def _validate_flat(topology: dict[str, Any], gt: dict[str, Any]) -> list[dict[st
     return fixtures
 
 
+def _validate_api_simulator(
+    topology: dict[str, Any], gt: dict[str, Any]
+) -> list[dict[str, Any]]:
+    _validate_offsets(topology)
+    router = topology.get("router", {})
+    if str(router.get("type", "openwrt")) != "openwrt":
+        raise ScenarioSpecError("ansible-proxmox/api_simulator requires an OpenWrt router")
+    if router.get("ip") != "192.168.100.1":
+        raise ScenarioSpecError("api_simulator provider requires router IP 192.168.100.1")
+    if topology.get("network_mode") not in {None, "flat"}:
+        raise ScenarioSpecError("api_simulator cannot execute a segmented or multi-hop topology")
+    if topology.get("reachability_policy") or topology.get("observability"):
+        raise ScenarioSpecError(
+            "api_simulator does not implement custom reachability or observability alterations"
+        )
+    if not is_api_simulator_topology(topology):
+        raise ScenarioSpecError(
+            "api_simulator requires the complete api_authorization service and simulator contract"
+        )
+
+    services = _service_by_name(topology)
+    fixtures = []
+    for item in topology.get("services", []) or []:
+        role = str(item.get("role", ""))
+        provider = API_SIMULATOR_PROVIDERS[role]
+        if not str(item.get("ip", "")).startswith("192.168.100."):
+            raise ScenarioSpecError(
+                "api_simulator provider requires services on 192.168.100.0/24"
+            )
+        if any(item.get(field) is not None for field in (
+            "vlan_id", "secondary_vlan_id", "bootstrap_ip", "secondary_ip",
+            "port_override", "runtime", "configuration",
+        )):
+            raise ScenarioSpecError(
+                f"Topology alteration on {item['name']} requires a provider other than api_simulator"
+            )
+        profile = str(item.get("security_profile", "vulnerable"))
+        if profile not in {"vulnerable", "hardened", "near_miss"}:
+            raise ScenarioSpecError(f"Unsupported security_profile {profile!r} for {item['name']}")
+        fixtures.append({
+            "device": item["name"],
+            "ip": item["ip"],
+            "vmid_offset": int(item["vmid_offset"]),
+            "role": role,
+            "provider": provider["provider"],
+            "security_profile": profile,
+            "simulator": item["simulator"],
+            "vulnerability_keys": [],
+            "control_keys": [],
+        })
+
+    for field, allowed_keys in (
+        ("vulnerabilities", API_SIMULATOR_VULNERABILITY_KEYS),
+        ("controls", API_SIMULATOR_CONTROL_KEYS),
+    ):
+        for finding in gt.get(field, []) or []:
+            device = str(finding.get("device", ""))
+            item = services.get(device)
+            if item is None:
+                raise ScenarioSpecError(f"{field} references an undeployable device: {device}")
+            if str(item.get("role")) not in API_SIMULATOR_PROVIDERS:
+                raise ScenarioSpecError(
+                    f"{field} role {item.get('role')!r} has no API simulator provider"
+                )
+            key = str(finding.get("template_key", ""))
+            if key not in allowed_keys:
+                raise ScenarioSpecError(
+                    f"{field} finding {key!r} is not supported by the api_simulator provider"
+                )
+
+    return fixtures
+
+
 def _validate_multihop(topology: dict[str, Any], gt: dict[str, Any]) -> list[dict[str, Any]]:
     _validate_offsets(topology)
     router = topology.get("router", {})
@@ -275,7 +425,7 @@ def _validate_runtime_compatibility(
     spec: dict[str, Any],
 ) -> None:
     _validate_declared_compatibility(profile, ground_truth, spec)
-    if profile == "flat_roles":
+    if profile in {"flat_roles", "api_simulator"}:
         if any(
             str(path.get("semantics", "logical_chain")) == "network_pivot"
             for path in ground_truth.get("attack_paths", []) or []
@@ -332,7 +482,7 @@ def build_execution_plan(
                 or str(item.get("role", "")).startswith("pivot_")
                 for item in topology.get("services", []) or []
             )
-            else "flat_roles"
+            else "api_simulator" if is_api_simulator_topology(topology) else "flat_roles"
         )
     if profile not in PROFILE_DEFINITIONS:
         raise ScenarioSpecError(
@@ -353,11 +503,12 @@ def build_execution_plan(
             for index, item in enumerate(topology.get("services", []))
         ]
     else:
-        fixtures = (
-            _validate_flat(topology, ground_truth)
-            if profile == "flat_roles"
-            else _validate_multihop(topology, ground_truth)
-        )
+        if profile == "flat_roles":
+            fixtures = _validate_flat(topology, ground_truth)
+        elif profile == "true_multihop":
+            fixtures = _validate_multihop(topology, ground_truth)
+        else:
+            fixtures = _validate_api_simulator(topology, ground_truth)
     _validate_runtime_compatibility(profile, topology, ground_truth, spec)
     vuln_by_device = _findings_by_device(ground_truth, "vulnerabilities")
     control_by_device = _findings_by_device(ground_truth, "controls")
