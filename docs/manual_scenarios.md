@@ -41,7 +41,9 @@ Les endpoints correspondants sont :
 - POST /api/scenario-generator/builder/compose
 - POST /api/scenario-generator/builder/random
 
-Les sources officielles sous benchmarks/ restent inchangées. Les bundles manuels sont stockés sous output/generated_scenarios/ et les variantes exécutables apparaissent dans le sélecteur de scénarios du dashboard.
+Les sources officielles sous benchmarks/ restent inchangées. Les bundles manuels sont stockés sous output/generated_scenarios/. Un bundle manuel avec un profil d’exécution réel (`flat_roles` ou `true_multihop`, ou `auto` si compatible) peut être exporté via Scenario Lab : il est alors copié dans output/exported_scenarios/, apparaît dans le sélecteur du dashboard de base et peut être lancé comme un scénario de benchmark. Le dashboard n’affiche qu’une seule entrée pour le bundle exporté.
+
+Un bundle en profil `preview` reste consultable et évaluable comme Ground Truth, mais son export est refusé car aucun déploiement benchmark ne peut être préparé.
 
 ## Déploiement Docker
 

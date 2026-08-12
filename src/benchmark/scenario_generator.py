@@ -248,11 +248,14 @@ class ScenarioGenerator:
         return sorted(variants, key=lambda item: (item["created_at"], item["id"]), reverse=True)
 
     def export_variant(self, variant_id: str) -> dict[str, Any]:
-        """Publish one trusted preview bundle for use in the dashboard."""
+        """Publish one trusted bundle for use in the dashboard and benchmark."""
         bundle = self._load_bundle(variant_id)
-        if bundle["manifest"].get("mutation_policy") == "manual":
+        if (
+            bundle["manifest"].get("mutation_policy") == "manual"
+            and not bundle["manifest"].get("deployable")
+        ):
             raise ScenarioGeneratorError(
-                "Manual scenarios are executed directly from their generated ID; dashboard export is not supported"
+                "Manual scenario is not deployable; choose an executable profile before exporting"
             )
         return self.export_store.publish(bundle)
 

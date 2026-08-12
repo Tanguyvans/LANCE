@@ -334,11 +334,17 @@ class ManualScenarioDeployment(GeneratedScenarioDeployment):
         scenario_id: str,
         *,
         generated_root: Path | None = None,
+        export_store: ExportedScenarioStore | None = None,
         state_root: Path | None = None,
         repo_root: Path = REPO_ROOT,
     ) -> "ManualScenarioDeployment":
         sid = str(scenario_id)
-        bundle = _load_manual_bundle(sid, (generated_root or MANUAL_SCENARIO_ROOT))
+        if export_store is not None:
+            bundle = export_store.load(sid)
+            if bundle["manifest"].get("mutation_policy") != "manual":
+                raise ScenarioExportError("Exported scenario is not a manual builder scenario")
+        else:
+            bundle = _load_manual_bundle(sid, (generated_root or MANUAL_SCENARIO_ROOT))
         topology = bundle["topology"]
         router = topology.get("router") or {}
         services = topology.get("services") or []

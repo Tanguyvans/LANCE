@@ -199,3 +199,47 @@ def test_pipeline_passes_manual_overlay_and_provider_profile_to_ansible(tmp_path
     assert f"@{deployment.overlay_path}" in command
     assert "source_scenario_id=14" in command
     deployment.release()
+
+
+def test_exported_manual_bundle_prepares_from_export_store(tmp_path):
+    from src.benchmark.scenario_spec import load_scenario_spec
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(
+        load_scenario_spec(ROOT / "benchmarks/scenarios_manual/flat_logical_chain.yaml")
+    )
+    generator.export_variant(variant["id"])
+
+    deployment = ManualScenarioDeployment.prepare(
+        variant["id"],
+        export_store=generator.export_store,
+        state_root=tmp_path / "deployments",
+    )
+    overlay = yaml.safe_load(deployment.overlay_path.read_text(encoding="utf-8"))
+
+    assert deployment.execution_profile == "flat_roles"
+    assert overlay["manual_scenario"] is True
+    assert overlay["benchmark_scenarios"][variant["id"]]["services"]
+    deployment.release()
+
+
+def test_pipeline_selects_manual_adapter_for_exported_builder_bundle(tmp_path, monkeypatch):
+    from src.benchmark.scenario_spec import load_scenario_spec
+    import src.agent.pipeline as pipeline_module
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(
+        load_scenario_spec(ROOT / "benchmarks/scenarios_manual/flat_logical_chain.yaml")
+    )
+    generator.export_variant(variant["id"])
+
+    monkeypatch.setattr(pipeline_module, "default_export_store", lambda: generator.export_store)
+    provider = MagicMock(model="test-model", provider="test-provider")
+    pipeline = Pipeline(provider=provider, scenario_id=variant["id"], dry_run=True)
+    monkeypatch.setattr(pipeline, "_teardown_all_running_scenarios", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pipeline, "_run_playbook", lambda *_args, **_kwargs: True)
+
+    assert pipeline._run_scenario_deploy() is True
+    assert isinstance(pipeline._generated_deployment, ManualScenarioDeployment)
+    assert pipeline._generated_deployment.execution_profile == "flat_roles"
+    pipeline._generated_deployment.release()

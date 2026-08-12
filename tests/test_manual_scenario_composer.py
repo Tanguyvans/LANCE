@@ -95,9 +95,25 @@ def test_manual_tool_policy_narrows_runtime_tools_but_keeps_pipeline_controls():
     assert [tool["name"] for tool in selected] == ["curl_headers", "save_deliverable"]
 
 
-def test_manual_bundle_is_not_published_to_the_dashboard_export_store(tmp_path: Path):
+def test_deployable_manual_bundle_is_published_to_dashboard_export_store(tmp_path: Path):
     generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
     result = generator.compose_custom(load_scenario_spec(MANUAL / "flat_logical_chain.yaml"))
 
-    with pytest.raises(ValueError, match="dashboard export"):
+    exported = generator.export_variant(result["id"])
+    stored = generator.export_store.load(result["id"])
+
+    assert exported["id"] == result["id"]
+    assert exported["deployment_supported"] is True
+    assert stored["manifest"]["mutation_policy"] == "manual"
+    assert stored["execution_plan"]["profile"] == "flat_roles"
+    assert stored["scenario"]["scenario_id"] == result["id"]
+
+
+def test_preview_manual_bundle_still_requires_an_executable_profile(tmp_path: Path):
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    spec = load_scenario_spec(MANUAL / "flat_logical_chain.yaml")
+    spec["execution"]["profile"] = "preview"
+    result = generator.compose_custom(spec)
+
+    with pytest.raises(ValueError, match="not deployable"):
         generator.export_variant(result["id"])

@@ -36,6 +36,10 @@ _ARTIFACTS = {
     "verification_plan": "verification_plan.yaml",
     "matching_contracts": "matching_contracts.yaml",
 }
+_MANUAL_ARTIFACTS = {
+    "execution_plan": "execution_plan.yaml",
+    "alteration_plan": "alteration_plan.yaml",
+}
 
 
 class ScenarioExportError(ValueError):
@@ -70,6 +74,16 @@ class ExportedScenarioStore:
     def publish(self, bundle: dict[str, Any]) -> dict[str, Any]:
         manifest = bundle["manifest"]
         variant_id = str(manifest["variant_id"])
+        mutation_policy = str(manifest.get("mutation_policy") or "generated-only")
+        artifact_map = dict(_ARTIFACTS)
+        if mutation_policy == "manual":
+            if not manifest.get("deployable"):
+                raise ScenarioExportError(
+                    "Manual scenario is not deployable; choose an executable profile before exporting"
+                )
+            artifact_map.update(_MANUAL_ARTIFACTS)
+            if any(key not in bundle for key in _MANUAL_ARTIFACTS):
+                raise ScenarioExportError("Manual scenario execution artifacts are incomplete")
         target = self._export_dir(variant_id)
         if target.exists():
             current = self.load(variant_id)
@@ -109,10 +123,15 @@ class ExportedScenarioStore:
             "verification_plan": copy.deepcopy(bundle["verification_plan"]),
             "matching_contracts": copy.deepcopy(bundle["matching_contracts"]),
         }
+        if mutation_policy == "manual":
+            artifacts.update({
+                key: copy.deepcopy(bundle[key]) for key in _MANUAL_ARTIFACTS
+            })
         hashes = {
             filename: hashlib.sha256(_yaml_bytes(artifacts[key])).hexdigest()
-            for key, filename in _ARTIFACTS.items()
+            for key, filename in artifact_map.items()
         }
+        execution_plan = bundle.get("execution_plan") or {}
         export_manifest = {
             "schema_version": 1,
             "kind": "scenario-lab-export",
@@ -120,12 +139,24 @@ class ExportedScenarioStore:
             "export_version": EXPORT_VERSION,
             "variant_id": variant_id,
             "source_bundle_hash": manifest["bundle_hash"],
-            "source_scenario_id": manifest["source_scenario_id"],
+            "source_scenario_id": (
+                execution_plan.get("source_scenario_id")
+                if mutation_policy == "manual"
+                else manifest["source_scenario_id"]
+            ),
             "blueprint_id": manifest["blueprint_id"],
+            "mutation_policy": mutation_policy,
+            "deployment_status": manifest.get("deployment_status", "ready"),
+            "execution_adapter": manifest.get("execution_adapter") or execution_plan.get("adapter"),
+            "execution_profile": manifest.get("execution_profile") or execution_plan.get("profile"),
             "exported_at": datetime.now(timezone.utc).isoformat(),
             # The pipeline provisions exports through a runtime Ansible
             # overlay; the immutable official catalogue remains untouched.
-            "deployment_supported": True,
+            "deployment_supported": (
+                bool(manifest.get("deployable", True))
+                if mutation_policy == "manual"
+                else True
+            ),
             "artifact_hashes": hashes,
             "export_hash": _canonical_hash(hashes),
         }
@@ -133,7 +164,7 @@ class ExportedScenarioStore:
         self.root.mkdir(parents=True, exist_ok=True)
         temp = Path(tempfile.mkdtemp(prefix=f".{variant_id}-", dir=self.root))
         try:
-            for key, filename in _ARTIFACTS.items():
+            for key, filename in artifact_map.items():
                 (temp / filename).write_bytes(_yaml_bytes(artifacts[key]))
             (temp / "manifest.yaml").write_bytes(_yaml_bytes(export_manifest))
             os.replace(temp, target)
@@ -160,7 +191,10 @@ class ExportedScenarioStore:
 
         artifacts: dict[str, Any] = {}
         hashes = manifest.get("artifact_hashes", {})
-        for key, filename in _ARTIFACTS.items():
+        artifact_map = dict(_ARTIFACTS)
+        if manifest.get("mutation_policy") == "manual":
+            artifact_map.update(_MANUAL_ARTIFACTS)
+        for key, filename in artifact_map.items():
             artifact = path / filename
             if artifact.is_symlink() or not artifact.is_file():
                 raise ScenarioExportError(f"Missing exported artifact: {filename}")
@@ -234,10 +268,11 @@ class ExportedScenarioStore:
             "packs": scenario.get("packs", []),
             "source_scenario_id": manifest.get("source_scenario_id"),
             "blueprint_id": manifest.get("blueprint_id"),
+            "mutation_policy": manifest.get("mutation_policy", "generated-only"),
             "exported_at": manifest["exported_at"],
             "exported": True,
             "deletable": True,
-            "deployment_supported": True,
+            "deployment_supported": bool(manifest.get("deployment_supported", True)),
             "vulnerability_count": len(ground_truth.get("vulnerabilities", [])),
             "control_count": len(ground_truth.get("controls", [])),
         }

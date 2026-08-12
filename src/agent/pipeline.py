@@ -1826,8 +1826,15 @@ class Pipeline:
         """Deploy and configure benchmark scenario VMs before pipeline starts."""
         if self.scenario_id is not None:
             scenario_id = str(self.scenario_id)
-            if default_export_store().exists(scenario_id):
-                self._generated_deployment = GeneratedScenarioDeployment.prepare(scenario_id)
+            export_store = default_export_store()
+            if export_store.exists(scenario_id):
+                exported = export_store.load(scenario_id)
+                if exported["manifest"].get("mutation_policy") == "manual":
+                    self._generated_deployment = ManualScenarioDeployment.prepare(
+                        scenario_id, export_store=export_store
+                    )
+                else:
+                    self._generated_deployment = GeneratedScenarioDeployment.prepare(scenario_id)
             elif ManualScenarioDeployment.exists(scenario_id):
                 self._generated_deployment = ManualScenarioDeployment.prepare(scenario_id)
         # Pre-teardown any running scenario to avoid conflicts on shared network

@@ -127,9 +127,12 @@ def list_scenarios():
 
 
     # Manual builder variants are directly executable through their trusted
-    # generated bundle; they do not need a dashboard export copy.
+    # generated bundle. Once exported, the export entry above is authoritative
+    # so the base dashboard exposes one selectable scenario, not two copies.
     for variant in generated_scenarios.list_variants():
         if variant.get("operation") != "manual":
+            continue
+        if variant["id"] in scenarios_by_id:
             continue
         scenarios_by_id[variant["id"]] = {
             "id": variant["id"],

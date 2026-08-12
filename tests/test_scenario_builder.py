@@ -51,6 +51,29 @@ def test_manual_builder_materializes_only_selected_nodes_and_findings(tmp_path: 
     assert variant["ground_truth"]["vulnerabilities"][0]["device"].endswith("-web")
 
 
+def test_builder_auto_profile_produces_an_exportable_benchmark_bundle(tmp_path: Path):
+    builder = _builder()
+    catalog = builder.catalog("flat")
+    web = next(node for node in catalog["nodes"] if node["role"] == "web_server")
+    candidate = web["candidates"][0]
+    spec, _ = builder.build_spec(
+        topology_id="flat",
+        selected_nodes=["service-2"],
+        findings=[{"node_id": "service-2", "candidate_id": candidate["candidate_id"]}],
+        execution_profile="auto",
+        seed=17,
+    )
+
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(spec)
+    exported = generator.export_variant(variant["id"])
+
+    assert variant["deployable"] is True
+    assert variant["execution"]["profile"] == "flat_roles"
+    assert exported["id"] == variant["id"]
+    assert exported["deployment_supported"] is True
+
+
 def test_builder_rejects_findings_for_unselected_or_incompatible_nodes():
     builder = _builder()
     catalog = builder.catalog("flat")
