@@ -251,6 +251,14 @@ def _run_status(run_dir: Path) -> str:
     """Infer run status from deliverable files."""
     files = list(run_dir.glob("*"))
     names = [f.name for f in files]
+    phase5 = run_dir / "05_intrusion.json"
+    if phase5.exists():
+        try:
+            phase5_data = json.loads(phase5.read_text(encoding="utf-8"))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            phase5_data = None
+        if isinstance(phase5_data, dict) and phase5_data.get("status") in {"incomplete", "blocked"}:
+            return "partial"
     if "06_report.md" in names or "05_report.md" in names:
         return "done"
     if any(n.startswith("04_") or n.startswith("05_") for n in names):

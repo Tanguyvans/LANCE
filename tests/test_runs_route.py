@@ -10,6 +10,7 @@ from src.api.routes.runs import (
     _extract_commit,
     _load_sealed_summary,
     _resolve_run_dir,
+    _run_status,
     _visible_files,
     download_run,
     get_benchmark,
@@ -66,6 +67,12 @@ def _sealed_summary(scenario_id="20", benchmark_version=None):
 
 
 class TestRunVisibility:
+    def test_incomplete_phase5_is_not_marked_done(self, tmp_path):
+        (tmp_path / "05_intrusion.json").write_text(json.dumps({"status": "incomplete"}))
+        (tmp_path / "06_report.md").write_text("partial report")
+
+        assert _run_status(tmp_path) == "partial"
+
     def test_public_listing_hides_ground_truth_and_symlinks(self, tmp_path):
         (tmp_path / "scenario_meta.json").write_text(json.dumps({"scenario_id": "1"}))
         (tmp_path / "ground_truth.yaml").write_text("secret")

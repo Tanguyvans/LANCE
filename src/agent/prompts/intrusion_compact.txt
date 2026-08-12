@@ -14,6 +14,8 @@ Phase 5 of 6 — compact intrusion reconciliation. The context file is authorita
 - Call read_deliverable exactly once with 05_intrusion_context.json.
 - Use the exact service and IP from each entry_points record:
   MQTT entry -> mqtt_listen(broker=<entry IP>), HTTP entry -> http_get or curl_headers(url=http://<entry IP>/),
+  CoAP entry -> udp_send(host=<entry IP>, port=5683, payload=<bounded CoAP GET /.well-known/core hex probe>, encoding="hex"),
+  SNMP entry -> udp_send(host=<entry IP>, port=161, payload=<bounded SNMP sysDescr hex probe>, encoding="hex"),
   Telnet entry -> telnet_connect(command_string=...), SSH entry -> ssh_login(command_string=...) using the recovered source credential.
 - Then call try_credential on every all_targets IP using each recovered credential and the target primary service. An entry-point probe does not count as credential reuse.
 - Do not call mqtt_listen on a non-MQTT target. Do not invent targets or credentials.

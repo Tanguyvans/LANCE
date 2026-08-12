@@ -79,7 +79,7 @@ def _build_intrusion_tools() -> list[dict]:
     """Extract bounded Phase 5 action tools from RECON_TOOLS."""
     _intrusion_names = {
         "curl_headers", "http_get", "mqtt_listen", "ssh_exec", "try_credential",
-        "telnet_connect", "ftp_list",
+        "telnet_connect", "ftp_list", "udp_send",
     }
     return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
 
@@ -119,8 +119,37 @@ _SNMP_V1_GET_SYS_DESCR_HEX = (
     "302602010004067075626c6963a019020101020100020100300e"
     "300c06082b060102010101000500"
 )
+_COAP_GET_CORE_HEX = "44011234deadbeefbb2e77656c6c2d6b6e6f776e04636f7265"
 _S7COMM_COTP_CR_HEX = "0300001611e00000000100c1020100c2020102c0010a"
 _ENIP_LIST_IDENTITY_HEX = "630000000000000000000000000000000000000000000000"
+
+
+def _udp_service_for_port(value: object) -> str:
+    """Map the bounded UDP entry-point probes to their service family."""
+    try:
+        return {161: "snmp", 5683: "coap"}.get(int(value), "")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _compact_udp_entry_action(target: str, service: str) -> tuple[str, dict] | None:
+    """Build a read-only UDP probe for a supported compact entry point."""
+    probes = {
+        "snmp": (161, _SNMP_V1_GET_SYS_DESCR_HEX),
+        "coap": (5683, _COAP_GET_CORE_HEX),
+    }
+    port_payload = probes.get(str(service or "").casefold())
+    if port_payload is None:
+        return None
+    port, payload = port_payload
+    return "udp_send", {
+        "host": target,
+        "port": port,
+        "payload": payload,
+        "encoding": "hex",
+        "recv_bytes": 4096,
+        "timeout": 5,
+    }
 
 PHASE4_LOCAL_COMMON_TOOL_NAMES = frozenset({
     "decode_value", "list_skills", "load_skill", "search_knowledge",
@@ -353,10 +382,10 @@ def _phase4_verification_plan(
     if compact and vuln_type == "no_auth" and (service == "coap" or port == 5683):
         return {
             "tool": "udp_send", "target": ip, "port": 5683,
-            "required_payload": "44011234deadbeefbb2e77656c6c2d6b6e6f776e04636f7265",
+            "required_payload": _COAP_GET_CORE_HEX,
             "args_hint": {
                 "host": ip, "port": 5683,
-                "payload": "44011234deadbeefbb2e77656c6c2d6b6e6f776e04636f7265",
+                "payload": _COAP_GET_CORE_HEX,
                 "encoding": "hex", "recv_bytes": 4096, "timeout": 5,
             },
             "success_condition": "CoAP response received over unauthenticated UDP",
@@ -3100,6 +3129,7 @@ class Pipeline:
             variables["intrusion_tool_guidance"] = (
                 "- read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context\n"
                 "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
+                "- udp_send(host, port, payload, encoding=\"hex\", recv_bytes=4096, timeout=5) — bounded read-only CoAP/SNMP UDP probe\n"
                 "- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql"
             )
             variables["intrusion_recon_tool_restriction"] = ", curl_headers, mqtt_listen"
@@ -3109,6 +3139,7 @@ class Pipeline:
                     "- read_deliverable(filename) — read only the intrusion context\n"
                     "- mqtt_listen(broker, topic, count, timeout) — validate anonymous MQTT entry points\n"
                     "- http_get(url) / curl_headers(url) — validate HTTP entry points and exposed content\n"
+                    "- udp_send(host, port, payload, encoding=\"hex\", recv_bytes=4096, timeout=5) — validate CoAP (5683) or SNMP (161) UDP entry points\n"
                     "- nmap_scan(target, ports=\"502\", scripts=\"modbus-discover\", skip_discovery=true) — validate Modbus entry points read-only\n"
                     "- ssh_login(command_string) — validate SSH entry points with the recovered source credential\n"
                     "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
@@ -3119,7 +3150,7 @@ class Pipeline:
                 variables["intrusion_entry_validation"] = (
                     "## Compact entry validation — mandatory before credential reuse\n\n"
                     "- Perform exactly one service-appropriate probe for every entry point in 05_intrusion_context.json: "
-                    "mqtt_listen for MQTT, http_get/curl_headers for HTTP, nmap_scan with ports=502 and scripts=modbus-discover for Modbus, telnet_connect for Telnet, and ssh_login "
+                    "mqtt_listen for MQTT, http_get/curl_headers for HTTP, udp_send on the exact port for CoAP/SNMP, nmap_scan with ports=502 and scripts=modbus-discover for Modbus, telnet_connect for Telnet, and ssh_login "
                     "with the recovered source credential for SSH.\n"
                     "- Complete all entry-point probes before credential reuse. Then use try_credential against "
                     "every target with every recovered credential. "
@@ -5529,11 +5560,11 @@ class Pipeline:
         action_calls = 0
         intrusion_action_tools = {
             "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers",
-            "telnet_connect", "ftp_list", "nmap_scan",
+            "telnet_connect", "ftp_list", "nmap_scan", "udp_send",
         }
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login", "try_credential", "nmap_scan",
+            "ftp_list", "ssh_login", "try_credential", "nmap_scan", "udp_send",
         }
         credential_action_tools = {"try_credential", "ssh_exec", "ssh_login"}
 
@@ -5622,11 +5653,13 @@ class Pipeline:
             service_by_port = {
                 21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
                 8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
-                9001: "mqtt", 502: "modbus", 3306: "mysql", 6379: "redis",
+                9001: "mqtt", 502: "modbus", 161: "snmp", 5683: "coap",
+                3306: "mysql", 6379: "redis",
             }
             default_port_by_service = {
                 "ftp": 21, "ssh": 22, "telnet": 23, "http": 80,
-                "mqtt": 1883, "modbus": 502, "mysql": 3306, "redis": 6379,
+                "mqtt": 1883, "modbus": 502, "snmp": 161, "coap": 5683,
+                "mysql": 3306, "redis": 6379,
             }
             role_service = {
                 "router": {"ssh", "telnet", "http"}, "gateway": {"ssh", "http"},
@@ -5689,6 +5722,8 @@ class Pipeline:
                 return "telnet"
             if name == "ftp_list":
                 return "ftp"
+            if name == "udp_send":
+                return _udp_service_for_port(kwargs.get("port"))
             if name == "nmap_scan":
                 ports = {part.strip() for part in str(kwargs.get("ports") or "").split(",")}
                 scripts = str(kwargs.get("scripts") or "").casefold()
@@ -5835,6 +5870,9 @@ class Pipeline:
                         "target": target, "ports": "502",
                         "scripts": "modbus-discover", "skip_discovery": True,
                     }
+                udp_action = _compact_udp_entry_action(target, service)
+                if udp_action is not None:
+                    return udp_action
                 return "http_get", {"url": f"http://{target}/"}
             missing = progress.get("missing_target_services", [])
             if not missing:
@@ -5874,7 +5912,7 @@ class Pipeline:
                 "error": message,
                 "instruction": (
                     "Continue Phase 5 with service-appropriate entry-point probes "
-                    "(mqtt_listen/http_get/nmap_scan[Modbus]/telnet_connect/ftp_list/ssh_login) and try_credential "
+                    "(mqtt_listen/http_get/udp_send[CoAP/SNMP]/nmap_scan[Modbus]/telnet_connect/ftp_list/ssh_login) and try_credential "
                     "credential reuse, then call "
                     f"{COMPACT_INTRUSION_COMPLETION_TOOL} again."
                 ),
@@ -5934,11 +5972,15 @@ class Pipeline:
                 "compact_context": True,
             }, ensure_ascii=False)
 
-        def _suggested_entry_action(name: str, target: str) -> tuple[str, dict] | None:
+        def _suggested_entry_action(
+            name: str, target: str, kwargs: dict | None = None
+        ) -> tuple[str, dict] | None:
             wanted = {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
                 "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh", "nmap_scan": "modbus",
             }.get(name)
+            if name == "udp_send":
+                wanted = _udp_service_for_port((kwargs or {}).get("port"))
             if not wanted:
                 return None
             if wanted in expected_entry_services.get(target, set()):
@@ -5961,6 +6003,10 @@ class Pipeline:
                         "target": ip, "ports": "502",
                         "scripts": "modbus-discover", "skip_discovery": True,
                     }
+                if wanted in {"coap", "snmp"}:
+                    action = _compact_udp_entry_action(ip, wanted)
+                    if action is not None:
+                        return action
                 return name, {"url": f"http://{ip}/"}
             return None
 
@@ -6048,8 +6094,8 @@ class Pipeline:
                             "count": kwargs.get("count", 1), "timeout": kwargs.get("timeout", 3),
                         },
                     }))
-                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list", "nmap_scan", "ssh_login"} and target:
-                    suggestion = _suggested_entry_action(name, target)
+                if name in {"mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list", "nmap_scan", "ssh_login", "udp_send"} and target:
+                    suggestion = _suggested_entry_action(name, target, kwargs)
                     if suggestion is not None:
                         suggested_tool, suggested_args = suggestion
                         return _with_progress(json.dumps({
@@ -7126,6 +7172,10 @@ class Pipeline:
                     "target": ip, "ports": "502",
                     "scripts": "modbus-discover", "skip_discovery": True,
                 }))
+            elif service in {"coap", "snmp"} and "udp_send" in tool_map:
+                udp_action = _compact_udp_entry_action(ip, service)
+                if udp_action is not None:
+                    entry_actions.append(udp_action)
             elif service == "ssh" and "ssh_login" in tool_map:
                 # Use only credentials already recovered in the authoritative
                 # context; never invent a login for the fallback.
@@ -7401,14 +7451,31 @@ class Pipeline:
             for item in context.get("entry_points", [])
             if isinstance(item, dict)
         }
+        entry_ports: dict[tuple[str, str], int] = {}
+        for item in context.get("entry_points", []):
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("device_ip") or item.get("ip") or "").strip()
+            service = str(item.get("service") or "").strip().casefold()
+            try:
+                port = int(item.get("port"))
+            except (TypeError, ValueError):
+                continue
+            if ip and service:
+                entry_ports[(ip, service)] = port
         target_specs = {}
         target_ports: dict[str, int] = {}
         service_ports = {
             21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "http",
             8080: "http", 8443: "http", 1883: "mqtt", 8883: "mqtt",
-            9001: "mqtt", 502: "modbus", 3306: "mysql", 6379: "redis",
+            9001: "mqtt", 502: "modbus", 161: "snmp", 5683: "coap",
+            3306: "mysql", 6379: "redis",
         }
-        default_ports = {"ftp": 21, "ssh": 22, "telnet": 23, "http": 80, "mqtt": 1883, "modbus": 502, "mysql": 3306, "redis": 6379}
+        default_ports = {
+            "ftp": 21, "ssh": 22, "telnet": 23, "http": 80, "mqtt": 1883,
+            "modbus": 502, "snmp": 161, "coap": 5683, "mysql": 3306,
+            "redis": 6379,
+        }
         for item in context.get("all_targets", []):
             if not isinstance(item, dict):
                 continue
@@ -7466,6 +7533,8 @@ class Pipeline:
                 if "502" in ports or "modbus-discover" in scripts:
                     return "modbus"
                 return ""
+            if tool == "udp_send":
+                return _udp_service_for_port(args.get("port"))
             return {
                 "mqtt_listen": "mqtt", "http_get": "http", "curl_headers": "http",
                 "telnet_connect": "telnet", "ftp_list": "ftp", "ssh_login": "ssh", "ssh_exec": "ssh",
@@ -7473,7 +7542,7 @@ class Pipeline:
 
         entry_probe_tools = {
             "mqtt_listen", "http_get", "curl_headers", "telnet_connect",
-            "ftp_list", "ssh_login", "try_credential", "nmap_scan",
+            "ftp_list", "ssh_login", "try_credential", "nmap_scan", "udp_send",
         }
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
@@ -7532,6 +7601,13 @@ class Pipeline:
                         )
                     elif isinstance(raw_result, str) and raw_result.startswith("Error"):
                         port_valid = False
+                if tool == "udp_send":
+                    expected_entry_port = entry_ports.get((target, service))
+                    if expected_entry_port is not None:
+                        try:
+                            port_valid = int(supplied_port) == expected_entry_port
+                        except (TypeError, ValueError):
+                            port_valid = False
                 if (
                     tool in {"try_credential", "ssh_exec", "ssh_login"}
                     and target in target_specs
