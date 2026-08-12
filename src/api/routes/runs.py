@@ -25,7 +25,13 @@ log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = ROOT / "output" / "agent"
 
-_PRIVATE_RUN_FILES = {"ground_truth.yaml"}
+_PRIVATE_RUN_FILES = {
+    "ground_truth.yaml",
+    # Evaluation artifacts are produced after the agent has finished. Scores
+    # are still recomputed by the trusted evaluator in the API routes.
+    "evaluation.json",
+    "evaluation_summary.json",
+}
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 

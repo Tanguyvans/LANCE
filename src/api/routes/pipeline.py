@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import threading
+from dataclasses import asdict
 from pathlib import Path
 from uuid import uuid4
 from typing import Any, Literal
@@ -75,6 +76,91 @@ class StartRequest(BaseModel):
     execution_profile: Literal["auto", "compact", "full"] = "auto"
 
 
+def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write a post-run evaluation artifact without exposing it to the agent."""
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _evaluate_single_run(pipeline: Any, req: StartRequest) -> dict[str, Any]:
+    """Evaluate a completed dashboard run and persist a private evaluation summary.
+
+    The pipeline deliberately keeps the oracle unavailable during all agent
+    phases. This function is called only after ``Pipeline.run`` has returned,
+    so generated ground truth can safely be used here as well.
+    """
+    run_dir = Path(pipeline.run_dir)
+    scenario_id = req.scenario_id
+    base_event: dict[str, Any] = {
+        "type": "evaluation_done",
+        "scenario_id": scenario_id,
+        "run_dir": str(run_dir),
+        "metrics": None,
+    }
+
+    def finish(
+        status: str,
+        *,
+        reason: str | None = None,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        event = {**base_event, "status": status, "metrics": metrics}
+        if reason:
+            event["reason"] = reason
+        summary = {
+            "schema_version": 1,
+            "status": status,
+            "scenario_id": scenario_id,
+            "split": getattr(pipeline, "benchmark_split", None),
+            "policy": "strict-v3",
+            "metrics": metrics,
+        }
+        if reason:
+            summary["reason"] = reason
+        _write_private_json(run_dir / "evaluation_summary.json", summary)
+        try:
+            pipeline._update_run_meta({
+                "evaluation": {
+                    "status": status,
+                    "metrics": metrics,
+                    **({"reason": reason} if reason else {}),
+                }
+            })
+        except Exception:
+            # Evaluation reporting must never turn a completed run into a
+            # failed pipeline if metadata persistence is unavailable.
+            pass
+        return event
+
+    if scenario_id is None:
+        return finish("skipped", reason="No benchmark scenario selected")
+
+    if req.architecture:
+        # Custom dashboard scenarios generate their oracle in the run directory
+        # only after all agent phases have completed.
+        ground_truth = run_dir / "ground_truth.yaml"
+    else:
+        ground_truth = resolve_ground_truth_path(scenario_id)
+
+    if not ground_truth.is_file():
+        return finish("skipped", reason=f"Ground truth not found: {ground_truth}")
+
+    vuln_file = run_dir / "03_vuln_analysis.json"
+    if not vuln_file.is_file():
+        return finish("skipped", reason="03_vuln_analysis.json not found")
+
+    try:
+        from src.agent.batch import _evaluation_metrics
+        from src.benchmark.evaluator import evaluate
+
+        result = evaluate(run_dir, ground_truth, policy="strict-v3")
+        result.split = getattr(pipeline, "benchmark_split", None)
+        metrics = _evaluation_metrics(result)
+        _write_private_json(run_dir / "evaluation.json", asdict(result))
+        return finish("completed", metrics=metrics)
+    except Exception as exc:
+        return finish("failed", reason=f"Evaluation failed: {exc}")
+
+
 def _pipeline_thread(req: StartRequest):
     """Run the pipeline in a background thread, pushing events to the async queue."""
     try:
@@ -116,7 +202,19 @@ def _pipeline_thread(req: StartRequest):
             execution_profile=req.execution_profile,
         )
 
+        pending_pipeline_done: dict[str, Any] | None = None
+        release_pipeline_done = False
+
         def callback(event: dict):
+            nonlocal pending_pipeline_done
+            # Evaluation must happen before pipeline_done reaches the browser;
+            # the frontend closes the SSE stream as soon as it receives that
+            # event. Keep the original event until evaluation is complete.
+            if event.get("type") == "pipeline_done" and not req.deploy_only and not release_pipeline_done:
+                pending_pipeline_done = dict(event)
+                _state["run_dir"] = event.get("run_dir")
+                _state["cost"] = event.get("total_cost_usd", _state["cost"])
+                return
             loop = _state["loop"]
             q = _state["queue"]
             if loop and q:
@@ -164,7 +262,25 @@ def _pipeline_thread(req: StartRequest):
         if req.deploy_only:
             pipeline.run_deploy_only(stream_callback=callback)
         else:
-            pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
+            run_results = pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
+            evaluation_event = _evaluate_single_run(pipeline, req)
+            callback(evaluation_event)
+
+            if pending_pipeline_done is None:
+                pending_pipeline_done = {
+                    "type": "pipeline_done",
+                    "results": run_results,
+                    "total_cost_usd": round(pipeline.tracker.total_cost(), 4),
+                    "run_dir": str(pipeline.run_dir),
+                }
+            pending_pipeline_done.update({
+                "evaluation_status": evaluation_event["status"],
+                "metrics": evaluation_event.get("metrics"),
+            })
+            if evaluation_event.get("reason"):
+                pending_pipeline_done["evaluation_error"] = evaluation_event["reason"]
+            release_pipeline_done = True
+            callback(pending_pipeline_done)
 
     except Exception as exc:
         q = _state["queue"]

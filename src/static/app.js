@@ -1627,6 +1627,19 @@ function handleEvent(ev) {
     loadRuns();
   }
 
+
+  else if (t === 'evaluation_done') {
+    const m = ev.metrics;
+    if (ev.status === 'completed' && m) {
+      const score = m.score_pct != null ? `${Number(m.score_pct).toFixed(1)}%` : 'N/A';
+      addLog({type:'info', message:`Évaluation terminée — Recall=${Number(m.recall).toFixed(3)} P=${Number(m.precision).toFixed(3)} F1=${Number(m.f1).toFixed(3)} Score=${score}`});
+    } else if (ev.status === 'skipped') {
+      addLog({type:'warn', message:`Évaluation non calculée — ${ev.reason || 'ground truth indisponible'}`});
+    } else {
+      addLog({type:'error', message:`Évaluation impossible — ${ev.reason || 'erreur inconnue'}`});
+    }
+  }
+
   else if (t === 'intrusion_hop') {
     highlightAttackEdge(ev.from_ip, ev.to_ip, ev.from_id, ev.to_id, `hop ${ev.hop_index || ''}`);
     markNodeCompromised(ev.to_ip);
