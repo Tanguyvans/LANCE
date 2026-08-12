@@ -54,6 +54,8 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
         "sl-builder-selection",
     ):
         assert f'id="{element_id}"' in html
+    assert '<option value="auto">Déployable si compatible</option>' in html
+    assert '<option value="preview">Prévisualisation uniquement</option>' in html
     assert 'id="scenario-lab-view"' in html
     assert 'id="sl-blueprint"' in html
     assert 'id="sl-operation"' in html

@@ -47,7 +47,7 @@ class BuilderComposeRequest(BaseModel):
     name: str = Field(default="", max_length=120)
     description: str = Field(default="", max_length=500)
     seed: int = Field(default=0, ge=0, le=2**31 - 1)
-    execution_profile: str = Field(default="preview", max_length=32)
+    execution_profile: str = Field(default="auto", max_length=32)
 
 
 class BuilderRandomRequest(BaseModel):
@@ -57,7 +57,7 @@ class BuilderRandomRequest(BaseModel):
     max_nodes: int = Field(default=5, ge=1, le=32)
     min_vulnerabilities: int = Field(default=2, ge=1, le=128)
     max_vulnerabilities: int = Field(default=6, ge=1, le=128)
-    execution_profile: str = Field(default="preview", max_length=32)
+    execution_profile: str = Field(default="auto", max_length=32)
 
 def _call(action):
     try:

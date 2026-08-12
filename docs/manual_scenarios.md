@@ -30,7 +30,7 @@ La vue **Scenario Lab** propose désormais un builder interactif :
 2. ajouter les nœuds un par un ;
 3. afficher uniquement les vulnérabilités compatibles avec chaque nœud (rôle, profil, service, port et protocole) ;
 4. ajouter ou retirer les vulnérabilités individuellement ;
-5. composer un bundle validé en mode prévisualisation ou déployable si le profil d’exécution le permet.
+5. composer un bundle déployable par défaut si le profil d’exécution le permet ; le mode prévisualisation reste disponible explicitement pour les scénarios non exécutables.
 
 Le bouton **Générer aléatoirement** utilise une seed et sélectionne un sous-ensemble cohérent de nœuds reliés ainsi que des findings compatibles. Le résultat passe par le même compositeur et les mêmes validations que la composition manuelle.
 
@@ -43,7 +43,7 @@ Les endpoints correspondants sont :
 
 Les sources officielles sous benchmarks/ restent inchangées. Les bundles manuels sont stockés sous output/generated_scenarios/. Un bundle manuel avec un profil d’exécution réel (`flat_roles` ou `true_multihop`, ou `auto` si compatible) peut être exporté via Scenario Lab : il est alors copié dans output/exported_scenarios/, apparaît dans le sélecteur du dashboard de base et peut être lancé comme un scénario de benchmark. Le dashboard n’affiche qu’une seule entrée pour le bundle exporté.
 
-Un bundle en profil `preview` reste consultable et évaluable comme Ground Truth, mais son export est refusé car aucun déploiement benchmark ne peut être préparé.
+Un bundle en profil `preview` reste consultable et évaluable comme Ground Truth, mais son export est refusé car aucun déploiement benchmark ne peut être préparé. Pour exporter un scénario construit, conserver le profil `auto` (valeur par défaut) ou choisir un profil réel compatible.
 
 ## Déploiement Docker
 

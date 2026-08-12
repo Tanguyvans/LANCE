@@ -74,6 +74,25 @@ def test_builder_auto_profile_produces_an_exportable_benchmark_bundle(tmp_path: 
     assert exported["deployment_supported"] is True
 
 
+def test_builder_defaults_to_exportable_auto_profile(tmp_path: Path):
+    builder = _builder()
+    catalog = builder.catalog("flat")
+    web = next(node for node in catalog["nodes"] if node["role"] == "web_server")
+    candidate = web["candidates"][0]
+    spec, selection = builder.build_spec(
+        topology_id="flat",
+        selected_nodes=["service-2"],
+        findings=[{"node_id": "service-2", "candidate_id": candidate["candidate_id"]}],
+        seed=23,
+    )
+
+    assert spec["execution"]["profile"] == "auto"
+    assert selection["execution_profile"] == "auto"
+    generator = ScenarioGenerator(ROOT, tmp_path / "generated", tmp_path / "exports")
+    variant = generator.compose_custom(spec)
+    assert variant["deployable"] is True
+
+
 def test_builder_rejects_findings_for_unselected_or_incompatible_nodes():
     builder = _builder()
     catalog = builder.catalog("flat")

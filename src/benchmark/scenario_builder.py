@@ -113,7 +113,7 @@ class ScenarioBuilder:
         name: str | None = None,
         description: str | None = None,
         seed: int = 0,
-        execution_profile: str = "preview",
+        execution_profile: str = "auto",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         topology = self._topology(topology_id)
         nodes = {node["id"]: node for node in self._nodes(topology)}
@@ -203,7 +203,7 @@ class ScenarioBuilder:
             "description": str(description or topology.get("description") or ""),
             "seed": int(seed),
             "topology": {"ref": topology_id, "overrides": overrides},
-            "execution": {"profile": str(execution_profile or "preview")},
+            "execution": {"profile": str(execution_profile or "auto")},
             "packs": [],
             "extra_vulnerabilities": extra_vulnerabilities,
             "metadata": {
@@ -218,7 +218,7 @@ class ScenarioBuilder:
             "topology_id": topology_id,
             "selected_nodes": selected,
             "findings": selected_finding_keys,
-            "execution_profile": str(execution_profile or "preview"),
+            "execution_profile": str(execution_profile or "auto"),
         }
 
     def random_spec(
@@ -230,7 +230,7 @@ class ScenarioBuilder:
         max_nodes: int = 5,
         min_vulnerabilities: int = 2,
         max_vulnerabilities: int = 6,
-        execution_profile: str = "preview",
+        execution_profile: str = "auto",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         rng = random.Random(int(seed))
         topology_ids = [item["id"] for item in self.list_topologies()]

@@ -442,7 +442,7 @@ async function _composeScenarioBuilder() {
         })),
         name: document.getElementById('sl-builder-name').value,
         seed: Number(document.getElementById('sl-builder-seed').value) || 0,
-        execution_profile: document.getElementById('sl-builder-execution').value,
+        execution_profile: document.getElementById('sl-builder-execution').value || 'auto',
       }),
     });
     await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
@@ -473,7 +473,7 @@ async function _randomScenarioBuilder() {
         max_nodes: value('sl-random-max-nodes'),
         min_vulnerabilities: value('sl-random-min-vulns'),
         max_vulnerabilities: value('sl-random-max-vulns'),
-        execution_profile: document.getElementById('sl-builder-execution').value,
+        execution_profile: document.getElementById('sl-builder-execution').value || 'auto',
       }),
     });
     await Promise.all([_loadScenarioLab(), loadScenariosConfig()]);
