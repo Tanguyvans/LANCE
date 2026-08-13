@@ -33,7 +33,7 @@ Fill in the report template below with data from previous phases. Do NOT change 
    - Fill "Crown jewels reached": for each crown jewel, write device name, access method, and verbatim data exfiltrated (passwords, shadow entries, DB records, config files)
    - If no devices were compromised, write the reason (no credentials recovered, no entry points reachable, etc.)
 3. **Sections 5 and 6 use auto-generated placeholders** — the template contains
-   `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}`. Leave these EXACTLY as-is in your
+   the literal placeholders named `SECTION_5_TABLE` and `SECTION_6_TABLES`, enclosed in double braces. Leave them EXACTLY as-is in your
    output — the pipeline will replace them with the real tables automatically.
    DO NOT write any vulnerability or exploitation tables yourself.
 4. Write ONLY the following sections from scratch (use data from the reads above):
@@ -51,8 +51,8 @@ Fill in the report template below with data from previous phases. Do NOT change 
 5. Do NOT remove or rename required sections. You MAY add analysis under
    "### 10.3 Additional Model Analysis" when useful nuance does not fit
    the standard structure. Never discard such analysis merely to shorten the report.
-6. CRITICAL: your final save_deliverable call should include the literal strings
-   `{{SECTION_5_TABLE}}` and `{{SECTION_6_TABLES}}` in the appropriate sections — do not expand them.
+6. CRITICAL: your final save_deliverable call should include the literal placeholder names
+   `SECTION_5_TABLE` and `SECTION_6_TABLES`, enclosed in double braces, in the appropriate sections — do not expand them.
 
 ## IMPORTANT — Data sources
 - 01_graph_evidence.json = authoritative graph-tool projection; use its exact counts and explicit notes.

@@ -193,10 +193,32 @@ def search_knowledge(
 _CVE_BENCHMARK_SNAPSHOT = (
     Path(__file__).resolve().parents[2] / "benchmark" / "cve_snapshot.json"
 )
+_CVE_QUERY_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_CVE_ID_RE = re.compile(r"\bcve-\d{4}-\d{4,7}\b")
+_CVE_GENERIC_QUERY_TERMS = frozenset({"a", "cpe", "cve", "o", "version"})
 
 
 def _normalise_cve_query(query: str) -> str:
     return " ".join(str(query or "").casefold().split())
+
+
+def _cve_query_terms(query: str) -> set[str]:
+    """Tokenise product/CPE queries without treating a whole CPE as one token."""
+    return {
+        token
+        for token in _CVE_QUERY_TOKEN_RE.findall(
+            _normalise_cve_query(query).replace("_", " ")
+        )
+        if token not in _CVE_GENERIC_QUERY_TERMS
+    }
+
+
+def _cpe_query_parts(query: str) -> tuple[str, str, str] | None:
+    """Return vendor, product and version for a CPE 2.3 query."""
+    parts = _normalise_cve_query(query).split(":")
+    if len(parts) < 6 or parts[0:2] != ["cpe", "2.3"]:
+        return None
+    return parts[3], parts[4], parts[5]
 
 
 @lru_cache(maxsize=1)
@@ -229,20 +251,68 @@ def _benchmark_cve_results(query: str, limit: int) -> list[dict]:
     if exact:
         return [dict(item) for item in exact[0]["results"][:limit]]
 
-    # Models often add a product suffix or a version qualifier. Use a small,
-    # deterministic lexical fallback over the frozen query catalogue; never
-    # fall back to ChromaDB or NVD for an unknown benchmark query.
-    query_tokens = set(re.findall(r"[a-z0-9][a-z0-9_.:-]*", normalised))
-    scored: list[tuple[int, str, dict]] = []
+    # Models often add a product suffix/version qualifier or emit a CPE with
+    # wildcard fields. Match those forms against the frozen catalogue, while
+    # keeping the catalogue itself immutable. An exact CVE identifier is the
+    # strongest alias; otherwise product/vendor identity is preferred over
+    # generic words such as "cve" or the CPE version markers.
+    query_cve_ids = set(_CVE_ID_RE.findall(normalised))
+    if query_cve_ids:
+        cve_aliases = [
+            entry
+            for entry in entries
+            if query_cve_ids.intersection(
+                _CVE_ID_RE.findall(_normalise_cve_query(entry.get("query", "")))
+            )
+        ]
+        if cve_aliases:
+            return [dict(item) for item in cve_aliases[0]["results"][:limit]]
+
+    query_cpe = _cpe_query_parts(normalised)
+    query_terms = _cve_query_terms(normalised)
+    scored: list[tuple[int, int, str, dict]] = []
     for entry in entries:
         entry_query = _normalise_cve_query(entry.get("query", ""))
-        overlap = len(query_tokens & set(re.findall(r"[a-z0-9][a-z0-9_.:-]*", entry_query)))
-        if overlap:
-            scored.append((overlap, entry_query, entry))
+        entry_terms = _cve_query_terms(entry_query)
+        overlap = len(query_terms & entry_terms)
+        entry_cpe = _cpe_query_parts(entry_query)
+        score = overlap * 10
+        style_bonus = 0
+
+        if query_cpe:
+            query_vendor, query_product, query_version = query_cpe
+            if entry_cpe:
+                entry_vendor, entry_product, entry_version = entry_cpe
+                product_match = (
+                    query_product == entry_product
+                    or query_product.replace("_", "-")
+                    == entry_product.replace("_", "-")
+                )
+                if product_match:
+                    score += 100
+                    if query_vendor == entry_vendor:
+                        score += 25
+                    if (
+                        query_version not in {"", "*", "-"}
+                        and query_version == entry_version
+                    ):
+                        score += 25
+                    style_bonus = 1
+            elif query_product.replace("_", "-") in {
+                token.replace("_", "-") for token in entry_terms
+            }:
+                score += 60
+        elif not entry_cpe:
+            # Prefer a keyword alias when one exists; CPE entries remain a
+            # fallback for products represented only by CPE in the snapshot.
+            style_bonus = 1
+
+        if score:
+            scored.append((score, style_bonus, entry_query, entry))
     if not scored:
         return []
-    scored.sort(key=lambda item: (-item[0], item[1]))
-    return [dict(item) for item in scored[0][2]["results"][:limit]]
+    scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    return [dict(item) for item in scored[0][3]["results"][:limit]]
 
 
 def cve_search(query: str, top_k: int = 5) -> str:

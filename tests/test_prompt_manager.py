@@ -89,3 +89,21 @@ class TestLoadPrompt:
             prompt = load_prompt(name, variables)
             assert len(prompt) > 100
             assert "@include" not in prompt
+
+    def test_report_prompt_preserves_table_marker_names(self):
+        prompt = load_prompt("report", {
+            "target_subnet": "192.168.100.0/24",
+            "device_count": "4",
+            "link_count": "3",
+            "cve_count": "2",
+            "top_risk": "gateway",
+            "network_topology_edges": "gateway -> broker",
+            "scenario_context": "",
+            "previous_deliverables": "01_graph_analysis.md",
+            "expected_deliverable": "06_report.md",
+            "available_skills": "",
+            "turn_budget": "25",
+            "deliverable_template": "",
+        })
+        assert "MISSING:SECTION_5_TABLE" not in prompt
+        assert "MISSING:SECTION_6_TABLES" not in prompt

@@ -160,6 +160,23 @@ class TestCVESearchCompatibilityCache:
         assert missing == []
         mock_get.assert_not_called()
 
+    @patch("src.agent.knowledge.store.get_or_fetch")
+    def test_cache_only_mode_resolves_query_aliases_from_snapshot(self, mock_get):
+        set_cve_cache_only(True)
+
+        aliases = {
+            "cpe:2.3:a:openbsd:openssh:10.0:*:*:*:*:*:*:*": "CVE-2023-48795",
+            "Dropbear sshd 2020.81": "CVE-2006-1206",
+            "OpenWrt LuCI": "CVE-2026-32721",
+            "eclipse mosquitto 2.0.21": "CVE-2024-3935",
+            "CVE-2023-48795 Dropbear": "CVE-2023-48795",
+        }
+        for query, expected in aliases.items():
+            results = json.loads(cve_search(query))
+            assert results and results[0]["id"] == expected, query
+
+        mock_get.assert_not_called()
+
 
 class TestSearchHistory:
     """Test run history search."""
