@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -188,15 +190,69 @@ def search_knowledge(
         return json.dumps({"error": str(e)})
 
 
-def cve_search(query: str, top_k: int = 5) -> str:
-    """Cache-then-query CVE lookup.
+_CVE_BENCHMARK_SNAPSHOT = (
+    Path(__file__).resolve().parents[2] / "benchmark" / "cve_snapshot.json"
+)
 
-    Searches ChromaDB first. On a normal cache miss, queries NVD live and stores
-    results. Benchmark-scoped runs switch to cache-only mode so a miss returns
-    no candidates instead of changing the knowledge source during evaluation.
+
+def _normalise_cve_query(query: str) -> str:
+    return " ".join(str(query or "").casefold().split())
+
+
+@lru_cache(maxsize=1)
+def _load_cve_benchmark_snapshot() -> tuple[dict, ...]:
+    """Load the immutable CVE reference once per worker process."""
+    try:
+        payload = json.loads(_CVE_BENCHMARK_SNAPSHOT.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        log.error("Benchmark CVE snapshot unavailable: %s", exc)
+        return ()
+    if payload.get("schema_version") != 1:
+        log.error("Unsupported benchmark CVE snapshot schema: %s", payload.get("schema_version"))
+        return ()
+    return tuple(
+        entry for entry in payload.get("entries", [])
+        if isinstance(entry, dict) and isinstance(entry.get("results"), list)
+    )
+
+
+def _benchmark_cve_results(query: str, limit: int) -> list[dict]:
+    """Resolve a benchmark CVE query without touching persistent knowledge storage."""
+    entries = _load_cve_benchmark_snapshot()
+    if not entries:
+        return []
+    normalised = _normalise_cve_query(query)
+    exact = [
+        entry for entry in entries
+        if _normalise_cve_query(entry.get("query", "")) == normalised
+    ]
+    if exact:
+        return [dict(item) for item in exact[0]["results"][:limit]]
+
+    # Models often add a product suffix or a version qualifier. Use a small,
+    # deterministic lexical fallback over the frozen query catalogue; never
+    # fall back to ChromaDB or NVD for an unknown benchmark query.
+    query_tokens = set(re.findall(r"[a-z0-9][a-z0-9_.:-]*", normalised))
+    scored: list[tuple[int, str, dict]] = []
+    for entry in entries:
+        entry_query = _normalise_cve_query(entry.get("query", ""))
+        overlap = len(query_tokens & set(re.findall(r"[a-z0-9][a-z0-9_.:-]*", entry_query)))
+        if overlap:
+            scored.append((overlap, entry_query, entry))
+    if not scored:
+        return []
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [dict(item) for item in scored[0][2]["results"][:limit]]
+
+
+def cve_search(query: str, top_k: int = 5) -> str:
+    """Look up CVEs from the live source or the immutable benchmark snapshot.
+
+    Development runs retain cache-then-query behavior. Benchmark-scoped runs
+    read only the versioned snapshot and never consult ChromaDB or NVD.
     """
     try:
-        from src.agent.knowledge.store import get_or_fetch, search
+        from src.agent.knowledge.store import get_or_fetch
         from src.cve_lookup import (
             classify_cve_compatibility,
             query_nvd,
@@ -247,13 +303,13 @@ def cve_search(query: str, top_k: int = 5) -> str:
         cache_k = max(top_k * 4, 20)
         try:
             if _CVE_CACHE_ONLY:
-                results = search(
-                    "cve_knowledge", query, top_k=cache_k, threshold=0.62
-                )
+                # Benchmark runs must be independent of the mutable ChromaDB
+                # cache on nato-master. The frozen snapshot is the only source.
+                results = _benchmark_cve_results(query, cache_k)
                 if not results:
                     log.warning(
-                        "CVE cache miss for '%s' in benchmark cache-only mode; "
-                        "live NVD lookup disabled",
+                        "CVE snapshot miss for '%s' in benchmark cache-only mode; "
+                        "persistent cache and live NVD lookup disabled",
                         query,
                     )
             else:

@@ -17,6 +17,7 @@ import shlex
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import urllib.parse
 from datetime import datetime, timezone
@@ -384,8 +385,8 @@ def python_exec(script: str, timeout: int = 60) -> str:
     """Run ad-hoc Python via subprocess + tempfile + wall-clock timeout.
 
     Returns JSON with stdout, stderr, return_code, and timed_out flag. Uses
-    `python3 -I` (isolated mode) so the parent virtualenv is not inherited
-    automatically. Already-installed system packages remain available.
+    the backend interpreter with `-I` (isolated mode), so installed backend
+    packages are available without inheriting user-site configuration.
     """
     effective_timeout = max(1, min(int(timeout or 60), _PYTHON_EXEC_HARD_MAX))
     tmp_path = None
@@ -396,7 +397,7 @@ def python_exec(script: str, timeout: int = 60) -> str:
             tmp.write(script)
             tmp_path = tmp.name
         result = subprocess.run(
-            ["python3", "-I", tmp_path],
+            [sys.executable, "-I", tmp_path],
             capture_output=True,
             text=True,
             timeout=effective_timeout,

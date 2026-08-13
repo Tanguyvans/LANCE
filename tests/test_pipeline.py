@@ -14,6 +14,7 @@ from src.agent.pipeline import (
     _phase4_requirement_matches,
     _local_report_memo_contradicts_context,
     _looks_unusable_model_memo,
+    _deliverable_template_path,
     _resolve_model_provider,
     _synthesize_exploit_result,
     _enrich_finding_structure,
@@ -58,6 +59,13 @@ def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full
     web = {"id": "web", "ip": "192.0.2.20", "role": "web_server"}
     assert any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web))
     assert not any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web, compact=True))
+
+
+def test_phase6_resolves_legacy_report_template_for_full_agents():
+    template_path = _deliverable_template_path(AGENTS["report"])
+
+    assert template_path.name == "05_report.md"
+    assert "{{SECTION_5_TABLE}}" in template_path.read_text(encoding="utf-8")
 
 
 def test_compact_phase4_protocol_contract_rejects_open_port_only():
@@ -3636,7 +3644,10 @@ class TestPhase5Context:
         assert "try_credential" in tool_names
         assert "ssh_exec" in tool_names
         assert "ssh_login" in tool_names
-        assert "mqtt_listen" in tool_names
+        if "mqtt_listen" in pipeline.runtime_unavailable_tools:
+            assert "mqtt_listen" not in tool_names
+        else:
+            assert "mqtt_listen" in tool_names
         assert "http_get" in tool_names
         assert "curl_headers" in tool_names
         assert "complete_intrusion_campaign" in tool_names

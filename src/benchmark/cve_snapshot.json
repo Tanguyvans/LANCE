@@ -1,0 +1,882 @@
+{
+  "schema_version": 1,
+  "source_run": "2026-08-03_115434",
+  "source_note": "Immutable benchmark reference captured before the mutable VM CVE cache drifted.",
+  "entries": [
+    {
+      "query": "OpenSSH 10.0p2",
+      "results": [
+        {
+          "id": "CVE-2002-0640",
+          "document": "CVE-2002-0640: Buffer overflow in sshd in OpenSSH 2.3.1 through 3.3 may allow remote attackers to execute arbitrary code via a large number of responses during challenge response authentication when OpenBSD is using PAM modules with interactive keyboard authentication (PAMAuthenticationViaKbdInt). (CVSS 10.0, None)",
+          "metadata": {
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.1.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9p2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.1p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.2p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.1p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2.2p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2.3p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.3p1:*:*:*:*:*:*:*\"}]",
+            "cve_id": "CVE-2002-0640",
+            "id": "CVE-2002-0640",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "severity": "UNKNOWN",
+            "compatibility_status": "indeterminate",
+            "matched_cpes_json": "[]",
+            "cvss_score": 10.0,
+            "description": "Buffer overflow in sshd in OpenSSH 2.3.1 through 3.3 may allow remote attackers to execute arbitrary code via a large number of responses during challenge response authentication when OpenBSD is using PAM modules with interactive keyboard authentication (PAMAuthenticationViaKbdInt).",
+            "attack_vector": "UNKNOWN"
+          },
+          "distance": 0.3524184823036194,
+          "similarity": 0.6476,
+          "compatibility": {
+            "status": "incompatible",
+            "reason": "Product matches, but the observed version is outside every vulnerable NVD range",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.1.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9.9:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9p2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.1p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.2p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.1p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2.2p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2.3p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.3p1:*:*:*:*:*:*:*"
+              }
+            ]
+          }
+        },
+        {
+          "id": "CVE-2001-0572",
+          "document": "CVE-2001-0572: The SSH protocols 1 and 2 (aka SSH-2) as implemented in OpenSSH and other packages have various weaknesses which can allow a remote attacker to obtain the following information via sniffing: (1) password lengths or ranges of lengths, which simplifies brute force password guessing, (2) whether RSA or (CVSS 7.5, None)",
+          "metadata": {
+            "description": "The SSH protocols 1 and 2 (aka SSH-2) as implemented in OpenSSH and other packages have various weaknesses which can allow a remote attacker to obtain the following information via sniffing: (1) password lengths or ranges of lengths, which simplifies brute force password guessing, (2) whether RSA or",
+            "cve_id": "CVE-2001-0572",
+            "matched_cpes_json": "[]",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "severity": "UNKNOWN",
+            "id": "CVE-2001-0572",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openbsd:openssh:4.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:ssh:ssh:1.2.31:*:*:*:*:*:*:*\"}]",
+            "cvss_score": 7.5,
+            "compatibility_status": "indeterminate",
+            "attack_vector": "UNKNOWN"
+          },
+          "distance": 0.3754940629005432,
+          "similarity": 0.6245,
+          "compatibility": {
+            "status": "incompatible",
+            "reason": "Product matches, but the observed version is outside every vulnerable NVD range",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:4.5:*:*:*:*:*:*:*"
+              }
+            ]
+          }
+        },
+        {
+          "id": "CVE-2000-0525",
+          "document": "CVE-2000-0525: OpenSSH does not properly drop privileges when the UseLogin option is enabled, which allows local users to execute arbitrary commands by providing the command to the ssh daemon. (CVSS 10.0, None)",
+          "metadata": {
+            "description": "OpenSSH does not properly drop privileges when the UseLogin option is enabled, which allows local users to execute arbitrary commands by providing the command to the ssh daemon.",
+            "attack_vector": "UNKNOWN",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "cvss_score": 10.0,
+            "cve_id": "CVE-2000-0525",
+            "compatibility_status": "indeterminate",
+            "matched_cpes_json": "[]",
+            "severity": "UNKNOWN",
+            "id": "CVE-2000-0525",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*\"}]"
+          },
+          "distance": 0.37846410274505615,
+          "similarity": 0.6215,
+          "compatibility": {
+            "status": "incompatible",
+            "reason": "Product matches, but the observed version is outside every vulnerable NVD range",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "query": "nginx",
+      "results": [
+        {
+          "id": "CVE-2009-2629",
+          "document": "CVE-2009-2629: Buffer underflow in src/http/ngx_http_parse.c in nginx 0.1.0 through 0.5.37, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.15 allows remote attackers to execute arbitrary code via crafted HTTP requests. (CVSS 7.5, None)",
+          "metadata": {
+            "id": "CVE-2009-2629",
+            "cve_id": "CVE-2009-2629",
+            "cvss_score": 7.5,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "description": "Buffer underflow in src/http/ngx_http_parse.c in nginx 0.1.0 through 0.5.37, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.15 allows remote attackers to execute arbitrary code via crafted HTTP requests.",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.1.0\",\"versionEndExcluding\":\"0.5.38\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.6.0\",\"versionEndExcluding\":\"0.6.39\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.7.0\",\"versionEndExcluding\":\"0.7.62\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.8.0\",\"versionEndExcluding\":\"0.8.15\"},{\"criteria\":\"cpe:2.3:o:debian:debian_linux:4.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:debian:debian_linux:5.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:debian:debian_linux:6.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:fedoraproject:fedora:10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:fedoraproject:fedora:11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:fedoraproject:fedora:12:*:*:*:*:*:*:*\"}]",
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes_json": "[]"
+          },
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2009-3896",
+          "document": "CVE-2009-3896: src/http/ngx_http_parse.c in nginx (aka Engine X) 0.1.0 through 0.4.14, 0.5.x before 0.5.38, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.14 allows remote attackers to cause a denial of service (NULL pointer dereference and worker process crash) via a long URI. (CVSS 5.0, None)",
+          "metadata": {
+            "id": "CVE-2009-3896",
+            "cve_id": "CVE-2009-3896",
+            "cvss_score": 5.0,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "description": "src/http/ngx_http_parse.c in nginx (aka Engine X) 0.1.0 through 0.4.14, 0.5.x before 0.5.38, 0.6.x before 0.6.39, 0.7.x before 0.7.62, and 0.8.x before 0.8.14 allows remote attackers to cause a denial of service (NULL pointer dereference and worker process crash) via a long URI.",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.46:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.47:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.48:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.49:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.50:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.51:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.52:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.53:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.54:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.55:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.56:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.57:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.58:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.59:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.60:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.61:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.46:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.47:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.48:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.49:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.50:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.51:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.52:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.53:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.54:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.55:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.56:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.57:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.58:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.59:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.60:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.61:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:nginx:nginx:0.6.1516:*:*:*:*:*:*:*\"}]",
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes_json": "[]"
+          },
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2009-3898",
+          "document": "CVE-2009-3898: Directory traversal vulnerability in src/http/modules/ngx_http_dav_module.c in nginx (aka Engine X) before 0.7.63, and 0.8.x before 0.8.17, allows remote authenticated users to create or overwrite arbitrary files via a .. (dot dot) in the Destination HTTP header for the WebDAV (1) COPY or (2) MOVE m (CVSS 4.9, None)",
+          "metadata": {
+            "id": "CVE-2009-3898",
+            "cve_id": "CVE-2009-3898",
+            "cvss_score": 4.9,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "description": "Directory traversal vulnerability in src/http/modules/ngx_http_dav_module.c in nginx (aka Engine X) before 0.7.63, and 0.8.x before 0.8.17, allows remote authenticated users to create or overwrite arbitrary files via a .. (dot dot) in the Destination HTTP header for the WebDAV (1) COPY or (2) MOVE m",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionEndIncluding\":\"0.7.62\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.1.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.2.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.46:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.47:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.48:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.49:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.50:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.51:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.52:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.53:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.54:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.55:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.56:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.57:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.58:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.59:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.60:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.3.61:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.4.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.5.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.6.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.16:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.17:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.18:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.19:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.20:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.21:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.22:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.23:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.24:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.25:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.26:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.27:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.28:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.29:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.30:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.31:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.32:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.33:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.34:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.35:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.36:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.37:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.38:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.39:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.40:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.41:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.42:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.43:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.44:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.45:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.46:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.47:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.48:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.49:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.50:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.51:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.52:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.53:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.54:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.55:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.56:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.57:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.58:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.59:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.60:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.61:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.4:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.6:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.7:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.8:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.10:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.11:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.12:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.13:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.14:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:f5:nginx:0.8.15:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:nginx:nginx:0.6.1516:*:*:*:*:*:*:*\"}]",
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes_json": "[]"
+          },
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2009-4487",
+          "document": "CVE-2009-4487: nginx 0.7.64 writes data to a log file without sanitizing non-printable characters, which might allow remote attackers to modify a window's title, or possibly execute arbitrary commands or overwrite files, via an HTTP request containing an escape sequence for a terminal emulator. (CVSS 6.8, None)",
+          "metadata": {
+            "id": "CVE-2009-4487",
+            "cve_id": "CVE-2009-4487",
+            "cvss_score": 6.8,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "description": "nginx 0.7.64 writes data to a log file without sanitizing non-printable characters, which might allow remote attackers to modify a window's title, or possibly execute arbitrary commands or overwrite files, via an HTTP request containing an escape sequence for a terminal emulator.",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:f5:nginx:0.7.64:*:*:*:*:*:*:*\"}]",
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes_json": "[]"
+          },
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2010-2263",
+          "document": "CVE-2010-2263: nginx 0.8 before 0.8.40 and 0.7 before 0.7.66, when running on Windows, allows remote attackers to obtain source code or unparsed content of arbitrary files under the web document root by appending ::$DATA to the URI. (CVSS 5.0, None)",
+          "metadata": {
+            "id": "CVE-2010-2263",
+            "cve_id": "CVE-2010-2263",
+            "cvss_score": 5.0,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "description": "nginx 0.8 before 0.8.40 and 0.7 before 0.7.66, when running on Windows, allows remote attackers to obtain source code or unparsed content of arbitrary files under the web document root by appending ::$DATA to the URI.",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.7.52\",\"versionEndExcluding\":\"0.7.66\",\"conditional\":true},{\"criteria\":\"cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"0.8.0\",\"versionEndIncluding\":\"0.8.39\",\"conditional\":true}]",
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes_json": "[]"
+          },
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "cpe:2.3:a:openbsd:openssh:10.0p2:*:*:*:*:*:*:*",
+      "results": [
+        {
+          "id": "CVE-2023-48795",
+          "document": "CVE-2023-48795: The SSH transport protocol with certain OpenSSH extensions, found in OpenSSH before 9.6 and other products, allows remote attackers to bypass integrity checks such that some packets are omitted (from the extension negotiation message), and a client and server may consequently end up with a connectio (CVSS 5.9, MEDIUM)",
+          "metadata": {
+            "attack_vector": "NETWORK",
+            "cve_id": "CVE-2023-48795",
+            "description": "The SSH transport protocol with certain OpenSSH extensions, found in OpenSSH before 9.6 and other products, allows remote attackers to bypass integrity checks such that some packets are omitted (from the extension negotiation message), and a client and server may consequently end up with a connectio",
+            "cvss_score": 5.9,
+            "id": "CVE-2023-48795",
+            "severity": "MEDIUM"
+          },
+          "distance": 0.2804306149482727,
+          "similarity": 0.7196,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2025-30095",
+          "document": "CVE-2025-30095: VyOS 1.3 through 1.5 (fixed in 1.4.2) or any Debian-based system using dropbear in combination with live-build has the same Dropbear private host keys across different installations. Thus, an attacker can conduct active man-in-the-middle attacks against SSH connections if Dropbear is enabled as the  (CVSS 9.0, CRITICAL)",
+          "metadata": {
+            "cve_id": "CVE-2025-30095",
+            "severity": "CRITICAL",
+            "id": "CVE-2025-30095",
+            "attack_vector": "NETWORK",
+            "description": "VyOS 1.3 through 1.5 (fixed in 1.4.2) or any Debian-based system using dropbear in combination with live-build has the same Dropbear private host keys across different installations. Thus, an attacker can conduct active man-in-the-middle attacks against SSH connections if Dropbear is enabled as the ",
+            "cvss_score": 9.0
+          },
+          "distance": 0.3280292749404907,
+          "similarity": 0.672,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2023-0344",
+          "document": "CVE-2023-0344: Akuvox E11 appears to be using a custom version of dropbear SSH server. This server allows an insecure option that by default is not in the official dropbear SSH server. (CVSS 9.1, CRITICAL)",
+          "metadata": {
+            "id": "CVE-2023-0344",
+            "description": "Akuvox E11 appears to be using a custom version of dropbear SSH server. This server allows an insecure option that by default is not in the official dropbear SSH server.",
+            "cve_id": "CVE-2023-0344",
+            "attack_vector": "NETWORK",
+            "severity": "CRITICAL",
+            "cvss_score": 9.1
+          },
+          "distance": 0.32863759994506836,
+          "similarity": 0.6714,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2016-7406",
+          "document": "CVE-2016-7406: Format string vulnerability in Dropbear SSH before 2016.74 allows remote attackers to execute arbitrary code via format string specifiers in the (1) username or (2) host argument. (CVSS 9.8, CRITICAL)",
+          "metadata": {
+            "cve_id": "CVE-2016-7406",
+            "severity": "CRITICAL",
+            "id": "CVE-2016-7406",
+            "attack_vector": "NETWORK",
+            "cvss_score": 9.8,
+            "description": "Format string vulnerability in Dropbear SSH before 2016.74 allows remote attackers to execute arbitrary code via format string specifiers in the (1) username or (2) host argument."
+          },
+          "distance": 0.33441317081451416,
+          "similarity": 0.6656,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2002-0640",
+          "document": "CVE-2002-0640: Buffer overflow in sshd in OpenSSH 2.3.1 through 3.3 may allow remote attackers to execute arbitrary code via a large number of responses during challenge response authentication when OpenBSD is using PAM modules with interactive keyboard authentication (PAMAuthenticationViaKbdInt). (CVSS 10.0, None)",
+          "metadata": {
+            "severity": "UNKNOWN",
+            "cvss_score": 10.0,
+            "matched_cpes_json": "[]",
+            "compatibility_status": "indeterminate",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.1.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.5.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9.9:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:2.9p2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.1p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0.2p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.0p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.1p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2.2p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.2.3p1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.3:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:3.3p1:*:*:*:*:*:*:*\"}]",
+            "cve_id": "CVE-2002-0640",
+            "id": "CVE-2002-0640",
+            "attack_vector": "UNKNOWN",
+            "description": "Buffer overflow in sshd in OpenSSH 2.3.1 through 3.3 may allow remote attackers to execute arbitrary code via a large number of responses during challenge response authentication when OpenBSD is using PAM modules with interactive keyboard authentication (PAMAuthenticationViaKbdInt).",
+            "compatibility_reason": "Product-only query: a detected version is required for verification"
+          },
+          "distance": 0.2537437677383423,
+          "similarity": 0.7463,
+          "compatibility": {
+            "status": "incompatible",
+            "reason": "Product matches, but the observed version is outside every vulnerable NVD range",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:1.2.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.1.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.5.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9.9:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:2.9p2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.1p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0.2p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.0p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.1p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2.2p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.2.3p1:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.3:*:*:*:*:*:*:*"
+              },
+              {
+                "criteria": "cpe:2.3:a:openbsd:openssh:3.3p1:*:*:*:*:*:*:*"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "query": "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*",
+      "results": [
+        {
+          "id": "CVE-2024-3935",
+          "document": "CVE-2024-3935: In Eclipse Mosquito, versions from 2.0.0 through 2.0.18, if a Mosquitto broker is configured to create an outgoing bridge connection, and that bridge connection has an incoming topic configured that makes use of topic remapping, then if the remote connection sends a crafted PUBLISH packet to the bro (CVSS 6.5, MEDIUM)",
+          "metadata": {
+            "cve_id": "CVE-2024-3935",
+            "cvss_score": 6.5,
+            "description": "In Eclipse Mosquito, versions from 2.0.0 through 2.0.18, if a Mosquitto broker is configured to create an outgoing bridge connection, and that bridge connection has an incoming topic configured that makes use of topic remapping, then if the remote connection sends a crafted PUBLISH packet to the bro",
+            "severity": "MEDIUM",
+            "id": "CVE-2024-3935",
+            "attack_vector": "NETWORK"
+          },
+          "distance": 0.24229568243026733,
+          "similarity": 0.7577,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2021-34431",
+          "document": "CVE-2021-34431: In Eclipse Mosquitto version 1.6 to 2.0.10, if an authenticated client that had connected with MQTT v5 sent a crafted CONNECT message to the broker a memory leak would occur, which could be used to provide a DoS attack against the broker. (CVSS 6.5, MEDIUM)",
+          "metadata": {
+            "description": "In Eclipse Mosquitto version 1.6 to 2.0.10, if an authenticated client that had connected with MQTT v5 sent a crafted CONNECT message to the broker a memory leak would occur, which could be used to provide a DoS attack against the broker.",
+            "attack_vector": "NETWORK",
+            "id": "CVE-2021-34431",
+            "severity": "MEDIUM",
+            "cvss_score": 6.5,
+            "cve_id": "CVE-2021-34431"
+          },
+          "distance": 0.2583118677139282,
+          "similarity": 0.7417,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2023-5632",
+          "document": "CVE-2023-5632: In Eclipse Mosquito before and including 2.0.5, establishing a connection to the mosquitto server without sending data causes the EPOLLOUT event to be added, which results excessive CPU consumption. This could be used by a malicious actor to perform denial of service type attack. This issue is fixed (CVSS 7.5, HIGH)",
+          "metadata": {
+            "cve_id": "CVE-2023-5632",
+            "attack_vector": "NETWORK",
+            "id": "CVE-2023-5632",
+            "description": "In Eclipse Mosquito before and including 2.0.5, establishing a connection to the mosquitto server without sending data causes the EPOLLOUT event to be added, which results excessive CPU consumption. This could be used by a malicious actor to perform denial of service type attack. This issue is fixed",
+            "cvss_score": 7.5,
+            "severity": "HIGH"
+          },
+          "distance": 0.2627679109573364,
+          "similarity": 0.7372,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2021-28166",
+          "document": "CVE-2021-28166: In Eclipse Mosquitto version 2.0.0 to 2.0.9, if an authenticated client that had connected with MQTT v5 sent a crafted CONNACK message to the broker, a NULL pointer dereference would occur. (CVSS 6.5, MEDIUM)",
+          "metadata": {
+            "severity": "MEDIUM",
+            "id": "CVE-2021-28166",
+            "description": "In Eclipse Mosquitto version 2.0.0 to 2.0.9, if an authenticated client that had connected with MQTT v5 sent a crafted CONNACK message to the broker, a NULL pointer dereference would occur.",
+            "cvss_score": 6.5,
+            "cve_id": "CVE-2021-28166",
+            "attack_vector": "NETWORK"
+          },
+          "distance": 0.2653639316558838,
+          "similarity": 0.7346,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2021-41039",
+          "document": "CVE-2021-41039: In versions 1.6 to 2.0.11 of Eclipse Mosquitto, an MQTT v5 client connecting with a large number of user-property properties could cause excessive CPU usage, leading to a loss of performance and possible denial of service. (CVSS 7.5, HIGH)",
+          "metadata": {
+            "description": "In versions 1.6 to 2.0.11 of Eclipse Mosquitto, an MQTT v5 client connecting with a large number of user-property properties could cause excessive CPU usage, leading to a loss of performance and possible denial of service.",
+            "id": "CVE-2021-41039",
+            "severity": "HIGH",
+            "cve_id": "CVE-2021-41039",
+            "attack_vector": "NETWORK",
+            "cvss_score": 7.5
+          },
+          "distance": 0.2679148316383362,
+          "similarity": 0.7321,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "NVD provides no vulnerable CPE configuration for deterministic verification",
+            "matched_cpes": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "OpenWrt LuCI 24.086",
+      "results": [
+        {
+          "id": "CVE-2026-32721",
+          "document": "CVE-2026-32721: LuCI is the OpenWrt Configuration Interface. Versions prior to both 24.10.5 and 25.12.0, contain a stored XSS vulnerability in the wireless scan modal, where SSID values from scan results are rendered as raw HTML without any sanitization. The wireless.js file in the luci-mod-network package passes S (CVSS 8.6, HIGH)",
+          "metadata": {
+            "id": "CVE-2026-32721",
+            "cvss_score": 8.6,
+            "matched_cpes_json": "[]",
+            "cve_id": "CVE-2026-32721",
+            "compatibility_status": "indeterminate",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openwrt:luci:*:*:*:*:*:*:*:*\",\"versionEndExcluding\":\"26.072.65753-068150b\"},{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionEndExcluding\":\"24.10.6\"},{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"25.12.0\",\"versionEndExcluding\":\"25.12.1\"}]",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "description": "LuCI is the OpenWrt Configuration Interface. Versions prior to both 24.10.5 and 25.12.0, contain a stored XSS vulnerability in the wireless scan modal, where SSID values from scan results are rendered as raw HTML without any sanitization. The wireless.js file in the luci-mod-network package passes S",
+            "severity": "HIGH",
+            "attack_vector": "LOCAL"
+          },
+          "distance": 0.3569720983505249,
+          "similarity": 0.643,
+          "compatibility": {
+            "status": "compatible",
+            "reason": "NVD product and vulnerable version range match the observed software",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:a:openwrt:luci:*:*:*:*:*:*:*:*",
+                "versionEndExcluding": "26.072.65753-068150b"
+              }
+            ]
+          }
+        },
+        {
+          "id": "CVE-2019-25015",
+          "document": "CVE-2019-25015: LuCI in OpenWrt 18.06.0 through 18.06.4 allows stored XSS via a crafted SSID. (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"18.06.0\",\"versionEndIncluding\":\"18.06.4\"}]",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "cve_id": "CVE-2019-25015",
+            "attack_vector": "NETWORK",
+            "id": "CVE-2019-25015",
+            "cvss_score": 5.4,
+            "matched_cpes_json": "[]",
+            "description": "LuCI in OpenWrt 18.06.0 through 18.06.4 allows stored XSS via a crafted SSID.",
+            "severity": "MEDIUM",
+            "compatibility_status": "indeterminate"
+          },
+          "distance": 0.3717346787452698,
+          "similarity": 0.6283,
+          "compatibility": {
+            "status": "incompatible",
+            "reason": "Product matches, but the observed version is outside every vulnerable NVD range",
+            "matched_cpes": [
+              {
+                "criteria": "cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*",
+                "versionStartIncluding": "18.06.0",
+                "versionEndIncluding": "18.06.4"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "query": "Dropbear sshd",
+      "results": [
+        {
+          "id": "CVE-2006-1206",
+          "document": "CVE-2006-1206: Matt Johnston Dropbear SSH server 0.47 and earlier, as used in embedded Linux devices and on general-purpose operating systems, allows remote attackers to cause a denial of service (connection slot exhaustion) via a large number of connection attempts that exceeds the MAX_UNAUTH_CLIENTS defined valu (CVSS 5.0, None)",
+          "metadata": {
+            "attack_vector": "UNKNOWN",
+            "cvss_score": 5.0,
+            "severity": "UNKNOWN",
+            "id": "CVE-2006-1206",
+            "description": "Matt Johnston Dropbear SSH server 0.47 and earlier, as used in embedded Linux devices and on general-purpose operating systems, allows remote attackers to cause a denial of service (connection slot exhaustion) via a large number of connection attempts that exceeds the MAX_UNAUTH_CLIENTS defined valu",
+            "cve_id": "CVE-2006-1206"
+          },
+          "distance": 0.3539913296699524,
+          "similarity": 0.646,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2012-0920",
+          "document": "CVE-2012-0920: Use-after-free vulnerability in Dropbear SSH Server 0.52 through 2012.54, when command restriction and public key authentication are enabled, allows remote authenticated users to execute arbitrary code and bypass command restrictions via multiple crafted command requests, related to \"channels concur (CVSS 7.1, None)",
+          "metadata": {
+            "id": "CVE-2012-0920",
+            "description": "Use-after-free vulnerability in Dropbear SSH Server 0.52 through 2012.54, when command restriction and public key authentication are enabled, allows remote authenticated users to execute arbitrary code and bypass command restrictions via multiple crafted command requests, related to \"channels concur",
+            "cvss_score": 7.1,
+            "severity": "UNKNOWN",
+            "attack_vector": "UNKNOWN",
+            "cve_id": "CVE-2012-0920"
+          },
+          "distance": 0.375507116317749,
+          "similarity": 0.6245,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2025-14282",
+          "document": "CVE-2025-14282: A flaw was found in Dropbear. When running in multi-user mode and authenticating users, the dropbear ssh server does the socket forwardings requested by the remote client as root,\nonly switching to the logged-in user upon spawning a shell or performing\nsome operations like reading the user's files.\n (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "attack_vector": "NETWORK",
+            "cvss_score": 5.4,
+            "id": "CVE-2025-14282",
+            "severity": "MEDIUM",
+            "description": "A flaw was found in Dropbear. When running in multi-user mode and authenticating users, the dropbear ssh server does the socket forwardings requested by the remote client as root,\nonly switching to the logged-in user upon spawning a shell or performing\nsome operations like reading the user's files.\n",
+            "cve_id": "CVE-2025-14282"
+          },
+          "distance": 0.3770660161972046,
+          "similarity": 0.6229,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "Product-only query: a detected version is required for verification",
+            "matched_cpes": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "CVE-2023-48795",
+      "results": [
+        {
+          "id": "CVE-2023-48795",
+          "document": "CVE-2023-48795: The SSH transport protocol with certain OpenSSH extensions, found in OpenSSH before 9.6 and other products, allows remote attackers to bypass integrity checks such that some packets are omitted (from the extension negotiation message), and a client and server may consequently end up with a connectio (CVSS 5.9, MEDIUM)",
+          "metadata": {
+            "id": "CVE-2023-48795",
+            "attack_vector": "NETWORK",
+            "description": "The SSH transport protocol with certain OpenSSH extensions, found in OpenSSH before 9.6 and other products, allows remote attackers to bypass integrity checks such that some packets are omitted (from the extension negotiation message), and a client and server may consequently end up with a connectio",
+            "cvss_score": 5.9,
+            "cve_id": "CVE-2023-48795",
+            "severity": "MEDIUM"
+          },
+          "distance": 0.2994593381881714,
+          "similarity": 0.7005,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "CVE identifier lookup has no observed product/version context",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2025-8758",
+          "document": "CVE-2025-8758: A vulnerability was found in TRENDnet TEW-822DRE FW103B02. It has been classified as problematic. This affects an unknown part of the component vsftpd. The manipulation leads to least privilege violation. Attacking locally is a requirement. The complexity of an attack is rather high. The exploitabil (CVSS 7.0, HIGH)",
+          "metadata": {
+            "cve_id": "CVE-2025-8758",
+            "id": "CVE-2025-8758",
+            "description": "A vulnerability was found in TRENDnet TEW-822DRE FW103B02. It has been classified as problematic. This affects an unknown part of the component vsftpd. The manipulation leads to least privilege violation. Attacking locally is a requirement. The complexity of an attack is rather high. The exploitabil",
+            "attack_vector": "LOCAL",
+            "cvss_score": 7.0,
+            "severity": "HIGH"
+          },
+          "distance": 0.37868648767471313,
+          "similarity": 0.6213,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "CVE identifier lookup has no observed product/version context",
+            "matched_cpes": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "CVE-2002-20001",
+      "results": [
+        {
+          "id": "CVE-2002-0083",
+          "document": "CVE-2002-0083: Off-by-one error in the channel code of OpenSSH 2.0 through 3.0.2 allows local users or remote malicious servers to gain privileges. (CVSS 9.8, CRITICAL)",
+          "metadata": {
+            "matched_cpes_json": "[]",
+            "attack_vector": "NETWORK",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "compatibility_status": "indeterminate",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:immunix:immunix:7.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:mandrakesoft:mandrake_single_network_firewall:7.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"2.0\",\"versionEndExcluding\":\"3.1\"},{\"criteria\":\"cpe:2.3:a:openpkg:openpkg:1.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:5.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:5.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:6.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:7.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:ecommerce:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:conectiva:linux:graficas:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:engardelinux:secure_linux:1.0.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux:7.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux:7.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux:8.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux:8.0:*:ppc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux:8.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:mandrakesoft:mandrake_linux_corporate_server:1.0.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:redhat:linux:7.0:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:redhat:linux:7.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:redhat:linux:7.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:6.4:*:i386:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:6.4:*:ppc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:6.4:alpha:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.0:*:i386:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.0:*:ppc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.0:*:sparc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.0:alpha:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.1:*:spa:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.1:*:sparc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.1:*:x86:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.1:alpha:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.2:*:i386:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.3:*:i386:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.3:*:ppc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:suse:suse_linux:7.3:*:sparc:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:trustix:secure_linux:1.1:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:trustix:secure_linux:1.2:*:*:*:*:*:*:*\"},{\"criteria\":\"cpe:2.3:o:trustix:secure_linux:1.5:*:*:*:*:*:*:*\"}]",
+            "severity": "CRITICAL",
+            "cve_id": "CVE-2002-0083",
+            "cvss_score": 9.8,
+            "description": "Off-by-one error in the channel code of OpenSSH 2.0 through 3.0.2 allows local users or remote malicious servers to gain privileges.",
+            "id": "CVE-2002-0083"
+          },
+          "distance": 0.37794458866119385,
+          "similarity": 0.6221,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "CVE identifier lookup has no observed product/version context",
+            "matched_cpes": []
+          }
+        }
+      ]
+    },
+    {
+      "query": "CVE-2026-32721 LuCI wireless.js stored XSS",
+      "results": [
+        {
+          "id": "CVE-2026-32721",
+          "document": "CVE-2026-32721: LuCI is the OpenWrt Configuration Interface. Versions prior to both 24.10.5 and 25.12.0, contain a stored XSS vulnerability in the wireless scan modal, where SSID values from scan results are rendered as raw HTML without any sanitization. The wireless.js file in the luci-mod-network package passes S (CVSS 8.6, HIGH)",
+          "metadata": {
+            "cve_id": "CVE-2026-32721",
+            "matched_cpes_json": "[]",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openwrt:luci:*:*:*:*:*:*:*:*\",\"versionEndExcluding\":\"26.072.65753-068150b\"},{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionEndExcluding\":\"24.10.6\"},{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"25.12.0\",\"versionEndExcluding\":\"25.12.1\"}]",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "cvss_score": 8.6,
+            "attack_vector": "LOCAL",
+            "severity": "HIGH",
+            "description": "LuCI is the OpenWrt Configuration Interface. Versions prior to both 24.10.5 and 25.12.0, contain a stored XSS vulnerability in the wireless scan modal, where SSID values from scan results are rendered as raw HTML without any sanitization. The wireless.js file in the luci-mod-network package passes S",
+            "compatibility_status": "indeterminate",
+            "id": "CVE-2026-32721"
+          },
+          "distance": 0.1759900450706482,
+          "similarity": 0.824,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "No reliable product alias maps the observed banner to the affected NVD CPEs",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2019-25015",
+          "document": "CVE-2019-25015: LuCI in OpenWrt 18.06.0 through 18.06.4 allows stored XSS via a crafted SSID. (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "description": "LuCI in OpenWrt 18.06.0 through 18.06.4 allows stored XSS via a crafted SSID.",
+            "attack_vector": "NETWORK",
+            "severity": "MEDIUM",
+            "cve_id": "CVE-2019-25015",
+            "compatibility_status": "indeterminate",
+            "matched_cpes_json": "[]",
+            "id": "CVE-2019-25015",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:*:*:*:*:*:*:*:*\",\"versionStartIncluding\":\"18.06.0\",\"versionEndIncluding\":\"18.06.4\"}]",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "cvss_score": 5.4
+          },
+          "distance": 0.22888487577438354,
+          "similarity": 0.7711,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "No reliable product alias maps the observed banner to the affected NVD CPEs",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2021-33425",
+          "document": "CVE-2021-33425: A stored cross-site scripting (XSS) vulnerability was discovered in the Web Interface for OpenWRT LuCI version 19.07 which allows attackers to inject arbitrary Javascript in the OpenWRT Hostname via the Hostname Change operation. (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "compatibility_status": "indeterminate",
+            "cvss_score": 5.4,
+            "attack_vector": "NETWORK",
+            "description": "A stored cross-site scripting (XSS) vulnerability was discovered in the Web Interface for OpenWRT LuCI version 19.07 which allows attackers to inject arbitrary Javascript in the OpenWRT Hostname via the Hostname Change operation.",
+            "matched_cpes_json": "[]",
+            "severity": "MEDIUM",
+            "id": "CVE-2021-33425",
+            "cve_id": "CVE-2021-33425",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:19.07.0:-:*:*:*:*:*:*\"}]"
+          },
+          "distance": 0.2741328477859497,
+          "similarity": 0.7259,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "No reliable product alias maps the observed banner to the affected NVD CPEs",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2022-41435",
+          "document": "CVE-2022-41435: OpenWRT LuCI version git-22.140.66206-02913be was discovered to contain a stored cross-site scripting (XSS) vulnerability in the component /system/sshkeys.js. This vulnerability allows attackers to execute arbitrary web scripts or HTML via crafted public key comments. (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "cve_id": "CVE-2022-41435",
+            "matched_cpes_json": "[]",
+            "cvss_score": 5.4,
+            "attack_vector": "NETWORK",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:a:openwrt:luci:git-22.140.66206-02913be:*:*:*:*:*:*:*\"}]",
+            "compatibility_status": "indeterminate",
+            "description": "OpenWRT LuCI version git-22.140.66206-02913be was discovered to contain a stored cross-site scripting (XSS) vulnerability in the component /system/sshkeys.js. This vulnerability allows attackers to execute arbitrary web scripts or HTML via crafted public key comments.",
+            "severity": "MEDIUM",
+            "id": "CVE-2022-41435"
+          },
+          "distance": 0.27806758880615234,
+          "similarity": 0.7219,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "No reliable product alias maps the observed banner to the affected NVD CPEs",
+            "matched_cpes": []
+          }
+        },
+        {
+          "id": "CVE-2023-24182",
+          "document": "CVE-2023-24182: LuCI openwrt-22.03 branch git-22.361.69894-438c598 was discovered to contain a stored cross-site scripting (XSS) vulnerability via the component /system/sshkeys.js. (CVSS 5.4, MEDIUM)",
+          "metadata": {
+            "id": "CVE-2023-24182",
+            "affected_cpes_json": "[{\"criteria\":\"cpe:2.3:o:openwrt:openwrt:22.03.3:*:*:*:*:*:*:*\"}]",
+            "attack_vector": "NETWORK",
+            "cvss_score": 5.4,
+            "compatibility_status": "indeterminate",
+            "compatibility_reason": "Product-only query: a detected version is required for verification",
+            "description": "LuCI openwrt-22.03 branch git-22.361.69894-438c598 was discovered to contain a stored cross-site scripting (XSS) vulnerability via the component /system/sshkeys.js.",
+            "cve_id": "CVE-2023-24182",
+            "severity": "MEDIUM",
+            "matched_cpes_json": "[]"
+          },
+          "distance": 0.2875938415527344,
+          "similarity": 0.7124,
+          "compatibility": {
+            "status": "indeterminate",
+            "reason": "No reliable product alias maps the observed banner to the affected NVD CPEs",
+            "matched_cpes": []
+          }
+        }
+      ]
+    }
+  ]
+}

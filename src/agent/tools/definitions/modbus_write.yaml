@@ -1,5 +1,6 @@
 name: modbus_write
 handler: python
+requires_modules: [pymodbus]
 description: >
   Write a value to a Modbus holding register (function code 6) or multiple registers.
   Use this to safely exploit exposed PLC ICS devices by altering their physical or logic state.

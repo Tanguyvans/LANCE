@@ -51,6 +51,7 @@ from src.agent.tools.graph_tools import (
     trigger_disbalance_on_exploit,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
+from src.agent.tools.tool_loader import filter_unavailable_tools
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
 from src.agent.tools.skill_tools import (
     SKILL_TOOLS,
@@ -894,6 +895,31 @@ def _local_report_memo_contradicts_context(text: str, context: dict) -> bool:
     return False
 
 
+def _deliverable_template_path(config: AgentConfig) -> Path:
+    """Resolve the template used to render an agent's deliverable.
+
+    The final report is named ``06_report.md`` in the agent registry, while
+    older checkouts kept the shared report template under ``05_report.md``.
+    Keep that legacy filename as a compatibility alias so full report agents
+    receive the actual Markdown structure instead of the unresolved
+    ``{{deliverable_template}}`` placeholder.
+    """
+    template_dir = Path(__file__).parent / "templates"
+    path = template_dir / config.deliverable_file
+    if path.exists():
+        return path
+    if config.phase == 6:
+        legacy_path = template_dir / "05_report.md"
+        if legacy_path.exists():
+            log.warning(
+                "Using legacy Phase 6 report template %s for %s",
+                legacy_path.name,
+                config.deliverable_file,
+            )
+            return legacy_path
+    return path
+
+
 def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:
     tool_log = run_dir / "tool_calls.jsonl"
     if not tool_log.is_file():
@@ -1368,6 +1394,9 @@ class Pipeline:
         self.max_tool_calls: int | None = None
         self._tool_call_count = 0
         self._artifact_log_lock = threading.Lock()
+        _, self.runtime_unavailable_tools = filter_unavailable_tools(
+            [tool for group in TOOL_GROUPS.values() for tool in group]
+        )
 
         if self.sealed:
             if execution_context is None:
@@ -1501,6 +1530,12 @@ class Pipeline:
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
             "cve_lookup_policy": self.cve_lookup_policy,
+            "cve_source": (
+                "immutable_benchmark_snapshot_v1"
+                if self.cve_lookup_policy == "cache_only"
+                else "live_nvd_with_mutable_cache"
+            ),
+            "runtime_unavailable_tools": self.runtime_unavailable_tools,
             "oracle_access": False,
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
@@ -3201,7 +3236,7 @@ class Pipeline:
             tools = self._apply_recon_tool_contract(tools)
 
         # Inject deliverable template if one exists
-        template_path = Path(__file__).parent / "templates" / config.deliverable_file
+        template_path = _deliverable_template_path(config)
         if template_path.exists():
             template = template_path.read_text(encoding="utf-8")
             template = template.replace("{{run_date}}", datetime.now().astimezone().date().isoformat())
@@ -4035,7 +4070,8 @@ class Pipeline:
             "curl_headers", "http_get", "http_request", "tcp_send", "udp_send",
             "mtls_request", "tls_inspect",
         }
-        recon_limited = [t for t in RECON_TOOLS if t["name"] in analysis_tool_names]
+        available_recon_tools, _ = filter_unavailable_tools(RECON_TOOLS)
+        recon_limited = [t for t in available_recon_tools if t["name"] in analysis_tool_names]
         analysis_candidates = self._apply_scenario_tool_policy(
             recon_limited + skill_tools + DELIVERABLE_TOOLS, 3
         )
@@ -5530,9 +5566,10 @@ class Pipeline:
         )
         if intrusion_policy is not None:
             missing &= intrusion_policy
+        available_recon_tools, _ = filter_unavailable_tools(RECON_TOOLS)
         extras = [
             self._wrap_tool(tool, phase=phase, agent=agent)
-            for tool in RECON_TOOLS
+            for tool in available_recon_tools
             if tool.get("name") in missing
         ]
         return [*tools, *extras]
@@ -6727,7 +6764,8 @@ class Pipeline:
             stream_callback({"type": "phase_start", "phase": "2.5", "label": "Discovery followup"})
 
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
-        recon_limited = [t for t in RECON_TOOLS if t["name"] == "http_get"]
+        available_recon_tools, _ = filter_unavailable_tools(RECON_TOOLS)
+        recon_limited = [t for t in available_recon_tools if t["name"] == "http_get"]
         analysis_candidates = self._apply_scenario_tool_policy(
             recon_limited + skill_tools + DELIVERABLE_TOOLS, 3
         )
@@ -9394,7 +9432,15 @@ class Pipeline:
                         seen_names.add(ref)
                         break
 
-        return self._apply_scenario_tool_policy(tools, config.phase)
+        tools = self._apply_scenario_tool_policy(tools, config.phase)
+        tools, unavailable = filter_unavailable_tools(tools)
+        if unavailable:
+            log.info(
+                "Phase %s: hiding unavailable tools: %s",
+                config.phase,
+                ", ".join(sorted(unavailable)),
+            )
+        return tools
 
     def _apply_scenario_tool_policy(
         self, tools: list[dict], phase: int | str | None

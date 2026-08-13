@@ -8,9 +8,11 @@ have their handler registered via register_python_handler().
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import shlex
+import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -390,6 +392,12 @@ def load_all_tools(directory: Path | None = None) -> list[dict[str, Any]]:
                 "function": build_subprocess_function(tool_def),
             }
 
+        # Keep runtime capability metadata alongside the provider-facing tool
+        # shape. The pipeline uses it to avoid exposing commands that are not
+        # installed on the worker; the provider ignores these internal fields.
+        tool_dict["command"] = tool_def.get("command")
+        tool_dict["handler"] = tool_def.get("handler")
+        tool_dict["requires_modules"] = tuple(tool_def.get("requires_modules", ()))
         tools.append(tool_dict)
 
     hw_count = sum(1 for t in tools if t.get("hardware"))
@@ -397,6 +405,32 @@ def load_all_tools(directory: Path | None = None) -> list[dict[str, Any]]:
     log.info("Loaded %d tools (%d software, %d hardware) from %s",
              len(tools), sw_count, hw_count, directory)
     return tools
+
+
+def filter_unavailable_tools(
+    tools: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Remove tools whose command or declared Python dependency is absent.
+
+    Returns the filtered tools and a name-to-reason map suitable for run
+    metadata. Tools without runtime metadata are preserved because they are
+    pure Python/internal capabilities or protocol suggestions.
+    """
+    available: list[dict[str, Any]] = []
+    unavailable: dict[str, str] = {}
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        command = tool.get("command")
+        if command and shutil.which(str(command)) is None:
+            unavailable[name] = f"missing_command:{command}"
+            continue
+        for module in tool.get("requires_modules", ()) or ():
+            if importlib.util.find_spec(str(module)) is None:
+                unavailable[name] = f"missing_python_module:{module}"
+                break
+        else:
+            available.append(tool)
+    return available, unavailable
 
 
 def register_python_handler(

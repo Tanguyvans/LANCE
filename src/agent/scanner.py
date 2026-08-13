@@ -1486,10 +1486,14 @@ def run_scanner(
     Returns: {device_id: {"scan_results": {...}, "findings": [...]}}
     """
     from src.agent.tools.recon_tools import RECON_TOOLS
+    from src.agent.tools.tool_loader import filter_unavailable_tools
 
+    available_tools, unavailable_tools = filter_unavailable_tools(RECON_TOOLS)
+    if unavailable_tools:
+        log.info("Scanner hiding unavailable tools: %s", ", ".join(sorted(unavailable_tools)))
     tools_map = {
         t["name"]: t["function"]
-        for t in RECON_TOOLS
+        for t in available_tools
         if allowed_tool_names is None or t["name"] in allowed_tool_names
     }
     scans_dir = run_dir / "03_scans"

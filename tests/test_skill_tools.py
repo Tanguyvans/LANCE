@@ -147,18 +147,17 @@ class TestCVESearchCompatibilityCache:
         assert mock_get.call_args.kwargs["top_k"] == 20
         assert "cached_filter" not in mock_get.call_args.kwargs
 
-    @patch("src.agent.knowledge.store.search")
     @patch("src.agent.knowledge.store.get_or_fetch")
-    def test_cache_only_mode_never_fetches_live(self, mock_get, mock_search):
-        mock_search.return_value = []
+    def test_cache_only_mode_uses_snapshot_and_never_fetches_live(self, mock_get):
         set_cve_cache_only(True)
 
         results = json.loads(cve_search("OpenSSH 10.0p2"))
+        missing = json.loads(cve_search("not present in benchmark snapshot"))
 
-        assert results == []
-        mock_search.assert_called_once_with(
-            "cve_knowledge", "OpenSSH 10.0p2", top_k=20, threshold=0.62
-        )
+        assert [result["id"] for result in results] == [
+            "CVE-2002-0640", "CVE-2001-0572", "CVE-2000-0525",
+        ]
+        assert missing == []
         mock_get.assert_not_called()
 
 

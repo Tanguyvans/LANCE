@@ -14,6 +14,7 @@ from src.agent.tools.tool_loader import (
     build_subprocess_function,
     load_all_tools,
     register_python_handler,
+    filter_unavailable_tools,
     DEFINITIONS_DIR,
 )
 
@@ -203,6 +204,23 @@ class TestLoadAllTools:
     def test_empty_directory(self, tmp_path):
         tools = load_all_tools(tmp_path)
         assert tools == []
+
+
+class TestFilterUnavailableTools:
+    def test_filters_missing_command_and_python_module(self):
+        tools = [
+            {"name": "present", "command": "sh"},
+            {"name": "missing", "command": "not-installed-lance-tool"},
+            {"name": "module-missing", "requires_modules": ("not_a_real_lance_module",)},
+        ]
+
+        filtered, unavailable = filter_unavailable_tools(tools)
+
+        assert [tool["name"] for tool in filtered] == ["present"]
+        assert unavailable == {
+            "missing": "missing_command:not-installed-lance-tool",
+            "module-missing": "missing_python_module:not_a_real_lance_module",
+        }
 
 
 class TestRegisterPythonHandler:
