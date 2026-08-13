@@ -22,6 +22,24 @@ log = logging.getLogger(__name__)
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 
+# Official benchmark runs must be reproducible: a cache miss must not silently
+# change the CVE knowledge source by querying NVD and ingesting fresh results.
+# This is configured by Pipeline for benchmark-scoped runs and deliberately
+# remains opt-in for ordinary development/tool use.
+_CVE_CACHE_ONLY = False
+
+
+def set_cve_cache_only(enabled: bool) -> None:
+    """Use only the persistent CVE cache until the next pipeline is started."""
+    global _CVE_CACHE_ONLY
+    _CVE_CACHE_ONLY = bool(enabled)
+
+
+def cve_cache_only_enabled() -> bool:
+    """Return whether live CVE fetches are disabled for the current process."""
+    return _CVE_CACHE_ONLY
+
+
 # ── Frontmatter parsing ─────────────────────────────────────────
 
 def _parse_skill_file(path: Path) -> dict[str, Any]:
@@ -173,12 +191,12 @@ def search_knowledge(
 def cve_search(query: str, top_k: int = 5) -> str:
     """Cache-then-query CVE lookup.
 
-    Searches ChromaDB first. On cache miss, queries NVD live, stores results,
-    then annotates and ranks every candidate without suppressing any because
-    of its compatibility classification.
+    Searches ChromaDB first. On a normal cache miss, queries NVD live and stores
+    results. Benchmark-scoped runs switch to cache-only mode so a miss returns
+    no candidates instead of changing the knowledge source during evaluation.
     """
     try:
-        from src.agent.knowledge.store import get_or_fetch
+        from src.agent.knowledge.store import get_or_fetch, search
         from src.cve_lookup import (
             classify_cve_compatibility,
             query_nvd,
@@ -223,18 +241,39 @@ def cve_search(query: str, top_k: int = 5) -> str:
             }
             return annotated
 
+        # Retrieve a wider cache window before ranking: semantic similarity
+        # alone can otherwise let an incompatible candidate crowd a more
+        # useful compatible candidate out of a small top_k response.
+        cache_k = max(top_k * 4, 20)
         try:
-            # Retrieve a wider cache window before ranking: semantic similarity
-            # alone can otherwise let an incompatible candidate crowd a more
-            # useful compatible candidate out of a small top_k response.
-            cache_k = max(top_k * 4, 20)
-            results = get_or_fetch(
-                "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
-                threshold=0.62,
-            )
+            if _CVE_CACHE_ONLY:
+                results = search(
+                    "cve_knowledge", query, top_k=cache_k, threshold=0.62
+                )
+                if not results:
+                    log.warning(
+                        "CVE cache miss for '%s' in benchmark cache-only mode; "
+                        "live NVD lookup disabled",
+                        query,
+                    )
+            else:
+                results = get_or_fetch(
+                    "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
+                    threshold=0.62,
+                )
         except Exception as store_err:
-            log.warning("ChromaDB/Voyage unavailable (%s), falling back to NVD direct", store_err)
-            results = fetch_from_nvd(query)[:top_k]
+            if _CVE_CACHE_ONLY:
+                log.warning(
+                    "CVE cache unavailable (%s); live NVD lookup disabled",
+                    store_err,
+                )
+                results = []
+            else:
+                log.warning(
+                    "ChromaDB/Voyage unavailable (%s), falling back to NVD direct",
+                    store_err,
+                )
+                results = fetch_from_nvd(query)[:top_k]
         annotated = [annotate_result(item) for item in results]
         priority = {"compatible": 0, "conditional": 1, "indeterminate": 2, "incompatible": 3}
         annotated.sort(key=lambda item: priority[item["compatibility"]["status"]])

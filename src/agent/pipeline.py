@@ -52,7 +52,13 @@ from src.agent.tools.graph_tools import (
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
-from src.agent.tools.skill_tools import SKILL_TOOLS, cve_search, get_skills_metadata, set_skill_filter
+from src.agent.tools.skill_tools import (
+    SKILL_TOOLS,
+    cve_search,
+    get_skills_metadata,
+    set_cve_cache_only,
+    set_skill_filter,
+)
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
 from src.benchmark.metric_contract import metric_contract_metadata
@@ -1341,6 +1347,12 @@ class Pipeline:
                 self.benchmark_split = "dev-public"
         self.benchmark_split = self.benchmark_split or "unassigned"
         self.sealed = self.benchmark_split == "eval-sealed"
+        # Benchmark runs must not change the CVE knowledge source on a cache
+        # miss. Development runs without a benchmark split keep live lookup.
+        self.cve_lookup_policy = (
+            "cache_only" if self.benchmark_split != "unassigned" else "live_on_miss"
+        )
+        set_cve_cache_only(self.cve_lookup_policy == "cache_only")
         self.manage_scenario = bool(manage_scenario)
         self._generated_deployment: GeneratedScenarioDeployment | ManualScenarioDeployment | None = None
         self.auto_teardown = auto_teardown
@@ -1488,6 +1500,7 @@ class Pipeline:
             "model": getattr(self.provider, "model", None),
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
+            "cve_lookup_policy": self.cve_lookup_policy,
             "oracle_access": False,
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
