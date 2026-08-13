@@ -30,6 +30,11 @@ class ExecutionProfile:
     phase3_local_max_tokens: int
     phase4_max_turns: int
     phase4_max_tokens: int
+    # Compact workers get a bounded data-gathering budget; the terminal
+    # save_deliverable call is intentionally not counted in this limit.
+    # Full workers keep autonomous tool selection and have no artificial
+    # per-call cap; their phase/stop guards still apply.
+    phase4_max_data_tool_calls: int | None
     phase4_local_max_turns: int
     phase4_local_max_tokens: int
     intrusion_max_turns: int
@@ -106,6 +111,7 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
         phase3_local_max_tokens=1536,
         phase4_max_turns=8,
         phase4_max_tokens=2048,
+        phase4_max_data_tool_calls=5,
         phase4_local_max_turns=5,
         phase4_local_max_tokens=2048,
         intrusion_max_turns=50,
@@ -126,6 +132,7 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
         phase3_local_max_tokens=1536,
         phase4_max_turns=10,
         phase4_max_tokens=4096,
+        phase4_max_data_tool_calls=None,
         phase4_local_max_turns=3,
         phase4_local_max_tokens=1536,
         intrusion_max_turns=80,

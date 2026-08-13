@@ -163,6 +163,8 @@ class LLMProvider:
         force_completion_on_recon_ready: bool = False,
         recover_required_tool_on_stall: bool = False,
         stop_event=None,
+        force_completion_on_phase4_conclusive: bool = False,
+        max_data_tool_calls: int | None = None,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
@@ -173,6 +175,8 @@ class LLMProvider:
                 terminate_after_tool, repeat_guard, terminal_unavailable_tools,
                 strict_required_tool, recover_required_tool_on_stall,
                 stop_event,
+                max_data_tool_calls,
+                force_completion_on_phase4_conclusive,
             )
         else:
             return self._openai_loop(
@@ -183,9 +187,11 @@ class LLMProvider:
                 reopen_intrusion_tools_on_contract_error,
                 recover_required_tool_on_stall,
                 stop_event,
+                max_data_tool_calls,
+                force_completion_on_phase4_conclusive,
             )
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -193,6 +199,7 @@ class LLMProvider:
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
         no_tool_stalls = 0
+        data_tool_calls = 0
         _REPEAT_THRESHOLD = 3
         _NO_TOOL_STALL_THRESHOLD = 3
 
@@ -305,7 +312,33 @@ class LLMProvider:
             # Phase tools use thread-local pipeline context. Execute them on the
             # provider loop thread, in the same order as Anthropic's tool blocks.
             for tc in tool_calls:
-                res = _maybe_execute_anthropic(tc)
+                if (
+                    max_data_tool_calls is not None
+                    and tc.name != terminate_after_tool
+                    and data_tool_calls >= max_data_tool_calls
+                ):
+                    completion_only = True
+                    res = json.dumps({
+                        "ok": False,
+                        "error_kind": "phase4_tool_budget_exhausted",
+                        "error": (
+                            f"Phase 4 data-tool budget exhausted after "
+                            f"{max_data_tool_calls} calls. Save the deliverable now."
+                        ),
+                    })
+                else:
+                    res = _maybe_execute_anthropic(tc)
+                    if tc.name != terminate_after_tool:
+                        data_tool_calls += 1
+                        if max_data_tool_calls is not None and data_tool_calls >= max_data_tool_calls:
+                            completion_only = True
+                if (
+                    force_completion_on_phase4_conclusive
+                    and tc.name != terminate_after_tool
+                    and isinstance(res, str)
+                    and '"phase4_conclusive": true' in res.casefold()
+                ):
+                    completion_only = True
                 failed, fallback_used = self._tool_result_metadata(res)
                 if cost_tracker:
                     if failed:
@@ -327,7 +360,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -337,6 +370,7 @@ class LLMProvider:
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
         no_tool_stalls = 0
+        data_tool_calls = 0
         force_any_tool_next_turn = False
         _REPEAT_THRESHOLD = 3
         _NO_TOOL_STALL_THRESHOLD = 3
@@ -539,7 +573,21 @@ class LLMProvider:
                 )
                 call_sig = (tc.function.name, canonical_args)
                 call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
-                if completion_only_at_turn and required_tool and tc.function.name != required_tool:
+                if (
+                    max_data_tool_calls is not None
+                    and tc.function.name != terminate_after_tool
+                    and data_tool_calls >= max_data_tool_calls
+                ):
+                    completion_only = True
+                    res = json.dumps({
+                        "ok": False,
+                        "error_kind": "phase4_tool_budget_exhausted",
+                        "error": (
+                            f"Phase 4 data-tool budget exhausted after "
+                            f"{max_data_tool_calls} calls. Save the deliverable now."
+                        ),
+                    })
+                elif completion_only_at_turn and required_tool and tc.function.name != required_tool:
                     res = json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
                 elif repeat_guard and call_counts[call_sig] >= _REPEAT_THRESHOLD:
                     res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
@@ -547,6 +595,10 @@ class LLMProvider:
                     if required_tool:
                         completion_only = True
                 else:
+                    if tc.function.name != terminate_after_tool:
+                        data_tool_calls += 1
+                        if max_data_tool_calls is not None and data_tool_calls >= max_data_tool_calls:
+                            completion_only = True
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
                 failed, fallback_used = self._tool_result_metadata(res)
@@ -558,6 +610,15 @@ class LLMProvider:
                     result_payload.get("recon_progress", {})
                     if isinstance(result_payload, dict) else {}
                 )
+                if (
+                    force_completion_on_phase4_conclusive
+                    and required_tool == "save_deliverable"
+                    and tc.function.name != required_tool
+                    and isinstance(result_payload, dict)
+                    and result_payload.get("phase4_conclusive") is True
+                ):
+                    completion_only = True
+                    force_any_tool_next_turn = True
                 if (
                     force_completion_on_recon_ready
                     and required_tool == "save_deliverable"

@@ -201,9 +201,10 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
 
 
 def _phase4_local_verification_tools(
-    tools: list[dict], *, category: str, service: str, include_deliverable: bool = False
+    tools: list[dict], *, category: str, service: str,
+    include_deliverable: bool = False, include_context: bool = False
 ) -> list[dict]:
-    """Narrow local-MoE Phase 4 tools to the tested vuln family."""
+    """Narrow Phase 4 tools to the tested vulnerability family."""
     allowed = set(PHASE4_LOCAL_COMMON_TOOL_NAMES)
     service_allowed = PHASE4_LOCAL_SERVICE_TOOL_NAMES.get(
         str(service or "").casefold(), frozenset()
@@ -501,8 +502,11 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
     return True
 
 
-def _phase4_apply_verification_contract(tools: list[dict], requirement: dict) -> list[dict]:
-    """Reject wrong-target probes and require the probe before save."""
+def _phase4_apply_verification_contract(
+    tools: list[dict], requirement: dict, *,
+    vuln: dict | None = None, stop_on_conclusive: bool = False,
+) -> list[dict]:
+    """Reject wrong-target probes, require the probe, and optionally mark proof."""
     required_tool = str(requirement.get("tool") or "")
     required_called = {"value": False}
     wrapped: list[dict] = []
@@ -520,7 +524,25 @@ def _phase4_apply_verification_contract(tools: list[dict], requirement: dict) ->
                         "error": f"This finding requires {_name} against {requirement.get('target')} with the affected port/endpoint.",
                         "required_probe": requirement}, ensure_ascii=False)
                 required_called["value"] = True
-                return _fn(**kwargs)
+                result = _fn(**kwargs)
+                if stop_on_conclusive and vuln is not None:
+                    try:
+                        candidate = _synthesize_exploit_result(
+                            vuln,
+                            [{"tool": _name, "args": kwargs, "result": result}],
+                            compact=False,
+                        )
+                        if candidate.get("status") == "EXPLOITED":
+                            payload = (
+                                json.loads(result)
+                                if isinstance(result, str) else result
+                            )
+                            if isinstance(payload, dict):
+                                payload["phase4_conclusive"] = True
+                                return json.dumps(payload, ensure_ascii=False)
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        pass
+                return result
             if _name == "save_deliverable" and not required_called["value"]:
                 return json.dumps({"ok": False, "error_kind": "phase4_required_probe_missing",
                     "error": f"Run the required Phase 4 probe ({required_tool}) before saving this finding.",
@@ -4941,8 +4963,45 @@ class Pipeline:
                 continue
             final.append(finding)
 
-        for index, finding in enumerate(final, 1):
-            finding_id = f"VULN-{index:03d}"
+        def _finding_identity(finding: dict) -> tuple[str, ...]:
+            return tuple(
+                str(finding.get(key) or "").strip().casefold()
+                for key in (
+                    "device_ip", "type", "service", "port", "protocol",
+                    "endpoint", "product",
+                )
+            )
+
+        # Phase 2.5 appends newly discovered devices and re-runs this
+        # aggregation. Keep existing canonical IDs stable so Phase 4
+        # deliverables and provenance do not get reassigned to another
+        # vulnerability when a new host is added.
+        previous_ids: dict[tuple[str, ...], str] = {}
+        previous_path = self.run_dir / "03_vuln_analysis.json"
+        try:
+            previous = json.loads(previous_path.read_text(encoding="utf-8"))
+            for previous_finding in previous.get("vulnerabilities", []):
+                previous_id = str(previous_finding.get("id") or "")
+                if re.fullmatch(r"VULN-\d+", previous_id):
+                    previous_ids[_finding_identity(previous_finding)] = previous_id
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+        used_ids: set[str] = set()
+        previous_numbers = [
+            int(identifier.removeprefix("VULN-"))
+            for identifier in previous_ids.values()
+            if identifier.removeprefix("VULN-").isdigit()
+        ]
+        next_number = max(previous_numbers, default=0) + 1
+
+        for finding in final:
+            finding_id = previous_ids.get(_finding_identity(finding))
+            if not finding_id or finding_id in used_ids:
+                while f"VULN-{next_number:03d}" in used_ids:
+                    next_number += 1
+                finding_id = f"VULN-{next_number:03d}"
+                next_number += 1
+            used_ids.add(finding_id)
             finding["id"] = finding_id
             for candidate_id in finding["_provenance"]["candidate_ids"]:
                 records_by_id[candidate_id]["canonical_finding_id"] = finding_id
@@ -5084,10 +5143,9 @@ class Pipeline:
         print(f"{'=' * 60}\n")
 
         # Per-device locks to avoid concurrent connections to same host
-        stop_event = (
-            getattr(self, "_stop_event", None)
-            if self._uses_compact_local_moe() else None
-        )
+        # All profiles must observe the run-level stop signal.
+        # Full workers used to ignore it while their provider loop was probing.
+        stop_event = getattr(self, "_stop_event", None)
         from collections import defaultdict
         device_locks: defaultdict[str, threading.Lock] = defaultdict(threading.Lock)
         _locks_guard = threading.Lock()
@@ -5149,6 +5207,13 @@ class Pipeline:
             variables["exploit_instructions"] = instructions
             variables["required_verification"] = json.dumps(requirement, ensure_ascii=False)
             variables["expected_deliverable"] = deliverable_file
+            variables["phase4_profile_guidance"] = (
+                "Full profile: retain autonomous selection of safe, relevant tools and "
+                "continue until the evidence is sufficient; avoid only equivalent retries."
+                if not self.execution_profile.routed_tools else
+                "Compact profile: use the exposed service-specific tools, start with the "
+                "required probe, and stop once direct proof is sufficient."
+            )
             set_expected_deliverable(deliverable_file)
             variables["available_skills"] = ""
 
@@ -5202,6 +5267,7 @@ class Pipeline:
                             include_deliverable=not compact_local_moe,
                         )
                     else:
+                        # Full profile keeps the complete safe Phase 4 surface.
                         verification_tools = exploit_tools
                     # The required probe is always exposed, even when a legacy
                     # service/category route would otherwise hide it.
@@ -5214,6 +5280,11 @@ class Pipeline:
                     if compact_local_moe and required_probe_tool:
                         verification_tools = [tool for tool in verification_tools
                                               if tool.get("name") == required_probe_tool]
+                    if not self.execution_profile.routed_tools:
+                        verification_tools = _phase4_apply_verification_contract(
+                            verification_tools, requirement,
+                            vuln=vuln, stop_on_conclusive=True,
+                        )
                     if compact_local_moe:
                         verification_tools = _phase4_apply_verification_contract(
                             verification_tools, requirement
@@ -5328,9 +5399,25 @@ class Pipeline:
                             stream_callback=self._model_stream_callback(
                                 stream_callback, phase=4, agent=phase_name
                             ),
+                            max_data_tool_calls=self.execution_profile.phase4_max_data_tool_calls,
+                            force_completion_on_phase4_conclusive=True,
                             required_tool="save_deliverable",
                             terminate_after_tool="save_deliverable",
                         )
+                        if not deliverable_path.exists():
+                            # The provider may be forced into completion-only
+                            # mode by the data budget before it emits a valid
+                            # save. Preserve the observed tool evidence rather
+                            # than leaving Phase 4 without a per-vuln artifact.
+                            records = _tool_records_for_vuln(self.run_dir, vuln_id)
+                            result = _synthesize_exploit_result(
+                                vuln, records, result_text, compact=False
+                            )
+                            deliverable_path.parent.mkdir(parents=True, exist_ok=True)
+                            deliverable_path.write_text(
+                                json.dumps(result, indent=2, ensure_ascii=False),
+                                encoding="utf-8",
+                            )
                 except Exception as exc:
                     message = f"{phase_name}: {exc}"
                     _record_worker_error(message)
@@ -6739,6 +6826,22 @@ class Pipeline:
             return "web_server"
         return "unknown"
 
+    @staticmethod
+    def _service_for_discovered_port(port: object) -> tuple[str, str]:
+        """Return the scanner alias and transport for a discovered port."""
+        try:
+            number = int(port)
+        except (TypeError, ValueError):
+            return "unknown", "tcp"
+        service = {
+            21: "ftp", 22: "ssh", 23: "telnet", 80: "http", 443: "https",
+            161: "snmp", 389: "ldap", 502: "modbus", 102: "modbus",
+            3306: "mysql", 44818: "modbus", 4840: "opcua", 5683: "coap",
+            6379: "redis", 1883: "mqtt", 8883: "mqtt", 9001: "mqtt",
+        }.get(number, "unknown")
+        protocol = "udp" if number in {161, 5683} else "tcp"
+        return service, protocol
+
     def _run_discovery_followup(
         self,
         new_hosts: list[dict],
@@ -6783,7 +6886,11 @@ class Pipeline:
                 "type": inferred_role,
                 "role": inferred_role,
                 "services": [
-                    {"name": "unknown", "port": p, "protocol": "tcp"}
+                    {
+                        "name": self._service_for_discovered_port(p)[0],
+                        "port": p,
+                        "protocol": self._service_for_discovered_port(p)[1],
+                    }
                     for p in host.get("open_ports", [])
                 ],
             }

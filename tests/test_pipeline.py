@@ -25,6 +25,12 @@ from src.agent.registry import AgentConfig, AGENTS
 
 
 
+def test_discovery_followup_maps_declared_ports_to_scanner_services():
+    assert Pipeline._service_for_discovered_port(3306) == ("mysql", "tcp")
+    assert Pipeline._service_for_discovered_port(161) == ("snmp", "udp")
+    assert Pipeline._service_for_discovered_port(5683) == ("coap", "udp")
+    assert Pipeline._service_for_discovered_port(9999) == ("unknown", "tcp")
+
 def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full_mode():
     from src.agent import scanner as scanner_mod
 

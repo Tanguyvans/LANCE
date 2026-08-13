@@ -32,6 +32,8 @@ def test_execution_profile_defaults_and_validation():
     assert resolve_execution_profile(None).name == "full"
     compact = resolve_execution_profile(" COMPACT ")
     assert compact.routed_tools is True
+    assert compact.phase4_max_data_tool_calls == 5
+    assert resolve_execution_profile("full").phase4_max_data_tool_calls is None
     assert compact.limits_for_phase(1, 20, 4096) == (12, 2048)
     assert compact.limits_for_phase(2, 50, 4096) == (50, 1536)
     assert compact.limits_for_phase(5, 80, 16384) == (50, 2048)
