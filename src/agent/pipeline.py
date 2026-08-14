@@ -120,10 +120,10 @@ COMPACT_INTRUSION_COMPLETION_TOOL = "complete_intrusion_campaign"
 COMPACT_INTRUSION_FALLBACK_MAX_ACTIONS = 64
 COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS = 4
 COMPACT_PHASE4_DEFAULT_MAX_WORKERS = 2
-# Phase 5 is intentionally autonomous inside the scenario topology, but it is
-# not allowed to turn a compromised scenario host into a bridge to the
-# benchmark controller/management network. These checks are applied by the
-# common tool logger, so they cover full and compact profiles equally.
+# The compact local-MoE Phase 5 contract keeps compromised scenario hosts
+# from becoming bridges to the benchmark controller/management network.
+# Full-profile execution deliberately does not invoke this command parser:
+# its tools and command choices remain unrestricted by the harness.
 _INTRUSION_DIRECT_TARGET_FIELDS = frozenset({"ip", "host", "broker", "target", "url"})
 _INTRUSION_NETWORK_COMMAND_RE = re.compile(
     r"\b(?:ping6?|nmap|nc|ncat|netcat|ssh|scp|sftp|curl|wget|telnet|ftp|"
@@ -886,8 +886,25 @@ def _extract_endpoint_paths(*values: object) -> list[str]:
     return paths
 
 
-def _enrich_finding_structure(finding: dict) -> dict:
-    """Fill deterministic strict-v3 structure without inventing observations."""
+def _enrich_finding_structure(
+    finding: dict,
+    *,
+    strict_schema: bool = False,
+) -> dict:
+    """Fill deterministic strict-v3 structure without inventing observations.
+
+    The full profile emits the canonical strict-v3 queue, so nullable scalar
+    fields from a model response are normalized to schema-neutral empty values
+    before validation. Compact keeps its existing projection behavior; its
+    caller deliberately leaves ``strict_schema`` disabled.
+    """
+    if strict_schema:
+        for field in ("service", "protocol", "product", "version"):
+            if finding.get(field) is None:
+                finding[field] = ""
+        if finding.get("endpoint") is None:
+            finding["endpoint"] = ""
+
     service = str(finding.get("service", "")).strip().casefold()
     if service and not str(finding.get("protocol", "")).strip():
         finding["protocol"] = "udp" if service in {"coap", "snmp", "bacnet"} else "tcp"
@@ -4949,9 +4966,11 @@ class Pipeline:
 
         for finding in all_vulns:
             finding["type"] = canonicalize(finding.get("type", ""))
-            _enrich_finding_structure(finding)
             if compact_mode:
+                _enrich_finding_structure(finding)
                 self._apply_compact_finding_policy(finding)
+            else:
+                _enrich_finding_structure(finding, strict_schema=True)
             port = finding.get("port")
             if isinstance(port, str) and port.isdigit():
                 finding["port"] = int(port)
@@ -8379,7 +8398,7 @@ class Pipeline:
                         res = {}
                 elif isinstance(raw, dict):
                     res = raw
-                if _intrusion_scope_violation(
+                if compact_synthesis and _intrusion_scope_violation(
                     str(tool or ""), args, self.context.get("target_subnet", "")
                 ) is not None:
                     continue
@@ -9801,7 +9820,7 @@ class Pipeline:
                 return stopped
 
             try:
-                if str(phase) == "5":
+                if str(phase) == "5" and self._uses_compact_local_moe():
                     scope_violation = _intrusion_scope_violation(
                         tool_name,
                         kwargs,

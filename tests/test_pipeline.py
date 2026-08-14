@@ -67,6 +67,58 @@ def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full
     assert not any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web, compact=True))
 
 
+def test_full_phase3_normalizes_nullable_schema_fields_without_changing_compact():
+    compact_finding = {
+        "service": "mysql",
+        "protocol": "tcp",
+        "endpoint": None,
+        "product": "MariaDB",
+        "version": "11.8",
+    }
+    _enrich_finding_structure(compact_finding)
+    assert compact_finding["endpoint"] is None
+
+    full_finding = dict(compact_finding)
+    _enrich_finding_structure(full_finding, strict_schema=True)
+    assert full_finding["endpoint"] == ""
+
+
+@pytest.mark.parametrize("profile", ["full", "compact"])
+def test_phase5_scope_guard_is_only_enforced_for_compact(
+    mock_provider, output_dir, profile
+):
+    if profile == "compact":
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+    pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
+    pipeline.context = {"target_subnet": "192.168.100.0/24"}
+    calls = []
+
+    def execute(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({"success": True})
+
+    guarded = pipeline._wrap_tool({
+        "name": "ssh_exec",
+        "description": "ssh",
+        "input_schema": {},
+        "function": execute,
+    }, phase=5, agent="intrusion")
+    result = json.loads(guarded["function"](
+        ip="192.168.100.1",
+        user="root",
+        password="root",
+        command="ls ~/.ssh/; sshpass -p 'P@ssw0rd123' ssh root@192.168.100.11 'id'",
+    ))
+
+    if profile == "compact":
+        assert result["error_kind"] == "intrusion_command_hostname_unverifiable"
+        assert calls == []
+    else:
+        assert result["success"] is True
+        assert len(calls) == 1
+
+
 def test_ot_extractor_ignores_non_authoritative_recon_and_requires_line_state():
     from src.agent import scanner as scanner_mod
 
@@ -2921,6 +2973,7 @@ class TestPhase5Context:
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [{
@@ -3123,6 +3176,7 @@ class TestPhase5Context:
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [{
@@ -3179,6 +3233,7 @@ class TestPhase5Context:
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.168.100.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [{"device_id": "s1-router", "device_ip": "192.168.100.1"}],
@@ -3264,6 +3319,7 @@ class TestPhase5Context:
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [{
@@ -3500,6 +3556,7 @@ class TestPhase5Context:
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
         run_dir = pipeline.run_dir
         (run_dir / "05_intrusion_context.json").write_text(json.dumps({
             "entry_points": [
