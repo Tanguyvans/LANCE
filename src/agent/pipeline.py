@@ -1483,7 +1483,8 @@ class Pipeline:
                 Event types: pipeline_start, phase_start, text_chunk, tool_call,
                 tool_result, turn_done, phase_done, pipeline_done.
         """
-        self._stop_event = stop_event if self._uses_compact_local_moe() else None
+        # A dashboard stop is a run-level control, not a compact-model feature.
+        self._stop_event = stop_event
         self.scenario_tool_policy = self._load_scenario_tool_policy(self.scenario_id)
         self._load_scenario_runtime_limits(self.scenario_id)
 
@@ -3383,6 +3384,7 @@ class Pipeline:
                 # Recon has its own topology-aware progress contract.  The generic
                 # save-only cycle guard can otherwise deadlock it after an early save.
                 repeat_guard=config.name != "recon",
+                stop_event=self._stop_event,
             )
         except Exception as exc:
             if not local_intrusion_memo:
@@ -4073,7 +4075,9 @@ class Pipeline:
         if recon_policy is not None:
             scanner_kwargs["allowed_tool_names"] = recon_policy
         scanner_results = run_scanner(
-            self.run_dir, surface, stream_callback, **scanner_kwargs
+            self.run_dir, surface, stream_callback,
+            stop_event=self._stop_event,
+            **scanner_kwargs,
         )
         if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
@@ -4211,6 +4215,7 @@ class Pipeline:
                         stream_callback, phase=3, agent=f"analyze_{device_id}"
                     ),
                     repeat_guard=False,
+                    stop_event=self._stop_event,
                 )
                 if result_text and result_text.strip() not in {
                     "(max turns reached)", "(malformed tool call JSON — max retries)",
@@ -4276,6 +4281,7 @@ class Pipeline:
                 ),
                 required_tool="save_deliverable",
                 terminate_after_tool="save_deliverable",
+                stop_event=self._stop_event,
             )
             usage = self.tracker.end_phase()
             if usage:
@@ -5403,6 +5409,7 @@ class Pipeline:
                             force_completion_on_phase4_conclusive=True,
                             required_tool="save_deliverable",
                             terminate_after_tool="save_deliverable",
+                            stop_event=stop_event,
                         )
                         if not deliverable_path.exists():
                             # The provider may be forced into completion-only
@@ -5504,7 +5511,9 @@ class Pipeline:
                         return
                 else:
                     _time.sleep(delay)
-            _run_single_exploit(task)
+            from src.agent.tools.runtime import tool_stop_context
+            with tool_stop_context(stop_event):
+                _run_single_exploit(task)
 
         max_workers = (
             COMPACT_PHASE4_DEFAULT_MAX_WORKERS
@@ -6969,6 +6978,7 @@ class Pipeline:
                 ),
                 required_tool="save_deliverable",
                 terminate_after_tool="save_deliverable",
+                stop_event=self._stop_event,
             )
             self.tracker.end_phase()
             print(f"  [+] Followup done: {device_id}")
@@ -8932,6 +8942,7 @@ class Pipeline:
                     stream_callback, phase=config.phase, agent="report_local_analysis"
                 ),
                 repeat_guard=False,
+                stop_event=self._stop_event,
             )
             if result_text and result_text.strip() not in {
                 "(max turns reached)", "(malformed tool call JSON — max retries)",
@@ -9609,6 +9620,17 @@ class Pipeline:
                 with self._artifact_log_lock:
                     with open(log_path, "a", encoding="utf-8") as f:
                         f.write(entry + "\n")
+
+            stop_event = getattr(self, "_stop_event", None)
+            if stop_event is not None and stop_event.is_set():
+                stopped = json.dumps({
+                    "ok": False,
+                    "error_kind": "run_stopped",
+                    "error": "Tool call cancelled because the run was stopped.",
+                    "tool": tool_name,
+                }, ensure_ascii=False)
+                write_entry(stopped)
+                return stopped
 
             try:
                 result = original_fn(**kwargs)

@@ -23,6 +23,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 from src.cve_lookup import query_nvd
+from src.agent.tools.runtime import get_tool_stop_event, run_cooperatively
 
 _ANSI_ESC = re.compile(r'\x1b\[[0-9;]*[mK]')
 _SSH_LEGACY_OPTIONS = [
@@ -34,6 +35,23 @@ _SSH_LEGACY_OPTIONS = [
 
 def _run(cmd: list[str], timeout: int = 30) -> dict:
     """Run a command and return structured output (ANSI codes stripped)."""
+    stop_event = get_tool_stop_event()
+    if stop_event is not None:
+        stdout, stderr, return_code, timed_out, cancelled = run_cooperatively(
+            cmd, timeout=timeout
+        )
+        payload = {
+            "stdout": _ANSI_ESC.sub("", stdout),
+            "stderr": _ANSI_ESC.sub("", stderr),
+            "return_code": return_code,
+        }
+        if timed_out:
+            payload["stderr"] = payload["stderr"] or (
+                f"Command timed out after {timeout}s: {shlex.join(cmd)}"
+            )
+        if cancelled:
+            payload["cancelled"] = True
+        return payload
     try:
         result = subprocess.run(
             cmd,
@@ -396,17 +414,27 @@ def python_exec(script: str, timeout: int = 60) -> str:
         ) as tmp:
             tmp.write(script)
             tmp_path = tmp.name
-        result = subprocess.run(
-            [sys.executable, "-I", tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=effective_timeout,
-        )
+        stop_event = get_tool_stop_event()
+        if stop_event is None:
+            result = subprocess.run(
+                [sys.executable, "-I", tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=effective_timeout,
+            )
+            stdout, stderr, return_code = result.stdout, result.stderr, result.returncode
+            timed_out = False
+            cancelled = False
+        else:
+            stdout, stderr, return_code, timed_out, cancelled = run_cooperatively(
+                [sys.executable, "-I", tmp_path], timeout=effective_timeout
+            )
         return json.dumps({
-            "stdout": _ANSI_ESC.sub("", result.stdout)[:8000],
-            "stderr": _ANSI_ESC.sub("", result.stderr)[:4000],
-            "return_code": result.returncode,
-            "timed_out": False,
+            "stdout": _ANSI_ESC.sub("", stdout)[:8000],
+            "stderr": _ANSI_ESC.sub("", stderr)[:4000],
+            "return_code": return_code,
+            "timed_out": timed_out,
+            "cancelled": cancelled,
             "timeout_seconds": effective_timeout,
         })
     except subprocess.TimeoutExpired as exc:

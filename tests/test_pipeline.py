@@ -67,6 +67,76 @@ def test_compact_mode_requires_protocol_evidence_for_ot_ports_and_preserves_full
     assert not any(finding["type"] == "directory_listing" for finding in scanner_mod.extract_findings({"http": listing}, web, compact=True))
 
 
+def test_ot_extractor_ignores_non_authoritative_recon_and_requires_line_state():
+    from src.agent import scanner as scanner_mod
+
+    device = {"id": "plc", "ip": "192.0.2.20", "role": "ot_opcua_server"}
+    entries = [
+        {
+            "tool": "nmap_scan",
+            "evidence_phase": 2,
+            "authoritative": False,
+            "kwargs": {"target": device["ip"], "ports": "102,44818"},
+            "result": json.dumps({
+                "stdout": "102/tcp open iso-tsap Siemens S7\n44818/tcp open EtherNet-IP",
+                "return_code": 0,
+            }),
+        },
+        {
+            "tool": "nmap_scan",
+            "evidence_phase": 3,
+            "authoritative": True,
+            "kwargs": {"target": device["ip"], "ports": "102,44818"},
+            "result": json.dumps({
+                "stdout": "102/tcp closed iso-tsap\n44818/tcp closed EtherNet-IP",
+                "return_code": 0,
+            }),
+        },
+        {
+            "tool": "nmap_scan",
+            "evidence_phase": 3,
+            "authoritative": True,
+            "kwargs": {"target": device["ip"], "ports": "502"},
+            "result": json.dumps({
+                "stdout": "502/tcp open modbus",
+                "return_code": 0,
+            }),
+        },
+    ]
+
+    findings = scanner_mod._extract_ot_no_auth(entries, device, "")
+
+    assert [(finding["type"], finding["port"]) for finding in findings] == [("no_auth", 502)]
+
+
+def test_run_scanner_keeps_phase2_snapshot_out_of_phase3_artifact(tmp_path):
+    from src.agent import scanner as scanner_mod
+
+    (tmp_path / "02_recon_evidence.json").write_text(json.dumps({
+        "devices": [{
+            "ip": "192.0.2.20",
+            "services": [{"port": 102, "protocol": "tcp", "service": "s7comm"}],
+        }],
+    }))
+    device = {
+        "id": "plc", "ip": "192.0.2.20", "role": "ot_opcua_server",
+        "services": [],
+    }
+
+    result = scanner_mod.run_scanner(
+        tmp_path, [device], allowed_tool_names=set()
+    )
+
+    artifact = json.loads((tmp_path / "03_scans" / "plc.json").read_text())
+    snapshot = json.loads(
+        (tmp_path / "03_scans" / "plc_phase2_recon.json").read_text()
+    )
+    assert "phase2_recon_evidence" not in artifact
+    assert snapshot[0]["evidence_phase"] == 2
+    assert result["plc"]["scan_results"] == {}
+    assert result["plc"]["findings"] == []
+
+
 def test_phase6_resolves_legacy_report_template_for_full_agents():
     template_path = _deliverable_template_path(AGENTS["report"])
 
@@ -3761,6 +3831,21 @@ class TestPhase5Context:
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")
+    def test_full_run_keeps_dashboard_stop_event(self, mock_lab, mock_provider, output_dir):
+        from threading import Event
+
+        mock_lab.return_value = {
+            "device_count": 0, "link_count": 0,
+            "cve_count": 0, "top_risk": "none",
+        }
+        pipeline = Pipeline(provider=mock_provider, dry_run=True, phases=[], execution_profile="full")
+        stop_event = Event()
+
+        pipeline.run(stop_event=stop_event)
+
+        assert pipeline._stop_event is stop_event
+
+    @patch("src.agent.pipeline.load_lab_context")
     @patch("src.agent.pipeline.load_prompt")
     def test_dry_run_single_phase(
         self, mock_load_prompt, mock_lab, mock_provider, output_dir
@@ -3952,7 +4037,7 @@ class TestInformationPreservingArchitecture:
             "summary": {"total": 1},
         }
 
-        def scanner_side_effect(run_dir_arg, devices, stream_callback=None, *, compact=False):
+        def scanner_side_effect(run_dir_arg, devices, stream_callback=None, *, compact=False, stop_event=None):
             (run_dir / "03_device_s1-router.json").write_text(json.dumps(fallback))
             return {"s1-router": {"scan_results": {}, "findings": fallback["vulnerabilities"]}}
 

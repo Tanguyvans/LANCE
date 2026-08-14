@@ -1,7 +1,9 @@
 """Tests for Phase 4.1 agent tools, provider, and orchestrator."""
 
 import json
+import sys
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -131,6 +133,26 @@ class TestReconTools:
             result = _run(["nonexistent_tool"], timeout=10)
             assert result["return_code"] == -1
             assert "not found" in result["stderr"]
+
+    def test_run_cancels_cooperatively_when_run_stop_is_requested(self):
+        from src.agent.tools.runtime import tool_stop_context
+
+        stop_event = threading.Event()
+
+        def request_stop():
+            time.sleep(0.1)
+            stop_event.set()
+
+        stopper = threading.Thread(target=request_stop)
+        stopper.start()
+        started = time.monotonic()
+        with tool_stop_context(stop_event):
+            result = _run([sys.executable, "-c", "import time; time.sleep(30)"], timeout=60)
+        stopper.join()
+
+        assert result["return_code"] == -2
+        assert result["cancelled"] is True
+        assert time.monotonic() - started < 5
 
     def test_recon_tools_definitions(self):
         """Verify all recon tools have the required fields."""

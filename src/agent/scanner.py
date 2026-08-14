@@ -281,6 +281,8 @@ def _phase2_recon_scan_entries(run_dir: Path, device: dict) -> list[dict]:
             "source": "02_recon_evidence.json",
         }),
         "source": "02_recon_evidence.json",
+        "evidence_phase": 2,
+        "authoritative": False,
     }]
 
 
@@ -312,6 +314,8 @@ def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]
             "tool": tool_name,
             "kwargs": kwargs,
             "result": result_str,
+            "evidence_phase": 3,
+            "authoritative": True,
         })
 
     # Scan each declared service
@@ -967,10 +971,12 @@ def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> lis
     for entry in entries:
         if entry["tool"] != "nmap_scan":
             continue
+        if entry.get("authoritative") is False or entry.get("evidence_phase") not in (None, 3):
+            continue
         result = _parse_result(entry)
         stdout = result.get("stdout", "")
         for port_str, proto in [("502/tcp", "Modbus"), ("102/tcp", "S7comm"), ("44818/tcp", "EtherNet/IP")]:
-            if port_str in stdout and "open" in stdout:
+            if re.search(rf"(?im)^\s*{re.escape(port_str)}\s+open(?:\s|$)", stdout):
                 port = int(port_str.split("/")[0])
                 findings.append(_make_finding(
                     device, "no_auth", "CRITICAL", proto.lower(), port,
@@ -1480,6 +1486,7 @@ def run_scanner(
     *,
     compact: bool = False,
     allowed_tool_names: set[str] | None = None,
+    stop_event=None,
 ) -> dict[str, dict]:
     """Run Phase 3a: scan all devices, save raw results, extract trivial findings.
 
@@ -1512,11 +1519,19 @@ def run_scanner(
                 "device_ip": device_ip, "phase": 3,
             })
 
-        # Run all tools
-        scan_results = scan_device(device, tools_map)
+        # Run all tools. A run stop is cooperative and applies equally to
+        # deterministic scanner subprocesses and model-selected tools.
+        from src.agent.tools.runtime import tool_stop_context
+        with tool_stop_context(stop_event):
+            scan_results = scan_device(device, tools_map)
         recon_entries = _phase2_recon_scan_entries(run_dir, device)
         if recon_entries:
-            scan_results["phase2_recon_evidence"] = recon_entries
+            # Keep the old recon snapshot auditable, but do not merge it into
+            # the authoritative Phase 3 input used by extractors or models.
+            (scans_dir / f"{device_id}_phase2_recon.json").write_text(
+                json.dumps(recon_entries, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
 
         # Save raw results
         scan_path = scans_dir / f"{device_id}.json"
