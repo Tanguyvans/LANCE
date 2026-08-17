@@ -31,11 +31,22 @@ def _is_network_error(exc: Exception) -> bool:
     return type(exc).__name__ in _RETRYABLE_EXC_NAMES or isinstance(exc, (ConnectionError, TimeoutError))
 
 
-def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, **kwargs):
+def _deadline_remaining(deadline: float | None) -> float | None:
+    """Return seconds remaining, or raise before a deadline-bounded call."""
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("LLM request deadline exceeded")
+    return remaining
+
+
+def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, deadline=None, **kwargs):
     """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529) and connection errors."""
     last_exc = None
     retry_limit = max(0, int(max_retries))
     for attempt in range(retry_limit + 1):
+        _deadline_remaining(deadline)
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
@@ -47,6 +58,10 @@ def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, **kwargs):
             retryable = (code in _RETRYABLE_CODES) or (code is None and _is_network_error(exc))
             if retryable and attempt < retry_limit:
                 delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                if deadline is not None:
+                    remaining = _deadline_remaining(deadline)
+                    if delay >= remaining:
+                        raise TimeoutError("LLM request deadline exceeded") from exc
                 log.warning("API error %s (attempt %d/%d) — retrying in %.0fs: %s", code or type(exc).__name__, attempt + 1, retry_limit, delay, exc)
                 time.sleep(delay)
                 last_exc = exc
@@ -165,6 +180,7 @@ class LLMProvider:
         stop_event=None,
         force_completion_on_phase4_conclusive: bool = False,
         max_data_tool_calls: int | None = None,
+        deadline: float | None = None,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
@@ -189,6 +205,7 @@ class LLMProvider:
                 stop_event,
                 max_data_tool_calls,
                 force_completion_on_phase4_conclusive,
+                deadline=deadline,
             )
 
     def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False):
@@ -360,7 +377,7 @@ class LLMProvider:
                 return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
         return "(max turns reached)"
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -379,6 +396,13 @@ class LLMProvider:
             tool for tool in api_tools
             if tool["function"]["name"] == required_tool
         ]
+
+        def create_completion(**kwargs):
+            client = self.client
+            remaining = _deadline_remaining(deadline)
+            if remaining is not None and hasattr(client, "with_options"):
+                client = client.with_options(timeout=remaining)
+            return client.chat.completions.create(**kwargs)
 
         for turn in range(max_turns):
             if stop_event is not None and stop_event.is_set():
@@ -402,8 +426,9 @@ class LLMProvider:
                         request_kwargs["tool_choice"] = "required"
                         force_any_tool_next_turn = False
                 response = _call_with_retry(
-                    self.client.chat.completions.create,
+                    create_completion,
                     max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                    deadline=deadline,
                     **request_kwargs,
                 )
             except Exception as exc:
@@ -443,8 +468,9 @@ class LLMProvider:
                 if malformed_retries < 2:
                     malformed_retries += 1
                     fallback = _call_with_retry(
-                        self.client.chat.completions.create,
+                        create_completion,
                         max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                        deadline=deadline,
                         model=self.model,
                         messages=messages,
                         max_tokens=max_tokens,

@@ -6,6 +6,14 @@ All magic numbers that could reasonably change between environments
 
 from __future__ import annotations
 
+import os
+
+# Hard wall-clock budget for the bounded local-MoE report analysis. The report
+# is composed deterministically after this budget, even if the model stalls.
+LOCAL_MOE_REPORT_PHASE_TIMEOUT = float(
+    os.environ.get("LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT", "120")
+)
+
 # ── Network subnets ──────────────────────────────────────────────────────────
 
 PHYSICAL_SUBNET  = "192.168.88.0/24"   # Physical lab (MikroTik, Netgear, sensors…)

@@ -4225,6 +4225,7 @@ class TestInformationPreservingArchitecture:
         kwargs = mock_provider.chat_with_tools.call_args.kwargs
         assert kwargs["tools"] == []
         assert kwargs["max_turns"] == 1
+        assert kwargs["deadline"] > 0
         assert "192.168.100.11" in kwargs["system_prompt"]
         report = (run_dir / "06_report.md").read_text()
         assert "## 1." in report and "## 10." in report

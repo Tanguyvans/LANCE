@@ -8,6 +8,7 @@ import re
 import shlex
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,7 @@ from src.config import (
     BENCHMARK_SUBNET,
     DEFAULT_PORTS,
     DEVICE_DEFAULT_PORTS,
+    LOCAL_MOE_REPORT_PHASE_TIMEOUT,
     PHYSICAL_SUBNET,
 )
 from src.agent.prompt_manager import load_prompt
@@ -9142,6 +9144,7 @@ class Pipeline:
 
         self.tracker.start_phase(config.name)
         analysis_error = ""
+        deadline = time.monotonic() + LOCAL_MOE_REPORT_PHASE_TIMEOUT
         try:
             result_text = self.provider.chat_with_tools(
                 system_prompt=prompt,
@@ -9155,6 +9158,7 @@ class Pipeline:
                 ),
                 repeat_guard=False,
                 stop_event=self._stop_event,
+                deadline=deadline,
             )
             if result_text and result_text.strip() not in {
                 "(max turns reached)", "(malformed tool call JSON — max retries)",
@@ -9187,6 +9191,7 @@ class Pipeline:
             "phase6_llm": "local_bounded" if not analysis_error else "local_fallback",
             "phase6_error": analysis_error or None,
             "phase6_analysis": "06_report_analysis.md",
+            "phase6_timeout_s": LOCAL_MOE_REPORT_PHASE_TIMEOUT,
             "phase6_report_validation": msg,
         })
         if stream_callback:

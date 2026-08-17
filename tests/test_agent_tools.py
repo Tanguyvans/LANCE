@@ -495,7 +495,17 @@ class TestProvider:
         assert provider._retry_limit == 2
         assert openai_cls.call_args.kwargs["timeout"] == 90.0
 
-    def test_invalid_provider(self):
+    def test_retry_honors_expired_deadline(self):
+        from src.agent.provider import _call_with_retry
+
+        calls = []
+        with pytest.raises(TimeoutError, match="deadline exceeded"):
+            _call_with_retry(
+                lambda: calls.append("called"),
+                max_retries=5,
+                deadline=time.monotonic() - 1,
+            )
+        assert calls == []
         with pytest.raises(ValueError, match="Unknown provider"):
             LLMProvider(provider="invalid")
 
