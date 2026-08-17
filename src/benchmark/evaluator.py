@@ -1207,6 +1207,7 @@ def _depth_histograms(matches: list[dict]) -> tuple[dict, dict]:
 # to a finding that Phase 4 never tested.
 _FAILED_PHASE4_STATUSES: frozenset[str] = frozenset({"FAILED", "NOT_EXPLOITABLE"})
 _ERROR_PHASE4_STATUSES: frozenset[str] = frozenset({"ERROR"})
+_NON_REPORTABLE_PHASE4_STATUSES: frozenset[str] = _ERROR_PHASE4_STATUSES | frozenset({"SKIPPED"})
 _EXPLOITED_PHASE4_STATUSES: frozenset[str] = frozenset({"CONFIRMED", "EXPLOITED", "COMPROMISED"})
 
 
@@ -1899,9 +1900,10 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
     """Return findings after resolving Phase 4 verdicts individually.
 
     CONFIRMED enriches the corresponding Phase 3 finding. FAILED refutes it,
-    unless Phase 3 already carries direct evidence. ERROR and missing tests are
-    indeterminate and therefore retain the Phase 3 finding at detection level.
-    Falls back entirely to Phase 3 only when no Phase 4 artifact exists.
+    unless Phase 3 already carries direct evidence. ERROR and SKIPPED tests are
+    excluded from the final metric candidate set. Missing tests retain the Phase
+    3 finding at detection level. Falls back entirely to Phase 3 only when no
+    Phase 4 artifact exists.
     """
     exploit_file = run_dir / "04_exploitation.json"
     vuln_file = run_dir / "03_vuln_analysis.json"
@@ -1949,25 +1951,15 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                         p3, "conflicting_direct_phase3_evidence",
                     ))
                 continue
-            if status == "SKIPPED":
-                if (
-                    p3
-                    and not p3.get("compact_requires_verification")
-                    and p3.get("type", "") not in NOISE_TYPES
-                ):
-                    findings.append(_phase3_detection_finding(p3, "not_tested"))
+            if status in _NON_REPORTABLE_PHASE4_STATUSES:
                 continue
-            if status in _ERROR_PHASE4_STATUSES or (
-                not is_legacy_findings and status not in _EXPLOITED_PHASE4_STATUSES
-            ):
+            if not is_legacy_findings and status not in _EXPLOITED_PHASE4_STATUSES:
                 if (
                     p3
                     and not p3.get("compact_requires_verification")
                     and p3.get("type", "") not in NOISE_TYPES
                 ):
-                    findings.append(_phase3_detection_finding(
-                        p3, "error" if status in _ERROR_PHASE4_STATUSES else "unknown_status",
-                    ))
+                    findings.append(_phase3_detection_finding(p3, "unknown_status"))
                 continue
             finding = {
                 "id": vuln_id,
