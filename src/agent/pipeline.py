@@ -64,6 +64,22 @@ from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
 from src.benchmark.metric_contract import metric_contract_metadata
 
+
+def _phase4_evidence_level(test: dict) -> int:
+    """Return a normalized Phase 4 evidence level for report scoping."""
+    try:
+        return int(test.get("evidence_level", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_verified_report_finding(test: dict) -> bool:
+    """Whether a finding has enough Phase 4 evidence for the main report."""
+    return (
+        str(test.get("status", "")).upper() == "CONFIRMED"
+        and _phase4_evidence_level(test) >= 2
+    )
+
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
@@ -9247,6 +9263,9 @@ class Pipeline:
             status = exploit.get("status", "UNTESTED")
             severity = (v.get("severity") or "MEDIUM").upper()
 
+            if not _is_verified_report_finding(exploit):
+                continue
+
             devices[dev_ip]["severity_counts"][severity] = (
                 devices[dev_ip]["severity_counts"].get(severity, 0) + 1
             )
@@ -9271,7 +9290,7 @@ class Pipeline:
                 })
 
         # --- Build compact output ---
-        device_list = sorted(devices.values(), key=lambda d: d["device_ip"])
+        device_list = [d for d in sorted(devices.values(), key=lambda d: d["device_ip"]) if d["severity_counts"]]
         total_vulns = sum(
             sum(d["severity_counts"].values()) for d in device_list
         )
@@ -9320,7 +9339,12 @@ class Pipeline:
                 "model_outputs": "model_outputs.jsonl",
                 "recon_evidence": "02_recon_evidence.json",
             },
-            "NOTE": "Sections 5 and 6 (vuln tables) are pre-generated in 06_report_prefill.md — do not re-list individual vulns.",
+            "NOTE": (
+                "Sections 5 and 6 (vuln tables) are pre-generated in "
+                "06_report_prefill.md. The primary inventory contains only "
+                "Phase 4-verified findings (CONFIRMED, evidence level >= 2); "
+                "the complete candidate registry remains in the raw artifacts."
+            ),
         }
 
         out_path = self.run_dir / "06_phase6_context.json"
@@ -9376,6 +9400,9 @@ class Pipeline:
             vid = v.get("id", "")
             exploit = exploit_by_vuln.get(vid, {})
             status_raw = exploit.get("status", "UNTESTED")
+
+            if not _is_verified_report_finding(exploit):
+                continue
             status_map = {
                 "CONFIRMED": "**Confirmed**",
                 "FAILED": "Not Exploitable",
@@ -9394,7 +9421,9 @@ class Pipeline:
                 f"| {v.get('service','')}:{v.get('port','')} | {status} | {title} |"
             )
         sec5 = (
-            "## 5. Discovered Vulnerabilities\n\n"
+            "## 5. Verified Vulnerabilities\n\n"
+            "Only Phase 4 findings with status `CONFIRMED` and evidence level >= 2 "
+            "are included in this primary inventory.\n\n"
             "| ID | Device | Type | Severity | Service | Status | Evidence |\n"
             "|----|--------|------|----------|---------|--------|----------|\n"
             + "\n".join(sec5_rows)
@@ -9424,23 +9453,23 @@ class Pipeline:
 
         # --- Section 6.1: Exploitation summary ---
         total_tested = phase4_summary.get("total_tested", len(phase3_vulns))
-        confirmed = phase4_summary.get("confirmed", 0)
+        confirmed = sum(1 for t in exploit_by_vuln.values() if _is_verified_report_finding(t))
         not_exploitable = phase4_summary.get("not_exploitable", 0)
         errors = phase4_summary.get("errors", 0)
         # Count real evidence (level >= 2)
-        data_exfil = sum(1 for t in exploit_by_vuln.values() if t.get("evidence_level", 0) >= 2)
+        data_exfil = sum(1 for t in exploit_by_vuln.values() if _is_verified_report_finding(t))
         sec61 = (
             "### 6.1 Exploitation Summary\n\n"
             "| Metric | Value |\n|--------|-------|\n"
             f"| Vulnerabilities tested | {total_tested} |\n"
-            f"| Confirmed (exploited) | {confirmed} |\n"
+            f"| Verified (confirmed, evidence >= 2) | {confirmed} |\n"
             f"| Data exfiltrated (level ≥ 2) | {data_exfil} |\n"
             f"| Not exploitable | {not_exploitable} |\n"
             f"| Errors | {errors} |"
         )
 
         # --- Section 6.2: Exploitation details (confirmed only, keep table manageable) ---
-        confirmed_tests = [t for t in exploit_by_vuln.values() if t.get("status") == "CONFIRMED" and t.get("evidence_level", 1) >= 2]
+        confirmed_tests = [t for t in exploit_by_vuln.values() if _is_verified_report_finding(t)]
         sec62_rows = []
         for t in confirmed_tests:
             data_list = t.get("data_extracted", [])
@@ -9460,6 +9489,8 @@ class Pipeline:
         # --- Section 6.3: Credentials recovered ---
         creds_rows = []
         for t in exploit_by_vuln.values():
+            if not _is_verified_report_finding(t):
+                continue
             for item in t.get("data_extracted", []):
                 item_str = str(item)
                 if any(kw in item_str.lower() for kw in ("password", "passwd", "cred", "login", "user", "key", "token")):
@@ -9475,7 +9506,7 @@ class Pipeline:
         prefill = "\n\n".join([sec5, "## 6. Exploitation Results (Phase 4)\n\n" + sec61, sec62, sec63])
         prefill_path = self.run_dir / "06_report_prefill.md"
         prefill_path.write_text(prefill, encoding="utf-8")
-        print(f"  [prefill] 06_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sorted_vulns)} vulns)")
+        print(f"  [prefill] 06_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(sec5_rows)} verified vulns)")
 
     def _update_run_meta(self, updates: dict) -> None:
         """Merge updates into run_meta.json for traceability (phase status, errors)."""
@@ -9538,6 +9569,16 @@ class Pipeline:
         sev = ctx.get("severity_breakdown", {})
         p4 = ctx.get("phase4_summary", {})
         confirmed = p4.get("confirmed", "?")
+        phase4_path = self.run_dir / "04_exploitation.json"
+        if phase4_path.exists():
+            try:
+                phase4_data = json.loads(phase4_path.read_text(encoding="utf-8"))
+                confirmed = sum(
+                    1 for test in phase4_data.get("tests", [])
+                    if _is_verified_report_finding(test)
+                )
+            except (OSError, json.JSONDecodeError, TypeError):
+                pass
         not_exploitable = p4.get("not_exploitable", 0)
         errors = p4.get("errors", 0)
         n_crit = sev.get("CRITICAL", 0)
