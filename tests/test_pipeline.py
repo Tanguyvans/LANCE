@@ -1265,6 +1265,22 @@ class TestExploitEvidenceGuard:
         assert verdict["status"] == "ERROR"
         assert verdict["evidence_level"] == 0
 
+    def test_confirmed_verdict_requires_semantic_tool_evidence(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        exploit_file = pipeline.run_dir / "result.json"
+        exploit_file.write_text(json.dumps({
+            "status": "CONFIRMED",
+            "evidence": "The model observed a vulnerable service",
+            "evidence_level": 3,
+        }))
+        verdict = pipeline._resolve_exploit_verdict(
+            {"id": "VULN-001", "device_id": "mqtt", "type": "no_auth"},
+            exploit_file,
+        )
+        assert verdict["status"] == "ERROR"
+        assert verdict["evidence_level"] == 0
 
     def test_http_404_is_failed_not_exploited(self):
         result = _synthesize_exploit_result(

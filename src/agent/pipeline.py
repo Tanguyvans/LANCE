@@ -7390,6 +7390,15 @@ class Pipeline:
                 ),
                 evidence_level=int(semantic_result.get("evidence_level", 0) or 0),
             )
+        if status in {"CONFIRMED", "COMPROMISED"}:
+            if semantic_status == "EXPLOITED":
+                return _make_test_entry(
+                    vuln,
+                    status="CONFIRMED",
+                    result={**result, **semantic_result},
+                )
+            status = semantic_status if semantic_status in {"FAILED", "ERROR"} else "ERROR"
+            result = {**result, **semantic_result}
         final_status = "CONFIRMED" if status == "EXPLOITED" else status
         if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
             final_status = "ERROR"
