@@ -82,6 +82,28 @@ def _is_verified_report_finding(test: dict) -> bool:
         and _phase4_evidence_level(test) >= 2
     )
 
+def _report_phase4_summary(summary: dict, tests: list[dict]) -> dict:
+    """Return a Phase 6-safe summary without raw, unsupported confirmations.
+
+    The Phase 4 artifact keeps its raw counters for auditability, but the report
+    model must not see a raw ``confirmed`` count that includes tests without
+    execution evidence. Those tests remain available in the original artifacts
+    and are deliberately excluded from the report-facing projection.
+    """
+    report_summary = dict(summary or {})
+    verified_count = sum(1 for test in tests if _is_verified_report_finding(test))
+    unverified_confirmed = sum(
+        1
+        for test in tests
+        if str(test.get("status", "")).upper() == "CONFIRMED"
+        and not _is_verified_report_finding(test)
+    )
+    report_summary["confirmed"] = verified_count
+    report_summary["verified_confirmed"] = verified_count
+    report_summary["unverified_confirmed"] = unverified_confirmed
+    return report_summary
+
+
 log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
@@ -9235,12 +9257,15 @@ class Pipeline:
         phase4_tests: list[dict] = []
         if exploit_path.exists():
             data = json.loads(exploit_path.read_text(encoding="utf-8"))
-            phase4_summary = data.get("summary", {})
+            raw_tests = data.get("tests", [])
+            phase4_summary = _report_phase4_summary(data.get("summary", {}), raw_tests)
             # 04_exploitation.json uses "tests" key (from _aggregate_exploit_results)
-            for t in data.get("tests", []):
+            for t in raw_tests:
                 vuln_id = t.get("vuln_id", "")
                 if vuln_id:
                     exploit_by_vuln[vuln_id] = t
+                if not _is_verified_report_finding(t):
+                    continue
                 phase4_tests.append({
                     "vuln_id": vuln_id,
                     "device_id": t.get("device_id", ""),
@@ -9330,8 +9355,10 @@ class Pipeline:
             "phase4_summary": phase4_summary,
             "phase4_tests": phase4_tests[:120],
             "phase4_tests_note": (
-                "Compact Phase 4 projection with evidence excerpts and refs; "
-                "full results remain in 04_exploitation.json and raw tool output in tool_calls.jsonl."
+                "Only Phase 4 findings with status CONFIRMED and evidence level >= 2 "
+                "are projected here. Unsupported confirmations are excluded from the "
+                "report-facing context; full results remain in 04_exploitation.json "
+                "and raw tool output in tool_calls.jsonl."
             ),
             "top_critical_findings": top_critical,
             "top_devices_by_risk": [
@@ -9468,6 +9495,12 @@ class Pipeline:
         # --- Section 6.1: Exploitation summary ---
         total_tested = phase4_summary.get("total_tested", len(phase3_vulns))
         confirmed = sum(1 for t in exploit_by_vuln.values() if _is_verified_report_finding(t))
+        unverified_confirmed = sum(
+            1
+            for t in exploit_by_vuln.values()
+            if str(t.get("status", "")).upper() == "CONFIRMED"
+            and not _is_verified_report_finding(t)
+        )
         not_exploitable = phase4_summary.get("not_exploitable", 0)
         errors = phase4_summary.get("errors", 0)
         # Count real evidence (level >= 2)
@@ -9477,6 +9510,7 @@ class Pipeline:
             "| Metric | Value |\n|--------|-------|\n"
             f"| Vulnerabilities tested | {total_tested} |\n"
             f"| Verified (confirmed, evidence >= 2) | {confirmed} |\n"
+            f"| Unsupported confirmations excluded | {unverified_confirmed} |\n"
             f"| Data exfiltrated (level ≥ 2) | {data_exfil} |\n"
             f"| Not exploitable | {not_exploitable} |\n"
             f"| Errors | {errors} |"

@@ -1092,6 +1092,23 @@ class TestProcessMetricsV2:
             "status": "EXPLOITED", "data_extracted": ["secret"], "evidence_level": 0,
         }) == 3
 
+    def test_legacy_confirmed_without_execution_is_detection_only(self, tmp_path):
+        run_dir = _write_run(tmp_path, [_finding()])
+        (run_dir / "04_exploitation.json").write_text(json.dumps({
+            "tests": [{
+                "vuln_id": "F1",
+                "status": "CONFIRMED",
+                "evidence": "model-only confirmation",
+            }],
+        }))
+
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+
+        assert result.true_positives == 1
+        assert result.tp_exploited == 0
+        assert result.tp_detected_only == 1
+        assert result.matches[0]["phase4_verification"] == "detected_only"
+
 
     def test_inconsistent_v2_counters_make_process_metrics_unavailable(self, tmp_path):
         run_dir = _write_run(tmp_path, [_finding()])

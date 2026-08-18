@@ -1986,7 +1986,13 @@ def _load_llm_findings(run_dir: Path) -> list[dict]:
                 "data_extracted": t.get("data_extracted", []),
                 "status": status,
                 "phase4_verification": (
-                    status.lower() if status else "legacy_finding"
+                    (
+                        "verified"
+                        if _derive_evidence_level(t) >= 2
+                        else "detected_only"
+                    )
+                    if status in _EXPLOITED_PHASE4_STATUSES
+                    else (status.lower() if status else "legacy_finding")
                 ),
                 "remediation": t.get("remediation") or (p3 or {}).get("remediation", ""),
                 "cve_ids": _sanitize_cve_ids(

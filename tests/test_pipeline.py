@@ -11,6 +11,8 @@ from src.agent.pipeline import (
     _has_positive_exploit_evidence,
     _phase4_local_verification_tools,
     _phase4_verification_plan,
+    _is_verified_report_finding,
+    _report_phase4_summary,
     _phase4_requirement_matches,
     _local_report_memo_contradicts_context,
     _looks_unusable_model_memo,
@@ -21,6 +23,56 @@ from src.agent.pipeline import (
     _make_test_entry,
 )
 from src.agent.registry import AgentConfig, AGENTS
+
+def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output_dir):
+    pipeline = Pipeline(provider=mock_provider)
+    pipeline.context = {"device_count": 1}
+    run_dir = pipeline.run_dir
+    (run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+        "vulnerabilities": [
+            {
+                "id": "V1", "device_id": "device-1", "device_ip": "192.0.2.1",
+                "type": "no_auth", "severity": "HIGH", "service": "mqtt",
+                "port": 1883,
+            },
+            {
+                "id": "V2", "device_id": "device-1", "device_ip": "192.0.2.1",
+                "type": "default_credentials", "severity": "HIGH",
+                "service": "mqtt", "port": 1883,
+            },
+        ],
+    }))
+    tests = [
+        {
+            "vuln_id": "V1", "device_id": "device-1", "device_ip": "192.0.2.1",
+            "vuln_type": "no_auth", "status": "CONFIRMED", "evidence_level": 2,
+            "tool_used": "mqtt_listen", "evidence": "anonymous messages",
+        },
+        {
+            "vuln_id": "V2", "device_id": "device-1", "device_ip": "192.0.2.1",
+            "vuln_type": "default_credentials", "status": "CONFIRMED",
+            "evidence_level": 1, "evidence": "model claim only",
+        },
+    ]
+    (run_dir / "04_exploitation.json").write_text(json.dumps({
+        "summary": {"total_tested": 2, "confirmed": 2, "not_exploitable": 0, "errors": 0},
+        "tests": tests,
+    }))
+
+    assert _report_phase4_summary({"confirmed": 2}, tests) == {
+        "confirmed": 1, "verified_confirmed": 1, "unverified_confirmed": 1,
+    }
+
+    pipeline._generate_phase6_context()
+    context = json.loads((run_dir / "06_phase6_context.json").read_text())
+    assert context["phase4_summary"]["confirmed"] == 1
+    assert context["phase4_summary"]["unverified_confirmed"] == 1
+    assert [test["vuln_id"] for test in context["phase4_tests"]] == ["V1"]
+    assert _is_verified_report_finding(tests[0])
+    assert not _is_verified_report_finding(tests[1])
+
+    local_context = pipeline._build_local_report_analysis_context()
+    assert [test["vuln_id"] for test in local_context["phase6"]["phase4_tests"]] == ["V1"]
 
 
 
