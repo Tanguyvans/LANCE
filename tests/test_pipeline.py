@@ -21,6 +21,7 @@ from src.agent.pipeline import (
     _synthesize_exploit_result,
     _enrich_finding_structure,
     _make_test_entry,
+    _finding_semantic_issue,
 )
 from src.agent.registry import AgentConfig, AGENTS
 
@@ -400,6 +401,81 @@ def test_phase4_known_cve_without_matching_audit_evidence_is_inconclusive():
     )
     assert result["status"] == "ERROR"
     assert "CVE-specific" in result["evidence"]
+
+
+
+def test_phase4_default_credentials_mqtt_uses_authenticated_probe():
+    vuln = {
+        "type": "default_credentials", "service": "mqtt",
+        "device_ip": "192.0.2.11", "port": 1883,
+    }
+    requirement = _phase4_verification_plan(vuln)
+
+    assert requirement["tool"] == "mqtt_listen"
+    assert requirement["args_hint"]["username"] == "test"
+    assert requirement["args_hint"]["password"] == "test"
+    assert not _phase4_requirement_matches(
+        requirement, "mqtt_listen", {"broker": "192.0.2.11", "topic": "#"}
+    )
+    assert _phase4_requirement_matches(
+        requirement, "mqtt_listen", requirement["args_hint"]
+    )
+
+    anonymous = _synthesize_exploit_result(
+        vuln, [{
+            "tool": "mqtt_listen",
+            "args": {"broker": "192.0.2.11", "topic": "#"},
+            "result": json.dumps({"stdout": "sensors/temp 22.5", "return_code": 27}),
+        }],
+    )
+    assert anonymous["status"] == "ERROR"
+
+    authenticated = _synthesize_exploit_result(
+        vuln, [{
+            "tool": "mqtt_listen",
+            "args": requirement["args_hint"],
+            "result": json.dumps({"stdout": "sensors/temp 22.5", "return_code": 27}),
+        }],
+    )
+    assert authenticated["status"] == "EXPLOITED"
+
+
+def test_no_auth_nmap_open_port_requires_protocol_evidence():
+    vuln = {
+        "type": "no_auth", "service": "unknown",
+        "device_ip": "192.0.2.12", "port": 1234,
+    }
+    open_only = _synthesize_exploit_result(
+        vuln, [{
+            "tool": "nmap_scan",
+            "args": {"target": "192.0.2.12", "ports": "1234"},
+            "result": json.dumps({
+                "stdout": "1234/tcp open mystery", "return_code": 0,
+            }),
+        }],
+    )
+    assert open_only["status"] == "FAILED"
+
+    protocol = _synthesize_exploit_result(
+        vuln, [{
+            "tool": "nmap_scan",
+            "args": {"target": "192.0.2.12", "ports": "1234"},
+            "result": json.dumps({
+                "stdout": "1234/tcp open mystery\nAnonymous login allowed",
+                "return_code": 0,
+            }),
+        }],
+    )
+    assert protocol["status"] == "EXPLOITED"
+
+
+def test_model_finding_metadata_rejects_non_http_header_claims():
+    assert "requires an HTTP" in _finding_semantic_issue({
+        "type": "missing_header", "service": "telnet", "port": 23,
+    })
+    assert _finding_semantic_issue({
+        "type": "missing_header", "service": "http", "port": 80,
+    }) == ""
 
 
 def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failure():

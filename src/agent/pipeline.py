@@ -569,6 +569,15 @@ def _phase4_verification_plan(
             return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
                     "args_hint": {"url": url}, "success_condition": "unauthenticated endpoint fetched"}
     if vuln_type in {"default_credentials", "privilege_escalation"}:
+        if service == "mqtt" or port in {1883, 8883}:
+            return {
+                "tool": "mqtt_listen", "target": ip, "port": port or 1883,
+                "args_hint": {
+                    "broker": ip, "topic": "#", "count": 5, "timeout": 5,
+                    "username": "test", "password": "test",
+                },
+                "success_condition": "authenticated MQTT subscription with test:test",
+            }
         if service == "snmp" or port == 161:
             return {
                 "tool": "udp_send", "target": ip, "port": 161,
@@ -591,7 +600,7 @@ def _phase4_verification_plan(
                     "success_condition": "query succeeds without a password"}
         return {"tool": "try_credential", "target": ip, "port": port, "service": service or "http",
                 "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
-    if compact and vuln_type == "no_auth" and (service == "coap" or port == 5683):
+    if vuln_type == "no_auth" and (service == "coap" or port == 5683):
         return {
             "tool": "udp_send", "target": ip, "port": 5683,
             "required_payload": _COAP_GET_CORE_HEX,
@@ -641,8 +650,13 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
             payload_key = "payload_hex" if tool == "tcp_send" else "payload"
             if str(args.get(payload_key) or "").replace(" ", "").casefold() != expected_payload.replace(" ", ""):
                 return False
-    if tool == "mqtt_listen" and str(args.get("broker") or "") != target:
-        return False
+    if tool == "mqtt_listen":
+        if str(args.get("broker") or "") != target:
+            return False
+        hint = requirement.get("args_hint") or {}
+        for key in ("username", "password"):
+            if key in hint and str(args.get(key) or "") != str(hint[key]):
+                return False
     if tool == "try_credential":
         expected_service = str(requirement.get("service") or "").casefold()
         actual_service = str(args.get("service") or "").casefold()
@@ -769,6 +783,31 @@ from src.agent.vuln_taxonomy import (
     is_config_only,
     is_noise,
 )
+
+_WEB_SERVICES = frozenset({"http", "https", "web", "websocket", "mqtt-ws"})
+_WEB_PORTS = frozenset({80, 443, 8000, 8080, 8081, 8443, 8888, 9001})
+
+
+def _finding_semantic_issue(finding: dict) -> str:
+    """Return a deterministic metadata contradiction for a model finding.
+
+    The raw candidate registry remains the source of truth for auditing model
+    output. Only contradictions that make the claimed finding impossible on
+    the declared endpoint are excluded from the canonical queue.
+    """
+    vuln_type = canonicalize(str(finding.get("type") or "").casefold())
+    service = str(finding.get("service") or "").strip().casefold()
+    try:
+        port = int(finding.get("port"))
+    except (TypeError, ValueError):
+        port = None
+
+    if vuln_type in {"missing_header", "directory_listing"}:
+        if service and service not in _WEB_SERVICES:
+            return f"{vuln_type} requires an HTTP/WebSocket service, got {service}"
+        if not service and port is not None and port not in _WEB_PORTS:
+            return f"{vuln_type} requires an HTTP endpoint, got port {port}"
+    return ""
 
 EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "credentials": {
@@ -1272,7 +1311,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     "data": stdout.strip().splitlines()[:10],
                 })
                 continue
-            if vuln_type == "default_credentials" and username and mqtt_ok:
+            if vuln_type == "default_credentials" and username and args.get("password") and mqtt_ok:
                 confirmations.append({
                     "tool": tool,
                     "level": 3,
@@ -1467,6 +1506,33 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                     confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned Modbus protocol evidence:\n{text[:800]}"})
                 else:
                     failures.append("Modbus probe did not return protocol evidence")
+                continue
+            if vuln_type == "no_auth":
+                if tool == "modbus_scan" and expected_port == 502:
+                    protocol_markers = (
+                        "modbus", "unit id", "register", "authentication disabled",
+                        "no authentication",
+                    )
+                elif expected_port in {102, 44818}:
+                    protocol_markers = (
+                        "authentication disabled", "no authentication", "anonymous",
+                        "unauthenticated", "read/write without", "no auth",
+                    )
+                else:
+                    protocol_markers = (
+                        "anonymous login allowed", "authentication disabled",
+                        "no authentication", "anonymous", "unauthenticated",
+                        "no auth",
+                    )
+                if rc == 0 and open_service and any(marker in lower for marker in protocol_markers):
+                    confirmations.append({
+                        "tool": tool, "level": 2,
+                        "evidence": f"{tool} returned protocol-level unauthenticated access evidence:\n{text[:800]}",
+                    })
+                else:
+                    failures.append(
+                        f"{tool} showed an open service but did not prove unauthenticated access"
+                    )
                 continue
             if rc == 0 and open_service and vuln_type in {"no_auth", "insecure_protocol", "info_disclosure"}:
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} confirmed an exposed service consistent with {vuln_type}:\n{text[:800]}"})
@@ -5059,6 +5125,11 @@ class Pipeline:
                     if assessment
                 }
             record = records_by_id[finding["_candidate_id"]]
+            semantic_issue = _finding_semantic_issue(finding)
+            if semantic_issue:
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = semantic_issue
+                continue
             record["normalized"] = {
                 key: finding.get(key)
                 for key in (
