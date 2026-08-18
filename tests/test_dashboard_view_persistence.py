@@ -25,3 +25,19 @@ def test_persisted_views_match_dashboard_navigation():
 
     for view in ("main", "benchmark", "scenario-lab"):
         assert f'data-view="{view}"' in html
+
+
+def test_global_model_selection_is_persisted_and_restored():
+    classic = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
+    v2 = (ROOT / "src" / "static_v2" / "app.js").read_text(encoding="utf-8")
+
+    for javascript in (classic, v2):
+        assert "const MODEL_STORAGE_KEY = 'lance.selectedModel';" in javascript
+        assert "window.localStorage.getItem(MODEL_STORAGE_KEY)" in javascript
+        assert "window.localStorage.setItem(MODEL_STORAGE_KEY, model)" in javascript
+        assert "available !== false" in javascript
+
+    assert "bindModelPersistence(sel);" in classic
+    assert "const restoredValue = [savedValue, currentValue].find(isSelectable);" in classic
+    assert "const stored = models.find(m => m.id === savedModel && m.available !== false);" in v2
+    assert "storeSelectedModel(state.model);" in v2

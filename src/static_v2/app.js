@@ -800,6 +800,22 @@ const FALLBACK_MODELS = [
   { id: 'openai/gpt-4o', label: 'GPT-4o', provider: 'openrouter' },
 ];
 
+const MODEL_STORAGE_KEY = 'lance.selectedModel';
+
+function getStoredModel() {
+  try {
+    return window.localStorage.getItem(MODEL_STORAGE_KEY) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function storeSelectedModel(model) {
+  if (!model) return;
+  try { window.localStorage.setItem(MODEL_STORAGE_KEY, model); } catch (_) {}
+}
+
+
 async function loadModels() {
   const data = await fetchJSON('/api/models');
   const models = (data.models && data.models.length) ? data.models : FALLBACK_MODELS;
@@ -813,17 +829,21 @@ async function loadModels() {
     opt.disabled = m.available === false;
     sel.appendChild(opt);
   });
+  const savedModel = getStoredModel();
   const preferred = models.find(m => m.recommended && m.available !== false)
     || models.find(m => m.available !== false)
     || models[0];
-  if (preferred) sel.value = preferred.id;
+  const stored = models.find(m => m.id === savedModel && m.available !== false);
+  if (stored) sel.value = stored.id;
+  else if (preferred) sel.value = preferred.id;
 
   const syncSelection = () => {
     state.model = sel.value;
     state.provider = sel.selectedOptions[0]?.dataset.provider || 'openrouter';
+    storeSelectedModel(state.model);
   };
   syncSelection();
-  sel.addEventListener('change', syncSelection);
+  sel.onchange = syncSelection;
 }
 
 // ── Runs list ──────────────────────────────────────────────────────────────

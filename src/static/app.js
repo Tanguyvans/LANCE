@@ -316,7 +316,32 @@ function isSealedRun(run) {
   return isSealedScenarioId(run.scenario);
 }
 
+const MODEL_STORAGE_KEY = 'lance.selectedModel';
+
+function getStoredModel() {
+  try {
+    return window.localStorage.getItem(MODEL_STORAGE_KEY) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function storeSelectedModel(model) {
+  if (!model) return;
+  try { window.localStorage.setItem(MODEL_STORAGE_KEY, model); } catch (_) {}
+}
+
+function bindModelPersistence(select) {
+  select.onchange = () => storeSelectedModel(select.value);
+}
+
+
 async function loadModels() {
+  const sel = document.getElementById('sel-model');
+  if (!sel) return;
+  bindModelPersistence(sel);
+  const savedValue = getStoredModel();
+  const currentValue = sel.value;
   let models = null;
   try {
     const data = await fetchJSON('/api/models');
@@ -328,12 +353,6 @@ async function loadModels() {
     return;
   }
   if (!models) return;
-
-  const sel = document.getElementById('sel-model');
-  if (!sel) return;
-
-  // Preserve current selection if still valid
-  const currentValue = sel.value;
   sel.innerHTML = '';
 
   // Group models by provider: OpenRouter first, then MiniMax Plan.
@@ -361,7 +380,7 @@ async function loadModels() {
       opt.disabled = true;
     }
     opt.textContent = label;
-    if (m.recommended) opt.selected = true;
+    if (m.recommended && m.available !== false) opt.selected = true;
     return opt;
   };
 
@@ -373,9 +392,15 @@ async function loadModels() {
     sel.appendChild(og);
   }
 
-  // Restore previous selection if still in list
-  if (currentValue && Array.from(sel.options).some(o => o.value === currentValue)) {
-    sel.value = currentValue;
+  const isSelectable = value => {
+    if (!value) return false;
+    const option = Array.from(sel.options).find(o => o.value === value);
+    return Boolean(option && !option.disabled);
+  };
+  const restoredValue = [savedValue, currentValue].find(isSelectable);
+  if (restoredValue) sel.value = restoredValue;
+  if (sel.value && isSelectable(sel.value)) {
+    storeSelectedModel(sel.value);
   }
   
   // Clone options for the judge model select
