@@ -405,12 +405,22 @@ def _extract_server_version(entries: list[dict], device: dict, svc_name: str) ->
         match = re.search(r"(?i)^Server:\s*(.+)$", stdout, re.MULTILINE)
         if match:
             server = match.group(1).strip()
-            findings.append(_make_finding(
-                device, "info_disclosure", "LOW", svc_name, 80,
-                f"Server version disclosure ({server})",
-                f"Server: {server}",
-            ))
-            break  # one finding per device
+            # A bare product token (for example ``Server: nginx``) is not a
+            # version disclosure. Require a product/version pair so a generic
+            # HTTP response cannot become a vulnerability by itself.
+            version_match = re.search(
+                r"(?i)\b(?:nginx|apache(?:/httpd)?|iis|caddy|lighttpd|gunicorn|openresty)"
+                r"(?:[/ -]v?)?(\d+(?:\.\d+){1,3})\b",
+                server,
+            )
+            if version_match:
+                findings.append(_make_finding(
+                    device, "info_disclosure", "LOW", svc_name, 80,
+                    f"Server version disclosure ({server})",
+                    f"Server: {server}",
+                    version=version_match.group(1),
+                ))
+                break  # one finding per device
     return findings
 
 
@@ -832,18 +842,9 @@ def _extract_ssh_banner(entries: list[dict], device: dict, svc_name: str) -> lis
             # nmap SSH version in PORT output: "22/tcp open ssh OpenSSH 9.2p1 Debian-2"
             match = re.search(r"22/tcp\s+open\s+ssh\s+(\S+\s+[\d.p]+\S*)", stdout)
         if not match:
-            # Custom SSH banners (e.g., "Not allowed at this time") in nmap fingerprint
-            # The message appears either as "Not allowed at this time" or as escaped hex in SF
-            custom = re.search(r"(Not allowed at this time|Access denied|Unauthorized)", stdout)
-            if custom:
-                # Only flag as SSH banner if we're looking at SSH port data
-                if "22/tcp" in stdout or "ssh?" in stdout:
-                    banner = custom.group(1)
-                    return [_make_finding(
-                        device, "info_disclosure", "LOW", "ssh", 22,
-                        "SSH banner discloses custom service message",
-                        f"SSH service returns: '{banner}' — custom banner reveals non-standard service",
-                    )]
+            # Access-denied/ACL text is a control-flow response, not a software
+            # version or service banner. Do not turn it into info_disclosure.
+            continue
         if match:
             banner = match.group(0)
             return [_make_finding(

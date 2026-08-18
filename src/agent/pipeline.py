@@ -478,8 +478,13 @@ def _phase4_verification_plan(
                         "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}},
                 "success_condition": "HTTP 101 WebSocket upgrade or explicit handshake response"}
     if vuln_type == "missing_header":
+        required_headers = sorted(set(re.findall(
+            r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
+            str(vuln.get("details") or ""),
+        ))) or ["x-frame-options", "strict-transport-security", "content-security-policy"]
         return {"tool": "curl_headers", "target": ip, "port": port or 80,
-                "args_hint": {"url": url}, "success_condition": "headers captured"}
+                "args_hint": {"url": url}, "required_headers": required_headers,
+                "success_condition": "all required security headers are absent"}
     if vuln_type == "insecure_update" and service in {"http", "https"}:
         return {
             "tool": "http_request", "target": ip, "port": port or 80,
@@ -541,10 +546,25 @@ def _phase4_verification_plan(
         if service == "ftp" or port == 21:
             return {"tool": "ftp_list", "target": ip, "port": 21,
                     "args_hint": {"url": f"ftp://{ip}/"}, "success_condition": "FTP listing or anonymous response captured"}
+        if service == "mqtt" or port == 1883:
+            return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
+                    "args_hint": {"broker": ip, "topic": "$SYS/#", "count": 5, "timeout": 5},
+                    "success_condition": "plaintext MQTT broker response captured on port 1883"}
     if vuln_type == "no_auth":
         if service == "mqtt" or port in {1883, 8883}:
             return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
                     "args_hint": {"broker": ip, "topic": "#", "count": 10, "timeout": 8}, "success_condition": "anonymous MQTT connection result captured"}
+        if service == "coap" or port == 5683:
+            return {
+                "tool": "udp_send", "target": ip, "port": 5683,
+                "required_payload": _COAP_GET_CORE_HEX,
+                "args_hint": {
+                    "host": ip, "port": 5683,
+                    "payload": _COAP_GET_CORE_HEX,
+                    "encoding": "hex", "recv_bytes": 4096, "timeout": 5,
+                },
+                "success_condition": "CoAP response received over unauthenticated UDP",
+            }
         if service == "modbus" or port == 502:
             if compact:
                 return {"tool": "nmap_scan", "target": ip, "port": 502,
@@ -786,9 +806,17 @@ from src.agent.vuln_taxonomy import (
 
 _WEB_SERVICES = frozenset({"http", "https", "web", "websocket", "mqtt-ws"})
 _WEB_PORTS = frozenset({80, 443, 8000, 8080, 8081, 8443, 8888, 9001})
+_TLS_SERVICES = frozenset({"https", "tls", "mqtts", "imaps", "ldaps"})
+_INSECURE_PROTOCOL_SERVICES = frozenset({
+    "telnet", "ftp", "mqtt", "rtsp", "bacnet", "modbus", "s7comm",
+    "ethernet/ip", "opcua", "coap",
+})
 
 
-def _finding_semantic_issue(finding: dict) -> str:
+def _finding_semantic_issue(
+    finding: dict, *, source_kind: str = "", compact: bool = False,
+    scanner_supported: bool = False
+) -> str:
     """Return a deterministic metadata contradiction for a model finding.
 
     The raw candidate registry remains the source of truth for auditing model
@@ -801,6 +829,57 @@ def _finding_semantic_issue(finding: dict) -> str:
         port = int(finding.get("port"))
     except (TypeError, ValueError):
         port = None
+
+    details = " ".join(
+        str(finding.get(key) or "")
+        for key in ("details", "evidence", "endpoint", "product", "version")
+    ).casefold()
+
+    if vuln_type == "weak_cipher":
+        crypto_services = _TLS_SERVICES | {"ssh", "smtp", "imap", "pop3"}
+        if service in _WEB_SERVICES and port not in {443, 8443}:
+            return "weak_cipher requires SSH/TLS evidence, not plain HTTP"
+        if service and service not in crypto_services and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883}:
+            return f"weak_cipher has no cryptographic probe for service {service}"
+        if not service and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883}:
+            return f"weak_cipher has no cryptographic probe for port {port}"
+
+    if vuln_type == "insecure_protocol":
+        if service in {"ssh", "http", "https", "web", "websocket"} or port in {22, 80, 443}:
+            return "insecure_protocol requires a cleartext/insecure transport, not SSH or HTTP"
+        if service and service not in _INSECURE_PROTOCOL_SERVICES and port not in {21, 23, 1883, 554, 5683, 502, 102, 44818}:
+            return f"insecure_protocol has no supported protocol evidence for service {service}"
+
+    if vuln_type == "directory_listing":
+        if service == "web_upload" or re.search(r"(?i)(?:^|[ /])uploads?/?", details):
+            return "directory_listing is not a finding for an intentional upload surface"
+
+    if vuln_type == "data_exposure" and re.search(
+        r"(?i)(?:firmware|\.bin\b|binary image|squashfs|rootfs)", details
+    ) and not re.search(
+        r"(?i)(?:password|credential|secret|token|private key|api[_ -]?key|\.env|backup|database|sql)",
+        details,
+    ):
+        return "firmware binaries alone do not prove sensitive data exposure"
+
+    if vuln_type == "info_disclosure" and not (compact and source_kind == "model"):
+        if re.search(r"(?i)(?:weak|deprecated|insecure)\s+(?:cipher|algorithm|kex|mac)", details) and not re.search(
+            r"(?i)(?:banner|version|openssh|server:)", details
+        ):
+            return "SSH cryptographic warnings belong to weak_cipher, not info_disclosure"
+
+    # A full-profile model finding is an assertion, not proof. The scanner
+    # and Phase 3 evidence registry are the promotion boundary; compact mode
+    # deliberately keeps report-only observations for its existing contract.
+    if (
+        source_kind == "model"
+        and not compact
+        and not scanner_supported
+        and not finding.get("evidence_ref")
+        and not finding.get("evidence_refs")
+        and vuln_type != "known_cve"
+    ):
+        return "full-profile model finding has no scanner or Phase 3 evidence reference"
 
     if vuln_type in {"missing_header", "directory_listing"}:
         if service and service not in _WEB_SERVICES:
@@ -1383,7 +1462,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 failures.append(f"{tool} reached an authenticated or forbidden endpoint")
                 continue
             if vuln_type == "directory_listing" and http_ok and "index of" in lower:
-                if compact and not _compact_http_listing_matches(vuln, text, args):
+                if not _compact_http_listing_matches(vuln, text, args):
                     failures.append(f"{tool} returned a listing for a different path")
                 else:
                     confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} confirmed directory listing:\n{text[:800]}"})
@@ -1391,27 +1470,39 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             if vuln_type == "data_exposure" and http_ok and _text_has_sensitive_data(text):
                 confirmations.append({"tool": tool, "level": 3, "evidence": f"{tool} retrieved sensitive content:\n{text[:800]}"})
                 continue
-            if vuln_type == "info_disclosure" and http_ok and ("server:" in lower or "version" in lower or _text_has_sensitive_data(text)):
-                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} captured disclosing HTTP metadata/content:\n{text[:800]}"})
+            http_version = re.search(
+                r"(?im)^server:\s*(?:nginx|apache(?:/httpd)?|iis|caddy|lighttpd|gunicorn|openresty)"
+                r"(?:[/ -]v?)?\d+(?:\.\d+){1,3}\b",
+                text,
+            )
+            explicit_version = re.search(
+                r"(?i)\b(?:version|build|release)\b[^\r\n]{0,40}\b\d+(?:\.\d+){1,3}\b",
+                text,
+            )
+            if vuln_type == "info_disclosure" and http_ok and (http_version or explicit_version):
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} captured an explicit HTTP version disclosure:\n{text[:800]}"})
+                continue
+            if vuln_type == "info_disclosure":
+                failures.append(f"{tool} did not prove an explicit HTTP version disclosure")
                 continue
             if vuln_type == "missing_header" and http_ok:
-                if compact:
-                    required_headers = set(re.findall(
-                        r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
-                        str(vuln.get("details") or ""),
-                    ))
-                    missing_headers = [header for header in required_headers if header not in lower]
-                    if missing_headers:
-                        confirmations.append({
-                            "tool": tool, "level": 1,
-                            "evidence": f"{tool} confirmed missing headers: {chr(44).join(sorted(missing_headers))}\n{text[:800]}",
-                        })
-                    else:
-                        failures.append(f"{tool} did not prove a missing security header")
+                required_headers = set(re.findall(
+                    r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
+                    str(vuln.get("details") or ""),
+                )) or {
+                    "x-frame-options", "strict-transport-security",
+                    "content-security-policy",
+                }
+                missing_headers = [header for header in required_headers if header not in lower]
+                if missing_headers:
+                    confirmations.append({
+                        "tool": tool, "level": 2,
+                        "evidence": f"{tool} confirmed missing headers: {chr(44).join(sorted(missing_headers))}\n{text[:800]}",
+                    })
                 else:
-                    confirmations.append({"tool": tool, "level": 1, "evidence": f"{tool} captured the HTTP response headers for comparison:\n{text[:800]}"})
+                    failures.append(f"{tool} did not prove a missing security header")
                 continue
-            if compact and vuln_type == "code_injection" and http_ok:
+            if vuln_type == "code_injection" and http_ok:
                 method = str(args.get("method") or "").upper()
                 body = str(args.get("body") or "").strip()
                 command_markers = re.search(
@@ -1423,7 +1514,7 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                 else:
                     failures.append(f"{tool} confirmed endpoint reachability but not the claimed injection impact")
                 continue
-            if compact and vuln_type == "insecure_update" and http_ok:
+            if vuln_type == "insecure_update" and http_ok:
                 method = str(args.get("method") or "").upper()
                 body = str(args.get("body") or "").strip()
                 update_markers = (
@@ -1534,8 +1625,27 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
                         f"{tool} showed an open service but did not prove unauthenticated access"
                     )
                 continue
-            if rc == 0 and open_service and vuln_type in {"no_auth", "insecure_protocol", "info_disclosure"}:
-                confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} confirmed an exposed service consistent with {vuln_type}:\n{text[:800]}"})
+            if vuln_type == "insecure_protocol":
+                insecure_markers = (
+                    "cleartext", "plaintext", "without tls", "no tls",
+                    "authentication disabled", "no authentication", "anonymous",
+                )
+                if rc == 0 and open_service and any(marker in lower for marker in insecure_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned protocol evidence for an insecure transport:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} showed an open service but did not prove an insecure transport")
+            elif vuln_type == "info_disclosure":
+                disclosure_markers = ("banner", "version", "openssh", "server:")
+                if rc == 0 and open_service and any(marker in lower for marker in disclosure_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned explicit version/banner disclosure evidence:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} did not prove version or banner disclosure")
+            elif vuln_type in {"weak_cipher", "terrapin", "known_cve"} and rc == 0 and open_service:
+                cipher_markers = ("weak cipher", "weak algorithm", "deprecated", "terrapin", "cve-")
+                if any(marker in lower for marker in cipher_markers):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned cryptographic weakness evidence:\n{text[:800]}"})
+                else:
+                    failures.append(f"{tool} did not prove a cryptographic weakness")
             elif rc == 0 and open_service and vulnerable_marker:
                 confirmations.append({"tool": tool, "level": 2, "evidence": f"{tool} returned vulnerability markers:\n{text[:800]}"})
             else:
@@ -1543,26 +1653,29 @@ def _synthesize_exploit_result(vuln: dict, tool_records: list[dict], memo: str =
             continue
 
         if tool == "ssh_audit":
-            if compact and vuln_type == "info_disclosure":
-                if rc in (0, 3) and re.search(r"(?i)(?:banner:|openssh\s+[0-9]|version disclosure|custom service message)", text):
-                    confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured an SSH banner disclosure:\n{text[:800]}"})
+            if vuln_type == "info_disclosure":
+                if rc in (0, 3) and re.search(r"(?i)(?:banner:|openssh\s+[0-9]|version disclosure)", text):
+                    confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured an SSH banner/version disclosure:\n{text[:800]}"})
                 else:
                     failures.append("ssh_audit did not capture a banner/version disclosure")
                 continue
-            if compact and vuln_type == "known_cve":
+            if vuln_type == "known_cve":
                 claimed_cves = [str(cve).casefold() for cve in (vuln.get("cve_ids") or [])]
                 if rc in (0, 3) and any(cve and cve in lower for cve in claimed_cves):
                     confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit captured the claimed CVE identifier:\n{text[:800]}"})
                 else:
-                    # A generic SSH weakness does not refute the claimed CVE.
-                    # Keep this inconclusive so the evaluator preserves the
-                    # Phase 3 observation instead of counting a false negative.
                     errors.append("ssh_audit did not provide CVE-specific evidence")
                 continue
-            if rc in (0, 3) and any(marker in lower for marker in ("[fail]", "[warn]", "cve-", "terrapin")):
-                confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported weak SSH configuration:\n{text[:800]}"})
+            if vuln_type == "terrapin":
+                markers = ("terrapin", "cve-2023-48795")
+            elif vuln_type == "weak_cipher":
+                markers = ("[fail]", "[warn]", "weak", "deprecated", "insecure")
             else:
-                failures.append("ssh_audit did not report an exploitable SSH weakness")
+                markers = ()
+            if rc in (0, 3) and markers and any(marker in lower for marker in markers):
+                confirmations.append({"tool": tool, "level": 2, "evidence": f"ssh_audit reported the claimed SSH weakness:\n{text[:800]}"})
+            else:
+                failures.append("ssh_audit did not report evidence for the claimed SSH vulnerability type")
             continue
 
         if tool in {"tcp_send", "udp_send"}:
@@ -4986,9 +5099,65 @@ class Pipeline:
                     continue
                 working = json.loads(json.dumps(raw, ensure_ascii=False, default=str))
                 working["_candidate_id"] = candidate_id
+                working["_source_kind"] = source_kind
                 all_vulns.append(working)
 
+        surface_nodes: list[dict] = []
+        try:
+            surface_raw = json.loads(get_attack_surface())
+            surface_nodes = surface_raw.get("nodes", []) if isinstance(surface_raw, dict) else surface_raw
+            if not isinstance(surface_nodes, list):
+                surface_nodes = []
+        except Exception:
+            surface_nodes = []
+
+        def add_scanner_candidates(
+            device_id: str, model_vulns: list[dict], *, source_kind: str = "scanner"
+        ) -> None:
+            """Add deterministic Phase 3 findings alongside model output.
+
+            Full-mode ``03_device_*.json`` files are model-authored. The raw
+            scanner artifact is therefore always loaded separately, so a model
+            cannot replace a deterministic finding or promote an unsupported
+            extra into the canonical queue.
+            """
+            scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
+            if not scan_path.exists():
+                return
+            try:
+                from src.agent.scanner import extract_findings
+                scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
+                model_device = next(
+                    (
+                        {
+                            "id": device_id,
+                            "ip": item.get("device_ip", ""),
+                            "role": item.get("device_role", item.get("role", "")),
+                        }
+                        for item in model_vulns
+                        if isinstance(item, dict)
+                    ),
+                    {"id": device_id, "ip": "", "role": ""},
+                )
+                scanner_device = next(
+                    (d for d in surface_nodes if d.get("id") == device_id),
+                    model_device,
+                )
+                findings = extract_findings(
+                    scan_data, scanner_device, compact=compact_mode
+                )
+                if compact_mode:
+                    findings = [
+                        finding for finding in findings
+                        if finding.get("type") in {"default_credentials", "insecure_update"}
+                    ]
+                    source_kind = "scanner_compact"
+                add_candidates(findings, scan_path.name, source_kind)
+            except Exception as exc:
+                log.warning("Scanner findings unavailable for %s: %s", device_id, exc)
+
         for f in sorted(self.run_dir.glob("03_device_*.json")):
+            device_id = f.stem.replace("03_device_", "")
             try:
                 content = _extract_json(f.read_text(encoding="utf-8"))
                 data = json.loads(content)
@@ -4998,63 +5167,15 @@ class Pipeline:
                     vulns = data
                 else:
                     vulns = []
-                add_candidates(vulns if isinstance(vulns, list) else [], f.name, "model")
-                if self._uses_compact_local_moe():
-                    try:
-                        from src.agent.scanner import extract_findings
-                        device_id = f.stem.replace("03_device_", "")
-                        scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
-                        if scan_path.exists():
-                            scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
-                            surface = json.loads(get_attack_surface())
-                            if isinstance(surface, dict):
-                                surface = surface.get("nodes", [])
-                            fallback_device = next(
-                                (d for d in surface if d.get("id") == device_id),
-                                {"id": device_id, "ip": "", "role": ""},
-                            )
-                            compact_findings = extract_findings(
-                                scan_data, fallback_device, compact=True
-                            )
-                            add_candidates(
-                                [finding for finding in compact_findings
-                                 if finding.get("type") in {"default_credentials", "insecure_update"}],
-                                scan_path.name, "scanner_compact",
-                            )
-                    except Exception as compact_exc:
-                        log.warning(
-                            "Compact scanner findings unavailable for %s: %s",
-                            f.name, compact_exc,
-                        )
+                model_vulns = vulns if isinstance(vulns, list) else []
+                add_candidates(model_vulns, f.name, "model")
+                add_scanner_candidates(device_id, model_vulns)
             except Exception as exc:
                 log.warning(
-                    "Failed to parse %s: %s — falling back to scanner findings",
+                    "Failed to parse %s — falling back to scanner findings: %s",
                     f.name, exc,
                 )
-                device_id = f.stem.replace("03_device_", "")
-                scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
-                if scan_path.exists():
-                    try:
-                        from src.agent.scanner import extract_findings
-                        scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
-                        surface = json.loads(get_attack_surface())
-                        if isinstance(surface, dict):
-                            surface = surface.get("nodes", [])
-                        fallback_device = next(
-                            (d for d in surface if d.get("id") == device_id),
-                            {"id": device_id, "ip": "", "role": ""},
-                        )
-                        recovered = extract_findings(scan_data, fallback_device)
-                        add_candidates(recovered, scan_path.name, "scanner_fallback")
-                        log.warning(
-                            "Recovered %d findings for %s from scanner",
-                            len(recovered), device_id,
-                        )
-                    except Exception as fallback_exc:
-                        log.error(
-                            "Scanner fallback also failed for %s: %s",
-                            device_id, fallback_exc,
-                        )
+                add_scanner_candidates(device_id, [], source_kind="scanner_fallback")
 
         records_by_id = {r["candidate_id"]: r for r in raw_records}
         cve_search_evidence = self._load_cve_search_evidence()
@@ -5125,7 +5246,22 @@ class Pipeline:
                     if assessment
                 }
             record = records_by_id[finding["_candidate_id"]]
-            semantic_issue = _finding_semantic_issue(finding)
+            vuln_type = canonicalize(str(finding.get("type") or "").casefold())
+            source_kind = str(finding.get("_source_kind") or record.get("source_kind") or "")
+            scanner_supported = any(
+                other.get("_source_kind") in {"scanner", "scanner_compact", "scanner_fallback"}
+                and str(other.get("device_ip") or "") == str(finding.get("device_ip") or "")
+                and canonicalize(str(other.get("type") or "").casefold()) == vuln_type
+                and (
+                    other.get("port") in (finding.get("port"), None, "")
+                    or finding.get("port") in (other.get("port"), None, "")
+                )
+                for other in all_vulns
+            )
+            semantic_issue = _finding_semantic_issue(
+                finding, source_kind=source_kind, compact=compact_mode,
+                scanner_supported=scanner_supported,
+            )
             if semantic_issue:
                 record["decision"] = "excluded_from_canonical"
                 record["decision_reason"] = semantic_issue
@@ -5158,6 +5294,8 @@ class Pipeline:
         compact_observations: list[dict] = []
         for finding in all_vulns:
             record = records_by_id[finding["_candidate_id"]]
+            if record.get("decision") == "excluded_from_canonical":
+                continue
             vuln_type = finding.get("type", "")
             if is_noise(vuln_type):
                 record["decision"] = "excluded_from_canonical"
@@ -5303,9 +5441,11 @@ class Pipeline:
                 next_number += 1
             used_ids.add(finding_id)
             finding["id"] = finding_id
+            finding["canonical_source"] = str(finding.get("_source_kind") or "model")
             for candidate_id in finding["_provenance"]["candidate_ids"]:
                 records_by_id[candidate_id]["canonical_finding_id"] = finding_id
             finding.pop("_candidate_id", None)
+            finding.pop("_source_kind", None)
 
         severity_counts = {
             "high": 0, "medium": 0, "low": 0, "info": 0, "critical": 0,
@@ -5508,8 +5648,8 @@ class Pipeline:
             variables["required_verification"] = json.dumps(requirement, ensure_ascii=False)
             variables["expected_deliverable"] = deliverable_file
             variables["phase4_profile_guidance"] = (
-                "Full profile: retain autonomous selection of safe, relevant tools and "
-                "continue until the evidence is sufficient; avoid only equivalent retries."
+                "Full profile: execute the required service-specific verification probe; "
+                "do not replace it with generic recon or open-port evidence."
                 if not self.execution_profile.routed_tools else
                 "Compact profile: use the exposed service-specific tools, start with the "
                 "required probe, and stop once direct proof is sufficient."
@@ -5561,29 +5701,35 @@ class Pipeline:
                 provider_error = ""
                 try:
                     compact_local_moe = self._uses_compact_local_moe()
-                    if compact_local_moe or self.execution_profile.routed_tools:
-                        verification_tools = _phase4_local_verification_tools(
-                            exploit_tools, category=category, service=service,
-                            include_deliverable=not compact_local_moe,
-                        )
-                    else:
-                        # Full profile keeps the complete safe Phase 4 surface.
-                        verification_tools = exploit_tools
-                    # The required probe is always exposed, even when a legacy
-                    # service/category route would otherwise hide it.
+                    # Phase 4 is a verification contract, not a second
+                    # autonomous recon pass. Full-capability models use the
+                    # same service-scoped surface as local workers and the
+                    # required probe is the only probe allowed to produce a
+                    # conclusive verdict.
+                    verification_tools = _phase4_local_verification_tools(
+                        exploit_tools, category=category, service=service,
+                        include_deliverable=not compact_local_moe,
+                    )
                     exposed = {tool.get("name") for tool in verification_tools}
                     if required_probe_tool not in exposed:
                         verification_tools = verification_tools + [
                             tool for tool in exploit_tools
                             if tool.get("name") == required_probe_tool
                         ]
-                    if compact_local_moe and required_probe_tool:
-                        verification_tools = [tool for tool in verification_tools
-                                              if tool.get("name") == required_probe_tool]
+                    if required_probe_tool:
+                        allowed_probe_names = {required_probe_tool, "save_deliverable"}
+                        verification_tools = [
+                            tool for tool in verification_tools
+                            if tool.get("name") in allowed_probe_names
+                        ]
                     if not self.execution_profile.routed_tools:
                         verification_tools = _phase4_apply_verification_contract(
                             verification_tools, requirement,
                             vuln=vuln, stop_on_conclusive=True,
+                        )
+                    elif not compact_local_moe:
+                        verification_tools = _phase4_apply_verification_contract(
+                            verification_tools, requirement, vuln=vuln,
                         )
                     if compact_local_moe:
                         verification_tools = _phase4_apply_verification_contract(

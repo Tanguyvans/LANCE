@@ -478,6 +478,159 @@ def test_model_finding_metadata_rejects_non_http_header_claims():
     }) == ""
 
 
+def test_semantic_contract_rejects_cross_family_findings():
+    assert "plain HTTP" in _finding_semantic_issue({
+        "type": "weak_cipher", "service": "http", "port": 80,
+    })
+    assert "not SSH or HTTP" in _finding_semantic_issue({
+        "type": "insecure_protocol", "service": "ssh", "port": 22,
+    })
+    assert "intentional upload" in _finding_semantic_issue({
+        "type": "directory_listing", "service": "http", "port": 80,
+        "endpoint": "/uploads/",
+    })
+    assert "firmware binaries" in _finding_semantic_issue({
+        "type": "data_exposure", "service": "http", "port": 80,
+        "details": "firmware.bin is downloadable",
+    })
+
+
+def test_full_phase4_missing_header_requires_absence_of_named_headers():
+    vuln = {
+        "type": "missing_header", "service": "http", "port": 80,
+        "details": "Missing HTTP security headers: x-frame-options",
+    }
+    present = _synthesize_exploit_result(vuln, [{
+        "tool": "curl_headers",
+        "args": {"url": "http://192.0.2.20/"},
+        "result": json.dumps({
+            "stdout": "HTTP/1.1 200 OK\nX-Frame-Options: DENY",
+            "return_code": 0,
+        }),
+    }])
+    absent = _synthesize_exploit_result(vuln, [{
+        "tool": "curl_headers",
+        "args": {"url": "http://192.0.2.20/"},
+        "result": json.dumps({
+            "stdout": "HTTP/1.1 200 OK\nServer: nginx/1.22.1",
+            "return_code": 0,
+        }),
+    }])
+    assert present["status"] == "FAILED"
+    assert absent["status"] == "EXPLOITED"
+    assert absent["evidence_level"] >= 2
+
+
+def test_full_phase4_does_not_confirm_open_ssh_as_insecure_protocol():
+    result = _synthesize_exploit_result(
+        {"type": "insecure_protocol", "service": "ssh", "port": 22},
+        [{
+            "tool": "nmap_scan",
+            "args": {"target": "192.0.2.20", "ports": "22"},
+            "result": json.dumps({
+                "stdout": "22/tcp open ssh OpenSSH 9.2",
+                "return_code": 0,
+            }),
+        }],
+    )
+    assert result["status"] == "FAILED"
+
+
+def test_full_phase4_does_not_map_ssh_cipher_warning_to_info_disclosure():
+    result = _synthesize_exploit_result(
+        {"type": "info_disclosure", "service": "ssh", "port": 22},
+        [{
+            "tool": "ssh_audit",
+            "args": {"host": "192.0.2.20", "port": 22},
+            "result": json.dumps({
+                "stdout": "[fail] weak MAC algorithm diffie-hellman-group1-sha1",
+                "return_code": 3,
+            }),
+        }],
+    )
+    assert result["status"] == "FAILED"
+
+
+def test_full_phase4_http_info_disclosure_requires_explicit_version():
+    bare = _synthesize_exploit_result(
+        {"type": "info_disclosure", "service": "http", "port": 80},
+        [{
+            "tool": "curl_headers",
+            "args": {"url": "http://192.0.2.20/"},
+            "result": json.dumps({"stdout": "HTTP/1.1 200 OK\nServer: nginx", "return_code": 0}),
+        }],
+    )
+    versioned = _synthesize_exploit_result(
+        {"type": "info_disclosure", "service": "http", "port": 80},
+        [{
+            "tool": "curl_headers",
+            "args": {"url": "http://192.0.2.20/"},
+            "result": json.dumps({"stdout": "HTTP/1.1 200 OK\nServer: nginx/1.22.1", "return_code": 0}),
+        }],
+    )
+    assert bare["status"] == "FAILED"
+    assert versioned["status"] == "EXPLOITED"
+
+
+def test_full_aggregation_promotes_scanner_and_keeps_model_only_candidate_raw(
+    mock_provider, output_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        "src.agent.pipeline.get_attack_surface",
+        lambda: json.dumps([{
+            "id": "web-1", "ip": "192.0.2.30", "role": "web_server",
+        }]),
+    )
+    pipeline = Pipeline(provider=mock_provider)
+    (pipeline.run_dir / "03_device_web-1.json").write_text(json.dumps({
+        "vulnerabilities": [
+            {
+                "device_id": "web-1", "device_ip": "192.0.2.30",
+                "type": "info_disclosure", "severity": "LOW",
+                "service": "http", "port": 80,
+                "details": "Server version disclosure (nginx)",
+                "evidence": "Server: nginx",
+                "exploitation_status": "confirmed",
+            },
+            {
+                "device_id": "web-1", "device_ip": "192.0.2.30",
+                "type": "weak_cipher", "severity": "LOW",
+                "service": "http", "port": 80,
+                "details": "HTTP uses weak ciphers", "evidence": "80/tcp open http",
+            },
+        ]
+    }))
+    (pipeline.run_dir / "03_scans").mkdir()
+    (pipeline.run_dir / "03_scans" / "web-1.json").write_text(json.dumps({
+        "http": [{
+            "tool": "curl_headers",
+            "kwargs": {"url": "http://192.0.2.30/"},
+            "result": json.dumps({
+                "stdout": "HTTP/1.1 200 OK\nServer: nginx/1.22.1",
+                "return_code": 0,
+            }),
+        }]
+    }))
+
+    pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+    canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+    raw = json.loads((pipeline.run_dir / "03_vuln_analysis_raw.json").read_text())
+    assert {finding["type"] for finding in canonical["vulnerabilities"]} == {
+        "info_disclosure", "missing_header",
+    }
+    info = next(
+        finding for finding in canonical["vulnerabilities"]
+        if finding["type"] == "info_disclosure"
+    )
+    assert info["canonical_source"] == "scanner"
+    assert any(
+        candidate["decision_reason"] == "weak_cipher requires SSH/TLS evidence, not plain HTTP"
+        for candidate in raw["candidates"]
+    )
+    assert raw["candidate_count"] == 4
+
+
 def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failure():
     get_only = _synthesize_exploit_result(
         {"type": "insecure_update", "service": "http", "port": 80},
