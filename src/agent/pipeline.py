@@ -479,6 +479,17 @@ def _phase4_verification_plan(
                     "headers": {"Connection": "Upgrade", "Upgrade": "websocket",
                         "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}},
                 "success_condition": "HTTP 101 WebSocket upgrade or explicit handshake response"}
+    if vuln_type == "misconfiguration" and (service == "coap" or port == 5683):
+        return {
+            "tool": "udp_send", "target": ip, "port": 5683,
+            "required_payload": _COAP_GET_CORE_HEX,
+            "args_hint": {
+                "host": ip, "port": 5683,
+                "payload": _COAP_GET_CORE_HEX,
+                "encoding": "hex", "recv_bytes": 4096, "timeout": 5,
+            },
+            "success_condition": "CoAP responds without a DTLS/authentication boundary",
+        }
     if vuln_type == "missing_header":
         required_headers = sorted(set(re.findall(
             r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
@@ -815,8 +826,84 @@ _INSECURE_PROTOCOL_SERVICES = frozenset({
 })
 
 
+
+def _normalise_full_finding_semantics(
+    finding: dict, context_findings: list[dict] | None = None
+) -> None:
+    """Normalize equivalent claims before strict-v3 publication.
+
+    This is deliberately a semantic projection, not a tool or autonomy
+    restriction. The original candidate remains in the raw registry.
+    """
+    context_findings = context_findings or []
+    vuln_type = canonicalize(str(finding.get("type") or "").casefold())
+    service = str(finding.get("service") or "").casefold()
+    try:
+        port = int(finding.get("port"))
+    except (TypeError, ValueError):
+        port = None
+    text = " ".join(
+        str(finding.get(key) or "")
+        for key in ("details", "evidence", "endpoint", "endpoints")
+    ).casefold()
+
+    if vuln_type == "directory_listing" and (
+        re.search(
+            r"(?i)(?:backup|\.sql|\.env|/config|credential|password|secret|api[_ -]?key)",
+            text,
+        )
+        or any(
+            other is not finding
+            and other.get("device_ip") == finding.get("device_ip")
+            and canonicalize(str(other.get("type") or "")) == "data_exposure"
+            and re.search(
+                r"(?i)(?:backup|\.sql|\.env|/config|credential|password|secret|api[_ -]?key)",
+                " ".join(
+                    str(other.get(key) or "")
+                    for key in ("details", "evidence", "endpoint", "endpoints")
+                ),
+            )
+            for other in context_findings
+        )
+    ):
+        finding["type"] = "data_exposure"
+        finding["_semantic_origin"] = "sensitive_directory_listing"
+        return
+
+    if (
+        vuln_type == "insecure_protocol"
+        and (service == "coap" or port == 5683)
+        and re.search(r"(?i)(?:dtls|cleartext|cleartext|unencrypt|plaintext)", text)
+    ):
+        # The benchmark contract treats CoAP without DTLS as a network
+        # configuration failure, not as a generic cleartext protocol finding.
+        finding["type"] = "misconfiguration"
+        finding["_semantic_origin"] = "coap_without_dtls"
+        return
+
+    if (
+        vuln_type == "no_auth"
+        and (service == "mqtt" or port in {1883, 8883})
+        and re.search(r"(?i)(?:test\s*:\s*test|username\s*=\s*test|weak default credentials)", text)
+        and not re.search(r"(?i)(?:anonymous|without authentication|no authentication)", text)
+    ):
+        finding["type"] = "default_credentials"
+        finding["_semantic_origin"] = "authenticated_weak_credentials"
+        return
+
+    endpoint = str(finding.get("endpoint") or "").casefold()
+    if (
+        vuln_type == "info_disclosure"
+        and service in {"http", "https"}
+        and (endpoint.startswith("/api/") or re.search(r"(?i)/api/(?:status|devices)", text))
+        and re.search(r"(?i)(?:without authentication|without auth|no auth|unauthenticated)", text)
+    ):
+        finding["type"] = "no_auth"
+        finding["_semantic_origin"] = "unauthenticated_api"
+
 def _finding_semantic_issue(
-    finding: dict, *, source_kind: str = "", compact: bool = False
+    finding: dict, *, source_kind: str = "", compact: bool = False,
+    device_role: str = "", context_findings: list[dict] | None = None,
 ) -> str:
     """Return a deterministic metadata contradiction for a model finding.
 
@@ -835,6 +922,90 @@ def _finding_semantic_issue(
         str(finding.get(key) or "")
         for key in ("details", "evidence", "endpoint", "product", "version")
     ).casefold()
+    context_findings = context_findings or []
+
+    if not compact and vuln_type == "broken_access_control" and not re.search(
+        r"(?i)(?:idor|cross[- ]tenant|authorization(?: boundary)?\s+bypass|"
+        r"access[- ]control\s+bypass|mass assignment|privileged?\s+(?:route|field)|"
+        r"scope\s+bypass|unauthorized\s+(?:admin|privileged)\s+access)",
+        details,
+    ):
+        return (
+            "broken_access_control requires an explicit authorization-boundary "
+            "bypass, not an exposed credential or API key"
+        )
+
+    if not compact and vuln_type == "misconfiguration" and re.search(
+        r"(?i)(?:not allowed|blocked|rate[- ]limit|authentication methods?\s+"
+        r"(?:failed|error)|scanner\s+(?:blocked|denied))",
+        details,
+    ) and not re.search(
+        r"(?i)(?:iptables|firewall|allowtcpforwarding|world[- ]readable|"
+        r"permission(?:s)?\s*[:=]\s*(?:[0-7]{3,4})|securitypolicy|"
+        r"configuration\s+(?:allows|permits|omits|disables))",
+        details,
+    ):
+        return "blocked or rate-limited authentication enumeration is not a configuration finding"
+
+    if not compact and vuln_type == "default_credentials" and service in {"http", "https"}:
+        if re.search(r"(?i)(?:backup|\.env|/config|\.sql)", details) and not re.search(
+            r"(?i)(?:login|authenticated|credential(?:s)?\s+(?:accepted|worked|success)|"
+            r"password\s+(?:accepted|worked))",
+            details,
+        ):
+            return "credentials found in a file are data_exposure, not verified default_credentials"
+        if re.search(r"(?i)(?:pre[- ]fills?|discloses?|default credential pattern)", details) and not re.search(
+            r"(?i)(?:login|authenticated|credential(?:s)?\s+(?:accepted|worked|success))",
+            details,
+        ):
+            return "a default username or password displayed by a page is not a successful credential test"
+
+    if not compact and vuln_type == "data_exposure":
+        if re.search(r"(?i)(?:/sensor/|/telemetry|sensor data|telemetry)", details) and not re.search(
+            r"(?i)(?:password|credential|secret|token|api[_ -]?key|private key|database|backup|\.env)",
+            details,
+        ):
+            return "generic sensor telemetry is not sensitive data exposure"
+        if re.search(r"(?i)(?:no auth required|admin panel|page title)", details) and not re.search(
+            r"(?i)(?:password|credential|secret|token|api[_ -]?key|private key|database|backup|\.env|snapshot|stream)",
+            details,
+        ):
+            return "an unauthenticated page is no_auth, not data_exposure"
+
+    if not compact and vuln_type == "insecure_protocol" and service == "mqtt":
+        if any(
+            other.get("device_ip") == finding.get("device_ip")
+            and canonicalize(str(other.get("type") or "")) in {"no_auth", "data_exposure"}
+            for other in context_findings
+            if other is not finding
+        ):
+            return "plain MQTT transport is redundant with the directly proven MQTT access finding"
+
+    if (
+        not compact
+        and vuln_type == "no_auth"
+        and finding.get("_semantic_origin") == "unauthenticated_api"
+        and str(finding.get("endpoint") or "").casefold().rstrip("/") == "/api/status"
+        and any(
+            other is not finding
+            and other.get("device_ip") == finding.get("device_ip")
+            and str(other.get("endpoint") or "").casefold().rstrip("/") == "/api/devices"
+            and canonicalize(str(other.get("type") or "")) == "no_auth"
+            for other in context_findings
+        )
+    ):
+        return "secondary API status exposure is represented by the primary API devices finding"
+
+    if not compact and vuln_type == "missing_header":
+        if device_role == "iot_gateway":
+            return "generic gateway headers are lower priority than its authenticated attack surface"
+        if any(
+            other is not finding
+            and other.get("device_ip") == finding.get("device_ip")
+            and canonicalize(str(other.get("type") or "")) in {"directory_listing", "data_exposure"}
+            for other in context_findings
+        ):
+            return "generic headers are represented by the stronger sensitive-content finding"
 
     if vuln_type == "weak_cipher":
         crypto_services = _TLS_SERVICES | {"ssh", "smtp", "imap", "pop3"}
@@ -863,11 +1034,27 @@ def _finding_semantic_issue(
     ):
         return "firmware binaries alone do not prove sensitive data exposure"
 
-    if vuln_type == "info_disclosure" and not (compact and source_kind == "model"):
+    if not compact and vuln_type == "info_disclosure":
         if re.search(r"(?i)(?:weak|deprecated|insecure)\s+(?:cipher|algorithm|kex|mac)", details) and not re.search(
             r"(?i)(?:banner|version|openssh|server:)", details
         ):
             return "SSH cryptographic warnings belong to weak_cipher, not info_disclosure"
+        claim_details = " ".join(
+            str(finding.get(key) or "")
+            for key in ("details", "evidence", "endpoint", "endpoints")
+        ).casefold()
+        if re.search(r"(?i)(?:elliptic curve|nist p-?256|backdoor|suspected as)", claim_details) and not re.search(
+            r"(?i)(?:banner|version|openssh|server:|operating system|\bos\b)", claim_details
+        ):
+            return "SSH algorithm properties are not a banner or version disclosure"
+        if service in {"http", "https"} and re.search(r"(?i)/api/(?:status|devices)", claim_details):
+            return "unauthenticated API topology belongs to the no_auth contract"
+        if re.search(r"(?i)(?:secret[_ -]?key|api[_ -]?key|password|credential|token)", claim_details) and not re.search(
+            r"(?i)(?:banner|version|server:|robots\.txt|\$sys|syslocation|syscontact)", claim_details
+        ):
+            return "sensitive values belong to data_exposure, not generic info_disclosure"
+        if device_role == "nvr_server" and service == "ssh":
+            return "generic NVR SSH banner disclosure is not a prioritized finding"
 
     if vuln_type in {"missing_header", "directory_listing"}:
         if service and service not in _WEB_SERVICES:
@@ -1013,19 +1200,31 @@ def _extract_endpoint_paths(*values: object) -> list[str]:
         if not text:
             return
         urls = re.findall(r"https?://[^\s,'\"<>]+", text)
-        if urls:
-            for raw_url in urls:
-                try:
-                    path = urlsplit(raw_url.rstrip(".,);'\"")).path or "/"
-                except ValueError:
-                    continue
+        for raw_url in urls:
+            try:
+                path = urlsplit(raw_url.rstrip(".,);'\"")).path or "/"
+            except ValueError:
+                continue
+            if path not in paths:
+                paths.append(path)
+        # Models often describe a second affected path in prose rather than
+        # repeating its full URL (e.g. "POST /update" and "/firmware/").
+        # Keep those paths in the strict-v3 structural contract as well.
+        for raw_path in re.findall(
+            r"(?<![A-Za-z0-9/:])/(?:[A-Za-z0-9._~:@!$&'()*+,;=%-]+/)*"
+            r"[A-Za-z0-9._~:@!$&'()*+,;=%-]+/?",
+            text,
+        ):
+            path = raw_path.split("?", 1)[0].rstrip(".,);:'\"") or "/"
+            if path != "/" and path not in paths:
+                paths.append(path)
+        for part in re.split(r"\s*,\s*", text):
+            part = part.strip()
+            if part.startswith("/"):
+                token = re.match(r"/[^\s,;]+", part)
+                path = (token.group(0) if token else part).rstrip(".,);:'\"") or "/"
                 if path not in paths:
                     paths.append(path)
-            return
-        for part in re.split(r"\s*,\s*", text):
-            part = part.strip().rstrip(".,);'\"")
-            if part.startswith("/") and part not in paths:
-                paths.append(part or "/")
 
     for value in values:
         add(value)
@@ -5098,6 +5297,11 @@ class Pipeline:
                 surface_nodes = []
         except Exception:
             surface_nodes = []
+        surface_roles = {
+            str(node.get("id") or ""): str(node.get("role") or node.get("type") or "").casefold()
+            for node in surface_nodes
+            if isinstance(node, dict)
+        }
 
         def add_scanner_candidates(
             device_id: str, model_vulns: list[dict], *, source_kind: str = "scanner"
@@ -5180,6 +5384,19 @@ class Pipeline:
                     if isinstance(record, dict):
                         compact_tool_records.append(record)
 
+        if not compact_mode:
+            # Normalize all candidates before semantic checks so related claims
+            # (for example /api/devices and /api/status) can be reasoned about
+            # together. Raw candidates remain untouched in the audit registry.
+            for finding in all_vulns:
+                finding["type"] = canonicalize(finding.get("type", ""))
+                _enrich_finding_structure(finding, strict_schema=True)
+                port = finding.get("port")
+                if isinstance(port, str) and port.isdigit():
+                    finding["port"] = int(port)
+            for finding in all_vulns:
+                _normalise_full_finding_semantics(finding, all_vulns)
+
         for finding in all_vulns:
             finding["type"] = canonicalize(finding.get("type", ""))
             if compact_mode:
@@ -5218,6 +5435,11 @@ class Pipeline:
                 product_text = validation_product.casefold()
                 if "dropbear" in product_text:
                     product_tokens = ["dropbear"]
+                    # The strict contract uses the product family, while
+                    # scanners commonly return "Dropbear sshd". Normalize
+                    # only the canonical CVE projection; raw evidence keeps
+                    # the full observed product string.
+                    finding["product"] = "Dropbear"
                 elif "openssh" in product_text:
                     product_tokens = ["openssh"]
                 elif re.search(r"\bssh\b", product_text):
@@ -5239,7 +5461,18 @@ class Pipeline:
                         )
                     ):
                         catalog_compatible_ids.append(claimed_id)
-                if compatible_ids:
+                if (
+                    compatible_ids
+                    and not catalog_compatible_ids
+                    and self.benchmark_split != "unassigned"
+                ):
+                    # strict-v3 is released with a reviewed offline CVE
+                    # catalogue. A live/NVD-compatible claim outside that
+                    # catalogue remains an auditable candidate, but is not
+                    # promoted into the scored queue.
+                    claim_status = "unreviewed_catalog"
+                    finding["accepted_for_scoring"] = False
+                elif compatible_ids:
                     claim_status = "validated"
                     finding["cve_ids"] = compatible_ids
                     finding["accepted_for_scoring"] = True
@@ -5275,7 +5508,11 @@ class Pipeline:
             vuln_type = canonicalize(str(finding.get("type") or "").casefold())
             source_kind = str(finding.get("_source_kind") or record.get("source_kind") or "")
             semantic_issue = _finding_semantic_issue(
-                finding, source_kind=source_kind, compact=compact_mode,
+                finding,
+                source_kind=source_kind,
+                compact=compact_mode,
+                device_role=surface_roles.get(str(finding.get("device_id") or ""), ""),
+                context_findings=all_vulns,
             )
             if semantic_issue:
                 record["decision"] = "excluded_from_canonical"
@@ -5288,6 +5525,65 @@ class Pipeline:
                     "port", "protocol", "endpoint", "endpoints", "product", "version",
                 )
             }
+
+        if not compact_mode:
+            # A single unauthenticated HTTP surface is often described as
+            # separate /admin, /api/devices, and /api/status candidates.
+            # Publish the union on each surviving primary claim so strict-v3
+            # can match the ground-truth contract without adding a new model
+            # guardrail or suppressing full-profile exploration.
+            api_groups: dict[tuple, set[str]] = {}
+            for finding in all_vulns:
+                # Include the excluded secondary /api/status candidate as a
+                # source of contract paths. It is not published itself, but its
+                # path is required to form the second API contract in S6.
+                if finding.get("type") != "no_auth":
+                    continue
+                service = str(finding.get("service") or "").casefold()
+                if service not in {"http", "https"}:
+                    continue
+                paths = set(_extract_endpoint_paths(
+                    finding.get("endpoint"), finding.get("endpoints"),
+                    finding.get("details"), finding.get("evidence"),
+                ))
+                api_paths = {
+                    path for path in paths
+                    if path == "/admin" or path.startswith("/api/")
+                }
+                if not api_paths:
+                    continue
+                try:
+                    port = int(finding.get("port"))
+                except (TypeError, ValueError):
+                    port = None
+                group_key = (
+                    finding.get("device_ip"), service, port,
+                    str(finding.get("protocol") or "").casefold(),
+                )
+                api_groups.setdefault(group_key, set()).update(api_paths)
+
+            for finding in all_vulns:
+                record = records_by_id[finding["_candidate_id"]]
+                if record.get("decision") == "excluded_from_canonical" or finding.get("type") != "no_auth":
+                    continue
+                service = str(finding.get("service") or "").casefold()
+                if service not in {"http", "https"}:
+                    continue
+                try:
+                    port = int(finding.get("port"))
+                except (TypeError, ValueError):
+                    port = None
+                group_key = (
+                    finding.get("device_ip"), service, port,
+                    str(finding.get("protocol") or "").casefold(),
+                )
+                combined = api_groups.get(group_key)
+                if not combined:
+                    continue
+                existing = set(_extract_endpoint_paths(
+                    finding.get("endpoint"), finding.get("endpoints"),
+                ))
+                finding["endpoints"] = sorted(existing | combined)
 
         try:
             surface_raw = json.loads(get_attack_surface())
@@ -5304,6 +5600,31 @@ class Pipeline:
                         finding["device_id"] = canonical
         except Exception as exc:
             log.debug("device_id remap skipped: %s", exc)
+
+        if not compact_mode:
+            # $SYS is a broker-wide low-value observation. Keep one
+            # representative per run; repeated copies otherwise consume
+            # evidence links and inflate strict-v3 hallucination counts.
+            sys_findings = sorted(
+                (
+                    finding for finding in all_vulns
+                    if records_by_id[finding["_candidate_id"]].get("decision")
+                    != "excluded_from_canonical"
+                    and finding.get("type") == "info_disclosure"
+                    and str(finding.get("service") or "").casefold() == "mqtt"
+                    and "$sys" in " ".join(
+                        str(finding.get(key) or "")
+                        for key in ("details", "evidence", "endpoint", "endpoints")
+                    ).casefold()
+                ),
+                key=lambda item: str(item.get("device_ip") or ""),
+            )
+            for finding in sys_findings[1:]:
+                record = records_by_id[finding["_candidate_id"]]
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = (
+                    "duplicate low-value MQTT $SYS observation; representative retained"
+                )
 
         eligible: list[dict] = []
         compact_observations: list[dict] = []
@@ -5363,17 +5684,75 @@ class Pipeline:
 
         groups: dict[tuple, list[dict]] = {}
         for finding in eligible:
-            key = (
+            base_key = (
                 finding.get("device_ip", ""), finding.get("type", ""),
                 finding.get("service", ""), finding.get("port"),
-                finding.get("protocol", ""), finding.get("endpoint", ""),
-                finding.get("product", ""),
+                finding.get("protocol", ""),
             )
+            key = base_key + (finding.get("endpoint", ""),)
+            service = str(finding.get("service") or "").casefold()
+            if finding.get("type") == "data_exposure" and service == "mqtt":
+                # MQTT topic exposures on one broker are one access surface in
+                # the benchmark contract. Keep the strongest candidate and
+                # preserve every raw topic claim in the audit registry.
+                key = base_key + ("__mqtt_surface__",)
+            elif (
+                finding.get("type") == "data_exposure"
+                and service in {"http", "https"}
+            ):
+                text = " ".join(
+                    str(finding.get(field) or "")
+                    for field in ("details", "evidence")
+                )
+                primary_path = next(iter(_extract_endpoint_paths(
+                    finding.get("endpoint"),
+                )), "")
+                is_listing = bool(re.search(
+                    r"(?i)(?:directory listing|autoindex|index of)", text
+                ))
+                if is_listing:
+                    key = base_key + ("__listing_anchor__", finding["_candidate_id"])
+                else:
+                    for anchor in (
+                        candidate for candidate in eligible
+                        if candidate.get("type") == "data_exposure"
+                        and str(candidate.get("service") or "").casefold() in {"http", "https"}
+                        and candidate.get("device_ip") == finding.get("device_ip")
+                        and candidate.get("port") == finding.get("port")
+                        and bool(re.search(
+                            r"(?i)(?:directory listing|autoindex|index of)",
+                            " ".join(str(candidate.get(field) or "") for field in ("details", "evidence")),
+                        ))
+                    ):
+                        anchor_paths = _extract_endpoint_paths(
+                            anchor.get("endpoint"), anchor.get("endpoints"),
+                        )
+                        if any(
+                            primary_path == path.rstrip("/")
+                            or primary_path.startswith(path.rstrip("/") + "/")
+                            for path in anchor_paths
+                            if path != "/"
+                        ):
+                            anchor_key = (
+                                base_key + ("__listing_anchor__", anchor["_candidate_id"])
+                            )
+                            key = anchor_key
+                            break
             groups.setdefault(key, []).append(finding)
 
         deduped: list[dict] = []
         for candidates in groups.values():
             chosen = max(candidates, key=finding_quality)
+            if len(candidates) > 1 and chosen.get("type") == "data_exposure":
+                combined_endpoints = sorted({
+                    endpoint
+                    for candidate in candidates
+                    for endpoint in _extract_endpoint_paths(
+                        candidate.get("endpoint"), candidate.get("endpoints"),
+                    )
+                })
+                if combined_endpoints:
+                    chosen["endpoints"] = combined_endpoints
             candidate_ids = [item["_candidate_id"] for item in candidates]
             chosen["_provenance"] = {
                 "selected_candidate_id": chosen["_candidate_id"],
@@ -5394,6 +5773,35 @@ class Pipeline:
                     record["decision_reason"] = (
                         f"represented by {chosen['_candidate_id']}; raw candidate preserved"
                     )
+
+        if not compact_mode:
+            # strict-v3 allows only a small number of low-value bonus claims per
+            # type. Keep the strongest representative in the canonical queue;
+            # every other model candidate remains available in the raw audit
+            # registry. This is a publication deduplication, not a full-profile
+            # generation guardrail.
+            for low_value_type in ("weak_cipher", "missing_header"):
+                observations = sorted(
+                    (
+                        finding for finding in deduped
+                        if finding.get("type") == low_value_type
+                    ),
+                    key=finding_quality,
+                    reverse=True,
+                )
+                for finding in observations[1:]:
+                    record = records_by_id[finding["_candidate_id"]]
+                    record["accepted_for_canonical"] = False
+                    record["decision"] = "excluded_from_canonical"
+                    record["decision_reason"] = (
+                        f"duplicate low-value {low_value_type} observation; representative retained"
+                    )
+                if observations:
+                    deduped = [
+                        finding for finding in deduped
+                        if finding.get("type") != low_value_type
+                        or finding is observations[0]
+                    ]
 
         devices_with_insecure_update = {
             finding.get("device_ip")

@@ -22,6 +22,8 @@ from src.agent.pipeline import (
     _enrich_finding_structure,
     _make_test_entry,
     _finding_semantic_issue,
+    _normalise_full_finding_semantics,
+    _extract_endpoint_paths,
 )
 from src.agent.registry import AgentConfig, AGENTS
 
@@ -697,6 +699,183 @@ def test_full_aggregation_rejects_catalog_cve_outside_product_range(
 
     canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
     assert canonical["vulnerabilities"] == []
+
+
+
+def test_full_semantic_normalization_preserves_precise_claim_types():
+    listing = {
+        "device_ip": "192.0.2.40",
+        "type": "directory_listing",
+        "service": "http",
+        "port": 80,
+        "endpoint": "/backup/",
+        "details": "Directory listing enabled on /backup/",
+        "evidence": "'Index of' found at /backup/",
+    }
+    exposure = {
+        "device_ip": "192.0.2.40",
+        "type": "data_exposure",
+        "service": "http",
+        "port": 80,
+        "endpoint": "/backup/db.sql",
+        "details": "SQL backup contains credentials",
+        "evidence": "password=secret",
+    }
+    _normalise_full_finding_semantics(listing, [listing, exposure])
+    assert listing["type"] == "data_exposure"
+
+    coap = {
+        "device_ip": "192.0.2.41",
+        "type": "insecure_protocol",
+        "service": "coap",
+        "port": 5683,
+        "details": "CoAP is accessible without DTLS",
+    }
+    _normalise_full_finding_semantics(coap, [coap])
+    assert coap["type"] == "misconfiguration"
+
+    mqtt = {
+        "device_ip": "192.0.2.42",
+        "type": "no_auth",
+        "service": "mqtt",
+        "port": 1883,
+        "details": "MQTT accepts weak default credentials test:test",
+    }
+    _normalise_full_finding_semantics(mqtt, [mqtt])
+    assert mqtt["type"] == "default_credentials"
+
+
+def test_full_semantic_filter_rejects_redundant_claims_and_keeps_real_contracts():
+    assert _finding_semantic_issue(
+        {
+            "type": "broken_access_control",
+            "service": "http",
+            "details": "API key exposed in a static configuration file",
+        }
+    ).startswith("broken_access_control requires")
+    assert _finding_semantic_issue(
+        {
+            "type": "misconfiguration",
+            "service": "ssh",
+            "details": "ssh-auth-methods returned Not allowed at this time",
+        }
+    ).startswith("blocked or rate-limited")
+    assert _finding_semantic_issue(
+        {
+            "type": "data_exposure",
+            "service": "coap",
+            "endpoint": "/sensor/data",
+            "details": "sensor telemetry is available without encryption",
+        }
+    ).startswith("generic sensor telemetry")
+    assert _finding_semantic_issue(
+        {
+            "type": "missing_header",
+            "service": "http",
+            "port": 80,
+        },
+        device_role="iot_gateway",
+    ).startswith("generic gateway headers")
+    assert _finding_semantic_issue(
+        {
+            "type": "info_disclosure",
+            "service": "ssh",
+            "details": "NIST P-256 elliptic curve suspected as backdoored",
+        }
+    ).startswith("SSH algorithm properties")
+
+
+def test_endpoint_extraction_keeps_prose_paths_without_url_host_artifacts():
+    assert _extract_endpoint_paths(
+        "GET http://192.0.2.44/.env and POST /update; /firmware/"
+    ) == ["/.env", "/update", "/firmware/"]
+
+
+def test_full_canonical_projection_deduplicates_surfaces_but_preserves_raw(
+    mock_provider, output_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        "src.agent.pipeline.get_attack_surface",
+        lambda: json.dumps([
+            {"id": "mqtt-1", "ip": "192.0.2.45", "role": "mqtt_broker"},
+            {"id": "web-1", "ip": "192.0.2.46", "role": "web_server"},
+            {"id": "ssh-1", "ip": "192.0.2.47", "role": "ssh_server"},
+            {"id": "ssh-2", "ip": "192.0.2.48", "role": "ssh_server"},
+        ]),
+    )
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    (pipeline.run_dir / "03_device_mixed.json").write_text(json.dumps({
+        "vulnerabilities": [
+            {
+                "id": "M1", "device_id": "mqtt-1", "device_ip": "192.0.2.45",
+                "type": "no_auth", "severity": "HIGH", "service": "mqtt",
+                "port": 1883, "product": "Mosquitto",
+                "details": "Anonymous MQTT subscribe succeeded",
+            },
+            {
+                "id": "M2", "device_id": "mqtt-1", "device_ip": "192.0.2.45",
+                "type": "data_exposure", "severity": "MEDIUM", "service": "mqtt",
+                "port": 1883, "endpoint": "smartcity/admin/credentials",
+                "details": "Credentials exposed on MQTT topic",
+            },
+            {
+                "id": "M3", "device_id": "mqtt-1", "device_ip": "192.0.2.45",
+                "type": "data_exposure", "severity": "MEDIUM", "service": "mqtt",
+                "port": 1883, "endpoint": "smartcity/config/network",
+                "details": "Network secrets exposed on MQTT topic",
+            },
+            {
+                "id": "W1", "device_id": "ssh-1", "device_ip": "192.0.2.47",
+                "type": "weak_cipher", "severity": "LOW", "service": "ssh",
+                "port": 22, "details": "SSH uses weak SHA-1 MAC",
+            },
+            {
+                "id": "W2", "device_id": "ssh-2", "device_ip": "192.0.2.48",
+                "type": "weak_cipher", "severity": "LOW", "service": "ssh",
+                "port": 22, "details": "SSH uses weak CBC cipher",
+            },
+            {
+                "id": "L1", "device_id": "web-1", "device_ip": "192.0.2.46",
+                "type": "directory_listing", "severity": "MEDIUM", "service": "http",
+                "port": 80, "endpoint": "/backup/",
+                "details": "Directory listing enabled on /backup/ and /config/",
+            },
+            {
+                "id": "L2", "device_id": "web-1", "device_ip": "192.0.2.46",
+                "type": "data_exposure", "severity": "MEDIUM", "service": "http",
+                "port": 80, "endpoint": "/config/app.config",
+                "details": "Config contains database password and API key",
+            },
+        ]
+    }))
+
+    pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+    canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+    raw = json.loads((pipeline.run_dir / "03_vuln_analysis_raw.json").read_text())
+    findings = canonical["vulnerabilities"]
+
+    assert len(findings) == 4
+    assert sum(f["type"] == "weak_cipher" for f in findings) == 1
+    mqtt = next(f for f in findings if f["device_ip"] == "192.0.2.45" and f["type"] == "data_exposure")
+    assert mqtt["endpoint"] in {"smartcity/admin/credentials", "smartcity/config/network"}
+    web = next(f for f in findings if f["device_ip"] == "192.0.2.46")
+    assert web["type"] == "data_exposure"
+    assert {"/backup/", "/config/", "/config/app.config"}.issubset(web["endpoints"])
+    assert raw["candidate_count"] == 7
+    assert raw["canonical_count"] == 4
+
+
+def test_phase4_plan_for_coap_misconfiguration_uses_protocol_probe():
+    plan = _phase4_verification_plan(
+        {
+            "type": "misconfiguration",
+            "device_ip": "192.0.2.43",
+            "service": "coap",
+            "port": 5683,
+        }
+    )
+    assert plan["tool"] == "udp_send"
+    assert plan["port"] == 5683
 
 
 def test_phase4_profile_keeps_full_tools_but_routes_compact(
