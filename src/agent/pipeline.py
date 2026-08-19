@@ -826,6 +826,26 @@ _INSECURE_PROTOCOL_SERVICES = frozenset({
 })
 
 
+def _expand_phase_selection(phases: list[int] | None) -> list[int] | None:
+    """Include prerequisites when a user selects a downstream phase.
+
+    A fresh Pipeline always has a fresh run directory, so selecting report or
+    intrusion without their upstream artifacts cannot produce a meaningful
+    run. Keep explicit partial runs (for example [1] or [3]) intact,
+    while making downstream selections self-contained.
+    """
+    if phases is None:
+        return None
+    selected = {int(phase) for phase in phases}
+    if 6 in selected:
+        selected.update({1, 2, 3, 4, 5})
+    elif 5 in selected:
+        selected.update({1, 2, 3, 4})
+    elif 4 in selected:
+        selected.update({1, 2, 3})
+    return sorted(selected)
+
+
 
 def _normalise_full_finding_semantics(
     finding: dict, context_findings: list[dict] | None = None
@@ -923,6 +943,59 @@ def _finding_semantic_issue(
         for key in ("details", "evidence", "endpoint", "product", "version")
     ).casefold()
     context_findings = context_findings or []
+
+    if not compact and vuln_type == "no_auth":
+        # A login page, 401/403 response, or an explicit authentication
+        # requirement contradicts an unauthenticated-access claim unless the
+        # same evidence proves a separate unauthenticated endpoint.
+        if (
+            re.search(
+                r"(?i)(?:\b(?:401|403)\b|authentication required|requires authentication|"
+                r"requires auth|login required)",
+                details,
+            )
+            and not re.search(
+                r"(?i)(?:no auth(?:entication)? required|without auth(?:entication)?|"
+                r"unauthenticated (?:access|request|endpoint)|anonymous (?:access|login|connection))",
+                details,
+            )
+        ):
+            return "authentication is required by the observed response; no_auth is contradicted"
+
+    if not compact and vuln_type == "misconfiguration":
+        if re.search(
+            r"(?i)(?:no evidence of\s+allowtcpforwarding|may allow unrestricted|"
+            r"might allow|could allow|potentially enables)",
+            details,
+        ) and not re.search(
+            r"(?i)(?:allowtcpforwarding\s*=\s*(?:yes|on)|forwarding\s+"
+            r"(?:is|was)\s+(?:enabled|permitted)|world[- ]readable|"
+            r"permissions?\s*[:=]\s*[0-7]{3,4}|iptables|firewall)",
+            details,
+        ):
+            return "speculative configuration claim lacks direct configuration evidence"
+
+    if not compact and vuln_type == "insecure_protocol" and service in {
+        "modbus", "s7comm", "ethernet/ip", "opcua"
+    } and re.search(
+        r"(?i)(?:protocol specification lacks|no inherent authentication|"
+        r"no inherent security|plaintext and unauthenticated)",
+        details,
+    ) and not re.search(
+        r"(?i)(?:read(?:_|-| )?register|write(?:_|-| )?register|"
+        r"response|slave\s+id|successful|accepted)",
+        details,
+    ):
+        return "protocol properties alone do not prove an additional vulnerability"
+
+    if not compact and vuln_type == "info_disclosure":
+        if re.search(
+            r"(?i)(?:port .*\bclosed\b|connection errors?|return_code\s*7|"
+            r"service appears to be down|mac address.*(?:proxmox|virtual)|"
+            r"virtualization platform|reveals implementation details)",
+            details,
+        ):
+            return "service state or generic platform fingerprint is not a scored disclosure"
 
     if not compact and vuln_type == "broken_access_control" and not re.search(
         r"(?i)(?:idor|cross[- ]tenant|authorization(?: boundary)?\s+bypass|"
@@ -1970,7 +2043,10 @@ class Pipeline:
         self.execution_profile_policy = self.execution_profile_resolution.requested_policy
         self.phase_execution_profiles: dict[str, dict] = {}
         self.dry_run = dry_run
-        self.phases = phases
+        self.requested_phases = (
+            None if phases is None else sorted({int(phase) for phase in phases})
+        )
+        self.phases = _expand_phase_selection(self.requested_phases)
         self.scenario_id = scenario_id
         self.execution_context = execution_context
         self.benchmark_split = benchmark_split or getattr(execution_context, "split", None)
@@ -2147,6 +2223,13 @@ class Pipeline:
             ),
             "runtime_unavailable_tools": self.runtime_unavailable_tools,
             "oracle_access": False,
+            "requested_phases": (
+                self.requested_phases
+                if self.requested_phases is not None else [1, 2, 3, 4, 5, 6]
+            ),
+            "effective_phases": (
+                self.phases if self.phases is not None else [1, 2, 3, 4, 5, 6]
+            ),
             **self.execution_profile_resolution.metadata(),
             "execution_profile_config": self.execution_profile.metadata(),
             **metric_contract_metadata(),
@@ -2254,6 +2337,19 @@ class Pipeline:
                 break
 
             # Check prerequisites
+            if agent_config.phase == 6 and not (
+                self.run_dir / "04_exploitation.json"
+            ).is_file():
+                # This is intentionally explicit in addition to the generic
+                # prerequisite check. A report based only on Phase 3 claims
+                # would look successful while its report-facing context is
+                # correctly empty because no exploitation evidence exists.
+                log.warning(
+                    "Skipping report: 04_exploitation.json is missing; "
+                    "run Phase 4 before Phase 6"
+                )
+                results[agent_config.name] = "skipped:prerequisites"
+                continue
             if not self._check_prerequisites(agent_config, results):
                 log.warning("Skipping %s: prerequisites not met", agent_config.name)
                 results[agent_config.name] = "skipped:prerequisites"

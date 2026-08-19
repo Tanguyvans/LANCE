@@ -664,6 +664,22 @@ def tls_inspect(host: str, port: int = 443, sni: str | None = None) -> str:
             with context.wrap_socket(raw, server_hostname=server_hostname) as tls:
                 cipher = tls.cipher() or ("", "", 0)
                 der = tls.getpeercert(binary_form=True)
+    except ssl.SSLError as exc:
+        # A Phase 3 analyst can reasonably probe a service whose banner was
+        # ambiguous, but a TLS handshake failure on a plain-text service is a
+        # negative observation, not a failed tool execution. In particular,
+        # probing SSH/22 with tls_inspect raises WRONG_VERSION_NUMBER. Keep
+        # that result structured so the model can stop retrying without
+        # inflating the run's tool-error metric.
+        return json.dumps({
+            "status": "not_tls",
+            "host": host,
+            "port": effective_port,
+            "sni": server_hostname,
+            "error_kind": "tls_handshake_failed",
+            "message": str(exc),
+            "hint": "The target did not negotiate TLS; verify the service and port before retrying.",
+        })
     except OSError as exc:
         return json.dumps({"error": f"{type(exc).__name__}: {exc}"})
 

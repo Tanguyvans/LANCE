@@ -359,6 +359,28 @@ class TestDecodeValue:
 
 
 class TestTlsInspect:
+    def test_plaintext_endpoint_is_not_a_tool_error(self):
+        import ssl as _ssl
+
+        from src.agent.tools.recon_tools import tls_inspect
+
+        context = MagicMock()
+        context.wrap_socket.side_effect = _ssl.SSLError(
+            "[SSL: WRONG_VERSION_NUMBER] wrong version number"
+        )
+        with patch(
+            "src.agent.tools.recon_tools.ssl.create_default_context",
+            return_value=context,
+        ), patch(
+            "src.agent.tools.recon_tools.socket.create_connection",
+            return_value=MagicMock(),
+        ):
+            out = json.loads(tls_inspect(host="192.0.2.10", port=22))
+
+        assert out["status"] == "not_tls"
+        assert out["error_kind"] == "tls_handshake_failed"
+        assert "error" not in out
+
     def test_inspect_self_signed_local_listener(self, tmp_path):
         import ssl as _ssl
         import socket as _s

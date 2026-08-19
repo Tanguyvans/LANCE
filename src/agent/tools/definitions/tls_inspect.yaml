@@ -7,7 +7,9 @@ description: >
   Open a TLS connection to host:port and return JSON describing the leaf certificate (subject, issuer,
   SANs, not_before, not_after, serial), the negotiated cipher (name, version, bits), and a fingerprint
   preview. Detects self-signed, expired, or weak-cipher servers. Pure Python (ssl stdlib), no openssl
-  binary required.
+  binary required. Use only for HTTPS/TLS services (including TLS on a non-standard port); do not use
+  it on SSH, HTTP, FTP, MQTT plaintext, database, or other non-TLS ports. A plain-text endpoint returns
+  status=not_tls and should not be retried with paraphrased TLS probes.
 parameters:
   - name: "host"
     type: "string"

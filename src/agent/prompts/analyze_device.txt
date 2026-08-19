@@ -136,7 +136,11 @@ Add findings that automated extraction CANNOT detect:
 - Do NOT call ssh_audit, nmap_scan, curl_headers, mqtt_listen — scanning is done.
 - You CAN call: cve_search(), http_get(), http_request(), tcp_send(), udp_send(), mtls_request(), tls_inspect(), save_deliverable(), read_deliverable(), list_deliverables()
 - MERGE your findings WITH the automated findings into one JSON.
-- Max 5 tool calls.
+- Max 5 tool calls. Count every tool call, including CVE searches. If a CVE search returns unrelated
+  products, do not retry with paraphrased queries; record that no relevant catalog match was found and
+  save the deliverable. Use tls_inspect only when the scan identifies HTTPS/TLS (or a TLS-specific
+  service/port). Never call tls_inspect on SSH/22 or another plaintext service; status=not_tls is a
+  negative observation, not a vulnerability.
 - LOW/INFO CVE findings (CVSS < 4.0): only include if the CVE is directly exploitable
   on this device (confirmed version match). Skip informational CVEs that require local access.
 - Do NOT create findings for missing HTTP headers (missing_header) — the scanner handles those.

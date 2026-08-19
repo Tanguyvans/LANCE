@@ -24,6 +24,7 @@ from src.agent.pipeline import (
     _finding_semantic_issue,
     _normalise_full_finding_semantics,
     _extract_endpoint_paths,
+    _expand_phase_selection,
 )
 from src.agent.registry import AgentConfig, AGENTS
 
@@ -572,6 +573,45 @@ def test_full_phase4_http_info_disclosure_requires_explicit_version():
     )
     assert bare["status"] == "FAILED"
     assert versioned["status"] == "EXPLOITED"
+
+
+def test_full_semantic_filters_reject_contradictory_claims():
+    assert "contradicted" in _finding_semantic_issue(
+        {
+            "type": "no_auth",
+            "service": "http",
+            "port": 80,
+            "details": "LuCI login returns HTTP 403 and requires authentication",
+            "evidence": "HTTP 403",
+        }
+    )
+    assert "speculative" in _finding_semantic_issue(
+        {
+            "type": "misconfiguration",
+            "service": "ssh",
+            "port": 22,
+            "details": "Bastion may allow unrestricted TCP forwarding; no evidence of AllowTcpForwarding=no",
+            "evidence": "SSH is open",
+        }
+    )
+    assert "protocol properties" in _finding_semantic_issue(
+        {
+            "type": "insecure_protocol",
+            "service": "modbus",
+            "port": 502,
+            "details": "Modbus protocol specification lacks authentication; traffic is plaintext and unauthenticated",
+            "evidence": "Modbus protocol description",
+        }
+    )
+    assert "platform fingerprint" in _finding_semantic_issue(
+        {
+            "type": "info_disclosure",
+            "service": "network",
+            "port": 0,
+            "details": "MAC address identifies a Proxmox virtual machine",
+            "evidence": "BC:24:11",
+        }
+    )
 
 
 def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
@@ -4464,6 +4504,13 @@ class TestPhase5Context:
         if profile == "compact":
             assert "SHORT narrative seed only" in kwargs["system_prompt"]
             assert "Do not include tables" in kwargs["system_prompt"]
+
+def test_downstream_phase_selection_includes_prerequisites():
+    assert _expand_phase_selection([1]) == [1]
+    assert _expand_phase_selection([3, 6]) == [1, 2, 3, 4, 5, 6]
+    assert _expand_phase_selection([5]) == [1, 2, 3, 4, 5]
+    assert _expand_phase_selection([]) == []
+
 
 class TestPipelineRun:
     @patch("src.agent.pipeline.load_lab_context")

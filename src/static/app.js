@@ -1313,13 +1313,25 @@ function hideDetail() {
 }
 
 // ── Pipeline ───────────────────────────────────────────────────────────────
+function expandSelectedPhases(phases) {
+  const selected = new Set(phases);
+  if (selected.has(6)) {
+    [1, 2, 3, 4, 5].forEach(p => selected.add(p));
+  } else if (selected.has(5)) {
+    [1, 2, 3, 4].forEach(p => selected.add(p));
+  } else if (selected.has(4)) {
+    [1, 2, 3].forEach(p => selected.add(p));
+  }
+  return [...selected].sort((a, b) => a - b);
+}
+
 async function startRun() {
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
   const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
   const teardown = document.getElementById('cb-teardown').checked;
-  const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
+  const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
   const mode     = document.querySelector('input[name="run-mode"]:checked').value;
 
   // Determine scenario_id based on mode
@@ -1428,7 +1440,7 @@ async function startBatch() {
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
   const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
-  const phases   = [...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value));
+  const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
 
   resetNodeColors();
   nodeVulns = {};
