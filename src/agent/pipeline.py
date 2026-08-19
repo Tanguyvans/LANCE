@@ -64,6 +64,7 @@ from src.agent.tools.skill_tools import (
 )
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS
+from src.benchmark.strict_v3 import cve_is_allowed
 from src.benchmark.metric_contract import metric_contract_metadata
 
 
@@ -424,9 +425,10 @@ def _phase4_local_verification_tools(
 # ---------------------------------------------------------------------------
 # Phase 4 verification contract.
 # Every canonical Phase 3 finding gets one deterministic, service-aware
-# verification requirement. This contract is enforced for compact/local
-# workers; full-capability models receive the same plan as guidance while
-# retaining autonomous tool and probe selection.
+# verification requirement. Compact workers are deliberately routed through
+# this contract. Full-capability models receive the same requirement as
+# guidance, but keep the complete Phase 4 surface and choose their own
+# verification sequence.
 # ---------------------------------------------------------------------------
 
 
@@ -814,8 +816,7 @@ _INSECURE_PROTOCOL_SERVICES = frozenset({
 
 
 def _finding_semantic_issue(
-    finding: dict, *, source_kind: str = "", compact: bool = False,
-    scanner_supported: bool = False
+    finding: dict, *, source_kind: str = "", compact: bool = False
 ) -> str:
     """Return a deterministic metadata contradiction for a model finding.
 
@@ -867,19 +868,6 @@ def _finding_semantic_issue(
             r"(?i)(?:banner|version|openssh|server:)", details
         ):
             return "SSH cryptographic warnings belong to weak_cipher, not info_disclosure"
-
-    # A full-profile model finding is an assertion, not proof. The scanner
-    # and Phase 3 evidence registry are the promotion boundary; compact mode
-    # deliberately keeps report-only observations for its existing contract.
-    if (
-        source_kind == "model"
-        and not compact
-        and not scanner_supported
-        and not finding.get("evidence_ref")
-        and not finding.get("evidence_refs")
-        and vuln_type != "known_cve"
-    ):
-        return "full-profile model finding has no scanner or Phase 3 evidence reference"
 
     if vuln_type in {"missing_header", "directory_listing"}:
         if service and service not in _WEB_SERVICES:
@@ -5114,12 +5102,12 @@ class Pipeline:
         def add_scanner_candidates(
             device_id: str, model_vulns: list[dict], *, source_kind: str = "scanner"
         ) -> None:
-            """Add deterministic Phase 3 findings alongside model output.
+            """Add compact-mode deterministic findings alongside model output.
 
-            Full-mode ``03_device_*.json`` files are model-authored. The raw
-            scanner artifact is therefore always loaded separately, so a model
-            cannot replace a deterministic finding or promote an unsupported
-            extra into the canonical queue.
+            The full profile keeps the model-authored Phase 3 queue autonomous;
+            scanner artifacts remain available for audit and evidence. Compact
+            local workers use the scanner as their deterministic promotion
+            boundary because that profile trades exploration for precision.
             """
             scan_path = self.run_dir / "03_scans" / f"{device_id}.json"
             if not scan_path.exists():
@@ -5169,7 +5157,8 @@ class Pipeline:
                     vulns = []
                 model_vulns = vulns if isinstance(vulns, list) else []
                 add_candidates(model_vulns, f.name, "model")
-                add_scanner_candidates(device_id, model_vulns)
+                if compact_mode:
+                    add_scanner_candidates(device_id, model_vulns)
             except Exception as exc:
                 log.warning(
                     "Failed to parse %s — falling back to scanner findings: %s",
@@ -5223,9 +5212,46 @@ class Pipeline:
                     for assessment in assessments.values()
                     if assessment
                 }
+                catalog_compatible_ids = []
+                validation_product = str(validation.get("observed_product") or finding.get("product") or "")
+                validation_version = str(validation.get("observed_version") or finding.get("version") or "")
+                product_text = validation_product.casefold()
+                if "dropbear" in product_text:
+                    product_tokens = ["dropbear"]
+                elif "openssh" in product_text:
+                    product_tokens = ["openssh"]
+                elif re.search(r"\bssh\b", product_text):
+                    product_tokens = ["ssh"]
+                else:
+                    product_tokens = []
+                finding_text = " ".join(
+                    str(finding.get(key) or "")
+                    for key in ("details", "evidence")
+                )
+                for claimed_id in claimed_ids:
+                    if (
+                        re.search(rf"(?i)\b{re.escape(claimed_id)}\b", finding_text)
+                        and product_tokens
+                        and validation_version
+                        and any(
+                            cve_is_allowed(claimed_id, [product], [validation_version])
+                            for product in product_tokens
+                        )
+                    ):
+                        catalog_compatible_ids.append(claimed_id)
                 if compatible_ids:
                     claim_status = "validated"
                     finding["cve_ids"] = compatible_ids
+                    finding["accepted_for_scoring"] = True
+                elif catalog_compatible_ids:
+                    # The archived search can be indeterminate when NVD has no
+                    # CPE range for a cross-vendor CVE such as Terrapin. The
+                    # reviewed offline catalogue remains authoritative when
+                    # the model supplied explicit CVE, product, version, and
+                    # evidence context. This preserves recall without
+                    # accepting free-form or future CVE claims.
+                    claim_status = "validated_catalog"
+                    finding["cve_ids"] = catalog_compatible_ids
                     finding["accepted_for_scoring"] = True
                 elif "conditional" in observed_statuses:
                     claim_status = "conditional"
@@ -5248,19 +5274,8 @@ class Pipeline:
             record = records_by_id[finding["_candidate_id"]]
             vuln_type = canonicalize(str(finding.get("type") or "").casefold())
             source_kind = str(finding.get("_source_kind") or record.get("source_kind") or "")
-            scanner_supported = any(
-                other.get("_source_kind") in {"scanner", "scanner_compact", "scanner_fallback"}
-                and str(other.get("device_ip") or "") == str(finding.get("device_ip") or "")
-                and canonicalize(str(other.get("type") or "").casefold()) == vuln_type
-                and (
-                    other.get("port") in (finding.get("port"), None, "")
-                    or finding.get("port") in (other.get("port"), None, "")
-                )
-                for other in all_vulns
-            )
             semantic_issue = _finding_semantic_issue(
                 finding, source_kind=source_kind, compact=compact_mode,
-                scanner_supported=scanner_supported,
             )
             if semantic_issue:
                 record["decision"] = "excluded_from_canonical"
@@ -5648,8 +5663,7 @@ class Pipeline:
             variables["required_verification"] = json.dumps(requirement, ensure_ascii=False)
             variables["expected_deliverable"] = deliverable_file
             variables["phase4_profile_guidance"] = (
-                "Full profile: execute the required service-specific verification probe; "
-                "do not replace it with generic recon or open-port evidence."
+                "Full profile: use the required service-specific probe as guidance, while retaining autonomous tool selection and additional relevant verification steps; ground every verdict in the tool ledger."
                 if not self.execution_profile.routed_tools else
                 "Compact profile: use the exposed service-specific tools, start with the "
                 "required probe, and stop once direct proof is sufficient."
@@ -5701,40 +5715,34 @@ class Pipeline:
                 provider_error = ""
                 try:
                     compact_local_moe = self._uses_compact_local_moe()
-                    # Phase 4 is a verification contract, not a second
-                    # autonomous recon pass. Full-capability models use the
-                    # same service-scoped surface as local workers and the
-                    # required probe is the only probe allowed to produce a
-                    # conclusive verdict.
-                    verification_tools = _phase4_local_verification_tools(
-                        exploit_tools, category=category, service=service,
-                        include_deliverable=not compact_local_moe,
-                    )
-                    exposed = {tool.get("name") for tool in verification_tools}
-                    if required_probe_tool not in exposed:
-                        verification_tools = verification_tools + [
-                            tool for tool in exploit_tools
-                            if tool.get("name") == required_probe_tool
-                        ]
-                    if required_probe_tool:
-                        allowed_probe_names = {required_probe_tool, "save_deliverable"}
-                        verification_tools = [
-                            tool for tool in verification_tools
-                            if tool.get("name") in allowed_probe_names
-                        ]
-                    if not self.execution_profile.routed_tools:
-                        verification_tools = _phase4_apply_verification_contract(
-                            verification_tools, requirement,
-                            vuln=vuln, stop_on_conclusive=True,
+                    if self.execution_profile.routed_tools:
+                        # Compact accepts a narrow, service-specific surface
+                        # and a mandatory fresh probe before it can save.
+                        verification_tools = _phase4_local_verification_tools(
+                            exploit_tools, category=category, service=service,
+                            include_deliverable=not compact_local_moe,
                         )
-                    elif not compact_local_moe:
-                        verification_tools = _phase4_apply_verification_contract(
-                            verification_tools, requirement, vuln=vuln,
-                        )
-                    if compact_local_moe:
+                        exposed = {tool.get("name") for tool in verification_tools}
+                        if required_probe_tool not in exposed:
+                            verification_tools = verification_tools + [
+                                tool for tool in exploit_tools
+                                if tool.get("name") == required_probe_tool
+                            ]
+                        if required_probe_tool:
+                            allowed_probe_names = {required_probe_tool, "save_deliverable"}
+                            verification_tools = [
+                                tool for tool in verification_tools
+                                if tool.get("name") in allowed_probe_names
+                            ]
                         verification_tools = _phase4_apply_verification_contract(
                             verification_tools, requirement
                         )
+                    else:
+                        # Full keeps the complete Phase 4 surface. The
+                        # service-specific requirement is guidance, not a
+                        # harness-enforced route or stopping condition.
+                        verification_tools = exploit_tools
+                    if compact_local_moe:
                         try:
                             result_text = self.provider.chat_with_tools(
                                 system_prompt=load_prompt(

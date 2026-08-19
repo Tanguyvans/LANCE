@@ -572,7 +572,7 @@ def test_full_phase4_http_info_disclosure_requires_explicit_version():
     assert versioned["status"] == "EXPLOITED"
 
 
-def test_full_aggregation_promotes_scanner_and_keeps_model_only_candidate_raw(
+def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
@@ -617,18 +617,121 @@ def test_full_aggregation_promotes_scanner_and_keeps_model_only_candidate_raw(
     canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
     raw = json.loads((pipeline.run_dir / "03_vuln_analysis_raw.json").read_text())
     assert {finding["type"] for finding in canonical["vulnerabilities"]} == {
-        "info_disclosure", "missing_header",
+        "info_disclosure",
     }
     info = next(
         finding for finding in canonical["vulnerabilities"]
         if finding["type"] == "info_disclosure"
     )
-    assert info["canonical_source"] == "scanner"
+    assert info["canonical_source"] == "model"
     assert any(
         candidate["decision_reason"] == "weak_cipher requires SSH/TLS evidence, not plain HTTP"
         for candidate in raw["candidates"]
     )
-    assert raw["candidate_count"] == 4
+    assert raw["candidate_count"] == 2
+
+
+
+def test_full_aggregation_accepts_catalog_validated_terrapin_without_nvd_cpe(
+    mock_provider, output_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        "src.agent.pipeline.get_attack_surface",
+        lambda: json.dumps([{
+            "id": "gw-1", "ip": "192.0.2.31", "role": "iot_gateway",
+        }]),
+    )
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    (pipeline.run_dir / "03_device_gw-1.json").write_text(json.dumps({
+        "vulnerabilities": [{
+            "device_id": "gw-1", "device_ip": "192.0.2.31",
+            "type": "known_cve", "severity": "HIGH",
+            "service": "ssh", "port": 22, "product": "Dropbear sshd",
+            "version": "2020.81", "cve_ids": ["CVE-2023-48795"],
+            "details": "Dropbear 2020.81 is vulnerable to CVE-2023-48795 Terrapin",
+            "evidence": "ssh_audit detected CVE-2023-48795 on Dropbear 2020.81",
+            "cve_validation": {
+                "query": "CVE-2023-48795 Dropbear",
+                "observed_product": "Dropbear sshd",
+                "observed_version": "2020.81",
+            },
+        }]
+    }))
+
+    pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+    canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+    finding = canonical["vulnerabilities"][0]
+    assert finding["type"] == "known_cve"
+    assert finding["cve_claim_status"] == "validated_catalog"
+    assert finding["accepted_for_scoring"] is True
+
+
+
+def test_full_aggregation_rejects_catalog_cve_outside_product_range(
+    mock_provider, output_dir, monkeypatch
+):
+    monkeypatch.setattr(
+        "src.agent.pipeline.get_attack_surface",
+        lambda: json.dumps([{
+            "id": "ssh-1", "ip": "192.0.2.33", "role": "ssh_server",
+        }]),
+    )
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    (pipeline.run_dir / "03_device_ssh-1.json").write_text(json.dumps({
+        "vulnerabilities": [{
+            "device_id": "ssh-1", "device_ip": "192.0.2.33",
+            "type": "known_cve", "severity": "HIGH", "service": "ssh", "port": 22,
+            "product": "OpenSSH", "version": "10.0p2",
+            "cve_ids": ["CVE-2023-48795"],
+            "details": "OpenSSH 10.0p2 is vulnerable to CVE-2023-48795",
+            "evidence": "ssh_audit detected CVE-2023-48795 on OpenSSH 10.0p2",
+            "cve_validation": {
+                "observed_product": "OpenSSH",
+                "observed_version": "10.0p2",
+            },
+        }]
+    }))
+
+    pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+
+    canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+    assert canonical["vulnerabilities"] == []
+
+
+def test_phase4_profile_keeps_full_tools_but_routes_compact(
+    mock_provider, output_dir
+):
+    all_names = {"http_get", "http_request", "curl_headers", "nmap_scan", "ssh_audit", "save_deliverable"}
+    tool_defs = [
+        {"name": name, "description": name, "input_schema": {}, "function": lambda **_: "{}"}
+        for name in all_names
+    ]
+
+    for profile in ("full", "compact"):
+        mock_provider.reset_mock()
+        if profile == "compact":
+            mock_provider.provider = "local-moe"
+            mock_provider.model = "lance-moe"
+        else:
+            mock_provider.provider = "openrouter"
+            mock_provider.model = "MiniMax-M2.7"
+        pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
+        pipeline._resolve_tools = lambda _config: tool_defs
+        (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+            "vulnerabilities": [{
+                "id": "V1", "device_id": "web-1", "device_ip": "192.0.2.32",
+                "type": "no_auth", "severity": "HIGH", "service": "http", "port": 80,
+                "details": "HTTP admin endpoint", "evidence": "HTTP endpoint observed",
+            }]
+        }))
+        mock_provider.chat_with_tools.return_value = "done"
+        pipeline._run_exploit_agents(AGENTS["vuln_analysis"])
+        names = {tool["name"] for tool in mock_provider.chat_with_tools.call_args.kwargs["tools"]}
+        if profile == "full":
+            assert names == all_names
+        else:
+            assert names == {"http_get"}
 
 
 def test_phase4_compact_synthesis_distinguishes_update_acceptance_and_ssh_failure():
