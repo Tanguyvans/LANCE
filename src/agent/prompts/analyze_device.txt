@@ -58,7 +58,7 @@ Based on the device role, focus your analysis on these specific findings:
 | File upload without validation | CRITICAL |
 | MQTT anonymous (IoT exposure) | HIGH |
 | Firmware OTA without signature | HIGH (not CRITICAL) |
-| OTA update endpoint accessible without auth/signature (active update mechanism) | MEDIUM |
+| OTA update endpoint accessible without auth/signature (active update mechanism) | HIGH |
 | Directory listing (static file index) | MEDIUM |
 | Backup/config file accessible via HTTP (static exposure) | HIGH |
 | API REST without auth exposing sensitive data (user creds, network config) | CRITICAL |

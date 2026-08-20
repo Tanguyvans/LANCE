@@ -1175,7 +1175,11 @@ def _extract_insecure_update_compact(
         status_match = re.search(r"HTTP/\S+\s+(\d{3})", stdout[:300])
         status_code = int(status_match.group(1)) if status_match else None
         path = urlsplit(url).path.casefold()
-        if path.rstrip("/") == "/update" and status_code in {200, 201, 202, 204, 405}:
+        if (
+            path.rstrip("/") == "/update"
+            and status_code in {200, 201, 202, 204}
+            and re.search(r"(?i)(?:update|firmware|version|accepted)", stdout)
+        ):
             update_evidence.append(f"{url}: HTTP {status_code}")
         if path.rstrip("/") in {"/firmware", "/firmware/"} and "index of" in stdout.casefold():
             if not re.search(r"\.(?:sha256|sha512|sig|asc)\b", stdout, re.IGNORECASE):
@@ -1185,7 +1189,7 @@ def _extract_insecure_update_compact(
         return []
     evidence = "\n".join((update_evidence + firmware_evidence)[:4])
     return [_make_finding(
-        device, "insecure_update", "MEDIUM", "http", 80,
+        device, "insecure_update", "HIGH", "http", 80,
         "Firmware update endpoint or unsigned firmware is exposed without a verifiable signature",
         evidence,
         status="confirmed" if update_evidence else "suspected",
@@ -1221,19 +1225,20 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
             tools=["nmap_scan"],
         )]
 
-        # Any unauthenticated Redis is presumed to expose data — always add data_exposure.
-        # Phase 4 will run redis_cmd KEYS * + GET to confirm actual sensitive content.
-        # (nmap redis-info may not report db key counts for newer Redis versions.)
+        # An open Redis port proves unauthenticated access, not sensitive content.
+        # Promote data_exposure only when the scan reports at least one stored key;
+        # Phase 4 still has to retrieve a value before treating the content as confirmed.
         keys_match = re.search(r"db\d+:keys=(\d+)", stdout)
-        detail = f"Redis stores {keys_match.group(1)} key(s)" if keys_match else "Redis accessible without authentication"
-        findings.append(_make_finding(
-            device, "data_exposure", "MEDIUM", "redis", 6379,
-            f"{detail} — stored keys may contain sensitive data (credentials, tokens, configs)",
-            f"nmap redis-info: {stdout.strip()[:200]}" if "redis" in stdout.lower() else "nmap: 6379/tcp open",
-            status="suspected",
-            technique="redis-cli -h <ip> KEYS '*' then GET <key> to dump sensitive data",
-            tools=["nmap_scan"],
-        ))
+        key_count = int(keys_match.group(1)) if keys_match else 0
+        if key_count > 0:
+            findings.append(_make_finding(
+                device, "data_exposure", "MEDIUM", "redis", 6379,
+                f"Redis stores {key_count} key(s) — stored keys may contain sensitive data (credentials, tokens, configs)",
+                f"nmap redis-info: {stdout.strip()[:200]}",
+                status="suspected",
+                technique="redis-cli -h <ip> KEYS '*' then GET <key> to dump sensitive data",
+                tools=["nmap_scan"],
+            ))
 
         return findings
     return []
@@ -1418,6 +1423,7 @@ FINDING_EXTRACTORS = [
     _extract_ot_no_auth,
     _extract_http_no_auth_admin,
     _extract_redis_no_auth,
+    _extract_insecure_update_compact,
     _extract_ftp_anonymous,
     _extract_snmp_default_community,
     _extract_coap_no_auth,
@@ -1447,7 +1453,6 @@ def extract_findings(
     if compact:
         for extractor in (
             _extract_mysql_default_credentials_compact,
-            _extract_insecure_update_compact,
         ):
             try:
                 findings.extend(extractor(all_entries, device, ""))

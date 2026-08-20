@@ -848,7 +848,10 @@ def _expand_phase_selection(phases: list[int] | None) -> list[int] | None:
 
 
 def _normalise_full_finding_semantics(
-    finding: dict, context_findings: list[dict] | None = None
+    finding: dict,
+    context_findings: list[dict] | None = None,
+    *,
+    device_role: str = "",
 ) -> None:
     """Normalize equivalent claims before strict-v3 publication.
 
@@ -888,6 +891,39 @@ def _normalise_full_finding_semantics(
     ):
         finding["type"] = "data_exposure"
         finding["_semantic_origin"] = "sensitive_directory_listing"
+        return
+
+    if (
+        vuln_type == "directory_listing"
+        and device_role.casefold() in {"iot_gateway", "gateway"}
+        and service in {"http", "https"}
+        and re.search(r"(?i)(?:^|[ /])firmware/?(?:\b|$)", text)
+        and re.search(
+            r"(?i)(?:unsigned|without (?:a )?(?:signature|signature verification|"
+            r"authentication)|no \.(?:sha256|sha512|sig|asc)\b|"
+            r"update (?:endpoint|request).{0,80}(?:accepted|allowed)|"
+            r"/update.{0,80}\b(?:200|201|202|204)\b)",
+            text,
+        )
+    ):
+        # Only map a firmware listing to the OTA contract when the evidence
+        # also proves missing integrity/authentication controls.
+        finding["type"] = "insecure_update"
+        finding["severity"] = "HIGH"
+        finding["_semantic_origin"] = "firmware_listing_as_ota_surface"
+        return
+
+    if (
+        vuln_type == "misconfiguration"
+        and service == "ssh"
+        and re.search(
+            r"(?i)(?:terrapin|cbc|hmac[- ]?sha-?1|sha-?1|weak\s+(?:cipher|algorithm|mac|kex))",
+            text,
+        )
+    ):
+        # Cryptographic SSH claims map to the strict-v3 weak_cipher contract.
+        finding["type"] = "weak_cipher"
+        finding["_semantic_origin"] = "ssh_cryptographic_misconfiguration"
         return
 
     if (
@@ -940,7 +976,7 @@ def _finding_semantic_issue(
 
     details = " ".join(
         str(finding.get(key) or "")
-        for key in ("details", "evidence", "endpoint", "product", "version")
+        for key in ("details", "evidence", "endpoint", "endpoints", "product", "version")
     ).casefold()
     context_findings = context_findings or []
 
@@ -988,14 +1024,52 @@ def _finding_semantic_issue(
     ):
         return "protocol properties alone do not prove an additional vulnerability"
 
+    if not compact and vuln_type == "insecure_protocol" and service in {
+        "modbus", "s7comm", "ethernet/ip", "opcua"
+    } and any(
+        other is not finding
+        and other.get("device_ip") == finding.get("device_ip")
+        and canonicalize(str(other.get("type") or "").casefold()) == "no_auth"
+        and other.get("port") == finding.get("port")
+        for other in context_findings
+    ):
+        return "industrial protocol properties are represented by the proven no_auth finding"
+
+    if not compact and vuln_type == "misconfiguration" and service == "redis":
+        if re.search(r"(?i)\bbind(?: address)?\s*[:=]?\s*0\.0\.0\.0", details) and any(
+            other is not finding
+            and other.get("device_ip") == finding.get("device_ip")
+            and canonicalize(str(other.get("type") or "").casefold()) == "no_auth"
+            for other in context_findings
+        ):
+            return "Redis bind exposure is represented by the proven no_auth finding"
+
+    if not compact and vuln_type == "info_disclosure" and service == "redis":
+        if re.search(r"(?i)\b(?:redis\s+)?info\b|\b(?:version|architecture|memory usage|process id)\b", details) and any(
+            other is not finding
+            and other.get("device_ip") == finding.get("device_ip")
+            and canonicalize(str(other.get("type") or "").casefold()) == "no_auth"
+            for other in context_findings
+        ):
+            return "Redis INFO fingerprinting is redundant with the proven no_auth finding"
+
     if not compact and vuln_type == "info_disclosure":
         if re.search(
             r"(?i)(?:port .*\bclosed\b|connection errors?|return_code\s*7|"
             r"service appears to be down|mac address.*(?:proxmox|virtual)|"
-            r"virtualization platform|reveals implementation details)",
+            r"virtualization platform|reveals implementation details|"
+            r"slave\s+id|\bpymodbus\b|generic fingerprint(?:ing)?)",
             details,
         ):
             return "service state or generic platform fingerprint is not a scored disclosure"
+
+        if re.search(
+            r"(?i)(?:does not reveal|doesn't reveal|does not expose|"
+            r"no version(?: number)? exposed|positive security practice|"
+            r"prefill(?:s|ed)? .*\b(?:root|admin)\b)",
+            details,
+        ):
+            return "a negated or prefilled value is not a security disclosure"
 
     if not compact and vuln_type == "broken_access_control" and not re.search(
         r"(?i)(?:idor|cross[- ]tenant|authorization(?: boundary)?\s+bypass|"
@@ -1021,17 +1095,34 @@ def _finding_semantic_issue(
         return "blocked or rate-limited authentication enumeration is not a configuration finding"
 
     if not compact and vuln_type == "default_credentials" and service in {"http", "https"}:
-        if re.search(r"(?i)(?:backup|\.env|/config|\.sql)", details) and not re.search(
-            r"(?i)(?:login|authenticated|credential(?:s)?\s+(?:accepted|worked|success)|"
-            r"password\s+(?:accepted|worked))",
+        successful_auth = re.search(
+            r"(?i)(?:\blogged[ ]+in\b|\bauthenticated(?:[ ]+successfully)?\b|"
+            r"\b(?:login|authentication)[ ]+(?:succeeded|successful|accepted|worked|confirmed)\b|"
+            r"credential(?:s)?\s+(?:accepted|worked|success)|"
+            r"password\s+(?:accepted|worked)|try_credential|ssh_login)",
             details,
-        ):
+        )
+        if re.search(r"(?i)(?:backup|\.env|/config|\.sql)", details) and not successful_auth:
             return "credentials found in a file are data_exposure, not verified default_credentials"
-        if re.search(r"(?i)(?:pre[- ]fills?|discloses?|default credential pattern)", details) and not re.search(
-            r"(?i)(?:login|authenticated|credential(?:s)?\s+(?:accepted|worked|success))",
+        if re.search(r"(?i)(?:pre[- ]fills?|discloses?|default credential pattern)", details) and not successful_auth:
+            return "a default username or password displayed by a page is not a successful credential test"
+
+        if not successful_auth:
+            return "HTTP default_credentials requires a successful credential authentication"
+
+    if not compact and vuln_type == "default_credentials" and service == "ftp":
+        if re.search(r"(?i)\banonymous\b|no authentication required", details) and not re.search(
+            r"(?i)(?:credential(?:s)?\s+(?:accepted|worked|success)|login\s+succeeded|authenticated)",
             details,
         ):
-            return "a default username or password displayed by a page is not a successful credential test"
+            return "anonymous FTP access is not proof of a default account credential"
+
+    if not compact and vuln_type == "insecure_update" and service == "ftp":
+        if not re.search(
+            r"(?i)(?:update|ota|upgrade|install|replace|upload|signature|checksum)",
+            details,
+        ):
+            return "a downloadable FTP firmware directory is not an update mechanism"
 
     if not compact and vuln_type == "data_exposure":
         if re.search(r"(?i)(?:/sensor/|/telemetry|sensor data|telemetry)", details) and not re.search(
@@ -1044,6 +1135,27 @@ def _finding_semantic_issue(
             details,
         ):
             return "an unauthenticated page is no_auth, not data_exposure"
+
+        speculative = re.search(
+            r"(?i)\b(?:may|might|could|potential(?:ly)?|likely|possibly|"
+            r"appears? to|suggests?)\b|can be intercepted|can be retrieved",
+            details,
+        )
+        direct_secret = re.search(
+            r"(?i)(?:password|passwd|api[_ -]?key|token|secret|private key|credential)"
+            r"\s*[:=]\s*[^\s,;]+|(?:captured|returned|exposes?)"
+            r".{0,80}(?:password|credential|secret|token|api[_ -]?key|private key)|"
+            r"sql dump|backup file|\.env\b",
+            details,
+        )
+        if speculative and not direct_secret:
+            return "speculative data exposure lacks directly retrieved sensitive content"
+
+        if service in {"modbus", "s7comm", "ethernet/ip", "opcua"} and not re.search(
+            r"(?i)(?:read|register|coil|holding|input).{0,50}(?:returned|response|value|=|:)",
+            details,
+        ):
+            return "industrial data exposure requires an observed register or process value"
 
     if not compact and vuln_type == "insecure_protocol" and service == "mqtt":
         if any(
@@ -1096,6 +1208,19 @@ def _finding_semantic_issue(
             return f"insecure_protocol has no supported protocol evidence for service {service}"
 
     if vuln_type == "directory_listing":
+        if (
+            device_role.casefold() in {"iot_gateway", "gateway"}
+            and service in {"http", "https"}
+            and re.search(r"(?i)(?:^|[ /])firmware/?(?:\b|$)", details)
+            and not re.search(
+                r"(?i)(?:unsigned|without (?:a )?(?:signature|signature verification|"
+                r"authentication)|no \.(?:sha256|sha512|sig|asc)\b|"
+                r"update (?:endpoint|request).{0,80}(?:accepted|allowed)|"
+                r"/update.{0,80}\b(?:200|201|202|204)\b)",
+                details,
+            )
+        ):
+            return "firmware listing lacks proof of missing signature or update acceptance"
         if service == "web_upload" or re.search(r"(?i)(?:^|[ /])uploads?/?", details):
             return "directory_listing is not a finding for an intentional upload surface"
 
@@ -1189,7 +1314,7 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
         "http": (
             "Attempt code execution or unauthorized upload/firmware access.\n"
             "For file upload (web_upload role, port 80): http_get(\"http://{ip}/uploads/\") to check for uploaded files, then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
-            "For firmware update without signature (iot_gateway, port 80): use the required http_request POST with a non-empty probe body; a GET or directory listing is not update acceptance.\n"
+            "For firmware update without signature (iot_gateway, port 80): if curl_headers on /firmware/ shows an Index of with firmware files and no .sig/.asc/.sha256/.sha512 sidecar, report insecure_update HIGH; if /update accepts an update request, confirm it with the required http_request POST with a non-empty probe body.\n"
             "For web API RCE (web_server_v2, port 80): http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n"
             "Report what is accessible and whether code execution is possible."
         ),
@@ -1216,13 +1341,13 @@ ROLE_SPECIFIC_RULES: dict[str, str] = {
     "ldap_server": "- **ldap_server**: Port 389/tcp open → ALWAYS report weak_cipher MEDIUM (LDAP without TLS = credentials in cleartext). If anonymous bind returns entries (ldap-search nmap script output) → also report no_auth MEDIUM (anonymous read access to directory). Entries containing `userPassword` → data_exposure HIGH.",
     "coap_server": "- **coap_server**: Port 5683/udp open → ALWAYS report no_auth MEDIUM (CoAP has no built-in authentication). The absence of DTLS means traffic is in cleartext — add also weak_cipher MEDIUM if UDP is confirmed reachable. In VLAN-segmented networks, UDP 5683 may bypass iptables FORWARD rules that only drop TCP — mention this in `details` as a firewall bypass vector (the router's misconfiguration is the root cause, not this device).",
     "db_server": "- **db_server (MySQL/MariaDB)**: Root without password AND port 3306 open/network-accessible → default_credentials CRITICAL (unauthenticated full database access from network). ONLY if nmap mysql scan results confirm port 3306 in scan output — do NOT infer MySQL from HTTP responses. Do NOT report bind-address=0.0.0.0 as a misconfiguration — it is not a standalone vulnerability.",
-    "db_server_v2": "- **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Sensitive keys in Redis → data_exposure MEDIUM. If the scan shows stored keys (KEYS * output), always add data_exposure MEDIUM in addition to no_auth.",
+    "db_server_v2": "- **db_server_v2 (Redis)**: Port 6379 open without requirepass → no_auth HIGH. Report data_exposure MEDIUM only when a key name or value is actually retrieved and contains credentials, tokens, secrets, or configuration data. 'db0:keys=N' proves only that keys exist; it is not proof of sensitive content and must not be promoted by itself.",
     "modbus_server": "- **modbus_server**: Port 502/tcp open → no_auth CRITICAL (Modbus has no auth by design). Also note: unit ID 1 accessible, read/write coils and holding registers without credentials — data exchanged in cleartext.",
-    "iot_gateway": "- **iot_gateway / gateway**: Check (1) nginx HTTP admin accessible at /admin or /api/devices without auth → no_auth HIGH (topology disclosure = CRITICAL if OT IPs are exposed in the response); (2) Dropbear SSH running — check for CVE-2023-48795 Terrapin (weak_cipher HIGH) if version < 2020.82; (3) OTA firmware endpoint at /firmware/firmware.bin accessible → data_exposure LOW. Do NOT report insecure_update unless the endpoint actively accepts firmware uploads (POST /upload or /firmware). HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires 'Index of' in the response body. Do NOT report directory_listing unless the scanner explicitly found 'Index of'. Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.",
+    "iot_gateway": "- **iot_gateway / gateway**: Check (1) nginx HTTP admin accessible at /admin or /api/devices without auth → no_auth HIGH (topology disclosure = CRITICAL if OT IPs are exposed in the response); (2) Dropbear SSH running — check for CVE-2023-48795 Terrapin (weak_cipher HIGH) if version < 2020.82; (3) OTA: if '/firmware/' returns an 'Index of' containing firmware and no .sig, .asc, .sha256, or .sha512 sidecar, report exactly one insecure_update HIGH (do not also report directory_listing); if '/update' returns an accepted/allowed update response, report insecure_update HIGH. A lone firmware binary or a listing without proof of missing integrity/authentication is not enough. Do not invent an OTA finding from a generic HTTP 200.",
     "web_server": "- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.",
     "web_server_v2": "- **web_server / web_server_v2**: Directory listing confirmed → directory_listing MEDIUM. /api/exec accessible → code_injection CRITICAL. /api/users accessible without auth → no_auth CRITICAL. If /api/exec is accessible, report ONE finding only: code_injection CRITICAL — do NOT also add a separate no_auth for the same endpoint. If both /api/exec and /api/users are open, report code_injection (for exec) + no_auth (for users) as two distinct findings on distinct services/paths.",
     "web_upload": "- **web_upload**: The upload endpoint is at POST /upload (not /firmware/, not /update). If scan shows HTTP 200 on root or /upload → code_injection CRITICAL. Use type `code_injection`, NOT `file_upload_endpoint` (that is a noise type). Do NOT add directory_listing — these devices don't have index pages.",
-    "gateway": "- **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin → data_exposure LOW (specific file accessible, NOT directory_listing). directory_listing requires 'Index of' in the response body. Do NOT report directory_listing unless the scanner explicitly found 'Index of'. Do NOT report insecure_update — that type is reserved for devices with an active OTA update mechanism that is unsigned. A downloadable firmware binary is data_exposure, not insecure_update.",
+    "gateway": "- **gateway / iot_gateway**: HTTP 200 on /firmware/firmware.bin alone is not enough for an OTA claim. If '/firmware/' returns an 'Index of' containing firmware and no .sig, .asc, .sha256, or .sha512 sidecar, report exactly one insecure_update HIGH (not a separate directory_listing); if '/update' returns an accepted/allowed update response, report insecure_update HIGH. A listing without proof of missing integrity/authentication is not enough.",
     "router": "- **router**: Telnet open → insecure_protocol MEDIUM. LuCI admin accessible → no_auth CRITICAL.",
     "api_identity_server": "- **api_identity_server**: Retrieve `/docs` to obtain an authorized low-privilege test account. A working login is a control, not a finding. Use the resulting bearer token only for bounded authorization checks.",
     "api_tenant_server": "- **api_tenant_server**: First verify that no-token requests are rejected. With a legitimate low-privilege token, test one cross-tenant object, one server-controlled field update, and one privileged route. Report `broken_access_control` only when the response proves an authorization boundary is bypassed; never infer it merely from port 8080.",
@@ -5440,6 +5565,14 @@ class Pipeline:
                         if finding.get("type") in {"default_credentials", "insecure_update"}
                     ]
                     source_kind = "scanner_compact"
+                else:
+                    # Full mode remains model-led, but deterministic OTA evidence
+                    # is too contract-specific to leave outside the canonical queue.
+                    findings = [
+                        finding for finding in findings
+                        if finding.get("type") == "insecure_update"
+                    ]
+                    source_kind = "scanner_full"
                 add_candidates(findings, scan_path.name, source_kind)
             except Exception as exc:
                 log.warning("Scanner findings unavailable for %s: %s", device_id, exc)
@@ -5457,8 +5590,7 @@ class Pipeline:
                     vulns = []
                 model_vulns = vulns if isinstance(vulns, list) else []
                 add_candidates(model_vulns, f.name, "model")
-                if compact_mode:
-                    add_scanner_candidates(device_id, model_vulns)
+                add_scanner_candidates(device_id, model_vulns)
             except Exception as exc:
                 log.warning(
                     "Failed to parse %s — falling back to scanner findings: %s",
@@ -5491,7 +5623,13 @@ class Pipeline:
                 if isinstance(port, str) and port.isdigit():
                     finding["port"] = int(port)
             for finding in all_vulns:
-                _normalise_full_finding_semantics(finding, all_vulns)
+                _normalise_full_finding_semantics(
+                    finding,
+                    all_vulns,
+                    device_role=surface_roles.get(
+                        str(finding.get("device_id") or ""), ""
+                    ),
+                )
 
         for finding in all_vulns:
             finding["type"] = canonicalize(finding.get("type", ""))
@@ -5793,6 +5931,15 @@ class Pipeline:
                 # preserve every raw topic claim in the audit registry.
                 key = base_key + ("__mqtt_surface__",)
             elif (
+                finding.get("type") == "no_auth"
+                and service in {"http", "https"}
+            ):
+                # /admin, /api/devices and /api/status are evidence paths for
+                # one unauthenticated HTTP surface. Their endpoint union is
+                # preserved below, while only the strongest candidate is
+                # published to strict-v3.
+                key = base_key + ("__http_no_auth_surface__",)
+            elif (
                 finding.get("type") == "data_exposure"
                 and service in {"http", "https"}
             ):
@@ -5839,7 +5986,9 @@ class Pipeline:
         deduped: list[dict] = []
         for candidates in groups.values():
             chosen = max(candidates, key=finding_quality)
-            if len(candidates) > 1 and chosen.get("type") == "data_exposure":
+            if len(candidates) > 1 and chosen.get("type") in {
+                "data_exposure", "no_auth"
+            }:
                 combined_endpoints = sorted({
                     endpoint
                     for candidate in candidates

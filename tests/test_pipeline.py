@@ -6000,3 +6000,186 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["confirmed"] == 1
         assert aggregate["summary"]["errors"] == 0
         assert aggregate["tests"][0]["evidence_refs"]
+
+
+def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
+    http_default = {
+        "type": "default_credentials",
+        "service": "http",
+        "port": 80,
+        "details": "Admin panel displays default creds admin:admin",
+        "evidence": "GET /admin returned the text 'default creds admin:admin'",
+    }
+    assert "successful credential" in _finding_semantic_issue(http_default)
+
+    http_success = {
+        **http_default,
+        "details": "Login with admin:admin succeeded",
+        "evidence": "credential accepted and authenticated session returned",
+    }
+    assert _finding_semantic_issue(http_success) == ""
+
+    ftp_default = {
+        "type": "default_credentials",
+        "service": "ftp",
+        "port": 21,
+        "details": "Anonymous FTP login allows access without authentication",
+        "evidence": "FTP code 230",
+    }
+    assert "anonymous FTP" in _finding_semantic_issue(ftp_default)
+
+    ftp_firmware = {
+        "type": "insecure_update",
+        "service": "ftp",
+        "port": 21,
+        "details": "Firmware directory is downloadable through anonymous FTP",
+        "evidence": "firmware.bin listed in the directory",
+    }
+    assert "not an update mechanism" in _finding_semantic_issue(ftp_firmware)
+
+    speculative_redis = {
+        "type": "data_exposure",
+        "service": "redis",
+        "port": 6379,
+        "details": "Stored keys may contain sensitive credentials and tokens",
+        "evidence": "Redis is accessible without authentication",
+    }
+    assert "speculative data exposure" in _finding_semantic_issue(speculative_redis)
+
+    modbus_noise = {
+        "type": "insecure_protocol",
+        "service": "modbus",
+        "port": 502,
+        "device_ip": "192.0.2.10",
+        "details": "Modbus has no built-in encryption or authentication",
+        "evidence": "502/tcp open",
+    }
+    modbus_auth = {
+        "type": "no_auth",
+        "service": "modbus",
+        "port": 502,
+        "device_ip": "192.0.2.10",
+    }
+    assert "proven no_auth" in _finding_semantic_issue(
+        modbus_noise, context_findings=[modbus_noise, modbus_auth]
+    )
+
+    redis_bind = {
+        "type": "misconfiguration",
+        "service": "redis",
+        "port": 6379,
+        "device_ip": "192.0.2.11",
+        "details": "Redis bind address: 0.0.0.0",
+    }
+    redis_auth = {
+        "type": "no_auth",
+        "service": "redis",
+        "port": 6379,
+        "device_ip": "192.0.2.11",
+    }
+    assert "proven no_auth" in _finding_semantic_issue(
+        redis_bind, context_findings=[redis_bind, redis_auth]
+    )
+
+    assert "platform fingerprint" in _finding_semantic_issue({
+        "type": "info_disclosure",
+        "service": "modbus",
+        "port": 502,
+        "details": "Slave ID Pymodbus reveals implementation details",
+    })
+
+    listing = {
+        "type": "directory_listing",
+        "service": "http",
+        "port": 80,
+        "device_ip": "192.0.2.12",
+        "endpoint": "/firmware/",
+        "details": "Directory listing enabled on /firmware/; firmware files have no .sig or .sha256 sidecar",
+        "evidence": "Index of found at /firmware/ and no signature files were listed",
+    }
+    _normalise_full_finding_semantics(
+        listing, [listing], device_role="iot_gateway"
+    )
+    assert listing["type"] == "insecure_update"
+    assert listing["severity"] == "HIGH"
+
+    unproven_listing = {
+        "type": "directory_listing",
+        "service": "http",
+        "port": 80,
+        "device_ip": "192.0.2.13",
+        "endpoint": "/firmware/",
+        "details": "Directory listing enabled on /firmware/",
+        "evidence": "Index of found at /firmware/",
+    }
+    _normalise_full_finding_semantics(
+        unproven_listing, [unproven_listing], device_role="iot_gateway"
+    )
+    assert unproven_listing["type"] == "directory_listing"
+    assert "lacks proof" in _finding_semantic_issue(
+        unproven_listing, device_role="iot_gateway"
+    )
+
+    ssh_crypto = {
+        "type": "misconfiguration",
+        "service": "ssh",
+        "port": 22,
+        "details": "Terrapin mitigation still permits CBC ciphers and hmac-sha1",
+    }
+    _normalise_full_finding_semantics(ssh_crypto, [ssh_crypto])
+    assert ssh_crypto["type"] == "weak_cipher"
+
+
+def test_gateway_ota_and_redis_extractors_require_direct_evidence():
+    from src.agent import scanner as scanner_mod
+
+    gateway = {"id": "gw", "ip": "192.0.2.20", "role": "iot_gateway"}
+    ota_listing = [{
+        "tool": "curl_headers",
+        "kwargs": {"url": "http://192.0.2.20/firmware/"},
+        "result": json.dumps({
+            "stdout": "HTTP/1.1 200 OK\n<h1>Index of /firmware/</h1>\n<a href='latest.bin'>latest.bin</a>",
+            "return_code": 0,
+        }),
+    }]
+    findings = scanner_mod.extract_findings({"http": ota_listing}, gateway)
+    ota = next(finding for finding in findings if finding["type"] == "insecure_update")
+    assert ota["severity"] == "HIGH"
+    assert ota["exploitation_status"] == "suspected"
+
+    signed_listing = [{
+        **ota_listing[0],
+        "result": json.dumps({
+            "stdout": "HTTP/1.1 200 OK\nIndex of /firmware/\nlatest.bin\nlatest.bin.sha256",
+            "return_code": 0,
+        }),
+    }]
+    assert not any(
+        finding["type"] == "insecure_update"
+        for finding in scanner_mod.extract_findings({"http": signed_listing}, gateway)
+    )
+
+    redis = {"id": "redis", "ip": "192.0.2.21", "role": "db_server_v2"}
+    redis_scan = [{
+        "tool": "nmap_scan",
+        "kwargs": {"target": "192.0.2.21", "ports": "6379"},
+        "result": json.dumps({
+            "stdout": "6379/tcp open redis",
+            "return_code": 0,
+        }),
+    }]
+    redis_findings = scanner_mod.extract_findings({"nmap": redis_scan}, redis)
+    assert any(finding["type"] == "no_auth" for finding in redis_findings)
+    assert not any(finding["type"] == "data_exposure" for finding in redis_findings)
+
+    redis_with_keys = [{
+        **redis_scan[0],
+        "result": json.dumps({
+            "stdout": "6379/tcp open redis\n| redis-info: db0:keys=2,expires=0",
+            "return_code": 0,
+        }),
+    }]
+    assert any(
+        finding["type"] == "data_exposure"
+        for finding in scanner_mod.extract_findings({"nmap": redis_with_keys}, redis)
+    )
