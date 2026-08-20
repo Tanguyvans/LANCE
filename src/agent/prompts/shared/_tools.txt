@@ -1,5 +1,10 @@
 ## Tool catalog
 
+This section is documentation, not an additional API. The runtime tool schemas
+and the phase-specific runtime list are authoritative. Call only an exact
+function name present in those schemas; never substitute a shell binary,
+package, library, CLI, flag, or command-line recipe.
+
 ### Graph tools (network model queries)
 - **get_network_topology()** — Full topology (nodes + edges) as JSON
 - **get_device_info(device_id)** — Device details + its neighbors

@@ -23,6 +23,7 @@ from src.agent.pipeline import (
     _make_test_entry,
     _finding_semantic_issue,
     _normalise_full_finding_semantics,
+    _sanitize_suggested_tools,
     _extract_endpoint_paths,
     _expand_phase_selection,
 )
@@ -138,6 +139,22 @@ def test_full_phase3_normalizes_nullable_schema_fields_without_changing_compact(
     _enrich_finding_structure(full_finding, strict_schema=True)
     assert full_finding["endpoint"] == ""
 
+
+def test_suggested_tools_are_restricted_to_canonical_catalog_names():
+    finding = {
+        "suggested_tools": [
+            "ssh-audit",
+            "nmap ssh-vulnscan",
+            "modbus-cli",
+            "http_get",
+            "mysql CLI client, sqlmap, Metasploit mysql_hashdump",
+        ]
+    }
+
+    assert _sanitize_suggested_tools(
+        finding, catalog_names={"ssh_audit", "http_get", "sqlmap"}
+    ) == ["ssh_audit", "http_get", "sqlmap"]
+    assert finding["suggested_tools"] == ["ssh_audit", "http_get", "sqlmap"]
 
 @pytest.mark.parametrize("profile", ["full", "compact"])
 def test_phase5_scope_guard_is_only_enforced_for_compact(

@@ -24,7 +24,11 @@ from src.benchmark.scenario_exports import (
     resolve_topology_path,
 )
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment, ManualScenarioDeployment
-from src.benchmark.tool_registry import INTERNAL_TOOLS, tool_policy_for_phase
+from src.benchmark.tool_registry import (
+    INTERNAL_TOOLS,
+    available_tool_names,
+    tool_policy_for_phase,
+)
 
 from src.agent.registry import AGENTS, AgentConfig
 from src.agent.execution_profiles import (
@@ -1427,6 +1431,51 @@ def _extract_endpoint_paths(*values: object) -> list[str]:
     for value in values:
         add(value)
     return paths
+
+
+def _sanitize_suggested_tools(
+    finding: dict,
+    *,
+    catalog_names: set[str] | None = None,
+) -> list[str]:
+    """Keep model-provided tool suggestions inside the repository catalog.
+
+    Models often emit a CLI, package, or command-line recipe in
+    ``suggested_tools`` (for example ``ffplay`` or ``nmap ssh-vulnscan``).
+    Those are not callable provider functions and can steer a later phase
+    toward an unavailable tool.  The raw candidate remains in the audit
+    registry; the canonical finding receives only exact catalog names.  A
+    hyphen is accepted solely as the display spelling of an underscored
+    catalog name, such as ``ssh-audit`` -> ``ssh_audit``.
+    """
+    if "suggested_tools" not in finding:
+        return []
+
+    allowed = set(available_tool_names() if catalog_names is None else catalog_names)
+    raw = finding.get("suggested_tools")
+    if isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, (list, tuple, set)):
+        values = list(raw)
+    else:
+        values = []
+
+    cleaned: list[str] = []
+    for value in values:
+        if not isinstance(value, (str, int, float)):
+            continue
+        value = str(value).replace("\n", ",")
+        for item in re.split(r"[,;|\\n]+", str(value)):
+            token = item.strip().strip("`'\"")
+            if not token:
+                continue
+            canonical = token.casefold().replace("-", "_")
+            if canonical in allowed and re.fullmatch(r"[a-z0-9_]+", canonical):
+                if canonical not in cleaned:
+                    cleaned.append(canonical)
+
+    finding["suggested_tools"] = cleaned
+    return cleaned
 
 
 def _enrich_finding_structure(
@@ -4913,6 +4962,13 @@ class Pipeline:
             self._wrap_tool(t, phase=3, agent="vuln_analysis")
             for t in analysis_candidates
         ]
+        phase4_tool_catalog = sorted({
+            str(tool.get("name"))
+            for tool in [*available_recon_tools, *SKILL_TOOLS, *DELIVERABLE_TOOLS]
+            if tool.get("name") and not (
+                self.sealed and tool.get("name") in SEALED_FORBIDDEN_TOOLS
+            )
+        })
 
         def _analyze_device(device: dict):
             device_id = device["id"]
@@ -4970,8 +5026,6 @@ class Pipeline:
                 device_role, 
                 "- No specific priority rules defined for this role. Follow general best practices."
             )
-
-            system_prompt = load_prompt("analyze_device", variables)
 
             print(f"  [+] Analyzing: {device_id} ({device_ip})")
             if stream_callback:
@@ -5072,6 +5126,14 @@ class Pipeline:
                 device_config,
                 stream_callback,
             )
+            variables["phase3_allowed_tools"] = ", ".join(
+                sorted({
+                    str(tool.get("name")) for tool in device_tools
+                    if tool.get("name")
+                })
+            )
+            variables["phase4_tool_catalog"] = ", ".join(phase4_tool_catalog)
+            system_prompt = load_prompt("analyze_device", variables)
             self.tracker.start_phase(f"analyze_{device_id}")
             result_text = self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -5600,6 +5662,7 @@ class Pipeline:
 
         records_by_id = {r["candidate_id"]: r for r in raw_records}
         cve_search_evidence = self._load_cve_search_evidence()
+        catalog_tool_names = available_tool_names()
         compact_tool_records: list[dict] = []
         if compact_mode:
             tool_log = self.run_dir / "tool_calls.jsonl"
@@ -5632,6 +5695,7 @@ class Pipeline:
                 )
 
         for finding in all_vulns:
+            _sanitize_suggested_tools(finding, catalog_names=catalog_tool_names)
             finding["type"] = canonicalize(finding.get("type", ""))
             if compact_mode:
                 _enrich_finding_structure(finding)
@@ -6324,7 +6388,6 @@ class Pipeline:
             set_expected_deliverable(deliverable_file)
             variables["available_skills"] = ""
 
-            system_prompt = load_prompt("exploit_device_vuln", variables)
             phase_name = f"exploit_{device_id}_{vuln_type}"
             exploit_config = AgentConfig(
                 name=phase_name,
@@ -6395,6 +6458,10 @@ class Pipeline:
                         # service-specific requirement is guidance, not a
                         # harness-enforced route or stopping condition.
                         verification_tools = exploit_tools
+                    variables["phase4_allowed_tools"] = ", ".join(sorted({
+                        str(tool.get("name")) for tool in verification_tools if tool.get("name")
+                    }))
+                    system_prompt = load_prompt("exploit_device_vuln", variables)
                     if compact_local_moe:
                         try:
                             result_text = self.provider.chat_with_tools(
