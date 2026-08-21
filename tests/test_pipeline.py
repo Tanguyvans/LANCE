@@ -5179,6 +5179,74 @@ class TestInformationPreservingArchitecture:
         assert services[1]["version"] == "OpenWrt uHTTPd"
         assert (pipeline.run_dir / "02_recon_evidence.json").exists()
 
+    def test_phase2_recon_reconciles_custom_scenario_services(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        import src.agent.tools.graph_tools as graph_tools
+
+        nodes = [
+            {
+                "id": "s22-router", "ip": "192.0.2.1", "role": "router",
+                "services": [],
+            },
+            {
+                "id": "s22-custom-a", "ip": "192.0.2.11",
+                "role": "custom_public_role", "services": [],
+            },
+            {
+                "id": "s22-custom-b", "ip": "192.0.2.12",
+                "role": "custom_control_role", "services": [],
+            },
+            {
+                "id": "s22-unobserved", "ip": "192.0.2.13",
+                "role": "custom_role", "services": [],
+            },
+        ]
+        monkeypatch.setattr(
+            graph_tools,
+            "_scenario_topology",
+            {"nodes": nodes, "node_index": {node["id"]: node for node in nodes}},
+        )
+        pipeline = Pipeline(provider=mock_provider, scenario_id=22)
+        projection = {
+            "devices": [
+                {
+                    "ip": "192.0.2.1",
+                    "services": [
+                        {"port": 80, "protocol": "tcp", "service": "http"},
+                        {"port": 443, "protocol": "tcp", "service": "ssl/http"},
+                    ],
+                },
+                {
+                    "ip": "192.0.2.11",
+                    "services": [
+                        {"port": 8080, "protocol": "tcp", "service": "http-proxy"},
+                    ],
+                },
+                {
+                    "ip": "192.0.2.12",
+                    "services": [
+                        {"port": 8080, "protocol": "tcp", "service": "http-proxy"},
+                    ],
+                },
+            ],
+        }
+
+        result = pipeline._reconcile_phase2_attack_surface(projection)
+
+        assert result["reconciled_nodes"] == [
+            "s22-custom-a", "s22-custom-b", "s22-router",
+        ]
+        assert result["unresolved_nodes"] == ["s22-unobserved"]
+        by_id = {node["id"]: node for node in nodes}
+        assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["http"]
+        assert [service["name"] for service in by_id["s22-router"]["services"]] == [
+            "http", "https",
+        ]
+        assert {
+            node["id"] for node in json.loads(graph_tools.get_attack_surface())
+        } == {node["id"] for node in nodes}
+
     def test_compact_local_recon_rebuilds_fact_sections_before_validation(
         self, output_dir, monkeypatch
     ):

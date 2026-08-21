@@ -455,6 +455,101 @@ def python_exec(script: str, timeout: int = 60) -> str:
                 pass
 
 
+class _RedisCommandError(Exception):
+    """A Redis RESP error reply, distinct from transport failures."""
+
+
+def _redis_read_line(stream) -> bytes:
+    line = stream.readline(4096)
+    if not line or not line.endswith(b"\r\n"):
+        raise ValueError("incomplete Redis RESP line")
+    return line[:-2]
+
+
+def _redis_read_response(stream, depth: int = 0):
+    if depth > 8:
+        raise ValueError("Redis RESP nesting limit exceeded")
+    prefix = stream.read(1)
+    if not prefix:
+        raise ValueError("empty Redis response")
+    line = _redis_read_line(stream)
+    if prefix == b"+":
+        return line.decode("utf-8", errors="replace")
+    if prefix == b"-":
+        raise _RedisCommandError(line.decode("utf-8", errors="replace"))
+    if prefix == b":":
+        return int(line)
+    if prefix == b"$":
+        length = int(line)
+        if length == -1:
+            return None
+        if length < 0 or length > 65536:
+            raise ValueError("Redis bulk response exceeds 65536 bytes")
+        value = stream.read(length)
+        if len(value) != length or stream.read(2) != b"\r\n":
+            raise ValueError("incomplete Redis bulk response")
+        return value.decode("utf-8", errors="replace")
+    if prefix == b"*":
+        count = int(line)
+        if count == -1:
+            return None
+        if count < 0 or count > 1024:
+            raise ValueError("Redis array response exceeds 1024 items")
+        return [_redis_read_response(stream, depth + 1) for _ in range(count)]
+    raise ValueError(f"unsupported Redis RESP type: {prefix!r}")
+
+
+def _redis_render_response(value) -> str:
+    if value is None:
+        return "(nil)"
+    if isinstance(value, list):
+        return "\n".join(_redis_render_response(item) for item in value)
+    return str(value)
+
+
+def redis_cmd(host: str, port: int = 6379, command: str = "") -> str:
+    """Execute one bounded Redis command without requiring redis-cli."""
+    result = {
+        "host": host,
+        "port": int(port or 6379),
+        "command": command,
+        "stdout": "",
+        "stderr": "",
+        "return_code": 0,
+    }
+    try:
+        parts = shlex.split(str(command or ""))
+    except ValueError as exc:
+        result.update({"stderr": f"invalid Redis command: {exc}", "return_code": 2})
+        return json.dumps(result)
+    if not parts:
+        result.update({"stderr": "Redis command must not be empty", "return_code": 2})
+        return json.dumps(result)
+    if len(parts) > 64 or any(len(part) > 4096 for part in parts):
+        result.update({"stderr": "Redis command exceeds the bounded argument limit", "return_code": 2})
+        return json.dumps(result)
+
+    wire = b"*" + str(len(parts)).encode("ascii") + b"\r\n"
+    wire += b"".join(
+        b"$" + str(len(part.encode("utf-8"))).encode("ascii") + b"\r\n"
+        + part.encode("utf-8") + b"\r\n"
+        for part in parts
+    )
+    try:
+        with socket.create_connection((host, result["port"]), timeout=10) as sock:
+            sock.settimeout(10)
+            sock.sendall(wire)
+            with sock.makefile("rb") as stream:
+                response = _redis_read_response(stream)
+        result["stdout"] = _redis_render_response(response)[:65536]
+    except _RedisCommandError as exc:
+        result.update({"stderr": str(exc), "return_code": 1})
+    except (OSError, socket.timeout) as exc:
+        result.update({"stderr": f"{type(exc).__name__}: {exc}", "return_code": 1})
+    except (TypeError, ValueError, UnicodeError) as exc:
+        result.update({"stderr": f"invalid Redis response: {exc}", "return_code": -1})
+    return json.dumps(result)
+
 def http_request(
     url: str,
     method: str = "GET",
@@ -822,6 +917,7 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "try_credential", try_credential)
     register_python_handler(tools, "traceroute", traceroute)
     register_python_handler(tools, "python_exec", python_exec)
+    register_python_handler(tools, "redis_cmd", redis_cmd)
     register_python_handler(tools, "http_request", http_request)
     register_python_handler(tools, "tcp_send", tcp_send)
     register_python_handler(tools, "udp_send", udp_send)

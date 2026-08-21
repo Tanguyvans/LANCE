@@ -405,7 +405,14 @@ def get_attack_surface() -> str:
             "target_network": _discovery_mode["target_network"],
         }, ensure_ascii=False)
     if _scenario_topology is not None:
-        exposed = [n for n in _scenario_topology["nodes"] if n.get("services")]
+        # Scenario topologies may intentionally use public/custom roles whose
+        # services are not known until Phase 2 reconnaissance. Keep every
+        # declared host with an address in the Phase 3 surface so a missing
+        # role-to-service mapping cannot silently starve later phases.
+        exposed = [
+            n for n in _scenario_topology["nodes"]
+            if n.get("ip") or n.get("services")
+        ]
         return json.dumps(exposed, ensure_ascii=False)
     return json.dumps(_backend.get_attack_surface(), ensure_ascii=False, default=str)
 

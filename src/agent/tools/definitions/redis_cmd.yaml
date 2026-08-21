@@ -1,9 +1,8 @@
 name: "redis_cmd"
-command: "redis-cli"
-args: []
+handler: "python"
 enabled: true
 timeout: 10
-short_description: "Redis CLI command runner"
+short_description: "Redis command runner"
 description: |
   Run Redis commands against a Redis server to test authentication and extract data.
   Use for testing no_auth (unauthenticated Redis) and data_exposure findings.

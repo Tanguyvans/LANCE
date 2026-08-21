@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch
@@ -178,6 +179,54 @@ class TestLoadAllTools:
         tools = load_all_tools()
         nvd = next(t for t in tools if t["name"] == "nvd_lookup")
         assert nvd["function"] is None
+
+    def test_redis_tool_uses_native_handler_and_survives_missing_cli(self):
+        definition = load_tool_yaml(DEFINITIONS_DIR / "redis_cmd.yaml")
+        assert definition["handler"] == "python"
+        assert "command" not in definition
+
+        from src.agent.tools.recon_tools import RECON_TOOLS
+
+        redis_tool = next(tool for tool in RECON_TOOLS if tool["name"] == "redis_cmd")
+        assert callable(redis_tool["function"])
+        available, unavailable = filter_unavailable_tools([redis_tool])
+        assert [tool["name"] for tool in available] == ["redis_cmd"]
+        assert "redis_cmd" not in unavailable
+
+
+class TestRedisHandler:
+    def test_redis_handler_sends_resp_and_renders_array(self):
+        from src.agent.tools.recon_tools import redis_cmd
+
+        class FakeSocket:
+            def __init__(self):
+                self.sent = b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def settimeout(self, _timeout):
+                pass
+
+            def sendall(self, payload):
+                self.sent = payload
+
+            def makefile(self, _mode):
+                return io.BytesIO(b"*2\r\n$4\r\nkey1\r\n$4\r\nkey2\r\n")
+
+        fake = FakeSocket()
+        with patch(
+            "src.agent.tools.recon_tools.socket.create_connection",
+            return_value=fake,
+        ):
+            result = json.loads(redis_cmd("192.0.2.10", command="KEYS *"))
+
+        assert result["return_code"] == 0
+        assert result["stdout"] == "key1\nkey2"
+        assert fake.sent.startswith(b"*2\r\n$4\r\nKEYS\r\n$1\r\n*\r\n")
 
     def test_subprocess_tools_have_function(self):
         tools = load_all_tools()

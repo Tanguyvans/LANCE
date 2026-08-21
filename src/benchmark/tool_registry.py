@@ -152,6 +152,8 @@ SERVICE_ALIASES: dict[str, str] = {
     "http": "http",
     "https": "https",
     "http-alt": "http",
+    "http-proxy": "http",
+    "ssl/http": "https",
     "mqtt": "mqtt",
     "port-9001": "mqtt",
     "telnet": "telnet",

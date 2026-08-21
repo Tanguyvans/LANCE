@@ -26,6 +26,7 @@ from src.benchmark.scenario_exports import (
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment, ManualScenarioDeployment
 from src.benchmark.tool_registry import (
     INTERNAL_TOOLS,
+    SERVICE_ALIASES,
     available_tool_names,
     tool_policy_for_phase,
 )
@@ -4308,7 +4309,8 @@ class Pipeline:
                 print(f"  LLM final output: {result_text[:500]}")
 
         if config.name == "recon":
-            self._build_recon_evidence_projection()
+            projection = self._build_recon_evidence_projection()
+            self._reconcile_phase2_attack_surface(projection)
 
         if stream_callback and not defer_compact_intrusion_done:
             stream_callback({
@@ -4322,6 +4324,98 @@ class Pipeline:
             })
 
         return status
+
+    def _reconcile_phase2_attack_surface(self, projection: dict | None = None) -> dict:
+        """Promote Phase 2 service observations into the Phase 3 scenario graph.
+
+        Public benchmark topologies can contain deliberately novel roles. The
+        graph loader must not guess their services from the role name, but the
+        deterministic Phase 2 ledger already contains the observed IP/port
+        facts. Replacing an empty role-derived service list with those facts
+        keeps the Phase 3 scanner and per-device agents aligned with reality.
+        """
+        if self.scenario_id is None or self.target_network is not None:
+            return {"status": "not_applicable"}
+
+        if projection is None:
+            projection_path = self.run_dir / "02_recon_evidence.json"
+            try:
+                projection = json.loads(projection_path.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                return {"status": "missing_projection"}
+        if not isinstance(projection, dict):
+            return {"status": "invalid_projection"}
+
+        from src.agent.tools.graph_tools import _scenario_topology
+
+        topology = _scenario_topology or {}
+        nodes = topology.get("nodes", [])
+        if not isinstance(nodes, list):
+            return {"status": "missing_topology"}
+
+        observed_by_ip = {
+            str(row.get("ip")): row
+            for row in projection.get("devices", [])
+            if isinstance(row, dict) and str(row.get("ip", "")).strip()
+        }
+        reconciled: list[str] = []
+        unresolved: list[str] = []
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = str(node.get("id", ""))
+            ip = str(node.get("ip", ""))
+            row = observed_by_ip.get(ip)
+            observed_services = row.get("services", []) if row else []
+            normalized_services: list[dict] = []
+            seen_services: set[tuple[int, str, str]] = set()
+            for service in observed_services:
+                if not isinstance(service, dict):
+                    continue
+                try:
+                    port = int(service.get("port"))
+                except (TypeError, ValueError):
+                    continue
+                raw_name = str(
+                    service.get("service") or service.get("name") or "unknown"
+                ).strip().casefold()
+                name = SERVICE_ALIASES.get(raw_name, raw_name)
+                protocol = str(service.get("protocol") or "tcp").casefold()
+                version = str(service.get("version") or "")
+                key = (port, protocol, name)
+                if key in seen_services:
+                    continue
+                seen_services.add(key)
+                normalized_services.append({
+                    "name": name,
+                    "port": port,
+                    "protocol": protocol,
+                    "version": version,
+                    "source": "phase2_recon",
+                })
+
+            if normalized_services:
+                normalized_services.sort(
+                    key=lambda item: (item["port"], item["protocol"], item["name"])
+                )
+                node["services"] = normalized_services
+                reconciled.append(node_id)
+            elif not node.get("services"):
+                unresolved.append(node_id)
+
+        result = {
+            "status": "reconciled",
+            "declared_nodes": len([node for node in nodes if isinstance(node, dict)]),
+            "observed_nodes": len(observed_by_ip),
+            "reconciled_nodes": sorted(reconciled),
+            "unresolved_nodes": sorted(unresolved),
+        }
+        log.info(
+            "Phase 2 surface reconciliation: %d nodes updated, %d unresolved",
+            len(reconciled), len(unresolved),
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Phase 3: scanner (3a) + LLM analysis (3b)
