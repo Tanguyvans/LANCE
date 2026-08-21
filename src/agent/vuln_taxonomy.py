@@ -42,6 +42,12 @@ NOISE_TYPES: frozenset[str] = frozenset({
     "snmp_not_scanned",
     "no_http_service",
     "informational",
+    "secure_configuration",
+    "security_control",
+    "not_vulnerable",
+    "no_vulnerability",
+    "authentication_required",
+    "positive_finding",
     "potential_cve",
     "exposure",
     # Structural FPs

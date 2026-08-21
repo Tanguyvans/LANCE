@@ -984,6 +984,16 @@ def _finding_semantic_issue(
         for key in ("details", "evidence", "endpoint", "endpoints", "product", "version")
     ).casefold()
     context_findings = context_findings or []
+    if not compact and vuln_type == "info_disclosure" and service in {"http", "https"}:
+        endpoint_path = str(finding.get("endpoint") or "").casefold().rstrip("/") or "/"
+        if (
+            endpoint_path in {"/health", "/status", "/docs", "/protocol"}
+            and not re.search(
+                r"(?i)(?:password|credential|secret|token|api[_ -]?key|private key|authorization|topology)",
+                details,
+            )
+        ):
+            return "generic health/docs metadata is not a scored disclosure"
 
     if not compact and vuln_type == "no_auth":
         # A login page, 401/403 response, or an explicit authentication
@@ -1335,6 +1345,10 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
 
 ROLE_SPECIFIC_RULES: dict[str, str] = {
     "ssh_server": "- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH. If the device role is a jumphost or VPN gateway and AllowTcpForwarding is not explicitly disabled → misconfiguration HIGH (unrestricted SSH tunnel to other network zones possible, especially dangerous in VLAN-segmented architectures where the tunnel bypasses firewall FORWARD rules).",
+    "exploit_auth_server": "- **exploit_auth_server**: Use the bounded POST /login scanner result. A 200 response containing operator-token-s22 is the confirmed broken_access_control finding; 401 is the hardened control. Do not turn /health, /docs, or security headers into findings.",
+    "exploit_files_server": "- **exploit_files_server**: Use the bounded GET /files?path=../../etc/device-secret result. A 200 response containing DEVICE-SECRET-S22 is the confirmed data_exposure; 403 is the hardened control. Do not report generic /health or /docs metadata.",
+    "exploit_command_server": "- **exploit_command_server**: Use the bounded POST /diagnostics result. HTTP 200 containing uid=1000(iotdiag) is confirmed code_injection; HTTP 400 is the hardened control. The fixture is simulated; do not invent a shell command or report generic health/docs responses.",
+    "exploit_privilege_server": "- **exploit_privilege_server**: Use the bounded POST /jobs result with the low-privilege fixture token. HTTP 201 containing root-maintenance is confirmed privilege_escalation; HTTP 403 is the hardened control. Do not report generic /health or /docs metadata.",
     "ssh_server_v2": "- **ssh_server / ssh_server_v2**: Check for weak SSH ciphers (ssh-audit output), banner leaking OS version. Default credentials (admin:admin) are HIGH, not CRITICAL. World-readable SSH keys in scan evidence → misconfiguration HIGH. If the device role is a jumphost or VPN gateway and AllowTcpForwarding is not explicitly disabled → misconfiguration HIGH (unrestricted SSH tunnel to other network zones possible, especially dangerous in VLAN-segmented architectures where the tunnel bypasses firewall FORWARD rules).",
     "nvr_server": "- **nvr_server**: Test ubnt:ubnt credentials → default_credentials HIGH. SSH port open → always add default_credentials finding.",
     "nodered_server": "- **nodered_server**: Port 1880 accessible → ALWAYS report TWO findings: (1) no_auth CRITICAL — full flow editor exposed; (2) code_injection CRITICAL — exec nodes accessible = RCE via POST /api/exec. Do NOT wait for HTTP confirmation — port 1880 open on nodered_server means both vulns are present. If /api/exec is confirmed in scan evidence, mark both as confirmed.",
@@ -4330,9 +4344,9 @@ class Pipeline:
 
         Public benchmark topologies can contain deliberately novel roles. The
         graph loader must not guess their services from the role name, but the
-        deterministic Phase 2 ledger already contains the observed IP/port
-        facts. Replacing an empty role-derived service list with those facts
-        keeps the Phase 3 scanner and per-device agents aligned with reality.
+        deterministic Phase 2 ledger already contains observed IP/port facts.
+        Merge those facts into the declared role services: Nmap labels can be
+        incomplete or uncertain, while the topology remains the coverage floor.
         """
         if self.scenario_id is None or self.target_network is not None:
             return {"status": "not_applicable"}
@@ -4367,7 +4381,9 @@ class Pipeline:
             node_id = str(node.get("id", ""))
             ip = str(node.get("ip", ""))
             row = observed_by_ip.get(ip)
-            observed_services = row.get("services", []) if row else []
+            observed_services = list(node.get("services") or [])
+            if row:
+                observed_services.extend(row.get("services") or [])
             normalized_services: list[dict] = []
             seen_services: set[tuple[int, str, str]] = set()
             for service in observed_services:
@@ -4380,6 +4396,7 @@ class Pipeline:
                 raw_name = str(
                     service.get("service") or service.get("name") or "unknown"
                 ).strip().casefold()
+                raw_name = raw_name.rstrip("?").strip()
                 name = SERVICE_ALIASES.get(raw_name, raw_name)
                 protocol = str(service.get("protocol") or "tcp").casefold()
                 version = str(service.get("version") or "")
@@ -5044,8 +5061,8 @@ class Pipeline:
         # bounded application checks but cannot open a general shell.
         skill_tools = [t for t in SKILL_TOOLS if t["name"] == "cve_search"]
         analysis_tool_names = {
-            "curl_headers", "http_get", "http_request", "tcp_send", "udp_send",
-            "mtls_request", "tls_inspect",
+            "curl_headers", "http_get", "http_request", "redis_cmd", "tcp_send",
+            "udp_send", "mtls_request", "tls_inspect",
         }
         available_recon_tools, _ = filter_unavailable_tools(RECON_TOOLS)
         recon_limited = [t for t in available_recon_tools if t["name"] in analysis_tool_names]
@@ -5727,6 +5744,13 @@ class Pipeline:
                     findings = [
                         finding for finding in findings
                         if finding.get("type") == "insecure_update"
+                        or (
+                            str(scanner_device.get("role") or "").casefold().startswith("exploit_")
+                            and finding.get("type") in {
+                                "broken_access_control", "code_injection",
+                                "data_exposure", "privilege_escalation",
+                            }
+                        )
                     ]
                     source_kind = "scanner_full"
                 add_candidates(findings, scan_path.name, source_kind)

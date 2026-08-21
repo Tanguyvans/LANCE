@@ -155,6 +155,11 @@ def test_compact_phase3_profile_routes_from_discovered_services():
         {"id": "sensor", "ip": "192.0.2.20"},
         {"services": [{"port": 5683, "protocol": "udp", "service": "coap"}]},
     )
+    redis_names = phase3_tool_names(
+        profile,
+        {"id": "redis", "ip": "192.0.2.21"},
+        {"services": [{"port": 6379, "service": "redis"}]},
+    )
 
     assert {"curl_headers", "http_get", "http_request"} <= websocket_names
     assert "udp_send" not in websocket_names
@@ -162,6 +167,7 @@ def test_compact_phase3_profile_routes_from_discovered_services():
     assert "save_deliverable" in websocket_names & coap_names
 
 
+    assert "redis_cmd" in redis_names
 def test_profile_metadata_falls_back_after_corrupt_run_meta(tmp_path):
     (tmp_path / "run_meta.json").write_text("not-json", encoding="utf-8")
     (tmp_path / "scenario_meta.json").write_text(

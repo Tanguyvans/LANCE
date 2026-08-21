@@ -5191,7 +5191,7 @@ class TestInformationPreservingArchitecture:
             },
             {
                 "id": "s22-custom-a", "ip": "192.0.2.11",
-                "role": "custom_public_role", "services": [],
+                "role": "custom_public_role", "services": [{"name": "mqtt", "port": 1883, "protocol": "tcp"}],
             },
             {
                 "id": "s22-custom-b", "ip": "192.0.2.12",
@@ -5239,7 +5239,7 @@ class TestInformationPreservingArchitecture:
         ]
         assert result["unresolved_nodes"] == ["s22-unobserved"]
         by_id = {node["id"]: node for node in nodes}
-        assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["http"]
+        assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["mqtt", "http"]
         assert [service["name"] for service in by_id["s22-router"]["services"]] == [
             "http", "https",
         ]
@@ -6253,9 +6253,22 @@ def test_gateway_ota_and_redis_extractors_require_direct_evidence():
             "return_code": 0,
         }),
     }]
+    # An open port alone is not proof of unauthenticated Redis access.
     redis_findings = scanner_mod.extract_findings({"nmap": redis_scan}, redis)
-    assert any(finding["type"] == "no_auth" for finding in redis_findings)
+    assert not any(finding["type"] == "no_auth" for finding in redis_findings)
     assert not any(finding["type"] == "data_exposure" for finding in redis_findings)
+    redis_ping = [{
+        "tool": "redis_cmd",
+        "kwargs": {"host": "192.0.2.21", "port": 6379, "command": "PING"},
+        "result": json.dumps({
+            "stdout": "PONG",
+            "return_code": 0,
+        }),
+    }]
+    redis_findings = scanner_mod.extract_findings(
+        {"nmap": redis_scan, "redis": redis_ping}, redis
+    )
+    assert any(finding["type"] == "no_auth" for finding in redis_findings)
 
     redis_with_keys = [{
         **redis_scan[0],
@@ -6266,5 +6279,24 @@ def test_gateway_ota_and_redis_extractors_require_direct_evidence():
     }]
     assert any(
         finding["type"] == "data_exposure"
-        for finding in scanner_mod.extract_findings({"nmap": redis_with_keys}, redis)
+        for finding in scanner_mod.extract_findings({"nmap": [*redis_ping, *redis_with_keys]}, redis)
     )
+def test_s22_exploit_probe_extractors_keep_controls_clean():
+    from src.agent import scanner as scanner_mod
+    cases = (
+        ("exploit_auth_server", "/login", 200, "operator-token-s22", "broken_access_control", 401),
+        ("exploit_files_server", "/files", 200, "DEVICE-SECRET-S22", "data_exposure", 403),
+        ("exploit_command_server", "/diagnostics", 200, "uid=1000(iotdiag)", "code_injection", 400),
+        ("exploit_privilege_server", "/jobs", 201, "root-maintenance", "privilege_escalation", 403),
+    )
+    for role, endpoint, status, marker, vuln_type, control_status in cases:
+        device = {"id": role, "ip": "192.0.2.10", "role": role}
+        positive = [{
+            "tool": "http_request",
+            "kwargs": {"url": f"http://192.0.2.10:8080{endpoint}"},
+            "result": json.dumps({"status_code": status, "body": marker}),
+        }]
+        findings = scanner_mod.extract_findings({"http": positive}, device)
+        assert any(finding["type"] == vuln_type for finding in findings)
+        control = dict(positive[0])
+        control["result"] = json.dumps({"status_code": control_status, "body": "rejected"})

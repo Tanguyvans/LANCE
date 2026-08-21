@@ -26,6 +26,14 @@ continue with the available evidence.
 
 > PIVOT: A compromise here enables lateral movement to downstream targets.
 >   List downstream IPs in `suggested_technique` for suspected findings.
+## Negative evidence and generic endpoints
+
+Treat normal public metadata as a control, not a vulnerability. A 200 response
+from /health, /status, /docs, /protocol, or the root path, and a missing generic
+security header, do not by themselves prove info_disclosure, no_auth, or
+broken_access_control. Report those types only when the response contains
+credentials, tokens, secrets, private keys, sensitive topology, or a proven
+authorization bypass. Prefer the bounded positive markers from the scanner.
 > ENTRY_POINT: Directly reachable from outside — apply severity uplift for exposed services.
 > TARGET: Dead-end device — focus on data exposure and credential theft.
 
