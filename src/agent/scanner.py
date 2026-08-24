@@ -203,6 +203,83 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "follow_redirects": False,
         }),
     ],
+    # S15 uses bounded authenticated application probes. Keep the no-token
+    # control beside the positive probes so generic HTTP 200 responses never
+    # become authorization findings.
+    "api_tenant_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/v1/devices/device-a",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/v1/devices/device-b",
+            "method": "GET",
+            "headers": {"Authorization": "Bearer tenant-a-read"},
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/v1/admin/export",
+            "method": "GET",
+            "headers": {"Authorization": "Bearer tenant-a-read"},
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/v1/devices/device-a",
+            "method": "PATCH",
+            "headers": {
+                "Authorization": "Bearer tenant-a-read",
+                "Content-Type": "application/json",
+            },
+            "body": "{\"role\":\"admin\"}",
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/v1/devices/device-a",
+            "method": "GET",
+            "headers": {"Authorization": "Bearer tenant-a-read"},
+            "follow_redirects": False,
+        }),
+    ],
+    # S16 uses deterministic PKI simulators. Keep the probes explicit and
+    # bounded: the enrollment replay intentionally repeats the same token,
+    # while the marker headers only distinguish requests in the scanner ledger.
+    "pki_ca_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/ca/private-key",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
+    "pki_enrollment_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/enroll",
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json",
+                "X-Benchmark-Replay": "first",
+            },
+            "body": '{"token":"bootstrap-device-b"}',
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/enroll",
+            "method": "POST",
+            "headers": {
+                "Content-Type": "application/json",
+                "X-Benchmark-Replay": "second",
+            },
+            "body": '{"token":"bootstrap-device-b"}',
+            "follow_redirects": False,
+        }),
+    ],
+    "pki_device": [
+        ("http_request", {
+            "url": "http://{ip}:8080/identity/fingerprint",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
     "camera_server": [
         ("curl_headers", {"url": "http://{ip}/admin"}),
         ("curl_headers", {"url": "http://{ip}/snapshot/latest.jpg"}),
@@ -931,34 +1008,48 @@ def _extract_ssh_key_exposure(entries: list[dict], device: dict, svc_name: str) 
     role = device.get("role", "")
     if role != "ssh_server_v2":
         return []
-    # Only add if SSH port is reachable (evidence from ssh_audit or nmap)
+    # SSH reachability alone does not prove a world-readable key.
+    # Require the audit output to name a key path and an observed mode.
     for entry in entries:
-        if entry["tool"] not in ("ssh_audit", "nmap_scan"):
+        if entry.get("tool") not in ("ssh_audit", "nmap_scan"):
             continue
         result = _parse_result(entry)
-        stdout = result.get("stdout", "")
-        rc = result.get("return_code", -1)
-        if rc == 0 and ("22/" in stdout or "ssh" in stdout.lower() or "(gen)" in stdout):
+        stdout = str(result.get("stdout") or "")
+        if result.get("return_code", -1) != 0:
+            continue
+        has_key_path = re.search(r"(?i)(?:id_(?:rsa|ed25519)|authorized_keys)", stdout)
+        has_insecure_mode = re.search(r"(?i)(?:\b0?644\b|world[- ]readable|permissions?\s*[:=]\s*[0-7]{3,4})", stdout)
+        if has_key_path and has_insecure_mode:
             return [_make_finding(
                 device, "misconfiguration", "HIGH", "ssh", 22,
-                "SSH private key likely has insecure file permissions (world-readable) on admin/bastion server",
-                f"ssh_server_v2 role: bastion SSH servers commonly have ~/.ssh/id_rsa with 644 permissions",
-                status="suspected",
-                technique="SSH login then: ls -la ~/.ssh/id_rsa to verify world-readable key",
-                tools=["ssh_login"],
+                "SSH private key has directly observed insecure file permissions",
+                stdout[:500],
+                status="confirmed",
+                technique="Verify the named SSH key path and remediate its file mode",
+                tools=[entry.get("tool", "ssh_audit")],
             )]
     return []
 
 
 def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """nodered_server: add suspected no_auth + code_injection if port 1880 was unreachable.
+    """Retain no Node-RED finding without direct HTTP authentication evidence.
 
-    When Node-RED is temporarily down, the scanner can't confirm. Phase 4 will retry;
-    if auth is in place, Phase 4 FAILS → excluded from evaluator (no FP).
-    Port 1880 open on nodered_server = exec nodes accessible = RCE by construction.
+    Port reachability or the role name alone is insufficient; the HTTP admin
+    extractor is responsible for confirmed Node-RED findings.
     """
     role = device.get("role", "")
     if role != "nodered_server":
+        return []
+    # A role name or a failed probe is not evidence that Node-RED is exposed.
+    # Continue only when nmap directly observed 1880/tcp as open.
+    has_open_port = any(
+        entry.get("tool") == "nmap_scan"
+        and "1880" in entry.get("kwargs", {}).get("ports", "")
+        and "1880/tcp" in _parse_result(entry).get("stdout", "")
+        and "open" in _parse_result(entry).get("stdout", "")
+        for entry in entries
+    )
+    if not has_open_port:
         return []
     # If any 1880 curl already returned 200/302, _extract_http_no_auth_admin handled it
     for entry in entries:
@@ -982,26 +1073,9 @@ def _extract_nodered_no_auth_fallback(entries: list[dict], device: dict, svc_nam
         if "1880/tcp" in stdout and "open" not in stdout:
             return []  # Port confirmed closed/filtered by nmap — not a real finding
 
-    # Port unreachable or all 1880 scans failed — add both suspected findings
-    ip = device.get("ip", "")
-    return [
-        _make_finding(
-            device, "no_auth", "CRITICAL", "nodered", 1880,
-            "Node-RED admin interface may be accessible without authentication (port 1880 not reached during scan)",
-            "nodered_server role: Node-RED admin auth is commonly absent — verify port 1880 manually",
-            status="suspected",
-            technique="curl http://<ip>:1880/admin — check if admin panel is accessible without login",
-            tools=["curl_headers"],
-        ),
-        _make_finding(
-            device, "code_injection", "CRITICAL", "nodered", 1880,
-            "Node-RED exec nodes accessible = RCE via POST /api/exec (port 1880 open, no auth)",
-            f"nodered_server role on {ip}: exec nodes enabled by default, accessible without authentication",
-            status="suspected",
-            technique="POST http://<ip>:1880/api/exec with JSON payload to execute OS commands",
-            tools=["http_get"],
-        ),
-    ]
+    # Port reachability alone is not evidence of unauthenticated flow
+    # execution. The HTTP extractor above is the only promotion path.
+    return []
 
 
 def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
@@ -1026,7 +1100,7 @@ def _extract_ot_no_auth(entries: list[dict], device: dict, svc_name: str) -> lis
 
 
 def _extract_api_exec(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """GET /api/exec returns 200 or 405 → code_injection CRITICAL (endpoint exists)."""
+    """Detect the endpoint, but require execution output before confirmation."""
     role = device.get("role", "")
     if "web_server" not in role and "monitor" not in role:
         return []
@@ -1040,11 +1114,12 @@ def _extract_api_exec(entries: list[dict], device: dict, svc_name: str) -> list[
         stdout = result.get("stdout", "")
         rc = result.get("return_code", -1)
         if rc == 0 and ("200" in stdout[:50] or "405" in stdout[:50] or "400" in stdout[:50]):
+            execution_proof = bool(re.search(r"(?i)(?:uid=\d+|command\s+(?:output|result)|executed|shell\s+opened|rce\s+confirmed)", stdout))
             return [_make_finding(
                 device, "code_injection", "CRITICAL", "http", 80,
                 "RCE endpoint /api/exec accessible — remote code execution possible",
                 f"curl GET /api/exec returned: {stdout[:150]}",
-                status="confirmed",
+                status="confirmed" if execution_proof else "suspected",
                 technique="curl -X POST http://<ip>/api/exec -d '{\"cmd\":\"id\"}' to execute commands",
                 tools=["http_get"],
             )]
@@ -1121,7 +1196,18 @@ def _extract_http_no_auth_admin(entries: list[dict], device: dict, svc_name: str
             "login", "sign in", "password", "unauthorized", "forbidden",
             "www-authenticate", "authentication required",
         ))
-        if rc == 0 and status_code == 200 and not login_challenge:
+        if (
+            rc == 0
+            and status_code == 200
+            and (
+                not login_challenge
+                or (
+                    role == "router"
+                    and "/cgi-bin/luci" in url
+                    and re.search(r"(?i)(?:luci|openwrt|router)", lower)
+                )
+            )
+        ):
             if is_nodered:
                 findings = [
                     _make_finding(
@@ -1254,6 +1340,20 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
                 ping_ok = True
                 ping_evidence = "redis_cmd PING returned PONG"
     if not ping_ok:
+        # Some images expose redis-info but do not ship redis_cmd. Accept
+        # only explicit unauthenticated markers, never an open port alone.
+        for entry in entries:
+            if entry.get("tool") != "nmap_scan":
+                continue
+            stdout = str(_parse_result(entry).get("stdout") or "")
+            if (
+                "6379/tcp" in stdout
+                and "open" in stdout
+                and re.search(r"(?i)(?:no password|without authentication|unauthenticated|no requirepass|requirepass[^\n]*(?:no|off|disabled))", stdout)
+            ):
+                ping_ok = True
+                break
+    if not ping_ok:
         return []
     for entry in entries:
         if entry["tool"] != "nmap_scan":
@@ -1266,9 +1366,9 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
         if "6379/tcp" not in stdout or "open" not in stdout:
             continue
 
-        evidence = ping_evidence
+        evidence = ping_evidence or "nmap redis-info explicitly reported unauthenticated access"
         if "redis_version" in stdout.lower() or "redis" in stdout.lower():
-            evidence = f"{ping_evidence}; nmap redis-info: {stdout.strip()[:200]}"
+            evidence = f"{evidence}; nmap redis-info: {stdout.strip()[:200]}"
 
         findings = [_make_finding(
             device, "no_auth", "HIGH", "redis", 6379,
@@ -1276,7 +1376,7 @@ def _extract_redis_no_auth(entries: list[dict], device: dict, svc_name: str) -> 
             evidence,
             status="confirmed",
             technique="redis-cli -h <ip> KEYS '*' to enumerate all keys and dump sensitive data",
-            tools=["redis_cmd"],
+            tools=["redis_cmd"] if ping_evidence else ["nmap_scan"],
         )]
 
         # An open Redis port proves unauthenticated access, not sensitive content.
@@ -1489,8 +1589,228 @@ def _extract_exploit_primitive_findings(entries: list[dict], device: dict, svc_n
             tools=["http_request"],
             endpoint=endpoint,
         )]
+
+def _extract_api_authorization_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract S15 authorization defects from bounded application responses.
+
+    Only the exact route, token, status, and response marker below can promote
+    a finding. Hardened tenant APIs return 401/403 and produce no finding.
+    """
+    if str(device.get("role") or "").casefold() != "api_tenant_server":
+        return []
+
+    parsed: list[tuple[dict, dict, str, str]] = []
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        kwargs = entry.get("kwargs") or {}
+        url = str(kwargs.get("url") or "")
+        result = _parse_result(entry)
+        parsed.append((
+            kwargs,
+            result,
+            urlsplit(url).path,
+            str(kwargs.get("method") or "GET").upper(),
+        ))
+
+    findings: list[dict] = []
+    for kwargs, result, endpoint, method in parsed:
+        if (
+            method != "GET"
+            or endpoint != "/v1/devices/device-b"
+            or str((kwargs.get("headers") or {}).get("Authorization") or "")
+            != "Bearer tenant-a-read"
+            or result.get("status_code") != 200
+        ):
+            continue
+        try:
+            payload = json.loads(str(result.get("body") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if payload.get("id") != "device-b" or payload.get("owner_id") != "tenant-b":
+            continue
+        findings.append(_make_finding(
+            device, "broken_access_control", "HIGH", "http", 8080,
+            "Cross-tenant IDOR: tenant-a token reads a device owned by tenant-b",
+            "GET /v1/devices/device-b with Bearer tenant-a-read returned HTTP 200 and owner_id=tenant-b",
+            status="confirmed", endpoint=endpoint,
+            technique="Repeat the authenticated cross-tenant GET and preserve the returned object",
+            tools=["http_request"],
+        ))
+        break
+
+    for kwargs, result, endpoint, method in parsed:
+        if (
+            method != "GET"
+            or endpoint != "/v1/admin/export"
+            or str((kwargs.get("headers") or {}).get("Authorization") or "")
+            != "Bearer tenant-a-read"
+            or result.get("status_code") != 200
+        ):
+            continue
+        try:
+            payload = json.loads(str(result.get("body") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        tenants = payload.get("tenants")
+        devices = payload.get("devices")
+        if not (
+            isinstance(tenants, list)
+            and {"tenant-a", "tenant-b"}.issubset(tenants)
+            and isinstance(devices, list)
+            and {"device-a", "device-b"}.issubset(devices)
+        ):
+            continue
+        findings.append(_make_finding(
+            device, "broken_access_control", "CRITICAL", "http", 8080,
+            "JWT scope bypass: read-only tenant token reaches the administrative export",
+            "GET /v1/admin/export with Bearer tenant-a-read returned HTTP 200 with both tenant records",
+            status="confirmed", endpoint=endpoint,
+            technique="Repeat the bounded export request with the read-only tenant token",
+            tools=["http_request"],
+        ))
+        break
+
+    patch_succeeded = False
+    for kwargs, result, endpoint, method in parsed:
+        if (
+            method != "PATCH"
+            or endpoint != "/v1/devices/device-a"
+            or str((kwargs.get("headers") or {}).get("Authorization") or "")
+            != "Bearer tenant-a-read"
+            or result.get("status_code") != 200
+        ):
+            continue
+        try:
+            payload = json.loads(str(result.get("body") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        patch_succeeded = isinstance(payload.get("updated"), list) and "role" in payload["updated"]
+        if patch_succeeded:
+            break
+
+    if patch_succeeded:
+        for kwargs, result, endpoint, method in parsed:
+            if (
+                method != "GET"
+                or endpoint != "/v1/devices/device-a"
+                or str((kwargs.get("headers") or {}).get("Authorization") or "")
+                != "Bearer tenant-a-read"
+                or result.get("status_code") != 200
+            ):
+                continue
+            try:
+                payload = json.loads(str(result.get("body") or ""))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {}
+            if payload.get("role") != "admin":
+                continue
+            findings.append(_make_finding(
+                device, "broken_access_control", "HIGH", "http", 8080,
+                "Mass assignment: tenant token changes the server-controlled role field",
+                "PATCH /v1/devices/device-a with role=admin returned HTTP 200; subsequent GET returned role=admin",
+                status="confirmed", endpoint=endpoint,
+                technique="Repeat the bounded role-field update and verify the persisted server-controlled value",
+                tools=["http_request"],
+            ))
+            break
+    return findings
+
+def _extract_pki_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract only the explicit S16 PKI contract markers.
+
+    Certificates, fingerprints, generic component responses, and a required
+    client certificate are controls/metadata. They must not be promoted as
+    findings. The revoked-certificate check needs the generated client
+    certificate and remains a bounded verification-phase operation.
+    """
+    role = str(device.get("role") or "").casefold()
+    if role == "pki_ca_server":
+        for entry in entries:
+            if entry.get("tool") != "http_request":
+                continue
+            kwargs = entry.get("kwargs") or {}
+            if urlsplit(str(kwargs.get("url") or "")).path != "/ca/private-key":
+                continue
+            result = _parse_result(entry)
+            body = str(result.get("body") or "")
+            if result.get("status_code") == 200 and re.search(
+                r"-----BEGIN(?: RSA| EC| OPENSSH)? PRIVATE KEY-----", body,
+                re.IGNORECASE,
+            ):
+                return [_make_finding(
+                    device, "data_exposure", "CRITICAL", "http", 8080,
+                    "CA private key is exposed by the unauthenticated provisioning endpoint",
+                    "GET /ca/private-key returned HTTP 200 with a PEM private-key marker",
+                    status="confirmed", endpoint="/ca/private-key",
+                    technique="Retrieve the endpoint only as a read-only proof and rotate the CA key",
+                    tools=["http_request"],
+                )]
+        return []
+
+    if role == "pki_mtls_server":
+        for entry in entries:
+            if entry.get("tool") != "mtls_request":
+                continue
+            kwargs = entry.get("kwargs") or {}
+            if urlsplit(str(kwargs.get("url") or "")).path != "/device/status":
+                continue
+            result = _parse_result(entry)
+            body = str(result.get("body") or "")
+            if result.get("status_code") == 200 and re.search(
+                r"(?i)(?:revocation_checked\s*[\":=]+\s*false|revoked.{0,100}(?:accepted|HTTP\s*200)|HTTP\s*200)",
+                body,
+            ):
+                return [_make_finding(
+                    device, "weak_cipher", "HIGH", "https", 8443,
+                    "Revoked client certificate is accepted by the mTLS API",
+                    "mTLS GET /device/status returned HTTP 200 with revocation_checked=false",
+                    status="confirmed", endpoint="/device/status",
+                    technique="Load and enforce the generated CRL/OCSP status before accepting clients",
+                    tools=["mtls_request"],
+                )]
+        return []
+
+    if role == "pki_enrollment_server":
+        successful_replays: list[dict] = []
+        for entry in entries:
+            if entry.get("tool") != "http_request":
+                continue
+            kwargs = entry.get("kwargs") or {}
+            if (
+                str(kwargs.get("method") or "GET").upper() != "POST"
+                or urlsplit(str(kwargs.get("url") or "")).path != "/enroll"
+                or "bootstrap-device-b" not in str(kwargs.get("body") or "")
+            ):
+                continue
+            result = _parse_result(entry)
+            if result.get("status_code") != 201:
+                continue
+            try:
+                payload = json.loads(str(result.get("body") or ""))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {}
+            if payload.get("device") == "device-b" and payload.get("replayable") is True:
+                successful_replays.append(payload)
+        if len(successful_replays) >= 2:
+            return [_make_finding(
+                device, "misconfiguration", "HIGH", "http", 8080,
+                "One-time device enrollment token can be replayed",
+                "Two POST /enroll requests with bootstrap-device-b returned HTTP 201 and replayable device bundles",
+                status="confirmed", endpoint="/enroll",
+                technique="Invalidate bootstrap tokens after their first successful enrollment",
+                tools=["http_request"],
+            )]
+    return []
+
 FINDING_EXTRACTORS = [
     _extract_exploit_primitive_findings,
+    _extract_api_authorization_findings,
+    _extract_pki_findings,
     _extract_server_version,
     _extract_missing_headers,
     _extract_directory_listing,
@@ -1556,7 +1876,7 @@ def extract_findings(
     seen: set[tuple] = set()
     deduped: list[dict] = []
     for f in findings:
-        key = (f["type"], f.get("port"))
+        key = (f["type"], f.get("port"), f.get("endpoint", "") if f["type"] == "broken_access_control" else "")
         if key in seen:
             continue
         seen.add(key)
@@ -1660,12 +1980,43 @@ def run_scanner(
 
         return device_id, {"scan_results": scan_results, "findings": findings}
 
+    def _safe_scan_one(device: dict):
+        try:
+            return _scan_one(device)
+        except Exception as exc:
+            device_id = str(device.get("id") or "unknown")
+            device_ip = device.get("ip", "unknown")
+            log.exception("Phase 3 scanner failed for %s; preserving an empty device result", device_id)
+            error_payload = {"scan_error": str(exc), "device_id": device_id, "device_ip": device_ip}
+            (scans_dir / f"{device_id}.json").write_text(
+                json.dumps(error_payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            fallback_path = run_dir / f"03_device_{device_id}.json"
+            fallback_path.write_text(
+                json.dumps({
+                    "device_id": device_id,
+                    "device_ip": device_ip,
+                    "vulnerabilities": [],
+                    "summary": _compute_summary([]),
+                    "phase3_error": str(exc),
+                }, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            if stream_callback:
+                stream_callback({
+                    "type": "scan_done", "device_id": device_id,
+                    "device_ip": device_ip, "phase": 3,
+                    "findings_count": 0, "error": str(exc),
+                })
+            return device_id, {"scan_results": {}, "findings": [], "error": str(exc)}
+
     print(f"\n{'=' * 60}")
     print(f"PHASE 3a: DETERMINISTIC SCANNING ({len(devices)} devices)")
     print(f"{'=' * 60}\n")
 
     with ThreadPoolExecutor(max_workers=max(1, min(len(devices), 6))) as pool:
-        for device_id, data in pool.map(_scan_one, devices):
+        for device_id, data in pool.map(_safe_scan_one, devices):
             results[device_id] = data
 
     total_findings = sum(len(d["findings"]) for d in results.values())

@@ -126,6 +126,19 @@ def _summary_for_scenarios(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
         "macro_positive_recall": _round_optional(
             _mean(float(s["recall"]) for s in positive)
         ),
+        "macro_hallucination_rate": _round_optional(_mean(
+            float(s["hallucination_rate"]) for s in positive
+            if s.get("hallucination_rate") is not None
+        )),
+        **{
+            f"macro_{name}": _round_optional(_mean(
+                float(s[name]) for s in positive if s.get(name) is not None
+            ))
+            for name in (
+                "critical_recall", "high_recall", "medium_recall", "low_recall",
+                "phase3_device_completion_rate",
+            )
+        },
         "macro_zero_gt_specificity": _round_optional(
             _mean(float(s["specificity"]) for s in controls)
         ),
@@ -174,6 +187,12 @@ def aggregate_evaluations(
                 "f1_score": None,
                 "precision": None,
                 "recall": None,
+                "critical_recall": None,
+                "high_recall": None,
+                "medium_recall": None,
+                "low_recall": None,
+                "hallucination_rate": None,
+                "phase3_device_completion_rate": None,
                 "specificity": None,
                 "detection_f1": None,
                 "quality_adjusted_f1": None,
@@ -273,6 +292,12 @@ def aggregate_evaluations(
             "f1_score": _round_optional(f1),
             "precision": _round_optional(precision),
             "recall": _round_optional(recall),
+            "critical_recall": _round_optional(optional_run_mean("critical_recall")),
+            "high_recall": _round_optional(optional_run_mean("high_recall")),
+            "medium_recall": _round_optional(optional_run_mean("medium_recall")),
+            "low_recall": _round_optional(optional_run_mean("low_recall")),
+            "hallucination_rate": _round_optional(optional_run_mean("hallucination_rate")),
+            "phase3_device_completion_rate": _round_optional(optional_run_mean("phase3_device_completion_rate")),
             "specificity": _round_optional(specificity),
             "detection_f1": _round_optional(detection_f1),
             "quality_adjusted_f1": _round_optional(quality_adjusted_f1),

@@ -268,6 +268,11 @@ class EvaluationResult:
     bonus_findings: int = 0   # auto-detected bonus (real config findings not in GT)
     total_llm_findings: int = 0
     severity_mismatches: int = 0  # found right vuln, wrong severity
+    recall_by_severity: dict[str, float | None] = field(default_factory=dict)
+    critical_recall: float | None = None
+    high_recall: float | None = None
+    medium_recall: float | None = None
+    low_recall: float | None = None
 
     # Legacy metrics (kept for backward compatibility)
     detection_rate: float = 0.0
@@ -307,6 +312,12 @@ class EvaluationResult:
     phase4_candidates: int = 0
     phase4_conclusive: int = 0
     phase4_completion_rate: float | None = None
+    phase3_metrics_available: bool = False
+    phase3_status: str | None = None
+    phase3_devices_total: int = 0
+    phase3_devices_analyzed: int = 0
+    phase3_devices_failed: int = 0
+    phase3_device_completion_rate: float | None = None
     invalid_cve_claims: int = 0
     negative_controls_total: int = 0
     malformed_cve_claims: int = 0
@@ -2045,6 +2056,44 @@ def _is_trusted_exported_ground_truth(ground_truth_file: Path) -> bool:
         return False
 
 
+def _load_phase3_metrics(run_dir: Path) -> dict[str, object]:
+    """Load non-scoring Phase 3 completion diagnostics when available."""
+    defaults: dict[str, object] = {
+        "phase3_metrics_available": False,
+        "phase3_status": None,
+        "phase3_devices_total": 0,
+        "phase3_devices_analyzed": 0,
+        "phase3_devices_failed": 0,
+        "phase3_device_completion_rate": None,
+    }
+    status_path = run_dir / "03_phase3_status.json"
+    if not status_path.is_file():
+        return defaults
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return defaults
+    if not isinstance(payload, dict):
+        return defaults
+    total = payload.get("devices_total", 0)
+    analyzed = payload.get("devices_analyzed", 0)
+    try:
+        total = max(0, int(total))
+        analyzed = max(0, min(total, int(analyzed)))
+    except (TypeError, ValueError):
+        return defaults
+    failed = payload.get("devices_failed", [])
+    failed_count = len(failed) if isinstance(failed, list) else 0
+    defaults.update({
+        "phase3_metrics_available": True,
+        "phase3_status": str(payload.get("status") or "unknown"),
+        "phase3_devices_total": total,
+        "phase3_devices_analyzed": analyzed,
+        "phase3_devices_failed": failed_count,
+        "phase3_device_completion_rate": round(analyzed / total, 3) if total else None,
+    })
+    return defaults
+
 def evaluate(
     run_dir: Path,
     ground_truth_file: Path,
@@ -2118,6 +2167,7 @@ def evaluate(
         _run_metric_contract_status(run_dir)
     )
     phase4_artifact_available = (run_dir / "04_exploitation.json").is_file()
+    phase3_metrics = _load_phase3_metrics(run_dir)
     tool_calls, provenance_log_available = _load_tool_call_records(run_dir)
     evidence_metrics_available = phase4_artifact_available and evidence_compatible
     evidence_provenance_available = provenance_log_available and evidence_compatible
@@ -2189,6 +2239,7 @@ def evaluate(
         total_attack_paths=len(gt_attack_paths),
         evidence_metrics_available=evidence_metrics_available,
         evidence_provenance_available=evidence_provenance_available,
+        **phase3_metrics,
         ambiguous_evidence_refs=ambiguous_evidence_refs,
         process_metrics_schema_version=process_schema,
         process_metrics_available=process_available,
@@ -2476,6 +2527,24 @@ def evaluate(
             result.false_negatives += 1
 
         result.matches.append(asdict(mr))
+
+    severity_totals = Counter(str(gt.get("severity", "low")).casefold() for gt in gt_vulns)
+    severity_hits = Counter(
+        str(match.get("gt_severity", "low")).casefold()
+        for match in result.matches
+        if match.get("matched")
+    )
+    result.recall_by_severity = {
+        severity: (
+            round(severity_hits[severity] / severity_totals[severity], 3)
+            if severity_totals[severity] else None
+        )
+        for severity in ("critical", "high", "medium", "low")
+    }
+    result.critical_recall = result.recall_by_severity["critical"]
+    result.high_recall = result.recall_by_severity["high"]
+    result.medium_recall = result.recall_by_severity["medium"]
+    result.low_recall = result.recall_by_severity["low"]
 
     # Devices that have at least one matched GT finding — used to classify "bonus" findings.
     matched_device_ips: set[str] = {

@@ -140,6 +140,146 @@ def test_full_phase3_normalizes_nullable_schema_fields_without_changing_compact(
     assert full_finding["endpoint"] == ""
 
 
+
+def test_full_phase3_normalizes_application_protocol_to_transport():
+    finding = {
+        "service": "http",
+        "protocol": "http",
+        "endpoint": "/v1/devices/device-b",
+        "product": "",
+        "version": "",
+    }
+    _enrich_finding_structure(finding, strict_schema=True)
+    assert finding["protocol"] == "tcp"
+
+
+def test_s15_api_probes_require_positive_authorization_evidence():
+    from src.agent import scanner as scanner_mod
+
+    def entry(method, path, status, body, headers=None):
+        kwargs = {
+            "method": method,
+            "url": f"http://192.0.2.15:8080{path}",
+        }
+        if headers:
+            kwargs["headers"] = headers
+        return {
+            "tool": "http_request",
+            "kwargs": kwargs,
+            "result": json.dumps({"status_code": status, "body": body}),
+        }
+
+    token = {"Authorization": "Bearer tenant-a-read"}
+    positive = [
+        entry("GET", "/v1/devices/device-a", 401, '{"error":"bearer_token_required"}'),
+        entry("GET", "/v1/devices/device-b", 200, '{"id":"device-b","owner_id":"tenant-b"}', token),
+        entry("GET", "/v1/admin/export", 200, '{"tenants":["tenant-a","tenant-b"],"devices":["device-a","device-b"]}', token),
+        entry("PATCH", "/v1/devices/device-a", 200, '{"updated":["role"],"role":"admin"}', token),
+        entry("GET", "/v1/devices/device-a", 200, '{"id":"device-a","role":"admin"}', token),
+    ]
+    findings = scanner_mod.extract_findings(
+        {"http": positive},
+        {"id": "s15-fleet-api", "ip": "192.0.2.15", "role": "api_tenant_server"},
+    )
+    assert {(finding["severity"], finding["endpoint"]) for finding in findings} == {
+        ("HIGH", "/v1/devices/device-a"),
+        ("HIGH", "/v1/devices/device-b"),
+        ("CRITICAL", "/v1/admin/export"),
+    }
+
+    controls = [
+        entry("GET", "/v1/devices/device-b", 403, '{"error":"cross_tenant_access_denied"}', token),
+        entry("GET", "/v1/admin/export", 403, '{"error":"admin_scope_required"}', token),
+        entry("PATCH", "/v1/devices/device-a", 403, '{"error":"server_controlled_field"}', token),
+    ]
+    assert scanner_mod.extract_findings(
+        {"http": controls},
+        {"id": "s15-audit-api", "ip": "192.0.2.16", "role": "api_tenant_server"},
+    ) == []
+
+
+def test_s15_generic_api_fixture_is_not_a_model_finding():
+    finding = {
+        "type": "data_exposure",
+        "service": "http",
+        "port": 8080,
+        "protocol": "tcp",
+        "endpoint": "/credentials",
+        "details": 'HTTP 200 body {"authentication":"enforced"} may expose credentials',
+        "evidence": 'GET /credentials returned {"authentication":"enforced"}',
+    }
+    assert "generic API fixture" in _finding_semantic_issue(
+        finding,
+        source_kind="model",
+        device_role="api_data_store",
+    )
+
+
+def test_s16_pki_extractors_require_contract_markers():
+    from src.agent import scanner as scanner_mod
+
+    def request(path, method="GET", status=200, body="", headers=None):
+        kwargs = {"url": f"http://192.0.2.16:8080{path}", "method": method}
+        if headers:
+            kwargs["headers"] = headers
+        if method == "POST":
+            kwargs["body"] = '{"token":"bootstrap-device-b"}'
+        return {
+            "tool": "http_request",
+            "kwargs": kwargs,
+            "result": json.dumps({"status_code": status, "body": body}),
+        }
+
+    ca = scanner_mod.extract_findings(
+        {"http": [request("/ca/private-key", body="-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----")]},
+        {"id": "ca", "ip": "192.0.2.11", "role": "pki_ca_server"},
+    )
+    assert [(f["type"], f["endpoint"]) for f in ca] == [("data_exposure", "/ca/private-key")]
+
+    replay_body = json.dumps({"device": "device-b", "replayable": True, "issuance": 1})
+    enrollment = scanner_mod.extract_findings(
+        {"http": [
+            request("/enroll", "POST", 201, replay_body, {"X-Benchmark-Replay": "first"}),
+            request("/enroll", "POST", 201, replay_body, {"X-Benchmark-Replay": "second"}),
+        ]},
+        {"id": "enrollment", "ip": "192.0.2.12", "role": "pki_enrollment_server"},
+    )
+    assert [(f["type"], f["severity"]) for f in enrollment] == [("misconfiguration", "HIGH")]
+
+    generic = scanner_mod.extract_findings(
+        {"http": [request("/identity/fingerprint", body=json.dumps({"public_key_fingerprint": "a" * 64}))]},
+        {"id": "device-b", "ip": "192.0.2.16", "role": "pki_device"},
+    )
+    assert generic == []
+
+
+def test_s14_authenticated_redis_and_pki_metadata_are_rejected():
+    redis_noauth = {
+        "type": "no_auth", "service": "redis", "port": 6379,
+        "details": "Redis PING returned -NOAUTH Authentication required",
+    }
+    assert "authentication" in _finding_semantic_issue(
+        redis_noauth, source_kind="model", device_role="db_server_v2"
+    )
+
+    redis_data = {
+        "type": "data_exposure", "service": "redis", "port": 6379,
+        "details": "Unauthenticated Redis exposes credentials and secrets: database password and API keys",
+    }
+    assert "retrieved" in _finding_semantic_issue(
+        redis_data, source_kind="model", device_role="db_server_v2"
+    )
+
+    pki_metadata = {
+        "type": "info_disclosure", "service": "http", "port": 8080,
+        "endpoint": "/identity/certificate",
+        "details": "Device certificate is publicly accessible and reveals the public identity",
+    }
+    assert "PKI" in _finding_semantic_issue(
+        pki_metadata, source_kind="model", device_role="pki_device"
+    )
+
+
 def test_suggested_tools_are_restricted_to_canonical_catalog_names():
     finding = {
         "suggested_tools": [

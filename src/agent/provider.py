@@ -193,6 +193,7 @@ class LLMProvider:
                 stop_event,
                 max_data_tool_calls,
                 force_completion_on_phase4_conclusive,
+                deadline,
             )
         else:
             return self._openai_loop(
@@ -208,7 +209,7 @@ class LLMProvider:
                 deadline=deadline,
             )
 
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False):
+    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None):
         api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
         messages = [{"role": "user", "content": user_message}]
         required_tool_called = False
@@ -221,6 +222,13 @@ class LLMProvider:
         _NO_TOOL_STALL_THRESHOLD = 3
 
         terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
+
+        def create_completion(**kwargs):
+            client = self.client
+            remaining = _deadline_remaining(deadline)
+            if remaining is not None and hasattr(client, "with_options"):
+                client = client.with_options(timeout=remaining)
+            return client.messages.create(**kwargs)
 
         for turn in range(max_turns):
             if stop_event is not None and stop_event.is_set():
@@ -240,8 +248,9 @@ class LLMProvider:
             if active_api_tools:
                 request_kwargs["tools"] = active_api_tools
             response = _call_with_retry(
-                self.client.messages.create,
+                create_completion,
                 max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                deadline=deadline,
                 **request_kwargs,
             )
             text_parts = []

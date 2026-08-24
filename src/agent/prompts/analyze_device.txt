@@ -192,6 +192,7 @@ Call save_deliverable("{{expected_deliverable}}", json_content) when complete. I
 ```
 
 Each vulnerability must have: id, device_id, device_ip, type, severity, service, port, protocol, endpoint, product, version, details, evidence, cve_ids, exploitation_status, suggested_technique, suggested_tools. Use an empty string only when a structural value was not observed; never invent it.
+The protocol field is the transport protocol only: use tcp or udp (never http/https/mqtt/ssh as an application name); infer tcp for HTTP APIs and ssh when the transport is observed.
 
 For every known_cve finding, also include cve_validation with:
 - query: the exact product/version query sent to cve_search;
