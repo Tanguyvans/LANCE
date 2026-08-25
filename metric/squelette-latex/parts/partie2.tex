@@ -1,0 +1,367 @@
+\chapter{Conception et implémentation de la solution}
+\label{chap:implementation}
+
+\section{Démarche d'ingénierie}
+
+Mon travail a suivi une démarche itérative fondée sur l'observation des
+exécutions plutôt que sur l'ajout isolé de fonctionnalités. Pour chaque
+évolution, j'ai d'abord identifié un défaut reproductible dans une trace, un
+artefact de phase ou une campagne de benchmark. J'ai ensuite localisé la
+frontière responsable --- modèle, contrat d'outil, orchestration ou évaluateur
+--- avant d'implémenter un correctif et d'ajouter un test de non-régression.
+Cette méthode était particulièrement importante avec un agent génératif : une
+sortie syntaxiquement valide peut rester fausse, tandis qu'un échec apparent du
+modèle peut en réalité provenir d'un contexte tronqué ou d'un contrat ambigu.
+
+
+Les tests ont porté sur les frontières les plus risquées : validité des données
+d'entraînement, compatibilité de l'environnement, sélection de l'expert,
+respect des outils exposés, reprise après rejet d'un livrable, cohérence des
+artefacts entre phases et calcul des scores. Le but n'était pas seulement de
+faire terminer une campagne, mais de rendre explicite la raison pour laquelle
+elle pouvait être considérée comme complète.
+
+\section{Architecture générale}
+
+LANCE sépare les décisions probabilistes des contrôles déterministes. La classe
+\texttt{Pipeline} orchestre six phases et associe à chacune un prompt, un
+livrable attendu et un ensemble d'outils autorisés. Le modèle propose une
+analyse ou une action ; l'orchestrateur exécute l'outil, journalise son résultat
+et décide si le contrat de la phase est satisfait. Les artefacts structurés
+forment ainsi une mémoire interphase plus fiable qu'une conversation libre.
+
+Autour du pipeline, FastAPI expose le lancement et le suivi des campagnes. Un
+flux \gls{sse} alimente l'interface, qui affiche la topologie, les livrables et
+les métriques. Le benchmark déploie les scénarios au moyen d'Ansible sur
+Proxmox, tandis qu'un harness distinct compare les artefacts à la vérité terrain.
+Enfin, un serveur \gls{hmoe} compatible avec l'\gls{api} OpenAI fournit au pipeline un point
+d'accès unique à plusieurs adaptateurs spécialisés.
+
+
+\section{Mission principale : construction d'un HMoE agentique}
+
+\subsection{Principe de spécialisation}
+
+La mission principale de mon stage a consisté à construire une chaîne HMoE
+agentique, depuis les traces d'exécution jusqu'au déploiement des experts dans
+LANCE. Ici, le terme HMoE ne désigne pas une couche de mélange d'experts apprise
+à l'intérieur du réseau. Le système partage un modèle de base et charge
+dynamiquement quatre adaptateurs \gls{peft} spécialisés : \texttt{secretary},
+\texttt{recon}, \texttt{vuln} et \texttt{exploit}. Cette organisation reprend
+l'idée de spécialisation des mélanges d'experts tout en l'adaptant aux
+contraintes matérielles du projet \cite{shazeer2017moe}.
+
+Le secrétaire traite l'analyse initiale du graphe et la synthèse finale. L'expert
+de reconnaissance couvre la phase~2 ; l'expert de vulnérabilités intervient en
+phase~3 ; l'expert d'exploitation couvre les phases~4 et~5. Cette répartition
+évite d'entraîner chaque adaptateur sur l'intégralité des outils et des formats.
+Elle réduit aussi l'ambiguïté : une trace d'exploitation et une trace de rapport
+ne demandent ni les mêmes actions ni le même critère de terminaison.
+
+Le choix d'adaptateurs plutôt que de modèles indépendants répond à une
+contrainte de mémoire GPU. Une seule instance quantifiée du modèle de base est
+chargée, puis l'adaptateur actif est remplacé pour chaque requête. Le gain de
+mémoire a une contrepartie : le changement d'adaptateur modifie un état partagé.
+J'ai donc sérialisé la génération avec un verrou. Les requêtes peuvent être
+reçues concurremment par l'API, mais deux générations ne changent jamais
+l'adaptateur au même instant.
+
+\subsection{Construction des données d'apprentissage}
+
+La qualité du système dépend d'abord de la correspondance entre les données et
+la boucle agentique réellement exécutée. J'ai transformé les traces en exemples
+de conversation contenant les messages, les appels d'outils, leurs résultats et
+les schémas d'outils disponibles. Les exemples sont routés vers l'expert associé
+à la phase qui a produit le livrable. Cette conservation des appels est
+essentielle : un corpus qui ne garderait que la réponse finale apprendrait à
+rédiger, mais pas à décider quand observer le réseau ou quand sauvegarder un
+artefact.
+
+La préparation cible Qwen2.5-3B-Instruct et applique le gabarit de conversation
+utilisé à l'inférence. Pour chaque exemple, seuls les outils effectivement
+appelés et quelques distracteurs sont conservés. Les distracteurs obligent le
+modèle à sélectionner un outil pertinent sans gonfler inutilement le contexte.
+Les conversations longues sont découpées à la frontière des tours assistant ;
+les couples appel/résultat restent liés. La phase~5 constitue une exception : sa
+chaîne de preuves est gardée atomique afin qu'une conclusion d'intrusion ne soit
+jamais séparée de l'action qui la soutient.
+
+Lorsque la fenêtre reste trop longue, la préparation réduit d'abord les sorties
+d'outils volumineuses, puis les arguments textuels et enfin le milieu des
+messages système. Le préfixe contenant le rôle et le suffixe décrivant le
+critère de terminaison sont préservés. Chaque ligne indique dans ses métadonnées
+le modèle cible, la fenêtre source et l'éventuelle troncature. Les limites sont
+alignées sur l'usage futur : 6\,144 tokens pour le secrétaire, la reconnaissance
+et l'exploitation, et 4\,096 pour l'analyse de vulnérabilités.
+
+J'ai également intégré une boucle de correction supervisée. Le harness peut
+extraire des candidats correspondant à un faux négatif, un faux positif, une
+sévérité incorrecte ou un livrable incohérent. Ces candidats restent en attente
+jusqu'à une revue humaine ; seuls ceux explicitement acceptés sont convertis en
+exemples SFT. Ils sont attribués à la première phase disposant d'un signal causal
+observable. Une cible absente de la reconnaissance corrige ainsi l'expert
+\texttt{recon}, et non automatiquement l'expert \texttt{vuln}. Ce choix évite
+d'enseigner à un composant aval à compenser silencieusement une erreur amont.
+
+\subsection{Préflight et reproductibilité}
+
+Avant tout entraînement, un préflight vérifie les conditions sans charger les
+poids ni lancer d'optimisation. Il contrôle la structure YAML, la présence du
+gabarit et de ses masques de génération, puis parcourt les JSONL. Chaque ligne
+doit contenir des messages, au moins une réponse assistant et des métadonnées
+cohérentes avec l'expert et le modèle préparé. Toute référence au split
+\texttt{eval-sealed} est refusée afin d'empêcher une contamination des données
+d'évaluation.
+
+Le préflight contrôle aussi les versions de PyTorch, Transformers, TRL, PEFT,
+bitsandbytes, Datasets et Accelerate. Il vérifie que la signature de
+\texttt{SFTConfig} expose les paramètres requis par le script, que CUDA est
+disponible, que le GPU accepte BF16 et, en mode strict, qu'aucun autre processus
+de calcul ne l'occupe. Il produit un rapport JSON comprenant les tailles et
+empreintes des jeux de données. Lors d'une promotion, le même outil exige pour
+chaque expert un fichier de configuration, les poids finaux et le tokenizer,
+puis confirme que l'adaptateur référence le modèle de base prévu.
+
+
+\subsection{Entraînement QLoRA}
+
+J'ai retenu QLoRA pour adapter le modèle avec une empreinte mémoire compatible
+avec la machine disponible \cite{dettmers2023qlora}. Qwen2.5-3B-Instruct est
+chargé en 4 bits avec la quantification NF4, une double quantification et des
+calculs en BF16. Les adaptateurs ont un rang \(r=16\), un facteur
+\(\alpha=32\) et un dropout de 0,05. Ils ciblent les projections
+\texttt{q\_proj}, \texttt{k\_proj}, \texttt{v\_proj} et
+\texttt{o\_proj}, ainsi que \texttt{gate\_proj}, \texttt{up\_proj} et
+\texttt{down\_proj} dans le bloc feed-forward.
+
+L'entraînement utilise un lot unitaire et une accumulation de gradient pour
+obtenir un lot effectif plus grand sans dépasser la mémoire disponible. Le
+gradient checkpointing, l'optimiseur paginé et la désactivation du cache
+complètent ce dispositif. Le jeu est séparé de manière déterministe entre
+apprentissage et validation. La perte n'est calculée que sur les tokens produits
+par l'assistant grâce aux masques du gabarit ; les messages système, demandes et
+résultats d'outils servent de contexte, mais ne sont pas des cibles à recopier.
+
+
+\subsection{Routage et état d'exécution sans session}
+
+Le serveur expose cinq identifiants : un identifiant HMoE automatique et un
+identifiant de diagnostic par expert. Le routage automatique inspecte la phase
+et le rôle contenus dans la requête système. Le routage explicite reste utile
+pour tester un adaptateur isolément, mais le tableau de bord ne doit connaître
+que l'identifiant automatique. La spécialisation demeure ainsi interne au
+service et ne complexifie pas la configuration d'une campagne.
+
+Le modèle partage un état de poids, mais le suivi agentique est volontairement
+sans session. À chaque requête, le serveur reconstruit l'avancement à partir de
+la conversation OpenAI reçue : nombre d'appels réussis, tentatives de sauvegarde
+rejetées, exigences encore manquantes et progression de l'intrusion. Il injecte
+ensuite ce résumé autoritaire dans le dernier message. Aucune mémoire de campagne
+n'est conservée entre deux requêtes, ce qui empêche le mélange de deux exécutions
+concurrentes et facilite la reprise après redémarrage du service.
+
+\subsection{Contrats d'outils, compactage et récupération}
+
+La petite taille des experts rend les boucles d'outils sensibles au bruit. Pour
+la reconnaissance, seuls cinq schémas sont rendus dans le prompt : découverte
+ARP, découverte Nmap, scan Nmap, lecture et sauvegarde de livrable. Le registre
+exécutable complet reste chez l'appelant ; la réduction concerne seulement ce
+que voit le modèle. Dès que la couverture minimale est atteinte, le schéma visible
+est réduit à la sauvegarde. À l'inverse, tout appel généré vers un outil absent
+du contrat de la requête est supprimé avant d'être transmis au pipeline.
+
+Le compactage est aligné sur les fenêtres d'entraînement. Le serveur remplace
+les brouillons de livrables rejetés, résume les anciennes sorties réseau et, si
+nécessaire, replie les vieux tours en un registre déterministe. Il préserve les
+paires appel/résultat récentes et la dernière erreur contractuelle. La génération
+est ensuite plafonnée selon l'expert et l'espace restant dans la fenêtre. Ce
+mécanisme ne cherche donc pas seulement à réduire les tokens : il conserve les
+informations dont dépend la prochaine action.
+
+Lorsqu'une tentative de sauvegarde retourne une liste structurée
+\texttt{missing\_requirements}, le serveur peut produire directement l'appel
+manquant autorisé. Il transforme, par exemple, un port non couvert en scan Nmap
+ciblé. Cette récupération déterministe intervient avant une nouvelle génération
+et évite que le modèle répète le même livrable refusé. Dans les phases
+d'intrusion, le pipeline maintient en plus un registre d'actions faisant autorité.
+Si le modèle s'arrête ou si le fournisseur local devient indisponible, une
+reprise bornée exécute uniquement des sondes déduites du contexte, sans inventer
+d'identifiants. Le livrable final est alors reconstruit à partir du registre et
+signale les couvertures encore incomplètes.
+
+\subsection{Déploiement du service}
+
+Le service HMoE charge le modèle de base quantifié et les quatre adaptateurs,
+puis expose une API compatible OpenAI avec des routes de santé, de modèles et de
+conversation. Il est lancé comme service utilisateur systemd. Sur la machine
+GPU, l'écoute est limitée au pont Docker pour OpenWebUI ; l'accès depuis
+\texttt{nato-master} passe par un proxy lié uniquement à l'adresse Tailscale.
+Cette topologie évite d'exposer publiquement une API qui ne valide pas elle-même
+un jeton Bearer. Après une période d'inactivité configurable, les allocations
+CUDA inutilisées sont rendues au pilote sans interrompre le modèle chargé.
+
+
+\section{Évolution détaillée du pipeline}
+
+\subsection{Phase 2 : reconnaissance contractuelle}
+
+La phase~2 transforme une cible réseau en surface d'attaque observée. L'agent
+doit couvrir la découverte, les hôtes attendus et leurs services, puis enregistrer
+\texttt{02\_recon.md}. La sauvegarde n'est pas un simple signal de fin : l'outil
+vérifie les appels effectués et renvoie les exigences manquantes. Les résultats
+de scan sont projetés dans une représentation déterministe des hôtes, ports et
+protocoles. Cette projection alimente la phase suivante même si la prose du
+livrable est incomplète.
+
+J'ai ajouté une réconciliation entre cette surface et le graphe de scénario.
+Elle associe les observations aux nœuds connus et conserve les cibles non
+résolues au lieu de les faire disparaître. En mode découverte, les liens peuvent
+être inférés après la reconnaissance. Ainsi, la phase~3 ne dépend plus uniquement
+d'une topologie préexistante ni de la capacité du modèle à recopier exactement
+les résultats Nmap.
+
+\subsection{Phase 3 : analyse par appareil}
+
+La phase~3 est décomposée en trois étapes. Un scanner déterministe collecte
+d'abord les indices disponibles pour chaque appareil. Des micro-agents spécialisés
+analysent ensuite cette surface appareil par appareil, avec une limite de temps,
+de tours et de tokens. Enfin, une agrégation déterministe fusionne les sorties
+dans une file canonique de vulnérabilités. Une défaillance locale ne supprime pas
+les résultats du scanner : elle est inscrite dans un artefact de statut et la
+campagne continue avec un résultat partiel explicite.
+
+L'analyse conserve les versions de logiciels et peut interroger un catalogue CVE
+hors ligne. Les findings sont normalisés avec un identifiant stable, une cible,
+un type, une sévérité, une preuve et un plan de vérification. Dans le profil HMoE
+compact, certaines observations directes peuvent être retenues pour le rapport
+sans être promues automatiquement vers l'exploitation. Ce cloisonnement évite
+qu'une configuration seulement suspectée devienne une action offensive.
+
+\subsection{Phase 4 : vérification par vulnérabilité}
+
+La phase~4 planifie un travail indépendant pour chaque finding éligible. Le
+contrôleur choisit un outil compatible avec le service et impose un contrat de
+vérification. Le micro-agent ne reçoit donc pas une liberté d'exploitation
+illimitée : il doit exécuter une sonde ciblée, rester dans le périmètre autorisé
+et produire un résultat lié à cette sonde. Dans le profil compact, si l'appel au
+modèle échoue ou si la sonde requise n'apparaît pas, le contrôleur peut exécuter
+une sonde de repli bornée.
+
+L'agrégateur distingue un succès, un échec conclusif, une erreur et l'absence de
+test. Un succès enrichit la preuve ; un échec peut réfuter une simple suspicion ;
+une erreur ne transforme pas la détection en faux positif. Les résultats sont
+réunis dans \texttt{04\_exploitation.json} avec leur provenance d'outil. Les
+hôtes découverts durant cette phase déclenchent un cycle limité de reconnaissance
+et d'analyse avant la phase~5, ce qui permet de traiter un pivot sans relancer
+toute la campagne.
+
+\subsection{Phase 5 : intrusion contrôlée}
+
+La phase~5 raisonne sur les findings vérifiés, les chemins possibles et les
+identifiants réellement récupérés. Un contexte structuré énumère les points
+d'entrée, les cibles, les services et les chaînes candidates. Le contrat terminal
+exige des actions observables : lecture du contexte, couverture des points
+d'entrée, essais de réutilisation des identifiants sur les cibles concernées et,
+lorsqu'un identifiant est disponible, au moins un résultat d'accès authentifié.
+
+Chaque action est inscrite dans un registre faisant autorité. Le modèle produit
+un mémo, mais il ne peut pas déclarer seul la phase complète. Le contrôleur
+calcule la couverture, propose une action lorsqu'aucun progrès n'est observé et
+limite les reprises à un nombre borné de tours. Après un accès authentifié, une
+collecte post-accès récupère uniquement les éléments nécessaires à la preuve.
+Une campagne qui n'exécute aucune action ou ne satisfait pas le contrat est
+marquée bloquée ou incomplète ; elle n'est pas silencieusement convertie en
+succès.
+
+\subsection{Phase 6 : rapport fondé sur les artefacts}
+
+La phase~6 ne réinjecte pas l'intégralité des traces. Le pipeline construit un
+contexte compact à partir des vulnérabilités, résultats de vérification, chaînes
+d'intrusion et observations de configuration. Les tables lourdes sont
+pré-générées, et seuls les findings confirmés avec un niveau de preuve suffisant
+sont présentés comme vérifiés. Le modèle se concentre ainsi sur l'analyse et la
+hiérarchisation plutôt que sur la recopie de données volumineuses.
+
+Le rapport généré est validé avant fusion avec les sections déterministes. Si le
+modèle local échoue ou produit une synthèse incompatible avec les artefacts, un
+repli compose le rapport à partir des données structurées. Cette dernière
+frontière garantit qu'une formulation persuasive ne réintroduit pas une
+vulnérabilité éliminée par la phase~4.
+
+\section{Harness d'évaluation \texttt{strict-v3}}
+
+Le harness a été étendu pour évaluer non seulement la détection, mais aussi la
+qualité de la correspondance et la traçabilité des preuves. Chaque scénario
+associe une topologie, des packs de vulnérabilités et une vérité terrain. Des
+contrats de matching revus décrivent les champs structurants et les
+compatibilités autorisées. Le moteur construit les correspondances candidates,
+puis résout une association bipartite globale : un finding ne peut expliquer
+qu'une entrée de vérité terrain, et réciproquement. Cette règle supprime les
+scores artificiels où une même observation créditerait plusieurs vulnérabilités.
+
+Le crédit dépend de la précision structurelle du match. Une correspondance
+exacte reçoit le crédit maximal ; un type correct mais incomplet ou une
+compatibilité explicitement prévue reçoit un crédit moindre. Le score ajusté à
+la qualité combine ce crédit avec l'erreur de sévérité et la qualité de
+vérification. Le \emph{verified F1} impose en outre un appel d'outil lié au
+finding et dont le résultat est explicitement positif. Les métriques de chemins
+exigent que toutes les vulnérabilités attendues soient retrouvées ; leurs
+variantes vérifiées contrôlent aussi l'ordre des appareils dans une chaîne de
+phase~5.
+
+J'ai appliqué une politique d'échec fermé aux métadonnées et aux artefacts. Une
+campagne incomplète reste incomplète. Une version de contrat métrique incompatible
+neutralise les scores dépendant des preuves au lieu de les calculer avec une
+sémantique différente. Pour le split scellé, le worker ne reçoit ni vérité
+terrain ni détails privés ; le contrôleur renvoie seulement un résumé signé. Les
+scénarios attendus mais absents valent zéro lors de l'agrégation officielle.
+
+L'agrégation évite enfin qu'un scénario riche en findings domine le résultat.
+Les répétitions sont d'abord moyennées pour chaque scénario, puis les scénarios
+sont macro-moyennés à poids égal. Les métriques brutes, créditées,
+ajustées et vérifiées restent séparées afin qu'une amélioration de précision ne
+masque pas une régression de preuve. Un juge sémantique peut aider au diagnostic,
+mais la correspondance un-à-un, la validation de schéma et les scores finaux
+restent déterministes, ce qui limite les biais du paradigme
+\emph{LLM-as-a-judge} \cite{zheng2023judge}.
+
+\section{Raisonnement de graphe et maîtrise du contexte}
+
+En complément de la mission HMoE, j'ai relié au pipeline un graphe d'attaque
+orienté pondéré. Le coût d'une arête est l'inverse d'un poids heuristique de
+franchissement. Après une découverte ou une compromission, les distances vers la
+cible sont recalculées ; leur variation localise les nœuds rapprochés de
+l'objectif. Une propagation sur les prédécesseurs forme un cône d'impact, dans
+l'esprit des graphes d'attaque multi-hôtes \cite{ou2005mulval}. Ces valeurs ne
+sont pas des probabilités calibrées : elles servent à prioriser une analyse.
+
+J'ai aussi borné les sorties SSH, compacté les résumés de topologie et dédoublonné
+certaines observations MQTT ou HTTP. Ces optimisations ont été appliquées avec
+prudence : une première réduction trop agressive de la surface d'attaque a été
+annulée parce qu'elle supprimait une information utile. Cette expérience a
+directement guidé le compactage du serveur HMoE, qui conserve désormais les
+contrats, les erreurs récentes et le registre des outils avant de réduire la
+prose.
+
+\section{Résultats et difficultés}
+\input{parts/resultats_provisoires}
+
+\subsection{Difficultés techniques rencontrées}
+
+\begin{description}
+  \item[Aligner apprentissage et exécution] Un adaptateur entraîné sur un outil,
+  un format ou une fenêtre différents de la production peut échouer malgré une
+  perte d'entraînement correcte. J'ai donc partagé le gabarit, les schémas et les
+  budgets entre préparation, préflight et service.
+
+  \item[Préserver la preuve sous contrainte de contexte] Une réduction aveugle
+  économise des tokens mais peut séparer une conclusion de son appel d'outil. Le
+  découpage atomique de la phase~5 et le registre déterministe répondent à ce
+  risque.
+
+
+  \item[Distinguer terminaison et succès] Un livrable sauvegardé ou une réponse
+  fluide ne prouve pas la couverture. Les contrats de phase, les reprises bornées
+  et l'échec fermé rendent les lacunes visibles au lieu de les masquer.
+
+\end{description}

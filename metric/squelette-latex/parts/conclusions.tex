@@ -1,0 +1,39 @@
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+Ce stage avait pour objectif principal de spécialiser LANCE par une architecture
+HMoE agentique, avec une empreinte d'entraînement compatible avec des ressources
+limitées. La solution partage un modèle de base quantifié entre plusieurs
+adaptateurs QLoRA associés aux rôles de la campagne. Un routeur déterministe
+sélectionne l'expert attendu selon la phase et le serveur expose l'ensemble
+derrière une interface commune. La mission a couvert la préparation des traces,
+l'entraînement, le chargement des adaptateurs et leur intégration au cycle
+d'action de l'agent.
+
+Le pipeline et le harness ont été consolidés pour rendre cette spécialisation
+évaluable. Le pipeline encadre les transitions, restreint les outils et valide
+les livrables. Le harness déploie des scénarios reproductibles, associe les
+résultats à une vérité terrain et mesure la qualité des campagnes. Les travaux
+sur l'API, le suivi des exécutions, l'automatisation de l'infrastructure et les
+métriques participent donc à un même protocole expérimental. Le graphe pondéré
+et le cône d'impact apportent en complément un signal de priorité lorsque l'état
+du réseau évolue.
+
+Les résultats provisoires montrent que l'agent peut achever des campagnes sur
+plusieurs scénarios, mais aussi que la production d'un constat ne garantit pas
+un chemin d'attaque entièrement prouvé. Cet écart confirme l'intérêt d'évaluer
+le modèle au niveau de son exécution plutôt qu'à partir de la seule
+vraisemblance de ses réponses.
+
+Plusieurs limites demeurent. Les adaptateurs dépendent de la diversité et de la
+correction des traces. Le routage par phase est interprétable, mais ne combine
+pas plusieurs spécialités aux frontières des rôles. Les poids du graphe restent
+heuristiques et les premiers résultats ne constituent pas encore une comparaison
+définitive avec un modèle généraliste.
+
+La suite devra exécuter les configurations sur un jeu de scénarios identique,
+répéter les campagnes et analyser leur qualité, leurs preuves et leurs coûts.
+Une boucle d'amélioration pourra ensuite soumettre les erreurs à une revue
+humaine avant d'enrichir les données. Ce projet m'a finalement appris qu'un
+modèle spécialisé ne peut être jugé indépendamment de l'architecture qui
+encadre ses actions et du protocole qui rend ses résultats vérifiables.

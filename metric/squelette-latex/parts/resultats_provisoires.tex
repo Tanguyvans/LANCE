@@ -1,0 +1,65 @@
+\subsection{Instantané expérimental du 24 août 2026}
+\label{sec:resultats-provisoires}
+
+Les résultats présentés ici constituent un instantané de travail et non une
+campagne finale. J'ai retenu quatre exécutions terminées et comparables au
+regard des métadonnées disponibles, accessibles sur \texttt{nato-master}.
+Elles utilisent toutes le modèle MiniMax-M2.7, le profil \texttt{full}, le
+split \texttt{dev-public}, la révision logicielle \texttt{e7c4f6a} et la
+politique d'évaluation \texttt{strict-v3} avec le contrat métrique
+\texttt{strict-v3.3}. Les métadonnées indiquent que le modèle n'avait pas accès
+à la vérité terrain. Chaque scénario ne comporte qu'une répétition ; les
+valeurs ne permettent donc pas encore d'estimer la variance.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Résultats provisoires des quatre campagnes sélectionnées}
+  \label{tab:resultats-provisoires}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Scénario & Précision & Rappel & F1 & F1 vérifié & F1 qualité \\
+    \midrule
+    S1 & \(0{,}875\) & \(0{,}583\) & \(0{,}700\) & \(0{,}600\) & \(0{,}625\) \\
+    S2 & \(0{,}833\) & \(0{,}769\) & \(0{,}800\) & \(0{,}640\) & \(0{,}670\) \\
+    S5 & \(0{,}900\) & \(0{,}600\) & \(0{,}720\) & \(0{,}640\) & \(0{,}680\) \\
+    S8 & \(0{,}533\) & \(0{,}571\) & \(0{,}552\) & \(0{,}414\) & \(0{,}448\) \\
+    \midrule
+    Moyenne macro & \(0{,}785\) & \(0{,}631\) & \(0{,}693\) & \(0{,}574\) & \(0{,}606\) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Comme l'indique \cref{tab:resultats-provisoires}, la moyenne macro atteint un
+F1 de \(0{,}693\), contre \(0{,}574\) lorsque seuls les constats vérifiés sont
+crédités. Le F1 ajusté par la qualité s'établit à \(0{,}606\). L'écart entre
+ces mesures suggère qu'une détection correcte au niveau du type et de la cible
+ne s'accompagne pas toujours d'une preuve d'exécution suffisamment forte.
+
+La complétion moyenne de la phase 4 atteint \(92{,}8\,\%\) et la couverture
+d'exploitation \(82{,}4\,\%\). En revanche, la couverture macro des chemins
+n'est que de \(52{,}1\,\%\), et celle des chemins entièrement vérifiés de
+\(6{,}3\,\%\). S1 est le seul scénario de cet échantillon à obtenir une
+couverture vérifiée non nulle, égale à \(25\,\%\). Dans cet échantillon, la
+difficulté principale semble donc être la conservation d'une chaîne de preuves
+complète sur plusieurs étapes, et non le seul lancement des vérifications
+locales.
+
+S2 obtient le meilleur F1 de l'échantillon avec \(0{,}800\). S8 est le cas le
+plus difficile : huit vrais positifs, sept faux positifs et six faux négatifs
+conduisent à un F1 de \(0{,}552\). Ce résultat motive les gardes consacrées à
+la précision sur les scénarios étendus et à la réduction des hallucinations.
+
+Les quatre exécutions totalisent environ 3,58 dollars, 11,0 millions de tokens,
+1\,202 appels d'outils et 30 erreurs d'outils. Elles utilisent cependant un
+modèle généraliste distant et non le \gls{hmoe} local. Cet instantané constitue
+donc un test d'intégration du pipeline et du harness ; il ne démontre
+pas encore l'efficacité des experts entraînés. Une campagne finale devra figer
+la version du code, répéter chaque scénario et publier moyenne, dispersion et
+intervalle de confiance pour les baselines et le \gls{hmoe}.
+
+Les identifiants de runs utilisés sont
+\texttt{2026-08-24\_092203} pour S1,
+\texttt{2026-08-21\_144141} pour S2,
+\texttt{2026-08-24\_083553} pour S5 et
+\texttt{2026-08-21\_151305} pour S8.

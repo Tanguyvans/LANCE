@@ -1,0 +1,49 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+Les objets connectés et les systèmes industriels forment des réseaux
+hétérogènes dans lesquels une passerelle, un courtier MQTT, un automate ou un
+service web peut devenir une étape d'un chemin d'attaque. Évaluer leur sécurité
+suppose de découvrir la topologie, de choisir des actions adaptées aux
+protocoles, puis de vérifier les hypothèses par des observations et d'en
+conserver les preuves dans des artefacts comparables entre plusieurs campagnes.
+Les graphes d'attaque offrent un cadre pour représenter les dépendances entre
+connectivité, configuration et compromission \cite{ou2005mulval}.
+
+Le projet LANCE (\emph{LLM Agent for Network Compromise Evaluation}) étudie
+l'emploi de \glspl{llm} pour automatiser cette démarche dans des réseaux
+\gls{iot}/\gls{ot}. Son agent conduit une campagne structurée, depuis la
+découverte du réseau jusqu'au rapport. Cette application pose une difficulté
+centrale~: un modèle généraliste peut produire une réponse plausible sans
+respecter le rôle attendu, le format d'un appel d'outil ou le niveau de preuve
+nécessaire à une conclusion de sécurité.
+
+La mission principale du stage a consisté à concevoir une architecture agentique
+de type \gls{hmoe}, fondée sur un modèle de base partagé et sur des experts
+spécialisés par \gls{qlora}. Chaque expert apprend un rôle opérationnel ---
+organisation de la campagne, reconnaissance, analyse de vulnérabilités ou
+exploitation --- et un routeur sélectionne l'adaptateur correspondant à la phase
+exécutée. Le travail couvre ainsi la préparation de données issues de traces,
+leur contrôle, l'entraînement frugal, le service des adaptateurs et leur
+intégration au cycle d'action de l'agent.
+
+Le pipeline d'exécution et le harness expérimental constituent le support de
+cette spécialisation. Le premier impose les transitions, les outils autorisés
+et les contrats de sortie ; le second déploie des scénarios reproductibles,
+fournit une vérité terrain et mesure le comportement observé pendant une
+campagne. Leur consolidation a porté sur la robustesse de l'orchestration, la
+collecte de preuves, la gestion des exécutions et l'évaluation déterministe et
+sémantique. Un graphe d'attaque pondéré et son cône d'impact complètent ce
+dispositif par un signal de priorité topologique ; ils constituent un apport
+secondaire à l'architecture de spécialisation et de mesure.
+
+La problématique peut dès lors être formulée ainsi~:
+\emph{comment spécialiser de manière frugale un agent LLM pour les différentes
+étapes d'un audit IoT/OT, puis démontrer la qualité de son comportement au moyen
+d'un protocole d'exécution et d'évaluation reproductible ?}
+
+Le \cref{chap:contexte} présente le cadre et les objectifs de la mission. Le
+\cref{chap:implementation} décrit l'intégration de la solution, notamment la
+pipeline et le harness. Le \cref{chap:science} expose \gls{qlora}, le routage
+\gls{hmoe} et leur évaluation. Enfin, le \cref{chap:competences} revient sur les
+compétences mobilisées et les limites du travail.

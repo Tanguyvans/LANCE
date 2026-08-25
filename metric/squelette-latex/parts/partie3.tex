@@ -1,0 +1,199 @@
+\chapter{Spécialisation QLoRA et HMoE agentique}
+\label{chap:science}
+
+\section{Une mission centrée sur la spécialisation de l'agent}
+\label{sec:hmoe-probleme}
+
+La mission scientifique principale du stage a consisté à étudier une
+spécialisation frugale de LANCE. Un \gls{llm} généraliste peut expliquer une
+vulnérabilité, mais l'agent attendu doit enchaîner des actions beaucoup plus
+contraintes : choisir un outil autorisé, produire des arguments conformes à son
+schéma, exploiter les observations obtenues et enregistrer le livrable propre à
+la phase courante. Ces comportements ne sollicitent pas exactement les mêmes
+compétences lors de la reconnaissance, de l'analyse de vulnérabilités, de
+l'exploitation ou de la synthèse. Les inscrire uniquement dans le prompt
+allonge le contexte et ne garantit pas leur application ; entraîner quatre
+modèles complets multiplierait au contraire les besoins en mémoire et en
+stockage.
+
+L'hypothèse étudiée est donc la suivante : 
+
+\begin{displayquote}
+  un modèle de base quantifié, partagé par plusieurs adaptateurs spécialisés et
+  associé à un routage explicite par phase, peut améliorer la conformité
+  opérationnelle de l'agent à coût d'entraînement contenu.
+\end{displayquote}
+
+Cette hypothèse porte sur le système agentique complet. Elle ne se réduit ni à
+la convergence de l'entraînement, ni à la capacité du modèle à compléter une
+trace déjà connue. Elle suppose que l'expert sélectionné généralise à des
+topologies nouvelles et conserve la capacité d'appeler les outils au bon
+moment. Le travail a ainsi couvert toute la chaîne : constitution des corpus,
+adaptation \gls{qlora}, service multi-adaptateurs, routage, garde-fous de
+contexte et préparation d'un protocole d'évaluation.
+
+\section{Adaptation frugale par QLoRA}
+\label{sec:qlora-methode}
+
+La méthode \gls{qlora} conserve les poids du modèle de base gelés et les charge
+en quatre bits. Les gradients traversent cette représentation, mais seuls des
+adaptateurs de faible rang sont mis à jour. NF4, la double quantification et les
+optimiseurs paginés réduisent notamment l'empreinte mémoire de l'apprentissage
+\cite{dettmers2023qlora}. Pour une projection de poids \(W\), l'expert \(e\)
+apprend la correction
+
+\[
+  h = Q_{4}(W)x + \frac{\alpha}{r} B_e A_e x,
+\]
+
+où \(Q_{4}(W)\) désigne le poids de base quantifié, \(A_e\) et \(B_e\) les deux
+matrices entraînables et \(r\) leur rang. La configuration retenue utilise
+\(r=16\), \(\alpha=32\) et un dropout de \(0{,}05\). Les corrections sont
+appliquées aux projections de l'attention ainsi qu'aux projections montante,
+descendante et de porte du bloc feed-forward. Le calcul s'effectue en
+\texttt{bfloat16}, avec accumulation de gradient et activation du
+checkpointing de gradient afin de rester compatible avec une carte graphique
+de 16\,Gio.
+
+Chaque exemple du corpus de l'expert \(e\) est une conversation
+\((x^{(i)},y^{(i)})\in\mathcal{D}_e\), comprenant le contexte, les outils exposés
+et la réponse attendue. Un masque \(m_t\) exclut les messages utilisateur et les
+résultats d'outils : l'objectif porte uniquement sur les jetons produits par
+l'assistant. La fonction minimisée est ainsi
+
+\[
+  \mathcal{L}_e =
+  -\frac{1}{\sum_{i,t}m_t^{(i)}}
+  \sum_{i,t}m_t^{(i)}
+  \log p_{\theta,A_e,B_e}
+  \left(y_t^{(i)}\mid x^{(i)},y_{<t}^{(i)}\right).
+\]
+
+Cette formulation évite d'apprendre à prédire les entrées du protocole et
+concentre l'adaptation sur les décisions et productions de l'agent. Une
+séparation déterministe conserve 2\,\% de chaque corpus pour l'évaluation. Les
+longueurs maximales sont bornées à 6\,144 jetons, sauf pour l'expert de
+vulnérabilités limité à 4\,096 jetons. Le prétraitement découpe les traces trop
+longues et conserve les outils pertinents, car entraîner sur un contexte plus
+large que celui servi créerait un décalage entre apprentissage et inférence.
+
+\section{HMoE agentique : un routage de rôles, pas de jetons}
+\label{sec:hmoe-routage}
+
+Le terme \gls{hmoe} désigne ici une architecture agentique hétérogène. Il faut
+la distinguer d'un mélange d'experts neuronal classique. Dans ce dernier, une
+porte apprise sélectionne, pour chaque jeton et à l'intérieur d'une couche, un
+sous-ensemble de blocs feed-forward ; le calcul conditionnel augmente alors la
+capacité du réseau sans activer tous ses paramètres \cite{shazeer2017moe}. Dans
+LANCE, le modèle neuronal reste unique : le routage intervient au niveau d'une
+requête complète et choisit un adaptateur \gls{peft}. Il ne produit donc ni
+pondération douce entre experts, ni décision différente pour chaque jeton.
+
+Le routeur exploite d'abord l'identifiant de phase inscrit dans le message
+système. Les phases~1 et~6 sont confiées au secrétaire, la phase~2 à la
+reconnaissance, la phase~3 à l'analyse de vulnérabilités, et les phases~4 et~5 à
+l'exploitation. En l'absence de numéro explicite, des marqueurs de rôle
+stabilisent la sélection ; si aucun motif n'est reconnu, le modèle de base sert
+de repli. Les identifiants directs des experts restent exposés pour le
+diagnostic, tandis que l'identifiant commun \texttt{lance-moe} réalise le
+routage automatique. La \cref{tab:hmoe-experts} résume cette décomposition.
+
+\begin{table}[H]
+  \centering
+  \caption{Décomposition fonctionnelle du \gls{hmoe} agentique}
+  \label{tab:hmoe-experts}
+  \begin{tabular}{lp{0.16\textwidth}p{0.48\textwidth}}
+    \toprule
+    Expert & Phases & Compétence principalement apprise \\
+    \midrule
+    Secrétaire & 1 et 6 & Interprétation de la topologie, continuité des livrables et synthèse finale \\
+    Reconnaissance & 2 & Planification des scans, appels d'outils et consolidation des services observés \\
+    Vulnérabilités & 3 & Association entre preuves, services et vulnérabilités sans inventer de constat \\
+    Exploitation & 4 et 5 & Vérification contrôlée, conservation des preuves et progression vers l'intrusion \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Cette architecture rend la décision de routage interprétable et reproductible.
+Elle permet aussi de remplacer un expert sans réentraîner les autres. En
+contrepartie, la frontière entre phases est imposée : une requête ambiguë ne
+combine pas les compétences de deux adaptateurs. Le changement d'adaptateur
+actif est en outre protégé par un verrou de génération ; plusieurs exécutions
+concurrentes sont sérialisées afin d'éviter qu'une requête poursuive sa
+génération avec les poids d'un autre expert. Des budgets de contexte et de
+génération propres aux rôles bornent enfin le coût, mais peuvent tronquer une
+trace utile. Ces compromis relèvent de l'architecture agentique et ne sont pas
+visibles dans la seule perte d'apprentissage.
+
+\section{Données et observations provisoires}
+\label{sec:hmoe-donnees}
+
+Les quatre corpus préparés proviennent de traces structurées selon le protocole
+de LANCE. Ils ont été séparés par rôle afin qu'un adaptateur n'apprenne pas des
+contrats de sortie incompatibles. Le prévol vérifie le modèle préparé, le rôle
+déclaré, les limites de contexte et l'intégrité des fichiers. Les volumes et les
+pertes de validation disponibles au moment de la rédaction figurent dans la
+\cref{tab:hmoe-apprentissage}.
+
+\begin{table}[H]
+  \centering
+  \caption{État provisoire des corpus et de l'apprentissage QLoRA}
+  \label{tab:hmoe-apprentissage}
+  \begin{tabular}{lrrr}
+    \toprule
+    Expert & Exemples & Contexte maximal & Perte d'évaluation \\
+    \midrule
+    Secrétaire & 19\,065 & 6\,144 & 0,0421 \\
+    Reconnaissance & 9\,257 & 6\,144 & 0,2102 \\
+    Vulnérabilités & 6\,951 & 4\,096 & 0,00475 \\
+    Exploitation & 14\,629 & 6\,144 & 0,00836 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Ces valeurs montrent seulement que la vraisemblance des réponses attendues est
+mesurable sur la partition réservée. Elles ne sont pas directement comparables
+entre experts : les distributions de longueurs, la répétitivité des formats et
+la diversité des sorties diffèrent. Une faible perte peut notamment provenir
+d'un livrable très structuré et prévisible. Elle ne prouve ni que l'outil choisi
+est pertinent, ni que son argument est valide, ni que le constat final est
+correct. La perte plus élevée de la reconnaissance peut, inversement, refléter
+une plus grande diversité de plans et d'observations sans établir une moindre
+efficacité opérationnelle. Ces résultats restent donc des contrôles de
+convergence, pas une validation du \gls{hmoe} agentique.
+
+\section{Protocole d'évaluation et ablations}
+\label{sec:hmoe-evaluation}
+
+La validation de l'hypothèse de la \cref{sec:hmoe-probleme} doit comparer des
+systèmes soumis aux mêmes scénarios, prompts, outils, budgets de génération et
+graines. Le jeu d'évaluation doit être distinct des traces d'entraînement et
+inclure des topologies ou variantes non observées. Quatre conditions isolent
+les apports : le modèle de base avec prompt seul ; un adaptateur QLoRA global
+entraîné sur le corpus réuni ; les quatre experts avec sélection forcée de
+l'expert correct ; enfin le \gls{hmoe} avec routage automatique. Une ablation
+supplémentaire, qui permute volontairement certains experts, mesure si le gain
+provient bien de la spécialisation plutôt que du seul ajout de paramètres.
+
+L'évaluation doit être conduite sur deux niveaux complémentaires :
+
+\begin{description}
+  \item[Conformité agentique] taux d'appels d'outils syntaxiquement valides,
+    respect des outils autorisés, achèvement des phases, conformité des
+    livrables et fréquence des récupérations après erreur ;
+  \item[Efficacité de l'audit] précision, rappel et score F1 des constats,
+    proportion de preuves vérifiées, couverture des chemins d'attaque et coût
+    en jetons, temps et mémoire.
+\end{description}
+
+Les décisions sémantiques peuvent être assistées par un juge \gls{llm}, mais
+celui-ci ne doit pas être l'unique arbitre : les biais de position, de verbosité
+et d'auto-préférence sont documentés \cite{zheng2023judge}. Les validations de
+schéma, la correspondance avec la \gls{veriteterrain} et le calcul des métriques
+doivent rester déterministes lorsque cela est possible. Il faudra enfin publier
+les intervalles de confiance sur plusieurs exécutions et journaliser la version
+du modèle de base, des adaptateurs, du routeur, des corpus et du code. Ce
+protocole permettra de conclure séparément sur trois questions : QLoRA
+apporte-t-il un gain par rapport au prompt seul, la séparation des experts
+apporte-t-elle un gain par rapport à un adaptateur global, et le routeur
+automatique conserve-t-il ce gain sans connaître à l'avance l'expert correct ?

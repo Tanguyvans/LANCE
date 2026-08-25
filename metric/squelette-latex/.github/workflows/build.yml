@@ -1,0 +1,24 @@
+name: Build LaTeX PDF
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile LaTeX (pdflatex)
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: main.tex
+
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-stage
+          path: main.pdf
+          retention-days: 30
