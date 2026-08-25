@@ -141,11 +141,50 @@ visibles dans la seule perte d'apprentissage.
 \section{Données et observations provisoires}
 \label{sec:hmoe-donnees}
 
-Les quatre corpus préparés proviennent de traces structurées selon le protocole
-de LANCE. Ils ont été séparés par rôle afin qu'un adaptateur n'apprenne pas des
-contrats de sortie incompatibles. Le prévol vérifie le modèle préparé, le rôle
-déclaré, les limites de contexte et l'intégrité des fichiers. Les volumes et les
-pertes de validation disponibles au moment de la rédaction figurent dans la
+Les quatre corpus combinent des sources publiques transformées en traces
+agentiques, des scénarios synthétiques conformes aux contrats de LANCE et des
+corrections issues de campagnes relues. Ils ont été séparés par rôle afin qu'un
+adaptateur n'apprenne pas des contrats de sortie incompatibles. Leur provenance
+est la suivante :
+
+\begin{description}
+  \item[Secrétaire] Les exemples des phases~1 et~6 sont générés à partir des
+    prompts, gabarits de livrables, rôles d'équipements et topologies de LANCE.
+    Ils simulent l'analyse d'un graphe et la synthèse d'une campagne complète ;
+    ils ne proviennent donc pas d'un corpus public externe.
+
+  \item[Reconnaissance] Les observations de ports et de services sont extraites
+    de journaux Zeek, principalement des fichiers \texttt{conn.log} du jeu
+    IoT-23. Ce corpus de la Czech Technical University rassemble vingt captures
+    de trafic IoT infecté et trois captures bénignes \cite{garcia2020iot23}. Le
+    générateur conserve la structure des connexions, puis remplace les adresses
+    et construit des appels ARP et Nmap compatibles avec la phase~2.
+
+  \item[Vulnérabilités] Un instantané du 9 juillet 2026 de l'API~2.0 de la
+    National Vulnerability Database fournit les identifiants CVE, descriptions,
+    CPE et scores CVSS \cite{nistnvdapi}. Il est croisé avec le catalogue des
+    vulnérabilités exploitées de la CISA \cite{cisakev} et avec la table de
+    correspondance CVE d'Exploit-DB \cite{offsecexploitdb}. Ces deux sources
+    permettent de distinguer une vulnérabilité seulement décrite d'un cas connu
+    comme exploité ou associé à un code d'exploitation public.
+
+  \item[Exploitation] Les exemples des phases~4 et~5 sont construits à partir de
+    blocs de commandes de HackTricks \cite{hacktricksrepo}, de deux collections
+    communautaires de comptes rendus Hack The Box
+    \cite{momenbaselhtb,zweilosechtb} et des requêtes décrites dans les gabarits
+    YAML de Nuclei \cite{nucleitemplates}. Les fragments retenus sont filtrés,
+    replacés dans des scénarios IoT/OT contrôlés et convertis en appels d'outils
+    autorisés par LANCE.
+\end{description}
+
+Les corrections acceptées après revue humaine complètent le jeu d'entraînement
+du secrétaire et des experts de vulnérabilités et d'exploitation ; elles sont
+ajoutées après la constitution de la partition d'évaluation. Une copie de BOTS
+v3 est également archivée dans le dossier de ressources, mais elle n'est pas
+lue par le générateur actuel et n'est donc pas comptée comme source du corpus.
+Le prévol vérifie ensuite le modèle préparé, le rôle déclaré, les limites de
+contexte et l'intégrité des fichiers. Les volumes et les pertes de validation
+disponibles au moment de la rédaction figurent dans la
 \cref{tab:hmoe-apprentissage}.
 
 \begin{table}[H]
