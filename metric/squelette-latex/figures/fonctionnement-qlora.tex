@@ -14,13 +14,13 @@
 ]
   \node[input] (corpus) {Traces agentiques\\messages, outils, résultats};
   \node[input,right=9mm of corpus] (tokens) {Gabarit Qwen\\masque des jetons assistant};
-  \node[input,right=9mm of tokens] (x) {Activations d'entrée\\\(x\)};
+  \node[input,right=9mm of tokens] (x) {Activations d'entrée\\$x$};
 
-  \node[frozen,below=13mm of x,xshift=-25mm] (base) {Modèle Qwen2.5-3B\\poids \(Q_4(W)\) en NF4\\\textbf{gelés}};
-  \node[trainable,below=13mm of x,xshift=25mm] (lora) {Branche LoRA de rang 16\\\(A_e\) puis \(B_e\)\\\textbf{entraînable}};
-  \node[result,below=13mm of base,xshift=25mm] (sum) {Somme des deux chemins\\\(h=Q_4(W)x+\frac{\alpha}{r}B_eA_ex\)};
+  \node[frozen,below=13mm of x,xshift=-25mm] (base) {Modèle Qwen2.5-3B\\poids $Q_4(W)$ en NF4\\\textbf{gelés}};
+  \node[trainable,below=13mm of x,xshift=25mm] (lora) {Branche LoRA de rang 16\\$A_e$ puis $B_e$\\\textbf{entraînable}};
+  \node[result,below=13mm of base,xshift=25mm] (sum) {Somme des deux chemins\\$h=Q_4(W)x+\frac{\alpha}{r}B_eA_ex$};
   \node[result,below=10mm of sum,xshift=-25mm] (loss) {Perte assistant-only\\rétropropagation};
-  \node[result,below=10mm of sum,xshift=25mm] (adapter) {Adaptateur léger de l'expert\\\texttt{adapter\_model.safetensors}};
+  \node[result,below=10mm of sum,xshift=25mm] (adapter) {Adaptateur léger de l'expert};
 
   \draw[flow] (corpus) -- (tokens);
   \draw[flow] (tokens) -- (x);
@@ -29,7 +29,10 @@
   \draw[flow] (base.south) -- (sum.north west);
   \draw[flow] (lora.south) -- (sum.north east);
   \draw[flow] (sum) -- (loss);
-  \draw[gradient] (loss.east) -| node[pos=0.25,below,font=\scriptsize]{gradients} (lora.south);
+
+  % --- Ligne du gradient décalée vers la gauche ---
+ \draw[gradient] ([xshift=-10mm]loss.north) |- ++(0,4mm) -| node[pos=0.30,above,font=\scriptsize]{gradients} (lora.south);
+
   \draw[flow] (lora.south east) |- (adapter.north);
 
   \node[draw=blue!65!black,fill=blue!7,minimum width=5mm,minimum height=3mm,
