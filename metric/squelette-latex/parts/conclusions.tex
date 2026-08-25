@@ -1,39 +1,45 @@
 \chapter{Conclusion}
 \label{chap:conclusion}
 
-Ce stage avait pour objectif principal de spécialiser LANCE par une architecture
-HMoE agentique, avec une empreinte d'entraînement compatible avec des ressources
-limitées. La solution partage un modèle de base quantifié entre plusieurs
-adaptateurs QLoRA associés aux rôles de la campagne. Un routeur déterministe
-sélectionne l'expert attendu selon la phase et le serveur expose l'ensemble
-derrière une interface commune. La mission a couvert la préparation des traces,
-l'entraînement, le chargement des adaptateurs et leur intégration au cycle
-d'action de l'agent.
+La problématique de ce stage appelait deux réponses complémentaires : comment
+spécialiser de manière frugale un agent LLM pour les étapes d'un audit IoT/OT,
+puis comment démontrer la qualité de son comportement dans des conditions
+reproductibles.
 
-Le pipeline et le harness ont été consolidés pour rendre cette spécialisation
-évaluable. Le pipeline encadre les transitions, restreint les outils et valide
-les livrables. Le harness déploie des scénarios reproductibles, associe les
-résultats à une vérité terrain et mesure la qualité des campagnes. Les travaux
-sur l'API, le suivi des exécutions, l'automatisation de l'infrastructure et les
-métriques participent donc à un même protocole expérimental. Le graphe pondéré
-et le cône d'impact apportent en complément un signal de priorité lorsque l'état
-du réseau évolue.
+La spécialisation frugale repose sur une architecture HMoE agentique qui partage
+un unique modèle de base quantifié entre quatre adaptateurs QLoRA. Ces experts
+couvrent l'organisation et la restitution de la campagne, la reconnaissance,
+l'analyse de vulnérabilités et l'exploitation contrôlée. Seules les matrices de
+faible rang propres à chaque rôle sont entraînées ; le modèle de base reste gelé
+et n'est pas dupliqué. Un routeur déterministe active ensuite l'adaptateur associé
+à la phase courante. Cette organisation spécialise donc le comportement de
+l'agent tout en limitant le nombre de paramètres entraînés, la mémoire nécessaire
+et le coût de déploiement.
 
-Les résultats provisoires montrent que l'agent peut achever des campagnes sur
-plusieurs scénarios, mais aussi que la production d'un constat ne garantit pas
-un chemin d'attaque entièrement prouvé. Cet écart confirme l'intérêt d'évaluer
-le modèle au niveau de son exécution plutôt qu'à partir de la seule
-vraisemblance de ses réponses.
+La qualité ne peut toutefois pas être déduite de la seule vraisemblance des
+réponses du modèle. Elle est mesurée au niveau d'une campagne complète. Le
+pipeline impose les transitions, les outils autorisés et les contrats de sortie,
+tandis que le harness déploie des scénarios identiques, conserve les artefacts et
+compare les observations à une vérité terrain. Le suivi des exécutions,
+l'automatisation de l'infrastructure et les métriques permettent ainsi de répéter
+une campagne et d'attribuer un échec au modèle, au contexte transmis ou à
+l'orchestration. Le graphe pondéré et le cône d'impact complètent ce protocole par
+un signal de priorité lorsque l'état du réseau évolue.
 
-Plusieurs limites demeurent. Les adaptateurs dépendent de la diversité et de la
-correction des traces. Le routage par phase est interprétable, mais ne combine
-pas plusieurs spécialités aux frontières des rôles. Les poids du graphe restent
-heuristiques et les premiers résultats ne constituent pas encore une comparaison
-définitive avec un modèle généraliste.
+À ce stade, ce dispositif rend le comportement de l'agent observable et
+comparable, mais les résultats restent provisoires. L'agent parvient à achever
+plusieurs scénarios, ce qui valide l'intégration opérationnelle de l'architecture.
+En revanche, certains constats ne sont pas accompagnés d'un chemin d'attaque
+entièrement prouvé. Les expériences démontrent donc la capacité du protocole à
+mesurer la qualité et à révéler les erreurs, mais elles ne permettent pas encore
+de conclure définitivement à la supériorité des experts sur un modèle
+généraliste.
 
-La suite devra exécuter les configurations sur un jeu de scénarios identique,
-répéter les campagnes et analyser leur qualité, leurs preuves et leurs coûts.
-Une boucle d'amélioration pourra ensuite soumettre les erreurs à une revue
-humaine avant d'enrichir les données. Ce projet m'a finalement appris qu'un
-modèle spécialisé ne peut être jugé indépendamment de l'architecture qui
-encadre ses actions et du protocole qui rend ses résultats vérifiables.
+Pour achever cette démonstration, les différentes configurations devront être
+exécutées plusieurs fois sur un même jeu de scénarios, puis comparées selon la
+qualité des preuves, le taux de réussite et les coûts. Les adaptateurs devront
+également être enrichis à partir de traces diversifiées et revues humainement.
+Le principal enseignement de ce travail est ainsi qu'une spécialisation frugale
+ne suffit pas à garantir un agent fiable : elle doit être associée à une
+architecture qui encadre ses actions et à un protocole capable d'en vérifier les
+résultats.
