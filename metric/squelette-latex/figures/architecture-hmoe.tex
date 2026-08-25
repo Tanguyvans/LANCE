@@ -1,40 +1,63 @@
 \begin{tikzpicture}[
   font=\sffamily\small,
-  >={Latex[length=2.4mm]},
-  flow/.style={->,thick,draw=black!70},
-  return/.style={->,thick,dashed,draw=violet!75!black},
-  block/.style={draw=blue!65!black,fill=blue!7,rounded corners=2pt,
-    align=center,minimum height=10mm,text width=30mm,inner sep=4pt},
-  expert/.style={draw=green!50!black,fill=green!8,rounded corners=2pt,
-    align=center,minimum height=10mm,text width=27mm,inner sep=4pt},
-  guard/.style={draw=orange!75!black,fill=orange!8,rounded corners=2pt,
-    align=center,minimum height=10mm,text width=66mm,inner sep=5pt},
-  group/.style={draw=black!45,dashed,rounded corners=3pt,inner sep=5pt}
+  >={Latex[length=2.8mm,width=2mm]},
+  flow/.style={->,thick,draw=black!75},
+  link/.style={thick,draw=black!65},
+  return/.style={->,thick,dashed,draw=violet!80!black},
+  block/.style={draw=blue!70!black,fill=blue!8,rounded corners=3pt,
+    align=center,minimum height=11mm,text width=31mm,inner sep=5pt,semithick},
+  expert/.style={draw=green!55!black,fill=green!9,rounded corners=3pt,
+    align=center,minimum height=10mm,text width=24mm,inner sep=4pt,semithick},
+  guard/.style={draw=orange!80!black,fill=orange!9,rounded corners=3pt,
+    align=center,minimum height=11mm,text width=94mm,inner sep=5pt,semithick},
+  group/.style={draw=black!50,dashed,rounded corners=4pt,inner sep=7pt,semithick},
+  lbl/.style={font=\sffamily\scriptsize,fill=white,inner sep=1.5pt}
 ]
+  % Une requête entière est routée avant toute génération
   \node[block] (pipeline) {Pipeline LANCE\\requête OpenAI-compatible};
-  \node[block,right=12mm of pipeline] (router) {Routeur déterministe\\phase et rôle\\jamais par jeton};
+  \node[block,right=20mm of pipeline] (router)
+    {Routeur déterministe\\phase et rôle\\jamais par jeton};
+  \coordinate (routingmid) at ($(pipeline)!0.5!(router)$);
+  \coordinate (split) at ($(routingmid)+(0,-18mm)$);
 
-  \node[expert,right=13mm of router,yshift=10mm] (secretary) {\texttt{secretary}\\phases 1 et 6};
-  \node[expert,right=5mm of secretary] (recon) {\texttt{recon}\\phase 2};
-  \node[expert,below=7mm of secretary] (vuln) {\texttt{vuln}\\phase 3};
-  \node[expert,below=7mm of recon] (exploit) {\texttt{exploit}\\phases 4 et 5};
+  % Quatre adaptateurs spécialisés clairement séparés
+  \node[expert,below=20mm of routingmid,xshift=-54mm] (secretary)
+    {\texttt{secretary}\\phases 1 et 6};
+  \node[expert,right=8mm of secretary] (recon)
+    {\texttt{recon}\\phase 2};
+  \node[expert,right=8mm of recon] (vuln)
+    {\texttt{vuln}\\phase 3};
+  \node[expert,right=8mm of vuln] (exploit)
+    {\texttt{exploit}\\phases 4 et 5};
   \node[group,fit=(secretary)(recon)(vuln)(exploit),
     label={[font=\sffamily\small\bfseries]above:Adaptateurs QLoRA spécialisés}] (adapters) {};
 
-  \node[block,right=16mm of adapters] (base) {Qwen2.5-3B-Instruct\\base quantifiée 4 bits\\partagée et gelée};
-  \node[block,below=10mm of base] (generation) {Adaptateur actif\\+ génération sérialisée};
-  \node[guard,below=15mm of adapters,xshift=-22mm] (guards) {Garde-fous d'exécution : budget de contexte et de génération,\\filtrage des outils autorisés et reprise contrôlée};
+  % Socle commun et exécution protégée
+  \node[block,below=18mm of adapters] (base)
+    {Qwen2.5-3B-Instruct\\base quantifiée 4 bits\\partagée et gelée};
+  \node[block,below=14mm of base] (generation)
+    {Adaptateur actif\\+ génération sérialisée};
+  \node[guard,below=14mm of generation] (guards)
+    {Garde-fous : budget de contexte et de génération, filtrage des outils\\
+     autorisés et reprise contrôlée après un rejet};
 
+  % Routage de la requête
   \draw[flow] (pipeline) -- node[above,font=\scriptsize]{requête complète} (router);
-  \draw[flow] (router.east) -- ++(5mm,0) |- (secretary.west);
-  \draw[flow] (router.east) -- ++(5mm,0) |- (recon.west);
-  \draw[flow] (router.east) -- ++(5mm,0) |- (vuln.west);
-  \draw[flow] (router.east) -- ++(5mm,0) |- (exploit.west);
-  \draw[flow] (secretary.east) -- ++(4mm,0) |- (base.west);
-  \draw[flow] (recon.east) -- ++(4mm,0) |- (base.west);
-  \draw[flow] (vuln.east) -- ++(4mm,0) |- (base.west);
-  \draw[flow] (exploit.east) -- ++(4mm,0) |- (base.west);
+  \draw[flow] (router.south) |- (split);
+  \draw[flow] (split) -| (secretary.north);
+  \draw[flow] (split) -| (recon.north);
+  \draw[flow] (split) -| (vuln.north);
+  \draw[flow] (split) -| (exploit.north);
+
+  % Convergence vers l'unique modèle de base
+  \coordinate (merge) at ($(base.north)+(0,8mm)$);
+  \draw[link] (secretary.south) |- (merge);
+  \draw[link] (recon.south) |- (merge);
+  \draw[link] (vuln.south) |- (merge);
+  \draw[link] (exploit.south) |- (merge);
+  \draw[flow] (merge) -- (base.north);
   \draw[flow] (base) -- (generation);
-  \draw[flow] (guards.east) -| (generation.south);
-  \draw[return] (generation.east) -- ++(7mm,0) |- node[pos=0.25,right,font=\scriptsize,align=left]{texte ou\\appel d'outil} (pipeline.south);
+  \draw[return] (guards.north) -- node[lbl,right]{contraintes} (generation.south);
+  \draw[return] (generation.west) -- ++(-62mm,0) |-
+    node[lbl,pos=0.25,below]{texte ou appel d'outil} (pipeline.south);
 \end{tikzpicture}
