@@ -37,7 +37,7 @@
     label={[font=\sffamily\small\bfseries,yshift=2pt]above:Pipeline LANCE}] (pipeline) {};
 
   % Services utilisés pendant l'exécution
-  \node[component,below=14mm of pipeline,xshift=-31mm] (model)
+  \node[component,below=22mm of pipeline,xshift=-31mm] (model)
     {Fournisseur LLM\\HMoE local ou API distante};
   \node[component,right=22mm of model] (tools)
     {Registre d'outils\\Nmap, HTTP, MQTT,\\Modbus, SSH, \ldots};
@@ -65,15 +65,19 @@
 
   % Modèle, outils et cible
   \draw[flow] (pipeline.south west) -- (model.north);
-  \draw[feedback,bend left=12] (model.north east) to
-    node[lbl,right]{réponse / appel} (pipeline.south);
+  \draw[feedback] (model.north) --
+    node[lbl,right]{réponse / appel} ++(0,10mm) -| (pipeline.south west);
   \draw[flow] (pipeline.south east) -- (tools.north);
-  \draw[feedback,bend right=13] (tools.north west) to
-    node[lbl,left]{résultats} (pipeline.south);
-  \draw[flow,bend left=16] (tools.east) to
-    node[lbl,right]{actions bornées} (target.south);
-  \draw[feedback,bend left=16] (target.south) to
-    node[lbl,left]{observations} (tools.east);
+  \draw[feedback] (tools.north) --
+    node[lbl,right]{résultats} ++(0,10mm) -| (pipeline.south east);
+  \coordinate (actionturn) at ($(tools.east)+(9mm,0)$);
+  \coordinate (actiontop) at (actionturn |- target.south);
+  \draw[flow] (tools.east) -- (actionturn) --
+    node[lbl,left]{actions bornées} (actiontop) -- (target.south);
+  \coordinate (obsturn) at ($(target.east)+(12mm,0)$);
+  \coordinate (obsbottom) at (obsturn |- tools.east);
+  \draw[feedback] (target.east) -- (obsturn) --
+    node[lbl,right]{observations} (obsbottom) -- (tools.east);
 
   % Évaluation et retour opérateur
   \draw[flow] (pipeline.south west) -- ++(-9mm,0) |- (artifacts.north);
