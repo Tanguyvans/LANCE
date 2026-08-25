@@ -33,7 +33,7 @@
   \node[component,below=10mm of model] (tools) {Registre d'outils\\Nmap, HTTP, MQTT,\\Modbus, SSH, \ldots};
 
   \node[artifact,below=14mm of p6,xshift=13mm] (artifacts) {Artefacts structurés\\et traces d'appels};
-  \node[artifact,right=14mm of artifacts] (harness) {Harnais strict-v3\\comparaison à la vérité terrain};
+  \node[artifact,right=14mm of artifacts] (harness) {Harness strict-v3\\comparaison à la vérité terrain};
   \node[artifact,right=14mm of harness] (metrics) {Scores, diagnostics\\et rapports de campagne};
 
   \draw[flow] (catalogue) -- (deploy);
