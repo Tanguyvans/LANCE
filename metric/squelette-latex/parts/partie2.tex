@@ -37,6 +37,18 @@ Proxmox, tandis qu'un harness distinct compare les artefacts à la vérité terr
 Enfin, un serveur \gls{hmoe} compatible avec l'\gls{api} OpenAI fournit au pipeline un point
 d'accès unique à plusieurs adaptateurs spécialisés.
 
+La \cref{fig:architecture-lance} présente les principales frontières du système :
+le scénario déployé fournit à la fois la cible et la vérité terrain, tandis que
+le pipeline conserve seul la responsabilité d'autoriser les outils, d'exécuter
+les actions et de produire les artefacts évalués.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/architecture-lance}}
+  \caption{Architecture fonctionnelle de LANCE et de son environnement d'évaluation}
+  \label{fig:architecture-lance}
+\end{figure}
+
 
 \section{Mission principale : construction d'un HMoE agentique}
 
@@ -65,6 +77,18 @@ mémoire a une contrepartie : le changement d'adaptateur modifie un état partag
 J'ai donc sérialisé la génération avec un verrou. Les requêtes peuvent être
 reçues concurremment par l'API, mais deux générations ne changent jamais
 l'adaptateur au même instant.
+
+La \cref{fig:architecture-hmoe} détaille ce routage. La sélection porte sur une
+requête complète et précède la génération : les quatre experts partagent donc
+les poids quantifiés du même modèle, mais appliquent chacun une correction
+QLoRA propre à leur rôle.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.98\textwidth}{!}{\input{figures/architecture-hmoe}}
+  \caption{Architecture du HMoE agentique et routage déterministe par phase}
+  \label{fig:architecture-hmoe}
+\end{figure}
 
 \subsection{Construction des données d'apprentissage}
 

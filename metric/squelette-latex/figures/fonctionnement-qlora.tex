@@ -1,0 +1,41 @@
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  >={Latex[length=2.4mm]},
+  flow/.style={->,thick,draw=black!70},
+  gradient/.style={->,thick,dashed,draw=red!70!black},
+  input/.style={draw=orange!75!black,fill=orange!8,rounded corners=2pt,
+    align=center,minimum height=10mm,text width=29mm,inner sep=4pt},
+  frozen/.style={draw=blue!65!black,fill=blue!7,rounded corners=2pt,
+    align=center,minimum height=15mm,text width=35mm,inner sep=5pt},
+  trainable/.style={draw=green!50!black,fill=green!9,rounded corners=2pt,
+    align=center,minimum height=15mm,text width=35mm,inner sep=5pt},
+  result/.style={draw=violet!70!black,fill=violet!7,rounded corners=2pt,
+    align=center,minimum height=10mm,text width=34mm,inner sep=4pt}
+]
+  \node[input] (corpus) {Traces agentiques\\messages, outils, résultats};
+  \node[input,right=9mm of corpus] (tokens) {Gabarit Qwen\\masque des jetons assistant};
+  \node[input,right=9mm of tokens] (x) {Activations d'entrée\\\(x\)};
+
+  \node[frozen,below=13mm of x,xshift=-25mm] (base) {Modèle Qwen2.5-3B\\poids \(Q_4(W)\) en NF4\\\textbf{gelés}};
+  \node[trainable,below=13mm of x,xshift=25mm] (lora) {Branche LoRA de rang 16\\\(A_e\) puis \(B_e\)\\\textbf{entraînable}};
+  \node[result,below=13mm of base,xshift=25mm] (sum) {Somme des deux chemins\\\(h=Q_4(W)x+\frac{\alpha}{r}B_eA_ex\)};
+  \node[result,below=10mm of sum,xshift=-25mm] (loss) {Perte assistant-only\\rétropropagation};
+  \node[result,below=10mm of sum,xshift=25mm] (adapter) {Adaptateur léger de l'expert\\\texttt{adapter\_model.safetensors}};
+
+  \draw[flow] (corpus) -- (tokens);
+  \draw[flow] (tokens) -- (x);
+  \draw[flow] (x.south) -- ++(0,-4mm) -| (base.north);
+  \draw[flow] (x.south) -- ++(0,-4mm) -| (lora.north);
+  \draw[flow] (base.south) -- (sum.north west);
+  \draw[flow] (lora.south) -- (sum.north east);
+  \draw[flow] (sum) -- (loss);
+  \draw[gradient] (loss.east) -| node[pos=0.25,below,font=\scriptsize]{gradients} (lora.south);
+  \draw[flow] (lora.south east) |- (adapter.north);
+
+  \node[draw=blue!65!black,fill=blue!7,minimum width=5mm,minimum height=3mm,
+    right=6mm of adapter,yshift=4mm] (legbase) {};
+  \node[right=2mm of legbase,font=\scriptsize,anchor=west] {paramètres partagés et gelés};
+  \node[draw=green!50!black,fill=green!9,minimum width=5mm,minimum height=3mm,
+    below=2mm of legbase] (leglora) {};
+  \node[right=2mm of leglora,font=\scriptsize,anchor=west] {paramètres propres à l'expert};
+\end{tikzpicture}

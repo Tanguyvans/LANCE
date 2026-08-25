@@ -1,0 +1,40 @@
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  >={Latex[length=2.4mm]},
+  flow/.style={->,thick,draw=black!70},
+  return/.style={->,thick,dashed,draw=violet!75!black},
+  block/.style={draw=blue!65!black,fill=blue!7,rounded corners=2pt,
+    align=center,minimum height=10mm,text width=30mm,inner sep=4pt},
+  expert/.style={draw=green!50!black,fill=green!8,rounded corners=2pt,
+    align=center,minimum height=10mm,text width=27mm,inner sep=4pt},
+  guard/.style={draw=orange!75!black,fill=orange!8,rounded corners=2pt,
+    align=center,minimum height=10mm,text width=66mm,inner sep=5pt},
+  group/.style={draw=black!45,dashed,rounded corners=3pt,inner sep=5pt}
+]
+  \node[block] (pipeline) {Pipeline LANCE\\requête OpenAI-compatible};
+  \node[block,right=12mm of pipeline] (router) {Routeur déterministe\\phase et rôle\\jamais par jeton};
+
+  \node[expert,right=13mm of router,yshift=10mm] (secretary) {\texttt{secretary}\\phases 1 et 6};
+  \node[expert,right=5mm of secretary] (recon) {\texttt{recon}\\phase 2};
+  \node[expert,below=7mm of secretary] (vuln) {\texttt{vuln}\\phase 3};
+  \node[expert,below=7mm of recon] (exploit) {\texttt{exploit}\\phases 4 et 5};
+  \node[group,fit=(secretary)(recon)(vuln)(exploit),
+    label={[font=\sffamily\small\bfseries]above:Adaptateurs QLoRA spécialisés}] (adapters) {};
+
+  \node[block,right=16mm of adapters] (base) {Qwen2.5-3B-Instruct\\base quantifiée 4 bits\\partagée et gelée};
+  \node[block,below=10mm of base] (generation) {Adaptateur actif\\+ génération sérialisée};
+  \node[guard,below=15mm of adapters,xshift=-22mm] (guards) {Garde-fous d'exécution : budget de contexte et de génération,\\filtrage des outils autorisés et reprise contrôlée};
+
+  \draw[flow] (pipeline) -- node[above,font=\scriptsize]{requête complète} (router);
+  \draw[flow] (router.east) -- ++(5mm,0) |- (secretary.west);
+  \draw[flow] (router.east) -- ++(5mm,0) |- (recon.west);
+  \draw[flow] (router.east) -- ++(5mm,0) |- (vuln.west);
+  \draw[flow] (router.east) -- ++(5mm,0) |- (exploit.west);
+  \draw[flow] (secretary.east) -- ++(4mm,0) |- (base.west);
+  \draw[flow] (recon.east) -- ++(4mm,0) |- (base.west);
+  \draw[flow] (vuln.east) -- ++(4mm,0) |- (base.west);
+  \draw[flow] (exploit.east) -- ++(4mm,0) |- (base.west);
+  \draw[flow] (base) -- (generation);
+  \draw[flow] (guards.east) -| (generation.south);
+  \draw[return] (generation.east) -- ++(7mm,0) |- node[pos=0.25,right,font=\scriptsize,align=left]{texte ou\\appel d'outil} (pipeline.south);
+\end{tikzpicture}

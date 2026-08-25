@@ -77,6 +77,19 @@ vulnérabilités limité à 4\,096 jetons. Le prétraitement découpe les traces
 longues et conserve les outils pertinents, car entraîner sur un contexte plus
 large que celui servi créerait un décalage entre apprentissage et inférence.
 
+La \cref{fig:fonctionnement-qlora} synthétise ce mécanisme. Le chemin quantifié
+fournit la représentation générale du modèle et reste gelé ; seule la branche
+de faible rang reçoit les mises à jour calculées à partir des jetons assistant.
+Après entraînement, les matrices obtenues forment un adaptateur léger qui peut
+être remplacé sans dupliquer le modèle de base.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.98\textwidth}{!}{\input{figures/fonctionnement-qlora}}
+  \caption{Principe de l'adaptation QLoRA appliquée à un expert de LANCE}
+  \label{fig:fonctionnement-qlora}
+\end{figure}
+
 \section{HMoE agentique : un routage de rôles, pas de jetons}
 \label{sec:hmoe-routage}
 
