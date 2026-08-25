@@ -1,0 +1,179 @@
+\documentclass[stage2a]{tnreport}
+
+% Ce squelette reprend directement le template officiel tn-report.
+% L'option stage2a adapte automatiquement la page de garde et la déclaration
+% de non-plagiat à un stage de deuxième année.
+
+% ─── Qualité typographique et environnements complémentaires ────────────────
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\emergencystretch}{3em}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{csquotes}
+
+% ─── Références croisées ────────────────────────────────────────────────────
+\usepackage[french]{cleveref}
+\AtBeginDocument{\shorthandoff{:}}
+
+% ─── Bibliographie ──────────────────────────────────────────────────────────
+\usepackage[backend=biber,style=ieee,sorting=none]{biblatex}
+\addbibresource{references.bib}
+\setlength{\bibitemsep}{0.4\baselineskip}
+
+% ─── Glossaire ──────────────────────────────────────────────────────────────
+% tnreport charge glossaries-extra et initialise makeglossaries.
+\input{glossaire}
+
+% ─── Métadonnées connues ────────────────────────────────────────────────────
+\def\reportTitle{Conception d'HMoE et évaluation de LANCE, agent LLM pour l’audit de réseaux IoT/OT}
+\def\reportLongTitle{\reportTitle}
+
+\def\reportAuthor{Léo Basin}
+\def\reportAuthorEmail{\email{leo.basin@telecomnancy.eu}}
+\def\reportAuthorAddress{\textit{42 Rue Joseph Laurent}}
+\def\reportAuthorCity{\textit{54000 Nancy}}
+\def\reportAuthorPhone{\textit{+33 (0)6 86 95 28 57}}
+
+\def\reportCompany{\textit{Université de Mons}}
+\def\reportCompanyAddress{\textit{09 Rue de Houdain }}
+\def\reportCompanyCity{\textit{7000 Mons}}
+\def\reportCompanyPhone{\textit{003265374056}}
+
+\def\reportSchool{TELECOM Nancy}
+\def\reportSupervisor{\textit{Monsieur Saïd Mahmoudi}}
+\def\reportAcademicSupervisor{\textit{Monsieur Thibault Cholez}}
+
+\def\place{\textit{Mons}}
+\def\date{24 août 2026}
+
+% Aucun logo d'entreprise n'est utilisé tant que l'organisme n'est pas renseigné.
+\makeatletter
+\let\reportCompanyLogoPath\@undefined
+\makeatother
+
+% Les cadres de signature restent vides jusqu'à la signature des intéressés.
+\addSignaturesLine{{
+  {}{Léo BASIN}{Élève-ingénieur en 2\textsuperscript{e} année},
+  {}{Nom à compléter}{Maître de stage}
+}}
+
+\hypersetup{
+  pdftitle={\reportTitle},
+  pdfauthor={Léo Basin},
+  pdfsubject={Rapport de stage de deuxième année — TELECOM Nancy}
+}
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+% Version compilable de la déclaration du template, sans inventer le numéro
+% étudiant ni ajouter une fausse signature.
+\newcommand{\makeStudentDeclaration}{%
+  \begin{center}
+    {\Large\bfseries Déclaration sur l'honneur de non-plagiat}
+  \end{center}
+
+  \bigskip
+
+  \textbf{Je soussigné,}
+
+  \textbf{Nom, prénom~:} Basin, Léo
+
+  \textbf{Élève-ingénieur régulièrement inscrit en
+  \reportSchoolDiplomaYear\textsuperscript{e} année à \reportSchool.}
+
+  \textbf{Numéro de carte étudiant~:} \textit{32417706}
+
+  \textbf{Année universitaire~:} \reportYear
+
+  \textbf{Auteur du document intitulé~:}
+
+  \begin{center}
+    {\Large \reportLongTitle}
+  \end{center}
+
+  Je déclare que ce rapport est un travail original et que toute formulation,
+  idée, recherche, analyse, illustration, programme ou autre création empruntée
+  à un tiers est clairement signalée et référencée selon les usages en vigueur.
+  Je reconnais que l'absence de citation claire et complète constitue un plagiat.
+
+  \vfill
+
+  \hfill\textbf{Fait à} \place, \textbf{le} \date
+
+  \bigskip
+
+  \hfill\begin{minipage}{0.38\textwidth}
+    \textbf{Signature~:}\\[2.5cm]
+    \rule{\linewidth}{0.4pt}
+  \end{minipage}
+
+  \cleardoublepage
+}
+
+\begin{document}
+
+% ─── Pages liminaires du template tn-report ─────────────────────────────────
+\maketitle
+\pagenumbering{roman}
+
+\makeStudentDeclaration
+\makesecondtitle
+
+\chapter*{Remerciements}
+\addcontentsline{toc}{chapter}{Remerciements}
+\input{parts/remerciements}
+\cleardoublepage
+
+\begin{singlespace}
+\tableofcontents
+\end{singlespace}
+\cleardoublepage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ─── Corps du rapport ───────────────────────────────────────────────────────
+\input{parts/introduction}
+\input{parts/partie1}
+\input{parts/partie2}
+\input{parts/partie3}
+\input{parts/partie4}
+\input{parts/conclusions}
+
+% ─── Bibliographie et listes ────────────────────────────────────────────────
+\cleardoublepage
+\begin{singlespace}
+\printbibliography[heading=bibintoc,title={Bibliographie}]
+\end{singlespace}
+
+\cleardoublepage
+\listoftables
+
+\cleardoublepage
+\begin{singlespace}
+\printglossary[type=\acronymtype,title={Liste des acronymes}]
+\printglossary[title={Glossaire}]
+\end{singlespace}
+
+% ─── Annexes ────────────────────────────────────────────────────────────────
+% Activer uniquement lorsque les annexes sont réellement appelées dans le texte.
+% \appendix
+% \part*{Annexes}
+% \addcontentsline{toc}{part}{Annexes}
+% \input{parts/annexes}
+
+% ─── Résumé et abstract, comme dans le template stage 1A ────────────────────
+\cleardoublepage
+\thispagestyle{empty}
+\section*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+\input{parts/resume}
+
+\section*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\input{parts/abstract}
+
+\end{document}

@@ -1,0 +1,168 @@
+\documentclass[12pt, a4paper]{report}
+
+% ─── Encodage & langue ───────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+
+% ─── Mise en page ────────────────────────────────────────────────────────────
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm]{geometry}
+\usepackage{setspace}
+% Interligne : 1.15 est un bon compromis lisibilité / volume quand l'école impose
+% une fourchette de pages. Si ton école impose un interligne, respecte-le.
+% ⚠️ Piège : \onehalfspacing vaut déjà ~1,25 à 12 pt — passer de l'un à 1,25 ne gagne rien.
+\setstretch{1.15}
+
+% ─── Typographie ─────────────────────────────────────────────────────────────
+\usepackage{lmodern}
+\usepackage{microtype}
+% Marge de manœuvre pour les paragraphes contenant de longs blocs \texttt{} insécables
+% (noms de variables, routes d'API), qui déborderaient sinon dans la marge.
+\setlength{\emergencystretch}{3em}
+
+% ─── Graphiques & couleurs ───────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage[dvipsnames, table]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, backgrounds, fit, calc}
+\usepackage{float}
+
+% ─── Tableaux ────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+
+% ─── Code source ─────────────────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{lstautogobble}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{codeframe}{RGB}{200,200,200}
+\definecolor{codecomment}{RGB}{100,100,100}
+\definecolor{codekeyword}{RGB}{0,0,180}
+\definecolor{codestring}{RGB}{163,21,21}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\color{codecomment}\itshape,
+  frame=single,
+  rulecolor=\color{codeframe},
+  keepspaces=true,
+  keywordstyle=\color{codekeyword}\bfseries,
+  numbers=left,
+  numbersep=8pt,
+  numberstyle=\tiny\color{gray},
+  showstringspaces=false,
+  stringstyle=\color{codestring},
+  tabsize=2,
+  autogobble=true
+}
+
+% ─── Liens & PDF ─────────────────────────────────────────────────────────────
+\usepackage{amsmath}
+\usepackage[colorlinks=true, linkcolor=NavyBlue, citecolor=NavyBlue, urlcolor=NavyBlue]{hyperref}
+\usepackage{bookmark}
+\usepackage[french]{cleveref}
+% Fix INDISPENSABLE : babel français rend ":" actif, ce qui casse \cref{fig:xxx}
+\AtBeginDocument{\shorthandoff{:}}
+
+% ─── Titres de chapitre ──────────────────────────────────────────────────────
+% La classe report réserve ~5 cm de blanc avant chaque titre de chapitre ; on ramène
+% cet espace à une valeur raisonnable (utile quand le nombre de pages est contraint).
+\usepackage{titlesec}
+\titlespacing*{\chapter}{0pt}{0pt}{25pt}
+
+% ─── En-têtes & pieds de page ────────────────────────────────────────────────
+\usepackage{fancyhdr}
+\setlength{\headheight}{14.5pt}
+\addtolength{\topmargin}{-2.5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small <<PRÉNOM NOM>>}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─── Césure de noms propres récalcitrants ────────────────────────────────────
+% Ajoute ici les mots que LaTeX coupe mal (noms de villes, d'organismes…).
+\hyphenation{}
+
+% ─── Numérotation ────────────────────────────────────────────────────────────
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+% ─── Bibliographie ───────────────────────────────────────────────────────────
+\usepackage{csquotes}
+\usepackage[backend=biber, style=ieee, sorting=none]{biblatex}
+\addbibresource{references.bib}
+\setlength{\bibitemsep}{0.4\baselineskip}
+
+% ─── Glossaire ───────────────────────────────────────────────────────────────
+\usepackage[acronym, toc]{glossaries}
+\makeglossaries
+\input{glossaire}
+
+% ─── Métadonnées PDF ─────────────────────────────────────────────────────────
+\hypersetup{
+  pdftitle={<<TITRE DU RAPPORT>>},
+  pdfauthor={<<PRÉNOM NOM>>},
+  pdfsubject={Rapport de stage — <<ÉCOLE>>},
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ─── Page de garde ───────────────────────────────────────────────────────────
+\input{parts/pagedegrade}
+\clearpage
+
+% ─── Remerciements ───────────────────────────────────────────────────────────
+\chapter*{Remerciements}
+\addcontentsline{toc}{chapter}{Remerciements}
+\input{parts/remerciements}
+
+% ─── Résumés ─────────────────────────────────────────────────────────────────
+\chapter*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+\input{parts/resume}
+
+% ─── Glossaire ───────────────────────────────────────────────────────────────
+% Pas de \glsaddall : seules les entrées réellement employées dans le texte sont
+% imprimées, ce qui évite un glossaire rempli d'entrées jamais citées.
+% Appareil de référence composé en interligne simple (usage courant).
+\begin{singlespace}
+\printglossary[type=\acronymtype, title=Liste des acronymes]
+\printglossary[title=Glossaire]
+\end{singlespace}
+\clearpage
+
+% ─── Table des matières ──────────────────────────────────────────────────────
+\begin{singlespace}
+\tableofcontents
+\end{singlespace}
+\clearpage
+
+% ─── Corps du rapport ────────────────────────────────────────────────────────
+\input{parts/introduction}
+\input{parts/partie1}
+\input{parts/partie2}
+\input{parts/partie3}
+\input{parts/partie4}
+\input{parts/conclusions}
+
+% ─── Bibliographie ───────────────────────────────────────────────────────────
+\clearpage
+\begin{singlespace}
+\printbibliography[heading=bibintoc, title={Bibliographie}]
+\end{singlespace}
+
+% ─── Annexes ─────────────────────────────────────────────────────────────────
+% N'active les annexes que si elles sont réellement appelées dans le corps du texte.
+% \appendix
+% \input{parts/annexes}
+
+\end{document}

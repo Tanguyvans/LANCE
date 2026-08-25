@@ -1,0 +1,144 @@
+\chapter{Contexte et présentation de la mission}
+\chaptermark{Contexte et présentation}
+\label{chap:contexte}
+
+\section{Cadre du projet}
+
+\subsection{Organisme d'accueil}
+
+\textbf{À compléter avant remise~:} nom légal de l'organisme d'accueil, service,
+ville, activité, maître de stage et tuteur académique. Ces informations ne
+figurent pas dans les éléments techniques disponibles et ne peuvent donc pas
+être reconstituées de manière fiable.
+
+\subsection{Organisation technique}
+
+Le développement s'appuie sur deux espaces aux responsabilités distinctes. Le
+dépôt canonique rassemble le code versionné de l'agent, de l'\gls{api}, de
+l'interface, du benchmark et de l'infrastructure. Il constitue la référence pour
+les fonctionnalités, les configurations, les tests et la documentation associés
+à une version donnée. L'espace d'entraînement accueille les traces préparées,
+les jeux de données, les checkpoints et les adaptateurs produits pendant les
+expériences.
+
+Cette séparation évite de placer dans le dépôt des artefacts volumineux ou des
+données sensibles, tout en maintenant la traçabilité expérimentale. Une
+campagne doit pouvoir être reliée à une configuration du modèle, à une version
+du pipeline, à un jeu de données identifié et à un protocole d'évaluation.
+Les scripts et configurations restent donc versionnés, tandis que données et
+poids sont conservés dans l'espace prévu à cet effet.
+
+\section{Système existant}
+
+LANCE associe trois ensembles fonctionnels~:
+
+\begin{description}
+  \item[Agent d'audit] L'agent conduit une campagne en six phases, de l'analyse
+  initiale du réseau à la synthèse. Chaque phase reçoit un contexte défini,
+  dispose d'outils autorisés et produit un artefact structuré pour la suivante.
+
+  \item[Pipeline d'exécution] Le pipeline organise les transitions, parallélise
+  certaines analyses, valide les sorties et applique les règles de sécurité.
+  Il transforme les décisions probabilistes en actions observables et
+  contrôlables.
+
+  \item[harness expérimental] Le benchmark décrit des réseaux
+  \gls{iot}/\gls{ot} reproductibles à partir de topologies, de vulnérabilités
+  injectées et de postures de sécurité. Il déploie les scénarios, conserve une
+  vérité terrain et calcule les mesures d'évaluation.
+\end{description}
+
+Une \gls{api} assure le lancement et le suivi des campagnes, tandis qu'une
+interface présente la topologie, les événements et les artefacts. La chaîne
+d'apprentissage mobilise PyTorch, Transformers, PEFT, bitsandbytes et TRL ; le
+déploiement des environnements repose sur des descriptions déclaratives et une
+automatisation de l'infrastructure. Les résultats sont enregistrés dans des
+formats structurés afin d'être analysés indépendamment de la génération du
+modèle.
+
+\section{Limites initiales}
+
+\begin{description}
+  \item[Comportement trop généraliste] Un même modèle assumait des tâches aux
+  contraintes différentes. Les rôles dépendaient principalement des prompts,
+  sans garantir la conformité des appels d'outils ni la stabilité du
+  comportement.
+
+  \item[Spécialisation incomplète] Il manquait un processus continu pour
+  nettoyer les traces, produire des exemples, adapter le modèle avec des
+  ressources limitées, servir plusieurs spécialités et les sélectionner pendant
+  une campagne.
+
+  \item[Pipeline insuffisamment contractuel] Une sortie syntaxiquement valide
+  pouvait encore porter une hypothèse non vérifiée ou être transmise à la phase
+  suivante. Les interruptions et erreurs d'outils devaient aussi être
+  représentées sans ambiguïté.
+
+  \item[Mesure partielle] La comparaison à la vérité terrain ne caractérisait
+  pas assez finement le comportement de l'agent. Une évaluation sémantique seule
+  aurait, à l'inverse, rendu les scores sensibles au modèle juge et à la
+  formulation.
+
+  \item[Contexte volumineux] Les topologies, sorties de commandes et observations
+  répétées pouvaient saturer la fenêtre du modèle, augmenter le coût et masquer
+  des informations nécessaires à la décision.
+
+  \item[Priorisation topologique limitée] La représentation du réseau décrivait
+  les hôtes et leurs relations, mais évaluait peu l'effet d'une nouvelle
+  découverte sur les chemins menant à une cible.
+\end{description}
+
+\section{Mission principale~: spécialisation \gls{hmoe} agentique}
+
+La mission a consisté en priorité à construire une architecture \gls{hmoe}
+adaptée au fonctionnement agentique de LANCE. Contrairement à un mélange
+d'experts neuronal qui route les jetons entre sous-réseaux, l'approche retenue
+partage un modèle de base quantifié et associe chaque rôle à un adaptateur LoRA.
+Le routeur explicite exploite la phase ou le rôle demandé pour activer l'expert
+approprié.
+
+Le travail couvre le cycle de vie des experts~: extraction et normalisation des
+traces, validation et diversification des exemples, entraînement \gls{qlora},
+chargement des adaptateurs derrière une \gls{api} commune, puis routage pendant
+les campagnes. Le résultat attendu n'était pas seulement un serveur de modèles,
+mais son intégration à un agent qui planifie, appelle des outils, interprète
+leurs réponses et transmet un état structuré. La stabilité du routage, la
+sérialisation des changements d'adaptateur et la compatibilité avec le système
+existant font ainsi partie de la mission.
+
+\section{Pipeline et harness comme protocole de validation}
+
+La spécialisation ne peut être jugée à partir de la seule perte d'entraînement.
+Le pipeline fournit le protocole opérationnel~: il délimite les
+responsabilités des experts, injecte les outils pertinents, valide les schémas et
+applique les règles de preuve. Son durcissement doit garantir que les artefacts
+restent cohérents d'une phase à la suivante et qu'une campagne incomplète soit
+identifiée comme telle.
+
+Le harness fournit le protocole expérimental complémentaire. Il crée des
+situations contrôlées, associe les faiblesses attendues à des indicateurs et
+compare les artefacts à la vérité terrain. Les travaux sur les scénarios, le
+déploiement automatisé, la gestion des campagnes, les erreurs et les métriques
+sont donc directement liés à l'objectif \gls{hmoe} : déterminer si la
+spécialisation améliore réellement l'action de l'agent, au-delà du style de ses
+réponses.
+
+\section{Objectifs opérationnels}
+
+La mission se décline en quatre objectifs~:
+
+\begin{enumerate}
+  \item concevoir la préparation des données, l'entraînement \gls{qlora}, le
+  service multi-adaptateurs et le routage des experts ;
+  \item consolider le pipeline afin de rendre transitions, appels d'outils et
+  preuves vérifiables ;
+  \item étendre le harness pour déployer des scénarios reproductibles et mesurer
+  le comportement des différentes configurations ;
+  \item compléter le dispositif par une maîtrise du contexte et un signal de
+  priorité fondé sur le graphe d'attaque et le cône d'impact.
+\end{enumerate}
+
+Ces objectifs forment un même système~: les experts produisent les décisions,
+le pipeline encadre leur exécution et le harness permet leur comparaison. Les
+optimisations de contexte et de graphe soutiennent cet ensemble sans se
+substituer à la finalité de spécialisation agentique.

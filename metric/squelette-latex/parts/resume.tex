@@ -1,0 +1,21 @@
+LANCE est un agent fondé sur un modèle de langage pour conduire et évaluer des
+audits de réseaux IoT/OT. La mission principale du stage a consisté à concevoir
+une architecture HMoE agentique~: un modèle de base quantifié est partagé entre
+des adaptateurs QLoRA spécialisés pour l'organisation, la reconnaissance,
+l'analyse de vulnérabilités et l'exploitation. Une chaîne de préparation
+transforme les traces en exemples validés, tandis qu'un routeur déterministe
+sélectionne l'expert associé à chaque phase derrière une API commune. Le
+pipeline encadre les transitions, les outils, les sorties et les preuves. En
+parallèle, le harness expérimental déploie des scénarios reproductibles et mesure
+le comportement observé pendant les campagnes. L'évaluation associe des
+métriques déterministes à un jugement sémantique encadré, sans confier le calcul
+final au modèle. Des mécanismes de maîtrise du contexte et un graphe d'attaque
+pondéré avec cône d'impact complètent l'architecture. Les premiers résultats
+mettent en évidence un écart entre constats produits et chemins d'attaque
+entièrement prouvés. Ils doivent encore être confirmés par des campagnes répétées
+comparant les experts spécialisés à une référence généraliste dans des
+conditions identiques.
+
+\vspace{1em}
+\noindent\textbf{Mots-clés~:} agent LLM, cybersécurité IoT/OT, HMoE, QLoRA,
+pipeline agentique, benchmark reproductible.

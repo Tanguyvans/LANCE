@@ -1,0 +1,73 @@
+\chapter{Acquisition de compétences d'ingénieur}
+\label{chap:competences}
+
+\textbf{Structure provisoire :} le référentiel officiel de compétences de
+TELECOM Nancy n'a pas été retrouvé dans les espaces de travail. Les situations
+ci-dessous sont factuelles, mais leurs intitulés et niveaux devront être alignés
+sur ce référentiel avant la remise.
+
+\section{Concevoir un système d'intelligence artificielle sous contraintes}
+
+La réalisation du \gls{hmoe} m'a conduit à traiter conjointement apprentissage,
+architecture logicielle et exploitation. La contrainte matérielle interdisait
+de maintenir quatre modèles complets. J'ai donc partagé une base quantifiée et
+spécialisé son comportement avec quatre adaptateurs \gls{qlora}. Ce choix ne
+suffisait cependant pas à obtenir un agent fiable : il a fallu préparer des
+conversations conservant les couples appel--résultat, aligner les fenêtres
+d'entraînement et d'inférence, sérialiser le changement d'adaptateur et limiter
+la surface d'outils présentée à chaque expert.
+
+Cette situation m'a appris à évaluer un choix de modèle à l'échelle du système.
+La consommation mémoire, la qualité des données, le routage, les contrats
+d'outils et le comportement en cas de sortie malformée sont interdépendants.
+Une bonne perte de validation ne remplace donc ni les tests d'intégration ni une
+campagne agentique sur des scénarios représentatifs.
+
+\section{Analyser et maîtriser un système complexe}
+
+LANCE relie topologie réseau, outils protocolaires, orchestration multi-phase,
+modèle de langage et infrastructure de test. Pour éviter qu'une erreur se
+propage silencieusement, j'ai transformé plusieurs attentes implicites en
+invariants vérifiables : prérequis de phase, couverture minimale de
+reconnaissance, provenance d'une preuve, périmètre réseau autorisé et filtrage
+des constats avant le rapport final. Le graphe pondéré et le cône d'impact
+complètent cette approche en signalant comment une découverte modifie les
+chemins vers une cible, sans présenter leur poids heuristique comme une
+probabilité calibrée.
+
+\section{Expérimenter et valider}
+
+Le harness d'évaluation m'a obligé à distinguer une affirmation plausible d'un
+résultat démontré. J'ai travaillé sur une correspondance structurelle entre
+constats et vérité terrain, sur la recomposition du niveau de preuve depuis les
+appels d'outils, puis sur la couverture de chemins ordonnés. Les erreurs
+d'outils, les tests négatifs concluants et l'absence de test reçoivent des
+statuts différents. Cette distinction évite qu'une panne soit interprétée comme
+une absence de vulnérabilité ou qu'un texte assuré soit crédité sans exécution.
+
+J'ai également appris à séparer les indicateurs internes des conclusions
+scientifiques. Les pertes d'entraînement servent à détecter une divergence ou à
+choisir un checkpoint ; elles ne mesurent pas directement la capacité d'un
+expert à terminer une phase. De même, l'instantané expérimental actuel constitue
+surtout un test d'intégration du pipeline et du harness. Une comparaison
+contrôlée du \gls{hmoe} avec plusieurs baselines reste nécessaire.
+
+\section{Industrialiser et documenter}
+
+Le passage du prototype au service a demandé une frontière explicite entre code
+versionné, données, checkpoints et adaptateurs finaux. La synchronisation repose
+sur une liste blanche, des empreintes et des limites de taille ; le serveur est
+exposé par une \gls{api} compatible avec le reste de LANCE et supervisé comme un
+service. Côté benchmark, la composition des scénarios, leur déploiement et leur
+évaluation partagent des contrats versionnés. J'ai ainsi appris qu'une
+fonctionnalité n'est réellement exploitable que si elle peut être déployée,
+observée, testée et reproduite.
+
+\section{Auto-évaluation}
+
+Je considère avoir progressé dans la conception d'architectures hybrides, où un
+modèle probabiliste reste encadré par des mécanismes déterministes. Je dois
+encore approfondir deux points : construire une campagne d'ablation permettant
+d'attribuer précisément les gains au routage des experts, et calibrer les
+heuristiques du graphe sur des observations empiriques. Le niveau officiel de
+chaque compétence restera à compléter à partir du référentiel de TELECOM Nancy.
