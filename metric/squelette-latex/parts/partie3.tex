@@ -4,8 +4,8 @@
 \section{Une mission centrée sur la spécialisation de l'agent}
 \label{sec:hmoe-probleme}
 
-La mission scientifique principale du stage a consisté à étudier une
-spécialisation frugale de LANCE. Un \gls{llm} généraliste peut expliquer une
+La mission scientifique principale du stage a consisté à étudier la
+spécialisation d'un modèle local pour LANCE. Un \gls{llm} généraliste peut expliquer une
 vulnérabilité, mais l'agent attendu doit enchaîner des actions beaucoup plus
 contraintes : choisir un outil autorisé, produire des arguments conformes à son
 schéma, exploiter les observations obtenues et enregistrer le livrable propre à
@@ -21,7 +21,7 @@ L'hypothèse étudiée est donc la suivante :
 \begin{displayquote}
   un modèle de base quantifié, partagé par plusieurs adaptateurs spécialisés et
   associé à un routage explicite par phase, peut améliorer la conformité
-  opérationnelle de l'agent à coût d'entraînement contenu.
+  opérationnelle de l'agent sans dupliquer le modèle sous-jacent pour chaque rôle.
 \end{displayquote}
 
 Cette hypothèse porte sur le système agentique complet. Elle ne se réduit ni à
@@ -32,7 +32,7 @@ moment. Le travail a ainsi couvert toute la chaîne : constitution des corpus,
 adaptation \gls{qlora}, service multi-adaptateurs, routage, garde-fous de
 contexte et préparation d'un protocole d'évaluation.
 
-\section{Adaptation frugale par QLoRA}
+\section{Spécialisation du modèle local par QLoRA}
 \label{sec:qlora-methode}
 
 La méthode \gls{qlora} conserve les poids du modèle de base gelés et les charge
@@ -134,7 +134,7 @@ combine pas les compétences de deux adaptateurs. Le changement d'adaptateur
 actif est en outre protégé par un verrou de génération ; plusieurs exécutions
 concurrentes sont sérialisées afin d'éviter qu'une requête poursuive sa
 génération avec les poids d'un autre expert. Des budgets de contexte et de
-génération propres aux rôles bornent enfin le coût, mais peuvent tronquer une
+génération propres aux rôles bornent enfin le volume de texte traité, mais peuvent tronquer une
 trace utile. Ces compromis relèvent de l'architecture agentique et ne sont pas
 visibles dans la seule perte d'apprentissage.
 
@@ -234,8 +234,8 @@ L'évaluation doit être conduite sur deux niveaux complémentaires :
     respect des outils autorisés, achèvement des phases, conformité des
     livrables et fréquence des récupérations après erreur ;
   \item[Efficacité de l'audit] précision, rappel et score F1 des constats,
-    proportion de preuves vérifiées, couverture des chemins d'attaque et coût
-    en jetons, temps et mémoire.
+    proportion de preuves vérifiées, couverture des chemins d'attaque, volume
+    de jetons, temps d'exécution et mémoire mobilisée.
 \end{description}
 
 Les décisions sémantiques peuvent être assistées par un juge \gls{llm}, mais

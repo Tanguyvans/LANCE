@@ -27,6 +27,10 @@ exécutée. Le travail couvre ainsi la préparation de données issues de traces
 leur contrôle, l'entraînement, le service des adaptateurs et leur
 intégration au cycle d'action de l'agent.
 
+Le service HMoE est déployé localement derrière une API compatible OpenAI. Le
+pipeline peut ainsi l'utiliser comme un fournisseur de modèle sans exposer la
+sélection interne des experts.
+
 Le pipeline d'exécution et le harness expérimental constituent le support de
 cette spécialisation. Le premier impose les transitions, les outils autorisés
 et les contrats de sortie ; le second déploie des scénarios reproductibles,
@@ -36,7 +40,7 @@ l'orchestration, la collecte de preuves, la gestion des exécutions et
 l'évaluation déterministe et sémantique.
 
 La problématique peut dès lors être formulée ainsi~:
-\emph{comment spécialiser de manière frugale un agent LLM pour les différentes
+\emph{comment spécialiser un agent fondé sur un LLM local pour les différentes
 étapes d'un audit IoT/OT, puis démontrer la qualité de son comportement au moyen
 d'un protocole d'exécution et d'évaluation reproductible ?}
 

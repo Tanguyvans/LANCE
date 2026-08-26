@@ -2,19 +2,20 @@
 \label{chap:conclusion}
 
 La problématique de ce stage appelait deux réponses complémentaires : comment
-spécialiser de manière frugale un agent LLM pour les étapes d'un audit IoT/OT,
+spécialiser un agent fondé sur un LLM local pour les étapes d'un audit IoT/OT,
 puis comment démontrer la qualité de son comportement dans des conditions
 reproductibles.
 
-La spécialisation frugale repose sur une architecture HMoE agentique qui partage
-un unique modèle de base quantifié entre quatre adaptateurs QLoRA. Ces experts
-couvrent l'organisation et la restitution de la campagne, la reconnaissance,
-l'analyse de vulnérabilités et l'exploitation contrôlée. Seules les matrices de
-faible rang propres à chaque rôle sont entraînées ; le modèle de base reste gelé
-et n'est pas dupliqué. Un routeur déterministe active ensuite l'adaptateur associé
-à la phase courante. Cette organisation spécialise donc le comportement de
-l'agent tout en limitant le nombre de paramètres entraînés, la mémoire nécessaire
-et le coût de déploiement.
+La réponse au premier volet repose sur une architecture HMoE agentique qui
+partage un unique modèle de base quantifié entre quatre adaptateurs QLoRA. Ces
+experts couvrent l'organisation et la restitution de la campagne, la
+reconnaissance, l'analyse de vulnérabilités et l'exploitation contrôlée. Seules
+les matrices de faible rang propres à chaque rôle sont entraînées ; le modèle de
+base reste gelé et n'est pas dupliqué. Un routeur déterministe active ensuite
+l'adaptateur associé à la phase courante. Cette organisation spécialise donc le
+comportement de l'agent tout en limitant le nombre de paramètres entraînés et la
+mémoire nécessaire. Le service expose les experts localement derrière une API
+commune, tandis que leur sélection reste interne au routeur HMoE.
 
 La qualité ne peut toutefois pas être déduite de la seule vraisemblance des
 réponses du modèle. Elle est mesurée au niveau d'une campagne complète. Le
@@ -36,9 +37,9 @@ généraliste.
 
 Pour achever cette démonstration, les différentes configurations devront être
 exécutées plusieurs fois sur un même jeu de scénarios, puis comparées selon la
-qualité des preuves, le taux de réussite et les coûts. Les adaptateurs devront
-également être enrichis à partir de traces diversifiées et revues humainement.
-Le principal enseignement de ce travail est ainsi qu'une spécialisation frugale
-ne suffit pas à garantir un agent fiable : elle doit être associée à une
-architecture qui encadre ses actions et à un protocole capable d'en vérifier les
-résultats.
+qualité des preuves, le Q-F1, le taux d'hallucination et l'achèvement des phases.
+Les adaptateurs devront également être enrichis à partir de traces diversifiées
+et revues humainement. Le principal enseignement de ce travail est ainsi que la
+spécialisation locale ne suffit pas à garantir un agent fiable : elle doit être
+associée à une architecture qui encadre ses actions et à un protocole capable
+d'en vérifier les résultats.
