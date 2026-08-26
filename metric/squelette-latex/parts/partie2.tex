@@ -31,14 +31,14 @@ forment ainsi une mémoire interphase plus fiable qu'une conversation libre.
 Autour du pipeline, FastAPI expose le lancement et le suivi des campagnes. Un
 flux \gls{sse} alimente l'interface, qui affiche la topologie, les livrables et
 les métriques. Le benchmark déploie les scénarios au moyen d'Ansible sur
-Proxmox, tandis qu'un harness distinct compare les artefacts à la vérité terrain.
+Proxmox, tandis qu'un évaluateur distinct compare les artefacts à la vérité terrain.
 Enfin, un serveur \gls{hmoe} compatible avec l'\gls{api} OpenAI fournit au pipeline un point
 d'accès unique à plusieurs adaptateurs spécialisés.
 
 La \cref{fig:architecture-lance} présente les principales frontières du système :
-le scénario déployé fournit à la fois la cible et la vérité terrain, tandis que
-le pipeline conserve seul la responsabilité d'autoriser les outils, d'exécuter
-les actions et de produire les artefacts évalués.
+le déploiement fournit la cible au pipeline, tandis que la vérité terrain reste
+du côté de l'évaluateur. Le pipeline conserve seul la responsabilité d'autoriser
+les outils, d'exécuter les actions et de produire les artefacts évalués.
 
 \begin{figure}[htbp]
   \centering
@@ -55,9 +55,10 @@ les actions et de produire les artefacts évalués.
 La mission principale de mon stage a consisté à construire une chaîne HMoE
 agentique, depuis les traces d'exécution jusqu'au déploiement des experts dans
 LANCE. Ici, le terme HMoE ne désigne pas une couche de mélange d'experts apprise
-à l'intérieur du réseau. Le système partage un modèle de base et charge
-dynamiquement quatre adaptateurs \gls{peft} spécialisés : \texttt{\footnotesize secretary},
-\texttt{\footnotesize recon}, \texttt{\footnotesize vuln} et \texttt{\footnotesize exploit}. Cette organisation reprend
+à l'intérieur du réseau. Le système partage un modèle de base, charge au
+démarrage quatre adaptateurs \gls{peft} spécialisés, puis active celui qui
+correspond à chaque requête : \texttt{\footnotesize secretary}, \texttt{\footnotesize recon},
+\texttt{\footnotesize vuln} et \texttt{\footnotesize exploit}. Cette organisation reprend
 l'idée de spécialisation des mélanges d'experts tout en l'adaptant aux
 contraintes matérielles du projet \cite{shazeer2017moe}.
 
@@ -70,7 +71,7 @@ ne demandent ni les mêmes actions ni le même critère de terminaison.
 
 Le choix d'adaptateurs plutôt que de modèles indépendants répond à une
 contrainte de mémoire GPU. Une seule instance quantifiée du modèle de base est
-chargée, puis l'adaptateur actif est remplacé pour chaque requête. Le gain de
+chargée, puis l'adaptateur correspondant est sélectionné pour chaque requête. Le gain de
 mémoire a une contrepartie : le changement d'adaptateur modifie un état partagé.
 J'ai donc sérialisé la génération avec un verrou. Les requêtes peuvent être
 reçues concurremment par l'API, mais deux générations ne changent jamais
@@ -310,9 +311,11 @@ repli compose le rapport à partir des données structurées. Cette dernière
 frontière garantit qu'une formulation persuasive ne réintroduit pas une
 vulnérabilité éliminée par la phase~4.
 
-\section{Harness d'évaluation \texttt{\footnotesize strict-v3}}
+\section{Harness expérimental et politique d'évaluation \texttt{\footnotesize strict-v3}}
 
-Le harness a été étendu pour évaluer non seulement la détection, mais aussi la
+Le harness expérimental organise le déploiement, la collecte des artefacts et
+la répétition des campagnes. Au sein de ce dispositif, l'évaluateur applique
+la politique \texttt{\footnotesize strict-v3} pour mesurer non seulement la détection, mais aussi la
 qualité de la correspondance et la traçabilité des preuves. Chaque scénario
 associe une topologie, des packs de vulnérabilités et une vérité terrain. Des
 contrats de matching revus décrivent les champs structurants et les
@@ -320,6 +323,12 @@ compatibilités autorisées. Le moteur construit les correspondances candidates,
 puis résout une association bipartite globale : un finding ne peut expliquer
 qu'une entrée de vérité terrain, et réciproquement. Cette règle supprime les
 scores artificiels où une même observation créditerait plusieurs vulnérabilités.
+
+Dans cette nomenclature, \texttt{\footnotesize strict-v3} désigne la politique de scoring,
+\texttt{\footnotesize strict-v3.3} le contrat métrique, \texttt{\footnotesize strict-v3.2} le schéma des
+contrats de matching et \texttt{\footnotesize evidence-v2} le contrat de preuve. Ces
+versions séparées permettent de faire évoluer un contrat sans changer
+implicitement le sens des autres résultats.
 
 Le crédit dépend de la précision structurelle du match. Une correspondance
 exacte reçoit le crédit maximal ; un type correct mais incomplet ou une
@@ -347,23 +356,25 @@ mais la correspondance un-à-un, la validation de schéma et les scores finaux
 restent déterministes, ce qui limite les biais du paradigme
 \emph{LLM-as-a-judge} \cite{zheng2023judge}.
 
-\section{Raisonnement de graphe et maîtrise du contexte}
+\section{Maîtrise du contexte}
 
-En complément de la mission HMoE, j'ai relié au pipeline un graphe d'attaque
-orienté pondéré. Le coût d'une arête est l'inverse d'un poids heuristique de
+J'ai borné les sorties SSH, compacté les résumés de topologie et dédoublonné
+certaines observations MQTT ou HTTP. Ces optimisations ont été appliquées avec
+prudence : une première réduction trop agressive de la surface d'attaque a été
+annulée parce qu'elle supprimait une information utile. Ce retour a directement
+guidé le compactage du serveur HMoE, qui conserve désormais les contrats, les
+erreurs récentes et le registre des outils avant de réduire la prose.
+
+\paragraph{Exploration topologique initiale.}
+Au début du stage, j'ai également relié au pipeline un graphe d'attaque orienté
+pondéré. Le coût d'une arête est l'inverse d'un poids heuristique de
 franchissement. Après une découverte ou une compromission, les distances vers la
 cible sont recalculées ; leur variation localise les nœuds rapprochés de
 l'objectif. Une propagation sur les prédécesseurs forme un cône d'impact, dans
 l'esprit des graphes d'attaque multi-hôtes \cite{ou2005mulval}. Ces valeurs ne
-sont pas des probabilités calibrées : elles servent à prioriser une analyse.
-
-J'ai aussi borné les sorties SSH, compacté les résumés de topologie et dédoublonné
-certaines observations MQTT ou HTTP. Ces optimisations ont été appliquées avec
-prudence : une première réduction trop agressive de la surface d'attaque a été
-annulée parce qu'elle supprimait une information utile. Cette expérience a
-directement guidé le compactage du serveur HMoE, qui conserve désormais les
-contrats, les erreurs récentes et le registre des outils avant de réduire la
-prose.
+sont pas des probabilités calibrées : elles servent uniquement à prioriser une
+analyse. Cette expérimentation est restée un apport secondaire et ne constitue
+pas l'axe principal des campagnes présentées dans ce rapport.
 
 \section{Résultats et difficultés}
 \input{parts/resultats_provisoires}

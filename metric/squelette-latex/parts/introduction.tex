@@ -30,12 +30,10 @@ intégration au cycle d'action de l'agent.
 Le pipeline d'exécution et le harness expérimental constituent le support de
 cette spécialisation. Le premier impose les transitions, les outils autorisés
 et les contrats de sortie ; le second déploie des scénarios reproductibles,
-fournit une vérité terrain et mesure le comportement observé pendant une
-campagne. Leur consolidation a porté sur la robustesse de l'orchestration, la
-collecte de preuves, la gestion des exécutions et l'évaluation déterministe et
-sémantique. Un graphe d'attaque pondéré et son cône d'impact complètent ce
-dispositif par un signal de priorité topologique ; ils constituent un apport
-secondaire à l'architecture de spécialisation et de mesure.
+conserve la vérité terrain du côté de l'évaluateur et mesure le comportement
+observé pendant une campagne. Leur consolidation a porté sur la robustesse de
+l'orchestration, la collecte de preuves, la gestion des exécutions et
+l'évaluation déterministe et sémantique.
 
 La problématique peut dès lors être formulée ainsi~:
 \emph{comment spécialiser de manière frugale un agent LLM pour les différentes
@@ -43,6 +41,6 @@ La problématique peut dès lors être formulée ainsi~:
 d'un protocole d'exécution et d'évaluation reproductible ?}
 
 Le \cref{chap:contexte} présente le cadre et les objectifs de la mission. Le
-\cref{chap:implementation} décrit l'intégration de la solution, notamment la
+\cref{chap:implementation} décrit l'intégration de la solution, notamment le
 pipeline et le harness. Enfin, le \cref{chap:science} expose \gls{qlora}, le
 routage \gls{hmoe} et leur évaluation.

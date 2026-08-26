@@ -31,7 +31,7 @@
   \node[phase,left=8mm of p2] (p1) {1. Analyse\\du graphe};
   \node[phase,right=8mm of p2] (p3) {3. Vulnéra-\\bilités};
   \node[phase,below=8mm of p3] (p4) {4. Vérification
-  \\ Exploit};
+  \\des constats};
   \node[phase,left=8mm of p4] (p5) {5. Intrusion\\contrôlée};
   \node[phase,left=8mm of p5] (p6) {6. Rapport\\final};
   \node[group,fit=(p1)(p2)(p3)(p4)(p5)(p6),
@@ -46,13 +46,13 @@
   % Sorties et évaluation
   \node[artifact,below=15mm of model,xshift=-16mm] (artifacts)
     {Artefacts structurés\\et traces d'appels};
-  \node[artifact,right=12mm of artifacts] (harness)
-    {Harness strict-v3\\comparaison à la vérité terrain};
-  \node[artifact,right=12mm of harness] (metrics)
+  \node[artifact,right=12mm of artifacts] (evaluator)
+    {Évaluateur\\politique strict-v3};
+  \node[artifact,right=12mm of evaluator] (metrics)
     {Scores, diagnostics\\et rapports de campagne};
 
   % Déploiement et pilotage
-  \draw[flow] (catalogue) -- (deploy);
+  \draw[flow] (catalogue) -- node[lbl,above]{topologie} (deploy);
   \draw[flow] (deploy) -- (target);
   \draw[flow] (ui) -- (api);
   \draw[flow] (api.south) -- ++(0,-5mm) -| (pipeline.north);
@@ -82,9 +82,9 @@
 
   % Évaluation et retour opérateur
   \draw[flow] (pipeline.south west) -- ++(-9mm,0) |- (artifacts.north);
-  \draw[flow] (artifacts) -- (harness);
-  \draw[flow] (harness) -- (metrics);
+  \draw[flow] (artifacts) -- (evaluator);
+  \draw[flow] (evaluator) -- (metrics);
   \draw[flow] (catalogue.west) -- ++(-10mm,0) |-
-    node[lbl,pos=0.82,below]{référence scellée} (harness.south);
+    node[lbl,pos=0.82,below]{vérité terrain} (evaluator.south);
   \draw[feedback] (metrics.east) -- ++(12mm,0) |- (ui.east);
 \end{tikzpicture}
