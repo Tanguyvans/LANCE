@@ -1,122 +1,142 @@
 \subsection{Analyse transversale des runs d'août 2026}
 \label{sec:resultats-provisoires}
 
-Pour évaluer le comportement obtenu au-delà d'une exécution isolée, j'ai
-constitué un instantané des campagnes accessibles sur \texttt{\footnotesize nato-master} le
-26 août 2026. J'ai retenu les runs réalisés du 10 au 25 août sur les scénarios
-S1 à S11. Sur les 110 exécutions possédant des métadonnées de scénario, 94
-disposaient d'un score exploitable : 25 avec la configuration
-\texttt{\footnotesize lance-moe} en profil \texttt{\footnotesize compact} et 69 avec MiniMax-M2.7,
-principalement en profil \texttt{\footnotesize full}. J'ai choisi le F1 ajusté par la qualité
-comme mesure principale, car il réduit le crédit accordé à un constat lorsque
-la correspondance ou la preuve est insuffisante. Il répond ainsi directement à
-l'objectif du harness décrit précédemment : distinguer une vulnérabilité
-simplement annoncée d'une vulnérabilité correctement étayée.
+Pour comprendre où l'agent réussissait et où la campagne se dégradait, je suis
+parti des exécutions menées en août sur \texttt{\footnotesize nato-master}.
+J'ai retenu 94 runs évaluables couvrant les scénarios S1 à S11 avec
+\texttt{\footnotesize lance-moe} et MiniMax-M2.7. Plutôt que de m'arrêter à un
+classement, j'ai confronté leurs scores aux traces détaillées du 11 août afin
+de retrouver l'origine des écarts observés.
+
+J'ai croisé deux indicateurs. Le F1 ajusté par la qualité, ou Q-F1, réduit le
+crédit d'un constat lorsque sa correspondance ou sa preuve est insuffisante.
+Le taux d'hallucination mesure la part des constats produits qui ne
+correspondent à aucune vulnérabilité attendue. Le premier renseigne donc sur la
+qualité globale du résultat ; le second rend visible la tendance de l'agent à
+ajouter des affirmations non fondées. Un Q-F1 élevé et un taux d'hallucination
+faible sont recherchés.
 
 \begin{table}[H]
   \centering
   \small
-  \caption{F1 ajusté par la qualité sur les runs scorés d'août 2026}
+  \caption{Q-F1 et taux d'hallucination moyens sur les runs évalués d'août 2026}
   \label{tab:resultats-aout}
-  \begin{tabular}{lrrrrr}
+  \begin{tabular}{lrrrrrr}
     \toprule
-    & \multicolumn{1}{c}{\texttt{lance-moe}, 11 août}
-    & \multicolumn{2}{c}{\texttt{lance-moe}, août}
-    & \multicolumn{2}{c}{MiniMax-M2.7, août} \\
-    Scénario & F1 qualité & \(n\) & Moyenne & \(n\) & Moyenne \\
+    & \multicolumn{3}{c}{\texttt{lance-moe}}
+    & \multicolumn{3}{c}{MiniMax-M2.7} \\
+    Scénario & \(n\) & Q-F1 & Hallucination & \(n\) & Q-F1 & Hallucination \\
     \midrule
-    S1  & \(0{,}611\) & 3 & \(0{,}611\) & 13 & \(0{,}741\) \\
-    S2  & \(0{,}500\) & 2 & \(0{,}474\) & 17 & \(0{,}512\) \\
-    S3  & \(0{,}357\) & 3 & \(0{,}281\) &  9 & \(0{,}416\) \\
-    S4  & \(0{,}556\) & 2 & \(0{,}538\) &  3 & \(0{,}327\) \\
-    S5  & \(0{,}609\) & 2 & \(0{,}505\) &  7 & \(0{,}518\) \\
-    S6  & \(0{,}577\) & 2 & \(0{,}448\) &  2 & \(0{,}367\) \\
-    S7  & \(0{,}545\) & 2 & \(0{,}528\) &  2 & \(0{,}412\) \\
-    S8  & \(0{,}386\) & 2 & \(0{,}270\) &  6 & \(0{,}455\) \\
-    S9  & \(0{,}825\) & 3 & \(0{,}796\) &  6 & \(0{,}617\) \\
-    S10 & \(0{,}417\) & 2 & \(0{,}334\) &  1 & \(0{,}170\) \\
-    S11 & \(0{,}500\) & 2 & \(0{,}491\) &  3 & \(0{,}290\) \\
+    S1  & 3 & \(0{,}611\) & \(0{,}000\) & 13 & \(0{,}741\) & \(0{,}199\) \\
+    S2  & 2 & \(0{,}474\) & \(0{,}209\) & 17 & \(0{,}512\) & \(0{,}409\) \\
+    S3  & 3 & \(0{,}281\) & \(0{,}556\) &  9 & \(0{,}416\) & \(0{,}592\) \\
+    S4  & 2 & \(0{,}538\) & \(0{,}111\) &  3 & \(0{,}327\) & \(0{,}679\) \\
+    S5  & 2 & \(0{,}505\) & \(0{,}163\) &  7 & \(0{,}518\) & \(0{,}383\) \\
+    S6  & 2 & \(0{,}448\) & \(0{,}134\) &  2 & \(0{,}367\) & \(0{,}537\) \\
+    S7  & 2 & \(0{,}528\) & \(0{,}125\) &  2 & \(0{,}412\) & \(0{,}578\) \\
+    S8  & 2 & \(0{,}270\) & \(0{,}438\) &  6 & \(0{,}455\) & \(0{,}457\) \\
+    S9  & 3 & \(0{,}796\) & \(0{,}000\) &  6 & \(0{,}617\) & \(0{,}266\) \\
+    S10 & 2 & \(0{,}334\) & \(0{,}267\) &  1 & \(0{,}170\) & \(0{,}667\) \\
+    S11 & 2 & \(0{,}491\) & \(0{,}389\) &  3 & \(0{,}290\) & \(0{,}630\) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\Cref{tab:resultats-aout} isole, dans sa première colonne et pour chaque
-scénario, le run \texttt{\footnotesize lance-moe} exploitable du 11 août. Les deux groupes
-suivants donnent les moyennes de tous les runs scorés de la période. Pour
-interpréter ces valeurs, je ne me suis pas limité au classement numérique :
-j'ai relu les artefacts du 11 août, les vrais et faux positifs, les faux
-négatifs, les erreurs d'outils et la couverture des chemins d'attaque. Ce
-croisement m'a permis de séparer les limites de détection des ruptures qui
-surviennent plus tard dans l'exécution.
+\Cref{tab:resultats-aout} présente les moyennes de tous les runs évalués de la
+période. Les effectifs rappellent que les répétitions ne sont pas équilibrées
+entre les scénarios. Pour interpréter ces valeurs, je ne me suis pas limité au
+classement numérique : j'ai relu les artefacts du 11 août, les vrais et faux
+positifs, les faux négatifs, les erreurs d'outils et la couverture des chemins
+d'attaque. Ce croisement m'a permis de séparer les limites de détection des
+ruptures qui surviennent plus tard dans l'exécution.
 
-Les scénarios S1 et S9 produisent les moyennes les plus élevées dans les deux
-configurations. Leur vérité terrain contient uniquement des vulnérabilités
-directement accessibles, sans pivot préalable. S1 limite en outre la surface à
-trois services courants. Sur le run du 11 août, \texttt{\footnotesize lance-moe} retrouve six
-vrais positifs sans faux positif, mais laisse six vulnérabilités non détectées ;
-son F1 qualité atteint \(0{,}611\). S9 répète plusieurs motifs MQTT sur une
-surface de cinq services. Le même jour, l'agent y produit neuf vrais positifs,
-aucun faux positif et deux faux négatifs, soit un F1 qualité de \(0{,}825\).
-J'ai cependant constaté que ce bon score de détection ne suffisait pas à
-qualifier la campagne de complète : la phase d'intrusion s'interrompt devant un
-point d'entrée CoAP non pris en charge. Dans mon analyse, j'ai donc conservé
-séparément le score des findings et l'état d'achèvement de la campagne.
+Les scénarios S1 et S9 combinent les Q-F1 moyens les plus élevés et les taux
+d'hallucination les plus faibles. Avec \texttt{\footnotesize lance-moe}, ce
+taux reste nul sur l'ensemble des runs de ces deux scénarios ; il vaut
+\(0{,}199\) pour S1 et \(0{,}266\) pour S9 avec MiniMax-M2.7. Leur vérité
+terrain contient uniquement des vulnérabilités directement accessibles, sans
+pivot préalable. S1 limite en outre la surface à trois services courants. Sur
+le run du 11 août, \texttt{\footnotesize lance-moe} retrouve six vrais positifs
+sans faux positif, mais laisse six vulnérabilités non détectées ; son Q-F1
+atteint \(0{,}611\). Sur S9, l'agent produit neuf vrais positifs, aucun faux
+positif et deux faux négatifs, soit un Q-F1 de \(0{,}825\).
+
+J'ai cependant constaté que ce bon résultat ne suffisait pas à qualifier la
+campagne de complète : la phase d'intrusion s'interrompt devant un point
+d'entrée CoAP non pris en charge. Dans mon analyse, j'ai donc conservé
+séparément la qualité des findings et l'état d'achèvement de la campagne.
 
 S8 met en évidence un problème différent. Ses quatorze vulnérabilités sont
 réparties entre plusieurs zones IT, IoT et OT, avec des dépendances allant
 jusqu'à une profondeur de trois. Le run du 11 août produit cinq vrais positifs,
 trois faux positifs et neuf faux négatifs. Il cumule également 39 erreurs
-d'outils et ne reconstruit aucun chemin d'attaque. Son F1 qualité vaut
-\(0{,}386\), tandis que la moyenne des runs \texttt{\footnotesize lance-moe} descend à
-\(0{,}270\). La dégradation accompagne ici l'enchaînement des pivots : l'agent
-doit conserver une cible, une observation et une preuve cohérentes lors du
-passage d'une zone à l'autre. J'ai donc identifié la continuité du contexte
-comme une cause plus structurante que l'échec d'une vérification locale prise
-isolément.
+d'outils et ne reconstruit aucun chemin d'attaque. Son Q-F1 vaut \(0{,}386\),
+tandis que la moyenne des runs \texttt{\footnotesize lance-moe} descend à
+\(0{,}270\). Les taux d'hallucination moyens atteignent \(0{,}438\) avec
+\texttt{\footnotesize lance-moe} et \(0{,}457\) avec MiniMax-M2.7 : près de la
+moitié des constats produits ne correspondent donc pas à la vérité terrain. La
+dégradation accompagne ici l'enchaînement des pivots. J'ai identifié la
+continuité du contexte comme une cause plus structurante que l'échec d'une
+vérification locale prise isolément.
 
 L'examen de S2 et S5 montre comment l'hétérogénéité et la répétition dégradent
 la campagne sans produire exactement le même type d'erreur. S2 juxtapose des
 services Web et MQTT, une base de données et des accès distants. Son run du
-11 août atteint un F1 qualité de \(0{,}500\), avec 22 erreurs d'outils et une
-faible couverture des chemins. S5 rassemble des caméras, un NVR, du contrôle
-d'accès, un système HVAC, des services BACnet et MQTT, ainsi que plusieurs
-interfaces HTTP présentant des défauts proches. Le run correspondant obtient
-sept vrais positifs, un faux positif et huit faux négatifs, pour un F1 qualité
-de \(0{,}609\). Malgré cette qualité locale, aucun chemin d'attaque n'est
-reconstruit. J'en conclus que S2 sollicite surtout la capacité à changer
-correctement de protocole et d'outil, alors que S5 sollicite la capacité à
-distinguer des constats similaires puis à les relier sans doublon.
+11 août atteint un Q-F1 de \(0{,}500\), avec 22 erreurs d'outils et une faible
+couverture des chemins. Sur la période, son taux d'hallucination moyen vaut
+\(0{,}209\) avec \texttt{\footnotesize lance-moe} et \(0{,}409\) avec
+MiniMax-M2.7.
 
-Les résultats de S3, S10 et S11 complètent ce diagnostic. S3 étend la surface à
-sept services et duplique plusieurs rôles MQTT, SSH ou Web ; les confusions de
-cible et les hallucinations y deviennent plus fréquentes, ce qui accompagne
-une moyenne \texttt{\footnotesize lance-moe} de \(0{,}281\). S10 obtient également des
-valeurs faibles, mais je ne l'utilise pas pour tirer une conclusion générale :
-sa moyenne MiniMax-M2.7 ne repose que sur un seul run. S11 constitue la surface
-la plus large, avec quatorze services, vingt-trois vulnérabilités distribuées
-sur trois niveaux de profondeur et cinq chemins d'attaque. Sur le run du
-11 août, l'agent produit onze vrais positifs, sept faux positifs et douze faux
-négatifs, avec 37 erreurs d'outils. Le F1 qualité atteint \(0{,}500\) pour ce
-run ; les moyennes de la période valent \(0{,}491\) pour \texttt{\footnotesize lance-moe} et
-\(0{,}290\) pour MiniMax-M2.7. La grande surface s'accompagne à la fois
-d'omissions, de constats incorrects et d'occasions de rupture dans
-l'exécution.
+S5 rassemble des caméras, un NVR, du contrôle d'accès, un système HVAC, des
+services BACnet et MQTT, ainsi que plusieurs interfaces HTTP présentant des
+défauts proches. Le run du 11 août obtient sept vrais positifs, un faux positif
+et huit faux négatifs, pour un Q-F1 de \(0{,}609\). Malgré cette qualité locale,
+aucun chemin d'attaque n'est reconstruit. Les taux moyens d'hallucination,
+\(0{,}163\) avec \texttt{\footnotesize lance-moe} et \(0{,}383\) avec
+MiniMax-M2.7, restent inférieurs à ceux de S8. J'en conclus que S2 sollicite
+surtout la capacité à changer correctement de protocole et d'outil, alors que
+S5 sollicite la capacité à distinguer des constats similaires puis à les relier
+sans doublon.
+
+Les taux d'hallucination apportent une seconde lecture des autres scénarios. S3
+étend la surface à sept services et duplique plusieurs rôles MQTT, SSH ou Web.
+Cette ambiguïté s'accompagne d'un taux moyen de \(0{,}556\) avec
+\texttt{\footnotesize lance-moe} et de \(0{,}592\) avec MiniMax-M2.7, pour des
+Q-F1 respectifs de \(0{,}281\) et \(0{,}416\). S4 présente le plus grand écart
+entre les deux configurations : le taux vaut \(0{,}111\) avec
+\texttt{\footnotesize lance-moe}, contre \(0{,}679\) avec MiniMax-M2.7. Je
+considère ce contraste comme un signal à vérifier, car il ne repose que sur
+deux et trois runs.
+
+S10 obtient également des valeurs faibles, mais je ne l'utilise pas pour tirer
+une conclusion générale : sa moyenne MiniMax-M2.7 ne repose que sur un run. S11
+constitue la surface la plus large, avec quatorze services, vingt-trois
+vulnérabilités distribuées sur trois niveaux de profondeur et cinq chemins
+d'attaque. Sur le run du 11 août, l'agent produit onze vrais positifs, sept faux
+positifs et douze faux négatifs, avec 37 erreurs d'outils. Sur l'ensemble de la
+période, le Q-F1 vaut \(0{,}491\) pour \texttt{\footnotesize lance-moe} et
+\(0{,}290\) pour MiniMax-M2.7 ; les taux d'hallucination associés atteignent
+\(0{,}389\) et \(0{,}630\). La grande surface s'accompagne donc à la fois
+d'omissions, de constats incorrects et d'occasions de rupture dans l'exécution.
 
 Cette analyse m'a conduit à distinguer trois niveaux de réussite : retrouver un
-constat local, l'étayer par un appel d'outil positif, puis l'intégrer dans un
-chemin d'attaque cohérent. Sur les runs \texttt{\footnotesize lance-moe} du 11 août détaillés
-ici, aucun chemin n'est entièrement vérifié. J'ai donc retenu comme priorité la
-continuité de la preuve entre les phases, en complément du travail sur la
-précision des experts. Ce résultat justifie les contrôles introduits dans le
-pipeline et le harness : l'état d'une phase, les erreurs d'outils et la preuve
-associée à chaque finding doivent rester visibles jusqu'à l'évaluation finale.
+constat local sans en inventer, l'étayer par un appel d'outil positif, puis
+l'intégrer dans un chemin d'attaque cohérent. Le taux d'hallucination renseigne
+sur le premier niveau, tandis que le Q-F1 répercute aussi la qualité de la
+correspondance et de la preuve. Sur les runs \texttt{\footnotesize lance-moe}
+du 11 août détaillés ici, aucun chemin n'est entièrement vérifié. J'ai donc
+retenu comme priorité la continuité de la preuve entre les phases, en complément
+du travail sur la précision des experts. Ce résultat justifie les contrôles
+introduits dans le pipeline et le harness : l'état d'une phase, les erreurs
+d'outils et la preuve associée à chaque finding doivent rester visibles jusqu'à
+l'évaluation finale.
 
-Les moyennes restent néanmoins descriptives. Les commits, les profils et le
-nombre de répétitions ne sont pas uniformes ; elles ne constituent donc ni une
-comparaison causale entre modèles, ni une mesure définitive de l'efficacité du
-\gls{hmoe}. Pour obtenir cette mesure, je devrai figer la version du code et le
-protocole, équilibrer les répétitions par scénario, puis publier la dispersion
-et les intervalles de confiance.
+Les moyennes restent néanmoins descriptives. Les versions du code, les profils
+et le nombre de répétitions ne sont pas uniformes ; elles ne constituent donc
+ni une comparaison causale entre modèles, ni une mesure définitive de
+l'efficacité du \gls{hmoe}. Pour obtenir cette mesure, je devrai figer la
+version du code et le protocole, équilibrer les répétitions par scénario, puis
+publier la dispersion et les intervalles de confiance.
 
 Les runs du 11 août cités explicitement sont
 \texttt{\footnotesize 2026-08-11\_121148} (S1),
