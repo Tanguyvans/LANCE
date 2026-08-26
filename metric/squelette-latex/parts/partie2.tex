@@ -333,11 +333,59 @@ Le crédit dépend de la précision structurelle du match. Une correspondance
 exacte reçoit le crédit maximal ; un type correct mais incomplet ou une
 compatibilité explicitement prévue reçoit un crédit moindre. Le score ajusté à
 la qualité combine ce crédit avec l'erreur de sévérité et la qualité de
-vérification. Le \emph{verified F1} impose en outre un appel d'outil lié au
-finding et dont le résultat est explicitement positif. Les métriques de chemins
-exigent que toutes les vulnérabilités attendues soient retrouvées ; leurs
-variantes vérifiées contrôlent aussi l'ordre des appareils dans une chaîne de
-phase~5.
+vérification.
+
+\subsection{Métriques principales}
+\label{sec:metriques-principales}
+
+Pour chaque association retenue \(i\in\mathcal{M}\), l'évaluateur multiplie le
+crédit de matching \(a_i\in[0{,}5;1]\), le facteur de sévérité
+\(s_i\in\{1;0{,}75;0{,}5;0{,}25\}\) et le crédit de vérification
+\(v_i\in\{1;0{,}5;0{,}25\}\). Le nombre de vrais positifs ajusté à la qualité
+ainsi que la précision et le rappel associés sont donc :
+
+\begin{align}
+  q_i &= a_i s_i v_i,
+  & \mathrm{QTP} &= \sum_{i\in\mathcal{M}} q_i, \\
+  P_Q &= \frac{\mathrm{QTP}}{\mathrm{TP}+\mathrm{FP}},
+  & R_Q &= \frac{\mathrm{QTP}}{N_{\mathrm{GT}}}.
+\end{align}
+
+Avec \(N_{\mathrm{GT}}=\mathrm{TP}+\mathrm{FN}\), le Q-F1 est la moyenne
+harmonique de ces deux grandeurs :
+
+\begin{equation}
+  Q\text{-}F_1 = \frac{2P_QR_Q}{P_Q+R_Q}.
+\end{equation}
+
+Le taux d'hallucination utilisé dans les campagnes correspond à la proportion
+de findings classés comme faux positifs parmi ceux classés comme vrais ou faux positifs :
+
+\begin{equation}
+  H = \frac{\mathrm{FP}}{\mathrm{TP}+\mathrm{FP}}.
+\end{equation}
+
+Lorsque le modèle ne produit aucun finding, l'évaluateur fixe \(H=0\). Cette
+valeur doit alors être lue avec le rappel et le nombre de prédictions. Les bonus
+explicitement acceptés sont comptabilisés séparément. Ce taux caractérise donc
+une absence de correspondance à la vérité terrain, et non toute forme possible
+d'hallucination sémantique. Les autres rapports sont également fixés à zéro
+lorsque leur dénominateur est nul.
+
+Le F1 vérifié ne crédite parmi les vrais positifs que ceux associés à un appel
+d'outil traçable dont le résultat est explicitement positif. En notant
+\(\mathrm{VTP}\) leur nombre :
+
+\begin{align}
+  P_V &= \frac{\mathrm{VTP}}{\mathrm{TP}+\mathrm{FP}},
+  & R_V &= \frac{\mathrm{VTP}}{N_{\mathrm{GT}}}, \\
+  F_{1,V} &= \frac{2P_VR_V}{P_V+R_V}.
+\end{align}
+
+Cette métrique n'est disponible que si le contrat et la provenance des preuves
+sont exploitables. Les métriques de chemins exigent de leur côté que toutes
+les vulnérabilités attendues soient retrouvées ; leurs variantes vérifiées
+contrôlent aussi l'ordre des appareils dans une chaîne de phase~5.
 
 J'ai appliqué une politique d'échec fermé aux métadonnées et aux artefacts. Une
 campagne incomplète reste incomplète. Une version de contrat métrique incompatible
@@ -348,8 +396,18 @@ scénarios attendus mais absents valent zéro lors de l'agrégation officielle.
 
 L'agrégation évite enfin qu'un scénario riche en findings domine le résultat.
 Les répétitions sont d'abord moyennées pour chaque scénario, puis les scénarios
-sont macro-moyennés à poids égal. Les métriques brutes, créditées,
-ajustées et vérifiées restent séparées afin qu'une amélioration de précision ne
+sont macro-moyennés à poids égal. Pour une métrique \(M\), avec \(n_s\)
+répétitions du scénario \(s\) et un ensemble de scénarios \(\mathcal{S}\) :
+
+\begin{align}
+  \overline{M}_s &= \frac{1}{n_s}\sum_{r=1}^{n_s} M_{s,r},
+  & M_{\mathrm{macro}} &= \frac{1}{|\mathcal{S}|}
+  \sum_{s\in\mathcal{S}} \overline{M}_s.
+\end{align}
+
+Un scénario attendu mais absent reçoit une valeur nulle dans l'agrégation
+officielle. Les métriques brutes, créditées, ajustées et vérifiées restent
+séparées afin qu'une amélioration de précision ne
 masque pas une régression de preuve. Un juge sémantique peut aider au diagnostic,
 mais la correspondance un-à-un, la validation de schéma et les scores finaux
 restent déterministes, ce qui limite les biais du paradigme
