@@ -2,12 +2,12 @@
 \label{sec:resultats-provisoires}
 
 Pour évaluer le comportement obtenu au-delà d'une exécution isolée, j'ai
-constitué un instantané des campagnes accessibles sur \texttt{nato-master} le
+constitué un instantané des campagnes accessibles sur \texttt{\footnotesize nato-master} le
 26 août 2026. J'ai retenu les runs réalisés du 10 au 25 août sur les scénarios
 S1 à S11. Sur les 110 exécutions possédant des métadonnées de scénario, 94
 disposaient d'un score exploitable : 25 avec la configuration
-\texttt{lance-moe} en profil \texttt{compact} et 69 avec MiniMax-M2.7,
-principalement en profil \texttt{full}. J'ai choisi le F1 ajusté par la qualité
+\texttt{\footnotesize lance-moe} en profil \texttt{\footnotesize compact} et 69 avec MiniMax-M2.7,
+principalement en profil \texttt{\footnotesize full}. J'ai choisi le F1 ajusté par la qualité
 comme mesure principale, car il réduit le crédit accordé à un constat lorsque
 la correspondance ou la preuve est insuffisante. Il répond ainsi directement à
 l'objectif du harness décrit précédemment : distinguer une vulnérabilité
@@ -41,7 +41,7 @@ simplement annoncée d'une vulnérabilité correctement étayée.
 \end{table}
 
 \Cref{tab:resultats-aout} isole, dans sa première colonne et pour chaque
-scénario, le run \texttt{lance-moe} exploitable du 11 août. Les deux groupes
+scénario, le run \texttt{\footnotesize lance-moe} exploitable du 11 août. Les deux groupes
 suivants donnent les moyennes de tous les runs scorés de la période. Pour
 interpréter ces valeurs, je ne me suis pas limité au classement numérique :
 j'ai relu les artefacts du 11 août, les vrais et faux positifs, les faux
@@ -52,7 +52,7 @@ surviennent plus tard dans l'exécution.
 Les scénarios S1 et S9 produisent les moyennes les plus élevées dans les deux
 configurations. Leur vérité terrain contient uniquement des vulnérabilités
 directement accessibles, sans pivot préalable. S1 limite en outre la surface à
-trois services courants. Sur le run du 11 août, \texttt{lance-moe} retrouve six
+trois services courants. Sur le run du 11 août, \texttt{\footnotesize lance-moe} retrouve six
 vrais positifs sans faux positif, mais laisse six vulnérabilités non détectées ;
 son F1 qualité atteint \(0{,}611\). S9 répète plusieurs motifs MQTT sur une
 surface de cinq services. Le même jour, l'agent y produit neuf vrais positifs,
@@ -67,7 +67,7 @@ réparties entre plusieurs zones IT, IoT et OT, avec des dépendances allant
 jusqu'à une profondeur de trois. Le run du 11 août produit cinq vrais positifs,
 trois faux positifs et neuf faux négatifs. Il cumule également 39 erreurs
 d'outils et ne reconstruit aucun chemin d'attaque. Son F1 qualité vaut
-\(0{,}386\), tandis que la moyenne des runs \texttt{lance-moe} descend à
+\(0{,}386\), tandis que la moyenne des runs \texttt{\footnotesize lance-moe} descend à
 \(0{,}270\). La dégradation accompagne ici l'enchaînement des pivots : l'agent
 doit conserver une cible, une observation et une preuve cohérentes lors du
 passage d'une zone à l'autre. J'ai donc identifié la continuité du contexte
@@ -90,21 +90,21 @@ distinguer des constats similaires puis à les relier sans doublon.
 Les résultats de S3, S10 et S11 complètent ce diagnostic. S3 étend la surface à
 sept services et duplique plusieurs rôles MQTT, SSH ou Web ; les confusions de
 cible et les hallucinations y deviennent plus fréquentes, ce qui accompagne
-une moyenne \texttt{lance-moe} de \(0{,}281\). S10 obtient également des
+une moyenne \texttt{\footnotesize lance-moe} de \(0{,}281\). S10 obtient également des
 valeurs faibles, mais je ne l'utilise pas pour tirer une conclusion générale :
 sa moyenne MiniMax-M2.7 ne repose que sur un seul run. S11 constitue la surface
 la plus large, avec quatorze services, vingt-trois vulnérabilités distribuées
 sur trois niveaux de profondeur et cinq chemins d'attaque. Sur le run du
 11 août, l'agent produit onze vrais positifs, sept faux positifs et douze faux
 négatifs, avec 37 erreurs d'outils. Le F1 qualité atteint \(0{,}500\) pour ce
-run ; les moyennes de la période valent \(0{,}491\) pour \texttt{lance-moe} et
+run ; les moyennes de la période valent \(0{,}491\) pour \texttt{\footnotesize lance-moe} et
 \(0{,}290\) pour MiniMax-M2.7. La grande surface s'accompagne à la fois
 d'omissions, de constats incorrects et d'occasions de rupture dans
 l'exécution.
 
 Cette analyse m'a conduit à distinguer trois niveaux de réussite : retrouver un
 constat local, l'étayer par un appel d'outil positif, puis l'intégrer dans un
-chemin d'attaque cohérent. Sur les runs \texttt{lance-moe} du 11 août détaillés
+chemin d'attaque cohérent. Sur les runs \texttt{\footnotesize lance-moe} du 11 août détaillés
 ici, aucun chemin n'est entièrement vérifié. J'ai donc retenu comme priorité la
 continuité de la preuve entre les phases, en complément du travail sur la
 précision des experts. Ce résultat justifie les contrôles introduits dans le
@@ -119,9 +119,9 @@ protocole, équilibrer les répétitions par scénario, puis publier la dispersi
 et les intervalles de confiance.
 
 Les runs du 11 août cités explicitement sont
-\texttt{2026-08-11\_121148} (S1),
-\texttt{2026-08-11\_122415} (S2),
-\texttt{2026-08-11\_192450} (S5),
-\texttt{2026-08-11\_201637} (S8),
-\texttt{2026-08-11\_204203} (S9) et
-\texttt{2026-08-11\_211948} (S11).
+\texttt{\footnotesize 2026-08-11\_121148} (S1),
+\texttt{\footnotesize 2026-08-11\_122415} (S2),
+\texttt{\footnotesize 2026-08-11\_192450} (S5),
+\texttt{\footnotesize 2026-08-11\_201637} (S8),
+\texttt{\footnotesize 2026-08-11\_204203} (S9) et
+\texttt{\footnotesize 2026-08-11\_211948} (S11).

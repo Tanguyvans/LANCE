@@ -22,7 +22,7 @@ elle pouvait être considérée comme complète.
 \section{Architecture générale}
 
 LANCE sépare les décisions probabilistes des contrôles déterministes. La classe
-\texttt{Pipeline} orchestre six phases et associe à chacune un prompt, un
+\texttt{\footnotesize Pipeline} orchestre six phases et associe à chacune un prompt, un
 livrable attendu et un ensemble d'outils autorisés. Le modèle propose une
 analyse ou une action ; l'orchestrateur exécute l'outil, journalise son résultat
 et décide si le contrat de la phase est satisfait. Les artefacts structurés
@@ -56,8 +56,8 @@ La mission principale de mon stage a consisté à construire une chaîne HMoE
 agentique, depuis les traces d'exécution jusqu'au déploiement des experts dans
 LANCE. Ici, le terme HMoE ne désigne pas une couche de mélange d'experts apprise
 à l'intérieur du réseau. Le système partage un modèle de base et charge
-dynamiquement quatre adaptateurs \gls{peft} spécialisés : \texttt{secretary},
-\texttt{recon}, \texttt{vuln} et \texttt{exploit}. Cette organisation reprend
+dynamiquement quatre adaptateurs \gls{peft} spécialisés : \texttt{\footnotesize secretary},
+\texttt{\footnotesize recon}, \texttt{\footnotesize vuln} et \texttt{\footnotesize exploit}. Cette organisation reprend
 l'idée de spécialisation des mélanges d'experts tout en l'adaptant aux
 contraintes matérielles du projet \cite{shazeer2017moe}.
 
@@ -122,7 +122,7 @@ sévérité incorrecte ou un livrable incohérent. Ces candidats restent en atte
 jusqu'à une revue humaine ; seuls ceux explicitement acceptés sont convertis en
 exemples SFT. Ils sont attribués à la première phase disposant d'un signal causal
 observable. Une cible absente de la reconnaissance corrige ainsi l'expert
-\texttt{recon}, et non automatiquement l'expert \texttt{vuln}. Ce choix évite
+\texttt{\footnotesize recon}, et non automatiquement l'expert \texttt{\footnotesize vuln}. Ce choix évite
 d'enseigner à un composant aval à compenser silencieusement une erreur amont.
 
 \subsection{Préflight et reproductibilité}
@@ -132,12 +132,12 @@ poids ni lancer d'optimisation. Il contrôle la structure YAML, la présence du
 gabarit et de ses masques de génération, puis parcourt les JSONL. Chaque ligne
 doit contenir des messages, au moins une réponse assistant et des métadonnées
 cohérentes avec l'expert et le modèle préparé. Toute référence au split
-\texttt{eval-sealed} est refusée afin d'empêcher une contamination des données
+\texttt{\footnotesize eval-sealed} est refusée afin d'empêcher une contamination des données
 d'évaluation.
 
 Le préflight contrôle aussi les versions de PyTorch, Transformers, TRL, PEFT,
 bitsandbytes, Datasets et Accelerate. Il vérifie que la signature de
-\texttt{SFTConfig} expose les paramètres requis par le script, que CUDA est
+\texttt{\footnotesize SFTConfig} expose les paramètres requis par le script, que CUDA est
 disponible, que le GPU accepte BF16 et, en mode strict, qu'aucun autre processus
 de calcul ne l'occupe. Il produit un rapport JSON comprenant les tailles et
 empreintes des jeux de données. Lors d'une promotion, le même outil exige pour
@@ -152,9 +152,9 @@ avec la machine disponible \cite{dettmers2023qlora}. Qwen2.5-3B-Instruct est
 chargé en 4 bits avec la quantification NF4, une double quantification et des
 calculs en BF16. Les adaptateurs ont un rang \(r=16\), un facteur
 \(\alpha=32\) et un dropout de 0,05. Ils ciblent les projections
-\texttt{q\_proj}, \texttt{k\_proj}, \texttt{v\_proj} et
-\texttt{o\_proj}, ainsi que \texttt{gate\_proj}, \texttt{up\_proj} et
-\texttt{down\_proj} dans le bloc feed-forward.
+\texttt{\footnotesize q\_proj}, \texttt{\footnotesize k\_proj}, \texttt{\footnotesize v\_proj} et
+\texttt{\footnotesize o\_proj}, ainsi que \texttt{\footnotesize gate\_proj}, \texttt{\footnotesize up\_proj} et
+\texttt{\footnotesize down\_proj} dans le bloc feed-forward.
 
 L'entraînement utilise un lot unitaire et une accumulation de gradient pour
 obtenir un lot effectif plus grand sans dépasser la mémoire disponible. Le
@@ -201,7 +201,7 @@ mécanisme ne cherche donc pas seulement à réduire les tokens : il conserve le
 informations dont dépend la prochaine action.
 
 Lorsqu'une tentative de sauvegarde retourne une liste structurée
-\texttt{missing\_requirements}, le serveur peut produire directement l'appel
+\texttt{\footnotesize missing\_requirements}, le serveur peut produire directement l'appel
 manquant autorisé. Il transforme, par exemple, un port non couvert en scan Nmap
 ciblé. Cette récupération déterministe intervient avant une nouvelle génération
 et évite que le modèle répète le même livrable refusé. Dans les phases
@@ -217,7 +217,7 @@ Le service HMoE charge le modèle de base quantifié et les quatre adaptateurs,
 puis expose une API compatible OpenAI avec des routes de santé, de modèles et de
 conversation. Il est lancé comme service utilisateur systemd. Sur la machine
 GPU, l'écoute est limitée au pont Docker pour OpenWebUI ; l'accès depuis
-\texttt{nato-master} passe par un proxy lié uniquement à l'adresse Tailscale.
+\texttt{\footnotesize nato-master} passe par un proxy lié uniquement à l'adresse Tailscale.
 Cette topologie évite d'exposer publiquement une API qui ne valide pas elle-même
 un jeton Bearer. Après une période d'inactivité configurable, les allocations
 CUDA inutilisées sont rendues au pilote sans interrompre le modèle chargé.
@@ -229,7 +229,7 @@ CUDA inutilisées sont rendues au pilote sans interrompre le modèle chargé.
 
 La phase~2 transforme une cible réseau en surface d'attaque observée. L'agent
 doit couvrir la découverte, les hôtes attendus et leurs services, puis enregistrer
-\texttt{02\_recon.md}. La sauvegarde n'est pas un simple signal de fin : l'outil
+\texttt{\footnotesize 02\_recon.md}. La sauvegarde n'est pas un simple signal de fin : l'outil
 vérifie les appels effectués et renvoie les exigences manquantes. Les résultats
 de scan sont projetés dans une représentation déterministe des hôtes, ports et
 protocoles. Cette projection alimente la phase suivante même si la prose du
@@ -272,7 +272,7 @@ une sonde de repli bornée.
 L'agrégateur distingue un succès, un échec conclusif, une erreur et l'absence de
 test. Un succès enrichit la preuve ; un échec peut réfuter une simple suspicion ;
 une erreur ne transforme pas la détection en faux positif. Les résultats sont
-réunis dans \texttt{04\_exploitation.json} avec leur provenance d'outil. Les
+réunis dans \texttt{\footnotesize 04\_exploitation.json} avec leur provenance d'outil. Les
 hôtes découverts durant cette phase déclenchent un cycle limité de reconnaissance
 et d'analyse avant la phase~5, ce qui permet de traiter un pivot sans relancer
 toute la campagne.
@@ -310,7 +310,7 @@ repli compose le rapport à partir des données structurées. Cette dernière
 frontière garantit qu'une formulation persuasive ne réintroduit pas une
 vulnérabilité éliminée par la phase~4.
 
-\section{Harness d'évaluation \texttt{strict-v3}}
+\section{Harness d'évaluation \texttt{\footnotesize strict-v3}}
 
 Le harness a été étendu pour évaluer non seulement la détection, mais aussi la
 qualité de la correspondance et la traçabilité des preuves. Chaque scénario

@@ -22,13 +22,13 @@
 
   % Quatre adaptateurs spécialisés clairement séparés
   \node[expert,below=20mm of routingmid,xshift=-54mm] (secretary)
-    {\texttt{secretary}\\phases 1 et 6};
+    {\texttt{\footnotesize secretary}\\phases 1 et 6};
   \node[expert,right=8mm of secretary] (recon)
-    {\texttt{recon}\\phase 2};
+    {\texttt{\footnotesize recon}\\phase 2};
   \node[expert,right=8mm of recon] (vuln)
-    {\texttt{vuln}\\phase 3};
+    {\texttt{\footnotesize vuln}\\phase 3};
   \node[expert,right=8mm of vuln] (exploit)
-    {\texttt{exploit}\\phases 4 et 5};
+    {\texttt{\footnotesize exploit}\\phases 4 et 5};
   \node[group,fit=(secretary)(recon)(vuln)(exploit),
     label={[font=\sffamily\small\bfseries]above:Adaptateurs QLoRA spécialisés}] (adapters) {};
 

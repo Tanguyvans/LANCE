@@ -51,7 +51,7 @@ matrices entraînables et \(r\) leur rang. La configuration retenue utilise
 \(r=16\), \(\alpha=32\) et un dropout de \(0{,}05\). Les corrections sont
 appliquées aux projections de l'attention ainsi qu'aux projections montante,
 descendante et de porte du bloc feed-forward. Le calcul s'effectue en
-\texttt{bfloat16}, avec accumulation de gradient et activation du
+\texttt{\footnotesize bfloat16}, avec accumulation de gradient et activation du
 checkpointing de gradient afin de rester compatible avec une carte graphique
 de 16\,Gio.
 
@@ -108,7 +108,7 @@ reconnaissance, la phase~3 à l'analyse de vulnérabilités, et les phases~4 et~
 l'exploitation. En l'absence de numéro explicite, des marqueurs de rôle
 stabilisent la sélection ; si aucun motif n'est reconnu, le modèle de base sert
 de repli. Les identifiants directs des experts restent exposés pour le
-diagnostic, tandis que l'identifiant commun \texttt{lance-moe} réalise le
+diagnostic, tandis que l'identifiant commun \texttt{\footnotesize lance-moe} réalise le
 routage automatique. La \cref{tab:hmoe-experts} résume cette décomposition.
 
 \begin{table}[H]
@@ -154,7 +154,7 @@ est la suivante :
     ils ne proviennent donc pas d'un corpus public externe.
 
   \item[Reconnaissance] Les observations de ports et de services sont extraites
-    de journaux Zeek, principalement des fichiers \texttt{conn.log} du jeu
+    de journaux Zeek, principalement des fichiers \texttt{\footnotesize conn.log} du jeu
     IoT-23. Ce corpus de la Czech Technical University rassemble vingt captures
     de trafic IoT infecté et trois captures bénignes \cite{garcia2020iot23}. Le
     générateur conserve la structure des connexions, puis remplace les adresses
