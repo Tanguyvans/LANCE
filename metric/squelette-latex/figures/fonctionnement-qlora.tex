@@ -30,7 +30,7 @@
   \draw[flow] (lora.south) -- (sum.north east);
   \draw[flow] (sum) -- (loss);
 
-  % --- Ligne du gradient décalée vers la gauche ---
+  % Ligne du gradient décalée vers la gauche 
  \draw[gradient] ([xshift=-10mm]loss.north) |- ++(0,4mm) -| node[pos=0.30,above,font=\scriptsize]{gradients} (lora.south);
 
   \draw[flow] (lora.south east) |- (adapter.north);

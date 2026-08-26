@@ -1,10 +1,7 @@
 \documentclass[stage2a]{tnreport}
 
-% Ce squelette reprend directement le template officiel tn-report.
-% L'option stage2a adapte automatiquement la page de garde et la déclaration
-% de non-plagiat à un stage de deuxième année.
 
-% ─── Qualité typographique et environnements complémentaires ────────────────
+% Qualité typographique et environnements complémentaires 
 \usepackage{microtype}
 \usepackage{setspace}
 \setstretch{1.15}
@@ -14,20 +11,19 @@
 \usepackage{csquotes}
 \usetikzlibrary{arrows.meta,calc,fit,positioning}
 
-% ─── Références croisées ────────────────────────────────────────────────────
+% Références croisées 
 \usepackage[french]{cleveref}
 \AtBeginDocument{\shorthandoff{:}}
 
-% ─── Bibliographie ──────────────────────────────────────────────────────────
+% Bibliographie
 \usepackage[backend=biber,style=ieee,sorting=none]{biblatex}
 \addbibresource{references.bib}
 \setlength{\bibitemsep}{0.4\baselineskip}
 
-% ─── Glossaire ──────────────────────────────────────────────────────────────
-% tnreport charge glossaries-extra et initialise makeglossaries.
+% Glossaire
 \input{glossaire}
 
-% ─── Métadonnées connues ────────────────────────────────────────────────────
+% Métadonnées connues
 \def\reportTitle{Conception d'HMoE et évaluation de LANCE, agent LLM pour l’audit de réseaux IoT/OT}
 \def\reportLongTitle{\reportTitle}
 
@@ -49,12 +45,10 @@
 \def\place{\textit{Mons}}
 \def\date{24 août 2026}
 
-% Aucun logo d'entreprise n'est utilisé tant que l'organisme n'est pas renseigné.
 \makeatletter
 \let\reportCompanyLogoPath\@undefined
 \makeatother
 
-% Les cadres de signature restent vides jusqu'à la signature des intéressés.
 \addSignaturesLine{{
   {}{Léo BASIN}{Élève-ingénieur en 2\textsuperscript{e} année},
   {}{}{Maître de stage}
@@ -69,8 +63,6 @@
 \setcounter{secnumdepth}{3}
 \setcounter{tocdepth}{3}
 
-% Version compilable de la déclaration du template, sans inventer le numéro
-% étudiant ni ajouter une fausse signature.
 \newcommand{\makeStudentDeclaration}{%
   \begin{center}
     {\Large\bfseries Déclaration sur l'honneur de non-plagiat}
@@ -107,7 +99,8 @@
   \bigskip
 
   \hfill\begin{minipage}{0.38\textwidth}
-    \textbf{Signature~:}\\[2.5cm]
+    \textbf{Signature~:}\\[2cm]
+    \textbf{Léo Basin}\\
     \rule{\linewidth}{0.4pt}
   \end{minipage}
 
@@ -116,7 +109,7 @@
 
 \begin{document}
 
-% ─── Pages liminaires du template tn-report ─────────────────────────────────
+% Pages liminaires du template tn-report
 \maketitle
 \pagenumbering{roman}
 
@@ -136,14 +129,14 @@
 \pagenumbering{arabic}
 \setcounter{page}{1}
 
-% ─── Corps du rapport ───────────────────────────────────────────────────────
+% Corps du rapport 
 \input{parts/introduction}
 \input{parts/partie1}
 \input{parts/partie2}
 \input{parts/partie3}
 \input{parts/conclusions}
 
-% ─── Bibliographie et listes ────────────────────────────────────────────────
+% Bibliographie et listes 
 \cleardoublepage
 \begin{singlespace}
 \printbibliography[heading=bibintoc,title={Bibliographie}]
@@ -158,14 +151,13 @@
 \end{singlespace}
 \clearpage
 
-% ─── Annexes ────────────────────────────────────────────────────────────────
-% Activer uniquement lorsque les annexes sont réellement appelées dans le texte.
+% Annexes 
 % \appendix
 % \part*{Annexes}
 % \addcontentsline{toc}{part}{Annexes}
 % \input{parts/annexes}
 
-% ─── Résumé et abstract, comme dans le template stage 1A ────────────────────
+% Résumé et abstract
 \thispagestyle{empty}
 \section*{Résumé}
 \addcontentsline{toc}{chapter}{Résumé}
