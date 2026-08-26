@@ -1,65 +1,110 @@
-\subsection{Instantané expérimental du 24 août 2026}
+\subsection{Analyse transversale des runs d'août 2026}
 \label{sec:resultats-provisoires}
 
-Les résultats présentés ici constituent un instantané de travail et non une
-campagne finale. J'ai retenu quatre exécutions terminées et comparables au
-regard des métadonnées disponibles, accessibles sur \texttt{nato-master}.
-Elles utilisent toutes le modèle MiniMax-M2.7, le profil \texttt{full}, le
-split \texttt{dev-public}, la révision logicielle \texttt{e7c4f6a} et la
-politique d'évaluation \texttt{strict-v3} avec le contrat métrique
-\texttt{strict-v3.3}. Les métadonnées indiquent que le modèle n'avait pas accès
-à la vérité terrain. Chaque scénario ne comporte qu'une répétition ; les
-valeurs ne permettent donc pas encore d'estimer la variance.
+Les résultats présentés ici restent provisoires. L'état de l'API de
+\texttt{nato-master} a été relevé le 26 août 2026 pour les exécutions réalisées
+du 10 au 25 août sur les scénarios S1 à S11. Parmi les 110 runs possédant des
+métadonnées de scénario, 94 disposaient d'un score exploitable : 25 avec la
+configuration \texttt{lance-moe} en profil \texttt{compact} et 69 avec
+MiniMax-M2.7, principalement en profil \texttt{full}.
+\Cref{tab:resultats-aout} rapporte le F1 ajusté par la qualité. Cette mesure est
+privilégiée au F1 brut, car elle réduit le crédit accordé aux constats qui ne
+sont pas soutenus par une preuve suffisante.
 
 \begin{table}[H]
   \centering
   \small
-  \caption{Résultats provisoires des quatre campagnes sélectionnées}
-  \label{tab:resultats-provisoires}
+  \caption{F1 ajusté par la qualité sur les runs scorés d'août 2026}
+  \label{tab:resultats-aout}
   \begin{tabular}{lrrrrr}
     \toprule
-    Scénario & Précision & Rappel & F1 & F1 vérifié & F1 qualité \\
+    & \multicolumn{1}{c}{\texttt{lance-moe}, 11 août}
+    & \multicolumn{2}{c}{\texttt{lance-moe}, août}
+    & \multicolumn{2}{c}{MiniMax-M2.7, août} \\
+    Scénario & F1 qualité & \(n\) & Moyenne & \(n\) & Moyenne \\
     \midrule
-    S1 & \(0{,}875\) & \(0{,}583\) & \(0{,}700\) & \(0{,}600\) & \(0{,}625\) \\
-    S2 & \(0{,}833\) & \(0{,}769\) & \(0{,}800\) & \(0{,}640\) & \(0{,}670\) \\
-    S5 & \(0{,}900\) & \(0{,}600\) & \(0{,}720\) & \(0{,}640\) & \(0{,}680\) \\
-    S8 & \(0{,}533\) & \(0{,}571\) & \(0{,}552\) & \(0{,}414\) & \(0{,}448\) \\
-    \midrule
-    Moyenne macro & \(0{,}785\) & \(0{,}631\) & \(0{,}693\) & \(0{,}574\) & \(0{,}606\) \\
+    S1  & \(0{,}611\) & 3 & \(0{,}611\) & 13 & \(0{,}741\) \\
+    S2  & \(0{,}500\) & 2 & \(0{,}474\) & 17 & \(0{,}512\) \\
+    S3  & \(0{,}357\) & 3 & \(0{,}281\) &  9 & \(0{,}416\) \\
+    S4  & \(0{,}556\) & 2 & \(0{,}538\) &  3 & \(0{,}327\) \\
+    S5  & \(0{,}609\) & 2 & \(0{,}505\) &  7 & \(0{,}518\) \\
+    S6  & \(0{,}577\) & 2 & \(0{,}448\) &  2 & \(0{,}367\) \\
+    S7  & \(0{,}545\) & 2 & \(0{,}528\) &  2 & \(0{,}412\) \\
+    S8  & \(0{,}386\) & 2 & \(0{,}270\) &  6 & \(0{,}455\) \\
+    S9  & \(0{,}825\) & 3 & \(0{,}796\) &  6 & \(0{,}617\) \\
+    S10 & \(0{,}417\) & 2 & \(0{,}334\) &  1 & \(0{,}170\) \\
+    S11 & \(0{,}500\) & 2 & \(0{,}491\) &  3 & \(0{,}290\) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Comme l'indique \cref{tab:resultats-provisoires}, la moyenne macro atteint un
-F1 de \(0{,}693\), contre \(0{,}574\) lorsque seuls les constats vérifiés sont
-crédités. Le F1 ajusté par la qualité s'établit à \(0{,}606\). L'écart entre
-ces mesures suggère qu'une détection correcte au niveau du type et de la cible
-ne s'accompagne pas toujours d'une preuve d'exécution suffisamment forte.
+La première lecture attendue n'est donc que partiellement confirmée. S1 et S9
+sont bien les deux scénarios les mieux traités par les deux configurations. S1
+présente une surface réduite et directement accessible : trois services, des
+vulnérabilités de profondeur nulle et des technologies courantes. S9 repose lui
+aussi sur des accès directs et sur des motifs MQTT répétitifs. Le run
+\texttt{lance-moe} du 11 août identifie ainsi neuf vrais positifs sans faux
+positif sur S9, pour deux faux négatifs et un F1 qualité de \(0{,}825\). Ce bon
+score de détection ne signifie toutefois pas que l'exécution est complète : la
+phase d'intrusion reste inachevée, faute d'un point d'entrée CoAP pris en charge.
+Sur S1, le score de \(0{,}611\) correspond à six vrais positifs et six faux
+négatifs. Le scénario est simple relativement aux autres, mais il n'est donc
+pas intégralement résolu.
 
-La complétion moyenne de la phase 4 atteint \(92{,}8\,\%\) et la couverture
-d'exploitation \(82{,}4\,\%\). En revanche, la couverture macro des chemins
-n'est que de \(52{,}1\,\%\), et celle des chemins entièrement vérifiés de
-\(6{,}3\,\%\). S1 est le seul scénario de cet échantillon à obtenir une
-couverture vérifiée non nulle, égale à \(25\,\%\). Dans cet échantillon, la
-difficulté principale semble donc être la conservation d'une chaîne de preuves
-complète sur plusieurs étapes, et non le seul lancement des vérifications
-locales.
+S8 apparaît en revanche comme une difficulté stable. Sa topologie répartit
+quatorze vulnérabilités sur plusieurs zones IT, IoT et OT, jusqu'à une
+profondeur de trois. Le run du 11 août obtient cinq vrais positifs, trois faux
+positifs et neuf faux négatifs ; ses 39 erreurs d'outils et l'absence de chemin
+d'attaque reconstruit ramènent le F1 qualité à \(0{,}386\). La moyenne
+\texttt{lance-moe} descend à \(0{,}270\), la plus faible de ses onze moyennes.
+Ce résultat relie la difficulté de S8 à l'enchaînement des pivots, au maintien
+du contexte entre zones et à la production d'une preuve continue, plutôt qu'à
+une seule détection locale.
 
-S2 obtient le meilleur F1 de l'échantillon avec \(0{,}800\). S8 est le cas le
-plus difficile : huit vrais positifs, sept faux positifs et six faux négatifs
-conduisent à un F1 de \(0{,}552\). Ce résultat motive les gardes consacrées à
-la précision sur les scénarios étendus et à la réduction des hallucinations.
+Les cas S2 et S5 posent des problèmes réels, mais les données ne permettent pas
+de les classer parmi les trois scénarios les plus difficiles. Leurs moyennes se
+situent entre \(0{,}474\) et \(0{,}518\) selon la configuration. S2 concentre
+des services hétérogènes --- Web, MQTT, base de données et accès distants --- :
+le run du 11 août atteint \(0{,}500\), avec 22 erreurs d'outils et une faible
+couverture des chemins. S5 mêle caméras, NVR, contrôle d'accès, HVAC, BACnet et
+plusieurs interfaces HTTP aux défauts proches. Cette répétition favorise les
+doublons et les omissions. Pourtant, son run du 11 août atteint \(0{,}609\)
+avec sept vrais positifs, un faux positif et huit faux négatifs. Son absence de
+chemin d'attaque reconstruit montre surtout un écart entre la qualité des
+constats locaux et leur composition en scénario d'intrusion.
 
-Les quatre exécutions totalisent environ 3,58 dollars, 11,0 millions de tokens,
-1\,202 appels d'outils et 30 erreurs d'outils. Elles utilisent cependant un
-modèle généraliste distant et non le \gls{hmoe} local. Cet instantané constitue
-donc un test d'intégration du pipeline et du harness ; il ne démontre
-pas encore l'efficacité des experts entraînés. Une campagne finale devra figer
-la version du code, répéter chaque scénario et publier moyenne, dispersion et
-intervalle de confiance pour les baselines et le \gls{hmoe}.
+À l'inverse, S3 et S10 obtiennent souvent des F1 qualité inférieurs à ceux de
+S2 et S5. S3 combine une surface plus large et des services dupliqués, ce qui
+accroît les confusions entre cibles et les hallucinations. Le résultat de S10
+doit rester nuancé : sa moyenne MiniMax-M2.7 ne repose que sur un seul run. Il
+ne permet pas encore de conclure que S10 est intrinsèquement le scénario le
+plus difficile.
 
-Les identifiants de runs utilisés sont
-\texttt{2026-08-24\_092203} pour S1,
-\texttt{2026-08-21\_144141} pour S2,
-\texttt{2026-08-24\_083553} pour S5 et
-\texttt{2026-08-21\_151305} pour S8.
+S11 ne peut pas être retenu parmi les scénarios faciles. Il s'agit de la plus
+grande surface du jeu considéré, avec quatorze services, vingt-trois
+vulnérabilités réparties sur trois niveaux de profondeur et cinq chemins
+d'attaque. Le run \texttt{lance-moe} du 11 août produit onze vrais positifs,
+mais aussi sept faux positifs, douze faux négatifs et 37 erreurs d'outils. Son
+F1 qualité vaut \(0{,}500\), tandis que la moyenne MiniMax-M2.7 tombe à
+\(0{,}290\). Les motifs déjà rencontrés facilitent certaines détections, mais
+ils ne compensent pas la taille de la surface ni la difficulté à conserver des
+preuves cohérentes d'une zone à l'autre.
+
+Enfin, aucun des runs \texttt{lance-moe} du 11 août détaillés ci-dessus ne
+reconstruit un chemin d'attaque entièrement vérifié. Cette limite est plus
+importante que le seul classement des scénarios : elle indique que la marge de
+progression principale se situe encore dans la continuité de la preuve et dans
+l'exécution robuste des outils. Ces moyennes restent descriptives, car les
+commits, les profils et le nombre de répétitions ne sont pas uniformes.
+comparaison causale entre modèles, ni une mesure finale de l'efficacité du
+\gls{hmoe}. Une campagne finale devra figer la version du code et le protocole,
+équilibrer les répétitions par scénario et publier la dispersion ainsi que les
+intervalles de confiance.
+
+Les runs du 11 août cités explicitement sont
+\texttt{2026-08-11\_121148} (S1),
+\texttt{2026-08-11\_122415} (S2),
+\texttt{2026-08-11\_192450} (S5),
+\texttt{2026-08-11\_201637} (S8),
+\texttt{2026-08-11\_204203} (S9) et
+\texttt{2026-08-11\_211948} (S11).
