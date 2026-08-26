@@ -253,6 +253,144 @@ def test_s16_pki_extractors_require_contract_markers():
     assert generic == []
 
 
+def test_s17_s18_s19_contract_extractors_are_bounded_and_distinct():
+    from src.agent import scanner as scanner_mod
+
+    def http_entry(url, status=200, body=None, method="GET", headers=None):
+        kwargs = {"url": url, "method": method, "headers": headers or {}}
+        if body is not None:
+            kwargs["body"] = body
+        return {
+            "tool": "http_request", "kwargs": kwargs,
+            "result": json.dumps({"status_code": status, "body": body or ""}),
+        }
+
+    repo_body = json.dumps({
+        "artifacts": [
+            {"version": "1", "payload": "firmware-v1-obsolete", "signature": "sig-v1"},
+            {"version": "2", "payload": "firmware-v2-current", "signature": "sig-v2"},
+        ],
+        "obsolete_versions_retained": True,
+    })
+    repo = scanner_mod.extract_findings(
+        {"http": [http_entry("http://192.0.2.11:8080/firmware", body=repo_body)]},
+        {"id": "repo", "ip": "192.0.2.11", "role": "ota_repository"},
+    )
+    assert [(f["type"], f["severity"]) for f in repo] == [("data_exposure", "MEDIUM")]
+
+    old = {"payload": "firmware-v1-obsolete", "signature": "sig-v1"}
+    device_entries = [
+        http_entry(
+            "http://192.0.2.13:8080/install", body=json.dumps({"version": "999", **old}),
+            method="POST", headers={"X-Benchmark-OTA-Test": "metadata"},
+        ),
+        http_entry(
+            "http://192.0.2.13:8080/install", body=json.dumps({"version": "1", **old}),
+            method="POST", headers={"X-Benchmark-OTA-Test": "rollback"},
+        ),
+    ]
+    # The fixture response must prove installation, not merely return JSON.
+    for entry in device_entries:
+        entry["result"] = json.dumps({
+            "status_code": 200,
+            "body": json.dumps({"installed": True}),
+        })
+    device_findings = scanner_mod.extract_findings(
+        {"ota": device_entries},
+        {"id": "device-a", "ip": "192.0.2.13", "role": "ota_device"},
+    )
+    assert [f["type"] for f in device_findings] == ["insecure_update", "insecure_update"]
+
+    fetch_body = json.dumps({
+        "status": 200,
+        "body": json.dumps({"access_token": "metadata-object-admin-token", "scope": "object-admin"}),
+    })
+    cloud = scanner_mod.extract_findings(
+        {"http": [http_entry("http://192.0.2.11:8080/fetch?url=lab", body=fetch_body)]},
+        {"id": "cloud", "ip": "192.0.2.11", "role": "cloud_web_server"},
+    )
+    assert [(f["type"], f["severity"]) for f in cloud] == [("code_injection", "CRITICAL")]
+
+    opcua_entries = [
+        http_entry("http://192.0.2.12:8080/protocol", body=json.dumps({"security_policy": "None"})),
+        {"tool": "tcp_send", "kwargs": {}, "result": json.dumps({"received_ascii": "OK\\n"})},
+    ]
+    opcua = scanner_mod.extract_findings(
+        {"opcua": opcua_entries},
+        {"id": "opcua", "ip": "192.0.2.12", "role": "ot_opcua_server"},
+    )
+    assert {f["type"] for f in opcua} == {"weak_cipher", "no_auth"}
+
+    bacnet = scanner_mod.extract_findings(
+        {"bacnet": [
+            {"tool": "udp_send", "kwargs": {"payload": "WHO-IS"},
+             "result": json.dumps({"received_ascii": "NATO-BENCHMARK-I-AM"})},
+            {"tool": "udp_send", "kwargs": {"payload": "WRITE BenchPoint 22.5"},
+             "result": json.dumps({"received_ascii": "BACNET OK"})},
+        ]},
+        {"id": "bacnet", "ip": "192.0.2.14", "role": "ot_bacnet_server"},
+    )
+    assert {f["type"] for f in bacnet} == {"info_disclosure", "no_auth"}
+
+
+def test_s14_s19_profile_controls_and_role_mismatch_are_not_published():
+    assert _finding_semantic_issue(
+        {"type": "weak_cipher", "service": "ssh", "port": 22},
+        source_kind="model", device_role="ssh_server", device_profile="hardened", scenario_id="S14",
+    )
+    assert "sparse contract" in _finding_semantic_issue(
+        {"type": "weak_cipher", "service": "ssh", "port": 22},
+        source_kind="model", device_role="ssh_server", device_profile="vulnerable", scenario_id="S14",
+    )
+    assert "non-SSH role" in _finding_semantic_issue(
+        {"type": "weak_cipher", "service": "ssh", "port": 22},
+        source_kind="model", device_role="mqtt_broker", scenario_id=19,
+    )
+    assert _finding_semantic_issue(
+        {"type": "info_disclosure", "service": "bacnet", "port": 47808},
+        source_kind="scanner_full", device_role="ot_bacnet_server", device_profile="hardened", scenario_id=19,
+    )
+    assert "Modbus role" in _finding_semantic_issue(
+        {"type": "weak_cipher", "service": "ssh", "port": 22},
+        source_kind="model", device_role="modbus_server", scenario_id=19,
+    )
+
+
+def test_s18_chain_extractors_require_ssrf_vantage_and_scope():
+    from src.agent import scanner as scanner_mod
+
+    metadata_entry = {
+        "tool": "http_request",
+        "kwargs": {
+            "url": "http://192.0.2.12:8080/credentials",
+            "headers": {"X-Benchmark-Vantage": "ssrf"},
+        },
+        "result": json.dumps({
+            "status_code": 200,
+            "body": json.dumps({"access_token": "metadata-object-admin-token", "scope": "object-admin"}),
+        }),
+    }
+    control_entry = {
+        "tool": "http_request",
+        "kwargs": {
+            "url": "http://192.0.2.13:8080/bucket/city-secrets",
+            "headers": {"Authorization": "Bearer metadata-object-admin-token"},
+        },
+        "result": json.dumps({
+            "status_code": 200,
+            "body": json.dumps({"marker": "CITY-CONTROL-SECRET-S18"}),
+        }),
+    }
+    assert scanner_mod.extract_findings(
+        {"http": [metadata_entry]},
+        {"id": "metadata", "ip": "192.0.2.12", "role": "cloud_metadata_server"},
+    )[0]["type"] == "privilege_escalation"
+    assert scanner_mod.extract_findings(
+        {"http": [control_entry]},
+        {"id": "control", "ip": "192.0.2.13", "role": "cloud_control_plane"},
+    )[0]["type"] == "data_exposure"
+
+
 def test_s14_authenticated_redis_and_pki_metadata_are_rejected():
     redis_noauth = {
         "type": "no_auth", "service": "redis", "port": 6379,

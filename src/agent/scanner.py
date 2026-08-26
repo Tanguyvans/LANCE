@@ -280,6 +280,79 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "follow_redirects": False,
         }),
     ],
+    # S17 is stateful: the repository manifest is the only source of valid
+    # fixtures; the pipeline replays those fixtures against the two devices.
+    "ota_repository": [
+        ("http_request", {
+            "url": "http://{ip}:8080/firmware",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
+    "ota_device": [
+        ("http_request", {
+            "url": "http://{ip}:8080/status",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
+    # S18 must be tested through the public fetcher. Direct metadata access is
+    # intentionally not attempted because it would invalidate the isolation
+    # control and cannot prove the SSRF chain.
+    "cloud_web_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/docs",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+        ("http_request", {
+            "url": "http://{ip}:8080/fetch?url=http%3A%2F%2F192.168.100.12%3A8080%2Fcredentials",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+    ],
+    "cloud_control_plane": [
+        ("http_request", {
+            "url": "http://{ip}:8080/bucket/city-secrets",
+            "method": "GET",
+            "headers": {"Authorization": "Bearer limited-token"},
+            "follow_redirects": False,
+        }),
+    ],
+    # HTTP /protocol is only metadata; the protocol-aware write is performed
+    # against the disposable BenchPoint and immediately restored.
+    "ot_opcua_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/protocol",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+        ("tcp_send", {
+            "host": "{ip}", "port": "4840",
+            "payload_hex": "57524954452042656e6368506f696e742032322e35",
+            "recv_bytes": 256, "timeout": 5,
+        }),
+        ("tcp_send", {
+            "host": "{ip}", "port": "4840",
+            "payload_hex": "57524954452042656e6368506f696e742032312e35",
+            "recv_bytes": 256, "timeout": 5,
+        }),
+    ],
+    "ot_bacnet_server": [
+        ("http_request", {
+            "url": "http://{ip}:8080/protocol",
+            "method": "GET",
+            "follow_redirects": False,
+        }),
+        ("udp_send", {
+            "host": "{ip}", "port": "47808", "payload": "WRITE BenchPoint 22.5",
+            "encoding": "text", "recv_bytes": 256, "timeout": 5,
+        }),
+        ("udp_send", {
+            "host": "{ip}", "port": "47808", "payload": "WRITE BenchPoint 21.5",
+            "encoding": "text", "recv_bytes": 256, "timeout": 5,
+        }),
+    ],
     "camera_server": [
         ("curl_headers", {"url": "http://{ip}/admin"}),
         ("curl_headers", {"url": "http://{ip}/snapshot/latest.jpg"}),
@@ -1807,10 +1880,248 @@ def _extract_pki_findings(
             )]
     return []
 
+def _json_http_body(entry: dict) -> tuple[dict, dict]:
+    """Return parsed HTTP result and JSON body when both are available."""
+    result = _parse_result(entry)
+    try:
+        body = json.loads(str(result.get("body") or ""))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        body = {}
+    return result, body if isinstance(body, dict) else {}
+
+
+def _extract_ota_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract the four bounded S17 signed-OTA contract observations."""
+    role = str(device.get("role") or "").casefold()
+    if role == "ota_repository":
+        for entry in entries:
+            if entry.get("tool") != "http_request":
+                continue
+            kwargs = entry.get("kwargs") or {}
+            if urlsplit(str(kwargs.get("url") or "")).path != "/firmware":
+                continue
+            result, body = _json_http_body(entry)
+            artifacts = body.get("artifacts")
+            versions = {
+                str(item.get("version"))
+                for item in artifacts or []
+                if isinstance(item, dict)
+            }
+            if (
+                result.get("status_code") == 200
+                and {"1", "2"}.issubset(versions)
+                and body.get("obsolete_versions_retained") is True
+                and all(item.get("signature") for item in artifacts if isinstance(item, dict))
+            ):
+                return [_make_finding(
+                    device, "data_exposure", "MEDIUM", "http", 8080,
+                    "Public OTA repository exposes the obsolete signed version 1 artifact",
+                    "GET /firmware returned signed versions 1 and 2 with obsolete_versions_retained=true",
+                    status="confirmed", endpoint="/firmware",
+                    technique="Review repository retention and remove obsolete signed artifacts",
+                    tools=["http_request"],
+                )]
+        return []
+
+    if role != "ota_device":
+        return []
+
+    findings: list[dict] = []
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        kwargs = entry.get("kwargs") or {}
+        if (
+            str(kwargs.get("method") or "GET").upper() != "POST"
+            or urlsplit(str(kwargs.get("url") or "")).path != "/install"
+        ):
+            continue
+        result, response_body = _json_http_body(entry)
+        if result.get("status_code") != 200 or response_body.get("installed") is not True:
+            continue
+        try:
+            request_body = json.loads(str(kwargs.get("body") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            request_body = {}
+        headers = {str(k).casefold(): str(v) for k, v in (kwargs.get("headers") or {}).items()}
+        test_kind = headers.get("x-benchmark-ota-test", "").casefold()
+        if test_kind == "metadata":
+            findings.append(_make_finding(
+                device, "insecure_update", "HIGH", "http", 8080,
+                "OTA signature does not cover version metadata: a valid payload signature accepts a modified version",
+                f"POST /install accepted payload {request_body.get('payload', '')!r} with its original signature and modified version {request_body.get('version')!r}",
+                status="confirmed", endpoint="/install",
+                technique="Bind the signed version metadata to the firmware digest before installation",
+                tools=["http_request"],
+            ))
+        elif test_kind == "rollback":
+            findings.append(_make_finding(
+                device, "insecure_update", "HIGH", "http", 8080,
+                "OTA device accepts a correctly signed rollback from version 2 to obsolete version 1",
+                "POST /install with the signed v1 fixture returned HTTP 200 and installed=true",
+                status="confirmed", endpoint="/install",
+                technique="Enforce a monotonic firmware counter and reject versions older than the running image",
+                tools=["http_request"],
+            ))
+        elif headers.get("x-benchmark-cross-device", "").casefold() == "s17-device-a":
+            if response_body.get("key_id") == "shared-key-v1":
+                findings.append(_make_finding(
+                    device, "weak_cipher", "HIGH", "http", 8080,
+                    "Device accepts a firmware fixture signed for another device model using a shared verification secret",
+                    "POST /install with X-Benchmark-Cross-Device: s17-device-a returned HTTP 200 and key_id=shared-key-v1",
+                    status="confirmed", endpoint="/install",
+                    technique="Use device- or model-scoped update verification keys",
+                    tools=["http_request"],
+                ))
+    return findings
+
+
+def _extract_cloud_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract S18 only from the bounded SSRF/token/object-store markers."""
+    role = str(device.get("role") or "").casefold()
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        kwargs = entry.get("kwargs") or {}
+        path = urlsplit(str(kwargs.get("url") or "")).path
+        result, body = _json_http_body(entry)
+        if result.get("status_code") != 200:
+            continue
+        if role == "cloud_web_server" and path == "/fetch":
+            fetched_body = str(body.get("body") or "")
+            if "metadata-object-admin-token" in fetched_body and "object-admin" in fetched_body:
+                return [_make_finding(
+                    device, "code_injection", "CRITICAL", "http", 8080,
+                    "Public fetch endpoint performs server-side requests to the isolated metadata service",
+                    "GET /fetch for the lab metadata URL returned the metadata role token and object-admin scope",
+                    status="confirmed", endpoint="/fetch",
+                    technique="Restrict server-side fetches to an explicit non-private destination allowlist",
+                    tools=["http_request"],
+                )]
+        elif (
+            role == "cloud_metadata_server"
+            and path == "/credentials"
+            and str((kwargs.get("headers") or {}).get("X-Benchmark-Vantage") or "").casefold() == "ssrf"
+            and body.get("scope") == "object-admin"
+            and body.get("access_token")
+        ):
+            return [_make_finding(
+                device, "privilege_escalation", "HIGH", "http", 8080,
+                "Metadata credentials issue an over-privileged object-admin workload role",
+                "The metadata body obtained through SSRF contains scope=object-admin and an access token",
+                status="confirmed", endpoint="/credentials",
+                technique="Issue workload tokens with least-privilege object scopes",
+                tools=["http_request"],
+            )]
+        elif (
+            role == "cloud_control_plane"
+            and path == "/bucket/city-secrets"
+            and str((kwargs.get("headers") or {}).get("Authorization") or "")
+            == "Bearer metadata-object-admin-token"
+            and body.get("marker") == "CITY-CONTROL-SECRET-S18"
+        ):
+            return [_make_finding(
+                device, "data_exposure", "CRITICAL", "http", 8080,
+                "Stolen metadata role token retrieves the city-secrets object",
+                "GET /bucket/city-secrets with the metadata role token returned CITY-CONTROL-SECRET-S18",
+                status="confirmed", endpoint="/bucket/city-secrets",
+                technique="Deny object access outside the workload role's least-privilege scope",
+                tools=["http_request"],
+            )]
+    return []
+
+
+def _extract_ot_protocol_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract OPC UA SecurityPolicy None from explicit protocol metadata."""
+    if str(device.get("role") or "").casefold() != "ot_opcua_server":
+        return []
+    for entry in entries:
+        if entry.get("tool") != "http_request":
+            continue
+        kwargs = entry.get("kwargs") or {}
+        if urlsplit(str(kwargs.get("url") or "")).path != "/protocol":
+            continue
+        result, body = _json_http_body(entry)
+        if result.get("status_code") == 200 and body.get("security_policy") == "None":
+            return [_make_finding(
+                device, "weak_cipher", "HIGH", "opcua", 4840,
+                "OPC UA endpoint advertises SecurityPolicy None with no signing or encryption",
+                "GET /protocol returned security_policy=None",
+                status="confirmed", endpoint="/protocol",
+                technique="Require a signed and encrypted OPC UA security policy",
+                tools=["http_request"],
+            )]
+    return []
+
+
+def _extract_ot_write_findings(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract safe anonymous BenchPoint writes for OPC UA and BACnet."""
+    role = str(device.get("role") or "").casefold()
+    if role not in {"ot_opcua_server", "ot_bacnet_server"}:
+        return []
+    service, port, marker = (
+        ("opcua", 4840, "OK") if role == "ot_opcua_server"
+        else ("bacnet", 47808, "BACNET OK")
+    )
+    tool_name = "tcp_send" if role == "ot_opcua_server" else "udp_send"
+    for entry in entries:
+        if entry.get("tool") != tool_name:
+            continue
+        result = _parse_result(entry)
+        response = str(result.get("received_ascii") or "")
+        if marker.casefold() not in response.casefold():
+            continue
+        return [_make_finding(
+            device, "no_auth", "CRITICAL" if role == "ot_opcua_server" else "HIGH",
+            service, port,
+            f"Anonymous {service.upper()} client can write the disposable BenchPoint value",
+            f"{tool_name} WRITE BenchPoint returned {marker} without credentials",
+            status="confirmed", technique="Require authenticated protocol sessions before accepting writes",
+            tools=[tool_name],
+        )]
+    return []
+
+
+def _extract_bacnet_disclosure(
+    entries: list[dict], device: dict, svc_name: str
+) -> list[dict]:
+    """Extract BACnet Who-Is identity disclosure from the protocol response."""
+    if str(device.get("role") or "").casefold() != "ot_bacnet_server":
+        return []
+    for entry in entries:
+        if entry.get("tool") != "udp_send":
+            continue
+        kwargs = entry.get("kwargs") or {}
+        if str(kwargs.get("payload") or "").upper() != "WHO-IS":
+            continue
+        response = str(_parse_result(entry).get("received_ascii") or "")
+        if "NATO-BENCHMARK-I-AM" in response:
+            return [_make_finding(
+                device, "info_disclosure", "MEDIUM", "bacnet", 47808,
+                "Unauthenticated BACnet Who-Is response discloses controller identity and object inventory",
+                "UDP WHO-IS returned NATO-BENCHMARK-I-AM",
+                status="confirmed", tools=["udp_send"],
+            )]
+    return []
+
+
 FINDING_EXTRACTORS = [
     _extract_exploit_primitive_findings,
     _extract_api_authorization_findings,
     _extract_pki_findings,
+    _extract_ota_findings,
+    _extract_cloud_findings,
+    _extract_ot_protocol_findings,
+    _extract_ot_write_findings,
+    _extract_bacnet_disclosure,
     _extract_server_version,
     _extract_missing_headers,
     _extract_directory_listing,
@@ -1876,7 +2187,14 @@ def extract_findings(
     seen: set[tuple] = set()
     deduped: list[dict] = []
     for f in findings:
-        key = (f["type"], f.get("port"), f.get("endpoint", "") if f["type"] == "broken_access_control" else "")
+        if (
+            str(device.get("role") or "").casefold() == "ota_device"
+            and f.get("type") == "insecure_update"
+        ):
+            # S17 has two distinct contracts on the same /install route.
+            key = (f["type"], f.get("port"), f.get("endpoint", ""), f.get("details", ""))
+        else:
+            key = (f["type"], f.get("port"), f.get("endpoint", "") if f["type"] == "broken_access_control" else "")
         if key in seen:
             continue
         seen.add(key)

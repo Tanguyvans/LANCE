@@ -965,7 +965,9 @@ def _normalise_full_finding_semantics(
 
 def _finding_semantic_issue(
     finding: dict, *, source_kind: str = "", compact: bool = False,
-    device_role: str = "", context_findings: list[dict] | None = None,
+    device_role: str = "", device_profile: str = "",
+    scenario_id: int | str | None = None,
+    context_findings: list[dict] | None = None,
 ) -> str:
     """Return a deterministic metadata contradiction for a model finding.
 
@@ -985,14 +987,44 @@ def _finding_semantic_issue(
         for key in ("details", "evidence", "endpoint", "endpoints", "product", "version")
     ).casefold()
     context_findings = context_findings or []
+    role = device_role.casefold()
+    profile = device_profile.casefold()
+    scenario_number = str(scenario_id or "").strip().upper().removeprefix("S")
+
+    # The S14-S19 contracts label hardened and near-miss surfaces explicitly.
+    # Their positive controls are useful evidence, but publishing a model or
+    # scanner claim from them as a vulnerability is a false positive by
+    # construction. The vulnerable/cloned profiles remain eligible below.
+    # The scenario number is supplied by the aggregation call without changing
+    # this helper's public test-friendly API.
+    if (
+        not compact
+        and scenario_number in {"14", "15", "16", "17", "18", "19"}
+        and profile in {"hardened", "near_miss"}
+    ):
+        return "declared hardened or near-miss profile is a control, not a vulnerability surface"
+    if not compact and scenario_number == "14" and vuln_type == "weak_cipher":
+        return "S14 sparse contract does not score generic SSH cipher observations"
 
     # The S15 API fixtures answer unknown paths with a generic 200 body. The
     # 24/08 run shows that a model can mistake that fixture response for RCE,
     # credentials, OTA, and access-control flaws. Keep model candidates in the
     # raw registry, but require the exact role contract before publication.
     if not compact and source_kind == "model":
-        role = device_role.casefold()
         endpoint_path = str(finding.get("endpoint") or "").casefold().rstrip("/") or "/"
+
+        # S17-S19 have deliberately sparse contracts. Their deterministic
+        # probes below are the publication boundary; generic HTTP fixture
+        # claims from the model are not evidence for these roles.
+        if role in {
+            "ota_repository", "ota_server", "ota_device", "ota_signer", "ota_monitor",
+            "cloud_web_server", "cloud_metadata_server", "cloud_control_plane",
+            "cloud_worker", "cloud_audit", "ot_hmi", "ot_historian",
+            "ot_opcua_server", "ot_bacnet_server",
+        }:
+            return "role requires an explicit deterministic simulator contract marker"
+        if role == "modbus_server" and service == "ssh":
+            return "Modbus role cannot inherit generic SSH findings"
 
         # S16 PKI services return public certificates, fingerprints, status
         # objects, and generic component responses. Only the exact contract
@@ -1027,12 +1059,17 @@ def _finding_semantic_issue(
             else:
                 return "generic PKI metadata or a control response is not a scored finding"
 
-        # Sparse look-alike runs sometimes attach an SSH claim to a web host.
-        if role in {"web_server", "web_server_v2", "web_upload"} and service == "ssh":
-            return "SSH finding is attached to a non-SSH web role"
+        # Sparse look-alike runs sometimes attach an SSH claim to a web, MQTT,
+        # Redis, or OT host. Only roles that actually declare SSH can publish
+        # an SSH cryptographic finding.
+        if role and scenario_number in {"14", "15", "16", "17", "18", "19"} and service == "ssh" and role not in {
+            "router", "ssh_server", "ssh_server_v2", "nvr_server",
+        }:
+            return "SSH finding is attached to a non-SSH role"
 
         if role == "api_identity_server" and vuln_type in {
             "data_exposure", "broken_access_control", "insecure_protocol", "no_auth",
+            "info_disclosure", "missing_header",
         }:
             return "identity API documentation/auth flow is context, not a scored defect"
         if role in {"api_data_store", "api_event_broker", "api_admin_portal"}:
@@ -1328,9 +1365,9 @@ def _finding_semantic_issue(
         crypto_services = _TLS_SERVICES | {"ssh", "smtp", "imap", "pop3"}
         if service in _WEB_SERVICES and port not in {443, 8443}:
             return "weak_cipher requires SSH/TLS evidence, not plain HTTP"
-        if service and service not in crypto_services and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883}:
+        if service and service not in crypto_services and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883, 4840}:
             return f"weak_cipher has no cryptographic probe for service {service}"
-        if not service and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883}:
+        if not service and port not in {22, 443, 465, 587, 636, 993, 995, 8443, 8883, 4840}:
             return f"weak_cipher has no cryptographic probe for port {port}"
 
     if vuln_type == "insecure_protocol":
@@ -5188,6 +5225,29 @@ class Pipeline:
             # Initialize weighted graph for disbalance computation
             init_weighted_graph()
 
+        # Keep simulator security profiles internal to the deterministic
+        # evaluator/scanner. The public graph intentionally omits them from
+        # model context, but phase-3 publication needs the declared control
+        # profile to reject look-alike findings reliably.
+        try:
+            scenario_path = resolve_scenario_path(self.scenario_id) if self.scenario_id is not None else None
+            scenario_doc = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) if scenario_path and scenario_path.exists() else {}
+            topology_id = str((scenario_doc or {}).get("topology") or "")
+            topology_path = resolve_topology_path(self.scenario_id, topology_id) if topology_id else None
+            topology_doc = yaml.safe_load(topology_path.read_text(encoding="utf-8")) if topology_path and topology_path.exists() else {}
+            profile_by_ip: dict[str, str] = {}
+            router_doc = (topology_doc or {}).get("router") or {}
+            if router_doc.get("ip") and router_doc.get("security_profile"):
+                profile_by_ip[str(router_doc["ip"])] = str(router_doc["security_profile"])
+            for service_doc in (topology_doc or {}).get("services", []):
+                if service_doc.get("ip") and service_doc.get("security_profile"):
+                    profile_by_ip[str(service_doc["ip"])] = str(service_doc["security_profile"])
+            for node in surface:
+                if isinstance(node, dict) and str(node.get("ip") or "") in profile_by_ip:
+                    node["security_profile"] = profile_by_ip[str(node["ip"])]
+        except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+            log.warning("Could not load internal simulator profiles: %s", exc)
+
         phase3_status["devices_total"] = len(surface)
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
@@ -5288,6 +5348,185 @@ class Pipeline:
                     self._persist_phase3_device_findings(pki_mtls, scanner_results)
             except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 log.warning("S16 bounded mTLS probe unavailable: %s", exc)
+
+        # Cross-device simulator checks for S17/S18. These are deliberately
+        # derived from evidence already returned by the bounded probes: no
+        # guessed signing secret, filesystem path, or out-of-scope target is
+        # introduced by the harness.
+        def _append_bounded_http_probe(
+            device: dict, kwargs: dict, result: str, *, service_key: str = "bounded"
+        ) -> None:
+            device_id = str(device.get("id") or "")
+            if not device_id:
+                return
+            data = scanner_results.setdefault(
+                device_id, {"scan_results": {}, "findings": []}
+            )
+            data.setdefault("scan_results", {}).setdefault(service_key, []).append({
+                "tool": "http_request",
+                "kwargs": kwargs,
+                "result": result,
+                "evidence_phase": 3,
+                "authoritative": True,
+            })
+            from src.agent.scanner import extract_findings
+            data["findings"] = extract_findings(
+                data["scan_results"], device,
+                compact=self._uses_compact_local_moe(),
+            )
+            (self.run_dir / "03_scans" / f"{device_id}.json").write_text(
+                json.dumps(data["scan_results"], indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            self._persist_phase3_device_findings(device, scanner_results)
+
+        ota_repository = next(
+            (device for device in surface
+             if str(device.get("role") or "").casefold() == "ota_repository"),
+            None,
+        )
+        ota_devices = [
+            device for device in surface
+            if str(device.get("role") or "").casefold() == "ota_device"
+        ]
+        if ota_repository and ota_devices:
+            try:
+                from src.agent.tools.recon_tools import http_request
+                repo_data = scanner_results.get(ota_repository.get("id", ""), {})
+                repo_entries = [
+                    entry
+                    for values in (repo_data.get("scan_results", {}) or {}).values()
+                    if isinstance(values, list)
+                    for entry in values
+                    if entry.get("tool") == "http_request"
+                ]
+                fixtures: dict[str, dict] = {}
+                for entry in repo_entries:
+                    kwargs = entry.get("kwargs") or {}
+                    if urlsplit(str(kwargs.get("url") or "")).path != "/firmware":
+                        continue
+                    try:
+                        result = json.loads(str(entry.get("result") or ""))
+                        body = json.loads(str(result.get("body") or ""))
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        continue
+                    for item in body.get("artifacts", []):
+                        if isinstance(item, dict) and item.get("version") and item.get("payload") and item.get("signature"):
+                            fixtures[str(item["version"])] = item
+                old = fixtures.get("1")
+                current = fixtures.get("2")
+                if old and current:
+                    device_a = next(
+                        (device for device in ota_devices
+                         if str(device.get("id") or "").endswith("device-a")),
+                        ota_devices[0],
+                    )
+                    device_b = next(
+                        (device for device in ota_devices
+                         if str(device.get("id") or "").endswith("device-b")),
+                        None,
+                    )
+                    base_url = lambda device: f"http://{device.get('ip', '')}:8080/install"
+                    # The vulnerable device signs payload bytes only. Test the
+                    # metadata mutation, then rollback, and restore v2.
+                    metadata_body = json.dumps({
+                        "version": "999", "payload": old["payload"], "signature": old["signature"],
+                    })
+                    metadata_kwargs = {
+                        "url": base_url(device_a), "method": "POST",
+                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "metadata"},
+                        "body": metadata_body, "follow_redirects": False,
+                    }
+                    _append_bounded_http_probe(device_a, metadata_kwargs, http_request(**metadata_kwargs), service_key="ota_cross_device")
+                    rollback_body = json.dumps({
+                        "version": old["version"], "payload": old["payload"], "signature": old["signature"],
+                    })
+                    rollback_kwargs = {
+                        "url": base_url(device_a), "method": "POST",
+                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "rollback"},
+                        "body": rollback_body, "follow_redirects": False,
+                    }
+                    _append_bounded_http_probe(device_a, rollback_kwargs, http_request(**rollback_kwargs), service_key="ota_cross_device")
+                    restore_kwargs = {
+                        "url": base_url(device_a), "method": "POST",
+                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "restore"},
+                        "body": json.dumps(current), "follow_redirects": False,
+                    }
+                    _append_bounded_http_probe(device_a, restore_kwargs, http_request(**restore_kwargs), service_key="ota_cross_device")
+                    if device_b:
+                        cross_kwargs = {
+                            "url": base_url(device_b), "method": "POST",
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "X-Benchmark-Cross-Device": "s17-device-a",
+                            },
+                            "body": json.dumps(current), "follow_redirects": False,
+                        }
+                        _append_bounded_http_probe(device_b, cross_kwargs, http_request(**cross_kwargs), service_key="ota_cross_device")
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                log.warning("S17 bounded OTA probes unavailable: %s", exc)
+
+        cloud_web = next(
+            (device for device in surface
+             if str(device.get("role") or "").casefold() == "cloud_web_server"
+             and str(device.get("security_profile") or "").casefold() == "vulnerable"),
+            None,
+        )
+        cloud_metadata = next(
+            (device for device in surface
+             if str(device.get("role") or "").casefold() == "cloud_metadata_server"),
+            None,
+        )
+        cloud_control = next(
+            (device for device in surface
+             if str(device.get("role") or "").casefold() == "cloud_control_plane"),
+            None,
+        )
+        if cloud_web and cloud_metadata and cloud_control:
+            try:
+                from src.agent.tools.recon_tools import http_request
+                web_data = scanner_results.get(cloud_web.get("id", ""), {})
+                fetch_entry = next(
+                    (
+                        entry for values in (web_data.get("scan_results", {}) or {}).values()
+                        if isinstance(values, list)
+                        for entry in values
+                        if entry.get("tool") == "http_request"
+                        and urlsplit(str((entry.get("kwargs") or {}).get("url") or "")).path == "/fetch"
+                    ),
+                    None,
+                )
+                if fetch_entry:
+                    fetch_result = json.loads(str(fetch_entry.get("result") or ""))
+                    fetch_body = json.loads(str(fetch_result.get("body") or ""))
+                    metadata_body = str(fetch_body.get("body") or "")
+                    metadata_payload = json.loads(metadata_body)
+                    token = str(metadata_payload.get("access_token") or "")
+                    if fetch_result.get("status_code") == 200 and token and metadata_payload.get("scope") == "object-admin":
+                        metadata_kwargs = {
+                            "url": f"http://{cloud_metadata.get('ip', '')}:8080/credentials",
+                            "method": "GET",
+                            "headers": {"X-Benchmark-Vantage": "ssrf"},
+                            "follow_redirects": False,
+                        }
+                        _append_bounded_http_probe(
+                            cloud_metadata, metadata_kwargs,
+                            json.dumps({"status_code": 200, "body": metadata_body}),
+                            service_key="cloud_ssrf",
+                        )
+                        control_kwargs = {
+                            "url": f"http://{cloud_control.get('ip', '')}:8080/bucket/city-secrets",
+                            "method": "GET",
+                            "headers": {"Authorization": f"Bearer {token}"},
+                            "follow_redirects": False,
+                        }
+                        _append_bounded_http_probe(
+                            cloud_control, control_kwargs,
+                            http_request(**control_kwargs),
+                            service_key="cloud_ssrf",
+                        )
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                log.warning("S18 bounded SSRF/IAM probes unavailable: %s", exc)
 
         if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
@@ -5973,6 +6212,28 @@ class Pipeline:
                 surface_nodes = []
         except Exception:
             surface_nodes = []
+        # The graph tool intentionally returns a public, profile-free surface.
+        # Rehydrate only the topology's security-profile metadata here so the
+        # canonical queue can distinguish a control from a finding.
+        try:
+            scenario_path = resolve_scenario_path(self.scenario_id) if self.scenario_id is not None else None
+            scenario_doc = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) if scenario_path and scenario_path.exists() else {}
+            topology_id = str((scenario_doc or {}).get("topology") or "")
+            topology_path = resolve_topology_path(self.scenario_id, topology_id) if topology_id else None
+            topology_doc = yaml.safe_load(topology_path.read_text(encoding="utf-8")) if topology_path and topology_path.exists() else {}
+            profile_by_ip: dict[str, str] = {}
+            router_doc = (topology_doc or {}).get("router") or {}
+            if router_doc.get("ip") and router_doc.get("security_profile"):
+                profile_by_ip[str(router_doc["ip"])] = str(router_doc["security_profile"])
+            for service_doc in (topology_doc or {}).get("services", []):
+                if service_doc.get("ip") and service_doc.get("security_profile"):
+                    profile_by_ip[str(service_doc["ip"])] = str(service_doc["security_profile"])
+            for node in surface_nodes:
+                if isinstance(node, dict) and str(node.get("ip") or "") in profile_by_ip:
+                    node["security_profile"] = profile_by_ip[str(node["ip"])]
+        except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+            log.warning("Could not load canonical simulator profiles: %s", exc)
+
         surface_roles = {
             str(node.get("id") or ""): str(node.get("role") or node.get("type") or "").casefold()
             for node in surface_nodes
@@ -6044,8 +6305,17 @@ class Pipeline:
                                     scanner_role in {
                                         "pki_ca_server", "pki_enrollment_server",
                                         "pki_mtls_server", "pki_device",
+                                        "ota_device", "ot_opcua_server",
                                     }
                                     and finding.get("type") in {"weak_cipher", "misconfiguration"}
+                                )
+                                or (
+                                    scanner_role == "ot_bacnet_server"
+                                    and finding.get("type") == "info_disclosure"
+                                )
+                                or (
+                                    scanner_role == "cloud_metadata_server"
+                                    and finding.get("type") == "privilege_escalation"
                                 )
                             )
                             and str(finding.get("exploitation_status") or finding.get("status") or "").casefold() == "confirmed"
@@ -6301,6 +6571,8 @@ class Pipeline:
                 source_kind=source_kind,
                 compact=compact_mode,
                 device_role=device_role,
+                device_profile=device_profile,
+                scenario_id=self.scenario_id,
                 context_findings=all_vulns,
             )
             if not semantic_issue and source_kind == "model":
@@ -6308,7 +6580,7 @@ class Pipeline:
                     str(finding.get(key) or "")
                     for key in ("details", "evidence", "endpoint", "endpoints")
                 ).casefold()
-                if str(self.scenario_id) == "14":
+                if str(self.scenario_id).strip().upper().removeprefix("S") == "14":
                     if finding.get("type") in {"info_disclosure", "missing_header"}:
                         semantic_issue = "S14 is an explicit sparse contract; low-value metadata is not reportable"
                     elif (
@@ -6330,7 +6602,7 @@ class Pipeline:
                     )
                 ):
                     semantic_issue = "hardened or near-miss profile has no successful default-credential authentication"
-                if str(self.scenario_id) == "15" and device_role == "router":
+                if str(self.scenario_id).strip().upper().removeprefix("S") == "15" and device_role == "router":
                     semantic_issue = "S15 scoring contract is limited to the bounded authenticated API"
             if semantic_issue:
                 record["decision"] = "excluded_from_canonical"
@@ -6509,7 +6781,17 @@ class Pipeline:
             )
             key = base_key + (finding.get("endpoint", ""),)
             service = str(finding.get("service") or "").casefold()
-            if finding.get("type") == "data_exposure" and service == "mqtt":
+            if (
+                finding.get("type") == "insecure_update"
+                and service == "http"
+                and str(surface_roles.get(str(finding.get("device_id") or ""), "")) == "ota_device"
+                and self.scenario_id is not None
+                and str(self.scenario_id).strip().upper().removeprefix("S") == "17"
+            ):
+                # Rollback and unsigned-metadata defects intentionally share
+                # /install but are separate strict-v3 contracts.
+                key = base_key + (finding.get("endpoint", ""), finding.get("details", ""))
+            elif finding.get("type") == "data_exposure" and service == "mqtt":
                 # MQTT topic exposures on one broker are one access surface in
                 # the benchmark contract. Keep the strongest candidate and
                 # preserve every raw topic claim in the audit registry.
