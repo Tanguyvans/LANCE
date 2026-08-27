@@ -132,8 +132,9 @@ def _resolve_model_provider(model: str) -> str:
 def _build_intrusion_tools() -> list[dict]:
     """Extract bounded Phase 5 action tools from RECON_TOOLS."""
     _intrusion_names = {
-        "curl_headers", "http_get", "mqtt_listen", "ssh_exec", "try_credential",
-        "telnet_connect", "ftp_list", "udp_send",
+        "curl_headers", "http_get", "http_request", "mqtt_listen", "ssh_exec",
+        "try_credential", "telnet_connect", "ftp_list", "modbus_scan", "tcp_send",
+        "udp_send",
     }
     return [t for t in RECON_TOOLS if t["name"] in _intrusion_names]
 
@@ -4241,7 +4242,10 @@ class Pipeline:
             variables["intrusion_tool_guidance"] = (
                 "- read_deliverable(filename) — read Phase 3/4 deliverables and the intrusion context\n"
                 "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
-                "- udp_send(host, port, payload, encoding=\"hex\", recv_bytes=4096, timeout=5) — bounded read-only CoAP/SNMP UDP probe\n"
+                "- udp_send(host, port, payload, encoding=\"hex\", recv_bytes=4096, timeout=5) — bounded CoAP/SNMP/BACnet UDP probe\n"
+                "- tcp_send(host, port, payload_hex, recv_bytes=4096, timeout=10) — bounded OPC-UA/other protocol request\n"
+                "- http_request(url, method, headers, body, follow_redirects=False) — bounded API/OTA/cloud request\n"
+                "- modbus_scan(target, skip_discovery=true) — bounded Modbus protocol access check\n"
                 "- try_credential(ip, service, user, password) — test credentials on ssh|http|ftp|mqtt|telnet|redis|mysql"
             )
             variables["intrusion_recon_tool_restriction"] = ", curl_headers, mqtt_listen"
@@ -10404,15 +10408,30 @@ class Pipeline:
 
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         exploit_path = self.run_dir / "04_exploitation.json"
+        full_profile = not self.execution_profile.routed_tools
 
         chains: list = []
+        phase3_candidates: list[dict] = []
         confirmed: list = []
         entry_points: list = []
         credentials: list = []
 
         if vuln_path.exists():
-            vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
-            chains = vuln_data.get("attack_chain_hints", [])
+            if full_profile:
+                try:
+                    vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    vuln_data = {}
+                if isinstance(vuln_data, dict):
+                    chains = vuln_data.get("attack_chain_hints", [])
+                    phase3_candidates = [
+                        item for item in vuln_data.get("vulnerabilities", [])
+                        if isinstance(item, dict)
+                    ]
+            else:
+                # Preserve the compact context source and parsing behavior.
+                vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
+                chains = vuln_data.get("attack_chain_hints", [])
 
         if exploit_path.exists():
             exploit_data = json.loads(exploit_path.read_text(encoding="utf-8"))
@@ -10545,36 +10564,83 @@ class Pipeline:
                     _harvest(text or "", exp)
                 _harvest_confirmed_tool_credentials(exp)
 
-            # Entry points require a confirmed access-granting exploit. Informational
-            # findings and crypto warnings are findings, not usable footholds.
-            # (Scenario-mode nodes have no network_role, so derive from Phase 4.)
-            _foothold_types = {
-                "default_credentials", "no_auth", "weak_credentials",
-                "insecure_protocol", "directory_listing", "data_exposure",
-            }
-            best_by_ip: dict = {}
-            for exp in confirmed:
-                ip = exp.get("device_ip")
-                if not ip:
-                    continue
-                vt = (exp.get("type") or exp.get("vuln_type") or "").lower()
-                if vt not in _foothold_types:
-                    if self._uses_compact_local_moe():
+            if full_profile:
+                # Full-profile Phase 5 consumes only verified, access-granting
+                # evidence. Informational and crypto findings remain report
+                # data, not footholds.
+                _foothold_types = {
+                    "default_credentials", "no_auth", "weak_credentials",
+                    "insecure_protocol", "directory_listing", "data_exposure",
+                    "broken_access_control", "code_injection", "insecure_update",
+                    "privilege_escalation",
+                }
+                best_by_ip: dict = {}
+                entry_sources: dict[str, tuple[str, bool]] = {}
+                for exp in confirmed:
+                    ip = str(exp.get("device_ip") or "").strip()
+                    if not ip or not _is_verified_report_finding(exp):
                         continue
-                    score = (1, exp.get("evidence_level", 0))
-                else:
+                    vt = str(exp.get("type") or exp.get("vuln_type") or "").casefold()
+                    if vt not in _foothold_types:
+                        continue
+                    score = (2, _phase4_evidence_level(exp))
+                    if ip not in best_by_ip or score > best_by_ip[ip][0]:
+                        best_by_ip[ip] = (score, exp)
+                        entry_sources[ip] = ("phase4", True)
+
+                # scanner_full is deterministic simulator evidence and may seed
+                # a Phase 5 probe when Phase 4 could not reproduce the fixture.
+                # Model-only Phase 3 claims never become footholds.
+                for exp in phase3_candidates:
+                    ip = str(exp.get("device_ip") or "").strip()
+                    source = str(exp.get("canonical_source") or "").casefold()
+                    status = str(exp.get("exploitation_status") or exp.get("status") or "").casefold()
+                    vt = str(exp.get("type") or exp.get("vuln_type") or "").casefold()
+                    if (
+                        not ip or ip in best_by_ip or source != "scanner_full"
+                        or status not in {"confirmed", "exploited", "compromised"}
+                        or vt not in _foothold_types
+                    ):
+                        continue
+                    best_by_ip[ip] = ((1, _phase4_evidence_level(exp)), exp)
+                    entry_sources[ip] = ("phase3_scanner_contract", False)
+            else:
+                # Keep compact-profile context generation unchanged.
+                _foothold_types = {
+                    "default_credentials", "no_auth", "weak_credentials",
+                    "insecure_protocol", "directory_listing", "data_exposure",
+                }
+                best_by_ip: dict = {}
+                for exp in confirmed:
+                    ip = exp.get("device_ip")
+                    if not ip:
+                        continue
+                    vt = (exp.get("type") or exp.get("vuln_type") or "").lower()
+                    if vt not in _foothold_types:
+                        continue
                     score = (2, exp.get("evidence_level", 0))
-                if ip not in best_by_ip or score > best_by_ip[ip][0]:
-                    best_by_ip[ip] = (score, exp)
+                    if ip not in best_by_ip or score > best_by_ip[ip][0]:
+                        best_by_ip[ip] = (score, exp)
             for ip, (_score, exp) in best_by_ip.items():
-                entry_points.append({
+                entry = {
                     "device_id": exp.get("device_id"),
                     "device_ip": ip,
                     "vuln_type": exp.get("type") or exp.get("vuln_type"),
                     "service": exp.get("service"),
                     "port": exp.get("port"),
                     "evidence": (exp.get("evidence") or "")[:200],
-                })
+                }
+                if full_profile:
+                    source, phase4_verified = entry_sources.get(ip, ("phase4", True))
+                    entry.update({
+                        "vuln_id": exp.get("vuln_id") or exp.get("id"),
+                        "protocol": exp.get("protocol"),
+                        "endpoint": exp.get("endpoint"),
+                        "evidence": (exp.get("evidence") or "")[:400],
+                        "evidence_source": source,
+                        "phase4_verified": phase4_verified,
+                    })
+                entry_points.append(entry)
 
         # Deduplicate entry points by device_ip
         seen_ep: set = set()
@@ -10593,6 +10659,21 @@ class Pipeline:
             "nodered_server": "http", "camera": "http",
             "ftp_server": "ftp", "db_server": "mysql", "db_server_v2": "redis",
         }
+        if full_profile:
+            role_primary_services.update({
+                "modbus_server": "modbus", "coap_server": "coap", "snmp_server": "snmp",
+                "api_identity_server": "http", "api_tenant_server": "http",
+                "api_data_store": "http", "api_event_broker": "http",
+                "api_admin_portal": "http", "pki_ca_server": "http",
+                "pki_enrollment_server": "http", "pki_mtls_server": "https",
+                "pki_registry": "http", "pki_device": "http",
+                "ota_repository": "http", "ota_server": "http",
+                "ota_device": "http", "ota_signer": "http", "ota_monitor": "http",
+                "cloud_web_server": "http", "cloud_metadata_server": "http",
+                "cloud_control_plane": "http", "cloud_worker": "http", "cloud_audit": "http",
+                "ot_hmi": "http", "ot_historian": "http",
+                "ot_opcua_server": "opcua", "ot_bacnet_server": "bacnet",
+            })
         entry_primary_services = {
             str(item.get("device_ip") or item.get("ip") or "").strip():
             str(item.get("service") or "").strip().casefold()
@@ -10608,17 +10689,43 @@ class Pipeline:
                     continue
                 ip = node.get("ip")
                 if ip:
-                    all_targets.append({
-                        "device_id": node.get("id") or node.get("name"),
-                        "device_ip": ip,
-                        "role": node.get("role"),
-                        "primary_service": role_primary_services.get(str(node.get("role") or "").strip().casefold()) or entry_primary_services.get(str(ip).strip()),
-                        "services": [
-                            (s.get("port") if isinstance(s, dict) else s)
-                            for s in node.get("services", [])
-                            if (s.get("port") if isinstance(s, dict) else s)
-                        ],
-                    })
+                    if full_profile:
+                        raw_services = node.get("services", [])
+                        service_details = [
+                            {
+                                "name": str(item.get("name") or item.get("service") or "").casefold(),
+                                "port": item.get("port"),
+                                "protocol": item.get("protocol") or "",
+                            }
+                            for item in raw_services
+                            if isinstance(item, dict) and item.get("port")
+                        ]
+                        role = str(node.get("role") or "").strip().casefold()
+                        primary_service = (
+                            role_primary_services.get(role)
+                            or entry_primary_services.get(str(ip).strip())
+                            or next((item["name"] for item in service_details if item["name"]), None)
+                        )
+                        all_targets.append({
+                            "device_id": node.get("id") or node.get("name"),
+                            "device_ip": ip,
+                            "role": node.get("role"),
+                            "primary_service": primary_service,
+                            "services": [item["port"] for item in service_details],
+                            "service_details": service_details,
+                        })
+                    else:
+                        all_targets.append({
+                            "device_id": node.get("id") or node.get("name"),
+                            "device_ip": ip,
+                            "role": node.get("role"),
+                            "primary_service": role_primary_services.get(str(node.get("role") or "").strip().casefold()) or entry_primary_services.get(str(ip).strip()),
+                            "services": [
+                                (s.get("port") if isinstance(s, dict) else s)
+                                for s in node.get("services", [])
+                                if (s.get("port") if isinstance(s, dict) else s)
+                            ],
+                        })
         except Exception:
             pass
 
@@ -10652,6 +10759,11 @@ class Pipeline:
                 "Goal: maximize compromised devices and reach crown jewels (db, plc, historian, admin)."
             ),
         }
+
+        if full_profile:
+            ctx["verified_exploits"] = sum(
+                1 for item in confirmed if _is_verified_report_finding(item)
+            )
 
         out_path = self.run_dir / "05_intrusion_context.json"
         out_path.write_text(json.dumps(ctx, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -11731,9 +11843,22 @@ class Pipeline:
             # 03_vuln_analysis.json style
             if "vulnerabilities" in data:
                 return len(data["vulnerabilities"]) > 0
-            # 04_exploitation.json style — only proceed if there are CONFIRMED exploits
+            # 04_exploitation.json style. Phase 5 is a reconciliation stage:
+            # it must run after an executed Phase 4 even when every fresh probe
+            # failed or errored. Otherwise the absence of a CONFIRMED verdict
+            # hides the phase-5 evidence boundary and makes path metrics
+            # unavailable instead of recording an explicit zero.
             if "tests" in data:
-                confirmed = [t for t in data["tests"] if t.get("status") == "CONFIRMED"]
+                tests = data.get("tests")
+                if not isinstance(tests, list):
+                    return False
+                if config.phase == 5 and not self.execution_profile.routed_tools:
+                    summary = data.get("summary") or {}
+                    execution_state = str(summary.get("execution_state") or "").casefold()
+                    return bool(tests) and execution_state in {
+                        "executed", "executed_with_worker_errors", "stopped",
+                    }
+                confirmed = [t for t in tests if t.get("status") == "CONFIRMED"]
                 return len(confirmed) > 0
             return False
         except (json.JSONDecodeError, KeyError):

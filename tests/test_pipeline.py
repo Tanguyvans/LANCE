@@ -2510,6 +2510,29 @@ class TestConditional:
         )
         assert not pipeline._check_conditional(config)
 
+    def test_full_phase5_reconciles_executed_failed_phase4_but_compact_does_not(
+        self, mock_provider, output_dir
+    ):
+        phase4 = {
+            "summary": {"execution_state": "executed"},
+            "tests": [{"vuln_id": "V1", "status": "FAILED"}],
+        }
+        config = AgentConfig(
+            name="intrusion", phase=5, prompt_template="t",
+            deliverable_file="05_intrusion.json", tools=["intrusion"],
+            conditional="04_exploitation.json",
+        )
+
+        full = Pipeline(provider=mock_provider, execution_profile="full")
+        (full.run_dir / "04_exploitation.json").write_text(json.dumps(phase4))
+        assert full._check_conditional(config)
+
+        mock_provider.provider = "local-moe"
+        mock_provider.model = "lance-moe"
+        compact = Pipeline(provider=mock_provider, execution_profile="compact")
+        (compact.run_dir / "04_exploitation.json").write_text(json.dumps(phase4))
+        assert not compact._check_conditional(config)
+
 
 class TestListDeliverables:
     def test_empty(self, mock_provider, output_dir):
@@ -3515,6 +3538,66 @@ class TestPhase5Context:
         assert "confirmed_exploits" in ctx
         assert "recovered_credentials" in ctx
         assert ctx["confirmed_exploits"] == 2
+
+    def test_full_context_keeps_path_data_and_filters_non_footholds(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        run_dir = pipeline.run_dir
+        monkeypatch.setattr(
+            "src.agent.pipeline.get_attack_surface",
+            lambda: json.dumps({
+                "nodes": [
+                    {
+                        "id": "opcua", "ip": "192.168.100.20",
+                        "role": "ot_opcua_server",
+                        "services": [{"name": "opcua", "port": 4840, "protocol": "tcp"}],
+                    },
+                    {
+                        "id": "metadata", "ip": "192.168.100.21",
+                        "role": "cloud_metadata_server",
+                        "services": [{"name": "http", "port": 80, "protocol": "tcp"}],
+                    },
+                ],
+            }),
+        )
+        (run_dir / "03_vuln_analysis.json").write_text(json.dumps({
+            "attack_chain_hints": [{
+                "src_ip": "192.168.100.20", "dst_ip": "192.168.100.21",
+            }],
+            "vulnerabilities": [{
+                "id": "SCANNER-OPCUA", "device_id": "opcua",
+                "device_ip": "192.168.100.20", "type": "no_auth",
+                "service": "opcua", "port": 4840,
+                "canonical_source": "scanner_full",
+                "exploitation_status": "confirmed",
+                "evidence": "deterministic OPC-UA contract",
+            }],
+        }))
+        (run_dir / "04_exploitation.json").write_text(json.dumps({
+            "summary": {"confirmed": 1},
+            "tests": [{
+                "vuln_id": "INFO-METADATA", "device_id": "metadata",
+                "device_ip": "192.168.100.21", "type": "info_disclosure",
+                "status": "CONFIRMED", "evidence_level": 3,
+                "evidence": "HTTP banner",
+            }],
+        }))
+
+        pipeline._generate_intrusion_context()
+        context = json.loads((run_dir / "05_intrusion_context.json").read_text())
+
+        assert [entry["device_ip"] for entry in context["entry_points"]] == [
+            "192.168.100.20"
+        ]
+        assert context["entry_points"][0]["evidence_source"] == "phase3_scanner_contract"
+        assert context["entry_points"][0]["phase4_verified"] is False
+        target = next(item for item in context["all_targets"] if item["device_ip"] == "192.168.100.20")
+        assert target["primary_service"] == "opcua"
+        assert target["service_details"] == [{"name": "opcua", "port": 4840, "protocol": "tcp"}]
+        assert context["attack_chains"] == [{
+            "src_ip": "192.168.100.20", "dst_ip": "192.168.100.21",
+        }]
 
     def test_handles_missing_phase4(self, mock_provider, output_dir):
         """Context should still generate if Phase 4 was skipped."""

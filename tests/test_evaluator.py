@@ -94,14 +94,19 @@ def _finding(id="F1", ip="192.168.100.11", type="no_auth", severity="high",
             "cve_ids": cve_ids or [], "details": "test finding"}
 
 
-def _write_run(tmp_path: Path, findings: list[dict]) -> Path:
+def _write_run(
+    tmp_path: Path, findings: list[dict], *, profile: str | None = None, name: str = "run"
+) -> Path:
     """Write a minimal 03_vuln_analysis.json and return the run dir."""
-    run_dir = tmp_path / "run"
+    run_dir = tmp_path / name
     run_dir.mkdir()
-    (run_dir / "run_meta.json").write_text(json.dumps({
+    metadata = {
         "metric_contract_version": METRIC_CONTRACT_VERSION,
         "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
-    }))
+    }
+    if profile is not None:
+        metadata["execution_profile"] = profile
+    (run_dir / "run_meta.json").write_text(json.dumps(metadata))
     (run_dir / "03_vuln_analysis.json").write_text(
         json.dumps({"vulnerabilities": findings})
     )
@@ -732,6 +737,65 @@ class TestEvaluateMhr:
         assert result.recall == 1.0
         assert result.gt_at_depth == {"0": 2}
         assert result.tp_at_depth == {"0": 2}
+
+
+def test_full_phase5_protocol_access_is_measured_but_compact_is_unchanged(tmp_path):
+    vulns = [
+        _gt(id="OPC", ip="192.168.100.20", device="opcua"),
+        _gt(id="BAC", ip="192.168.100.21", device="bacnet"),
+        _gt(id="MOD", ip="192.168.100.22", device="modbus"),
+    ]
+    records = [
+        {
+            "phase": 5, "tool": "tcp_send",
+            "args": {
+                "host": "192.168.100.20", "port": 4840,
+                "payload_hex": "57524954452042656e6368506f696e742032322e35",
+            },
+            "result": {"received_bytes": 23, "received_ascii": "OPCUA OK"},
+        },
+        {
+            "phase": 5, "tool": "udp_send",
+            "args": {
+                "host": "192.168.100.21", "port": 47808,
+                "payload": "WRITE BenchPoint 22.5", "encoding": "text",
+            },
+            "result": {"received_bytes": 9, "received_ascii": "BACNET OK"},
+        },
+        {
+            "phase": 5, "tool": "modbus_scan",
+            "args": {"target": "192.168.100.22", "skip_discovery": True},
+            "result": {"return_code": 0, "stdout": "502/tcp open modbus"},
+        },
+    ]
+    findings = [
+        _finding(id="OPC", ip="192.168.100.20"),
+        _finding(id="BAC", ip="192.168.100.21"),
+        _finding(id="MOD", ip="192.168.100.22"),
+    ]
+    gt_path = _write_gt(tmp_path, vulns, scenario_id="full-protocol", attack_paths=[])
+
+    full_dir = _write_run(tmp_path, findings, profile="full", name="full-run")
+    (full_dir / "05_intrusion.json").write_text(json.dumps({"chains": []}))
+    (full_dir / "tool_calls.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records)
+    )
+    full = evaluate(full_dir, gt_path, policy=STRICT_V2)
+
+    assert full.phase5_targets_total == 3
+    assert full.phase5_targets_attempted == 3
+    assert full.phase5_targets_compromised == 3
+
+    compact_dir = _write_run(tmp_path, findings, profile="compact", name="compact-run")
+    (compact_dir / "05_intrusion.json").write_text(json.dumps({"chains": []}))
+    (compact_dir / "tool_calls.jsonl").write_text(
+        "".join(json.dumps(record) + "\n" for record in records)
+    )
+    compact = evaluate(compact_dir, gt_path, policy=STRICT_V2)
+
+    assert compact.phase5_targets_total == 3
+    assert compact.phase5_targets_attempted == 0
+    assert compact.phase5_targets_compromised == 0
 
 
 class TestEvaluatePathCoverage:
