@@ -99,38 +99,30 @@ modèle.
 
 \section{Mission principale~: spécialisation \gls{hmoe} agentique}
 
-La mission a consisté en priorité à construire une architecture \gls{hmoe}
-adaptée au fonctionnement agentique de LANCE. Contrairement à un mélange
-d'experts neuronal qui route les jetons entre sous-réseaux, l'approche retenue
-partage un modèle de base quantifié et associe chaque rôle à un adaptateur LoRA.
-Le routeur explicite exploite la phase ou le rôle demandé pour activer l'expert
-approprié.
+La mission prioritaire était de construire une architecture \gls{hmoe} adaptée à
+LANCE. Contrairement à un mélange d'experts neuronal qui route les jetons, elle
+partage un modèle quantifié entre des adaptateurs LoRA spécialisés par rôle ; le
+routeur active l'un d'eux selon la phase ou le rôle demandé.
 
-Le travail couvre le cycle de vie des experts~: extraction et normalisation des
-traces, validation et diversification des exemples, entraînement \gls{qlora},
-chargement des adaptateurs derrière une \gls{api} commune, puis routage pendant
-les campagnes. Le résultat attendu n'était pas seulement un serveur de modèles,
-mais son intégration à un agent qui planifie, appelle des outils, interprète
-leurs réponses et transmet un état structuré. La stabilité du routage, la
-sérialisation des changements d'adaptateur et la compatibilité avec le système
-existant font ainsi partie de la mission.
+Le travail couvre la préparation, la validation et la diversification des traces,
+l'entraînement \gls{qlora}, le service derrière une \gls{api} commune et le
+routage. Il comprend aussi l'intégration des experts à l'agent qui planifie,
+appelle les outils, interprète leurs réponses et transmet un état structuré, avec
+un routage stable, des changements d'adaptateur sérialisés et une compatibilité
+avec l'existant.
 
 \section{Pipeline et harness comme protocole de validation}
 
-La spécialisation ne peut être jugée à partir de la seule perte d'entraînement.
-Le pipeline fournit le protocole opérationnel~: il délimite les
-responsabilités des experts, injecte les outils pertinents, valide les schémas et
-applique les règles de preuve. Son durcissement doit garantir que les artefacts
-restent cohérents d'une phase à la suivante et qu'une campagne incomplète soit
-identifiée comme telle.
+La spécialisation ne se juge pas sur la seule perte d'entraînement. Le pipeline
+sert de protocole opérationnel : il délimite les rôles, injecte les outils,
+valide les schémas et les preuves, maintient la cohérence entre phases et signale
+toute campagne incomplète.
 
-Le harness fournit le protocole expérimental complémentaire. Il crée des
+Le harness fournit le protocole expérimental complémentaire : il crée des
 situations contrôlées, associe les faiblesses attendues à des indicateurs et
-compare les artefacts à la vérité terrain. Les travaux sur les scénarios, le
-déploiement automatisé, la gestion des campagnes, les erreurs et les métriques
-sont donc directement liés à l'objectif \gls{hmoe} : déterminer si la
-spécialisation améliore réellement l'action de l'agent, au-delà du style de ses
-réponses.
+compare les artefacts à la vérité terrain. Les scénarios, leur déploiement, le
+suivi des campagnes et les métriques permettent ainsi de déterminer si la
+spécialisation améliore l'action de l'agent au-delà du style de ses réponses.
 
 \section{Objectifs opérationnels}
 
@@ -145,7 +137,6 @@ La mission se décline en trois objectifs~:
   le comportement des différentes configurations.
 \end{enumerate}
 
-Ces objectifs forment un même système~: les experts produisent les décisions,
-le pipeline encadre leur exécution et le harness permet leur comparaison. Les
-optimisations de contexte et de graphe soutiennent cet ensemble sans se
-substituer à la finalité de spécialisation agentique.
+Ces objectifs forment un même système : les experts décident, le pipeline encadre
+leur exécution et le harness les compare. Les optimisations de contexte et de
+graphe soutiennent cet ensemble sans remplacer la spécialisation agentique.

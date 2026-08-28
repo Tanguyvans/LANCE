@@ -419,11 +419,12 @@ restent déterministes, ce qui limite les biais du paradigme
 
 \section{Maîtrise du contexte}
 
-J'ai borné les sorties SSH, compacté la topologie et dédoublonné certaines
-observations MQTT ou HTTP. Une première réduction, trop agressive, supprimait une
-information utile et a été annulée. Ce retour a guidé le serveur HMoE, qui
-préserve les contrats, les erreurs récentes et le registre des outils avant de
-réduire la prose.
+J'ai borné les sorties SSH, compacté les résumés de topologie et dédoublonné
+certaines observations MQTT ou HTTP. Ces optimisations ont été appliquées avec
+prudence : une première réduction trop agressive de la surface d'attaque a été
+annulée parce qu'elle supprimait une information utile. Ce retour a directement
+guidé le compactage du serveur HMoE, qui conserve désormais les contrats, les
+erreurs récentes et le registre des outils avant de réduire la prose.
 
 \paragraph{Exploration topologique initiale.}
 Au début du stage, j'ai également relié au pipeline un graphe d'attaque orienté
@@ -442,18 +443,19 @@ pas l'axe principal des campagnes présentées dans ce rapport.
 \subsection{Difficultés techniques rencontrées}
 
 \begin{description}
-  \item[Aligner apprentissage et exécution] Un adaptateur entraîné avec un outil,
-  un format ou une fenêtre différents de l'exécution peut échouer malgré une
-  perte correcte. J'ai donc partagé le gabarit, les schémas et les budgets entre
-  préparation et service.
+  \item[Aligner apprentissage et exécution] Un adaptateur entraîné sur un outil,
+  un format ou une fenêtre différents de la production peut échouer malgré une
+  perte d'entraînement correcte. J'ai donc partagé le gabarit, les schémas et les
+  budgets entre préparation, préflight et service.
 
-  \item[Préserver la preuve sous contrainte de contexte] Compacter le contexte
-  peut séparer une conclusion de son appel d'outil. Le découpage atomique de la
-  phase~5 et le registre déterministe maintiennent ce lien.
+  \item[Préserver la preuve sous contrainte de contexte] Une réduction aveugle
+  économise des tokens mais peut séparer une conclusion de son appel d'outil. Le
+  découpage atomique de la phase~5 et le registre déterministe répondent à ce
+  risque.
 
 
   \item[Distinguer terminaison et succès] Un livrable sauvegardé ou une réponse
   fluide ne prouve pas la couverture. Les contrats de phase, les reprises bornées
-  et l'échec fermé rendent les lacunes visibles.
+  et l'échec fermé rendent les lacunes visibles au lieu de les masquer.
 
 \end{description}
