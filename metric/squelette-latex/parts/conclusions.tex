@@ -43,3 +43,32 @@ et revues humainement. Le principal enseignement de ce travail est ainsi que la
 spécialisation locale ne suffit pas à garantir un agent fiable : elle doit être
 associée à une architecture qui encadre ses actions et à un protocole capable
 d'en vérifier les résultats.
+
+\section{Perspectives de recherche}
+
+Une première piste serait d'introduire une véritable hiérarchie dans le routage.
+Un premier niveau conserverait la sélection par phase, tandis qu'un second
+choisirait un expert plus spécialisé. En phase~4, ce choix pourrait suivre les
+familles de vulnérabilités ou de protocoles. En phase~5, où l'agent raisonne sur
+une chaîne d'intrusion entière, des experts consacrés aux identifiants, au pivot
+réseau, aux protocoles industriels ou à la post-exploitation seraient plus
+adaptés qu'un découpage fondé uniquement sur la vulnérabilité initiale. L'apport
+de cette architecture hiérarchique devrait être mesuré face au routeur
+déterministe actuel.
+
+Une deuxième piste concerne le parallélisme. Le pipeline distribue déjà certaines
+analyses indépendantes des phases~3 et~4, mais le serveur local partage un seul
+modèle et sérialise les générations lors du changement d'adaptateur. Plusieurs
+répliques du modèle, ou des services séparés par expert, permettraient de traiter
+simultanément les travaux indépendants. Cette exécution devrait néanmoins
+respecter les dépendances entre phases et les verrous qui empêchent deux actions
+concurrentes sur un même équipement.
+
+Enfin, Qwen2.5-3B-Instruct ne doit pas rester un choix figé. Une première
+évolution consisterait à remplacer cette base commune par un modèle compact plus
+récent, puis à réentraîner les quatre adaptateurs. Une architecture plus
+hétérogène pourrait aussi attribuer un modèle distinct à chaque rôle, au prix de
+services séparés puisque les adaptateurs actuels ne sont interchangeables que sur
+une même base. Dans les deux cas, le harness permettrait de comparer les variantes
+sur les mêmes scénarios, selon la qualité des preuves, le Q-F1, le taux
+d'hallucination et l'achèvement des phases.

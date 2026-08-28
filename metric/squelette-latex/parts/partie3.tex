@@ -93,14 +93,16 @@ Après entraînement, les matrices obtenues forment un adaptateur léger qui peu
 \section{HMoE agentique : un routage de rôles, pas de jetons}
 \label{sec:hmoe-routage}
 
-Le terme \gls{hmoe} désigne ici une architecture agentique hétérogène. Il faut
-la distinguer d'un mélange d'experts neuronal classique. Dans ce dernier, une
-porte apprise sélectionne, pour chaque jeton et à l'intérieur d'une couche, un
-sous-ensemble de blocs feed-forward ; le calcul conditionnel augmente alors la
-capacité du réseau sans activer tous ses paramètres \cite{shazeer2017moe}. Dans
-LANCE, le modèle neuronal reste unique : le routage intervient au niveau d'une
-requête complète et choisit un adaptateur \gls{peft}. Il ne produit donc ni
-pondération douce entre experts, ni décision différente pour chaque jeton.
+Comme précisé dès l'introduction, le terme \gls{hmoe} désigne ici une
+architecture agentique hétérogène, et non un \emph{Hierarchical Mixture of
+Experts}. Il faut aussi la distinguer d'un mélange d'experts neuronal classique.
+Dans ce dernier, une porte apprise sélectionne, pour chaque jeton et à
+l'intérieur d'une couche, un sous-ensemble de blocs feed-forward ; le calcul
+conditionnel augmente alors la capacité du réseau sans activer tous ses
+paramètres \cite{shazeer2017moe}. Dans LANCE, le modèle neuronal reste unique :
+le routage intervient au niveau d'une requête complète et choisit un adaptateur
+\gls{peft}. Il ne produit donc ni pondération douce entre experts, ni décision
+différente pour chaque jeton.
 
 Le routeur exploite d'abord l'identifiant de phase inscrit dans le message
 système. Les phases~1 et~6 sont confiées au secrétaire, la phase~2 à la

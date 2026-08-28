@@ -112,9 +112,20 @@ Lorsque la fenêtre reste trop longue, la préparation réduit d'abord les sorti
 d'outils volumineuses, puis les arguments textuels et enfin le milieu des
 messages système. Le préfixe contenant le rôle et le suffixe décrivant le
 critère de terminaison sont préservés. Chaque ligne indique dans ses métadonnées
-le modèle cible, la fenêtre source et l'éventuelle troncature. Les limites sont
-alignées sur l'usage futur : 6\,144 tokens pour le secrétaire, la reconnaissance
-et l'exploitation, et 4\,096 pour l'analyse de vulnérabilités.
+le modèle cible, la fenêtre source et l'éventuelle troncature. La fenêtre de
+6\,144 tokens retenue pour le secrétaire, la reconnaissance et l'exploitation
+permet de conserver des séquences plus longues : synthèse de la campagne,
+enchaînement d'appels d'outils ou chaîne de preuves rendue atomique en phase~5.
+Elle constitue une limite opérationnelle de préparation et de service, et non la
+fenêtre maximale native de Qwen2.5-3B-Instruct.
+
+L'expert de vulnérabilités est limité à 4\,096 tokens parce que son entrée est
+centrée sur un équipement et que sa sortie suit un contrat structuré plus court.
+Dans le corpus préparé, cette limite conserve ses exemples sans troncature ; lui
+attribuer 6\,144 tokens n'aurait donc pas préservé davantage d'information
+observée. Le serveur reprend ces limites propres à chaque expert à l'inférence,
+afin de ne pas leur soumettre de contextes plus longs que ceux vus pendant
+l'apprentissage.
 
 J'ai également intégré une boucle de correction supervisée. Le harness peut
 extraire des candidats correspondant à un faux négatif, un faux positif, une

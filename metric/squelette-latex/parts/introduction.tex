@@ -20,12 +20,18 @@ nécessaire à une conclusion de sécurité.
 
 La mission principale du stage a consisté à concevoir une architecture agentique
 de type \gls{hmoe}, fondée sur un modèle de base partagé et sur des experts
-spécialisés par \gls{qlora}. Chaque expert apprend un rôle opérationnel
+spécialisés par \gls{qlora}. Chaque expert apprend un rôle opérationnel :
 organisation de la campagne, reconnaissance, analyse de vulnérabilités ou
-exploitation et un routeur sélectionne l'adaptateur correspondant à la phase
+exploitation ; un routeur sélectionne l'adaptateur correspondant à la phase
 exécutée. Le travail couvre ainsi la préparation de données issues de traces,
 leur contrôle, l'entraînement, le service des adaptateurs et leur
 intégration au cycle d'action de l'agent.
+
+Dans ce rapport, le H de HMoE signifie \emph{Heterogeneous}, et non
+\emph{Hierarchical}. L'hétérogénéité vient des rôles appris par les adaptateurs,
+alors que le routage actuel reste déterministe et ne forme pas une hiérarchie
+d'experts. Cette architecture se distingue également d'un mélange d'experts
+neuronal, où un routeur appris sélectionne des blocs du réseau pour chaque jeton.
 
 Le service HMoE est déployé localement derrière une API compatible OpenAI. Le
 pipeline peut ainsi l'utiliser comme un fournisseur de modèle sans exposer la
