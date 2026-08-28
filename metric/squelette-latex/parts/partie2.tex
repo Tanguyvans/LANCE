@@ -108,24 +108,17 @@ les couples appel/résultat restent liés. La phase~5 constitue une exception : 
 chaîne de preuves est gardée atomique afin qu'une conclusion d'intrusion ne soit
 jamais séparée de l'action qui la soutient.
 
-Lorsque la fenêtre reste trop longue, la préparation réduit d'abord les sorties
-d'outils volumineuses, puis les arguments textuels et enfin le milieu des
-messages système. Le préfixe contenant le rôle et le suffixe décrivant le
-critère de terminaison sont préservés. Chaque ligne indique dans ses métadonnées
-le modèle cible, la fenêtre source et l'éventuelle troncature. La fenêtre de
-6\,144 tokens retenue pour le secrétaire, la reconnaissance et l'exploitation
-permet de conserver des séquences plus longues : synthèse de la campagne,
-enchaînement d'appels d'outils ou chaîne de preuves rendue atomique en phase~5.
-Elle constitue une limite opérationnelle de préparation et de service, et non la
-fenêtre maximale native de Qwen2.5-3B-Instruct.
-
-L'expert de vulnérabilités est limité à 4\,096 tokens parce que son entrée est
-centrée sur un équipement et que sa sortie suit un contrat structuré plus court.
-Dans le corpus préparé, cette limite conserve ses exemples sans troncature ; lui
-attribuer 6\,144 tokens n'aurait donc pas préservé davantage d'information
-observée. Le serveur reprend ces limites propres à chaque expert à l'inférence,
-afin de ne pas leur soumettre de contextes plus longs que ceux vus pendant
-l'apprentissage.
+Si une fenêtre reste trop longue, la préparation réduit successivement les
+sorties d'outils, les arguments textuels et le milieu des messages système, sans
+toucher au rôle ni au critère de terminaison. Les métadonnées tracent la fenêtre
+source et l'éventuelle troncature. La limite opérationnelle de 6\,144 tokens
+conserve les longues synthèses et séquences d'outils du secrétaire, de la
+reconnaissance et de l'exploitation. Les entrées par équipement et les sorties
+structurées de l'expert de vulnérabilités sont plus courtes : le corpus ne subit
+aucune troncature à 4\,096 tokens, si bien qu'une fenêtre supérieure n'y
+préserverait pas d'information supplémentaire. Le serveur reprend ces limites à
+l'inférence pour rester dans les contextes vus pendant l'apprentissage ; elles
+ne correspondent pas à la fenêtre maximale native de Qwen2.5-3B-Instruct.
 
 J'ai également intégré une boucle de correction supervisée. Le harness peut
 extraire des candidats correspondant à un faux négatif, un faux positif, une

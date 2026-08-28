@@ -19,38 +19,25 @@ respecter le rôle attendu, le format d'un appel d'outil ou le niveau de preuve
 nécessaire à une conclusion de sécurité.
 
 La mission principale du stage a consisté à concevoir une architecture agentique
-de type \gls{hmoe}, fondée sur un modèle de base partagé et sur des experts
-spécialisés par \gls{qlora}. Chaque expert apprend un rôle opérationnel :
-organisation de la campagne, reconnaissance, analyse de vulnérabilités ou
-exploitation ; un routeur sélectionne l'adaptateur correspondant à la phase
-exécutée. Le travail couvre ainsi la préparation de données issues de traces,
-leur contrôle, l'entraînement, le service des adaptateurs et leur
-intégration au cycle d'action de l'agent.
+de type \gls{hmoe} : un modèle de base partagé entre quatre adaptateurs
+spécialisés par \gls{qlora} dans l'organisation de la campagne, la
+reconnaissance, l'analyse de vulnérabilités et l'exploitation. HMoE signifie ici
+\emph{Heterogeneous}, et non \emph{Hierarchical} : les rôles diffèrent, mais un
+routeur déterministe sélectionne un adaptateur par phase. Contrairement à un
+mélange d'experts neuronal, ce routage porte sur la requête entière, pas sur
+chaque jeton. Le travail a couvert les données, l'entraînement et l'intégration
+des adaptateurs, servis localement derrière une API compatible OpenAI.
 
-Dans ce rapport, le H de HMoE signifie \emph{Heterogeneous}, et non
-\emph{Hierarchical}. L'hétérogénéité vient des rôles appris par les adaptateurs,
-alors que le routage actuel reste déterministe et ne forme pas une hiérarchie
-d'experts. Cette architecture se distingue également d'un mélange d'experts
-neuronal, où un routeur appris sélectionne des blocs du réseau pour chaque jeton.
-
-Le service HMoE est déployé localement derrière une API compatible OpenAI. Le
-pipeline peut ainsi l'utiliser comme un fournisseur de modèle sans exposer la
-sélection interne des experts.
-
-Le pipeline d'exécution et le harness expérimental constituent le support de
-cette spécialisation. Le premier impose les transitions, les outils autorisés
-et les contrats de sortie ; le second déploie des scénarios reproductibles,
-conserve la vérité terrain du côté de l'évaluateur et mesure le comportement
-observé pendant une campagne. Leur consolidation a porté sur la robustesse de
-l'orchestration, la collecte de preuves, la gestion des exécutions et
-l'évaluation déterministe et sémantique.
+Cette spécialisation s'appuie sur le pipeline, qui impose transitions, outils et
+contrats de sortie, et sur le harness, qui déploie les scénarios, conserve la
+vérité terrain et mesure chaque campagne. Leur consolidation a porté sur
+l'orchestration, les preuves, le suivi des exécutions et l'évaluation.
 
 La problématique peut dès lors être formulée ainsi~:
 \emph{comment spécialiser un agent fondé sur un LLM local pour les différentes
 étapes d'un audit IoT/OT, puis démontrer la qualité de son comportement au moyen
 d'un protocole d'exécution et d'évaluation reproductible ?}
 
-Le \cref{chap:contexte} présente le cadre et les objectifs de la mission. Le
-\cref{chap:implementation} décrit l'intégration de la solution, notamment le
-pipeline et le harness. Enfin, le \cref{chap:science} expose \gls{qlora}, le
-routage \gls{hmoe} et leur évaluation.
+Le \cref{chap:contexte} présente la mission, le \cref{chap:implementation} son
+intégration, et le \cref{chap:science} \gls{qlora}, le routage \gls{hmoe} et leur
+évaluation.
