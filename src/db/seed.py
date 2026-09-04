@@ -4,9 +4,9 @@ Usage::
 
     python3 -m src.db.seed
 
-Idempotent: creates the schema, upserts providers and the curated model list
-(reused from ``src/api/routes/models.py``) plus the extra models requested by
-the user, then backfills any runs already on disk under ``output/agent/``.
+Idempotent: creates the schema, upserts providers and offline fallback models,
+then backfills runs already on disk. OpenRouter and Codex catalogs are dynamic
+and are therefore not duplicated in SQLite.
 """
 from __future__ import annotations
 
@@ -30,18 +30,6 @@ log = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parents[2]
 _OUTPUT_DIR = _ROOT / "output" / "agent"
-
-# Extra models requested by the user (provider openrouter). recommended where it
-# makes sense as a cheap default. Pricing is left to the live OpenRouter catalog.
-_EXTRA_MODELS: list[tuple[str, str, bool]] = [
-    ("deepseek/deepseek-v4-flash", "deepseek-v4-flash", True),
-    ("deepseek/deepseek-v4-pro",   "deepseek-v4-pro",   False),
-    ("xiaomi/mimo-v2.5",           "mimo-v2.5",         False),
-    ("xiaomi/mimo-v2.5-pro",       "mimo-v2.5-pro",     False),
-    ("google/gemma-4-31b-it",      "gemma-4-31b",       False),
-    ("google/gemma-4-26b-a4b-it",  "gemma-4-26b-a4b",   False),
-    ("qwen/qwen3-30b-a3b",         "qwen3-30b-a3b",     False),
-]
 
 # Local Ollama model tags (provider=local), num_ctx-tuned, created on the Ollama
 # server. The local provider's base_url comes from the OLLAMA_BASE_URL env var.
@@ -106,6 +94,17 @@ def seed_providers() -> int:
     )
     count += 1
 
+    # Authentication and models are resolved from the local Codex session at
+    # runtime; no OAuth token or account identity is stored in SQLite.
+    upsert_provider(
+        name="codex",
+        base_url=None,
+        api_key_env=None,
+        default_model=None,
+        kind="subscription",
+    )
+    count += 1
+
     # Local OpenAI-compatible endpoint (ollama / vLLM). base_url from OLLAMA_BASE_URL
     # so each host points at its own/the shared Ollama; editable later via the UI.
     upsert_provider(
@@ -120,7 +119,7 @@ def seed_providers() -> int:
 
 
 def seed_models() -> int:
-    """Seed the curated dashboard list + the user's extra models."""
+    """Seed only offline fallbacks and user-managed local models."""
     from src.api.routes.models import CURATED_MODELS
 
     seen: set[str] = set()
@@ -132,13 +131,6 @@ def seed_models() -> int:
             recommended=recommended,
             subscription=(provider == "minimax"),
             **_parameter_metadata(slug),
-        )
-        seen.add(slug)
-
-    for slug, label, recommended in _EXTRA_MODELS:
-        upsert_model(
-            slug=slug, label=label, provider="openrouter",
-            recommended=recommended, **_parameter_metadata(slug),
         )
         seen.add(slug)
 
@@ -176,7 +168,12 @@ def backfill_runs() -> int:
 
         scenario_id = scen_meta.get("scenario_id")
         model = scen_meta.get("model") or run_meta.get("model") or cost.get("model")
-        provider = "minimax" if (model and "/" not in str(model)) else "openrouter"
+        from src.agent.codex_app_server import is_codex_model
+        provider = (
+            "codex" if model and is_codex_model(str(model))
+            else "minimax" if model and "/" not in str(model)
+            else "openrouter"
+        )
         status = "completed" if (d / "06_report.md").exists() else "partial"
 
         run_id = record_run({

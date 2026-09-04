@@ -63,8 +63,12 @@ DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
 METRICS_SCHEMA_VERSION = 2
 
 
-def _resolve_pricing(model: str) -> tuple[dict[str, float], str, bool]:
+def _resolve_pricing(
+    model: str, provider: str | None = None
+) -> tuple[dict[str, float], str, bool]:
     """Resolve pricing once so a completed run cannot be repriced later."""
+    if provider in {"codex", "minimax"}:
+        return {"input": 0.0, "output": 0.0}, "subscription", False
     dynamic = get_dynamic_pricing(model)
     if dynamic:
         return dynamic, "dynamic_catalog", False
@@ -110,6 +114,7 @@ class PhaseUsage:
 @dataclass
 class CostTracker:
     model: str = ""
+    provider: str = ""
     phases: list[PhaseUsage] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
@@ -120,7 +125,9 @@ class CostTracker:
         # Serialize pricing resolution so parallel agents share one catalog snapshot.
         started_at = time.monotonic()
         with self._lock:
-            pricing, pricing_source, estimated = _resolve_pricing(self.model)
+            pricing, pricing_source, estimated = _resolve_pricing(
+                self.model, self.provider
+            )
             if self._first_phase_start is None or started_at < self._first_phase_start:
                 self._first_phase_start = started_at
         self._thread_local.current = PhaseUsage(

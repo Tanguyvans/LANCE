@@ -47,16 +47,14 @@
       <h3>New Run</h3>
 
       <label for="sel-model">Model global</label>
+      <div class="model-picker-tools">
+        <input id="model-search" type="search" placeholder="Filtrer les modèles…" autocomplete="off" aria-label="Filtrer les modèles">
+        <button id="btn-refresh-models" type="button" title="Actualiser les catalogues Codex et OpenRouter" aria-label="Actualiser les modèles">↻</button>
+      </div>
       <select id="sel-model">
-        <option value="deepseek/deepseek-chat-v3-0324">deepseek-v3 (recommandé)</option>
-        <option value="deepseek/deepseek-v3.2">deepseek-v3.2</option>
-        <option value="deepseek/deepseek-v3.2-exp">deepseek-v3.2-exp</option>
-        <option value="google/gemini-2.0-flash-001">gemini-2.0-flash</option>
-        <option value="google/gemini-2.5-flash">gemini-2.5-flash</option>
-        <option value="anthropic/claude-sonnet-4">claude-sonnet-4</option>
-        <option value="openai/gpt-4o">gpt-4o</option>
-        <option value="meta-llama/llama-3.3-70b-instruct">llama-3.3-70b</option>
+        <option value="">Chargement des catalogues…</option>
       </select>
+      <div id="model-provider-status" class="model-provider-status" aria-live="polite"></div>
 
       <label class="multi-model-toggle">
         <input type="checkbox" id="cb-multi-model">
@@ -69,24 +67,18 @@
           <label for="sel-phase-model-12">Phase 1 &amp; 2 (Recon)</label>
           <select class="sel-phase-model" id="sel-phase-model-12" data-phases="1,2" aria-label="Modèle pour phases 1 et 2">
             <option value="">(Global)</option>
-            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
-            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
           </select>
         </div>
         <div class="phase-model-row">
           <label for="sel-phase-model-3">Phase 3 (Vuln Analysis)</label>
           <select class="sel-phase-model" id="sel-phase-model-3" data-phases="3" aria-label="Modèle pour phase 3">
             <option value="">(Global)</option>
-            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
-            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
           </select>
         </div>
         <div class="phase-model-row">
           <label for="sel-phase-model-456">Phase 4, 5 &amp; 6 (Exploit, Intrusion &amp; Report)</label>
           <select class="sel-phase-model" id="sel-phase-model-456" data-phases="4,5,6" aria-label="Modèle pour phases 4, 5 et 6">
             <option value="">(Global)</option>
-            <option value="anthropic/claude-sonnet-4">Claude 3.5 Sonnet</option>
-            <option value="openai/gpt-4o">GPT-4o</option>
           </select>
         </div>
       </div>

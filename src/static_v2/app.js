@@ -795,9 +795,7 @@ document.getElementById('btnBatchRun').addEventListener('click', async () => {
 
 // ── Model selector ─────────────────────────────────────────────────────────
 const FALLBACK_MODELS = [
-  { id: 'google/gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash', provider: 'openrouter' },
-  { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'openrouter' },
-  { id: 'openai/gpt-4o', label: 'GPT-4o', provider: 'openrouter' },
+  { id: 'openrouter/auto', label: 'OpenRouter Auto', provider: 'openrouter' },
 ];
 
 const MODEL_STORAGE_KEY = 'lance.selectedModel';
@@ -816,26 +814,69 @@ function storeSelectedModel(model) {
 }
 
 
-async function loadModels() {
-  const data = await fetchJSON('/api/models');
-  const models = (data.models && data.models.length) ? data.models : FALLBACK_MODELS;
+let modelCatalog = [];
+let modelProviders = {};
+
+function v2ModelGroupLabel(provider) {
+  const status = modelProviders[provider] || {};
+  if (provider === 'codex') return `Codex · abonnement ${String(status.plan_type || 'non connecté').toUpperCase()}`;
+  if (provider === 'minimax') return 'MiniMax · Coding Plan';
+  if (provider === 'openrouter') return `OpenRouter · ${status.model_count || 0} modèles avec outils`;
+  if (provider === 'local') return 'Modèles locaux';
+  return provider;
+}
+
+function renderV2Models(models, desired = '') {
   const sel = document.getElementById('modelSelect');
   sel.innerHTML = '';
-  models.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.id;
-    opt.textContent = m.label || m.id;
-    opt.dataset.provider = m.provider || 'openrouter';
-    opt.disabled = m.available === false;
-    sel.appendChild(opt);
+  const order = ['codex', 'minimax', 'openrouter', 'local'];
+  const groups = new Map();
+  models.forEach(model => {
+    const provider = model.provider || 'openrouter';
+    if (!groups.has(provider)) groups.set(provider, []);
+    groups.get(provider).push(model);
   });
-  const savedModel = getStoredModel();
+  [...groups.entries()].sort(([a], [b]) => {
+    const ai = order.indexOf(a), bi = order.indexOf(b);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
+  }).forEach(([provider, providerModels]) => {
+    const group = document.createElement('optgroup');
+    group.label = v2ModelGroupLabel(provider);
+    providerModels.forEach(model => {
+      const opt = document.createElement('option');
+      opt.value = model.id;
+      opt.dataset.provider = provider;
+      opt.disabled = model.available === false;
+      let label = model.label || model.id;
+      if (model.subscription) label += ' · plan';
+      else if (model.input_per_mtok != null && model.output_per_mtok != null) {
+        label += ` · $${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)}`;
+      }
+      if (opt.disabled) label += ' · indisponible';
+      opt.textContent = label;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
+  const requested = Array.from(sel.options).find(option => option.value === desired && !option.disabled);
   const preferred = models.find(m => m.recommended && m.available !== false)
     || models.find(m => m.available !== false)
     || models[0];
-  const stored = models.find(m => m.id === savedModel && m.available !== false);
-  if (stored) sel.value = stored.id;
+  if (requested) sel.value = requested.value;
   else if (preferred) sel.value = preferred.id;
+}
+
+async function loadModels(forceRefresh = false) {
+  const refresh = document.getElementById('modelRefresh');
+  if (refresh) refresh.disabled = true;
+  const data = await fetchJSON('/api/models' + (forceRefresh ? '?refresh=true' : ''));
+  const models = (data.models && data.models.length) ? data.models : FALLBACK_MODELS;
+  modelCatalog = models;
+  modelProviders = data.providers || {};
+  const sel = document.getElementById('modelSelect');
+  const savedModel = getStoredModel();
+  const stored = models.find(m => m.id === savedModel && m.available !== false);
+  renderV2Models(models, stored?.id || sel.value);
 
   const syncSelection = () => {
     state.model = sel.value;
@@ -844,6 +885,28 @@ async function loadModels() {
   };
   syncSelection();
   sel.onchange = syncSelection;
+  sel.title = [
+    modelProviders.codex?.available
+      ? `Codex ${String(modelProviders.codex.plan_type || '').toUpperCase()} connecté`
+      : `Codex: ${modelProviders.codex?.error || 'non connecté'}`,
+    modelProviders.openrouter?.available
+      ? `OpenRouter connecté (${modelProviders.openrouter.model_count || 0} modèles)`
+      : `OpenRouter: ${modelProviders.openrouter?.error || 'non configuré'}`,
+  ].join('\n');
+
+  const search = document.getElementById('modelSearch');
+  if (search) search.oninput = () => {
+    const query = search.value.trim().toLocaleLowerCase();
+    const filtered = query
+      ? modelCatalog.filter(model => `${model.label || ''} ${model.id} ${model.provider || ''}`.toLocaleLowerCase().includes(query))
+      : modelCatalog;
+    renderV2Models(filtered, state.model);
+    syncSelection();
+  };
+  if (refresh) {
+    refresh.disabled = false;
+    refresh.onclick = () => loadModels(true);
+  }
 }
 
 // ── Runs list ──────────────────────────────────────────────────────────────

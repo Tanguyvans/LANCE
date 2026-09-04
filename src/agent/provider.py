@@ -1,7 +1,7 @@
-"""LLM provider abstraction with tool-calling loop.
+"""LLM provider abstraction with tool-calling loops.
 
-Supports Anthropic (native tool_use) and OpenRouter (OpenAI-compatible function_calling).
-Tools are defined once and translated to each provider's format internally.
+Supports Anthropic, OpenAI-compatible APIs, and the user's local Codex
+subscription session. Tools are defined once and translated internally.
 """
 from __future__ import annotations
 
@@ -116,14 +116,32 @@ class LLMProvider:
 
     def __init__(self, provider: str = "anthropic", model: str | None = None):
         self.provider = provider
+        self.last_usage = {"input_tokens": 0, "output_tokens": 0}
         if provider == "anthropic":
             import anthropic
             self.client = anthropic.Anthropic()
             self.model = model or "claude-sonnet-4-20250514"
+        elif provider == "codex":
+            from src.agent.codex_app_server import get_codex_catalog
+
+            catalog = get_codex_catalog()
+            if not catalog.get("available"):
+                raise ValueError(catalog.get("error") or "Aucun abonnement Codex disponible")
+            available_models = [item["id"] for item in catalog.get("models", [])]
+            if model and model not in available_models:
+                raise ValueError(f"Modèle Codex indisponible pour ce compte : {model}")
+            default = next(
+                (item["id"] for item in catalog.get("models", []) if item.get("recommended")),
+                available_models[0] if available_models else None,
+            )
+            if not default:
+                raise ValueError("Aucun modèle Codex disponible pour ce compte")
+            self.client = None
+            self.model = model or default
         else:
             cfg = _resolve_provider_cfg(provider)
             if cfg is None:
-                known = ", ".join(["anthropic", *OPENAI_PROVIDERS])
+                known = ", ".join(["anthropic", "codex", *OPENAI_PROVIDERS])
                 raise ValueError(f"Unknown provider: {provider}. Available: {known}")
             import openai
             api_key_env = cfg.get("api_key_env") or ""
@@ -184,6 +202,32 @@ class LLMProvider:
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
+        if self.provider == "codex":
+            from src.agent.codex_app_server import run_codex_turn
+
+            result, usage = run_codex_turn(
+                model=self.model,
+                system_prompt=system_prompt,
+                user_message=user_message,
+                tools=tools,
+                execute_tool=self._execute_tool,
+                max_turns=max_turns,
+                max_tokens=max_tokens,
+                cost_tracker=cost_tracker,
+                stream_callback=stream_callback,
+                required_tool=required_tool,
+                terminate_after_tool=terminate_after_tool,
+                repeat_guard=repeat_guard,
+                strict_required_tool=strict_required_tool,
+                stop_event=stop_event,
+                max_data_tool_calls=max_data_tool_calls,
+                force_completion_on_phase4_conclusive=force_completion_on_phase4_conclusive,
+                force_completion_on_recon_ready=force_completion_on_recon_ready,
+                reopen_intrusion_tools_on_contract_error=reopen_intrusion_tools_on_contract_error,
+                deadline=deadline,
+            )
+            self.last_usage = usage
+            return result
         if self.provider == "anthropic":
             return self._anthropic_loop(
                 system_prompt, user_message, tools, tool_map, max_turns,

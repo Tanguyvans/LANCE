@@ -1457,6 +1457,7 @@ def test_resolve_model_provider_uses_registry(monkeypatch):
     assert _resolve_model_provider("lance-moe") == "local-moe"
     assert _resolve_model_provider("MiniMax-M2.7") == "minimax"
     assert _resolve_model_provider("openai/gpt-4o") == "openrouter"
+    assert _resolve_model_provider("gpt-5.6-sol") == "codex"
 
 
 def test_local_memo_guard_rejects_placeholders_and_empty_evidence_blocks():

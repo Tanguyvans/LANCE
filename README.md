@@ -11,15 +11,30 @@ Requires **Python 3.10+**.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env        # add OPENROUTER_API_KEY (+ VOYAGE_API_KEY for the knowledge store)
+cp .env.example .env        # add a provider key (+ VOYAGE_API_KEY for the knowledge store)
 
 python3 -m src.agent --dry-run --verbose          # validate without LLM calls or infra
 python3 -m src.agent --provider openrouter \
-        --model google/gemini-2.5-flash-preview   # full run
+        --model openrouter/auto                   # full run via OpenRouter
 ```
 
-`--dry-run` works offline. A full run needs an LLM key, `VOYAGE_API_KEY` (embeddings), and
-live targets deployed via the Ansible playbooks — see [`benchmarks/README.md`](benchmarks/README.md).
+`--dry-run` works offline. A full run needs an available LLM provider (a Codex
+session or provider key), `VOYAGE_API_KEY` for embeddings, and live targets
+deployed via the Ansible playbooks — see [`benchmarks/README.md`](benchmarks/README.md).
+
+### Model providers
+
+- **Codex subscription:** install the Codex CLI and run `codex login`. LANCE reuses
+  that local ChatGPT session through `codex app-server`; no OpenAI API key or OAuth
+  token is copied into the project. Start with `--provider codex` and omit
+  `--model` to use the currently recommended model for the account.
+- **OpenRouter:** set `OPENROUTER_API_KEY` in `.env`. The dashboard fetches the
+  current tool-capable text models and prices from OpenRouter, caches them for one
+  hour, and provides a manual refresh button.
+
+The Docker image does not include a Codex login session. Use OpenRouter in the
+container, or provide both a Codex CLI installation and its authenticated state to
+the container explicitly.
 
 ## Local HMoE and OpenWebUI
 
@@ -40,7 +55,7 @@ strict allowlist to the execution-only GPU workspace. See the
 | `benchmarks/scenarios/` | IoTChainBench scenario definitions |
 | `benchmarks/ground_truth/` | Per-vulnerability ground truth YAMLs |
 | `benchmarks/ansible/` | Proxmox deployment and injection playbooks |
-| `tests/` | 310+ unit tests |
+| `tests/` | 900+ automated tests |
 
 ## Dashboard
 

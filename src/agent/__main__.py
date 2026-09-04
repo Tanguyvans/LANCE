@@ -20,7 +20,7 @@ def main():
     parser.add_argument(
         "--provider",
         default=os.environ.get("AGENT_PROVIDER", "anthropic"),
-        choices=["anthropic", "openrouter", "minimax", "glm", "qwen", "local"],
+        choices=["anthropic", "codex", "openrouter", "minimax", "glm", "qwen", "local"],
     )
     parser.add_argument(
         "--model",

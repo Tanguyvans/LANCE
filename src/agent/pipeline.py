@@ -126,6 +126,9 @@ def _resolve_model_provider(model: str) -> str:
     except Exception:
         pass
 
+    from src.agent.codex_app_server import is_codex_model
+    if is_codex_model(model):
+        return "codex"
     return "minimax" if "/" not in model else "openrouter"
 
 
@@ -2469,7 +2472,7 @@ class Pipeline:
             # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
             # on the same /24 via the OpenWrt router's WAN, then must pivot.
             self.target_network = BENCHMARK_SUBNET
-        self.tracker = CostTracker(model=provider.model)
+        self.tracker = CostTracker(model=provider.model, provider=provider.provider)
         self.context: dict = {}
         # Set by run(); shared with phase workers so a dashboard stop request
         # can cancel queued work instead of waiting for the whole phase.
@@ -2668,6 +2671,7 @@ class Pipeline:
                 log.info("Switching to phase %d specific model: %s (%s)", phase_num, target_model, target_provider)
                 self.provider = LLMProvider(provider=target_provider, model=target_model)
                 self.tracker.model = target_model
+                self.tracker.provider = target_provider
 
             self.execution_profile_resolution = resolve_execution_profile_for_model(
                 self.execution_profile_policy, getattr(self.provider, "model", None)

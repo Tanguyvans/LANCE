@@ -97,6 +97,7 @@ body::after {
 .tb-left { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
 .tb-center { flex: 1; display: flex; justify-content: center; }
 .tb-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.tb-selectors { display: flex; align-items: center; gap: 5px; }
 
 .logo { display: flex; align-items: center; gap: 8px; user-select: none; }
 .logo-hex {
@@ -130,6 +131,21 @@ body::after {
 }
 .glass-select:focus { border-color: var(--accent); }
 .glass-select option { background: #0d1b2e; }
+
+.glass-input, .glass-button {
+  background: rgba(0, 180, 255, 0.06);
+  border: 1px solid var(--border-hi);
+  border-radius: 4px;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  height: 27px;
+  outline: none;
+}
+.glass-input { width: 118px; padding: 4px 7px; }
+.glass-button { width: 28px; cursor: pointer; }
+.glass-input:focus, .glass-button:hover { border-color: var(--accent); }
+.glass-button:disabled { opacity: 0.45; cursor: wait; }
 
 /* ── Phase bar ────────────────────────────────────────────────── */
 #phaseBar {

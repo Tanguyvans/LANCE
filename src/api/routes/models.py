@@ -1,8 +1,8 @@
-"""Models API — returns the list of available models grouped by provider.
+"""Models API — dynamic catalogs plus user-managed registry models.
 
-Supports two providers:
-- `openrouter` — pay-per-token, 19 curated models, prices fetched live from OpenRouter
-- `minimax` — MiniMax Coding Plan (subscription), calls api.minimax.io/v1 directly
+OpenRouter models come from its live, tool-capable catalog. Codex models and
+the active ChatGPT plan come from the user's local ``codex login`` session.
+Other providers remain managed by the SQLite registry.
 """
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from fastapi import APIRouter, HTTPException
 
 from pydantic import BaseModel, Field
 
-from src.agent.pricing import _load_pricing
+from src.agent.codex_app_server import get_codex_catalog
+from src.agent.pricing import _load_openrouter_catalog, _load_pricing
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -90,33 +91,14 @@ class ModelPatch(BaseModel):
     profile_policy: Literal["auto", "compact", "full"] | None = None
 
 
-# Curated list of models to show in the dashboard.
+# Minimal offline fallback. OpenRouter's real list is loaded dynamically.
 # Schema: (slug, label, recommended, provider)
 #   - slug       : model ID passed to the LLM provider
 #   - label      : display name in the dropdown
 #   - recommended: if True, auto-selected by default
 #   - provider   : "openrouter" (pay-per-token) or "minimax" (subscription plan)
 CURATED_MODELS: list[tuple[str, str, bool, str]] = [
-    # OpenRouter (pay-per-token)
-    ("deepseek/deepseek-chat-v3-0324",      "deepseek-v3",                True,  "openrouter"),
-    ("deepseek/deepseek-v3.2",              "deepseek-v3.2",              False, "openrouter"),
-    ("deepseek/deepseek-v3.2-exp",          "deepseek-v3.2-exp",          False, "openrouter"),
-    ("anthropic/claude-sonnet-4",           "claude-sonnet-4",            False, "openrouter"),
-    ("anthropic/claude-sonnet-4.5",         "claude-sonnet-4.5",          False, "openrouter"),
-    ("openai/gpt-4o",                       "gpt-4o",                     False, "openrouter"),
-    ("google/gemini-2.0-flash-001",         "gemini-2.0-flash",           False, "openrouter"),
-    ("google/gemini-2.5-flash",             "gemini-2.5-flash",           False, "openrouter"),
-    ("google/gemini-2.5-pro-preview",       "gemini-2.5-pro",             False, "openrouter"),
-    ("meta-llama/llama-3.3-70b-instruct",   "llama-3.3-70b",              False, "openrouter"),
-    ("qwen/qwen-plus",                      "qwen-plus",                  False, "openrouter"),
-    ("qwen/qwen-max",                       "qwen-max",                   False, "openrouter"),
-    ("qwen/qwen3-max",                      "qwen3-max",                  False, "openrouter"),
-    ("qwen/qwen3.5-plus-02-15",             "qwen3.5-plus",               False, "openrouter"),
-    ("qwen/qwen3.6-plus",                   "qwen3.6-plus",               False, "openrouter"),
-    ("qwen/qwen3-coder",                    "qwen3-coder",                False, "openrouter"),
-    ("minimax/minimax-m2",                  "minimax-m2",                 False, "openrouter"),
-    ("minimax/minimax-m2.5",                "minimax-m2.5",               False, "openrouter"),
-    ("minimax/minimax-m2.7",                "minimax-m2.7",               False, "openrouter"),
+    ("openrouter/auto",                     "OpenRouter Auto",            True,  "openrouter"),
     # MiniMax Coding Plan (subscription, $10/mo Starter — 1500 req/5h on MiniMax-M2.7)
     ("MiniMax-M2.7",                        "minimax-m2.7 (plan)",        False, "minimax"),
     ("MiniMax-M2.5",                        "minimax-m2.5 (plan)",        False, "minimax"),
@@ -132,6 +114,7 @@ _STATIC_KEY_ENV = {
     "qwen": "DASHSCOPE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "local": "LOCAL_API_KEY",
+    "codex": None,
 }
 
 
@@ -148,11 +131,11 @@ def _key_present(provider, key_env_map):
 
 
 def _entry(slug, label, recommended, provider, subscription, pricing,
-           db_in=None, db_out=None, key_present=True):
+           db_in=None, db_out=None, key_present=True, **metadata):
     """Build one response entry, enriched with live OpenRouter pricing.
 
     Live $/M pricing wins; falls back to the price stored in the DB (if any).
-    Subscription models have no per-token price and are always 'available'.
+    Subscription models have no per-token price.
     A model is available when its provider key is configured (``key_present``),
     independently of whether pricing is known (local models have no price).
     """
@@ -161,11 +144,12 @@ def _entry(slug, label, recommended, provider, subscription, pricing,
             "id": slug,
             "label": label + (" (recommandé)" if recommended else ""),
             "recommended": recommended,
-            "available": True,
+            "available": key_present,
             "provider": provider,
             "subscription": True,
             "input_per_mtok": None,
             "output_per_mtok": None,
+            **metadata,
         }
     price = pricing.get(slug)
     in_price = round(price["input"], 4) if price else (round(db_in, 4) if db_in is not None else None)
@@ -174,24 +158,21 @@ def _entry(slug, label, recommended, provider, subscription, pricing,
         "id": slug,
         "label": label + (" (recommandé)" if recommended else ""),
         "recommended": recommended,
-        "available": key_present or (price is not None) or (in_price is not None),
+        "available": key_present,
         "provider": provider,
         "subscription": False,
         "input_per_mtok": in_price,
         "output_per_mtok": out_price,
+        **metadata,
     }
 
 
 @router.get("")
-def list_models() -> dict:
-    """Return the list of models with per-provider metadata.
-
-    Source of truth is the SQLite ``models`` table when populated (seed via
-    ``python3 -m src.db.seed``); otherwise it falls back to the hardcoded
-    ``CURATED_MODELS`` list. OpenRouter models are enriched with live $/M
-    pricing (24h cache); MiniMax Plan / local models are marked accordingly.
-    """
+def list_models(refresh: bool = False) -> dict:
+    """Return current executable models and provider connection status."""
+    openrouter_catalog = _load_openrouter_catalog(force_refresh=refresh)
     pricing = _load_pricing()
+    codex = get_codex_catalog(force_refresh=refresh)
 
     # Preferred path: read curated models from the DB so they can be edited
     # without touching the code. Any failure falls back to the hardcoded list.
@@ -202,7 +183,7 @@ def list_models() -> dict:
         # deployment. Ensure legacy databases are migrated before querying the
         # profile metadata columns added to the models table.
         db.init_db()
-        rows = db.list_models(enabled_only=True)
+        rows = db.list_models_admin()
     except Exception as exc:
         log.warning("Model registry unavailable; using static fallback: %s", exc)
         rows = []
@@ -214,25 +195,97 @@ def list_models() -> dict:
     except Exception:
         key_env = {}
 
-    if rows:
-        models = [
-            _entry(
-                r["slug"], r["label"] or r["slug"], bool(r["recommended"]),
-                r["provider"] or "openrouter",
-                bool(r["subscription"]) or (r["provider"] == "minimax"),
-                pricing, r["input_per_mtok"], r["output_per_mtok"],
-                key_present=_key_present(r["provider"] or "openrouter", key_env),
-            )
-            for r in rows
-        ]
-        return {"models": models}
+    overrides = {row["slug"]: row for row in rows}
+    models: list[dict] = []
 
-    models = [
-        _entry(slug, label, recommended, provider, provider == "minimax", pricing,
-               key_present=_key_present(provider, key_env))
-        for slug, label, recommended, provider in CURATED_MODELS
-    ]
-    return {"models": models}
+    # Codex is intentionally not persisted in the registry: both the model
+    # list and account plan belong to the currently logged-in local session.
+    for item in codex.get("models", []):
+        models.append(_entry(
+            item["id"], item["label"], bool(item.get("recommended")),
+            "codex", bool(codex.get("account_type") == "chatgpt"), pricing,
+            key_present=bool(codex.get("available")),
+            description=item.get("description") or "",
+            reasoning_efforts=item.get("reasoning_efforts") or [],
+            default_reasoning_effort=item.get("default_reasoning_effort"),
+            service_tiers=item.get("service_tiers") or [],
+            upgrade=item.get("upgrade"),
+            tool_capable=True,
+        ))
+
+    # Registry providers such as MiniMax and local inference remain editable.
+    for row in rows:
+        provider = row.get("provider") or "openrouter"
+        if provider in {"openrouter", "codex"} or not bool(row.get("enabled")):
+            continue
+        models.append(_entry(
+            row["slug"], row.get("label") or row["slug"],
+            bool(row.get("recommended")), provider,
+            bool(row.get("subscription")) or provider == "minimax", pricing,
+            row.get("input_per_mtok"), row.get("output_per_mtok"),
+            key_present=_key_present(provider, key_env),
+            description="",
+            tool_capable=True,
+        ))
+
+    # With an empty/legacy DB, preserve the non-OpenRouter subscription fallback.
+    if not rows:
+        for slug, label, recommended, provider in CURATED_MODELS:
+            if provider == "openrouter":
+                continue
+            models.append(_entry(
+                slug, label, recommended, provider, provider == "minimax", pricing,
+                key_present=_key_present(provider, key_env), tool_capable=True,
+            ))
+
+    if openrouter_catalog:
+        for item in openrouter_catalog:
+            override = overrides.get(item["id"])
+            if override is not None and not bool(override.get("enabled")):
+                continue
+            models.append(_entry(
+                item["id"],
+                (override.get("label") if override else None) or item.get("name") or item["id"],
+                bool(override.get("recommended")) if override else False,
+                "openrouter", False, pricing,
+                override.get("input_per_mtok") if override else None,
+                override.get("output_per_mtok") if override else None,
+                key_present=_key_present("openrouter", key_env),
+                description=item.get("description") or "",
+                context_length=item.get("context_length"),
+                created=item.get("created"),
+                tool_capable=True,
+            ))
+    else:
+        for slug, label, recommended, provider in CURATED_MODELS:
+            if provider != "openrouter":
+                continue
+            models.append(_entry(
+                slug, label, recommended, provider, False, pricing,
+                key_present=_key_present(provider, key_env), tool_capable=True,
+            ))
+
+    openrouter_available = _key_present("openrouter", key_env)
+    return {
+        "models": models,
+        "providers": {
+            "codex": {
+                "available": bool(codex.get("available")),
+                "account_type": codex.get("account_type"),
+                "plan_type": codex.get("plan_type"),
+                "error": codex.get("error"),
+                "auth_command": codex.get("auth_command", "codex login"),
+                "model_count": len(codex.get("models", [])),
+            },
+            "openrouter": {
+                "available": openrouter_available,
+                "key_env": key_env.get("openrouter") or "OPENROUTER_API_KEY",
+                "error": None if openrouter_available else "Clé OPENROUTER_API_KEY absente",
+                "model_count": len(openrouter_catalog),
+                "catalog": "live_or_1h_cache" if openrouter_catalog else "offline_fallback",
+            },
+        },
+    }
 
 
 @router.get("/registry")

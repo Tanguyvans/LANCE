@@ -335,90 +335,163 @@ function bindModelPersistence(select) {
   select.onchange = () => storeSelectedModel(select.value);
 }
 
+let _modelCatalog = [];
+let _modelProviderStatus = {};
 
-async function loadModels() {
+const MODEL_PROVIDER_ORDER = ['codex', 'minimax', 'openrouter', 'local'];
+
+function modelGroupLabel(provider) {
+  const status = _modelProviderStatus[provider] || {};
+  if (provider === 'codex') {
+    const plan = status.plan_type ? status.plan_type.toUpperCase() : 'non connecté';
+    return `Codex — abonnement ${plan}`;
+  }
+  if (provider === 'minimax') return 'MiniMax — Coding Plan';
+  if (provider === 'openrouter') {
+    return `OpenRouter — paiement à l’usage (${status.model_count || 0} modèles)`;
+  }
+  if (provider === 'local') return 'Modèles locaux';
+  return provider;
+}
+
+function buildModelOption(model) {
+  const opt = document.createElement('option');
+  opt.value = model.id;
+  opt.dataset.provider = model.provider || 'openrouter';
+  const unavailable = model.available === false;
+  let label = model.label || model.id;
+  if (model.subscription) {
+    label += ' — inclus dans le plan';
+  } else if (model.input_per_mtok != null && model.output_per_mtok != null) {
+    label += ` ($${Number(model.input_per_mtok).toFixed(2)}/$${Number(model.output_per_mtok).toFixed(2)} par M)`;
+  }
+  if (unavailable) label += ' — indisponible';
+  if (model.context_length) label += ` · ${Math.round(model.context_length / 1000)}k ctx`;
+  opt.textContent = label;
+  opt.disabled = unavailable;
+  if (model.description) opt.title = model.description;
+  return opt;
+}
+
+function groupedModels(models) {
+  const groups = new Map();
+  for (const model of models) {
+    const provider = model.provider || 'openrouter';
+    if (!groups.has(provider)) groups.set(provider, []);
+    groups.get(provider).push(model);
+  }
+  return [...groups.entries()].sort(([left], [right]) => {
+    const li = MODEL_PROVIDER_ORDER.indexOf(left);
+    const ri = MODEL_PROVIDER_ORDER.indexOf(right);
+    return (li < 0 ? 99 : li) - (ri < 0 ? 99 : ri) || left.localeCompare(right);
+  });
+}
+
+function renderModelSelect(select, models, desiredValue = '', includeGlobal = false) {
+  select.innerHTML = '';
+  if (includeGlobal) {
+    const global = document.createElement('option');
+    global.value = '';
+    global.textContent = '(Global)';
+    select.appendChild(global);
+  }
+  for (const [provider, providerModels] of groupedModels(models)) {
+    const group = document.createElement('optgroup');
+    group.label = modelGroupLabel(provider);
+    providerModels.forEach(model => group.appendChild(buildModelOption(model)));
+    select.appendChild(group);
+  }
+  if (!models.length && !includeGlobal) {
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.disabled = true;
+    empty.textContent = 'Aucun modèle disponible';
+    select.appendChild(empty);
+  }
+  const desired = Array.from(select.options).find(
+    option => option.value === desiredValue && !option.disabled
+  );
+  const recommended = models.find(model => model.recommended && model.available !== false);
+  const fallback = models.find(model => model.available !== false);
+  if (desired) select.value = desired.value;
+  else if (!includeGlobal && recommended) select.value = recommended.id;
+  else if (!includeGlobal && fallback) select.value = fallback.id;
+}
+
+function renderModelProviderStatus() {
+  const target = document.getElementById('model-provider-status');
+  if (!target) return;
+  const codex = _modelProviderStatus.codex || {};
+  const router = _modelProviderStatus.openrouter || {};
+  const codexText = codex.available
+    ? `Codex ${String(codex.plan_type || '').toUpperCase()} connecté · ${codex.model_count || 0} modèles`
+    : `Codex non connecté · ${codex.error || 'lancez codex login'}`;
+  const routerText = router.available
+    ? `OpenRouter connecté · ${router.model_count || 0} modèles avec outils`
+    : `OpenRouter non configuré · ${router.error || 'clé API absente'}`;
+  target.innerHTML =
+    `<span class="${codex.available ? 'provider-ok' : 'provider-warn'}">${escapeHtml(codexText)}</span><br>` +
+    `<span class="${router.available ? 'provider-ok' : 'provider-warn'}">${escapeHtml(routerText)}</span>`;
+}
+
+function renderMainModelFilter() {
+  const select = document.getElementById('sel-model');
+  const search = document.getElementById('model-search');
+  if (!select) return;
+  const current = select.value || getStoredModel();
+  const query = (search?.value || '').trim().toLocaleLowerCase();
+  const filtered = query
+    ? _modelCatalog.filter(model => `${model.label || ''} ${model.id} ${model.provider || ''}`.toLocaleLowerCase().includes(query))
+    : _modelCatalog;
+  renderModelSelect(select, filtered, current);
+}
+
+
+async function loadModels(forceRefresh = false) {
   const sel = document.getElementById('sel-model');
   if (!sel) return;
   bindModelPersistence(sel);
   const savedValue = getStoredModel();
   const currentValue = sel.value;
-  let models = null;
+  const refreshButton = document.getElementById('btn-refresh-models');
+  if (refreshButton) refreshButton.disabled = true;
   try {
-    const data = await fetchJSON('/api/models');
-    if (data && Array.isArray(data.models) && data.models.length > 0) {
-      models = data.models;
-    }
+    const suffix = forceRefresh ? '?refresh=true' : '';
+    const data = await fetchJSON('/api/models' + suffix);
+    if (!data || !Array.isArray(data.models)) throw new Error('Réponse de catalogue invalide');
+    _modelCatalog = data.models;
+    _modelProviderStatus = data.providers || {};
   } catch (e) {
-    console.warn('API /api/models unavailable, keeping hardcoded dropdown');
+    console.warn('API /api/models unavailable', e);
+    const status = document.getElementById('model-provider-status');
+    if (status) status.textContent = `Impossible de charger les modèles : ${e.message || e}`;
     return;
+  } finally {
+    if (refreshButton) refreshButton.disabled = false;
   }
-  if (!models) return;
-  sel.innerHTML = '';
-
-  // Group models by provider: OpenRouter first, then MiniMax Plan.
-  const groups = {
-    openrouter: { label: 'OpenRouter (pay-per-token)', models: [] },
-    minimax:    { label: 'MiniMax Coding Plan ($10/mo)', models: [] },
-  };
-  for (const m of models) {
-    const provider = m.provider || 'openrouter';
-    if (!groups[provider]) groups[provider] = { label: provider, models: [] };
-    groups[provider].models.push(m);
-  }
-
-  const buildOption = (m) => {
-    const opt = document.createElement('option');
-    opt.value = m.id;
-    opt.dataset.provider = m.provider || 'openrouter';
-    let label = m.label;
-    if (m.subscription) {
-      label += ' — inclus dans le plan';
-    } else if (m.input_per_mtok !== null && m.output_per_mtok !== null) {
-      label += ` ($${m.input_per_mtok.toFixed(2)}/$${m.output_per_mtok.toFixed(2)})`;
-    } else if (!m.available) {
-      label += ' (indispo)';
-      opt.disabled = true;
-    }
-    opt.textContent = label;
-    if (m.recommended && m.available !== false) opt.selected = true;
-    return opt;
-  };
-
-  for (const [, group] of Object.entries(groups)) {
-    if (group.models.length === 0) continue;
-    const og = document.createElement('optgroup');
-    og.label = group.label;
-    for (const m of group.models) og.appendChild(buildOption(m));
-    sel.appendChild(og);
-  }
-
   const isSelectable = value => {
     if (!value) return false;
-    const option = Array.from(sel.options).find(o => o.value === value);
-    return Boolean(option && !option.disabled);
+    const model = _modelCatalog.find(item => item.id === value);
+    return Boolean(model && model.available !== false);
   };
   const restoredValue = [savedValue, currentValue].find(isSelectable);
-  if (restoredValue) sel.value = restoredValue;
-  if (sel.value && isSelectable(sel.value)) {
+  renderModelSelect(sel, _modelCatalog, restoredValue || '');
+  if (sel.value && !sel.selectedOptions[0]?.disabled) {
     storeSelectedModel(sel.value);
   }
-  
-  // Clone options for the judge model select
+
+  document.querySelectorAll('.sel-phase-model').forEach(phaseSelect => {
+    renderModelSelect(phaseSelect, _modelCatalog, phaseSelect.value, true);
+  });
   const judgeSel = document.getElementById('sel-judge-model');
   if (judgeSel) {
-    const judgeVal = judgeSel.value;
-    judgeSel.innerHTML = '';
-    for (const [, group] of Object.entries(groups)) {
-      if (group.models.length === 0) continue;
-      const og = document.createElement('optgroup');
-      og.label = group.label;
-      for (const m of group.models) og.appendChild(buildOption(m));
-      judgeSel.appendChild(og);
-    }
-    if (judgeVal && Array.from(judgeSel.options).some(o => o.value === judgeVal)) {
-      judgeSel.value = judgeVal;
-    }
+    renderModelSelect(judgeSel, _modelCatalog, judgeSel.value);
   }
+  renderModelProviderStatus();
+
+  const search = document.getElementById('model-search');
+  if (search) search.oninput = renderMainModelFilter;
+  if (refreshButton) refreshButton.onclick = () => loadModels(true);
 }
 
 async function loadScenariosConfig() {
@@ -1329,6 +1402,10 @@ async function startRun() {
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
+  if (!model || !selectedOpt || selectedOpt.disabled) {
+    addLog({type: 'error', message: 'Sélectionnez un modèle disponible avant de lancer le pipeline'});
+    return;
+  }
   const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));

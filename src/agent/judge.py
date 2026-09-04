@@ -312,7 +312,7 @@ def _usage_tokens(response: Any, anthropic: bool) -> tuple[int, int]:
 
 
 def _estimate_cost(model: str, provider: str, input_tokens: int, output_tokens: int) -> float | None:
-    if provider == "minimax" or provider.startswith("local"):
+    if provider in {"codex", "minimax"} or provider.startswith("local"):
         return 0.0
     from src.agent.cost_tracker import PRICING
 
@@ -365,6 +365,7 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
     provider = LLMProvider(provider=provider_name, model=model)
     max_tokens = min(16384, max(4096, 1024 + len(findings) * 320))
     is_anthropic = provider.provider == "anthropic"
+    is_codex = provider.provider == "codex"
     input_tokens = output_tokens = 0
     finish_reason = None
     assessments = None
@@ -378,7 +379,19 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
                 "and verify that every finding appears exactly once before responding."
             )
 
-        if is_anthropic:
+        if is_codex:
+            content = provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                tools=[],
+                max_turns=1,
+                max_tokens=max_tokens,
+            ).strip()
+            input_tokens += int(provider.last_usage.get("input_tokens") or 0)
+            output_tokens += int(provider.last_usage.get("output_tokens") or 0)
+            finish_reason = "completed"
+            response = None
+        elif is_anthropic:
             response = provider.client.messages.create(
                 model=provider.model,
                 system=system_prompt,
@@ -409,9 +422,10 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
             content = response.choices[0].message.content.strip()
             finish_reason = getattr(response.choices[0], "finish_reason", None)
 
-        used_input, used_output = _usage_tokens(response, is_anthropic)
-        input_tokens += used_input
-        output_tokens += used_output
+        if not is_codex:
+            used_input, used_output = _usage_tokens(response, is_anthropic)
+            input_tokens += used_input
+            output_tokens += used_output
         try:
             assessments = _validate_assessments(_extract_json(content), gt, findings)
             break

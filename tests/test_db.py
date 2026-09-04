@@ -163,6 +163,11 @@ def test_public_model_api_migrates_legacy_db_and_keeps_moe_router(
     from src.api.routes import models
 
     monkeypatch.setattr(models, "_load_pricing", lambda: {})
+    monkeypatch.setattr(models, "_load_openrouter_catalog", lambda **_kwargs: [])
+    monkeypatch.setattr(models, "get_codex_catalog", lambda **_kwargs: {
+        "available": False, "account_type": None, "plan_type": None,
+        "models": [], "error": "not logged in", "auth_command": "codex login",
+    })
     response = models.list_models()
 
     router = next(model for model in response["models"] if model["id"] == "lance-moe")

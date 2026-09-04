@@ -7,6 +7,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT / ".env")
 
 from src.api.routes import (
     models,
@@ -18,7 +22,6 @@ from src.api.routes import (
     topology,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
 STATIC_DIR    = ROOT / "src" / "static"
 STATIC_V2_DIR = ROOT / "src" / "static_v2"
 

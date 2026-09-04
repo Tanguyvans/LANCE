@@ -153,3 +153,14 @@ class TestCostTracker:
 
         assert summary["cost_is_estimate"] is True
         assert summary["phases"][0]["pricing_source"] == "default_estimate"
+
+    def test_codex_subscription_has_zero_metered_cost(self):
+        tracker = CostTracker(model="gpt-5.6-sol", provider="codex")
+        tracker.start_phase("phase")
+        tracker.record_turn(1_000_000, 500_000)
+        tracker.end_phase()
+
+        summary = tracker.summary()
+        assert summary["total_cost_usd"] == 0.0
+        assert summary["cost_is_estimate"] is False
+        assert summary["phases"][0]["pricing_source"] == "subscription"

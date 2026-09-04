@@ -524,6 +524,33 @@ button:disabled { opacity: .35; cursor: default; }
   border: 1px dashed var(--border);
 }
 
+.model-picker-tools {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.model-picker-tools input {
+  min-width: 0;
+  flex: 1;
+}
+
+.model-picker-tools button {
+  width: 34px;
+  flex: 0 0 34px;
+}
+
+.model-provider-status {
+  min-height: 30px;
+  margin: 5px 0 10px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.model-provider-status .provider-ok { color: var(--success, #3fb950); }
+.model-provider-status .provider-warn { color: var(--sev-medium-fg, #d29922); }
+
 .multi-model-hint {
   font-size: 10px;
   color: var(--muted);
