@@ -32,9 +32,20 @@ deployed via the Ansible playbooks — see [`benchmarks/README.md`](benchmarks/R
   current tool-capable text models and prices from OpenRouter, caches them for one
   hour, and provides a manual refresh button.
 
+On the provisioned headless `nato-master`, Codex CLI is installed automatically
+by the deployment playbook and update workflow. Authenticate the root-owned
+service session once, then restart the dashboard:
+
+```bash
+ssh root@<MASTER_TAILSCALE_IP>
+/root/.local/bin/codex login --device-auth
+systemctl restart nato-fastapi
+```
+
 The Docker image does not include a Codex login session. Use OpenRouter in the
 container, or provide both a Codex CLI installation and its authenticated state to
-the container explicitly.
+the container explicitly. For a non-Docker service whose `PATH` is restricted,
+set `LANCE_CODEX_CLI_PATH` to the absolute Codex executable path.
 
 ## Local HMoE and OpenWebUI
 

@@ -11,6 +11,7 @@ from collections import deque
 from collections.abc import Callable
 import json
 import logging
+import os
 from pathlib import Path
 import queue
 import shutil
@@ -26,6 +27,40 @@ _catalog_cache: tuple[float, dict[str, Any]] | None = None
 _catalog_lock = threading.Lock()
 
 
+def _resolve_codex_command() -> str | None:
+    """Locate Codex for both interactive shells and restricted web services."""
+    configured = os.environ.get("LANCE_CODEX_CLI_PATH")
+    if configured:
+        candidate = Path(configured).expanduser()
+        if candidate.is_absolute() and candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        return None
+
+    discovered = shutil.which("codex")
+    if discovered:
+        return discovered
+
+    # GUI launchers and user services often omit ~/.local/bin from PATH even
+    # though that is where the official installer and npm user installs live.
+    for candidate in (
+        Path.home() / ".local" / "bin" / "codex",
+        Path("/opt/homebrew/bin/codex"),
+        Path("/usr/local/bin/codex"),
+    ):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def _codex_missing_message() -> str:
+    if os.environ.get("LANCE_CODEX_CLI_PATH"):
+        return (
+            "LANCE_CODEX_CLI_PATH ne pointe pas vers un exécutable Codex valide. "
+            "Corrigez ce chemin puis relancez le service."
+        )
+    return "Codex CLI n'est pas installé. Installez-le puis lancez `codex login`."
+
+
 class CodexAppServerError(RuntimeError):
     """Raised when the local Codex app-server cannot satisfy a request."""
 
@@ -34,11 +69,9 @@ class _CodexProcess:
     """Small synchronous JSON-RPC client for ``codex app-server --stdio``."""
 
     def __init__(self) -> None:
-        command = shutil.which("codex")
+        command = _resolve_codex_command()
         if command is None:
-            raise CodexAppServerError(
-                "La commande `codex` est introuvable. Installez Codex CLI puis lancez `codex login`."
-            )
+            raise CodexAppServerError(_codex_missing_message())
         try:
             self._process = subprocess.Popen(
                 [command, "app-server", "--stdio"],
@@ -184,10 +217,8 @@ def _unavailable_catalog(message: str) -> dict[str, Any]:
 
 
 def _read_codex_catalog() -> dict[str, Any]:
-    if shutil.which("codex") is None:
-        return _unavailable_catalog(
-            "Codex CLI n'est pas installé. Installez-le puis lancez `codex login`."
-        )
+    if _resolve_codex_command() is None:
+        return _unavailable_catalog(_codex_missing_message())
     try:
         with _CodexProcess() as session:
             account_result = session.request(

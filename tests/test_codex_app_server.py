@@ -7,6 +7,23 @@ import json
 from src.agent import codex_app_server as codex
 
 
+def test_resolve_codex_command_from_explicit_service_path(tmp_path, monkeypatch):
+    executable = tmp_path / "codex"
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.setenv("LANCE_CODEX_CLI_PATH", str(executable))
+    monkeypatch.setattr(codex.shutil, "which", lambda _name: None)
+
+    assert codex._resolve_codex_command() == str(executable)
+
+
+def test_invalid_explicit_codex_path_does_not_fall_back(monkeypatch):
+    monkeypatch.setenv("LANCE_CODEX_CLI_PATH", "relative/codex")
+    monkeypatch.setattr(codex.shutil, "which", lambda _name: "/unexpected/codex")
+
+    assert codex._resolve_codex_command() is None
+
+
 def test_catalog_uses_chatgpt_plan_without_exposing_email(monkeypatch):
     class FakeSession:
         def __enter__(self):

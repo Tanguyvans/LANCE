@@ -181,6 +181,18 @@
           - mariadb-client        # exploitation Phase 4 : MySQL query sans password
         state: present
 
+    # ── Codex subscription provider ─────────────────────────
+    - name: Download the official Codex CLI installer
+      ansible.builtin.get_url:
+        url: https://chatgpt.com/codex/install.sh
+        dest: /tmp/openai-codex-install.sh
+        mode: "0755"
+
+    - name: Install Codex CLI
+      ansible.builtin.command: /tmp/openai-codex-install.sh
+      args:
+        creates: /root/.local/bin/codex
+
     # ── Firewall : protéger le réseau de management ───────────
     # eth0 (vmbr0 / 192.168.88.0/24) : uniquement trafic légitime autorisé
     #   → SSH vers Proxmox, API Proxmox (8006), DNS, HTTP/S (apt, git), Tailscale
@@ -453,6 +465,7 @@
           User=root
           Environment=LANG=C.UTF-8
           Environment=LC_ALL=C.UTF-8
+          Environment=LANCE_CODEX_CLI_PATH=/root/.local/bin/codex
           WorkingDirectory={{ repo_dest }}
           EnvironmentFile={{ env_file }}
           ExecStart={{ repo_dest }}/venv/bin/uvicorn src.api.main:app \

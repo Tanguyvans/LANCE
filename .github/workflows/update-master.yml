@@ -23,6 +23,15 @@ jobs:
       - name: Pull latest code
         run: git -C /opt/nato-smartcity-iot pull https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Tanguyvans/LANCE.git main
 
+      - name: Install Codex CLI when missing
+        shell: bash
+        run: |
+          set -o pipefail
+          if [[ ! -x /root/.local/bin/codex ]]; then
+            curl -fsSL https://chatgpt.com/codex/install.sh | sh
+          fi
+          /root/.local/bin/codex --version
+
       - name: Install Python dependencies
         run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
 
