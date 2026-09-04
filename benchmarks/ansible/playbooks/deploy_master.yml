@@ -485,6 +485,25 @@
         state: restarted
         daemon_reload: true
 
+    - name: Warm benchmark score cache
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --fail
+          - --silent
+          - --show-error
+          - --retry
+          - "12"
+          - --retry-connrefused
+          - --retry-delay
+          - "1"
+          - --max-time
+          - "180"
+          - --output
+          - /dev/null
+          - "http://127.0.0.1:{{ app_port }}/api/runs/benchmark"
+      changed_when: false
+
     # ── GitHub Actions self-hosted runner ────────────────────
     - name: Create runner directory
       ansible.builtin.file:

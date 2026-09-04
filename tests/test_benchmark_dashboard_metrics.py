@@ -96,12 +96,26 @@ def test_benchmark_dashboard_renders_strict_v3_metric_groups():
     assert "barMetric != null ? pct(barMetric)" in javascript
 
 
-def test_benchmark_api_recomputes_public_scores_with_strict_v3():
+def test_benchmark_dashboard_requests_compact_paginated_results():
+    html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="bm-prev"' in html
+    assert 'id="bm-next"' in html
+    assert 'id="bm-page-info"' in html
+    assert "const BM_PAGE_SIZE = 50" in javascript
+    assert "compact: 'true'" in javascript
+    assert "offset: String(_bmOffset)" in javascript
+    assert "Array.isArray(page.items)" in javascript
+
+
+def test_benchmark_api_evaluates_cache_misses_with_strict_v3():
     source = (ROOT / "src" / "api" / "routes" / "runs.py").read_text(
         encoding="utf-8"
     )
 
-    benchmark_route = source[source.index('def get_benchmark():') : source.index(
-        '@router.get("/{run_id}")'
-    )]
-    assert 'evaluate(d, gt_path, policy="strict-v3")' in benchmark_route
+    cached_evaluator = source[
+        source.index("def _evaluate_cached(") : source.index("def _compact_score(")
+    ]
+    assert 'evaluate(run_dir, ground_truth, policy="strict-v3")' in cached_evaluator
+    assert "_benchmark_fingerprint" in cached_evaluator

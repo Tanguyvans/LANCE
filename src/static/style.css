@@ -1038,6 +1038,8 @@ button:disabled { opacity: .35; cursor: default; }
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 #bm-controls select {
@@ -1057,6 +1059,40 @@ button:disabled { opacity: .35; cursor: default; }
   font-size: 14px;
 }
 #bm-refresh:hover { border-color: var(--accent); color: var(--accent); }
+
+#bm-pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#bm-pagination button {
+  width: 30px;
+  min-height: 30px;
+  padding: 3px 8px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+#bm-pagination button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#bm-pagination button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: .55;
+}
+
+#bm-page-info {
+  min-width: 92px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
 
 #bm-body {
   flex: 1;

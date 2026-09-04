@@ -1,4 +1,5 @@
 """Tests for src/api/routes/runs.py helper functions."""
+from dataclasses import dataclass
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -312,3 +313,88 @@ class TestRunEndpoints:
 
         assert row["score"] is None
         assert row["score_error"] == "Evaluation failed: broken helper"
+
+    def test_paginated_benchmark_only_scores_requested_page(self, tmp_path, monkeypatch):
+        for index in range(3):
+            run_dir = tmp_path / f"run-{index}"
+            run_dir.mkdir()
+            (run_dir / "scenario_meta.json").write_text(json.dumps({
+                "scenario_id": "1",
+                "split": "dev-public",
+                "model": f"model-{index}",
+            }))
+            (run_dir / "03_vuln_analysis.json").write_text(
+                json.dumps({"vulnerabilities": []})
+            )
+        ground_truth = tmp_path / "ground_truth.yaml"
+        ground_truth.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+        evaluated = []
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(runs, "resolve_ground_truth_path", lambda _: ground_truth)
+        monkeypatch.setattr(
+            runs,
+            "_evaluate_cached",
+            lambda run_dir, _ground_truth: evaluated.append(run_dir.name) or {
+                "recall": 1.0,
+                "evidence_claim_assessments": [{"large": "payload"}],
+            },
+        )
+
+        page = get_benchmark(limit=1, compact=True)
+
+        assert page["total"] == 3
+        assert page["limit"] == 1
+        assert len(page["items"]) == 1
+        assert evaluated == ["run-2"]
+        assert page["models"] == ["model-0", "model-1", "model-2"]
+        assert "evidence_claim_assessments" not in page["items"][0]["score"]
+
+    def test_benchmark_cache_reuses_and_invalidates_scores(self, tmp_path, monkeypatch):
+        run_dir = tmp_path / "run-1"
+        run_dir.mkdir()
+        findings = run_dir / "03_vuln_analysis.json"
+        findings.write_text(json.dumps({"vulnerabilities": []}))
+        ground_truth = tmp_path / "ground_truth.yaml"
+        ground_truth.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+
+        @dataclass
+        class FakeResult:
+            recall: float
+
+        calls = []
+        import src.benchmark.evaluator as evaluator
+        monkeypatch.setattr(
+            evaluator,
+            "evaluate",
+            lambda *_args, **_kwargs: calls.append(True) or FakeResult(recall=1.0),
+        )
+
+        first = runs._evaluate_cached(run_dir, ground_truth)
+        second = runs._evaluate_cached(run_dir, ground_truth)
+        findings.write_text(json.dumps({"vulnerabilities": [], "changed": True}))
+        third = runs._evaluate_cached(run_dir, ground_truth)
+
+        assert first == second == third == {"recall": 1.0}
+        assert len(calls) == 2
+
+    def test_compact_score_keeps_only_table_match_fields(self):
+        compact = runs._compact_score({
+            "recall": 0.5,
+            "evidence_claim_assessments": [{"large": "payload"}],
+            "matches": [{
+                "matched": True,
+                "match_method": "cve",
+                "gt_severity": "high",
+                "full_finding": {"secret": "not needed by table"},
+            }],
+        })
+
+        assert compact == {
+            "recall": 0.5,
+            "matches": [{
+                "matched": True,
+                "match_method": "cve",
+                "gt_severity": "high",
+            }],
+        }

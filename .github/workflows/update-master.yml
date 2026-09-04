@@ -41,3 +41,10 @@ jobs:
 
       - name: Restart FastAPI
         run: systemctl restart nato-fastapi
+
+      - name: Warm benchmark score cache
+        run: >-
+          curl --fail --silent --show-error
+          --retry 12 --retry-connrefused --retry-delay 1
+          --max-time 180 --output /dev/null
+          http://127.0.0.1:8501/api/runs/benchmark

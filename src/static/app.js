@@ -797,9 +797,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Benchmark controls
-  document.getElementById('bm-refresh').addEventListener('click', loadBenchmark);
-  document.getElementById('bm-filter-scenario').addEventListener('change', renderBenchmarkTable);
-  document.getElementById('bm-filter-model').addEventListener('change', renderBenchmarkTable);
+  document.getElementById('bm-refresh').addEventListener('click', () => loadBenchmark());
+  document.getElementById('bm-filter-scenario').addEventListener('change', () => {
+    _bmOffset = 0;
+    loadBenchmark();
+  });
+  document.getElementById('bm-filter-model').addEventListener('change', () => {
+    _bmOffset = 0;
+    loadBenchmark();
+  });
+  document.getElementById('bm-prev').addEventListener('click', () => {
+    if (_bmOffset <= 0) return;
+    _bmOffset = Math.max(0, _bmOffset - BM_PAGE_SIZE);
+    loadBenchmark();
+  });
+  document.getElementById('bm-next').addEventListener('click', () => {
+    if (_bmOffset + BM_PAGE_SIZE >= _bmTotal) return;
+    _bmOffset += BM_PAGE_SIZE;
+    loadBenchmark();
+  });
 
   // Phase pills — naviguer vers le livrable si un run est sélectionné
   const PHASE_FILES = {
@@ -2431,6 +2447,10 @@ function _renderInline(text) {
 // ── View switching (Dashboard / Benchmark / Scenario Lab) ──────────────────
 
 let _bmData = null; // cached benchmark data
+const BM_PAGE_SIZE = 50;
+let _bmOffset = 0;
+let _bmTotal = 0;
+let _bmRequestId = 0;
 const VIEW_STORAGE_KEY = 'lance.activeView';
 const VALID_VIEWS = new Set(['main', 'benchmark', 'scenario-lab']);
 
@@ -2474,31 +2494,72 @@ function switchView(view) {
 // ── Benchmark ──────────────────────────────────────────────────────────────
 
 async function loadBenchmark() {
-  document.getElementById('bm-table').hidden = true;
-  document.getElementById('bm-empty').hidden = true;
-  document.getElementById('bm-body').insertAdjacentHTML('afterbegin',
+  const requestId = ++_bmRequestId;
+  const table = document.getElementById('bm-table');
+  const empty = document.getElementById('bm-empty');
+  const body = document.getElementById('bm-body');
+  const refresh = document.getElementById('bm-refresh');
+  document.getElementById('bm-loading')?.remove();
+  table.hidden = true;
+  empty.hidden = true;
+  body.insertAdjacentHTML('afterbegin',
     '<div id="bm-loading" style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Chargement…</div>');
+  refresh.disabled = true;
+  updateBenchmarkPagination(true);
 
-  _bmData = await fetchJSON('/api/runs/benchmark');
+  const scenarioFilter = document.getElementById('bm-filter-scenario').value;
+  const modelFilter = document.getElementById('bm-filter-model').value;
+  const query = new URLSearchParams({
+    compact: 'true',
+    limit: String(BM_PAGE_SIZE),
+    offset: String(_bmOffset),
+  });
+  if (scenarioFilter) query.set('scenario', scenarioFilter);
+  if (modelFilter) query.set('model', modelFilter);
 
-  const loading = document.getElementById('bm-loading');
-  if (loading) loading.remove();
+  const page = await fetchJSON(`/api/runs/benchmark?${query}`);
+  if (requestId !== _bmRequestId) return;
 
-  if (!_bmData || !_bmData.length) {
-    document.getElementById('bm-empty').hidden = false;
+  document.getElementById('bm-loading')?.remove();
+  refresh.disabled = false;
+  if (!page || !Array.isArray(page.items)) {
+    _bmData = null;
+    _bmTotal = 0;
+    empty.innerHTML = 'Impossible de charger les benchmarks.<br>Réessayez dans quelques instants.';
+    empty.hidden = false;
+    updateBenchmarkPagination(false);
     return;
   }
-  document.getElementById('bm-table').hidden = false;
 
-  // Peupler dynamiquement le filtre modèle avec les valeurs présentes
+  _bmData = page.items;
+  _bmTotal = Number(page.total) || 0;
+  empty.innerHTML = 'Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.';
+
+  // Le serveur renvoie tous les modèles présents, indépendamment de la page.
   const modelSel = document.getElementById('bm-filter-model');
   const prevModel = modelSel.value;
-  const models = [...new Set(_bmData.map(r => r.model).filter(Boolean))].sort();
+  const models = Array.isArray(page.models) ? page.models : [];
   modelSel.innerHTML = '<option value="">Tous les modèles</option>' +
     models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m.split('/').pop())}</option>`).join('');
   if (models.includes(prevModel)) modelSel.value = prevModel;
 
+  updateBenchmarkPagination(false);
+  if (!_bmData.length) {
+    empty.hidden = false;
+    return;
+  }
+  table.hidden = false;
   renderBenchmarkTable();
+}
+
+function updateBenchmarkPagination(loading) {
+  const start = _bmTotal ? _bmOffset + 1 : 0;
+  const end = Math.min(_bmOffset + BM_PAGE_SIZE, _bmTotal);
+  document.getElementById('bm-page-info').textContent = loading
+    ? 'Chargement…'
+    : `${start}–${end} sur ${_bmTotal}`;
+  document.getElementById('bm-prev').disabled = loading || _bmOffset <= 0;
+  document.getElementById('bm-next').disabled = loading || end >= _bmTotal;
 }
 
 function renderBenchmarkTable() {

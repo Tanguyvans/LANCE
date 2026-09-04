@@ -1,6 +1,7 @@
 """Runs route — list, read, and download past pipeline runs."""
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -9,11 +10,11 @@ import re
 import zipfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -24,6 +25,106 @@ log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = ROOT / "output" / "agent"
+
+_BENCHMARK_CACHE_SCHEMA = 1
+_BENCHMARK_CACHE_INPUTS = (
+    "scenario_meta.json",
+    "run_meta.json",
+    "03_phase3_status.json",
+    "03_vuln_analysis.json",
+    "04_exploitation.json",
+    "05_intrusion.json",
+    "05_intrusion_context.json",
+    "cost_summary.json",
+    "tool_calls.jsonl",
+    "benchmark_llm.json",
+)
+_COMPACT_SCORE_FIELDS = frozenset({
+    "status",
+    "metrics",
+    "scoring_policy",
+    "evidence_contract_compatible",
+    "metrics_compatibility_reason",
+    "is_zero_gt",
+    "recall",
+    "precision",
+    "f1_score",
+    "detection_f1",
+    "credited_f1",
+    "severity_adjusted_f1",
+    "quality_adjusted_f1",
+    "specificity",
+    "weighted_score",
+    "max_weighted_score",
+    "score_pct",
+    "scenario_score_pct",
+    "false_positives",
+    "hallucination_rate",
+    "negative_control_violations",
+    "negative_controls_declared",
+    "negative_controls_unevaluable",
+    "evidence_metrics_available",
+    "evidence_precision",
+    "evidence_recall",
+    "evidence_f1",
+    "traceable_evidence_coverage",
+    "evidence_faithfulness",
+    "evidence_contradiction_rate",
+    "evidence_claims_supported",
+    "evidence_claims_total",
+    "exploitation_coverage",
+    "phase4_candidates",
+    "phase4_conclusive",
+    "phase4_completion_rate",
+    "verified_f1",
+    "tp_exploited",
+    "true_positives",
+    "total_attack_paths",
+    "attack_paths_detected",
+    "quality_path_coverage",
+    "verified_path_coverage",
+    "mhr_1",
+    "mhr_2",
+    "mhr_3",
+    "mhr_1_credited",
+    "mhr_2_credited",
+    "mhr_3_credited",
+    "mhr_1_verified",
+    "mhr_2_verified",
+    "mhr_3_verified",
+    "phase5_metrics_available",
+    "phase5_evidence_available",
+    "phase5_targets_total",
+    "phase5_targets_attempted",
+    "phase5_targets_compromised",
+    "phase5_target_attempt_coverage",
+    "phase5_target_coverage",
+    "phase5_pivot_attempts",
+    "phase5_pivot_successes",
+    "phase5_pivot_success_rate",
+    "phase5_expected_hops",
+    "phase5_verified_hops",
+    "phase5_hop_coverage",
+    "phase5_chain_faithfulness",
+    "phase5_compromise_rate",
+    "phase5_target_coverage_by_depth",
+    "cost_per_tp",
+    "cost_per_expected_vulnerability",
+    "turns_per_tp",
+    "total_tokens",
+    "total_tool_calls",
+    "cost_is_estimate",
+    "process_metrics_available",
+    "validation_successes",
+    "validation_attempts",
+    "validation_success_rate",
+    "format_fallbacks",
+    "format_attempts",
+    "format_fallback_rate",
+    "total_tool_errors",
+    "tool_error_rate",
+    "llm_judge_data",
+})
 
 _PRIVATE_RUN_FILES = {
     "ground_truth.yaml",
@@ -249,6 +350,124 @@ def _extract_execution_profile(run_dir: Path) -> str | None:
     return None
 
 
+def _benchmark_cache_dir() -> Path:
+    """Keep trusted derived scores outside individual agent-controlled runs."""
+    return OUTPUT_DIR / ".benchmark-score-cache"
+
+
+def _benchmark_fingerprint(run_dir: Path, ground_truth: Path) -> str:
+    """Fingerprint every input that can change a strict-v3 score.
+
+    Stat metadata keeps cache validation cheap. Evaluator source files are part
+    of the key so a deployment that changes scoring logic invalidates existing
+    entries automatically.
+    """
+    digest = hashlib.sha256()
+    digest.update(f"benchmark-cache-v{_BENCHMARK_CACHE_SCHEMA}\0strict-v3\0".encode())
+    paths = [run_dir / name for name in _BENCHMARK_CACHE_INPUTS]
+    paths.append(ground_truth)
+    paths.extend(sorted((ROOT / "src" / "benchmark").glob("*.py")))
+    for path in paths:
+        digest.update(str(path).encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        try:
+            stat = path.lstat()
+        except OSError:
+            digest.update(b"missing\0")
+            continue
+        digest.update(
+            f"{stat.st_mode}:{stat.st_size}:{stat.st_mtime_ns}".encode("ascii")
+        )
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _benchmark_cache_path(run_dir: Path) -> Path:
+    cache_name = hashlib.sha256(run_dir.name.encode("utf-8")).hexdigest()
+    return _benchmark_cache_dir() / f"{cache_name}.json"
+
+
+def _read_benchmark_cache(run_dir: Path, fingerprint: str) -> dict[str, Any] | None:
+    cache_dir = _benchmark_cache_dir()
+    cache_path = _benchmark_cache_path(run_dir)
+    if cache_dir.is_symlink() or cache_path.is_symlink() or not cache_path.is_file():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("fingerprint") != fingerprint:
+        return None
+    score = payload.get("score")
+    return score if isinstance(score, dict) else None
+
+
+def _write_benchmark_cache(
+    run_dir: Path,
+    fingerprint: str,
+    score: dict[str, Any],
+) -> None:
+    cache_dir = _benchmark_cache_dir()
+    if cache_dir.is_symlink():
+        return
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if cache_dir.is_symlink() or not cache_dir.is_dir():
+            return
+        cache_path = _benchmark_cache_path(run_dir)
+        tmp_path = cache_dir / f".{cache_path.name}.{uuid4().hex}.tmp"
+        try:
+            tmp_path.write_text(
+                json.dumps({"fingerprint": fingerprint, "score": score}),
+                encoding="utf-8",
+            )
+            tmp_path.chmod(0o600)
+            tmp_path.replace(cache_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+    except (OSError, TypeError, ValueError):
+        log.warning("Could not persist benchmark cache for %s", run_dir.name)
+
+
+def _evaluate_cached(run_dir: Path, ground_truth: Path) -> dict[str, Any]:
+    fingerprint = _benchmark_fingerprint(run_dir, ground_truth)
+    cached = _read_benchmark_cache(run_dir, fingerprint)
+    if cached is not None:
+        return cached
+
+    from src.benchmark.evaluator import evaluate
+
+    score = asdict(evaluate(run_dir, ground_truth, policy="strict-v3"))
+    llm_file = run_dir / "benchmark_llm.json"
+    if llm_file.exists() and not llm_file.is_symlink():
+        try:
+            llm_data = json.loads(llm_file.read_text(encoding="utf-8"))
+            if isinstance(llm_data, dict):
+                score["llm_judge_data"] = llm_data
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            pass
+    _write_benchmark_cache(run_dir, fingerprint, score)
+    return score
+
+
+def _compact_score(score: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return only the fields rendered by the benchmark table."""
+    if score is None:
+        return None
+    compact = {key: score[key] for key in sorted(_COMPACT_SCORE_FIELDS) if key in score}
+    matches = score.get("matches")
+    if isinstance(matches, list):
+        compact["matches"] = [
+            {
+                key: match.get(key)
+                for key in ("matched", "match_method", "gt_severity")
+            }
+            for match in matches
+            if isinstance(match, dict)
+        ]
+    return compact
+
+
 def _detect_scenario(run_dir: Path) -> str | None:
     """Detect scenario ID from scenario_meta.json if present."""
     try:
@@ -304,72 +523,120 @@ def list_runs():
     return runs
 
 
+def _benchmark_candidate(run_dir: Path) -> dict[str, Any] | None:
+    if not _is_safe_run_dir(run_dir):
+        return None
+    try:
+        metadata = _read_scenario_meta(run_dir)
+    except Exception:
+        return None
+    if metadata is None or metadata.get("scenario_id") is None:
+        return None
+    return {
+        "run_dir": run_dir,
+        "scenario": f"S{_normalized_scenario_id(metadata['scenario_id'])}",
+        "model": metadata.get("model"),
+        "sealed": _is_sealed_run(run_dir),
+    }
+
+
+def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, Any]:
+    run_dir = candidate["run_dir"]
+    scenario = candidate["scenario"]
+    sealed = candidate["sealed"]
+    entry = {
+        "id": run_dir.name,
+        "scenario": scenario,
+        "cost": None if sealed else _extract_cost(run_dir),
+        "status": _run_status(run_dir),
+        "model": candidate["model"],
+        "score": None,
+        "score_error": None,
+        "commit": _extract_commit(run_dir),
+        "execution_profile": _extract_execution_profile(run_dir),
+        "sealed": sealed,
+    }
+
+    vuln_file = run_dir / "03_vuln_analysis.json"
+    scenario_id = scenario.removeprefix("S")
+    if sealed:
+        try:
+            entry["score"] = _load_sealed_summary(run_dir, scenario_id)
+        except Exception as exc:
+            log.warning("Sealed evaluation loading failed for %s: %s", run_dir.name, exc)
+            entry["score_error"] = f"Evaluation failed: {exc}"
+    elif vuln_file.exists():
+        ground_truth = resolve_ground_truth_path(scenario_id)
+        if ground_truth.exists():
+            try:
+                entry["score"] = _evaluate_cached(run_dir, ground_truth)
+            except Exception as exc:
+                log.warning("Benchmark evaluation failed for %s: %s", run_dir.name, exc)
+                entry["score_error"] = f"Evaluation failed: {exc}"
+
+    if compact:
+        entry["score"] = _compact_score(entry["score"])
+    return entry
+
+
 @router.get("/benchmark")
-def get_benchmark():
-    """Return all scenario runs with their benchmark scores."""
+def get_benchmark(
+    limit: Annotated[int | None, Query(ge=1, le=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    compact: Annotated[bool, Query()] = False,
+    scenario: Annotated[str | None, Query(max_length=128)] = None,
+    model: Annotated[str | None, Query(max_length=256)] = None,
+):
+    """Return benchmark scores, optionally filtered and paginated.
+
+    Calls without query parameters keep the historical list response. The SPA
+    requests compact pages so it never evaluates, transfers, or renders the
+    complete benchmark history at once.
+    """
     if not OUTPUT_DIR.exists():
-        return []
-
-    results = []
-    for d in sorted(OUTPUT_DIR.iterdir(), reverse=True):
-        if not _is_safe_run_dir(d):
-            continue
-        scenario = _detect_scenario(d)
-        if not scenario:
-            continue  # Only include scenario runs in benchmark view
-        sealed = _is_sealed_run(d)
-
-        entry = {
-            "id": d.name,
-            "scenario": scenario,
-            "cost": None if sealed else _extract_cost(d),
-            "status": _run_status(d),
-            "model": None,
-            "score": None,
-            "score_error": None,
-            "commit": _extract_commit(d),
-            "execution_profile": _extract_execution_profile(d),
-            "sealed": sealed,
+        if limit is None and not compact and offset == 0 and not scenario and not model:
+            return []
+        return {
+            "items": [],
+            "total": 0,
+            "limit": limit or 50,
+            "offset": offset,
+            "models": [],
+            "scenarios": [],
         }
 
-        try:
-            meta = _read_scenario_meta(d)
-            if meta is not None:
-                entry["model"] = meta.get("model")
-        except Exception:
-            pass
+    candidates = [
+        candidate
+        for run_dir in sorted(OUTPUT_DIR.iterdir(), reverse=True)
+        if (candidate := _benchmark_candidate(run_dir)) is not None
+    ]
+    all_models = sorted({
+        candidate["model"]
+        for candidate in candidates
+        if isinstance(candidate["model"], str) and candidate["model"]
+    })
+    all_scenarios = sorted({candidate["scenario"] for candidate in candidates})
 
-        vuln_file = d / "03_vuln_analysis.json"
-        sid = scenario.removeprefix("S")
-        if sealed:
-            try:
-                entry["score"] = _load_sealed_summary(d, sid)
-            except Exception as exc:
-                log.warning("Sealed evaluation loading failed for %s: %s", d.name, exc)
-                entry["score_error"] = f"Evaluation failed: {exc}"
-        elif vuln_file.exists():
-            gt_path = resolve_ground_truth_path(sid)
-            if gt_path.exists():
-                try:
-                    from src.benchmark.evaluator import evaluate
-                    result = evaluate(d, gt_path, policy="strict-v3")
-                    score_dict = asdict(result)
-                    
-                    llm_file = d / "benchmark_llm.json"
-                    if llm_file.exists():
-                        try:
-                            score_dict["llm_judge_data"] = json.loads(llm_file.read_text())
-                        except json.JSONDecodeError:
-                            pass
-                    
-                    entry["score"] = score_dict
-                except Exception as exc:
-                    log.warning("Benchmark evaluation failed for %s: %s", d.name, exc)
-                    entry["score_error"] = f"Evaluation failed: {exc}"
+    filtered = [
+        candidate
+        for candidate in candidates
+        if (not scenario or candidate["scenario"] == scenario)
+        and (not model or candidate["model"] == model)
+    ]
+    paginated = limit is not None or compact or offset > 0 or bool(scenario) or bool(model)
+    if not paginated:
+        return [_benchmark_entry(candidate, compact=False) for candidate in filtered]
 
-        results.append(entry)
-
-    return results
+    page_limit = limit or 50
+    page = filtered[offset:offset + page_limit]
+    return {
+        "items": [_benchmark_entry(candidate, compact=compact) for candidate in page],
+        "total": len(filtered),
+        "limit": page_limit,
+        "offset": offset,
+        "models": all_models,
+        "scenarios": all_scenarios,
+    }
 
 
 @router.get("/{run_id}")
