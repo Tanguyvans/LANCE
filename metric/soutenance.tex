@@ -1,0 +1,718 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{csquotes}
+\usepackage{graphicx}
+\usepackage{pgfplots}
+\usepackage{xcolor}
+\usepackage{tikz}
+
+\usetikzlibrary{arrows.meta,calc,fit,positioning}
+\pgfplotsset{compat=1.18}
+
+\definecolor{LanceNavy}{HTML}{123B5D}
+\definecolor{LanceBlue}{HTML}{1F6F9F}
+\definecolor{LanceCyan}{HTML}{1597A8}
+\definecolor{LanceGreen}{HTML}{2E7D5B}
+\definecolor{LanceOrange}{HTML}{D97721}
+\definecolor{LanceRed}{HTML}{B64045}
+\definecolor{LanceLight}{HTML}{F3F7FA}
+\definecolor{LanceInk}{HTML}{263746}
+
+\usetheme{default}
+\usefonttheme{professionalfonts}
+\setbeamertemplate{navigation symbols}{}
+\setbeamersize{text margin left=7mm,text margin right=7mm}
+
+\setbeamercolor{normal text}{fg=LanceInk,bg=white}
+\setbeamercolor{structure}{fg=LanceBlue}
+\setbeamercolor{frametitle}{fg=white,bg=LanceNavy}
+\setbeamercolor{block title}{fg=white,bg=LanceBlue}
+\setbeamercolor{block body}{fg=LanceInk,bg=LanceLight}
+\setbeamercolor{block title alerted}{fg=white,bg=LanceOrange}
+\setbeamercolor{block body alerted}{fg=LanceInk,bg=LanceOrange!10}
+\setbeamercolor{block title example}{fg=white,bg=LanceGreen}
+\setbeamercolor{block body example}{fg=LanceInk,bg=LanceGreen!9}
+\setbeamercolor{author in head/foot}{fg=white,bg=LanceNavy}
+\setbeamercolor{date in head/foot}{fg=white,bg=LanceBlue}
+
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamerfont{title}{series=\bfseries,size=\LARGE}
+\setbeamerfont{subtitle}{size=\large}
+\setbeamerfont{block title}{series=\bfseries}
+
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=\paperwidth,ht=3.0ex,dp=1.1ex,leftskip=7mm]{frametitle}
+    \usebeamerfont{frametitle}\insertframetitle
+  \end{beamercolorbox}
+}
+
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \hbox{%
+    \begin{beamercolorbox}[wd=.87\paperwidth,ht=2.7ex,dp=1.1ex,leftskip=7mm]{author in head/foot}
+      \scriptsize Léo Basin \hspace{0.7em}--\hspace{0.7em} LANCE
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.13\paperwidth,ht=2.7ex,dp=1.1ex,center]{date in head/foot}
+      \scriptsize\insertframenumber
+    \end{beamercolorbox}%
+  }
+}
+
+\newcommand{\reportlogo}[2][]{%
+  \IfFileExists{squelette-latex/figures/#2}{%
+    \includegraphics[#1]{squelette-latex/figures/#2}%
+  }{%
+    \includegraphics[#1]{metric/squelette-latex/figures/#2}%
+  }%
+}
+
+\newcommand{\keymessage}[1]{%
+  \begin{beamercolorbox}[rounded=true,sep=1.1ex,wd=\linewidth]{block body example}
+    \centering\bfseries #1
+  \end{beamercolorbox}
+}
+
+\tikzset{
+  >={Latex[length=2.2mm]},
+  flow/.style={->,semithick,draw=LanceInk!80},
+  dashedflow/.style={->,semithick,dashed,draw=LanceOrange},
+  box/.style={draw=LanceBlue,fill=LanceBlue!8,rounded corners=2pt,
+    align=center,minimum height=8mm,inner sep=3pt,font=\scriptsize},
+  greenbox/.style={draw=LanceGreen,fill=LanceGreen!9,rounded corners=2pt,
+    align=center,minimum height=8mm,inner sep=3pt,font=\scriptsize},
+  orangebox/.style={draw=LanceOrange,fill=LanceOrange!9,rounded corners=2pt,
+    align=center,minimum height=8mm,inner sep=3pt,font=\scriptsize},
+  phasebox/.style={draw=LanceCyan,fill=LanceCyan!9,rounded corners=2pt,
+    align=center,minimum height=8mm,minimum width=18mm,inner sep=2pt,
+    font=\scriptsize}
+}
+
+\title[HMoE et évaluation de LANCE]{Conception d'un HMoE et évaluation de LANCE}
+\subtitle{Un \emph{Heterogeneous Mixture of Experts} agentique pour l'audit IoT/OT}
+\author{Léo Basin}
+\institute{TELECOM Nancy \quad--\quad Université de Mons, service ILIA}
+\date{Soutenance de stage de 2\textsuperscript{e} année -- septembre 2026}
+
+\begin{document}
+
+% 0:30
+{
+  \setbeamercolor{background canvas}{bg=LanceNavy}
+  \begin{frame}[plain]
+    \color{white}
+    \begin{columns}[c,onlytextwidth]
+      \begin{column}{0.70\textwidth}
+        {\usebeamerfont{title}\inserttitle\par}
+        \vspace{0.4em}
+        {\usebeamerfont{subtitle}\color{white!82}\insertsubtitle\par}
+        \vspace{1.3em}
+        {\large\bfseries Léo Basin}\par
+        \vspace{0.25em}
+        TELECOM Nancy -- 2\textsuperscript{e} année\par
+        Université de Mons -- service ILIA\par
+        \vspace{0.9em}
+        {\small Maître de stage : M.~Saïd Mahmoudi\par
+        Tuteur académique : M.~Thibault Cholez}
+      \end{column}
+      \begin{column}{0.27\textwidth}
+        \centering
+        \colorbox{white}{\reportlogo[width=0.78\linewidth]{university-logo.pdf}}\par
+        \vspace{1em}
+        \colorbox{white}{\reportlogo[width=0.78\linewidth]{school-logo.pdf}}
+      \end{column}
+    \end{columns}
+    \vfill
+    {\small\color{white!70}\insertdate}
+  \end{frame}
+}
+
+\section{Contexte et problématique}
+
+% 1:00
+\begin{frame}{Contexte du stage et mission}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.47\textwidth}
+      \begin{block}{Cadre d'accueil}
+        \begin{description}
+          \item[Organisme] Université de Mons
+          \item[Service] ILIA, Faculté Polytechnique
+          \item[Domaine] IA, IoT, systèmes distribués et cybersécurité
+        \end{description}
+      \end{block}
+      \vspace{0.4em}
+      \begin{exampleblock}{LANCE}
+        Agent fondé sur un LLM pour conduire un audit réseau IoT/OT en six
+        phases, de l'analyse de la topologie au rapport final.
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \centering
+      \resizebox{\linewidth}{!}{%
+        \begin{tikzpicture}[node distance=6mm]
+          \node[orangebox,text width=28mm] (net) {Réseau cible\\IoT / OT};
+          \node[box,text width=30mm,right=8mm of net] (agent) {Agent LANCE\\planifier et agir};
+          \node[greenbox,text width=30mm,right=8mm of agent] (proof) {Artefacts et preuves\\évaluables};
+          \draw[flow] (net) -- (agent);
+          \draw[flow] (agent) -- (proof);
+        \end{tikzpicture}%
+      }
+      \vspace{1.2em}
+      \begin{alertblock}{Mission principale}
+        Spécialiser le modèle local selon les rôles de l'audit, l'intégrer au
+        pipeline, puis rendre son comportement mesurable dans des scénarios
+        reproductibles.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 1:00
+\begin{frame}{Problématique et motivations}
+  \begin{alertblock}{Question de stage}
+    \centering
+    \large Comment spécialiser un agent fondé sur un LLM local pour les
+    différentes étapes d'un audit IoT/OT, puis démontrer la qualité de son
+    comportement au moyen d'un protocole reproductible ?
+  \end{alertblock}
+
+  \vspace{0.6em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Rôles hétérogènes}
+        Reconnaître, analyser, exploiter et synthétiser n'imposent ni les mêmes
+        outils ni les mêmes contrats de sortie.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Sorties génératives}
+        Une réponse plausible ou syntaxiquement valide peut rester fausse ou
+        insuffisamment prouvée.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Exécution complexe}
+        Un échec peut venir du modèle, du contexte, d'un outil ou d'un contrat
+        ambigu : il faut pouvoir l'attribuer.
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \vfill
+  \keymessage{Dans ce travail, HMoE signifie \emph{Heterogeneous}, pas \emph{Hierarchical Mixture of Experts}.}
+\end{frame}
+
+\section{État de l'art et choix d'architecture}
+
+% 1:10
+\begin{frame}{État de l'art : trois stratégies de spécialisation}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.31\textwidth}
+      \begin{block}{Prompt seul}
+        \textbf{Atout :} aucune adaptation.\par
+        \vspace{0.35em}
+        \textbf{Limite :} contexte long et rôles moins stables.
+      \end{block}
+    \end{column}
+    \begin{column}{0.31\textwidth}
+      \begin{block}{Un modèle par rôle}
+        \textbf{Atout :} isolation forte.\par
+        \vspace{0.35em}
+        \textbf{Limite :} duplication des poids et du déploiement.
+      \end{block}
+    \end{column}
+    \begin{column}{0.34\textwidth}
+      \begin{exampleblock}{Choix retenu}
+        Une base quantifiée partagée et quatre adaptateurs QLoRA, sélectionnés
+        par un routeur de phase.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.7em}
+  \begin{description}
+    \item[QLoRA] Les poids quantifiés restent gelés ; seules des corrections de
+      faible rang sont entraînées \cite{dettmers2023qlora}.
+    \item[MoE neuronal] Une porte apprise route des jetons entre sous-réseaux
+      \cite{shazeer2017moe}.
+    \item[HMoE de LANCE] Le routeur déterministe choisit un adaptateur pour une
+      requête complète : l'hétérogénéité porte sur les rôles.
+  \end{description}
+\end{frame}
+
+% 1:10
+\begin{frame}{LANCE : séparer génération, exécution et évaluation}
+  \centering
+  \resizebox{0.98\linewidth}{!}{%
+    \begin{tikzpicture}[node distance=5mm]
+      \node[orangebox,text width=24mm] (catalog) {Scénarios\\+ vérité terrain};
+      \node[orangebox,text width=24mm,right=9mm of catalog] (deploy) {Ansible / Proxmox\\déploiement};
+      \node[orangebox,text width=24mm,right=9mm of deploy] (target) {Réseau cible\\IoT / OT};
+      \draw[flow] (catalog) -- (deploy);
+      \draw[flow] (deploy) -- (target);
+
+      \node[box,text width=20mm,below=12mm of catalog] (api) {Interface\\+ API};
+      \node[phasebox,right=6mm of api] (p1) {1\\Graphe};
+      \node[phasebox,right=3mm of p1] (p2) {2\\Recon};
+      \node[phasebox,right=3mm of p2] (p3) {3\\Vuln.};
+      \node[phasebox,right=3mm of p3] (p4) {4\\Vérif.};
+      \node[phasebox,right=3mm of p4] (p5) {5\\Intrusion};
+      \node[phasebox,right=3mm of p5] (p6) {6\\Rapport};
+      \draw[flow] (api) -- (p1);
+      \draw[flow] (p1) -- (p2);
+      \draw[flow] (p2) -- (p3);
+      \draw[flow] (p3) -- (p4);
+      \draw[flow] (p4) -- (p5);
+      \draw[flow] (p5) -- (p6);
+
+      \node[greenbox,text width=25mm,below=11mm of p2] (hmoe) {HMoE local\\ou API distante};
+      \node[greenbox,text width=25mm,below=11mm of p4] (tools) {Registre d'outils\\actions bornées};
+      \node[greenbox,text width=25mm,below=11mm of p6] (artifacts) {Artefacts\\et traces};
+      \draw[dashedflow] (hmoe) -- (p2);
+      \draw[dashedflow] (tools) -- (p4);
+      \draw[flow] (p6) -- (artifacts);
+
+      \node[box,text width=24mm,right=9mm of artifacts] (eval) {Évaluateur\\politique strict-v3};
+      \node[box,text width=22mm,right=9mm of eval] (scores) {Scores\\et diagnostics};
+      \draw[flow] (artifacts) -- (eval);
+      \draw[flow] (eval) -- (scores);
+      \draw[dashedflow] (catalog.south) |- (eval.north);
+      \draw[flow] (tools.east) -| (target.south);
+    \end{tikzpicture}%
+  }
+
+  \vspace{0.8em}
+  \keymessage{Le modèle propose ; le pipeline autorise et exécute ; l'évaluateur mesure sans révéler la vérité terrain à l'agent.}
+\end{frame}
+
+\section{Solution réalisée}
+
+% 1:20
+\begin{frame}{QLoRA : spécialiser sans dupliquer la base}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.62\textwidth}
+      \centering
+      \begin{tikzpicture}[node distance=7mm]
+        \node[orangebox,text width=24mm] (trace) {Trace agentique\\messages et outils};
+        \node[box,text width=23mm,right=8mm of trace] (template) {Gabarit Qwen\\masque assistant};
+        \node[box,text width=26mm,below=9mm of template,xshift=-18mm] (base) {Base 4 bits\\$Q_4(W)$ gelée};
+        \node[greenbox,text width=27mm,below=9mm of template,xshift=18mm] (lora) {LoRA de l'expert\\$B_eA_e$ entraînable};
+        \node[box,text width=35mm,below=10mm of base,xshift=18mm] (sum) {$h=Q_4(W)x+\dfrac{\alpha}{r}B_eA_ex$};
+        \node[greenbox,text width=28mm,below=8mm of sum] (adapter) {Adaptateur spécialisé};
+        \draw[flow] (trace) -- (template);
+        \draw[flow] (template) -- ++(0,-4mm) -| (base);
+        \draw[flow] (template) -- ++(0,-4mm) -| (lora);
+        \draw[flow] (base) -- (sum);
+        \draw[flow] (lora) -- (sum);
+        \draw[flow] (sum) -- (adapter);
+        \draw[dashedflow] (sum.east) -| node[pos=.25,right,font=\scriptsize]{gradients} (lora.south);
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.35\textwidth}
+      \begin{description}
+        \item[Base] Qwen2.5-3B-Instruct, NF4 4 bits, BF16
+        \item[LoRA] rang 16, $\alpha=32$, dropout $0{,}05$
+        \item[Machine] entraînement compatible avec 16\,Gio de VRAM
+      \end{description}
+      \begin{alertblock}{Fenêtres d'apprentissage}
+        6\,144 tokens pour secrétaire, reconnaissance et exploitation ;
+        4\,096 pour l'expert vulnérabilités, dont les exemples structurés sont
+        plus courts et non tronqués à cette limite.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 1:20
+\begin{frame}{HMoE agentique : quatre rôles, une base partagée}
+  \centering
+  \begin{tikzpicture}[node distance=5mm]
+    \node[box,text width=28mm] (request) {Requête complète\\phase + rôle};
+    \node[orangebox,text width=31mm,right=10mm of request] (router) {Routeur déterministe\\jamais par jeton};
+    \draw[flow] (request) -- (router);
+
+    \node[greenbox,text width=25mm,below=7mm of request,xshift=-35mm] (sec) {\texttt{secretary}\\phases 1 et 6};
+    \node[greenbox,text width=25mm,right=5mm of sec] (recon) {\texttt{recon}\\phase 2};
+    \node[greenbox,text width=25mm,right=5mm of recon] (vuln) {\texttt{vuln}\\phase 3};
+    \node[greenbox,text width=25mm,right=5mm of vuln] (exploit) {\texttt{exploit}\\phases 4 et 5};
+
+    \coordinate (split) at ($(router.south)+(0,-5mm)$);
+    \draw[flow] (router.south) -- (split) -| (sec.north);
+    \draw[flow] (split) -| (recon.north);
+    \draw[flow] (split) -| (vuln.north);
+    \draw[flow] (split) -| (exploit.north);
+
+    \node[box,text width=45mm,below=7mm of recon,xshift=15mm] (base) {Qwen2.5-3B-Instruct\\base quantifiée, partagée et gelée};
+    \draw[flow] (sec.south) |- (base.west);
+    \draw[flow] (recon.south) -- (base.north west);
+    \draw[flow] (vuln.south) -- (base.north east);
+    \draw[flow] (exploit.south) |- (base.east);
+
+    \node[orangebox,text width=42mm,below=4mm of base] (lock) {Adaptateur actif\\génération sérialisée};
+    \draw[flow] (base) -- (lock);
+  \end{tikzpicture}
+
+  \vspace{0.1em}
+  \footnotesize
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{Atouts}
+        Routage interprétable, remplacement indépendant d'un expert et une seule
+        copie du modèle de base.
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \begin{alertblock}{Compromis}
+        Pas de combinaison d'experts ; le verrou protège le changement
+        d'adaptateur mais sérialise l'inférence locale.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 1:00
+\begin{frame}{Des sources aux experts déployés}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.55\textwidth}
+      \small
+      \begin{description}
+        \item[Secrétaire] Topologies, prompts et livrables de LANCE.
+        \item[Reconnaissance] Journaux de connexion IoT-23
+          \cite{garcia2020iot23}.
+        \item[Vulnérabilités] NIST NVD, CISA KEV et correspondances Exploit-DB
+          \cite{nistnvdapi,cisakev,offsecexploitdb}.
+        \item[Exploitation] HackTricks, comptes rendus HTB et gabarits Nuclei
+          \cite{hacktricksrepo,momenbaselhtb,zweilosechtb,nucleitemplates}.
+      \end{description}
+      \begin{alertblock}{Principe de qualité}
+        Les traces conservent les couples appel d'outil / résultat ; les
+        corrections de campagne n'entrent dans le corpus qu'après revue humaine.
+      \end{alertblock}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \centering
+      \begin{tikzpicture}[node distance=5mm]
+        \node[orangebox,text width=37mm] (sources) {Sources publiques\\+ traces LANCE};
+        \node[box,text width=37mm,below=of sources] (prepare) {Normaliser, filtrer,\\préserver les preuves};
+        \node[box,text width=37mm,below=of prepare] (preflight) {Split déterministe\\+ préflight};
+        \node[greenbox,text width=37mm,below=of preflight] (train) {Entraîner quatre\\adaptateurs QLoRA};
+        \node[greenbox,text width=37mm,below=of train] (serve) {Servir et router\\dans LANCE};
+        \draw[flow] (sources) -- (prepare);
+        \draw[flow] (prepare) -- (preflight);
+        \draw[flow] (preflight) -- (train);
+        \draw[flow] (train) -- (serve);
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 1:10
+\begin{frame}{Au-delà du modèle : pipeline et harness}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \begin{block}{Pipeline consolidé}
+        \begin{itemize}
+          \item contrats et outils autorisés propres à chaque phase ;
+          \item artefacts structurés et registre de preuves ;
+          \item reprise bornée après rejet d'un livrable ;
+          \item analyses indépendantes parallélisées lorsque c'est sûr.
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{Harness expérimental}
+        \begin{itemize}
+          \item déploiement reproductible des scénarios ;
+          \item vérité terrain conservée côté évaluateur ;
+          \item correspondance globale un-à-un des constats ;
+          \item échec fermé si contrat ou artefact est incompatible.
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.7em}
+  \keymessage{Le harness est le dispositif d'expérimentation ; \texttt{strict-v3} est la politique de scoring appliquée par son évaluateur.}
+\end{frame}
+
+\section{Évaluation et résultats}
+
+% 1:15
+\begin{frame}{Mesurer une vulnérabilité trouvée et correctement étayée}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.55\textwidth}
+      Pour chaque correspondance $i$ :
+      \[
+        q_i=a_i\,s_i\,v_i, \qquad \mathrm{QTP}=\sum_i q_i
+      \]
+      \[
+        P_Q=\frac{\mathrm{QTP}}{\mathrm{TP}+\mathrm{FP}},\quad
+        R_Q=\frac{\mathrm{QTP}}{N_{\mathrm{GT}}},\quad
+        Q\text{-}F_1=\frac{2P_QR_Q}{P_Q+R_Q}
+      \]
+      \[
+        H=\frac{\mathrm{FP}}{\mathrm{TP}+\mathrm{FP}}
+      \]
+      \scriptsize $a_i$ : qualité du matching ; $s_i$ : justesse de la sévérité ;
+      $v_i$ : qualité de la preuve. Le taux $H$ mesure ici les constats sans
+      correspondance, pas toute hallucination sémantique possible.
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{block}{Instantané expérimental}
+        \begin{description}
+          \item[Campagnes] 94 runs évaluables d'août 2026
+          \item[Scénarios] S1 à S11
+          \item[Configurations] \texttt{lance-moe} et MiniMax-M2.7
+          \item[Analyse] moyennes + traces détaillées du 11 août
+        \end{description}
+      \end{block}
+      \begin{alertblock}{Limite d'interprétation}
+        Répétitions et versions non équilibrées : les résultats sont descriptifs,
+        pas une comparaison causale entre modèles.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% 2:00
+\begin{frame}{Résultats d'août : où se dégrade \texttt{lance-moe} ?}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.62\textwidth}
+      \centering
+      \begin{tikzpicture}
+        \begin{axis}[
+          width=\linewidth,
+          height=0.66\textheight,
+          xmin=0.20,xmax=0.85,
+          ymin=-0.02,ymax=0.62,
+          xlabel={Q-F1 moyen $\rightarrow$},
+          ylabel={Taux d'hallucination moyen},
+          grid=major,
+          axis lines=left,
+          tick label style={font=\scriptsize},
+          label style={font=\small},
+          clip=false
+        ]
+          \path[fill=LanceGreen!9] (axis cs:0.55,-0.02) rectangle (axis cs:0.85,0.20);
+          \node[font=\scriptsize,text=LanceGreen!70!black,anchor=south east]
+            at (axis cs:0.84,0.02) {zone recherchée};
+
+          \addplot[only marks,mark=*,mark size=2.4pt,LanceBlue]
+            coordinates {(0.474,0.209) (0.538,0.111) (0.505,0.163)
+              (0.448,0.134) (0.528,0.125) (0.334,0.267) (0.491,0.389)};
+          \addplot[only marks,mark=*,mark size=3pt,LanceGreen]
+            coordinates {(0.611,0.000) (0.796,0.000)};
+          \addplot[only marks,mark=*,mark size=3pt,LanceRed]
+            coordinates {(0.281,0.556) (0.270,0.438)};
+
+          \node[font=\scriptsize,anchor=south] at (axis cs:0.611,0.000) {S1};
+          \node[font=\scriptsize,anchor=south] at (axis cs:0.796,0.000) {S9};
+          \node[font=\scriptsize,anchor=north east] at (axis cs:0.474,0.209) {S2};
+          \node[font=\scriptsize,anchor=west] at (axis cs:0.281,0.556) {S3};
+          \node[font=\scriptsize,anchor=east] at (axis cs:0.538,0.111) {S4};
+          \node[font=\scriptsize,anchor=south] at (axis cs:0.505,0.163) {S5};
+          \node[font=\scriptsize,anchor=north east] at (axis cs:0.448,0.134) {S6};
+          \node[font=\scriptsize,anchor=west] at (axis cs:0.528,0.125) {S7};
+          \node[font=\scriptsize,anchor=west] at (axis cs:0.270,0.438) {S8};
+          \node[font=\scriptsize,anchor=south] at (axis cs:0.334,0.267) {S10};
+          \node[font=\scriptsize,anchor=west] at (axis cs:0.491,0.389) {S11};
+        \end{axis}
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.36\textwidth}
+      \begin{exampleblock}{Résultats les plus nets}
+        S9 puis S1 combinent Q-F1 élevé et hallucination nulle pour
+        \texttt{lance-moe}.
+      \end{exampleblock}
+      \begin{alertblock}{Dégradations observées}
+        S3 et S8 cumulent faible Q-F1 et nombreux faux positifs. S8 ajoute des
+        pivots entre zones IT, IoT et OT.
+      \end{alertblock}
+      \scriptsize
+      S2 et S5 sont intermédiaires : changement de protocoles pour S2,
+      constats proches à distinguer et relier pour S5. S11 montre qu'une grande
+      surface augmente les omissions et les ruptures possibles.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\section{Conclusion}
+
+% 0:55
+\begin{frame}{Conclusion : réponse à la problématique}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{Spécialiser}
+        Une base locale quantifiée est partagée entre quatre adaptateurs QLoRA.
+        Le routeur de phase active le rôle attendu sans dupliquer le modèle.
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \begin{exampleblock}{Démontrer la qualité}
+        Le pipeline rend les actions et preuves traçables ; le harness répète les
+        scénarios et mesure Q-F1, hallucination et achèvement.
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.8em}
+  \begin{block}{Ce que le stage établit}
+    L'intégration opérationnelle du HMoE et un protocole capable de révéler où
+    la campagne se dégrade : détection, preuve ou construction du chemin.
+  \end{block}
+
+  \begin{alertblock}{Ce qu'il reste à établir}
+    Les campagnes actuelles ne démontrent pas encore une supériorité causale des
+    experts sur un modèle généraliste, ni des chemins d'attaque toujours vérifiés.
+  \end{alertblock}
+\end{frame}
+
+% 0:55
+\begin{frame}{Perspectives de recherche}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Routage hiérarchique}
+        Conserver le choix par phase, puis sélectionner un sous-expert par famille
+        de vulnérabilité en phase 4 ou par type d'action en phase 5.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Inférence parallèle}
+        Utiliser plusieurs répliques ou services d'experts pour dépasser la
+        sérialisation actuelle, tout en respectant les dépendances et verrous.
+      \end{block}
+    \end{column}
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Modèles futurs}
+        Réentraîner les adaptateurs sur une base compacte plus récente, ou tester
+        des modèles distincts par rôle dans des services séparés.
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \vfill
+  \keymessage{Passer d'une hétérogénéité de rôles à une spécialisation plus fine, sans perdre la reproductibilité de l'évaluation.}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% Diapositives de réserve pour l'échange avec le jury
+% -----------------------------------------------------------------------------
+\appendix
+
+\begin{frame}{Réserve : corpus et entraînement}
+  \centering
+  \small
+  \begin{tabular}{lrrr}
+    \toprule
+    Expert & Exemples & Contexte & Perte d'évaluation \\
+    \midrule
+    Secrétaire & 19\,065 & 6\,144 & 0,0421 \\
+    Reconnaissance & 9\,257 & 6\,144 & 0,2102 \\
+    Vulnérabilités & 6\,951 & 4\,096 & 0,00475 \\
+    Exploitation & 14\,629 & 6\,144 & 0,00836 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{1em}
+  \begin{alertblock}{Lecture correcte}
+    Les pertes ne sont pas directement comparables entre experts : longueurs,
+    répétitivité des formats et diversité des sorties diffèrent. Elles contrôlent
+    la convergence, pas l'efficacité opérationnelle du HMoE.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Réserve : trois niveaux de réussite}
+  \centering
+  \begin{tikzpicture}[node distance=12mm]
+    \node[box,text width=34mm] (finding) {1. Retrouver un constat\\sans en inventer};
+    \node[box,text width=34mm,right=of finding] (proof) {2. L'étayer par un\\résultat d'outil positif};
+    \node[greenbox,text width=34mm,right=of proof] (path) {3. L'intégrer dans un\\chemin cohérent};
+    \draw[flow] (finding) -- (proof);
+    \draw[flow] (proof) -- (path);
+  \end{tikzpicture}
+
+  \vspace{1.2em}
+  \begin{description}
+    \item[Taux d'hallucination] renseigne surtout le premier niveau.
+    \item[Q-F1] répercute la qualité du matching, de la sévérité et de la preuve.
+    \item[F1 vérifié / chemins] exige une provenance exploitable et, pour un
+      chemin, l'ordre correct des équipements.
+  \end{description}
+
+  \begin{alertblock}{Observation du 11 août}
+    Dans les runs \texttt{lance-moe} détaillés, aucun chemin n'est entièrement
+    vérifié : la continuité des preuves entre phases reste prioritaire.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Réserve : protocole d'ablation proposé}
+  \begin{enumerate}
+    \item modèle de base avec prompt seul ;
+    \item un adaptateur QLoRA global entraîné sur le corpus réuni ;
+    \item quatre experts avec sélection forcée du bon rôle ;
+    \item HMoE avec routage automatique ;
+    \item permutation volontaire de certains experts pour vérifier que le gain
+      vient bien de leur spécialisation.
+  \end{enumerate}
+
+  \vspace{0.8em}
+  \keymessage{Même scénarios, mêmes outils, mêmes budgets de génération et répétitions équilibrées.}
+\end{frame}
+
+\begin{frame}[allowframebreaks]{Références}
+  \scriptsize
+  \begin{thebibliography}{99}
+    \bibitem{dettmers2023qlora}
+      T.~Dettmers, A.~Pagnoni, A.~Holtzman et L.~Zettlemoyer.
+      \newblock \emph{QLoRA: Efficient Finetuning of Quantized LLMs}.
+      \newblock NeurIPS, 2023.
+
+    \bibitem{shazeer2017moe}
+      N.~Shazeer et al.
+      \newblock \emph{Outrageously Large Neural Networks: The Sparsely-Gated
+      Mixture-of-Experts Layer}.
+      \newblock ICLR, 2017.
+
+    \bibitem{garcia2020iot23}
+      S.~Garcia, A.~Parmisano et M.~J.~Erquiaga.
+      \newblock \emph{IoT-23: A Labeled Dataset with Malicious and Benign IoT
+      Network Traffic}, 2020.
+
+    \bibitem{nistnvdapi}
+      National Institute of Standards and Technology.
+      \newblock \emph{National Vulnerability Database: Vulnerabilities API 2.0}.
+
+    \bibitem{cisakev}
+      Cybersecurity and Infrastructure Security Agency.
+      \newblock \emph{Known Exploited Vulnerabilities Catalog}.
+
+    \bibitem{offsecexploitdb}
+      OffSec.
+      \newblock \emph{Exploit Database}.
+
+    \bibitem{hacktricksrepo}
+      HackTricks contributors.
+      \newblock \emph{HackTricks}.
+
+    \bibitem{momenbaselhtb}
+      momenbasel contributors.
+      \newblock \emph{HTB Writeups}.
+
+    \bibitem{zweilosechtb}
+      zweilosec.
+      \newblock \emph{HTB Writeups}.
+
+    \bibitem{nucleitemplates}
+      ProjectDiscovery.
+      \newblock \emph{Nuclei Templates}.
+  \end{thebibliography}
+\end{frame}
+
+\end{document}
