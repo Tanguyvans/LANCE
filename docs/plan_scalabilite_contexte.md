@@ -11,7 +11,7 @@
 >   pour `agent_config.phase == 6` (`pipeline.py`, ~ligne 426). `report.txt` lit
 >   `06_phase6_context.json` et interdit explicitement la lecture des gros fichiers.
 > - **Correctif B** : le filtre anti-bruit CVE LOW/INFO est présent dans `analyze_device.txt`
->   (section `## Rules`), et `vuln_device.txt` porte l'en-tête `# DEPRECATED`.
+>   (section `## Rules`). L'ancien prompt `vuln_device.txt`, déprécié et jamais chargé, a depuis été supprimé.
 > - **Correctif C** : `_run_device_agents()` (dead code) a été supprimé — la fonction n'existe plus.
 >
 > Le contenu ci-dessous est conservé pour la trace de conception ; ce n'est **pas** une to-do list active.

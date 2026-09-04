@@ -20,8 +20,6 @@ log = logging.getLogger(__name__)
 
 # Weight constants (aligned with attack_path.py conventions)
 WEIGHT_INFINITE = float("inf")
-WEIGHT_COMPROMISED = 0.0          # traversal is free once compromised
-WEIGHT_UNDISCOVERED = WEIGHT_INFINITE  # unreachable until discovered
 
 # Protocol difficulty factors (mirrored from attack_path.py)
 PROTOCOL_FACTORS: dict[str, float] = {

@@ -1,5 +1,9 @@
 # 04 — Architecture front : 3 copies divergentes
 
+> **Archive du 2026-07-05.** Les constats ci-dessous décrivent l'architecture de cette date.
+> `src/static_docker/` n'était plus copié par le `Dockerfile` au moment du nettoyage du 2026-09-04
+> et a été supprimé ; les affirmations à son sujet ne décrivent donc plus l'état actuel de `main`.
+
 ## Réalité du service (ce qui est réellement atteignable)
 
 `src/api/main.py` (unique app FastAPI) câble exactement **deux** fronts :

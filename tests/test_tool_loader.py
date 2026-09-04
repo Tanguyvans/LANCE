@@ -16,6 +16,7 @@ from src.agent.tools.tool_loader import (
     load_all_tools,
     register_python_handler,
     filter_unavailable_tools,
+    reset_tool_cache,
     DEFINITIONS_DIR,
 )
 
@@ -154,6 +155,29 @@ class TestBuildSubprocessFunction:
         assert "admin@192.0.2.10" in command
         assert "id" in command
         assert json.loads(result)["return_code"] == 0
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_reset_tool_cache_prevents_cross_run_mqtt_replay(self, mock_run):
+        reset_tool_cache()
+        mock_run.side_effect = [
+            {"stdout": 'sensors/temp {"temp":1}', "stderr": "", "return_code": 0},
+            {"stdout": 'sensors/temp {"temp":999}', "stderr": "", "return_code": 0},
+            {"stdout": 'sensors/temp {"temp":999}', "stderr": "", "return_code": 0},
+        ]
+        definition = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(definition)
+
+        first = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
+        replayed = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
+        reset_tool_cache()
+        fresh = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
+
+        assert first["stdout"] == 'sensors/temp {"temp":1}'
+        assert replayed["stdout"] == first["stdout"]
+        assert replayed["cache_replayed"] is True
+        assert fresh["stdout"] == 'sensors/temp {"temp":999}'
+        assert "cache_replayed" not in fresh
+        reset_tool_cache()
 
 
 class TestLoadAllTools:

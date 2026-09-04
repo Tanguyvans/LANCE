@@ -35,6 +35,12 @@ import hashlib
 # tool output to decide whether a verdict is supported.
 _TOOL_CACHE: dict[str, dict[str, str]] = {}
 
+
+def reset_tool_cache() -> None:
+    """Drop evidence cached by earlier pipeline runs in this process."""
+    _TOOL_CACHE.clear()
+
+
 def _get_payload_signature(payload_str: str) -> str:
     """Generate a signature based on payload type/structure rather than exact content."""
     payload_stripped = payload_str.strip()

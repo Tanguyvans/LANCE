@@ -47,20 +47,32 @@ _weighted_graph: WeightedAttackGraph | None = None
 _last_disbalance_report: dict | None = None
 
 
+def _reset_graph_context() -> None:
+    """Clear all process-global graph state before loading a new run context."""
+    global _backend, _infra, _cve_reports, _risk_scores, _attack_report
+    global _scenario_topology, _discovery_mode
+    global _weighted_graph, _last_disbalance_report
+
+    _backend = None
+    _infra = None
+    _cve_reports = None
+    _risk_scores = None
+    _attack_report = None
+    _scenario_topology = None
+    _discovery_mode = None
+    _weighted_graph = None
+    _last_disbalance_report = None
+
+
 def load_discovery_context(target_network: str) -> dict:
     """Set up discovery mode: no pre-defined topology, LLM discovers the network via nmap.
 
     The agent starts with an empty graph and builds it from active recon results.
     Returns a minimal context dict so the pipeline can start without a YAML topology.
     """
-    global _discovery_mode, _backend, _infra, _cve_reports, _risk_scores, _attack_report, _scenario_topology
+    global _discovery_mode
+    _reset_graph_context()
     _discovery_mode = {"target_network": target_network}
-    _scenario_topology = None
-    _backend = None
-    _infra = None
-    _cve_reports = None
-    _risk_scores = None
-    _attack_report = None
     return {
         "device_count": 0,
         "link_count": 0,
@@ -76,6 +88,7 @@ def load_lab_context() -> dict:
     """
     global _backend, _infra, _cve_reports, _risk_scores, _attack_report
 
+    _reset_graph_context()
     _infra = load_yaml(INFRA_YAML)
     _backend = build_graph(INFRA_YAML)
     _cve_reports = scan_all_devices(_infra, load_cpe_mapping(CPE_YAML))
@@ -108,8 +121,8 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     Vulnerability counts and risk labels deliberately remain empty: they belong
     to the evaluator-side oracle, not to the worker.
     """
-    global _scenario_topology, _discovery_mode
-    _discovery_mode = None  # Discovery mode must not take precedence over scenario topology
+    global _scenario_topology
+    _reset_graph_context()
 
     sid = str(scenario_id)
     scenario_path = resolve_scenario_path(sid)

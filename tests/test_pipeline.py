@@ -3505,8 +3505,9 @@ class TestStripCodeFences:
 class TestPhase5Context:
     """Tests for _generate_intrusion_context."""
 
-    def test_generates_intrusion_context(self, mock_provider, output_dir):
+    def test_generates_intrusion_context(self, mock_provider, output_dir, monkeypatch):
         """Phase 5 context should extract confirmed exploits and entry points."""
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3599,8 +3600,9 @@ class TestPhase5Context:
             "src_ip": "192.168.100.20", "dst_ip": "192.168.100.21",
         }]
 
-    def test_handles_missing_phase4(self, mock_provider, output_dir):
+    def test_handles_missing_phase4(self, mock_provider, output_dir, monkeypatch):
         """Context should still generate if Phase 4 was skipped."""
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3613,8 +3615,9 @@ class TestPhase5Context:
         assert ctx["entry_points"] == []
         assert ctx["recovered_credentials"] == []
 
-    def test_handles_list_format_phase4(self, mock_provider, output_dir):
+    def test_handles_list_format_phase4(self, mock_provider, output_dir, monkeypatch):
         """Context should handle Phase 4 output as a plain list."""
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3630,8 +3633,9 @@ class TestPhase5Context:
         assert ctx["confirmed_exploits"] == 1
 
     def test_mqtt_confirmed_exploit_feeds_recovered_credentials(
-        self, mock_provider, output_dir
+        self, mock_provider, output_dir, monkeypatch
     ):
+        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
         exploit_data = {
@@ -4891,6 +4895,21 @@ def test_downstream_phase_selection_includes_prerequisites():
 
 
 class TestPipelineRun:
+    @patch("src.agent.pipeline.load_lab_context")
+    @patch("src.agent.pipeline.reset_tool_cache")
+    def test_run_resets_process_tool_cache(
+        self, mock_reset_cache, mock_lab, mock_provider, output_dir
+    ):
+        mock_lab.return_value = {
+            "device_count": 0, "link_count": 0,
+            "cve_count": 0, "top_risk": "none",
+        }
+        pipeline = Pipeline(provider=mock_provider, dry_run=True, phases=[])
+
+        pipeline.run()
+
+        mock_reset_cache.assert_called_once_with()
+
     @patch("src.agent.pipeline.load_lab_context")
     def test_full_run_keeps_dashboard_stop_event(self, mock_lab, mock_provider, output_dir):
         from threading import Event

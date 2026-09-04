@@ -4,6 +4,10 @@
 > sur instance `uvicorn` réelle : dashboard piloté au navigateur en 1440px et 375px, vues
 > Dashboard / Benchmark / Modèles, console). Périmètre : `src/static/` (dashboard principal, `/`),
 > `src/static_v2/` (`/v2`), `src/static_docker/`, et la couche API FastAPI (`src/api/`).
+>
+> **Statut : archive historique.** Ce dossier décrit l'état observé à cette date, pas nécessairement
+> l'état actuel de `main`. En particulier, `src/static_docker/` a été retiré le 2026-09-04 après
+> confirmation que l'image Docker servait déjà le frontend canonique.
 
 Ce dossier documente **tout ce qui doit être fait**, découpé par domaine. Chaque finding porte
 un identifiant stable (`SEC-n`, `FE-n`, `UX-n`, `ARCH-n`), une sévérité, l'emplacement exact

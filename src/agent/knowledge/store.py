@@ -40,6 +40,9 @@ def _get_client() -> chromadb.ClientAPI:
 class _VoyageEmbeddingFunction(chromadb.EmbeddingFunction):
     """ChromaDB embedding function backed by Voyage AI."""
 
+    def __init__(self) -> None:
+        """Keep an explicit constructor for ChromaDB's embedding protocol."""
+
     def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002
         return embed(input)
 

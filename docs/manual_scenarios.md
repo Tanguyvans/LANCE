@@ -47,7 +47,7 @@ Un bundle en profil `preview` reste consultable et évaluable comme Ground Truth
 
 ## Déploiement Docker
 
-L’image Docker sert le frontend canonique sous src/static et embarque les topologies ainsi que les packs de vulnérabilités sous benchmarks/. Le fork src/static_docker n’est plus copié dans l’image.
+L’image Docker sert le frontend canonique sous `src/static` et embarque les topologies ainsi que les packs de vulnérabilités sous `benchmarks/`. L’ancien fork `src/static_docker` a été supprimé.
 
 Après une mise à jour du builder, il faut reconstruire l’image puis recréer le conteneur afin que le frontend et le catalogue soient servis depuis la même version.
 

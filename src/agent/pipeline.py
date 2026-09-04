@@ -59,7 +59,7 @@ from src.agent.tools.graph_tools import (
     trigger_disbalance_on_exploit,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
-from src.agent.tools.tool_loader import filter_unavailable_tools
+from src.agent.tools.tool_loader import filter_unavailable_tools, reset_tool_cache
 from src.agent.tools.deliverable import DELIVERABLE_TOOLS, set_output_dir, set_expected_deliverable, _extract_json
 from src.agent.tools.skill_tools import (
     SKILL_TOOLS,
@@ -2500,6 +2500,7 @@ class Pipeline:
         """
         # A dashboard stop is a run-level control, not a compact-model feature.
         self._stop_event = stop_event
+        reset_tool_cache()
         self.scenario_tool_policy = self._load_scenario_tool_policy(self.scenario_id)
         self._load_scenario_runtime_limits(self.scenario_id)
 
@@ -9548,12 +9549,6 @@ class Pipeline:
                 })
         return executed
 
-    def _recover_compact_intrusion_no_progress(self, config, stream_callback=None) -> dict:
-        executed = self._run_compact_intrusion_fallback(config, stream_callback)
-        return self._synthesize_intrusion_from_tools(
-            note=f"Synthesized after compact-model stall; bounded fallback actions: {executed}."
-        )
-
     def _record_blocked_intrusion_synthesis(
         self,
         config,
@@ -11338,11 +11333,11 @@ class Pipeline:
                     or ""
                 )[:120].replace("|", "/")
                 observation_rows.append(
-                    f"| {observation.get("id", "")} | "
-                    f"{observation.get("device_id", "")} "
-                    f"({observation.get("device_ip", "")}) | "
-                    f"{observation.get("type", "")} | "
-                    f"{(observation.get("severity") or "").upper()} | {title} |"
+                    f"| {observation.get('id', '')} | "
+                    f"{observation.get('device_id', '')} "
+                    f"({observation.get('device_ip', '')}) | "
+                    f"{observation.get('type', '')} | "
+                    f"{(observation.get('severity') or '').upper()} | {title} |"
                 )
             sec5 += (
                 "\n\n### Configuration observations (not exploitation candidates)\n\n"
