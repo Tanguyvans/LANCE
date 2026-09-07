@@ -314,6 +314,38 @@ class TestRunEndpoints:
         assert row["score"] is None
         assert row["score_error"] == "Evaluation failed: broken helper"
 
+    @pytest.mark.parametrize("query", ["", "?compact=true&limit=10"])
+    def test_archived_generated_scenario_does_not_break_benchmark_listing(self, tmp_path, monkeypatch, query):
+        from fastapi.testclient import TestClient
+        from src.api.main import app
+
+        orphan_id = f"gen-custom-{uuid4().hex[:10]}"
+        for name, sid, split in (
+            ("known-run", "1", "dev-public"),
+            ("orphan-run", orphan_id, "lab-export"),
+        ):
+            run_dir = tmp_path / name
+            run_dir.mkdir()
+            (run_dir / "scenario_meta.json").write_text(json.dumps({
+                "scenario_id": sid, "split": split,
+            }))
+            (run_dir / "03_vuln_analysis.json").write_text('{"vulnerabilities": []}')
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(runs, "_evaluate_cached", lambda *_: {"f1_score": 1.0})
+
+        with TestClient(app) as client:
+            response = client.get("/api/runs/benchmark" + query)
+
+        assert response.status_code == 200
+        payload = response.json()
+        rows = payload["items"] if query else payload
+        by_id = {row["id"]: row for row in rows}
+        assert by_id["known-run"]["score"]["f1_score"] == 1.0
+        assert by_id["known-run"]["score_error"] is None
+        assert by_id["orphan-run"]["score"] is None
+        assert "unknown benchmark scenario" in by_id["orphan-run"]["score_error"]
+        assert orphan_id in by_id["orphan-run"]["score_error"]
+
     def test_paginated_benchmark_only_scores_requested_page(self, tmp_path, monkeypatch):
         for index in range(3):
             run_dir = tmp_path / f"run-{index}"

@@ -566,13 +566,15 @@ def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, A
             log.warning("Sealed evaluation loading failed for %s: %s", run_dir.name, exc)
             entry["score_error"] = f"Evaluation failed: {exc}"
     elif vuln_file.exists():
-        ground_truth = resolve_ground_truth_path(scenario_id)
-        if ground_truth.exists():
-            try:
+        try:
+            # Historical generated runs can outlive their exported scenario.
+            # A missing/invalid oracle must affect this row, not the whole page.
+            ground_truth = resolve_ground_truth_path(scenario_id)
+            if ground_truth.exists():
                 entry["score"] = _evaluate_cached(run_dir, ground_truth)
-            except Exception as exc:
-                log.warning("Benchmark evaluation failed for %s: %s", run_dir.name, exc)
-                entry["score_error"] = f"Evaluation failed: {exc}"
+        except Exception as exc:
+            log.warning("Benchmark evaluation failed for %s: %s", run_dir.name, exc)
+            entry["score_error"] = f"Evaluation failed: {exc}"
 
     if compact:
         entry["score"] = _compact_score(entry["score"])
