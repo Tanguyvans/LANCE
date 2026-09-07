@@ -22,6 +22,8 @@ CLAUDE.md
 gha-creds-*.json
 texput.log
 report/
+# The report phase is source code, not generated report output.
+!/src/agent/phases/report/
 *.lance-sync-tmp
 scripts/be.tanguy.*
 scripts/vulhub_monitor.py

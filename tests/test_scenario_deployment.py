@@ -95,7 +95,7 @@ def test_pipeline_passes_generated_overlay_to_ansible(tmp_path, monkeypatch):
     pipeline._generated_deployment = deployment
 
     completed = MagicMock(returncode=0, stdout="ok", stderr="")
-    with patch("src.agent.pipeline.subprocess.run", return_value=completed) as run:
+    with patch("src.agent.core.runtime.subprocess.run", return_value=completed) as run:
         assert pipeline._run_playbook("03_deploy_scenario.yml", None, "start", "done")
 
     command = run.call_args.args[0]
@@ -192,7 +192,7 @@ def test_pipeline_passes_manual_overlay_and_provider_profile_to_ansible(tmp_path
     pipeline._generated_deployment = deployment
 
     completed = MagicMock(returncode=0, stdout="ok", stderr="")
-    with patch("src.agent.pipeline.subprocess.run", return_value=completed) as run:
+    with patch("src.agent.core.runtime.subprocess.run", return_value=completed) as run:
         assert pipeline._run_playbook("04_inject_vulns.yml", None, "start", "done")
 
     command = run.call_args.args[0]
@@ -233,7 +233,8 @@ def test_pipeline_selects_manual_adapter_for_exported_builder_bundle(tmp_path, m
     )
     generator.export_variant(variant["id"])
 
-    monkeypatch.setattr(pipeline_module, "default_export_store", lambda: generator.export_store)
+    monkeypatch.setattr(pipeline_module.runtime, "default_export_store", lambda: generator.export_store)
+    monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "runs")
     provider = MagicMock(model="test-model", provider="test-provider")
     pipeline = Pipeline(provider=provider, scenario_id=variant["id"], dry_run=True)
     monkeypatch.setattr(pipeline, "_teardown_all_running_scenarios", lambda *_args, **_kwargs: None)

@@ -5,28 +5,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.pipeline import (
-    Pipeline,
+from src.agent.pipeline import Pipeline
+from src.agent.core.runtime import (
     TOOL_GROUPS,
-    _has_positive_exploit_evidence,
-    _phase4_local_verification_tools,
-    _phase4_verification_plan,
-    _is_verified_report_finding,
-    _report_phase4_summary,
-    _phase4_requirement_matches,
-    _local_report_memo_contradicts_context,
-    _looks_unusable_model_memo,
-    _deliverable_template_path,
     _resolve_model_provider,
-    _synthesize_exploit_result,
-    _enrich_finding_structure,
-    _make_test_entry,
-    _finding_semantic_issue,
-    _normalise_full_finding_semantics,
-    _sanitize_suggested_tools,
-    _extract_endpoint_paths,
     _expand_phase_selection,
 )
+from src.agent.exploit_evidence import (
+    has_positive_exploit_evidence as _has_positive_exploit_evidence,
+    synthesize_exploit_result as _synthesize_exploit_result,
+    extract_endpoint_paths as _extract_endpoint_paths,
+)
+from src.agent.phases.verification.contract import (
+    _phase4_local_verification_tools,
+    _phase4_verification_plan,
+    _phase4_requirement_matches,
+)
+from src.agent.report_evidence import (
+    is_verified_report_finding as _is_verified_report_finding,
+    report_phase4_summary as _report_phase4_summary,
+)
+from src.agent.phases.report.validation import _local_report_memo_contradicts_context
+from src.agent.core.memo import _looks_unusable_model_memo
+from src.agent.phases.analysis.evidence import _enrich_finding_structure, _sanitize_suggested_tools
+from src.agent.phases.verification.evidence import _make_test_entry
+from src.agent.finding_policy import (
+    finding_semantic_issue as _finding_semantic_issue,
+    normalise_full_finding_semantics as _normalise_full_finding_semantics,
+)
+from src.agent.phases.intrusion.evidence import has_observable_actions
 from src.agent.registry import AgentConfig, AGENTS
 
 def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output_dir):
@@ -78,8 +85,6 @@ def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output
 
     local_context = pipeline._build_local_report_analysis_context()
     assert [test["vuln_id"] for test in local_context["phase6"]["phase4_tests"]] == ["V1"]
-
-
 
 
 def test_discovery_followup_maps_declared_ports_to_scanner_services():
@@ -138,7 +143,6 @@ def test_full_phase3_normalizes_nullable_schema_fields_without_changing_compact(
     full_finding = dict(compact_finding)
     _enrich_finding_structure(full_finding, strict_schema=True)
     assert full_finding["endpoint"] == ""
-
 
 
 def test_full_phase3_normalizes_application_protocol_to_transport():
@@ -540,11 +544,18 @@ def test_run_scanner_keeps_phase2_snapshot_out_of_phase3_artifact(tmp_path):
     assert result["plc"]["findings"] == []
 
 
-def test_phase6_resolves_legacy_report_template_for_full_agents():
-    template_path = _deliverable_template_path(AGENTS["report"])
+@pytest.mark.parametrize("profile", ["full", "compact"])
+def test_phase6_injects_its_canonical_template(profile, mock_provider, output_dir):
+    pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
+    with patch("src.agent.core.runtime.load_prompt", return_value="rendered prompt") as prompt:
+        pipeline._run_agent(AGENTS["report"])
 
-    assert template_path.name == "05_report.md"
-    assert "{{SECTION_5_TABLE}}" in template_path.read_text(encoding="utf-8")
+    template = prompt.call_args.args[1]["deliverable_template"]
+    assert "# Pentest Report" in template
+    assert f"**Model:** {mock_provider.model}" in template
+    assert "{{run_date}}" not in template
+    assert "{{SECTION_5_TABLE}}" in template
+    assert mock_provider.chat_with_tools.call_args.kwargs["system_prompt"] == "rendered prompt"
 
 
 def test_compact_phase4_protocol_contract_rejects_open_port_only():
@@ -699,7 +710,6 @@ def test_phase4_known_cve_without_matching_audit_evidence_is_inconclusive():
     )
     assert result["status"] == "ERROR"
     assert "CVE-specific" in result["evidence"]
-
 
 
 def test_phase4_default_credentials_mqtt_uses_authenticated_probe():
@@ -913,7 +923,7 @@ def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
-        "src.agent.pipeline.get_attack_surface",
+        "src.agent.core.runtime.get_attack_surface",
         lambda: json.dumps([{
             "id": "web-1", "ip": "192.0.2.30", "role": "web_server",
         }]),
@@ -968,12 +978,11 @@ def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
     assert raw["candidate_count"] == 2
 
 
-
 def test_full_aggregation_accepts_catalog_validated_terrapin_without_nvd_cpe(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
-        "src.agent.pipeline.get_attack_surface",
+        "src.agent.core.runtime.get_attack_surface",
         lambda: json.dumps([{
             "id": "gw-1", "ip": "192.0.2.31", "role": "iot_gateway",
         }]),
@@ -1004,12 +1013,11 @@ def test_full_aggregation_accepts_catalog_validated_terrapin_without_nvd_cpe(
     assert finding["accepted_for_scoring"] is True
 
 
-
 def test_full_aggregation_rejects_catalog_cve_outside_product_range(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
-        "src.agent.pipeline.get_attack_surface",
+        "src.agent.core.runtime.get_attack_surface",
         lambda: json.dumps([{
             "id": "ssh-1", "ip": "192.0.2.33", "role": "ssh_server",
         }]),
@@ -1034,7 +1042,6 @@ def test_full_aggregation_rejects_catalog_cve_outside_product_range(
 
     canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
     assert canonical["vulnerabilities"] == []
-
 
 
 def test_full_semantic_normalization_preserves_precise_claim_types():
@@ -1130,7 +1137,7 @@ def test_full_canonical_projection_deduplicates_surfaces_but_preserves_raw(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
-        "src.agent.pipeline.get_attack_surface",
+        "src.agent.core.runtime.get_attack_surface",
         lambda: json.dumps([
             {"id": "mqtt-1", "ip": "192.0.2.45", "role": "mqtt_broker"},
             {"id": "web-1", "ip": "192.0.2.46", "role": "web_server"},
@@ -1529,8 +1536,6 @@ class TestResolveTools:
 
 class TestPhase4LocalToolScope:
     def test_telnet_scope_excludes_unrelated_exploit_tools(self):
-        from src.agent import pipeline as pipeline_mod
-
         tools = [
             {"name": name, "function": lambda: "{}"}
             for name in (
@@ -1540,7 +1545,7 @@ class TestPhase4LocalToolScope:
             )
         ]
 
-        scoped = pipeline_mod._phase4_local_verification_tools(
+        scoped = _phase4_local_verification_tools(
             tools, category="data_access", service="telnet"
         )
         names = {tool["name"] for tool in scoped}
@@ -2371,6 +2376,7 @@ class TestPrerequisites:
             prerequisites=["graph_analysis"],
         )
         results = {"graph_analysis": "completed"}
+        (pipeline.run_dir / "01_graph_analysis.md").write_text("## S1\n## S2\n")
         assert pipeline._check_prerequisites(config, results)
 
     def test_synthesized_completed_prerequisite(self, mock_provider, output_dir):
@@ -2381,10 +2387,12 @@ class TestPrerequisites:
             prerequisites=["recon"],
         )
         results = {"recon": "completed:synthesized"}
+        (pipeline.run_dir / "02_recon.md").write_text("## S1\n## S2\n")
         assert pipeline._check_prerequisites(config, results)
 
     def test_phase4_worker_errors_keep_validated_results_usable(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)
+        (pipeline.run_dir / "04_exploitation.json").write_text('{"tests": []}')
         config = AgentConfig(
             name="intrusion", phase=5, prompt_template="t",
             deliverable_file="05_intrusion.json", tools=["graph"],
@@ -2410,7 +2418,7 @@ class TestPrerequisites:
         )
         assert not pipeline._check_prerequisites(config, {"recon": status})
 
-    def test_skipped_conditional_counts(self, mock_provider, output_dir):
+    def test_skipped_conditional_requires_artifact(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider)
         config = AgentConfig(
             name="test", phase=5, prompt_template="t",
@@ -2418,6 +2426,8 @@ class TestPrerequisites:
             prerequisites=["exploitation"],
         )
         results = {"exploitation": "skipped:conditional"}
+        assert not pipeline._check_prerequisites(config, results)
+        (pipeline.run_dir / "04_exploitation.json").write_text('{"tests": []}')
         assert pipeline._check_prerequisites(config, results)
 
     def test_failed_prerequisite(self, mock_provider, output_dir):
@@ -2563,32 +2573,32 @@ class TestRunDir:
 
 class TestGitCommit:
     def test_get_git_commit_returns_string_or_none(self):
-        from src.agent.pipeline import _get_git_commit
+        from src.agent.core.runtime import _get_git_commit
         result = _get_git_commit()
         assert result is None or (isinstance(result, str) and len(result) > 0)
 
     def test_get_git_commit_mock_success(self):
-        from src.agent.pipeline import _get_git_commit
-        with patch("src.agent.pipeline.subprocess.run") as mock_run:
+        from src.agent.core.runtime import _get_git_commit
+        with patch("src.agent.core.runtime.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="abc1234\n")
             assert _get_git_commit() == "abc1234"
 
     def test_get_git_commit_mock_failure(self):
-        from src.agent.pipeline import _get_git_commit
-        with patch("src.agent.pipeline.subprocess.run") as mock_run:
+        from src.agent.core.runtime import _get_git_commit
+        with patch("src.agent.core.runtime.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="")
             assert _get_git_commit() is None
 
     def test_get_git_commit_exception(self):
-        from src.agent.pipeline import _get_git_commit
-        with patch("src.agent.pipeline.subprocess.run", side_effect=FileNotFoundError):
+        from src.agent.core.runtime import _get_git_commit
+        with patch("src.agent.core.runtime.subprocess.run", side_effect=FileNotFoundError):
             assert _get_git_commit() is None
 
     def test_run_meta_written_on_init(self, mock_provider, output_dir):
-        with patch("src.agent.pipeline._get_git_commit", return_value="deadbeef"):
+        with patch("src.agent.core.runtime._get_git_commit", return_value="deadbeef"):
             pipeline = Pipeline(provider=mock_provider, phases=[999])
         # run_meta.json is written during run(), not __init__ — verify after run
-        with patch("src.agent.pipeline.load_lab_context", return_value={
+        with patch("src.agent.core.runtime.load_lab_context", return_value={
             "device_count": 1, "link_count": 1, "cve_count": 0, "top_risk": "none",
         }):
             pipeline.run()
@@ -2706,27 +2716,20 @@ class TestDeviceAgents:
         },
     ])
 
-    FAKE_SCORES = json.dumps([
-        {"device_id": "mikrotik", "risk_score": 6.6, "cve_count": 12},
-        {"device_id": "rpi5", "risk_score": 3.2, "cve_count": 2},
-    ])
-
     FAKE_DEVICE_INFO = json.dumps({
         "id": "mikrotik",
         "os_version": "RouterOS 7.18.2",
         "firmware": "7.18.2",
     })
 
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_risk_scores")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
+    @patch("src.agent.core.runtime.get_device_info")
+    @patch("src.agent.core.runtime.get_attack_surface")
+    @patch("src.agent.core.runtime.load_prompt")
     def test_run_agent_triggers_device_agents(
-        self, mock_prompt, mock_surface, mock_scores, mock_device_info,
+        self, mock_prompt, mock_surface, mock_device_info,
         mock_provider, output_dir
     ):
         mock_surface.return_value = self.FAKE_SURFACE
-        mock_scores.return_value = self.FAKE_SCORES
         mock_device_info.return_value = self.FAKE_DEVICE_INFO
         mock_prompt.return_value = "System prompt"
 
@@ -2776,7 +2779,7 @@ class TestDeviceAgents:
             device_id: {"scan_results": {}, "findings": []}
             for device_id in ("mikrotik", "rpi5")
         }
-        with patch("src.agent.pipeline.run_scanner", return_value=scan_results):
+        with patch("src.agent.core.runtime.run_scanner", return_value=scan_results):
             status = pipeline._run_agent(config)
 
         # 2 device agents (no reflector) + 1 aggregator = 3 total calls
@@ -2798,7 +2801,7 @@ class TestDeviceAgents:
             return "Done."
         mock_provider.chat_with_tools.side_effect = side_effect
 
-        with patch("src.agent.pipeline.load_prompt", return_value="prompt"):
+        with patch("src.agent.core.runtime.load_prompt", return_value="prompt"):
             status = pipeline._run_agent(config)
 
         # Only 1 call (no device agents)
@@ -3468,47 +3471,12 @@ class TestRepeatingToolDetector:
         ]
 
 
-class TestStripCodeFences:
-    """Tests for _strip_code_fences — the fallback content sanitizer."""
-
-    def test_strips_json_fence(self, mock_provider, output_dir):
-        raw = '```json\n{"key": "value"}\n```'
-        result = Pipeline._strip_code_fences(raw)
-        assert result == '{"key": "value"}'
-
-    def test_strips_plain_fence(self, mock_provider, output_dir):
-        raw = '```\n{"key": "value"}\n```'
-        result = Pipeline._strip_code_fences(raw)
-        assert result == '{"key": "value"}'
-
-    def test_strips_mqtt_pattern(self, mock_provider, output_dir):
-        # Exact pattern from s2-mqtt fallback: "json\n{...}" (backticks stripped by provider)
-        raw = 'json\n{"device_id": "s2-mqtt", "vulnerabilities": []}'
-        result = Pipeline._strip_code_fences(raw)
-        # "json\n..." with no opening ``` is NOT a fence — should be unchanged
-        # This confirms the fallback alone doesn't fix the mqtt case; pipeline must strip ``` first
-        assert result == raw
-
-    def test_no_fence_unchanged(self, mock_provider, output_dir):
-        raw = '{"key": "value"}'
-        assert Pipeline._strip_code_fences(raw) == raw
-
-    def test_strips_whitespace(self, mock_provider, output_dir):
-        raw = '  \n```json\n{"key": "value"}\n```\n  '
-        result = Pipeline._strip_code_fences(raw)
-        assert result == '{"key": "value"}'
-
-    def test_prose_unchanged(self, mock_provider, output_dir):
-        raw = "The device has weak ciphers and exposed admin panel."
-        assert Pipeline._strip_code_fences(raw) == raw
-
-
 class TestPhase5Context:
     """Tests for _generate_intrusion_context."""
 
     def test_generates_intrusion_context(self, mock_provider, output_dir, monkeypatch):
         """Phase 5 context should extract confirmed exploits and entry points."""
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3547,7 +3515,7 @@ class TestPhase5Context:
         pipeline = Pipeline(provider=mock_provider, execution_profile="full")
         run_dir = pipeline.run_dir
         monkeypatch.setattr(
-            "src.agent.pipeline.get_attack_surface",
+            "src.agent.core.runtime.get_attack_surface",
             lambda: json.dumps({
                 "nodes": [
                     {
@@ -3603,7 +3571,7 @@ class TestPhase5Context:
 
     def test_handles_missing_phase4(self, mock_provider, output_dir, monkeypatch):
         """Context should still generate if Phase 4 was skipped."""
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3618,7 +3586,7 @@ class TestPhase5Context:
 
     def test_handles_list_format_phase4(self, mock_provider, output_dir, monkeypatch):
         """Context should handle Phase 4 output as a plain list."""
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
 
@@ -3636,7 +3604,7 @@ class TestPhase5Context:
     def test_mqtt_confirmed_exploit_feeds_recovered_credentials(
         self, mock_provider, output_dir, monkeypatch
     ):
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: '{"nodes": []}')
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: '{"nodes": []}')
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
         exploit_data = {
@@ -4737,7 +4705,7 @@ class TestPhase5Context:
         data = pipeline._synthesize_intrusion_from_tools()
 
         assert data["summary"]["devices_attempted"] == 1
-        assert pipeline._intrusion_synthesis_has_observable_actions(data) is True
+        assert has_observable_actions(data) is True
 
     def test_non_local_intrusion_keeps_valid_model_deliverable(
         self, mock_provider, output_dir
@@ -4896,8 +4864,8 @@ def test_downstream_phase_selection_includes_prerequisites():
 
 
 class TestPipelineRun:
-    @patch("src.agent.pipeline.load_lab_context")
-    @patch("src.agent.pipeline.reset_tool_cache")
+    @patch("src.agent.core.runtime.load_lab_context")
+    @patch("src.agent.core.runtime.reset_tool_cache")
     def test_run_resets_process_tool_cache(
         self, mock_reset_cache, mock_lab, mock_provider, output_dir
     ):
@@ -4911,7 +4879,7 @@ class TestPipelineRun:
 
         mock_reset_cache.assert_called_once_with()
 
-    @patch("src.agent.pipeline.load_lab_context")
+    @patch("src.agent.core.runtime.load_lab_context")
     def test_full_run_keeps_dashboard_stop_event(self, mock_lab, mock_provider, output_dir):
         from threading import Event
 
@@ -4926,8 +4894,8 @@ class TestPipelineRun:
 
         assert pipeline._stop_event is stop_event
 
-    @patch("src.agent.pipeline.load_lab_context")
-    @patch("src.agent.pipeline.load_prompt")
+    @patch("src.agent.core.runtime.load_lab_context")
+    @patch("src.agent.core.runtime.load_prompt")
     def test_dry_run_single_phase(
         self, mock_load_prompt, mock_lab, mock_provider, output_dir
     ):
@@ -4962,7 +4930,7 @@ class TestPipelineRun:
         assert "model" in cost_data
         assert "total_cost_usd" in cost_data
 
-    @patch("src.agent.pipeline.load_lab_context")
+    @patch("src.agent.core.runtime.load_lab_context")
     def test_phase_filter(self, mock_lab, mock_provider, output_dir):
         mock_lab.return_value = {
             "device_count": 1, "link_count": 1,
@@ -4972,7 +4940,7 @@ class TestPipelineRun:
         run_dir = pipeline.run_dir
 
         # Phase 1 (graph_analysis) has no prerequisites, so it should run
-        with patch("src.agent.pipeline.load_prompt", return_value="prompt"):
+        with patch("src.agent.core.runtime.load_prompt", return_value="prompt"):
             def write_deliverable(**kwargs):
                 (run_dir / "01_graph_analysis.md").write_text("## A\n## B\n")
                 return "Done."
@@ -5086,9 +5054,9 @@ class TestInformationPreservingArchitecture:
         mock_provider.model = "large-model"
         assert pipeline._phase3_worker_count(4) == 4
 
-    @patch("src.agent.pipeline.get_device_info")
-    @patch("src.agent.pipeline.get_attack_surface")
-    @patch("src.agent.pipeline.load_prompt")
+    @patch("src.agent.core.runtime.get_device_info")
+    @patch("src.agent.core.runtime.get_attack_surface")
+    @patch("src.agent.core.runtime.load_prompt")
     def test_local_phase3_preserves_memo_without_overwriting_scanner_json(
         self, mock_load_prompt, mock_surface, mock_device_info, mock_provider, output_dir
     ):
@@ -5130,7 +5098,7 @@ class TestInformationPreservingArchitecture:
             tools=[],
             has_device_agents=True,
         )
-        with patch("src.agent.pipeline.run_scanner", side_effect=scanner_side_effect), \
+        with patch("src.agent.core.runtime.run_scanner", side_effect=scanner_side_effect), \
              patch("src.agent.tools.graph_tools.get_network_neighbors", return_value={
                  "upstream": [], "downstream": [], "role": "entrypoint",
              }):
@@ -5891,9 +5859,9 @@ class TestInformationPreservingArchitecture:
     def test_local_moe_phase3_cve_validation_logs_and_feeds_aggregation(
         self, mock_provider, output_dir, monkeypatch
     ):
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: "[]")
         monkeypatch.setattr(
-            "src.agent.pipeline.cve_search",
+            "src.agent.core.runtime.cve_search",
             lambda query, top_k=5: json.dumps([{
                 "id": "CVE-2023-48795",
                 "severity": "HIGH",
@@ -5951,7 +5919,7 @@ class TestInformationPreservingArchitecture:
     ):
         calls = []
         monkeypatch.setattr(
-            "src.agent.pipeline.cve_search",
+            "src.agent.core.runtime.cve_search",
             lambda query, top_k=5: calls.append(query) or "[]",
         )
         pipeline = Pipeline(provider=mock_provider)
@@ -5992,7 +5960,7 @@ class TestInformationPreservingArchitecture:
     def test_aggregation_preserves_raw_candidates_and_uses_evidence_quality(
         self, mock_provider, output_dir, monkeypatch
     ):
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: "[]")
         pipeline = Pipeline(provider=mock_provider)
 
         common = {
@@ -6078,7 +6046,7 @@ class TestInformationPreservingArchitecture:
     ):
         mock_provider.provider = "local-moe"
         mock_provider.model = "lance-moe"
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: "[]")
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
 
         ssh_finding = {
@@ -6200,7 +6168,7 @@ class TestInformationPreservingArchitecture:
     def test_log_regression_unverified_cves_stay_raw_not_canonical(
         self, mock_provider, output_dir, monkeypatch
     ):
-        monkeypatch.setattr("src.agent.pipeline.get_attack_surface", lambda: "[]")
+        monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: "[]")
         pipeline = Pipeline(provider=mock_provider)
         claims = [
             ("router", "Dropbear sshd (protocol 2.0)", "CVE-2023-48795"),
