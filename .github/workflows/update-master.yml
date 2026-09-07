@@ -1,15 +1,21 @@
 name: Update Master VM
 
-# Auto-update actif : à chaque push sur main, le master self-hosted fait
-# git pull + pip install + restart nato-fastapi. La box unique est pve-nato
+# Appelé par Benchmark integrity après validation du commit sur main.
+# Le master self-hosted déploie ce commit exact, puis redémarre nato-fastapi.
+# La box unique est pve-nato
 # (runner nato-master, 192.168.88.165 / Tailscale 100.103.253.86). Elle remplace
 # les anciennes pve + pve-benchmark (décommissionnées). fail-fast: false conservé.
 # Les fichiers env-spécifiques (inventory.yml, main.yml, vault_master.yml) sont en
 # skip-worktree sur le master → le pull ne les écrase pas. Ne jamais commiter ces 3.
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-nato-master
+  cancel-in-progress: false
 
 jobs:
   update:
@@ -20,8 +26,19 @@ jobs:
     runs-on: [self-hosted, "${{ matrix.runner }}"]
 
     steps:
-      - name: Pull latest code
-        run: git -C /opt/nato-smartcity-iot pull https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Tanguyvans/LANCE.git main
+      - name: Fast-forward to tested commit
+        working-directory: /opt/nato-smartcity-iot
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          DEPLOY_REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Tanguyvans/LANCE.git
+        run: |
+          git fetch "$DEPLOY_REMOTE" "$DEPLOY_SHA"
+          git merge --ff-only "$DEPLOY_SHA"
+          if [[ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]]; then
+            echo "::error::The checkout is ahead of the tested commit; refusing to deploy."
+            exit 1
+          fi
 
       - name: Install Codex CLI when missing
         shell: bash

@@ -3,6 +3,9 @@
 This profile trains the four LANCE LoRA experts sequentially on a 16 GB NVIDIA GPU.
 It keeps the existing 0.5B/v2 training files unchanged.
 
+Training dependencies are listed in [`requirements.txt`](requirements.txt),
+separately from the application dependencies at the repository root.
+
 ## Workspace boundary
 
 `/home/tanguy/LANCE` is the only Git source of truth. Before running a training

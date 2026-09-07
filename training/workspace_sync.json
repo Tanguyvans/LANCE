@@ -3,7 +3,7 @@
   "source_role": "canonical-git-workspace",
   "execution_role": "training-only-workspace",
   "push_files": [
-    "requirements-training.txt",
+    "training/requirements.txt",
     "training/README_FEEDBACK_TRAINING.md",
     "training/README_QWEN3B.md",
     "training/configs/qlora_qwen2_5_3b.yaml",

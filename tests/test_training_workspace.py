@@ -104,6 +104,14 @@ def test_default_adapter_destination_matches_hmoe_service() -> None:
     assert DEFAULT_ADAPTER_ROOT.name == "lance-qlora_moe_3b"
 
 
+def test_repository_manifest_includes_training_dependencies(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    manifest = load_manifest(root / "training" / "workspace_sync.json")
+    plan = build_push_plan(root, tmp_path, manifest)
+
+    assert Path("training/requirements.txt") in {item.relative_path for item in plan}
+
+
 
 def test_pull_adapters_collects_only_explicit_final_files(tmp_path: Path) -> None:
     remote = tmp_path / "remote"
