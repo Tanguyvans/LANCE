@@ -31,7 +31,7 @@ def _numstat(
     source_commit: str,
     paths: Iterable[str],
 ) -> dict[str, Any]:
-    output = _git(repo_root, "diff", "--numstat", f"{source_commit}..HEAD", "--", *paths)
+    output = _git(repo_root, "diff", "--find-renames", "--numstat", f"{source_commit}..HEAD", "--", *paths)
     added = 0
     deleted = 0
     for line in output.splitlines():
@@ -77,7 +77,10 @@ def annotate_snapshot(snapshot_dir: Path) -> dict[str, Any]:
                 "ground_truth": _numstat(
                     repo_root,
                     source_commit,
-                    [f"benchmarks/ground_truth/scenario_{scenario_id}.yaml"],
+                    [
+                        f"benchmarks/ground_truth/{group}scenario_{scenario_id}.yaml"
+                        for group in ("", "dev/", "test/")
+                    ],
                 ),
                 "evaluator": _numstat(
                     repo_root,

@@ -116,7 +116,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     The previous implementation read ``ground_truth/scenario_N.yaml`` and used
     vulnerability indicators and attack paths to enrich the graph.  That made
     the benchmark answer key part of the agent context.  Scenario mode now reads
-    only ``scenarios/SN.yaml`` and the referenced public topology definition.
+    only ``scenarios/{dev,test}/SN.yaml`` and the referenced public topology definition.
 
     Vulnerability counts and risk labels deliberately remain empty: they belong
     to the evaluator-side oracle, not to the worker.

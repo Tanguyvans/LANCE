@@ -309,7 +309,7 @@ async def start_pipeline(req: StartRequest):
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "S20-S25 require the external sealed controller and isolated worker. "
+                    "Sealed scenarios require the external controller and isolated worker. "
                     "They cannot run inside the dashboard process."
                 ),
             ) from exc
@@ -407,9 +407,9 @@ def _batch_thread(req: BatchRequest):
             _evaluation_metrics,
             _parse_scenario_ids,
             _phase5_summary,
-            _scenario_split,
         )
         from src.agent.execution_profiles import resolve_execution_profile_for_model
+        from src.benchmark.scenario_exports import resolve_scenario_split
         # Validate before importing/constructing any execution machinery. This
         # is the worker-side defense if _batch_thread is called directly.
         selector = "all" if req.batch_ids == ["all"] else ",".join(req.batch_ids)
@@ -450,7 +450,7 @@ def _batch_thread(req: BatchRequest):
                 break
 
             gt_file = resolve_ground_truth_path(sid)
-            benchmark_split = _scenario_split(sid)
+            benchmark_split = resolve_scenario_split(sid)
             _push({
                 "type": "batch_scenario_start",
                 "batch_id": batch_id,

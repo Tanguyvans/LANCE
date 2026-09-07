@@ -848,7 +848,7 @@ graph TB
 >
 > ⚠️ **Incohérence connue** : S11/S12/S13 déclarent un pack `f7_pivot` qui n'existe pas dans
 > `packs/definitions/` (le pack post-exploit est `f7_postexploit`). `compose_gt.py` **saute**
-> donc ces scénarios (« Pack not found: f7_pivot.yaml ») ; leurs `ground_truth/scenario_1{1,2,3}.yaml`
+> donc ces scénarios (« Pack not found: f7_pivot.yaml ») ; leurs `ground_truth/dev/scenario_1{1,2,3}.yaml`
 > ont été produits indépendamment et ne sont pas régénérables en l'état. À corriger côté scénarios
 > (renommer `f7_pivot` → `f7_postexploit`) ou en ajoutant un pack `f7_pivot`.
 
@@ -860,7 +860,7 @@ ansible-playbook -i inventory.yml playbooks/03_deploy_scenario.yml --ask-vault-p
 python3 -m src.agent --provider anthropic --model claude-sonnet-4-20250514 --scenario 6
 
 # Évaluer les résultats
-python3 -m src.benchmark.evaluator --run-dir output/agent/<timestamp> --ground-truth benchmarks/ground_truth/scenario_6.yaml
+python3 -m src.benchmark.evaluator --run-dir output/agent/<timestamp> --ground-truth benchmarks/ground_truth/dev/scenario_6.yaml
 ```
 
 ---

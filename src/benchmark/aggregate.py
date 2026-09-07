@@ -335,8 +335,18 @@ def aggregate_evaluations(
         split_scenarios = [s for s in scenario_rows if s["split"] == split]
         per_split[split] = _summary_for_scenarios(split_scenarios)
 
+    # A development score and a test score answer different questions. Keep
+    # suite counts, but publish scores only within each group for mixed suites.
+    mixed_splits = len(per_split) > 1
+    if mixed_splits:
+        suite_summary = {
+            key: None if key.startswith("macro_") else value
+            for key, value in suite_summary.items()
+        }
+
     return {
         "run_count": len(rows),
+        "mixed_splits": mixed_splits,
         **suite_summary,
         "missing_scenarios": missing,
         "per_scenario": {s["scenario_id"]: s for s in scenario_rows},

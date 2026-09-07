@@ -30,7 +30,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from src.benchmark.catalog import DEV_PUBLIC, get_scenario
+from src.benchmark.catalog import CatalogError, DEV_PUBLIC, load_catalog, public_scenario_split
 from src.benchmark.evaluator import _load_llm_findings, evaluate, resolve_policy
 
 
@@ -105,6 +105,56 @@ def _normalise_scenario_id(value: object) -> str:
     return str(value).strip().removeprefix("S").removeprefix("s")
 
 
+def require_learning_scenario(scenario_id: object, *, custom: bool = False) -> None:
+    """Reject test/sealed identities before considering an opt-in custom run."""
+    sid = _normalise_scenario_id(scenario_id or "")
+    if not sid:
+        raise LearningLoopError("scenario_id missing from learning provenance")
+    catalog = load_catalog()  # A broken/missing catalogue must fail closed.
+    try:
+        split = public_scenario_split(sid, catalog=catalog)
+    except CatalogError as exc:
+        # Custom IDs are allowed, but numeric/legacy benchmark identities must
+        # resolve through the catalogue, including future sealed scenarios.
+        if not custom or re.fullmatch(r"\d+[a-z]*", sid, re.IGNORECASE):
+            raise LearningLoopError(f"Scenario S{sid} is not dev-public") from exc
+    else:
+        if split != DEV_PUBLIC:
+            raise LearningLoopError(f"Scenario S{sid} is not dev-public")
+
+    from src.benchmark.scenario_exports import EXPORTED_ID_RE, default_export_store
+    if not EXPORTED_ID_RE.fullmatch(sid):
+        return
+    store = default_export_store()
+    if not store.has_entry(sid):
+        raise LearningLoopError(f"Generated scenario {sid} requires trusted export provenance")
+    source = store.load(sid)["manifest"].get("source_scenario_id")
+    if not source or str(source) == sid:
+        raise LearningLoopError(f"Generated scenario {sid} has no valid source scenario")
+    # Derived scenarios inherit their source's learning restrictions.
+    require_learning_scenario(source)
+
+
+def require_learning_metadata(metadata: dict[str, Any], *, custom: bool = False) -> None:
+    """Check both metadata sources; a custom marker cannot override test labels."""
+    if any(metadata.get(key) in ("test-public", "eval-sealed") for key in ("split", "benchmark_split")):
+        raise LearningLoopError("Refusing test-public or sealed learning data")
+    if metadata.get("scenario_id") is not None:
+        require_learning_scenario(metadata["scenario_id"], custom=custom)
+    if metadata.get("source_scenario_id"):
+        require_learning_scenario(metadata["source_scenario_id"])
+    config = metadata.get("custom_config")
+    if isinstance(config, dict):
+        require_learning_metadata(config, custom=True)
+    occurrences = metadata.get("occurrences", [])
+    if not isinstance(occurrences, list):
+        raise LearningLoopError("Invalid learning occurrences")
+    for occurrence in occurrences:
+        if not isinstance(occurrence, dict):
+            raise LearningLoopError("Invalid learning occurrence metadata")
+        require_learning_metadata(occurrence, custom=custom)
+
+
 def _run_context(
     run_dir: Path,
     *,
@@ -119,23 +169,10 @@ def _run_context(
     split = scenario_meta.get("split") or run_meta.get("benchmark_split")
     scenario_id = _normalise_scenario_id(scenario_meta.get("scenario_id", ""))
 
-    # Fail closed before considering custom mode.  A forged custom_config marker
-    # must never turn a sealed run into reusable learning data.
-    if split == "eval-sealed":
-        raise LearningLoopError(f"Refusing sealed run: {run_dir.name}")
-    if scenario_id.isdigit() and 20 <= int(scenario_id) <= 25:
-        raise LearningLoopError(f"Refusing sealed scenario S{scenario_id}")
-    if not scenario_id:
-        raise LearningLoopError(f"scenario_id missing in {run_dir / 'scenario_meta.json'}")
-
-    try:
-        descriptor = get_scenario(scenario_id)
-    except Exception as exc:
-        if not scenario_meta.get("custom_config"):
-            raise LearningLoopError(f"Unknown benchmark scenario S{scenario_id}") from exc
-        descriptor = None
-    if descriptor is not None and descriptor.sealed:
-        raise LearningLoopError(f"Refusing sealed scenario S{scenario_id}")
+    custom = bool(scenario_meta.get("custom_config"))
+    require_learning_metadata(scenario_meta, custom=custom)
+    require_learning_metadata(run_meta, custom=custom)
+    require_learning_scenario(scenario_id, custom=custom)
 
     if scenario_meta.get("custom_config"):
         if not allow_custom:
@@ -146,8 +183,6 @@ def _run_context(
     else:
         if split not in (None, DEV_PUBLIC):
             raise LearningLoopError(f"Unsupported benchmark split {split!r}")
-        if descriptor is None or descriptor.split != DEV_PUBLIC:
-            raise LearningLoopError(f"Scenario S{scenario_id} is not dev-public")
         ground_truth = ground_truth_dir / f"scenario_{scenario_id}.yaml"
 
     if ground_truth.is_symlink() or not ground_truth.is_file():
@@ -1000,7 +1035,7 @@ def mine_runs(
     output_dir.mkdir(parents=True)
 
     if ground_truth_dir is None:
-        ground_truth_dir = Path(__file__).resolve().parents[2] / "benchmarks" / "ground_truth"
+        ground_truth_dir = Path(__file__).resolve().parents[2] / "benchmarks" / "ground_truth" / "dev"
     selected = set(run_ids or ())
     discovered = sorted({
         meta.parent
@@ -1125,9 +1160,9 @@ def validate_dataset(dataset_dir: Path, *, verify_checksum: bool = True) -> dict
             raise LearningLoopError(f"Missing occurrences at record {index}")
         if candidate.get("split") not in LEARNING_SPLITS:
             raise LearningLoopError(f"Invalid learning split at record {index}")
-        scenario_id = _normalise_scenario_id(candidate.get("scenario_id", ""))
-        if scenario_id.isdigit() and 20 <= int(scenario_id) <= 25:
-            raise LearningLoopError(f"Sealed candidate at record {index}")
+        custom = candidate["split"] == "custom"
+        require_learning_scenario(candidate.get("scenario_id"), custom=custom)
+        require_learning_metadata(candidate, custom=custom)
 
     checksum = _sha256(dataset_dir / "candidates.jsonl")
     if verify_checksum and manifest.get("candidates_sha256") != checksum:

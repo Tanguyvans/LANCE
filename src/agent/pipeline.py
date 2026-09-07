@@ -76,12 +76,14 @@ class Pipeline(
         self.scenario_id = scenario_id
         self.execution_context = execution_context
         self.benchmark_split = benchmark_split or getattr(execution_context, "split", None)
-        if self.benchmark_split is None and scenario_id is not None:
-            try:
-                from src.benchmark.catalog import get_scenario
-                self.benchmark_split = get_scenario(str(scenario_id)).split
-            except (ImportError, FileNotFoundError, KeyError, ValueError):
-                self.benchmark_split = "dev-public"
+        if execution_context is None and scenario_id is not None and self.benchmark_split != "eval-sealed":
+            from src.benchmark.scenario_exports import resolve_scenario_split
+            actual_split = resolve_scenario_split(
+                scenario_id, export_store=runtime.default_export_store(),
+            )
+            if self.benchmark_split not in (None, actual_split):
+                raise ValueError(f"S{scenario_id} belongs to {actual_split}, not {self.benchmark_split}")
+            self.benchmark_split = actual_split
         self.benchmark_split = self.benchmark_split or "unassigned"
         self.sealed = self.benchmark_split == "eval-sealed"
         # Benchmark runs must not change the CVE knowledge source on a cache

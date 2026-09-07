@@ -44,6 +44,20 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function batchSummaryText(ev) {
+  const agg = ev.aggregate || {};
+  const number = (value, digits = 3) => value != null ? value.toFixed(digits) : 'N/A';
+  const score = value => value != null ? `${number(value, 1)}%` : 'N/A';
+  const groups = Object.entries(agg.per_split || {}).map(([split, metrics]) =>
+    `${split}: F1=${number(metrics.macro_positive_f1)} Recall=${number(metrics.macro_positive_recall)} Score=${score(metrics.macro_scenario_score_pct)}`
+  );
+  // Older saved summaries may not carry per-split metrics.
+  if (!groups.length && agg.avg_f1 !== undefined) {
+    groups.push(`Avg F1=${number(agg.avg_f1)} Recall=${number(agg.avg_recall)} Score=${score(agg.avg_score_pct)}`);
+  }
+  return ['Batch terminé', ...groups, `Total $${(ev.total_cost_usd || 0).toFixed(4)}`].join(' — ');
+}
+
 function _formatErrDetail(detail) {
   if (detail == null) return 'erreur inconnue';
   if (typeof detail === 'string') return detail;
@@ -258,39 +272,8 @@ const FALLBACK_SCENARIOS = {
       { role: 'iot_gateway', title: 'OTA sans auth ni signature', severity: 'medium', category: 'insecure_update' },
     ]},
   ],
-  scenarios: [
-    { id: '1', name: 'Réseau plat', difficulty: 'easy', posture: 'vulnerable', topology: 'flat', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
-    { id: '2', name: 'Gateway exposée', difficulty: 'medium', posture: 'vulnerable', topology: 'gateway', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f6_crypto','f8_info_disclosure','f9_insecure_update'] },
-    { id: '3', name: 'Réplique NATO Lab', difficulty: 'hard', posture: 'vulnerable', topology: 'nato_lab', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f6_crypto','f7_postexploit','f8_info_disclosure'] },
-    { id: '4', name: 'Réseau segmenté', difficulty: 'hard', posture: 'vulnerable', topology: 'ics_scada', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f7_postexploit','f8_info_disclosure','f9_insecure_update'] },
-    { id: '5', name: 'Smart Building', difficulty: 'medium', posture: 'vulnerable', topology: 'building', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
-    { id: '6', name: 'Domotique centralisée', difficulty: 'medium', posture: 'vulnerable', topology: 'star', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure','f9_insecure_update'] },
-    { id: '7', name: 'Edge-Cloud pivot', difficulty: 'hard', posture: 'vulnerable', topology: 'edge_cloud', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure','f9_insecure_update'] },
-    { id: '8', name: 'Multi-zone IT/IoT/OT', difficulty: 'hard', posture: 'vulnerable', topology: 'multizone', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
-    { id: '9', name: 'Mesh IoT', difficulty: 'medium', posture: 'vulnerable', topology: 'mesh_iot', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f8_info_disclosure'] },
-    { id: '10', name: 'Flat variantes', difficulty: 'medium', posture: 'vulnerable', topology: 'flat_variants', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f8_info_disclosure'] },
-    { id: '11', name: 'Smart City 3 zones', difficulty: 'hard', posture: 'vulnerable', topology: 'smart_city_3zones', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
-    { id: '12', name: 'Smart City Large Scale', difficulty: 'hard', posture: 'vulnerable', topology: 'smart_city_large', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection','f6_crypto','f8_info_disclosure'] },
-    { id: '13', name: 'VLAN Segmented Network', difficulty: 'hard', posture: 'vulnerable', topology: 'vlan_segmented', packs: ['f1_weak_auth','f2_misconfig','f3_data_exposure','f5_injection'] },
-    { id: '14', name: 'Sparse Mixed-Hardening', difficulty: 'hard', posture: 'mixed', topology: 'sparse_hardened', packs: ['f10_sparse_precision'] },
-    { id: '15', name: 'Authenticated Multi-Tenant API', difficulty: 'hard', posture: 'mixed', topology: 'api_authorization', packs: ['f11_api_authorization'] },
-    { id: '16', name: 'Device PKI Lifecycle', difficulty: 'expert', posture: 'mixed', topology: 'device_pki', packs: ['f12_device_pki'] },
-    { id: '17', name: 'Stateful Signed OTA', difficulty: 'expert', posture: 'mixed', topology: 'ota_lifecycle', packs: ['f13_ota_advanced'] },
-    { id: '18', name: 'Simulated Cloud IAM and SSRF', difficulty: 'expert', posture: 'mixed', topology: 'cloud_iam_ssrf', packs: ['f14_cloud_iam'] },
-    { id: '19', name: 'Safe Multi-Protocol OT Cell', difficulty: 'expert', posture: 'mixed', topology: 'ot_multiprotocol', packs: ['f15_ot_protocols'] },
-    { id: '20', name: 'True Network Multi-Hop Pivot', difficulty: 'expert', posture: 'mixed', topology: 'true_multihop', packs: ['f16_true_multihop'], split: 'test-public', sealed: false },
-    { id: '21', name: 'Sparse Low-Prevalence Network', difficulty: 'hard', posture: 'sparse', topology: 'sparse_low_prevalence', packs: ['f17_sparse_low_prevalence'], split: 'test-public', sealed: false },
-    { id: '22', name: 'Exploit Primitive Diversity', difficulty: 'expert', posture: 'mixed', topology: 'exploit_diversity', packs: ['f18_exploit_diversity'], split: 'test-public', sealed: false },
-    { id: '23', name: 'Wireless-to-Firmware Chain', difficulty: 'expert', posture: 'mixed', topology: 'wireless_firmware_chain', packs: ['f19_wireless_firmware'], split: 'test-public', sealed: false },
-    { id: '24', name: 'Dual-Zone Operations Chain', difficulty: 'expert', posture: 'mixed', topology: 'heldout_dual_zone_chain', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
-    { id: '25', name: 'Segmented Fan-Out', difficulty: 'expert', posture: 'mixed', topology: 'heldout_segmented_fanout', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
-    { id: '26', name: 'Asymmetric Pivot Paths', difficulty: 'expert', posture: 'mixed', topology: 'heldout_asymmetric_paths', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
-    { id: '27', name: 'Three-Pivot Cascade', difficulty: 'expert', posture: 'mixed', topology: 'heldout_three_pivot_cascade', packs: ['f20_heldout_network_paths'], split: 'test-public', sealed: false },
-    { id: '28', name: 'Provisioning Dependency Chain', difficulty: 'expert', posture: 'mixed', topology: 'heldout_provisioning_chain', packs: ['f21_provisioning_chain'], split: 'test-public', sealed: false },
-    { id: '29', name: 'Large Sparse Control Network', difficulty: 'hard', posture: 'sparse', topology: 'heldout_large_sparse', packs: ['f10_sparse_precision'], split: 'test-public', sealed: false },
-    { id: '1h', name: 'Réseau plat (hardened)', difficulty: 'control', posture: 'hardened', topology: 'flat', packs: ['f0_hardened'] },
-    { id: '4h', name: 'ICS/SCADA (hardened)', difficulty: 'control', posture: 'hardened', topology: 'ics_scada', packs: ['f0_hardened'] },
-  ],
+  // Scenario IDs and groups are supplied only by the server catalogue.
+  scenarios: [],
 };
 
 function isSealedScenarioId(value) {
@@ -1802,7 +1785,6 @@ function handleEvent(ev) {
   }
 
   else if (t === 'batch_done') {
-    const agg = ev.aggregate || {};
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
@@ -1811,14 +1793,7 @@ function handleEvent(ev) {
     stopBtn.disabled = false;
     stopBtn.textContent = 'Arrêter';
     if (eventSource) { eventSource.close(); eventSource = null; }
-    if (agg.avg_f1 !== undefined) {
-      const avgF1 = agg.avg_f1 != null ? agg.avg_f1.toFixed(3) : 'N/A';
-      const avgRecall = agg.avg_recall != null ? agg.avg_recall.toFixed(3) : 'N/A';
-      const avgScore = agg.avg_score_pct != null ? `${agg.avg_score_pct.toFixed(1)}%` : 'N/A';
-      addLog({type:'info', message:`Batch terminé — Avg F1=${avgF1} Recall=${avgRecall} Score=${avgScore} — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
-    } else {
-      addLog({type:'info', message:`Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`});
-    }
+    addLog({type:'info', message:batchSummaryText(ev)});
     loadRuns();
   }
 
@@ -2959,13 +2934,7 @@ function addLog(ev) {
       : `[${ev.index}/${ev.total}] S${ev.scenario_id} terminé $${(ev.cost_usd||0).toFixed(4)}`;
   }
   else if (t === 'batch_done') {
-    const agg = ev.aggregate || {};
-    const avgF1 = agg.avg_f1 != null ? agg.avg_f1.toFixed(3) : 'N/A';
-    const avgRecall = agg.avg_recall != null ? agg.avg_recall.toFixed(3) : 'N/A';
-    const avgScore = agg.avg_score_pct != null ? `${agg.avg_score_pct.toFixed(1)}%` : 'N/A';
-    text = agg.avg_f1 !== undefined
-      ? `Batch terminé — Avg F1=${avgF1} Recall=${avgRecall} Score=${avgScore} Total $${(ev.total_cost_usd||0).toFixed(4)}`
-      : `Batch terminé — Total $${(ev.total_cost_usd||0).toFixed(4)}`;
+    text = batchSummaryText(ev);
   }
   else if (t === 'tool_call') {
     fullText = `${ev.name}(${JSON.stringify(ev.args||{}, null, 2)})`;

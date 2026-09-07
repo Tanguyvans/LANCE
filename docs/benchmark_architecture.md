@@ -203,7 +203,7 @@ vulnerabilities:
 `{ip}` est remplace par l'IP reelle du device a la composition.
 
 
-### Scenario (ex: scenarios/S1.yaml)
+### Scenario (ex: scenarios/dev/S1.yaml)
 
 ```yaml
 scenario_id: '1'
@@ -238,7 +238,7 @@ bonus_types:
 > réels : la plage VMID est portée par la topologie et par `scenario_vmid_ranges` (main.yml).
 
 
-### Scenario hardened (ex: scenarios/S1h.yaml)
+### Scenario hardened (ex: scenarios/dev/S1h.yaml)
 
 ```yaml
 scenario_id: "1h"
@@ -346,7 +346,7 @@ def compose_scenario(scenario_path):
 
 ```
 1. Choisir une topologie existante (ou en creer une)
-2. Creer scenarios/S14.yaml avec topology + packs
+2. Creer scenarios/dev/S14.yaml avec topology + packs et renseigner le catalogue
 3. python3 benchmarks/tools/compose_gt.py -s 14   → genere le ground truth
 4. Ajouter l'entree dans ansible/group_vars/all/main.yml pour le rendre deployable.
 ```
@@ -379,7 +379,7 @@ python3 -m src.agent --scenario 4
 
 # Evaluer
 python3 -m src.benchmark.evaluator --run-dir output/agent/latest \
-  --ground-truth benchmarks/ground_truth/scenario_4.yaml
+  --ground-truth benchmarks/ground_truth/dev/scenario_4.yaml
 ```
 
 

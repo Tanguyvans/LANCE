@@ -178,7 +178,7 @@ class ScenarioGenerator:
         Ansible catalogue and therefore cannot support an executable run.
         """
         scenario_dir = self.benchmarks_root / "scenarios"
-        paths = list(scenario_dir.glob("S*.yaml"))
+        paths = list(scenario_dir.rglob("S*.yaml"))
         return sorted(paths, key=self._scenario_path_sort_key)
 
     @staticmethod
@@ -556,14 +556,15 @@ class ScenarioGenerator:
             raise ScenarioGeneratorError(f"Operation {operation!r} is not allowed for {blueprint['id']}")
 
     def _load_blueprint(self, blueprint: dict[str, Any]):
+        from src.benchmark.catalog import public_asset_path
         sid = blueprint["source_scenario_id"]
-        scenario = _load_yaml(self.benchmarks_root / "scenarios" / f"S{sid}.yaml")
+        scenario = _load_yaml(public_asset_path(sid, "scenarios", benchmarks_root=self.benchmarks_root))
         topology = _load_yaml(self.benchmarks_root / "topologies" / f"{scenario['topology']}.yaml")
         packs = [
             {**_load_yaml(self.benchmarks_root / "packs" / "definitions" / f"{pack}.yaml"), "__pack_id": pack}
             for pack in scenario.get("packs", [])
         ]
-        gt_path = self.benchmarks_root / "ground_truth" / f"scenario_{sid}.yaml"
+        gt_path = public_asset_path(sid, "ground_truth", benchmarks_root=self.benchmarks_root)
         ground_truth = _load_yaml(gt_path) if gt_path.exists() else {}
         return scenario, topology, packs, ground_truth
 

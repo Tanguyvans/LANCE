@@ -517,8 +517,39 @@ for _task in GENERIC_TASK_EXPERTS:
 def _convert_candidates(
     accepted: list[dict[str, Any]], runs_root: Path
 ) -> dict[str, list[dict[str, Any]]]:
+    from src.learning.error_mining import (
+        LEARNING_SPLITS, LearningLoopError,
+        require_learning_metadata, require_learning_scenario,
+    )
     traces_by_expert: dict[str, list[dict[str, Any]]] = {}
     for candidate in accepted:
+        try:
+            if candidate.get("split") not in LEARNING_SPLITS:
+                raise LearningLoopError("SFT feedback requires an explicit learning split")
+            custom = candidate["split"] == "custom"
+            require_learning_scenario(candidate.get("scenario_id"), custom=custom)
+            require_learning_metadata(candidate, custom=custom)
+            _first_occurrence(candidate)
+            for occurrence in candidate["occurrences"]:
+                run_id = occurrence.get("run_id") if isinstance(occurrence, dict) else None
+                if (
+                    not isinstance(run_id, str) or not run_id
+                    or Path(run_id).is_absolute() or ".." in Path(run_id).parts
+                    or Path(run_id) == Path(".")
+                ):
+                    raise LearningLoopError("Invalid learning source run_id")
+                run_dir = runs_root / run_id
+                if not run_dir.resolve().is_relative_to(runs_root.resolve()):
+                    raise LearningLoopError("Learning source escapes runs root")
+                for name in ("scenario_meta.json", "run_meta.json"):
+                    path = run_dir / name
+                    if path.exists():
+                        metadata = json.loads(path.read_text(encoding="utf-8"))
+                        if not isinstance(metadata, dict):
+                            raise LearningLoopError("Invalid learning source metadata")
+                        require_learning_metadata(metadata, custom=custom)
+        except (LearningLoopError, OSError, ValueError) as exc:
+            raise FeedbackConversionError(str(exc)) from exc
         task, expert = _candidate_task(candidate), _candidate_expert(candidate)
         trace = CONVERTERS[task](candidate, runs_root)
         if trace.get("metadata", {}).get("expert") != expert:

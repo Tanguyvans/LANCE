@@ -89,7 +89,8 @@ def test_benchmark_dashboard_renders_strict_v3_metric_groups():
     assert "Non comparable" in javascript
     assert "Score officiel" in javascript
     assert "m?.score_pct != null" in javascript
-    assert "agg.avg_score_pct != null" in javascript
+    assert "score(agg.avg_score_pct)" in javascript
+    assert "metrics.macro_scenario_score_pct" in javascript
     assert "const totalPaths" in javascript
     assert "s?.is_zero_gt === true" in javascript
     assert "if (v == null) return null" in javascript

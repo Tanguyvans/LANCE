@@ -14,6 +14,9 @@ import yaml
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT.parent))
+from src.benchmark.catalog import public_asset_path
+
 TOPO_DIR = ROOT / "topologies"
 PACKS_DIR = ROOT / "packs" / "definitions"
 SCENARIOS_DIR = ROOT / "scenarios"
@@ -300,21 +303,20 @@ def main():
     parser.add_argument("--strict-all", action="store_true",
                         help="With --validate, also make legacy schema-v1 drift fatal")
     parser.add_argument("--output-dir", "-o", default=str(GT_DIR),
-                        help="Output directory for generated ground truths")
+                        help="Ground truth root (dev/ and test/ subdirectories are preserved)")
     args = parser.parse_args()
     if args.strict_all and not args.validate:
         parser.error("--strict-all requires --validate")
 
     out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     # Find scenario files
     if args.scenario:
-        files = [SCENARIOS_DIR / f"S{args.scenario}.yaml"]
+        files = [public_asset_path(args.scenario, "scenarios", benchmarks_root=ROOT)]
         if not files[0].exists():
             raise SystemExit(f"Scenario file not found: {files[0]}")
     else:
-        files = sorted(SCENARIOS_DIR.glob("S*.yaml"))
+        files = sorted(SCENARIOS_DIR.rglob("S*.yaml"))
 
     if not files:
         raise SystemExit(f"No scenario files found in {SCENARIOS_DIR}/")
@@ -336,7 +338,8 @@ def main():
             continue
 
         sid = gt["scenario_id"]
-        out_path = out_dir / f"scenario_{sid}.yaml"
+        relative = public_asset_path(sid, "ground_truth", benchmarks_root=ROOT).relative_to(GT_DIR)
+        out_path = out_dir / relative
         processed += 1
 
         if args.validate:
@@ -359,6 +362,7 @@ def main():
                 else:
                     print(f"  S{sid}: [LEGACY-DIFF] no existing GT file")
         else:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(
                 yaml.dump(gt, default_flow_style=False, allow_unicode=True, sort_keys=False)
             )

@@ -297,6 +297,20 @@ def _manual_artifact_path(scenario_id: int | str, artifact: str) -> Path | None:
     return path if path.is_file() and not path.is_symlink() else None
 
 
+def resolve_scenario_split(
+    scenario_id: int | str, *, export_store: ExportedScenarioStore | None = None,
+) -> str:
+    """Resolve the trusted group for official, exported and manual scenarios."""
+    sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
+    if (export_store or default_export_store()).exists(sid):
+        return "lab-export"
+    from src.benchmark.scenario_deployment import ManualScenarioDeployment
+    if ManualScenarioDeployment.exists(sid):
+        return "lab-manual"
+    from src.benchmark.catalog import public_scenario_split
+    return public_scenario_split(sid)
+
+
 def resolve_scenario_path(scenario_id: int | str) -> Path:
     sid = str(scenario_id).removeprefix("S").removeprefix("s")
     store = default_export_store()
@@ -305,7 +319,8 @@ def resolve_scenario_path(scenario_id: int | str) -> Path:
     manual = _manual_artifact_path(sid, "scenario")
     if manual is not None:
         return manual
-    return REPO_ROOT / "benchmarks" / "scenarios" / f"S{sid}.yaml"
+    from src.benchmark.catalog import public_asset_path
+    return public_asset_path(sid, "scenarios")
 
 
 def resolve_topology_path(scenario_id: int | str, topology_id: str) -> Path:
@@ -327,4 +342,5 @@ def resolve_ground_truth_path(scenario_id: int | str) -> Path:
     manual = _manual_artifact_path(sid, "ground_truth")
     if manual is not None:
         return manual
-    return REPO_ROOT / "benchmarks" / "ground_truth" / f"scenario_{sid}.yaml"
+    from src.benchmark.catalog import public_asset_path
+    return public_asset_path(sid, "ground_truth")

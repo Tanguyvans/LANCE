@@ -95,6 +95,69 @@ def _records(dataset: Path) -> list[dict]:
     ]
 
 
+@pytest.mark.parametrize("sid", [str(i) for i in range(20, 30)] + ["20h"])
+@pytest.mark.parametrize("custom", [False, True])
+def test_test_scenarios_cannot_be_mined_with_a_forged_dev_label(tmp_path, sid, custom):
+    from src.learning.error_mining import _run_context
+
+    run = _write_run(tmp_path / "runs")
+    metadata = {"scenario_id": sid, "split": "dev-public"}
+    if custom:
+        metadata["custom_config"] = {"architecture": "flat"}
+    (run / "scenario_meta.json").write_text(json.dumps(metadata))
+    with pytest.raises(LearningLoopError, match="not dev-public"):
+        _run_context(run, ground_truth_dir=tmp_path / "gt", allow_custom=True)
+
+
+def test_test_split_in_run_meta_cannot_be_hidden_by_scenario_meta(tmp_path):
+    from src.learning.error_mining import _run_context
+
+    run = _write_run(tmp_path / "runs")
+    (run / "run_meta.json").write_text(json.dumps({"benchmark_split": "test-public"}))
+    with pytest.raises(LearningLoopError, match="test-public"):
+        _run_context(run, ground_truth_dir=tmp_path / "gt", allow_custom=True)
+
+
+def test_exported_test_variant_inherits_its_source_restriction(monkeypatch):
+    from types import SimpleNamespace
+    from src.learning.error_mining import require_learning_scenario
+
+    store = SimpleNamespace(
+        has_entry=lambda sid: sid == "gen-test-0123456789",
+        load=lambda sid: {"manifest": {"source_scenario_id": "29"}},
+    )
+    monkeypatch.setattr("src.benchmark.scenario_exports.default_export_store", lambda: store)
+    with pytest.raises(LearningLoopError, match="S29 is not dev-public"):
+        require_learning_scenario("gen-test-0123456789", custom=True)
+
+
+def test_generated_learning_requires_verified_origin(monkeypatch):
+    from types import SimpleNamespace
+    from src.learning.error_mining import require_learning_scenario
+
+    store = SimpleNamespace(has_entry=lambda sid: False)
+    monkeypatch.setattr("src.benchmark.scenario_exports.default_export_store", lambda: store)
+    with pytest.raises(LearningLoopError, match="trusted export provenance"):
+        require_learning_scenario("gen-test-0123456789", custom=True)
+
+
+@pytest.mark.parametrize("location", ["candidate", "occurrence"])
+def test_dataset_validation_rejects_test_identity_even_as_custom(tmp_path, location):
+    runs = tmp_path / "runs"
+    _write_run(runs)
+    gt_dir = tmp_path / "gt"
+    _write_gt(gt_dir)
+    dataset = tmp_path / "dataset"
+    mine_runs(runs, dataset, ground_truth_dir=gt_dir)
+    records = _records(dataset)
+    records[0]["split"] = "custom"
+    target = records[0] if location == "candidate" else records[0]["occurrences"][0]
+    target["scenario_id"] = "29"
+    (dataset / "candidates.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    with pytest.raises(LearningLoopError, match="not dev-public"):
+        validate_dataset(dataset, verify_checksum=False)
+
+
 def test_mines_false_negative_false_positive_and_severity_error(tmp_path: Path):
     runs = tmp_path / "runs"
     runs.mkdir()

@@ -10,6 +10,8 @@ from typing import Any, Iterator
 import pytest
 import yaml
 
+from src.benchmark.catalog import public_asset_path
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARKS = REPO_ROOT / "benchmarks"
@@ -79,7 +81,7 @@ def _scenario_selectors(value: Any) -> Iterator[str]:
 
 
 def test_every_public_scenario_references_existing_topology_and_packs():
-    for scenario_path in sorted(SCENARIOS.glob("S*.yaml")):
+    for scenario_path in sorted(SCENARIOS.rglob("S*.yaml")):
         scenario = _load_yaml(scenario_path)
         assert (TOPOLOGIES / f"{scenario['topology']}.yaml").is_file(), scenario_path
         for pack_id in scenario.get("packs", []):
@@ -90,7 +92,7 @@ def test_every_public_scenario_references_existing_topology_and_packs():
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_public_v2_scenario_references_existing_topology_and_packs(scenario_id: str):
-    scenario_path = SCENARIOS / f"S{scenario_id}.yaml"
+    scenario_path = public_asset_path(scenario_id, "scenarios")
     assert scenario_path.is_file()
     scenario = _load_yaml(scenario_path)
 
@@ -106,8 +108,8 @@ def test_public_v2_scenario_references_existing_topology_and_packs(scenario_id: 
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_composer_exactly_reproduces_committed_ground_truth(scenario_id: str):
-    scenario_path = SCENARIOS / f"S{scenario_id}.yaml"
-    expected_path = GROUND_TRUTH / f"scenario_{scenario_id}.yaml"
+    scenario_path = public_asset_path(scenario_id, "scenarios")
+    expected_path = public_asset_path(scenario_id, "ground_truth")
     expected = _load_yaml(expected_path)
 
     first = COMPOSE_GT.compose_scenario(scenario_path)
@@ -122,7 +124,7 @@ def test_public_v2_finding_and_control_ids_are_stable_unique_and_resolvable():
     all_attack_path_ids: set[str] = set()
 
     for scenario_id in PUBLIC_V2_IDS:
-        gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+        gt = COMPOSE_GT.compose_scenario(public_asset_path(scenario_id, "scenarios"))
         vulnerabilities = gt["vulnerabilities"]
         controls = gt["controls"]
         items = vulnerabilities + controls
@@ -148,7 +150,7 @@ def test_public_v2_finding_and_control_ids_are_stable_unique_and_resolvable():
 @pytest.mark.parametrize("scenario_id", tuple(str(i) for i in range(15, 20)))
 def test_chain_scenarios_expose_measurable_multihop_depths(scenario_id: str):
     """The public chain scenarios must exercise MHR, not only document a path."""
-    gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+    gt = COMPOSE_GT.compose_scenario(public_asset_path(scenario_id, "scenarios"))
     depths = {int(item.get("hop_depth", 0)) for item in gt["vulnerabilities"]}
 
     assert any(depth >= 1 for depth in depths)
@@ -158,14 +160,14 @@ def test_chain_scenarios_expose_measurable_multihop_depths(scenario_id: str):
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_public_v2_scenarios_do_not_exempt_unexpected_findings(scenario_id: str):
-    gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+    gt = COMPOSE_GT.compose_scenario(public_asset_path(scenario_id, "scenarios"))
     assert gt["bonus_types"] == []
 
 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_vulnerable_profiles_and_control_assertions_are_consistent(scenario_id: str):
-    scenario = _load_yaml(SCENARIOS / f"S{scenario_id}.yaml")
-    gt = COMPOSE_GT.compose_scenario(SCENARIOS / f"S{scenario_id}.yaml")
+    scenario = _load_yaml(public_asset_path(scenario_id, "scenarios"))
+    gt = COMPOSE_GT.compose_scenario(public_asset_path(scenario_id, "scenarios"))
     services = {service["name"]: service for service in gt["topology"]["services"]}
     profiles = {service["security_profile"] for service in services.values()}
 
@@ -210,7 +212,7 @@ def test_vulnerable_profiles_and_control_assertions_are_consistent(scenario_id: 
 @pytest.mark.parametrize("scenario_id", PUBLIC_V2_IDS)
 def test_topology_matches_ansible_inventory_service_for_service(scenario_id: str):
     group_vars = _load_ansible_group_vars()
-    scenario = _load_yaml(SCENARIOS / f"S{scenario_id}.yaml")
+    scenario = _load_yaml(public_asset_path(scenario_id, "scenarios"))
     topology = _load_yaml(TOPOLOGIES / f"{scenario['topology']}.yaml")
     ansible = group_vars["scenarios"][scenario_id]
     ansible_base = group_vars["scenario_vmid_ranges"][scenario_id]
@@ -267,8 +269,8 @@ def test_ansible_vmid_ranges_do_not_overlap():
 def test_current_release_has_no_sealed_profile_placeholders():
     assert list(EVAL_PROFILES.glob("*.yaml")) == []
     for scenario_id in range(20, 30):
-        assert (SCENARIOS / f"S{scenario_id}.yaml").is_file()
-        assert (GROUND_TRUTH / f"scenario_{scenario_id}.yaml").is_file()
+        assert (public_asset_path(scenario_id, "scenarios")).is_file()
+        assert (public_asset_path(scenario_id, "ground_truth")).is_file()
 
 
 def test_catalog_has_exact_canonical_public_splits():

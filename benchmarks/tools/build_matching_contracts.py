@@ -26,7 +26,7 @@ PUBLIC_FIELDS = (
 def build() -> dict:
     scenarios: dict[str, dict] = {}
     source_hashes: dict[str, str] = {}
-    for path in sorted(GT_DIR.glob("scenario_*.yaml")):
+    for path in sorted(GT_DIR.rglob("scenario_*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         scenario_id = str(data.get("scenario_id", path.stem.removeprefix("scenario_")))
         source_hashes[scenario_id] = hashlib.sha256(path.read_bytes()).hexdigest()

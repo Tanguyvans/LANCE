@@ -75,6 +75,8 @@ COPY --from=builder /install /usr/local
 # Application source and the benchmark catalogue used by Scenario Lab and the
 # scenario composer. Tests, runtime data, and generated output stay excluded.
 COPY src/ ./src/
+COPY benchmarks/catalog.yaml ./benchmarks/catalog.yaml
+COPY benchmarks/scenarios/ ./benchmarks/scenarios/
 COPY benchmarks/topologies/ ./benchmarks/topologies/
 COPY benchmarks/packs/definitions/ ./benchmarks/packs/definitions/
 COPY infrastructure/ ./infrastructure/

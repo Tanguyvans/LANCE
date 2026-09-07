@@ -3,6 +3,8 @@ benchmark_version: "3.2.0"
 
 # The catalogue stays metadata-only. Public technical definitions live in the
 # scenario, topology, pack and ground-truth directories.
+# Splits determine the dev/ and test/ asset directories. The test assignment
+# is prospective: historical independence from harness tuning is unverified.
 scenarios:
   - {id: "1", label: "Réseau plat", split: dev-public}
   - {id: "2", label: "Gateway exposée", split: dev-public}

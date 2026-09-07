@@ -6,10 +6,13 @@ listing which scenario IDs it applies to (empty = all scenarios with that role+p
 """
 
 import yaml
+import sys
 from pathlib import Path
 from collections import defaultdict
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT.parent))
+from src.benchmark.catalog import public_asset_path
 GT_DIR = ROOT / "ground_truth"
 PACKS_DIR = ROOT / "packs" / "definitions"
 PACKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,7 +50,7 @@ scenario_packs = defaultdict(set)
 # key: (pack_id, role, title) -> {template, scenarios}
 vuln_registry = {}
 
-for gt_file in sorted(GT_DIR.glob("scenario_*.yaml")):
+for gt_file in sorted(GT_DIR.rglob("scenario_*.yaml")):
     gt = yaml.safe_load(gt_file.read_text())
     sid = str(gt.get("scenario_id", "?"))
 
@@ -123,7 +126,7 @@ TOPO_NAMES = {
     "8": "multizone", "9": "mesh_iot", "10": "flat_variants",
 }
 
-for gt_file in sorted(GT_DIR.glob("scenario_*.yaml")):
+for gt_file in sorted(GT_DIR.rglob("scenario_*.yaml")):
     gt = yaml.safe_load(gt_file.read_text())
     sid = str(gt.get("scenario_id", "?"))
     scenario_data = {
@@ -136,7 +139,8 @@ for gt_file in sorted(GT_DIR.glob("scenario_*.yaml")):
         "attack_paths": gt.get("attack_paths", []),
         "bonus_types": gt.get("bonus_types", []),
     }
-    out = SCENARIOS_DIR / f"S{sid}.yaml"
+    out = public_asset_path(sid, "scenarios", benchmarks_root=ROOT)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(yaml.dump(scenario_data, default_flow_style=False, allow_unicode=True, sort_keys=False))
 
 print(f"\nExtracted {len(packs)} packs, {len(scenario_packs)} scenarios")

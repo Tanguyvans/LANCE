@@ -33,9 +33,9 @@ def _load(path: Path) -> dict:
 
 def test_generate_creates_isolated_complete_bundle(generator: ScenarioGenerator):
     protected = [
-        REPO_ROOT / "benchmarks" / "scenarios" / "S15.yaml",
+        REPO_ROOT / "benchmarks" / "scenarios" / "dev" / "S15.yaml",
         REPO_ROOT / "benchmarks" / "topologies" / "api_authorization.yaml",
-        REPO_ROOT / "benchmarks" / "ground_truth" / "scenario_15.yaml",
+        REPO_ROOT / "benchmarks" / "ground_truth" / "dev" / "scenario_15.yaml",
     ]
     before = {path: path.read_bytes() for path in protected}
 
@@ -268,7 +268,7 @@ def test_generator_router_is_registered_in_api_main():
 def test_blueprints_are_derived_from_the_complete_scenario_catalogue(generator: ScenarioGenerator):
     all_source_ids = {
         str((_load(path)).get("scenario_id", path.stem.removeprefix("S")))
-        for path in (REPO_ROOT / "benchmarks" / "scenarios").glob("S*.yaml")
+        for path in (REPO_ROOT / "benchmarks" / "scenarios").rglob("S*.yaml")
     }
     source_ids = {scenario_id for scenario_id in all_source_ids if scenario_id.isdigit()}
     blueprints = generator.list_blueprints()

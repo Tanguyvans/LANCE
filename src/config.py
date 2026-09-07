@@ -72,17 +72,6 @@ DEVICE_DEFAULT_PORTS: dict[str, str] = {
 # Fallback port list when no role-specific entry exists
 DEFAULT_PORTS = "22,23,80,443,502,554,1883,3306,4840,6379,8080,8443"
 
-# ── LLM call limits ──────────────────────────────────────────────────────────
-
-EXPLOIT_MAX_TURNS   = 10   # Phase 4 per-vuln exploit agents
-DEVICE_ANALYSIS_MAX_TURNS  = 5
-DEVICE_ANALYSIS_MAX_TOKENS = 768
-
-EXPLOIT_MAX_TOKENS  = 4096
-
-INTRUSION_MAX_TURNS  = 10
-INTRUSION_MAX_TOKENS = 2048
-
 # ── API rate limiting ────────────────────────────────────────────────────────
 
 NVD_MAX_REQUESTS_WITH_KEY  = 50

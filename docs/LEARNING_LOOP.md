@@ -15,8 +15,22 @@ acceptés ; il ne contient aucune logique d’orchestration ou d’évaluation.
 6. Le convertisseur route les corrections validées vers le dataset SFT de
    l’expert et de la phase concernés.
 
-Les runs `eval-sealed` sont refusés à partir du split, de l’identifiant de
-scénario et du catalogue de confiance. Les runs custom sont exclus par défaut.
+Les runs `test-public` et `eval-sealed` sont refusés à partir des deux fichiers
+de métadonnées, de l’identifiant et du catalogue de confiance, même avec un
+marqueur custom ou un faux label dev. Les variantes exportées héritent de la
+restriction de leur scénario source. Les runs custom sont exclus par défaut.
+Le ground truth par défaut est `benchmarks/ground_truth/dev/` ; un répertoire
+fourni via `--ground-truth-dir` ne désactive jamais la vérification du groupe.
+La validation des candidats et la conversion SFT appliquent aussi cette
+restriction. La conversion exige désormais un `scenario_id` et un `split`
+explicites, y compris pour les anciennes listes de corrections manuelles.
+Une variante générée `gen-…` doit aussi disposer de son manifeste d’export
+vérifiable localement ; une origine absente n’est pas présumée être du dev.
+
+Ces contrôles protègent le workflow ; ils ne prouvent pas qu’un contenu copié
+manuellement n’a jamais été exposé. La réserve de test S20–S29 reste provisoire
+tant que son indépendance historique n’a pas été vérifiée : voir le
+[protocole](../benchmarks/docs/EVALUATION_PROTOCOL.md).
 
 ## Commandes
 

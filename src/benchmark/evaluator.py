@@ -2,7 +2,7 @@
 
 Usage:
     python3 -m src.benchmark.evaluator --run-dir output/agent/20250326_120000 \
-        --ground-truth benchmarks/ground_truth/scenario_2.yaml \
+        --ground-truth benchmarks/ground_truth/dev/scenario_2.yaml \
         --output results/evaluation.json
 """
 from __future__ import annotations
@@ -3230,7 +3230,7 @@ def print_report(result: EvaluationResult) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate LLM benchmark run against ground truth")
     parser.add_argument("--run-dir", required=True, help="Path to agent run output directory")
-    parser.add_argument("--ground-truth", required=True, help="Path to ground_truth/scenario_N.yaml")
+    parser.add_argument("--ground-truth", required=True, help="Path to ground_truth/{dev,test}/scenario_N.yaml")
     parser.add_argument("--output", default=None, help="Path to save evaluation JSON (optional)")
     parser.add_argument(
         "--policy",

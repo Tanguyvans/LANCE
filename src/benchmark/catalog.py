@@ -1,12 +1,13 @@
 """Strict catalogue for development, public-test, and future sealed scenarios.
 
 The current benchmark release is fully public: S1-S19 are development scenarios
-and S20-S29 are held out from tuning. Sealed-profile support remains available
-for a future release.
+and S20-S29 are reserved for evaluation (historical independence is unverified).
+Sealed-profile support remains available for a future release.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Literal, Mapping
@@ -34,11 +35,6 @@ _PROFILE_KEYS = frozenset(
         "score_visibility",
     }
 )
-DEV_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(1, 20))
-TEST_PUBLIC_SCENARIO_IDS = tuple(str(i) for i in range(20, 30))
-PUBLIC_SCENARIO_IDS = DEV_PUBLIC_SCENARIO_IDS + TEST_PUBLIC_SCENARIO_IDS
-SEALED_SCENARIO_IDS: tuple[str, ...] = ()
-_EXPECTED_IDS = PUBLIC_SCENARIO_IDS + SEALED_SCENARIO_IDS
 
 
 class CatalogError(ValueError):
@@ -255,23 +251,14 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
         scenario_id = _require_nonempty_string(item["id"], f"scenario[{index}].id")
         label = _require_nonempty_string(item["label"], f"scenario S{scenario_id}.label")
         split = _require_nonempty_string(item["split"], f"scenario S{scenario_id}.split")
-        if not scenario_id.isdigit() or str(int(scenario_id)) != scenario_id:
+        if not scenario_id.isdigit() or str(int(scenario_id)) != scenario_id or int(scenario_id) < 1:
             raise CatalogError(f"scenario id must be a canonical positive integer string: {scenario_id!r}")
         if scenario_id in seen:
             raise CatalogError(f"duplicate scenario id: {scenario_id}")
         seen.add(scenario_id)
 
-        expected_split = (
-            DEV_PUBLIC
-            if scenario_id in DEV_PUBLIC_SCENARIO_IDS
-            else TEST_PUBLIC
-            if scenario_id in TEST_PUBLIC_SCENARIO_IDS
-            else EVAL_SEALED
-            if scenario_id in SEALED_SCENARIO_IDS
-            else None
-        )
-        if expected_split is None or split != expected_split:
-            raise CatalogError(f"scenario S{scenario_id} must use split {expected_split!r}, got {split!r}")
+        if split not in (DEV_PUBLIC, TEST_PUBLIC, EVAL_SEALED):
+            raise CatalogError(f"unsupported benchmark split: {split!r}")
 
         profile_path: Path | None = None
         if split == EVAL_SEALED:
@@ -290,11 +277,8 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
             )
         )
 
-    ids = tuple(item.id for item in scenarios)
-    if set(ids) != set(_EXPECTED_IDS) or len(ids) != len(_EXPECTED_IDS):
-        missing = sorted(set(_EXPECTED_IDS) - set(ids), key=int)
-        extra = sorted(set(ids) - set(_EXPECTED_IDS), key=int)
-        raise CatalogError(f"catalogue must contain exactly S1-S29 (missing={missing}, extra={extra})")
+    if not scenarios:
+        raise CatalogError("catalogue must contain at least one scenario")
     scenarios.sort(key=lambda item: int(item.id))
 
     catalog = BenchmarkCatalog(
@@ -311,6 +295,36 @@ def load_catalog(path: str | Path = DEFAULT_CATALOG_PATH) -> BenchmarkCatalog:
 
 def get_scenario(scenario_id: int | str, *, catalog: BenchmarkCatalog | None = None) -> ScenarioDescriptor:
     return (catalog or load_catalog()).get(scenario_id)
+
+
+def public_scenario_split(
+    scenario_id: int | str, *, catalog: BenchmarkCatalog | None = None,
+) -> ScenarioSplit:
+    """Resolve official IDs and historical variants (S1h/S4h inherit their parent)."""
+    sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
+    match = re.fullmatch(r"([1-9]\d*)[a-z]*", sid)
+    if match is None:
+        raise CatalogError(f"unknown benchmark scenario: {scenario_id}")
+    descriptor = get_scenario(match.group(1), catalog=catalog)
+    if descriptor.sealed:
+        raise CatalogError(f"S{sid} has no public benchmark assets")
+    return descriptor.split
+
+
+def public_asset_path(
+    scenario_id: int | str,
+    kind: Literal["scenarios", "ground_truth"],
+    *,
+    benchmarks_root: Path = DEFAULT_CATALOG_PATH.parent,
+) -> Path:
+    """Catalogue membership determines the directory; no duplicate path registry."""
+    if kind not in ("scenarios", "ground_truth"):
+        raise ValueError(f"unsupported benchmark asset kind: {kind}")
+    sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
+    split = public_scenario_split(sid, catalog=load_catalog(benchmarks_root / "catalog.yaml"))
+    group = "dev" if split == DEV_PUBLIC else "test"
+    filename = f"S{sid}.yaml" if kind == "scenarios" else f"scenario_{sid}.yaml"
+    return benchmarks_root / kind / group / filename
 
 
 def list_scenarios(

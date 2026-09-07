@@ -16,8 +16,8 @@ from src.agent.batch import (
     _phase5_summary,
     _parse_single_scenario_id,
     _print_scenario_summary,
-    _scenario_split,
 )
+from src.benchmark.scenario_exports import resolve_scenario_split
 
 
 def _evaluation(
@@ -30,7 +30,7 @@ def _evaluation(
 ):
     return SimpleNamespace(
         scenario_id=scenario_id,
-        split="dev-public",
+        split=resolve_scenario_split(scenario_id),
         recall=f1,
         precision=f1,
         f1_score=f1,
@@ -72,10 +72,10 @@ class TestScenarioSelection:
         assert "20" in selected and "29" in selected
 
     def test_public_test_split_is_preserved_in_run_metadata(self):
-        assert _scenario_split("1") == "dev-public"
-        assert _scenario_split("20") == "test-public"
-        assert _scenario_split("29") == "test-public"
-        assert _scenario_split("1h") == "dev-public"
+        assert resolve_scenario_split("1") == "dev-public"
+        assert resolve_scenario_split("20") == "test-public"
+        assert resolve_scenario_split("29") == "test-public"
+        assert resolve_scenario_split("1h") == "dev-public"
 
 
 class TestBatchPhase5Reporting:
@@ -268,6 +268,19 @@ def test_dashboard_rejects_start_while_teardown_is_running():
         route._state.update(snapshot)
 
 
+def test_cli_help_describes_current_public_splits(monkeypatch, capsys):
+    from src.agent import __main__ as agent_main
+
+    monkeypatch.setattr("sys.argv", ["agent", "--help"])
+    with pytest.raises(SystemExit) as exc:
+        agent_main.main()
+
+    assert exc.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "S1-S19 for development, S20-S29 for held-out public tests" in help_text
+    assert "'dev', 'test', 'public', or 'all'" in help_text
+
+
 def test_cli_accepts_public_test_scenario(monkeypatch):
     from src.agent import __main__ as agent_main
 
@@ -284,6 +297,60 @@ def test_cli_accepts_public_test_scenario(monkeypatch):
 
     provider.assert_called_once()
     assert pipeline.call_args.kwargs["scenario_id"] == "20"
+    assert pipeline.call_args.kwargs["benchmark_split"] == "test-public"
+
+
+@pytest.mark.parametrize("selection", [
+    ["--scenario", "20", "--split", "dev-public"],
+    ["--scenario", "1", "--split", "test-public"],
+    ["--batch", "1,20", "--split", "dev-public"],
+    ["--batch", "1,20", "--split", "test-public"],
+])
+def test_cli_rejects_conflicting_split_before_provider(monkeypatch, selection):
+    from src.agent import __main__ as agent_main
+
+    provider = Mock()
+    monkeypatch.setattr(agent_main, "LLMProvider", provider)
+    monkeypatch.setattr(sys, "argv", ["agent", *selection])
+    with pytest.raises(SystemExit) as exc:
+        agent_main.main()
+    assert exc.value.code == 2
+    provider.assert_not_called()
+
+
+def test_mixed_batch_has_only_per_split_scores_including_missing_tests():
+    dev = _evaluation("1", scenario_score_pct=100, f1=1, specificity=None, zero_gt=False)
+    test = _evaluation("20", scenario_score_pct=50, f1=0.5, specificity=None, zero_gt=False)
+    aggregate = _aggregate_batch_results([dev, test], [], ["1", "20", "29"])
+    assert aggregate["mixed_splits"] is True
+    assert aggregate["avg_score_pct"] is None
+    assert aggregate["avg_f1"] is None
+    assert aggregate["per_split"]["dev-public"]["macro_scenario_score_pct"] == 100
+    assert aggregate["per_split"]["test-public"]["macro_scenario_score_pct"] == 25
+    assert aggregate["per_scenario"]["29"]["split"] == "test-public"
+    assert aggregate["missing_scenarios"] == ["29"]
+
+
+def test_batch_runner_preserves_test_group_through_evaluation(tmp_path, monkeypatch):
+    import json
+    from src.agent import batch
+
+    provider = SimpleNamespace(model="test")
+    pipeline_instance = Mock(run_dir=tmp_path / "run")
+    pipeline_instance.tracker.total_cost.return_value = 0
+    pipeline_instance.run.return_value = {}
+    pipeline = Mock(return_value=pipeline_instance)
+    result = _evaluation("20", scenario_score_pct=50, f1=0.5, specificity=None, zero_gt=False)
+    result.split = None
+    monkeypatch.setattr("src.agent.pipeline.Pipeline", pipeline)
+    monkeypatch.setattr("src.benchmark.evaluator.evaluate", Mock(return_value=result))
+    monkeypatch.setattr(batch, "OUTPUT_DIR", tmp_path)
+
+    path = batch.run_batch("20", provider)
+    summary = json.loads(path.read_text())
+    assert pipeline.call_args.kwargs["benchmark_split"] == "test-public"
+    assert result.split == "test-public"
+    assert summary["aggregate"]["per_split"]["test-public"]["macro_scenario_score_pct"] == 50
 
 
 def test_cli_accepts_public_hardened_variant(monkeypatch):

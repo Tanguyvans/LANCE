@@ -57,10 +57,6 @@ app.include_router(providers.router, prefix="/api/providers", tags=["providers"]
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-# NB: /api/models is intentionally NOT cached — it is now editable from the
-# dashboard, so responses must reflect changes immediately.
-_CACHEABLE_API_PATHS: set[str] = set()
-
 @app.middleware("http")
 async def cache_control(request: Request, call_next) -> Response:
     response = await call_next(request)
@@ -69,8 +65,6 @@ async def cache_control(request: Request, call_next) -> Response:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-    elif path in _CACHEABLE_API_PATHS:
-        response.headers["Cache-Control"] = "public, max-age=3600"
     return response
 
 

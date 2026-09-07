@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
+from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path, resolve_scenario_split
 
 ROOT = Path(__file__).resolve().parents[2]
 GT_DIR = ROOT / "benchmarks" / "ground_truth"
@@ -17,27 +17,6 @@ class SealedScenarioError(ValueError):
     """Raised when a local runner is asked to execute a sealed scenario."""
 
 
-def _scenario_split(scenario_id: str) -> str:
-    """Return the trusted catalogue split used in run metadata."""
-    sid = str(scenario_id).strip().removeprefix("S").removeprefix("s")
-    if default_export_store().exists(sid):
-        return "lab-export"
-    from src.benchmark.scenario_deployment import ManualScenarioDeployment
-    if ManualScenarioDeployment.exists(sid):
-        return "lab-manual"
-
-    from src.benchmark.catalog import CatalogError, get_scenario
-
-    try:
-        return get_scenario(sid).split
-    except CatalogError:
-        # Legacy public variants such as S1h/S4h are backed by local GT files
-        # but intentionally live outside the immutable numeric catalogue.
-        if (GT_DIR / f"scenario_{sid}.yaml").exists():
-            return "dev-public"
-        raise
-
-
 def _available_scenarios() -> list[str]:
     """Return deployable public scenarios, including legacy hardened variants."""
     from src.benchmark.catalog import list_scenarios
@@ -45,7 +24,7 @@ def _available_scenarios() -> list[str]:
     ids = [item.id for item in list_scenarios() if not item.sealed]
     variants = [
         path.stem.removeprefix("scenario_")
-        for path in GT_DIR.glob("scenario_*.yaml")
+        for path in GT_DIR.rglob("scenario_*.yaml")
         if not path.stem.removeprefix("scenario_").isdigit()
     ]
     variants.extend(item["id"] for item in default_export_store().list())
@@ -94,12 +73,17 @@ def _parse_scenario_ids(batch_arg: str) -> list[str]:
                 from src.benchmark.scenario_deployment import ManualScenarioDeployment
                 if (
                     default_export_store().exists(sid)
-                    or (GT_DIR / f"scenario_{sid}.yaml").exists()
                     or ManualScenarioDeployment.exists(sid)
                 ):
                     resolved.append(sid)
                 else:
-                    raise ValueError(f"Unknown public scenario variant: S{sid}")
+                    try:
+                        exists = resolve_ground_truth_path(sid).exists()
+                    except CatalogError:
+                        exists = False
+                    if not exists:
+                        raise ValueError(f"Unknown public scenario variant: S{sid}")
+                    resolved.append(sid)
         if not resolved:
             raise ValueError(f"No valid scenario IDs found in --batch '{batch_arg}'")
         return list(dict.fromkeys(resolved))
@@ -337,7 +321,7 @@ def _aggregate_batch_results(
     official = aggregate_evaluations(
         evaluations,
         expected_scenarios=expected,
-        scenario_splits={sid: "dev-public" for sid in expected},
+        scenario_splits={sid: resolve_scenario_split(sid) for sid in expected},
     )
     process = [result["metrics"] for result in completed if result["metrics"].get("process_metrics_available")]
 
@@ -425,7 +409,7 @@ def run_batch(
 
     for idx, sid in enumerate(scenario_ids, 1):
         scenario_id: int | str = int(sid) if sid.isdigit() else sid
-        benchmark_split = _scenario_split(sid)
+        benchmark_split = resolve_scenario_split(sid)
         gt_file = resolve_ground_truth_path(sid)
 
         if not gt_file.exists():
@@ -498,7 +482,7 @@ def run_batch(
 
         try:
             ev = evaluate(run_dir, gt_file, policy="strict-v3")
-            ev.split = "dev-public"
+            ev.split = benchmark_split
             evaluation_results.append(ev)
             entry["metrics"] = _evaluation_metrics(ev)
         except Exception as exc:
@@ -600,5 +584,10 @@ def _print_batch_table(results: list[dict], aggregate: dict, summary_path: Path)
             f"{'':>{col['tp'] + col['fp'] + col['fn'] + 3}} "
             f"${aggregate['total_cost_usd']:>{col['cost'] - 1}.4f}"
         )
+        if aggregate.get("mixed_splits"):
+            for split, metrics in aggregate["per_split"].items():
+                score = metrics["macro_scenario_score_pct"]
+                label = f"{score:.1f}%" if score is not None else "N/A"
+                print(f"  {split}: {metrics['scenario_count']} scenarios, score={label}")
 
     print(f"\nSummary: {summary_path}")

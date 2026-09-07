@@ -1,4 +1,52 @@
-# Protocole d’évaluation public et scellé
+# Protocole d’évaluation
+
+## Protocole courant — catalogue 3.2.0
+
+Le [catalogue](../catalog.yaml) est la référence pour les groupes. Un seul
+harness et un seul évaluateur sont utilisés pour les 29 scénarios publics.
+
+| Groupe | Scénarios | Usage |
+| --- | --- | --- |
+| `dev-public` (`dev/`) | S1–S19, plus contrôles historiques S1h/S4h | Améliorer le harness, comparer ses configurations, produire les données d’apprentissage |
+| `test-public` (`test/`) | S20–S29 | Évaluer une configuration figée sans réutiliser le feedback pour l’améliorer |
+
+Les fichiers techniques et ground truths sont rangés par groupe. Topologies,
+packs, déploiement et contrat de matching restent des composants communs.
+Le découpage ne crée pas deux variantes du harness ni deux évaluateurs.
+
+### Procédure d’une campagne
+
+1. Développer et choisir la configuration exclusivement sur `dev`.
+2. Figer le commit du code et du catalogue, le modèle, les prompts, outils,
+   budgets, profil d’exécution, politique de scoring et nombre de répétitions.
+3. Lancer `--batch test` sans adapter cette configuration entre scénarios.
+4. Publier les scores par groupe, avec les scénarios manquants et les paramètres
+   de campagne. Un lot mixte n’a pas de score global ; utiliser `per_split`.
+5. Ne pas importer les erreurs test dans l’apprentissage. Si leur analyse guide
+   une correction du harness, cette réserve ne mesure plus une généralisation
+   indépendante : prévoir un nouveau jeu de test pour la prochaine mesure.
+
+Les validations de schéma, références et composition test en CI restent permises.
+Elles vérifient le benchmark, pas les performances du harness.
+
+### Limites et historique
+
+Cette réorganisation conserve la répartition existante ; elle n’atteste pas que
+S20–S29 n’ont jamais servi à développer les prompts ou le code. Leur statut de
+test est **provisoire**, sous réserve d’un audit historique. Un jeu public n’est
+pas un oracle isolé techniquement : l’absence de contamination dépend aussi du
+protocole expérimental et de la provenance des données.
+
+Les runs et artefacts existants ne sont pas réécrits. Des anciens runs CLI ou
+batch peuvent porter un label dev incorrect ; ne pas les agréger aveuglément.
+Les nouveaux lancements utilisent le catalogue et rejettent les conflits.
+
+Le catalogue courant ne contient aucun `eval-sealed`. Le code controller/worker
+est conservé pour une éventuelle campagne future. L’annexe ci-dessous décrit
+une **proposition historique v2 inactive** : ses identifiants S20–S25 et ses
+assertions de confidentialité ne s’appliquent pas aux scénarios publics actuels.
+
+## Annexe — proposition historique d’évaluation scellée v2
 
 Ce document définit la séparation officielle d’IoTChainBench v2 entre les profils de développement publics et les profils d’évaluation scellés. Il décrit les informations visibles par le runner, le protocole controller/worker, la rotation des instances et la publication des scores. Il ne décrit volontairement aucune propriété interne de S20–S25.
 

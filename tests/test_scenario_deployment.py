@@ -89,6 +89,7 @@ def test_pipeline_passes_generated_overlay_to_ansible(tmp_path, monkeypatch):
     )
     import src.agent.pipeline as pipeline_module
 
+    monkeypatch.setattr(pipeline_module.runtime, "default_export_store", lambda: generator.export_store)
     monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "runs")
     provider = MagicMock(model="test-model", provider="test-provider")
     pipeline = Pipeline(provider=provider, scenario_id=variant["id"], dry_run=True)
@@ -186,6 +187,7 @@ def test_pipeline_passes_manual_overlay_and_provider_profile_to_ansible(tmp_path
     )
     import src.agent.pipeline as pipeline_module
 
+    monkeypatch.setattr("src.benchmark.scenario_deployment.MANUAL_SCENARIO_ROOT", generator.storage_root)
     monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "runs")
     provider = MagicMock(model="test-model", provider="test-provider")
     pipeline = Pipeline(provider=provider, scenario_id=variant["id"], dry_run=True)

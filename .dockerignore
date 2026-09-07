@@ -11,6 +11,9 @@ __pycache__
 .mypy_cache
 benchmarks/
 !benchmarks/
+!benchmarks/catalog.yaml
+!benchmarks/scenarios/
+!benchmarks/scenarios/**
 !benchmarks/topologies/
 !benchmarks/topologies/**
 !benchmarks/packs/

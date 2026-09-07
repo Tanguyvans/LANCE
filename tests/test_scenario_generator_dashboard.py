@@ -91,13 +91,29 @@ def test_base_dashboard_lists_one_exported_builder_scenario(tmp_path, monkeypatc
     assert matches[0]["kind"] == "scenario-lab-export"
     assert matches[0]["deployment_supported"] is True
 
+
+def test_dashboard_loads_both_groups_from_the_reorganized_catalogue():
+    from src.api.routes import scenarios
+
+    payload = scenarios.list_scenarios()
+    entries = {item["id"]: item for item in payload["scenarios"]}
+    for sid, split in (("1", "dev-public"), ("1h", "dev-public"), ("20", "test-public"), ("29", "test-public")):
+        assert entries[sid]["split"] == split
+        assert entries[sid]["sealed"] is False
+        assert entries[sid]["topology"]
+
 def test_docker_image_keeps_canonical_scenario_lab_assets():
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 
     assert "COPY benchmarks/topologies/ ./benchmarks/topologies/" in dockerfile
+    assert "COPY benchmarks/catalog.yaml ./benchmarks/catalog.yaml" in dockerfile
+    assert "COPY benchmarks/scenarios/ ./benchmarks/scenarios/" in dockerfile
+    assert "COPY benchmarks/ground_truth" not in dockerfile
     assert "COPY benchmarks/packs/definitions/ ./benchmarks/packs/definitions/" in dockerfile
     assert "static_docker" not in dockerfile
     assert "benchmarks/" in dockerignore
     assert "!benchmarks/topologies/**" in dockerignore
+    assert "!benchmarks/catalog.yaml" in dockerignore
+    assert "!benchmarks/scenarios/**" in dockerignore
     assert "!benchmarks/packs/definitions/**" in dockerignore

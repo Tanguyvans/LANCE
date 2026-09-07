@@ -116,7 +116,7 @@ def test_public_matching_catalog_covers_every_ground_truth_entry():
     root = Path(__file__).resolve().parents[1] / "benchmarks" / "ground_truth"
     catalog = yaml.safe_load((root / "matching_contracts.yaml").read_text())
     assert catalog["schema_version"] == "strict-v3.2"
-    for path in root.glob("scenario_*.yaml"):
+    for path in root.rglob("scenario_*.yaml"):
         ground_truth = yaml.safe_load(path.read_text()) or {}
         scenario_id = str(ground_truth.get("scenario_id"))
         contracts = catalog["scenarios"][scenario_id]

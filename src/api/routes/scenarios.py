@@ -75,13 +75,15 @@ def list_scenarios():
                 "vulns": vuln_list,
             })
 
-    # Public development scenarios are backed by deployable YAML.  Sealed
+    # Public dev/test scenarios are backed by deployable YAML. Sealed
     # scenarios are appended from the metadata-only catalogue and never expose
     # topology, packs, seeds, or oracle details.
     scenarios_by_id: dict[str, dict] = {}
+    catalog = load_catalog()
     scen_dir = BENCHMARKS / "scenarios"
     if scen_dir.exists():
-        for f in sorted(scen_dir.glob("S*.yaml")):
+        from src.benchmark.catalog import public_scenario_split
+        for f in sorted(scen_dir.rglob("S*.yaml")):
             data = yaml.safe_load(f.read_text())
             sid = str(data.get("scenario_id", f.stem.removeprefix("S")))
             scenarios_by_id[sid] = {
@@ -91,11 +93,10 @@ def list_scenarios():
                 "posture": data.get("posture", "vulnerable"),
                 "topology": data.get("topology", ""),
                 "packs": data.get("packs", []),
-                "split": "dev-public",
+                "split": public_scenario_split(sid, catalog=catalog),
                 "sealed": False,
             }
 
-    catalog = load_catalog()
     for descriptor in catalog.scenarios:
         if descriptor.split == EVAL_SEALED:
             profile = load_eval_profile(descriptor, catalog=catalog)
@@ -112,8 +113,6 @@ def list_scenarios():
                 "blind_required": profile.blind_required,
                 "score_visibility": profile.score_visibility,
             }
-        elif descriptor.id in scenarios_by_id:
-            scenarios_by_id[descriptor.id]["split"] = descriptor.split
 
     # Scenario Lab publications live outside the immutable benchmark catalogue.
     # Their trusted export manifest is the sole authority for the deletable flag.

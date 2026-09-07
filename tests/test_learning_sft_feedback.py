@@ -20,6 +20,8 @@ def _write_jsonl(path: Path, records: list[dict]) -> Path:
 def _accepted(candidate_id: str, **overrides) -> dict:
     candidate = {
         "candidate_id": candidate_id,
+        "scenario_id": "1",
+        "split": "dev-public",
         "task": "deliverable_correction",
         "expert": "recon",
         "phase": 2,
@@ -39,6 +41,43 @@ def _accepted(candidate_id: str, **overrides) -> dict:
 
 def _trace(path: Path) -> dict:
     return json.loads(path.read_text().splitlines()[0])
+
+
+@pytest.mark.parametrize("sid", [str(i) for i in range(20, 30)] + ["20h"])
+@pytest.mark.parametrize("split", ["dev-public", "custom"])
+def test_sft_refuses_test_identity_despite_forged_learning_split(tmp_path, sid, split):
+    candidate = _accepted("lf-test", scenario_id=sid, split=split)
+    source = _write_jsonl(tmp_path / "accepted.jsonl", [candidate])
+    output = tmp_path / "sft.jsonl"
+    with pytest.raises(FeedbackConversionError, match="not dev-public"):
+        convert_feedback(source, tmp_path / "runs", output)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("extra", [
+    {"split": "test-public"},
+    {"split": "eval-sealed"},
+    {"split": None},
+    {"scenario_id": None},
+    {"custom_config": {"source_scenario_id": "29"}},
+    {"occurrences": [{"run_id": "run-1", "scenario_id": "29"}]},
+])
+def test_sft_requires_dev_provenance(tmp_path, extra):
+    source = _write_jsonl(tmp_path / "accepted.jsonl", [_accepted("lf-test", **extra)])
+    with pytest.raises(FeedbackConversionError):
+        convert_feedback(source, tmp_path / "runs", tmp_path / "sft.jsonl")
+
+
+def test_sft_checks_all_source_runs_not_only_the_first(tmp_path):
+    run = tmp_path / "runs" / "model" / "run-test"
+    run.mkdir(parents=True)
+    (run / "run_meta.json").write_text(json.dumps({"benchmark_split": "test-public"}))
+    candidate = _accepted("lf-mixed", occurrences=[
+        {"run_id": "run-dev"}, {"run_id": "model/run-test"},
+    ])
+    source = _write_jsonl(tmp_path / "accepted.jsonl", [candidate])
+    with pytest.raises(FeedbackConversionError, match="test-public"):
+        convert_feedback(source, tmp_path / "runs", tmp_path / "sft.jsonl")
 
 
 def _save_arguments(trace: dict) -> dict:
@@ -161,6 +200,7 @@ def test_false_positive_without_canonical_finding_produces_empty_target(tmp_path
     )
     candidate = {
         "candidate_id": "lf-false-positive",
+        "split": "dev-public",
         "task": "finding_correction",
         "scenario_id": "1",
         "error_type": "false_positive",

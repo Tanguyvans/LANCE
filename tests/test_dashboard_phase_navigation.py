@@ -62,4 +62,7 @@ def test_public_test_scenarios_are_not_hardcoded_as_sealed_in_dashboard():
 
     assert "Number(scenarioId)" not in sealed_id_helper
     assert "isSealedScenario(scenario)" in sealed_id_helper
-    assert "split: 'test-public', sealed: false" in javascript
+    assert "_scenariosData.scenarios" in sealed_id_helper
+    fallback = javascript.split("const FALLBACK_SCENARIOS", 1)[1].split("function isSealedScenarioId", 1)[0]
+    assert "scenarios: []" in fallback
+    assert "split: 'test-public'" not in fallback
