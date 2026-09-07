@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.gzip import GZipMiddleware
@@ -23,8 +23,7 @@ from src.api.routes import (
     topology,
 )
 
-STATIC_DIR    = ROOT / "src" / "static"
-STATIC_V2_DIR = ROOT / "src" / "static_v2"
+STATIC_DIR = ROOT / "src" / "static"
 
 app = FastAPI(
     title="NATO Smart City IoT — Pentest Orchestrator",
@@ -55,8 +54,7 @@ app.include_router(models.router,    prefix="/api/models",    tags=["models"])
 app.include_router(providers.router, prefix="/api/providers", tags=["providers"])
 
 # Serve static files (JS, CSS) — no-cache pour forcer le rechargement
-app.mount("/static",    StaticFiles(directory=str(STATIC_DIR)),    name="static")
-app.mount("/static_v2", StaticFiles(directory=str(STATIC_V2_DIR)), name="static_v2")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # NB: /api/models is intentionally NOT cached — it is now editable from the
@@ -67,7 +65,7 @@ _CACHEABLE_API_PATHS: set[str] = set()
 async def cache_control(request: Request, call_next) -> Response:
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/") or path.startswith("/static_v2/") or path in ("/", "/v2"):
+    if path.startswith("/static/") or path in ("/", "/v2"):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -78,11 +76,11 @@ async def cache_control(request: Request, call_next) -> Response:
 
 @app.get("/", include_in_schema=False)
 def index():
-    """Serve the classic SPA."""
+    """Serve the canonical dashboard."""
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 @app.get("/v2", include_in_schema=False)
-def index_v2():
-    """Serve the new monitor dashboard."""
-    return FileResponse(str(STATIC_V2_DIR / "index.html"))
+def redirect_legacy_dashboard():
+    """Keep old monitor bookmarks pointing to the canonical dashboard."""
+    return RedirectResponse(url="/", status_code=308)

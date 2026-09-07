@@ -8,6 +8,8 @@
 > **Statut : archive historique.** Ce dossier décrit l'état observé à cette date, pas nécessairement
 > l'état actuel de `main`. En particulier, `src/static_docker/` a été retiré le 2026-09-04 après
 > confirmation que l'image Docker servait déjà le frontend canonique.
+> `src/static_v2/` a ensuite été retiré lors du nettoyage du 2026-09-07, à la demande
+> de l'utilisateur : seule l'interface `src/static/` est conservée, avec `/v2` redirigé vers `/`.
 
 Ce dossier documente **tout ce qui doit être fait**, découpé par domaine. Chaque finding porte
 un identifiant stable (`SEC-n`, `FE-n`, `UX-n`, `ARCH-n`), une sévérité, l'emplacement exact

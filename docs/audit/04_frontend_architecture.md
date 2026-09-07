@@ -3,6 +3,10 @@
 > **Archive du 2026-07-05.** Les constats ci-dessous décrivent l'architecture de cette date.
 > `src/static_docker/` n'était plus copié par le `Dockerfile` au moment du nettoyage du 2026-09-04
 > et a été supprimé ; les affirmations à son sujet ne décrivent donc plus l'état actuel de `main`.
+> **Nettoyage du 2026-09-07 :** l'utilisateur a confirmé utiliser l'interface principale.
+> Les quatre fichiers de `static_v2` (1 959 lignes) et leur montage ont été supprimés.
+> `/v2` redirige vers `/`. Le dashboard principal, son gestionnaire de scénarios et
+> sa bibliothèque Cytoscape restent inchangés ; les constats V2 ci-dessous sont historiques.
 
 ## Réalité du service (ce qui est réellement atteignable)
 

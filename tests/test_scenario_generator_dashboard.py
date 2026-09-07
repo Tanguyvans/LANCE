@@ -8,35 +8,6 @@ ROOT = Path(__file__).resolve().parents[1]
 MANUAL = ROOT / "benchmarks" / "scenarios_manual"
 
 
-def test_v2_dashboard_exposes_generated_scenario_workshop():
-    html = (ROOT / "src" / "static_v2" / "index.html").read_text(encoding="utf-8")
-
-    for element_id in (
-        "btnGenerator",
-        "generatorModal",
-        "generatorBlueprint",
-        "generatorOperation",
-        "btnGenerateScenario",
-        "btnMutateScenario",
-        "btnPreviewScenario",
-    ):
-        assert f'id="{element_id}"' in html
-    assert '<script src="/static_v2/generator.js"></script>' in html
-    assert '<script src="/static/cytoscape.min.js"></script>' in html
-
-
-def test_dashboard_controller_can_export_generated_variants_for_a_run():
-    javascript = (ROOT / "src" / "static_v2" / "generator.js").read_text(
-        encoding="utf-8"
-    )
-
-    assert "/api/scenario-generator/blueprints" in javascript
-    assert "/mutations" in javascript
-    assert "/export" in javascript
-    assert "state.scenario = variantId" in javascript
-    assert "Generated previews are not deployable" not in javascript
-
-
 def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
 
@@ -69,6 +40,7 @@ def test_classic_dashboard_integrates_scenario_lab_as_native_view():
     assert 'data-sl-section="variants"' in html
     assert 'data-sl-section="builder"' in html
     assert '<script src="/static/scenario_generator.js"></script>' in html
+    assert '<script src="/static/cytoscape.min.js"></script>' in html
     assert 'href="/v2#scenario-lab"' not in html
 
 
