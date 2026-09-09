@@ -708,13 +708,18 @@ def _normalized_services(value: object) -> set[str]:
 
 def _normalized_endpoints(value: object) -> set[str]:
     normalized: set[str] = set()
-    for item in _normalized_values(value):
-        path = item.split("?", 1)[0].split("#", 1)[0]
-        if "://" in path:
-            pieces = path.split("/", 3)
-            path = "/" + pieces[3] if len(pieces) == 4 else "/"
-        if len(path) > 1:
-            path = path.rstrip("/")
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    for raw in values:
+        item = str(raw or "").strip()
+        if not item:
+            continue
+        if "://" in item:
+            parsed = urlsplit(item)
+            path = parsed.path or "/"
+            if parsed.query:
+                path += "?" + parsed.query
+        else:
+            path = item.split("#", 1)[0]
         normalized.add(path or "/")
     return normalized
 
@@ -735,6 +740,27 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
         finding_cves = {
             str(value).upper() for value in (finding.get("cve_ids") or [])
         }
+        finding_type = canonicalize(str(finding.get("type", "")))
+        if finding_type not in contract["accepted_types"]:
+            return "", 0.0, False
+        observed = {
+            "service": _normalized_services(finding.get("services", finding.get("service"))),
+            "port": _normalized_values(finding.get("ports", finding.get("port")), integer=True),
+            "protocol": _normalized_values(finding.get("protocols", finding.get("protocol"))),
+            "endpoint": _normalized_endpoints(finding.get("endpoints") or finding.get("endpoint")),
+            "product": _normalized_values(finding.get("products", finding.get("product"))),
+        }
+        constraints = {
+            "service": _normalized_services(contract["services"]),
+            "port": set(contract["ports"]),
+            "protocol": set(contract["protocols"]),
+            "endpoint": _normalized_endpoints(contract["endpoints"]),
+            "product": set(contract["products"]),
+        }
+        for name, expected in constraints.items():
+            actual = observed[name]
+            if expected and actual and not actual & expected:
+                return "", 0.0, False
         finding_products = _normalized_values(
             finding.get("products", finding.get("product"))
         )
@@ -763,8 +789,14 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
             or not version_observed
         ):
             return "", 0.0, False
-        if finding_products and expected_products and not finding_products & expected_products:
+        # Explicit product/version values remain fail-closed. If the fields are
+        # absent, precise finding prose may supply the required match context;
+        # this does not claim that the CVE is independently verified.
+        if expected_products and finding_products and not finding_products & expected_products:
             return "", 0.0, False
+        if expected_versions and finding_versions:
+            if not expected_versions & {value.casefold() for value in finding_versions}:
+                return "", 0.0, False
         return "cve", 1.0, True
 
     accepted_types = contract["accepted_types"]
@@ -1370,29 +1402,26 @@ def _record_implied_ports(record: dict) -> set[int]:
 def _record_implied_endpoints(record: dict) -> set[str]:
     """Extract exact URL paths or explicit endpoint arguments from a tool call."""
     endpoints: set[str] = set()
-
-    def visit(value: object, key: str = "") -> None:
-        if isinstance(value, dict):
-            for child_key, child in value.items():
-                visit(child, str(child_key).casefold())
-            return
-        if isinstance(value, (list, tuple, set)):
-            for child in value:
-                visit(child, key)
-            return
-        if not isinstance(value, str):
-            return
-        stripped = value.strip()
-        if key in {"endpoint", "path", "uri"}:
-            endpoints.update(_normalized_endpoints(stripped))
-        for url in re.findall(r"https?://[^\s'\"]+", stripped):
-            try:
-                parsed = urlsplit(url.rstrip(".,)"))
-            except ValueError:
+    args = record.get("args") or {}
+    if not isinstance(args, dict):
+        return endpoints
+    for key in {"endpoint", "path", "uri", "url"}:
+        value = args.get(key)
+        values = value if isinstance(value, (list, tuple, set)) else [value]
+        for item in values:
+            if not isinstance(item, str):
                 continue
-            endpoints.update(_normalized_endpoints(parsed.path or "/"))
-
-    visit(record.get("args") or {})
+            stripped = item.strip()
+            endpoints.update(_normalized_endpoints(stripped))
+            for url in re.findall(r"https?://[^\s'\"]+", stripped):
+                try:
+                    parsed = urlsplit(url.rstrip(".,)"))
+                except ValueError:
+                    continue
+                destination = parsed.path or "/"
+                if parsed.query:
+                    destination += "?" + parsed.query
+                endpoints.update(_normalized_endpoints(destination))
     return endpoints
 
 
@@ -1461,9 +1490,11 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
         if int(port) not in _record_implied_ports(record):
             return False
 
-    endpoint = next(iter(_normalized_endpoints(finding.get("endpoint"))), "")
-    if endpoint and endpoint != "/":
-        if endpoint not in _record_implied_endpoints(record):
+    claimed_endpoints = _normalized_endpoints(finding.get("endpoint"))
+    if not claimed_endpoints:
+        claimed_endpoints.update(_normalized_endpoints(finding.get("endpoints")))
+    if claimed_endpoints:
+        if not claimed_endpoints & _record_implied_endpoints(record):
             return False
     return True
 

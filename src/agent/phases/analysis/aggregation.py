@@ -7,6 +7,7 @@ import json
 import re
 import logging
 from src.agent.phases.analysis.evidence import _enrich_finding_structure, _sanitize_suggested_tools
+from src.agent.finding_identity import finding_identity_key
 from src.agent.core import runtime
 
 
@@ -141,10 +142,11 @@ class FindingAggregation:
     ) -> None:
         """Build a canonical queue without destroying model-produced findings.
 
-        03_vuln_analysis_raw.json is the append-only information layer:
-        every candidate and every normalization/filter/dedup decision remains
-        inspectable. 03_vuln_analysis.json stays backward-compatible and is
-        the canonical projection consumed by exploitation and evaluation.
+        03_vuln_analysis_raw.json is an information-preserving snapshot:
+        every candidate and every normalization/filter/dedup decision from
+        this aggregation remains inspectable. 03_vuln_analysis.json stays
+        backward-compatible and is the canonical projection consumed by
+        exploitation and evaluation.
         """
         compact_mode = self._uses_compact_local_moe()
         all_vulns: list[dict] = []
@@ -365,18 +367,6 @@ class FindingAggregation:
             candidate["type"] = runtime.canonicalize(candidate.get("type", ""))
             _enrich_finding_structure(candidate, strict_schema=not compact_mode)
             records_by_id[finding["_candidate_id"]]["candidate_finding"] = candidate
-        compact_tool_records: list[dict] = []
-        if compact_mode:
-            tool_log = self.run_dir / "tool_calls.jsonl"
-            if tool_log.exists():
-                for line in tool_log.read_text(encoding="utf-8").splitlines():
-                    try:
-                        record = json.loads(line)
-                    except (TypeError, ValueError):
-                        continue
-                    if isinstance(record, dict):
-                        compact_tool_records.append(record)
-
         if not compact_mode:
             # Normalize all candidates before semantic checks so related claims
             # (for example /api/devices and /api/status) can be reasoned about
@@ -432,6 +422,10 @@ class FindingAggregation:
                 catalog_compatible_ids = []
                 validation_product = str(validation.get("observed_product") or finding.get("product") or "")
                 validation_version = str(validation.get("observed_version") or finding.get("version") or "")
+                if not claimed_ids:
+                    finding["_cve_structural_issue"] = (
+                        "CVE claim lacks a valid CVE identifier"
+                    )
                 product_text = validation_product.casefold()
                 if "dropbear" in product_text:
                     product_tokens = ["dropbear"]
@@ -463,6 +457,12 @@ class FindingAggregation:
                         catalog_compatible_ids.append(claimed_id)
                 if (
                     compatible_ids
+                    and len(compatible_ids) < len(claimed_ids)
+                ):
+                    claim_status = "partially_validated"
+                    finding["accepted_for_scoring"] = False
+                elif (
+                    compatible_ids
                     and not catalog_compatible_ids
                     and self.benchmark_split != "unassigned"
                 ):
@@ -474,8 +474,11 @@ class FindingAggregation:
                     finding["accepted_for_scoring"] = False
                 elif compatible_ids:
                     claim_status = "validated"
-                    finding["cve_ids"] = compatible_ids
+                    finding["cve_ids"] = claimed_ids
                     finding["accepted_for_scoring"] = True
+                elif catalog_compatible_ids and len(catalog_compatible_ids) < len(claimed_ids):
+                    claim_status = "partially_validated_catalog"
+                    finding["accepted_for_scoring"] = False
                 elif catalog_compatible_ids:
                     # The archived search can be indeterminate when NVD has no
                     # CPE range for a cross-vendor CVE such as Terrapin. The
@@ -484,7 +487,7 @@ class FindingAggregation:
                     # evidence context. This preserves recall without
                     # accepting free-form or future CVE claims.
                     claim_status = "validated_catalog"
-                    finding["cve_ids"] = catalog_compatible_ids
+                    finding["cve_ids"] = claimed_ids
                     finding["accepted_for_scoring"] = True
                 elif "conditional" in observed_statuses:
                     claim_status = "conditional"
@@ -492,7 +495,11 @@ class FindingAggregation:
                 elif "indeterminate" in observed_statuses:
                     claim_status = "uncertain"
                     finding["accepted_for_scoring"] = False
-                elif observed_statuses and observed_statuses == {"incompatible"}:
+                elif (
+                    claimed_ids
+                    and all(assessment is not None for assessment in assessments.values())
+                    and observed_statuses == {"incompatible"}
+                ):
                     claim_status = "incompatible"
                     finding["accepted_for_scoring"] = False
                 else:
@@ -509,6 +516,10 @@ class FindingAggregation:
             source_kind = str(finding.get("_source_kind") or record.get("source_kind") or "")
             device_id = str(finding.get("device_id") or "")
             device_role = surface_roles.get(device_id, "")
+            if not str(finding.get("device_ip") or finding.get("device_id") or "").strip():
+                record["decision"] = "excluded_from_canonical"
+                record["decision_reason"] = "finding lacks a target device and is not testable"
+                continue
             semantic_issue = runtime._finding_semantic_issue(
                 finding,
                 source_kind=source_kind,
@@ -528,65 +539,6 @@ class FindingAggregation:
                 )
             }
 
-        if not compact_mode:
-            # A single unauthenticated HTTP surface is often described as
-            # separate /admin, /api/devices, and /api/status candidates.
-            # Publish the union on each surviving primary claim so strict-v3
-            # can match the ground-truth contract without adding a new model
-            # guardrail or suppressing full-profile exploration.
-            api_groups: dict[tuple, set[str]] = {}
-            for finding in all_vulns:
-                # Include the excluded secondary /api/status candidate as a
-                # source of contract paths. It is not published itself, but its
-                # path is required to form the second API contract in S6.
-                if finding.get("type") != "no_auth":
-                    continue
-                service = str(finding.get("service") or "").casefold()
-                if service not in {"http", "https"}:
-                    continue
-                paths = set(runtime._extract_endpoint_paths(
-                    finding.get("endpoint"), finding.get("endpoints"),
-                    finding.get("details"), finding.get("evidence"),
-                ))
-                api_paths = {
-                    path for path in paths
-                    if path == "/admin" or path.startswith("/api/")
-                }
-                if not api_paths:
-                    continue
-                try:
-                    port = int(finding.get("port"))
-                except (TypeError, ValueError):
-                    port = None
-                group_key = (
-                    finding.get("device_ip"), service, port,
-                    str(finding.get("protocol") or "").casefold(),
-                )
-                api_groups.setdefault(group_key, set()).update(api_paths)
-
-            for finding in all_vulns:
-                record = records_by_id[finding["_candidate_id"]]
-                if record.get("decision") == "excluded_from_canonical" or finding.get("type") != "no_auth":
-                    continue
-                service = str(finding.get("service") or "").casefold()
-                if service not in {"http", "https"}:
-                    continue
-                try:
-                    port = int(finding.get("port"))
-                except (TypeError, ValueError):
-                    port = None
-                group_key = (
-                    finding.get("device_ip"), service, port,
-                    str(finding.get("protocol") or "").casefold(),
-                )
-                combined = api_groups.get(group_key)
-                if not combined:
-                    continue
-                existing = set(runtime._extract_endpoint_paths(
-                    finding.get("endpoint"), finding.get("endpoints"),
-                ))
-                finding["endpoints"] = sorted(existing | combined)
-
         try:
             surface_raw = json.loads(runtime.get_attack_surface())
             surface_nodes = surface_raw.get("nodes", []) if isinstance(surface_raw, dict) else []
@@ -603,31 +555,6 @@ class FindingAggregation:
         except Exception as exc:
             log.debug("device_id remap skipped: %s", exc)
 
-        if not compact_mode:
-            # $SYS is a broker-wide low-value observation. Keep one
-            # representative per run; repeated copies otherwise consume
-            # evidence links and inflate strict-v3 hallucination counts.
-            sys_findings = sorted(
-                (
-                    finding for finding in all_vulns
-                    if records_by_id[finding["_candidate_id"]].get("decision")
-                    != "excluded_from_canonical"
-                    and finding.get("type") == "info_disclosure"
-                    and str(finding.get("service") or "").casefold() == "mqtt"
-                    and "$sys" in " ".join(
-                        str(finding.get(key) or "")
-                        for key in ("details", "evidence", "endpoint", "endpoints")
-                    ).casefold()
-                ),
-                key=lambda item: str(item.get("device_ip") or ""),
-            )
-            for finding in sys_findings[1:]:
-                record = records_by_id[finding["_candidate_id"]]
-                record["decision"] = "excluded_from_canonical"
-                record["decision_reason"] = (
-                    "duplicate low-value MQTT $SYS observation; representative retained"
-                )
-
         eligible: list[dict] = []
         compact_observations: list[dict] = []
         for finding in all_vulns:
@@ -639,33 +566,18 @@ class FindingAggregation:
                 record["decision"] = "excluded_from_canonical"
                 record["decision_reason"] = "taxonomy marks this as a non-finding/noise type"
                 continue
-            if (finding.get("severity") or "").upper() == "INFO":
+            if vuln_type == "known_cve" and finding.get("_cve_structural_issue"):
                 record["decision"] = "excluded_from_canonical"
-                record["decision_reason"] = "INFO is retained as metadata, not scored as a vulnerability"
+                record["decision_reason"] = finding["_cve_structural_issue"]
                 continue
-            if (
-                vuln_type == "known_cve"
-                and finding.get("accepted_for_scoring") is not True
-            ):
+            # Compatibility is a scoring attribute, not an admission gate:
+            # an unverified but well-formed CVE remains schedulable for Phase
+            # 4, while a claim proven incompatible is excluded explicitly.
+            if vuln_type == "known_cve" and finding.get("cve_claim_status") == "incompatible":
                 record["decision"] = "excluded_from_canonical"
                 record["decision_reason"] = (
-                    "CVE claim is not corroborated as compatible by the archived "
-                    f"cve_search result ({finding.get('cve_claim_status', 'unverified')})"
+                    "CVE claim is explicitly incompatible according to the archived cve_search result"
                 )
-                continue
-            if compact_mode and finding.get("compact_report_only"):
-                if self._compact_observation_has_tool_evidence(
-                    finding, compact_tool_records
-                ):
-                    eligible.append(finding)
-                    continue
-                record["decision"] = "excluded_from_canonical"
-                record["decision_reason"] = (
-                    "compact configuration observation lacks sufficient phase-2 tool evidence"
-                )
-                observation = json.loads(json.dumps(finding, ensure_ascii=False, default=str))
-                observation.pop("_candidate_id", None)
-                compact_observations.append(observation)
                 continue
             eligible.append(finding)
 
@@ -684,100 +596,36 @@ class FindingAggregation:
 
         groups: dict[tuple, list[dict]] = {}
         for finding in eligible:
-            base_key = (
-                finding.get("device_ip", ""), finding.get("type", ""),
-                finding.get("service", ""), finding.get("port"),
-                finding.get("protocol", ""),
-            )
-            key = base_key + (finding.get("endpoint", ""),)
-            service = str(finding.get("service") or "").casefold()
-            if (
-                finding.get("type") == "insecure_update"
-                and service == "http"
-                and str(surface_roles.get(str(finding.get("device_id") or ""), "")) == "ota_device"
-            ):
-                # Rollback and unsigned-metadata defects intentionally share
-                # /install but describe different integrity failures.
-                key = base_key + (finding.get("endpoint", ""), finding.get("details", ""))
-            elif finding.get("type") == "data_exposure" and service == "mqtt":
-                # MQTT topic exposures on one broker are one access surface in
-                # the benchmark contract. Keep the strongest candidate and
-                # preserve every raw topic claim in the audit registry.
-                key = base_key + ("__mqtt_surface__",)
-            elif (
-                finding.get("type") == "no_auth"
-                and service in {"http", "https"}
-            ):
-                # /admin, /api/devices and /api/status are evidence paths for
-                # one unauthenticated HTTP surface. Their endpoint union is
-                # preserved below, while only the strongest candidate is
-                # published to strict-v3.
-                key = base_key + ("__http_no_auth_surface__",)
-            elif (
-                finding.get("type") == "data_exposure"
-                and service in {"http", "https"}
-            ):
-                text = " ".join(
-                    str(finding.get(field) or "")
-                    for field in ("details", "evidence")
-                )
-                primary_path = next(iter(runtime._extract_endpoint_paths(
-                    finding.get("endpoint"),
-                )), "")
-                is_listing = bool(re.search(
-                    r"(?i)(?:directory listing|autoindex|index of)", text
-                ))
-                if is_listing:
-                    key = base_key + ("__listing_anchor__", finding["_candidate_id"])
-                else:
-                    for anchor in (
-                        candidate for candidate in eligible
-                        if candidate.get("type") == "data_exposure"
-                        and str(candidate.get("service") or "").casefold() in {"http", "https"}
-                        and candidate.get("device_ip") == finding.get("device_ip")
-                        and candidate.get("port") == finding.get("port")
-                        and bool(re.search(
-                            r"(?i)(?:directory listing|autoindex|index of)",
-                            " ".join(str(candidate.get(field) or "") for field in ("details", "evidence")),
-                        ))
-                    ):
-                        anchor_paths = runtime._extract_endpoint_paths(
-                            anchor.get("endpoint"), anchor.get("endpoints"),
-                        )
-                        if any(
-                            primary_path == path.rstrip("/")
-                            or primary_path.startswith(path.rstrip("/") + "/")
-                            for path in anchor_paths
-                            if path != "/"
-                        ):
-                            anchor_key = (
-                                base_key + ("__listing_anchor__", anchor["_candidate_id"])
-                            )
-                            key = anchor_key
-                            break
+            key = finding_identity_key(finding)
             groups.setdefault(key, []).append(finding)
 
         deduped: list[dict] = []
         for candidates in groups.values():
             chosen = max(candidates, key=finding_quality)
-            if len(candidates) > 1 and chosen.get("type") in {
-                "data_exposure", "no_auth"
-            }:
-                combined_endpoints = sorted({
-                    endpoint
-                    for candidate in candidates
-                    for endpoint in runtime._extract_endpoint_paths(
-                        candidate.get("endpoint"), candidate.get("endpoints"),
-                    )
-                })
-                if combined_endpoints:
-                    chosen["endpoints"] = combined_endpoints
             candidate_ids = [item["_candidate_id"] for item in candidates]
+            evidence_refs: list[str] = []
+            for candidate in candidates:
+                for field in ("evidence_ref", "evidence_refs"):
+                    values = candidate.get(field)
+                    if not isinstance(values, (list, tuple, set)):
+                        values = [values]
+                    for value in values:
+                        ref = str(value or "").strip()
+                        if ref and ref not in evidence_refs:
+                            evidence_refs.append(ref)
             chosen["_provenance"] = {
                 "selected_candidate_id": chosen["_candidate_id"],
                 "candidate_ids": candidate_ids,
+                "source_files": sorted({
+                    records_by_id[item["_candidate_id"]].get("source_file", "")
+                    for item in candidates
+                    if records_by_id[item["_candidate_id"]].get("source_file", "")
+                }),
+                "evidence_refs": evidence_refs,
                 "raw_projection": "03_vuln_analysis_raw.json",
             }
+            if evidence_refs:
+                chosen["evidence_refs"] = evidence_refs
             deduped.append(chosen)
             for item in candidates:
                 record = records_by_id[item["_candidate_id"]]
@@ -793,77 +641,20 @@ class FindingAggregation:
                         f"represented by {chosen['_candidate_id']}; raw candidate preserved"
                     )
 
-        if not compact_mode:
-            # strict-v3 allows only a small number of low-value bonus claims per
-            # type. Keep the strongest representative in the canonical queue;
-            # every other model candidate remains available in the raw audit
-            # registry. This is a publication deduplication, not a full-profile
-            # generation guardrail.
-            for low_value_type in ("weak_cipher", "missing_header"):
-                observations = sorted(
-                    (
-                        finding for finding in deduped
-                        if finding.get("type") == low_value_type
-                    ),
-                    key=finding_quality,
-                    reverse=True,
-                )
-                for finding in observations[1:]:
-                    record = records_by_id[finding["_candidate_id"]]
-                    record["accepted_for_canonical"] = False
-                    record["decision"] = "excluded_from_canonical"
-                    record["decision_reason"] = (
-                        f"duplicate low-value {low_value_type} observation; representative retained"
-                    )
-                if observations:
-                    deduped = [
-                        finding for finding in deduped
-                        if finding.get("type") != low_value_type
-                        or finding is observations[0]
-                    ]
-
-        devices_with_insecure_update = {
-            finding.get("device_ip")
-            for finding in deduped
-            if finding.get("type") == "insecure_update"
-        }
-        final: list[dict] = []
-        for finding in deduped:
-            if (
-                finding.get("type") == "directory_listing"
-                and finding.get("device_ip") in devices_with_insecure_update
-                and "/firmware" in str(finding.get("details", "")).casefold()
-            ):
-                record = records_by_id[finding["_candidate_id"]]
-                record["accepted_for_canonical"] = False
-                record["decision"] = "represented_by_stronger_finding"
-                record["decision_reason"] = (
-                    "firmware directory observation represented by insecure_update"
-                )
-                continue
-            final.append(finding)
-
-        def _finding_identity(finding: dict) -> tuple[str, ...]:
-            return tuple(
-                str(finding.get(key) or "").strip().casefold()
-                for key in (
-                    "device_ip", "type", "service", "port", "protocol",
-                    "endpoint", "product",
-                )
-            )
+        final = deduped
 
         # Phase 2.5 appends newly discovered devices and re-runs this
         # aggregation. Keep existing canonical IDs stable so Phase 4
         # deliverables and provenance do not get reassigned to another
         # vulnerability when a new host is added.
-        previous_ids: dict[tuple[str, ...], str] = {}
+        previous_ids: dict[tuple, str] = {}
         previous_path = self.run_dir / "03_vuln_analysis.json"
         try:
             previous = json.loads(previous_path.read_text(encoding="utf-8"))
             for previous_finding in previous.get("vulnerabilities", []):
                 previous_id = str(previous_finding.get("id") or "")
                 if re.fullmatch(r"VULN-\d+", previous_id):
-                    previous_ids[_finding_identity(previous_finding)] = previous_id
+                    previous_ids[finding_identity_key(previous_finding)] = previous_id
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             pass
         used_ids: set[str] = set()
@@ -875,7 +666,7 @@ class FindingAggregation:
         next_number = max(previous_numbers, default=0) + 1
 
         for finding in final:
-            finding_id = previous_ids.get(_finding_identity(finding))
+            finding_id = previous_ids.get(finding_identity_key(finding))
             if not finding_id or finding_id in used_ids:
                 while f"VULN-{next_number:03d}" in used_ids:
                     next_number += 1

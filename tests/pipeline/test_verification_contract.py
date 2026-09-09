@@ -4,6 +4,7 @@ from src.agent.pipeline import Pipeline
 from src.agent.exploit_evidence import (
     synthesize_exploit_result as _synthesize_exploit_result,
 )
+from src.agent.report_evidence import verification_state
 from src.agent.phases.verification.contract import (
     _phase4_local_verification_tools,
     _phase4_verification_plan,
@@ -282,8 +283,9 @@ def test_phase4_known_cve_without_matching_audit_evidence_is_inconclusive():
         }],
         compact=True,
     )
-    assert result["status"] == "ERROR"
-    assert "CVE-specific" in result["evidence"]
+    assert result["status"] == "FAILED"
+    assert result["evidence"] == "ssh_audit did not positively prove the claimed CVE"
+    assert verification_state(result) == "inconclusive"
 
 
 def test_phase4_default_credentials_mqtt_uses_authenticated_probe():

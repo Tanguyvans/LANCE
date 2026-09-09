@@ -2566,7 +2566,7 @@ function renderFunnelStage(stage, reportScore = null, { primary = false, filterL
   const recall = reportScore ? '' : `<span class="${primary ? 'bm-primary-recall' : ''}">Rappel ${bmRate(stage.recall)}</span>`;
   const lost = filterLoss == null ? '' : `<small class="bm-filter-loss">Vraies pistes perdues au filtrage : ${bmNumber(filterLoss)}</small>`;
   return `<div class="bm-funnel-stage">
-    <span class="bm-stage-count">Pistes <strong>${bmNumber(stage.predictions)}</strong></span>
+    <span class="bm-stage-count">${reportScore ? 'Déclarations' : 'Pistes'} <strong>${bmNumber(stage.predictions)}</strong></span>
     <span>VP ${bmNumber(stage.true_positives)} · FP ${bmNumber(stage.false_positives)} · FN ${bmNumber(stage.false_negatives)}</span>
     ${recall}
     ${scoreDetails}

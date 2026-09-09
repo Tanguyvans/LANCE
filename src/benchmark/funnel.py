@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from src.agent.vuln_taxonomy import NOISE_TYPES, canonicalize
+from src.agent.finding_identity import finding_identity_key
 from src.agent.report_evidence import verification_state
 
 
@@ -32,35 +33,23 @@ def unique_predictions(findings: list[dict]) -> list[dict]:
     Model-authored IDs are not identities. Missing structure is not a wildcard:
     a vague claim cannot silently absorb a distinct, precise prediction.
     """
-    result: dict[str, dict] = {}
+    result: dict[tuple, dict] = {}
     for finding in findings:
         item = dict(finding)
         item["type"] = canonicalize(str(item.get("type") or ""))
         if item["type"] in NOISE_TYPES:
             continue
-        identity = {key: str(item.get(key) or "").strip() for key in (
-            "device_ip", "type", "service", "port", "protocol", "endpoint", "product", "version",
-        )}
-        for key in ("device_ip", "type", "service", "protocol", "product"):
-            identity[key] = identity[key].casefold()
-        for key in ("endpoints", "cve_ids"):
-            values = item.get(key) or []
-            if isinstance(values, str):
-                values = [values]
-            identity[key] = sorted(set(
-                str(v).casefold() if key == "cve_ids" else str(v) for v in values
-            ))
         # Unidentifiable predictions remain separate audit errors, not one
         # magically deduplicated claim shared across unrelated devices.
-        if not identity["device_ip"] or not identity["type"]:
-            identity["unidentified_index"] = len(result)
-        signature = json.dumps(identity, sort_keys=True)
-        if signature not in result:
-            result[signature] = item
+        identity = finding_identity_key(item)
+        if not identity[0] or not identity[1]:
+            identity = (*identity, "unidentified_index", len(result))
+        if identity not in result:
+            result[identity] = item
         else:
-            existing = result[signature]
+            existing = result[identity]
             if item.get("_evidence_supported") and not existing.get("_evidence_supported"):
-                result[signature] = item
+                result[identity] = item
     return list(result.values())
 
 
@@ -175,8 +164,13 @@ def evaluate_funnel(
             if isinstance(test, dict):
                 by_id.setdefault(str(test.get("vuln_id") or test.get("id") or ""), []).append(test)
         counts = Counter({"confirmed": 0, "refuted": 0, "inconclusive": 0, "error": 0, "not_tested": 0})
-        ids = Counter(str(f.get("id") or "") for f in snapshots["filtered"])
-        for finding in snapshots["filtered"]:
+        # Verification coverage is about the actual Phase 3 queue and its
+        # canonical IDs, not the separate statistical projection. Keep
+        # duplicate source IDs visible here so a test linked to either real
+        # queue entry is not turned into an orphan by deduplication.
+        verification_findings = [f for f in (p3 or []) if isinstance(f, dict)]
+        ids = Counter(str(f.get("id") or "") for f in verification_findings)
+        for finding in verification_findings:
             identifier = str(finding.get("id") or "")
             entries = by_id.get(identifier, [])
             if not entries:
@@ -186,7 +180,7 @@ def evaluate_funnel(
             else:
                 state = verification_state(entries[0])
             counts[state] += 1
-        n = len(snapshots["filtered"])
+        n = len(verification_findings)
         diagnostics["verification"] = dict(counts)
         diagnostics["verification_attempt_rate"] = round((n - counts["not_tested"]) / n, 3) if n else None
         diagnostics["orphan_tests"] = sum(len(v) for k, v in by_id.items() if k not in ids)

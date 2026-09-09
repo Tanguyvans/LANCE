@@ -130,7 +130,7 @@ def test_full_aggregation_accepts_catalog_validated_terrapin_without_nvd_cpe(
     assert finding["accepted_for_scoring"] is True
 
 
-def test_full_aggregation_rejects_catalog_cve_outside_product_range(
+def test_full_aggregation_keeps_unverified_cve_for_phase4(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
@@ -158,10 +158,12 @@ def test_full_aggregation_rejects_catalog_cve_outside_product_range(
     pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
 
     canonical = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
-    assert canonical["vulnerabilities"] == []
+    assert len(canonical["vulnerabilities"]) == 1
+    assert canonical["vulnerabilities"][0]["cve_claim_status"] == "unverified"
+    assert canonical["vulnerabilities"][0]["accepted_for_scoring"] is False
 
 
-def test_full_canonical_projection_deduplicates_surfaces_but_preserves_raw(
+def test_full_canonical_projection_preserves_distinct_surfaces_and_raw(
     mock_provider, output_dir, monkeypatch
 ):
     monkeypatch.setattr(
@@ -224,15 +226,13 @@ def test_full_canonical_projection_deduplicates_surfaces_but_preserves_raw(
     raw = json.loads((pipeline.run_dir / "03_vuln_analysis_raw.json").read_text())
     findings = canonical["vulnerabilities"]
 
-    assert len(findings) == 4
-    assert sum(f["type"] == "weak_cipher" for f in findings) == 1
-    mqtt = next(f for f in findings if f["device_ip"] == "192.0.2.45" and f["type"] == "data_exposure")
-    assert mqtt["endpoint"] in {"smartcity/admin/credentials", "smartcity/config/network"}
-    web = next(f for f in findings if f["device_ip"] == "192.0.2.46")
-    assert web["type"] == "data_exposure"
-    assert {"/backup/", "/config/", "/config/app.config"}.issubset(web["endpoints"])
+    assert len(findings) == 7
+    assert sum(f["type"] == "weak_cipher" for f in findings) == 2
+    assert sum(f["type"] == "data_exposure" and f["device_ip"] == "192.0.2.45" for f in findings) == 2
+    assert sum(f["type"] == "directory_listing" for f in findings) == 1
+    assert sum(f["type"] == "data_exposure" and f["device_ip"] == "192.0.2.46" for f in findings) == 1
     assert raw["candidate_count"] == 7
-    assert raw["canonical_count"] == 4
+    assert raw["canonical_count"] == 7
 
 
 class TestInformationPreservingArchitecture:
@@ -362,7 +362,7 @@ class TestInformationPreservingArchitecture:
             **common,
             "id": "B",
             "severity": "HIGH",
-            "details": "range checked",
+            "details": "short",
             "evidence": "ssh-audit observed the affected product and version",
             "cve_validation": {
                 "compatibility_status": "compatible",
@@ -523,29 +523,22 @@ class TestInformationPreservingArchitecture:
         observations = json.loads(
             (pipeline.run_dir / "03_config_observations.json").read_text()
         )
-        assert len(canonical["vulnerabilities"]) == 1
-        assert canonical["vulnerabilities"][0]["type"] == "info_disclosure"
+        assert len(canonical["vulnerabilities"]) == 5
+        assert sum(item["type"] == "info_disclosure" for item in canonical["vulnerabilities"]) == 3
         assert "compact_detection_only" not in canonical["vulnerabilities"][0]
-        assert {
-            (item["device_ip"], item["type"])
-            for item in observations["observations"]
-        } == {
-            ("192.0.2.20", "missing_header"),
-            ("192.0.2.20", "directory_listing"),
-            ("192.0.2.21", "info_disclosure"),
-            ("192.0.2.22", "info_disclosure"),
-        }
+        assert observations["observations"] == []
 
         pipeline._run_exploit_agents(AGENTS["exploitation"])
         aggregate = json.loads(
             (pipeline.run_dir / "04_exploitation.json").read_text()
         )
-        assert pipeline._phase4_schedule["scheduled_count"] == 1
+        assert pipeline._phase4_schedule["scheduled_count"] == 5
         assert pipeline._phase4_schedule["skipped_count"] == 0
         assert aggregate["summary"]["skipped_count"] == 0
-        assert aggregate["tests"][0]["status"] == "ERROR"  # mock provider produced no proof
+        assert len(aggregate["tests"]) == 5
+        assert all(test["status"] in {"ERROR", "FAILED"} for test in aggregate["tests"])  # mock provider produced no proof
 
-    def test_log_regression_unverified_cves_stay_raw_not_canonical(
+    def test_log_regression_unverified_cves_remain_schedulable_and_raw(
         self, mock_provider, output_dir, monkeypatch
     ):
         monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: "[]")
@@ -626,14 +619,11 @@ class TestInformationPreservingArchitecture:
         raw = json.loads(
             (pipeline.run_dir / "03_vuln_analysis_raw.json").read_text()
         )
-        assert canonical["vulnerabilities"] == []
+        assert len(canonical["vulnerabilities"]) == 3
         assert canonical["summary"]["raw_candidates"] == 4
         assert len(raw["candidates"]) == 4
-        assert all(
-            candidate["decision"] == "excluded_from_canonical"
-            for candidate in raw["candidates"]
-        )
+        assert sum(candidate["decision"] == "excluded_from_canonical" for candidate in raw["candidates"]) == 1
         reasons = " ".join(
             candidate["decision_reason"] for candidate in raw["candidates"]
         )
-        assert "not corroborated" in reasons
+        assert "explicitly incompatible" in reasons

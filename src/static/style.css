@@ -1115,6 +1115,7 @@ button:disabled { opacity: .35; cursor: default; }
 #bm-table th {
   padding: 6px 10px;
   text-align: left;
+  vertical-align: top;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -1128,6 +1129,20 @@ button:disabled { opacity: .35; cursor: default; }
   padding: 7px 10px;
   border-bottom: 1px solid rgba(48,54,61,.5);
   vertical-align: top;
+}
+
+#bm-table .bm-stage-title, #bm-table .bm-stage-help {
+  display: block;
+  white-space: normal;
+  text-transform: none;
+  line-height: 1.45;
+}
+#bm-table .bm-stage-title { color: var(--text); font-size: 13px; }
+#bm-table .bm-stage-help {
+  margin-top: 4px;
+  max-width: 240px;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 #bm-table tr:hover td { background: var(--white-hover); }

@@ -169,11 +169,17 @@ def derive_matching_contract(vulnerability: dict) -> dict:
     services = [value.casefold() for value in _strings(
         vulnerability.get("services", vulnerability.get("service"))
     )]
+    ports_explicit = "ports" in vulnerability or "port" in vulnerability
+    protocols_explicit = "protocols" in vulnerability or "protocol" in vulnerability
+    services_explicit = "services" in vulnerability or "service" in vulnerability
+    endpoints_explicit = "endpoints" in vulnerability or "endpoint" in vulnerability
     ports: list[int] = []
     for value in _strings(vulnerability.get("ports", vulnerability.get("port"))):
         if value.isdigit() and 0 < int(value) <= 65535:
             ports.append(int(value))
-    protocols = [value.casefold() for value in _strings(vulnerability.get("protocols"))]
+    protocols = [value.casefold() for value in _strings(
+        vulnerability.get("protocols", vulnerability.get("protocol"))
+    )]
     endpoints = _strings(vulnerability.get("endpoints", vulnerability.get("endpoint")))
     products = [value.casefold() for value in _strings(
         vulnerability.get("products", vulnerability.get("product"))
@@ -182,24 +188,27 @@ def derive_matching_contract(vulnerability: dict) -> dict:
 
     urls = _verification_urls(vulnerability)
     for url in urls:
-        if url.scheme and url.scheme.casefold() not in services:
+        if url.scheme and not services_explicit and url.scheme.casefold() not in services:
             services.append(url.scheme.casefold())
-        if url.port and url.port not in ports:
+        if url.port and not ports_explicit and url.port not in ports:
             ports.append(url.port)
-        if url.path and url.path != "/" and url.path not in endpoints:
-            endpoints.append(url.path)
+        url_endpoint = url.path or "/"
+        if url.query:
+            url_endpoint += "?" + url.query
+        if url_endpoint != "/" and not endpoints_explicit and url_endpoint not in endpoints:
+            endpoints.append(url_endpoint)
 
 
-    if "websocket" in str(vulnerability.get("title", "")).casefold() and 9001 in ports:
+    if "websocket" in str(vulnerability.get("title", "")).casefold() and 9001 in ports and not services_explicit:
         services.append("mqtt-ws")
     role_default = ROLE_SERVICE_DEFAULTS.get(str(vulnerability.get("role", "")))
     if role_default:
         service, port, protocol = role_default
-        if not services:
+        if not services and not services_explicit:
             services.append(service)
-        if not ports:
+        if not ports and not ports_explicit:
             ports.append(port)
-        if not protocols:
+        if not protocols and not protocols_explicit:
             protocols.append(protocol)
 
     verification = str(vulnerability.get("verification", "")).casefold()
@@ -220,23 +229,25 @@ def derive_matching_contract(vulnerability: dict) -> dict:
     )
     for marker, service, port, protocol in overrides:
         if marker in verification or marker in title:
-            services = [service]
-            if not urls:
+            if not services and not services_explicit:
+                services = [service]
+            if not ports and not ports_explicit and not urls:
                 ports = [port]
-            protocols = [protocol]
+            if not protocols and not protocols_explicit:
+                protocols = [protocol]
             break
 
     # URL ports are parsed above; ':NNN' also matches IP octets and tunnel targets.
     port_matches = re.findall(
         r"(?:\bport\s+|(?:^|\s)-p\s*)(\d{1,5})\b", verification + " " + title)
-    if port_matches and not urls:
+    if port_matches and not urls and not ports_explicit:
         parsed = [int(value) for value in port_matches if 0 < int(value) <= 65535]
         if parsed:
             ports = list(dict.fromkeys(parsed))
 
-    if not products and "dropbear" in title:
+    if not products and not ("products" in vulnerability or "product" in vulnerability) and "dropbear" in title:
         products = ["dropbear"]
-    if not versions and products:
+    if not versions and not ("versions" in vulnerability or "version" in vulnerability) and products:
         versions = re.findall(r"\b\d{4}\.\d{1,3}\b", title)
 
     return {

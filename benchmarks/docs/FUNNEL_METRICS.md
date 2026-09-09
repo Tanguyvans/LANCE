@@ -1,12 +1,12 @@
 # Évaluer l’entonnoir de vulnérabilités
 
-Contrat courant : **strict-v3.7 / evidence-v5**, schéma `funnel-v1`.
+Contrat courant : **strict-v3.8 / evidence-v6**, schéma `funnel-v1`.
 Le benchmark seul connaît la vérité terrain. Un run réel ne permet pas de
 calculer le rappel ni de connaître toutes les failles manquées.
 
-Cette version renforce le contrat MySQL et retire le crédit de pivot attribué
-aux connexions directes. Les versions antérieures, notamment
-`strict-v3.6 / evidence-v4`, restent historiques : leurs artefacts ne sont pas
+Cette version renforce le contrat de preuve CVE, l'attribution des routes et
+l'identité de comptage. Les versions antérieures, notamment
+`strict-v3.7 / evidence-v5` et `strict-v3.6 / evidence-v4`, restent historiques : leurs artefacts ne sont pas
 réétiquetés et n'obtiennent pas rétroactivement le score officiel courant.
 
 ## Trois ensembles distincts
@@ -26,6 +26,27 @@ Les observations non qualifiées de vulnérabilité sont comptées à part.
 La nouvelle projection des candidats est capturée avant les corrections
 sémantiques. L’évaluateur ne reconstruit jamais les candidats à partir des seuls
 survivants. Un registre absent donne une étape indisponible, pas zéro candidat.
+
+### Rôle du tri avant vérification
+
+Le tri prépare les tests ; il ne confirme pas les failles. Une priorité faible
+ou l'absence de preuve préalable ne suffisent pas à supprimer une hypothèse.
+Un listing de répertoire, un fichier sensible exposé et des en-têtes absents
+restent des pistes distinctes, même sur une seule machine. Les contradictions
+explicites, les observations non-failles et les entrées non testables restent
+exclues avec une raison conservée dans le registre brut.
+
+La fusion exige une identité conservatrice : cible, service, transport, port,
+chemins, produit/version, CVE et condition décrite. Les références de preuve et
+les liens vers chaque candidat source sont conservés. Une compatibilité CVE
+inconnue ou partielle n'est ni une incompatibilité ni une confirmation.
+
+**Alignement du comptage :** la file de vérification et le funnel utilisent la
+même identité conservatrice, qui inclut les conditions et détails pertinents.
+Les doublons exacts fusionnent sans compter plusieurs fois leurs identifiants ou
+références ; deux hypothèses distinctes sur une même cible et route restent
+deux prédictions. Les formules P/R/F1 restent inchangées ; les règles de preuve
+sont celles du contrat versionné `evidence-v6`.
 
 ## Définitions
 
@@ -142,8 +163,14 @@ En compact local, une observation de configuration admise dans la file canonique
 n’est plus automatiquement ignorée : le plan adapté à son type la vérifie,
 par exemple avec `curl_headers` pour un en-tête manquant.
 
-Le dashboard présente neuf colonnes : run, scénario, pistes détectées, pistes
-retenues, confirmations finales, modèle, statut, consommation et vérification.
+Le dashboard présente neuf colonnes : run, scénario, failles suspectées, pistes
+à vérifier, confirmations déclarées, modèle, statut, consommation et vérification.
+Les sous-titres visibles distinguent toutes les pistes proposées par l’agent,
+celles conservées après filtrage (pas encore prouvées), puis les confirmations
+déclarées par l’agent dont les preuves sont contrôlées par l’évaluation. Le dernier
+compteur est intitulé « Déclarations » : il inclut les VP et les FP, et ne doit
+pas être lu comme un nombre de failles prouvées. Ces libellés ne changent ni les
+populations ni les règles de calcul.
 Chaque étape affiche sa population et ses VP/FP/FN. Le rappel est visible aux
 étapes intermédiaires ; leur précision et leur F1 sont dans des détails ouvrables
 au clavier. Les vraies pistes perdues au filtrage sont visibles dans les pistes

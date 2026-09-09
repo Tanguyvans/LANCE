@@ -23,6 +23,7 @@ from src.benchmark.scenario_exports import resolve_scenario_split
 from src.benchmark.aggregate import aggregate_evaluations
 from src.benchmark.evaluator import evaluate
 from src.benchmark.evaluator import EvaluationResult
+from src.benchmark.metric_contract import EVIDENCE_CONTRACT_VERSION, METRIC_CONTRACT_VERSION
 
 
 _COMPARABILITY_IDENTITY = {
@@ -32,8 +33,8 @@ _COMPARABILITY_IDENTITY = {
     "effective_phases": [1, 2, 3, 4, 5, 6], "phase_models": {},
     "execution_profile_config": {"schema_version": "2", "name": "full"},
     "prompt_manifest_sha256": "fixture-prompts", "tool_manifest_sha256": "fixture-tools",
-    "scoring_policy": "strict-v2", "metric_contract_version": "strict-v3.7",
-    "evidence_contract_version": "evidence-v5",
+    "scoring_policy": "strict-v2", "metric_contract_version": METRIC_CONTRACT_VERSION,
+    "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
 }
 
 

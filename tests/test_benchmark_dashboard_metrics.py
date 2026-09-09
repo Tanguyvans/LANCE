@@ -61,9 +61,16 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
     javascript = (ROOT / "src/static/app.js").read_text(encoding="utf-8")
     table = html[html.index('<table id="bm-table"'):html.index('</table>', html.index('<table id="bm-table"'))]
     renderer = javascript[javascript.index("function bmNumber("):javascript.index("// ── Modal")]
-    for heading in ("1. Pistes détectées", "2. Pistes retenues", "3. Confirmations finales", "Consommation", "Vérification"):
+    for heading in ("1. Failles suspectées", "2. Pistes à vérifier", "3. Confirmations déclarées", "Consommation", "Vérification"):
         assert heading in table
-    assert "Pistes = prédictions" in table
+    assert "Une piste est une faille possible, pas encore prouvée" in table
+    assert table.count('class="bm-stage-help"') == 3
+    for explanation in ("Toutes les pistes proposées par l’agent",
+                        "Pistes conservées après filtrage, pas encore prouvées",
+                        "L’agent les dit confirmées ; l’évaluation contrôle les preuves",
+                        "Après vérification, un VP exige aussi une preuve acceptée"):
+        assert explanation in table
+    assert "3. Confirmations finales" not in table
     assert "Pred = prédictions" not in table
     assert table.count("<th>") + table.count('<th scope="col">') == 9
     for legacy in ("quality_adjusted_f1", "evidence_f1", "weighted_score", "turns_per_tp", "cost_per_expected_vulnerability"):
@@ -130,6 +137,10 @@ context._bmData = [row];
 context.renderBenchmarkTable();
 let html = elements['bm-tbody'].innerHTML;
 assert(html.includes('Pistes <strong>2</strong>'));
+assert(html.includes('Pistes <strong>4</strong>'));
+assert(html.includes('Déclarations <strong>2</strong>'));
+assert((html.match(/class="bm-stage-count">Pistes /g) || []).length === 2);
+assert((html.match(/class="bm-stage-count">Déclarations /g) || []).length === 1);
 assert(html.includes('VP 1 · FP 1 · FN 0'));
 assert(html.includes('3/4 pistes testées'));
 assert(html.includes('indéterminées 1'));
@@ -217,6 +228,7 @@ html = elements['bm-tbody'].innerHTML;
 assert(html.includes('Coût $0'));
 assert(html.includes('Tokens —'));
 assert(!html.includes('Tokens 999'));
+assert(!html.includes('Déclarations <strong>'));
 console.log('BENCHMARK_DASHBOARD_VM_OK');
 '''
     completed = subprocess.run(

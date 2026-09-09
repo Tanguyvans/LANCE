@@ -41,7 +41,7 @@ def test_full_phase3_normalizes_application_protocol_to_transport():
     assert finding["protocol"] == "tcp"
 
 
-def test_s15_generic_api_fixture_is_not_a_model_finding():
+def test_s15_generic_api_fixture_remains_a_testable_model_candidate():
     finding = {
         "type": "data_exposure",
         "service": "http",
@@ -51,11 +51,11 @@ def test_s15_generic_api_fixture_is_not_a_model_finding():
         "details": 'HTTP 200 body {"authentication":"enforced"} may expose credentials',
         "evidence": 'GET /credentials returned {"authentication":"enforced"}',
     }
-    assert "generic API fixture" in _finding_semantic_issue(
+    assert _finding_semantic_issue(
         finding,
         source_kind="model",
         device_role="api_data_store",
-    )
+    ) == ""
 
 
 def test_semantics_cannot_use_scenario_labels_to_discard_predictions():
@@ -71,13 +71,13 @@ def test_semantics_cannot_use_scenario_labels_to_discard_predictions():
         {"type": "info_disclosure", "service": "bacnet", "port": 47808},
         source_kind="scanner_full", device_role="ot_bacnet_server",
     )
-    assert "Modbus role" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {"type": "weak_cipher", "service": "ssh", "port": 22},
         source_kind="model", device_role="modbus_server",
     )
 
 
-def test_s14_authenticated_redis_and_pki_metadata_are_rejected():
+def test_s14_authenticated_redis_and_pki_metadata_remain_testable_candidates():
     redis_noauth = {
         "type": "no_auth", "service": "redis", "port": 6379,
         "details": "Redis PING returned -NOAUTH Authentication required",
@@ -90,18 +90,18 @@ def test_s14_authenticated_redis_and_pki_metadata_are_rejected():
         "type": "data_exposure", "service": "redis", "port": 6379,
         "details": "Unauthenticated Redis exposes credentials and secrets: database password and API keys",
     }
-    assert "retrieved" in _finding_semantic_issue(
+    assert _finding_semantic_issue(
         redis_data, source_kind="model", device_role="db_server_v2"
-    )
+    ) == ""
 
     pki_metadata = {
         "type": "info_disclosure", "service": "http", "port": 8080,
         "endpoint": "/identity/certificate",
         "details": "Device certificate is publicly accessible and reveals the public identity",
     }
-    assert "PKI" in _finding_semantic_issue(
+    assert _finding_semantic_issue(
         pki_metadata, source_kind="model", device_role="pki_device"
-    )
+    ) == ""
 
 
 def test_suggested_tools_are_restricted_to_canonical_catalog_names():
@@ -163,14 +163,14 @@ def test_semantic_contract_rejects_cross_family_findings():
     assert "plain HTTP" in _finding_semantic_issue({
         "type": "weak_cipher", "service": "http", "port": 80,
     })
-    assert "not SSH or HTTP" in _finding_semantic_issue({
+    assert "not SSH or HTTPS" in _finding_semantic_issue({
         "type": "insecure_protocol", "service": "ssh", "port": 22,
     })
-    assert "intentional upload" in _finding_semantic_issue({
+    assert not _finding_semantic_issue({
         "type": "directory_listing", "service": "http", "port": 80,
         "endpoint": "/uploads/",
     })
-    assert "firmware binaries" in _finding_semantic_issue({
+    assert not _finding_semantic_issue({
         "type": "data_exposure", "service": "http", "port": 80,
         "details": "firmware.bin is downloadable",
     })
@@ -186,7 +186,7 @@ def test_full_semantic_filters_reject_contradictory_claims():
             "evidence": "HTTP 403",
         }
     )
-    assert "speculative" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {
             "type": "misconfiguration",
             "service": "ssh",
@@ -195,7 +195,7 @@ def test_full_semantic_filters_reject_contradictory_claims():
             "evidence": "SSH is open",
         }
     )
-    assert "protocol properties" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {
             "type": "insecure_protocol",
             "service": "modbus",
@@ -204,7 +204,7 @@ def test_full_semantic_filters_reject_contradictory_claims():
             "evidence": "Modbus protocol description",
         }
     )
-    assert "platform fingerprint" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {
             "type": "info_disclosure",
             "service": "network",
@@ -235,7 +235,7 @@ def test_full_semantic_normalization_preserves_precise_claim_types():
         "evidence": "password=secret",
     }
     _normalise_full_finding_semantics(listing, [listing, exposure])
-    assert listing["type"] == "data_exposure"
+    assert listing["type"] == "directory_listing"
 
     coap = {
         "device_ip": "192.0.2.41",
@@ -255,47 +255,47 @@ def test_full_semantic_normalization_preserves_precise_claim_types():
         "details": "MQTT accepts weak default credentials test:test",
     }
     _normalise_full_finding_semantics(mqtt, [mqtt])
-    assert mqtt["type"] == "default_credentials"
+    assert mqtt["type"] == "no_auth"
 
 
 def test_full_semantic_filter_rejects_redundant_claims_and_keeps_real_contracts():
-    assert _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {
             "type": "broken_access_control",
             "service": "http",
             "details": "API key exposed in a static configuration file",
         }
     ).startswith("broken_access_control requires")
-    assert _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {
             "type": "misconfiguration",
             "service": "ssh",
             "details": "ssh-auth-methods returned Not allowed at this time",
         }
-    ).startswith("blocked or rate-limited")
-    assert _finding_semantic_issue(
+    )
+    assert not _finding_semantic_issue(
         {
             "type": "data_exposure",
             "service": "coap",
             "endpoint": "/sensor/data",
             "details": "sensor telemetry is available without encryption",
         }
-    ).startswith("generic sensor telemetry")
-    assert _finding_semantic_issue(
+    )
+    assert not _finding_semantic_issue(
         {
             "type": "missing_header",
             "service": "http",
             "port": 80,
         },
         device_role="iot_gateway",
-    ).startswith("generic gateway headers")
-    assert _finding_semantic_issue(
+    )
+    assert not _finding_semantic_issue(
         {
             "type": "info_disclosure",
             "service": "ssh",
             "details": "NIST P-256 elliptic curve suspected as backdoored",
         }
-    ).startswith("SSH algorithm properties")
+    )
 
 
 def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
@@ -306,7 +306,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "details": "Admin panel displays default creds admin:admin",
         "evidence": "GET /admin returned the text 'default creds admin:admin'",
     }
-    assert "successful credential" in _finding_semantic_issue(http_default)
+    assert _finding_semantic_issue(http_default) == ""
 
     http_success = {
         **http_default,
@@ -322,7 +322,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "details": "Anonymous FTP login allows access without authentication",
         "evidence": "FTP code 230",
     }
-    assert "anonymous FTP" in _finding_semantic_issue(ftp_default)
+    assert _finding_semantic_issue(ftp_default) == ""
 
     ftp_firmware = {
         "type": "insecure_update",
@@ -331,7 +331,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "details": "Firmware directory is downloadable through anonymous FTP",
         "evidence": "firmware.bin listed in the directory",
     }
-    assert "not an update mechanism" in _finding_semantic_issue(ftp_firmware)
+    assert _finding_semantic_issue(ftp_firmware) == ""
 
     speculative_redis = {
         "type": "data_exposure",
@@ -340,7 +340,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "details": "Stored keys may contain sensitive credentials and tokens",
         "evidence": "Redis is accessible without authentication",
     }
-    assert "speculative data exposure" in _finding_semantic_issue(speculative_redis)
+    assert _finding_semantic_issue(speculative_redis) == ""
 
     modbus_noise = {
         "type": "insecure_protocol",
@@ -356,7 +356,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "port": 502,
         "device_ip": "192.0.2.10",
     }
-    assert "proven no_auth" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         modbus_noise, context_findings=[modbus_noise, modbus_auth]
     )
 
@@ -373,11 +373,11 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         "port": 6379,
         "device_ip": "192.0.2.11",
     }
-    assert "proven no_auth" in _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         redis_bind, context_findings=[redis_bind, redis_auth]
     )
 
-    assert "platform fingerprint" in _finding_semantic_issue({
+    assert not _finding_semantic_issue({
         "type": "info_disclosure",
         "service": "modbus",
         "port": 502,
@@ -396,8 +396,7 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
     _normalise_full_finding_semantics(
         listing, [listing], device_role="iot_gateway"
     )
-    assert listing["type"] == "insecure_update"
-    assert listing["severity"] == "HIGH"
+    assert listing["type"] == "directory_listing"
 
     unproven_listing = {
         "type": "directory_listing",
@@ -412,9 +411,9 @@ def test_full_semantic_filters_run_artifact_noise_without_losing_contracts():
         unproven_listing, [unproven_listing], device_role="iot_gateway"
     )
     assert unproven_listing["type"] == "directory_listing"
-    assert "lacks proof" in _finding_semantic_issue(
+    assert _finding_semantic_issue(
         unproven_listing, device_role="iot_gateway"
-    )
+    ) == ""
 
     ssh_crypto = {
         "type": "misconfiguration",

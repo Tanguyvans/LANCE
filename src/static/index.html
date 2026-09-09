@@ -315,14 +315,14 @@
       Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.
     </div>
     <table id="bm-table" hidden>
-      <caption>Pistes = prédictions · VP = vrais positifs · FP = faux positifs · FN = failles attendues non retrouvées à cette étape. Dans le rapport final, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
+      <caption>Une piste est une faille possible, pas encore prouvée. VP = failles attendues correctement identifiées · FP = pistes ou déclarations non validées · FN = failles attendues sans résultat valide à cette étape. Après vérification, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
       <thead>
         <tr>
           <th>Run</th>
           <th>Scénario</th>
-          <th scope="col">1. Pistes détectées</th>
-          <th scope="col">2. Pistes retenues</th>
-          <th scope="col">3. Confirmations finales</th>
+          <th scope="col"><span class="bm-stage-title">1. Failles suspectées</span><span class="bm-stage-help">Toutes les pistes proposées par l’agent</span></th>
+          <th scope="col"><span class="bm-stage-title">2. Pistes à vérifier</span><span class="bm-stage-help">Pistes conservées après filtrage, pas encore prouvées</span></th>
+          <th scope="col"><span class="bm-stage-title">3. Confirmations déclarées</span><span class="bm-stage-help">L’agent les dit confirmées ; l’évaluation contrôle les preuves</span></th>
           <th>Modèle</th>
           <th>Statut</th>
           <th>Consommation</th>

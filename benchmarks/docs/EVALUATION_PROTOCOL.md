@@ -2,7 +2,7 @@
 
 ## Protocole courant — catalogue 3.2.0
 
-Les métriques courantes suivent le contrat **strict-v3.7 / evidence-v5** :
+Les métriques courantes suivent le contrat **strict-v3.8 / evidence-v6** :
 [entonnoir candidats, après filtrage et confirmations finales](FUNNEL_METRICS.md).
 Le score principal est le F1 final (ou la spécificité des contrôles), sans
 pondération de sévérité. `FAILED` ne signifie plus réfutation : c’est une

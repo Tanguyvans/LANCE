@@ -110,7 +110,7 @@ Voir la [boucle d’apprentissage](../docs/LEARNING_LOOP.md).
 
 ## Métriques
 
-Le contrat courant **strict-v3.7 / evidence-v5** expose un entonnoir à trois
+Le contrat courant **strict-v3.8 / evidence-v6** expose un entonnoir à trois
 étapes : `funnel.stages.candidates`, `filtered` et `confirmed`. Chacune publie
 Pred, VP, FP, FN, précision, rappel et F1 sur son propre ensemble. Le score
 principal devient le F1 des confirmations finales, pas le score composite.
