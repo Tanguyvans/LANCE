@@ -2767,11 +2767,24 @@ function addLog(ev) {
 
   let text = '';
   let fullText = ''; // Store full text for expansion
+  let failed = t === 'error';
 
   if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
-  else if (t === 'pipeline_done')  text = `Pipeline terminé — Total: $${(ev.total_cost_usd||0).toFixed(4)}`;
+  else if (t === 'pipeline_done') {
+    const labels = {
+      completed: 'réussi', failed: 'en échec', partial: 'partiel',
+      stopped: 'arrêté', blocked: 'bloqué', skipped: 'non exécuté',
+      budget_exceeded: 'arrêté — budget atteint',
+    };
+    const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
+      ? `$${ev.total_cost_usd.toFixed(4)}` : 'indisponible';
+    text = `Pipeline ${labels[ev.status] || 'terminé — statut indisponible'} — Total : ${cost}`;
+    if (ev.cleanup_status === 'failed') text += ' — Nettoyage en échec';
+    if (ev.usage_status === 'incomplete') text += ' — Consommation incomplète';
+    failed = ev.status === 'failed' || ev.cleanup_status === 'failed';
+  }
   else if (t === 'batch_start')         text = `Batch démarré — ${ev.total} scénario(s) : ${(ev.ids||[]).map(i=>'S'+i).join(', ')}`;
   else if (t === 'batch_scenario_start') text = `[${ev.index}/${ev.total}] Démarrage S${ev.scenario_id}…`;
   else if (t === 'batch_scenario_done') {
@@ -2806,31 +2819,60 @@ function addLog(ev) {
   else if (t === 'reflector_start') text = `  ↺ Reflector: ${ev.device_id}`;
   else if (t === 'reflector_done')  text = `  ✓ Reflector done: ${ev.device_id}`;
   else if (t === 'error')      text = `✗ ${ev.message || 'Erreur inconnue'}`;
-  else if (t === 'deploy_start')   text = `Déploiement scénario S${ev.scenario_id}…`;
-  else if (t === 'deploy_done') {
-    text = `Scénario S${ev.scenario_id} ${ev.success ? 'déployé' : 'ÉCHEC'}`;
-    if (!ev.success && ev.output) fullText = ev.output;
+  else if (t === 'info' || t === 'warn') {
+    text = `${t === 'warn' ? 'Attention — ' : ''}${ev.message || ''}`;
+    fullText = String(ev.output || '');
   }
-  else if (t === 'inject_start')   text = `Injection vulns…`;
-  else if (t === 'inject_done') {
-    text = `Vulns injectées ${ev.success ? '✓' : '✗'}`;
-    if (!ev.success && ev.output) fullText = ev.output;
+  else if (/^(deploy|inject|verify|teardown)_(start|done)$/.test(t)) {
+    const labels = {deploy: 'Préparation des machines', inject: 'Injection des failles',
+      verify: 'Vérification du scénario', teardown: 'Nettoyage'};
+    const [step, state] = t.split('_');
+    const result = ev.success === true ? 'réussi' : ev.success === false ? 'ÉCHEC' : 'résultat inconnu';
+    text = `${labels[step]} S${ev.scenario_id} — ${state === 'start' ? 'en cours…' : result}`;
+    const context = [];
+    if (ev.playbook) context.push(ev.playbook);
+    if (Number.isInteger(ev.attempt)) context.push(`tentative ${ev.attempt}`);
+    if (typeof ev.duration_s === 'number' && Number.isFinite(ev.duration_s)) context.push(`${ev.duration_s.toFixed(1)} s`);
+    if (Number.isInteger(ev.returncode)) context.push(`code retour ${ev.returncode}`);
+    if (ev.timed_out === true) context.push('délai dépassé');
+    if (context.length) text += ` (${context.join(' · ')})`;
+    failed = state === 'done' && ev.success === false;
+    fullText = String(ev.output || '');
+    if (failed && fullText) {
+      const lines = fullText.split('\n').map(line => line.trim()).filter(Boolean);
+      const cause = lines.find(line => /\[ERROR\]|fatal:|UNREACHABLE|Failed to connect|timeout|not found|Permission denied/i.test(line));
+      text += `\n${_truncate(cause || lines[lines.length - 1] || 'Erreur sans détail', 500)}`;
+    }
+    if (ev.log_saved === false) text += '\nAttention : journal non sauvegardé sur le serveur.';
+    if (ev.log_file) text += `\nJournal : ${ev.log_file}`;
+    if (ev.output_truncated === true) text += ev.log_file
+      ? '\nExtrait limité ; la sortie complète est dans le journal du run.'
+      : '\nExtrait de sortie limité ; journal complet indisponible.';
   }
-  else if (t === 'teardown_start') text = `Teardown scénario S${ev.scenario_id}…`;
-  else if (t === 'teardown_done')  text = `Teardown terminé`;
 
   if (!text) return;
+  if (ev.timestamp && !Number.isNaN(Date.parse(ev.timestamp))) {
+    text = `[${new Date(ev.timestamp).toLocaleTimeString('fr-FR')}] ${text}`;
+  }
 
   const line = document.createElement('div');
-  line.className = `log-line ${t}`;
-  line.textContent = text;
-  line.title = "Cliquer pour étendre/réduire";
+  line.className = `log-line ${t}${failed ? ' log-failed' : ''}`;
+  const message = document.createElement('div');
+  message.className = 'log-message';
+  message.textContent = text;
+  if (failed) message.setAttribute('role', 'alert');
+  line.appendChild(message);
 
-  if (fullText && fullText.length > text.length) {
-    line.onclick = () => {
-      line.classList.toggle('expanded');
-      line.textContent = line.classList.contains('expanded') ? fullText : text;
-    };
+  if (fullText) {
+    const details = document.createElement('details');
+    details.open = failed;
+    const summary = document.createElement('summary');
+    summary.textContent = (ev.playbook || t === 'teardown_done') ? 'Sortie Ansible' : 'Détails';
+    const output = document.createElement('pre');
+    output.textContent = fullText;
+    details.appendChild(summary);
+    details.appendChild(output);
+    line.appendChild(details);
   }
 
   log.appendChild(line);
@@ -2926,7 +2968,8 @@ async function pollStatus() {
     'pipeline_start', 'phase_start', 'phase_done',
     'device_start', 'device_done', 'reflector_start', 'reflector_done',
     'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-    'inject_start', 'inject_done', 'deliverable_attempt', 'error',
+    'inject_start', 'inject_done', 'verify_start', 'verify_done',
+    'teardown_start', 'teardown_done', 'deliverable_attempt', 'error', 'info', 'warn',
   ]);
   for (const ev of (status.recent_events || [])) {
     if (replayTypes.has(ev.type)) addLog(ev);

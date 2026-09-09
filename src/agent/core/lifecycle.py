@@ -1,9 +1,11 @@
 """Scenario preparation, deployment ownership and teardown for one run."""
 from __future__ import annotations
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 import os
 import subprocess
+import time
 import yaml
 import logging
 from src.agent.core import runtime
@@ -24,7 +26,7 @@ class ScenarioLifecycle:
         if not self.scenario_id:
             if stream_callback:
                 stream_callback({"type": "error", "message": "deploy_only requiert un scenario_id"})
-                stream_callback({"type": "pipeline_done", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
+                stream_callback({"type": "pipeline_done", "status": "failed", "results": {}, "total_cost_usd": 0, "run_dir": str(self.run_dir)})
             return
         if stream_callback:
             stream_callback({"type": "pipeline_start", "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": None, "execution_profile": self.execution_profile.name})
@@ -33,6 +35,7 @@ class ScenarioLifecycle:
             stream_callback({
                 "type": "pipeline_done",
                 "results": {"deploy": "completed" if success else "failed"},
+                "status": "completed" if success else "failed",
                 "total_cost_usd": 0,
                 "run_dir": str(self.run_dir),
             })
@@ -58,12 +61,22 @@ class ScenarioLifecycle:
         print(f"ANSIBLE: {playbook} (scenario {self.scenario_id})")
         print(f"{'=' * 60}\n")
 
+        attempts = getattr(self, "_ansible_attempts", {})
+        self._ansible_attempts = attempts
+        attempts[playbook] = attempts.get(playbook, 0) + 1
+        timestamp = datetime.now(timezone.utc).isoformat()
+        context = {
+            "scenario_id": self.scenario_id, "playbook": playbook,
+            "attempt": attempts[playbook], "timestamp": timestamp,
+        }
         if stream_callback:
-            stream_callback({"type": event_type_start, "scenario_id": self.scenario_id, "playbook": playbook})
+            stream_callback({"type": event_type_start, **context})
 
         full_output = ""
+        returncode = None
+        timed_out = False
+        started = time.monotonic()
         try:
-            import os
             env = os.environ.copy()
             env["LANG"] = "en_US.UTF-8"
             env["LC_ALL"] = "en_US.UTF-8"
@@ -72,26 +85,45 @@ class ScenarioLifecycle:
             pb_timeout = int(os.environ.get("ANSIBLE_PLAYBOOK_TIMEOUT", "1800"))
             result = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, timeout=pb_timeout, env=env)
             success = result.returncode == 0
+            returncode = result.returncode
             full_output = result.stdout + result.stderr
-            output = full_output[-10000:]
-            print(output, flush=True)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             success = False
-            output = f"{playbook} timeout ({pb_timeout}s)"
-            full_output = output
+            timed_out = True
+            # TimeoutExpired may contain bytes even with text=True. Preserve
+            # the task output preceding the timeout instead of discarding it.
+            for part in (exc.stdout, exc.stderr):
+                full_output += part.decode("utf-8", errors="replace") if isinstance(part, bytes) else (part or "")
+            full_output += f"\n{playbook} timeout ({pb_timeout}s)"
         except FileNotFoundError:
             success = False
-            output = "ansible-playbook not found — deploy skipped"
-            full_output = output
+            full_output = "ansible-playbook not found — opération non exécutée"
 
+        duration = round(time.monotonic() - started, 3)
+        output = full_output[-10000:]
+        print(output, flush=True)
+
+        log_file = None
         try:
             log_path = self.run_dir / f"ansible_{playbook.replace('.yml', '')}.log"
-            log_path.write_text(full_output, encoding="utf-8")
-        except Exception:
-            pass
+            # Append: a cleanup retry must not erase the first failure.
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"\n[{timestamp}] {playbook} — S{self.scenario_id} — tentative {context['attempt']}\n")
+                handle.write(full_output)
+                handle.write(f"\nRésultat: success={success} returncode={returncode} timeout={timed_out} duration_s={duration}\n")
+            log_file = log_path.name
+        except OSError:
+            log.exception("Could not save Ansible log for %s", playbook)
 
         if stream_callback:
-            stream_callback({"type": event_type_done, "scenario_id": self.scenario_id, "playbook": playbook, "success": success, "output": output})
+            stream_callback({
+                "type": event_type_done, **context,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "success": success, "output": output, "returncode": returncode,
+                "duration_s": duration, "timed_out": timed_out,
+                "log_file": log_file, "log_saved": log_file is not None,
+                "output_truncated": len(full_output) > len(output),
+            })
         return success
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
@@ -177,6 +209,12 @@ class ScenarioLifecycle:
         except Exception:
             pass
 
+        if stream_callback:
+            stream_callback({"type": "info", "message": (
+                f"Préparation S{self.scenario_id} : recherche des scénarios existants "
+                f"sur {proxmox_host} (SSH), avant déploiement."
+            )})
+        ssh_failure_reported = False
         for sid in scenario_ids:
             if sid == self.scenario_id:
                 continue  # Will be redeployed fresh
@@ -192,6 +230,13 @@ class ScenarioLifecycle:
                  f"root@{proxmox_host}", f"(qm status {base} 2>/dev/null || pct status {base} 2>/dev/null) && echo EXISTS || true"],
                 capture_output=True, text=True, timeout=10,
             )
+            if check.returncode != 0 and not ssh_failure_reported:
+                ssh_failure_reported = True
+                if stream_callback:
+                    stream_callback({"type": "warn", "message": (
+                        f"Préparation : contrôle SSH impossible sur {proxmox_host}. "
+                        "L'état des scénarios existants n'a pas pu être vérifié."
+                    ), "output": check.stderr[-2000:]})
             if "EXISTS" not in check.stdout:
                 continue
             # Scenario is running — teardown
@@ -206,64 +251,7 @@ class ScenarioLifecycle:
         if self._generated_deployment is None and self.scenario_id is not None:
             self._generated_deployment = runtime.GeneratedScenarioDeployment.from_lease(str(self.scenario_id))
         deployment = self._generated_deployment
-        print(f"\n{'=' * 60}")
-        print(f"TEARDOWN: Suppression du scénario S{self.scenario_id}")
-        print(f"{'=' * 60}\n")
-
-        if stream_callback:
-            stream_callback({
-                "type": "teardown_start",
-                "scenario_id": self.scenario_id,
-            })
-
-        repo_root = runtime.REPO_ROOT
-        cmd = [
-            "ansible-playbook",
-            "benchmarks/ansible/playbooks/99_teardown.yml",
-            "-i", "benchmarks/ansible/inventory.yml",
-            "--vault-password-file", "/root/.vault_pass",
-            "--extra-vars", f"scenario_id={self.scenario_id}",
-        ]
-        if deployment is not None:
-            cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
-            source_scenario_id = deployment.source_scenario_id
-        else:
-            source_scenario_id = str(self.scenario_id)
-        cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
-
-        import os
-        env = os.environ.copy()
-        env["LANG"] = "en_US.UTF-8"
-        env["LC_ALL"] = "en_US.UTF-8"
-        pb_timeout = int(os.environ.get("ANSIBLE_PLAYBOOK_TIMEOUT", "1800"))
-        try:
-            result = subprocess.run(
-                cmd,
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=pb_timeout,
-                env=env,
-            )
-            success = result.returncode == 0
-            output = result.stdout[-2000:] if result.stdout else result.stderr[-2000:]
-            print(output)
-        except subprocess.TimeoutExpired:
-            success = False
-            output = f"Teardown timeout ({pb_timeout}s)"
-            log.error("Teardown timeout for scenario %s", self.scenario_id)
-        except FileNotFoundError:
-            success = False
-            output = "ansible-playbook not found — teardown skipped"
-            log.warning("ansible-playbook not in PATH, skipping teardown")
-
-        if stream_callback:
-            stream_callback({
-                "type": "teardown_done",
-                "scenario_id": self.scenario_id,
-                "success": success,
-                "output": output,
-            })
+        success = self._run_playbook("99_teardown.yml", stream_callback, "teardown_start", "teardown_done")
         if success and deployment is not None:
             deployment.release()
             if self._generated_deployment is deployment:

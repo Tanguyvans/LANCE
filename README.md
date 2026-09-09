@@ -73,6 +73,15 @@ strict allowlist to the execution-only GPU workspace. See the
 
 Live run view (topology, per-phase events) and cross-model benchmark comparison:
 
+Scenario preparation, injection, verification and automatic cleanup report the
+playbook, attempt number, timestamps, duration and exit code. Failed operations
+show their diagnostic output in keyboard-accessible details; the final message
+distinguishes failure, partial completion and cancellation from success.
+Ansible output is collected when each command finishes, not streamed line by line.
+Full logs are stored in `output/agent/<run>/ansible_*.log`, including automatic
+cleanup: retries are appended and partial output is retained on timeouts.
+These logs describe failures; they do not automatically repair SSH or Proxmox.
+
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 
