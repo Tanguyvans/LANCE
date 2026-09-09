@@ -109,7 +109,7 @@ def pregenerate_report_sections(run_dir: Path) -> None:
         if str(t.get("status", "")).upper() == "CONFIRMED"
         and not _is_verified_report_finding(t)
     )
-    not_exploitable = phase4_summary.get("not_exploitable", 0)
+    inconclusive = phase4_summary.get("inconclusive", phase4_summary.get("not_exploitable", 0))
     errors = phase4_summary.get("errors", 0)
     # Count real evidence (level >= 2)
     data_exfil = sum(1 for t in exploit_by_vuln.values() if _is_verified_report_finding(t))
@@ -119,8 +119,8 @@ def pregenerate_report_sections(run_dir: Path) -> None:
         f"| Vulnerabilities tested | {total_tested} |\n"
         f"| Verified (confirmed, evidence >= 2) | {confirmed} |\n"
         f"| Unsupported confirmations excluded | {unverified_confirmed} |\n"
-        f"| Data exfiltrated (level ≥ 2) | {data_exfil} |\n"
-        f"| Not exploitable | {not_exploitable} |\n"
+        f"| Findings with execution evidence | {data_exfil} |\n"
+        f"| Inconclusive attempts (not refutations) | {inconclusive} |\n"
         f"| Errors | {errors} |"
     )
 
@@ -231,7 +231,7 @@ def merge_report_with_prefill(
             )
         except (OSError, json.JSONDecodeError, TypeError):
             pass
-    not_exploitable = p4.get("not_exploitable", 0)
+    inconclusive = p4.get("inconclusive", p4.get("not_exploitable", 0))
     errors = p4.get("errors", 0)
     n_crit = sev.get("CRITICAL", 0)
     n_high = sev.get("HIGH", 0)
@@ -372,7 +372,7 @@ def merge_report_with_prefill(
         f"| Critical | {n_crit} |\n"
         f"| High | {n_high} |\n"
         f"| Confirmed exploitable | {confirmed} |\n"
-        f"| Not exploitable | {not_exploitable} |\n"
+        f"| Inconclusive attempts (not refutations) | {inconclusive} |\n"
         f"| Errors | {errors} |\n"
         f"| Overall risk level | **{overall_risk}** |\n\n"
         f"The assessment identified **{n_vulns} canonical findings** across "

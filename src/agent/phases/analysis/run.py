@@ -6,7 +6,6 @@ from urllib.parse import urlsplit
 import json
 import os
 import re
-import yaml
 import logging
 from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
 from src.agent.core.memo import _looks_unusable_model_memo
@@ -349,29 +348,6 @@ class AnalysisPhase:
             # Initialize weighted graph for disbalance computation
             runtime.init_weighted_graph()
 
-        # Keep simulator security profiles internal to the deterministic
-        # evaluator/scanner. The public graph intentionally omits them from
-        # model context, but phase-3 publication needs the declared control
-        # profile to reject look-alike findings reliably.
-        try:
-            scenario_path = runtime.resolve_scenario_path(self.scenario_id) if self.scenario_id is not None else None
-            scenario_doc = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) if scenario_path and scenario_path.exists() else {}
-            topology_id = str((scenario_doc or {}).get("topology") or "")
-            topology_path = runtime.resolve_topology_path(self.scenario_id, topology_id) if topology_id else None
-            topology_doc = yaml.safe_load(topology_path.read_text(encoding="utf-8")) if topology_path and topology_path.exists() else {}
-            profile_by_ip: dict[str, str] = {}
-            router_doc = (topology_doc or {}).get("router") or {}
-            if router_doc.get("ip") and router_doc.get("security_profile"):
-                profile_by_ip[str(router_doc["ip"])] = str(router_doc["security_profile"])
-            for service_doc in (topology_doc or {}).get("services", []):
-                if service_doc.get("ip") and service_doc.get("security_profile"):
-                    profile_by_ip[str(service_doc["ip"])] = str(service_doc["security_profile"])
-            for node in surface:
-                if isinstance(node, dict) and str(node.get("ip") or "") in profile_by_ip:
-                    node["security_profile"] = profile_by_ip[str(node["ip"])]
-        except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
-            log.warning("Could not load internal simulator profiles: %s", exc)
-
         phase3_status["devices_total"] = len(surface)
         if self.dry_run:
             log.info("Dry run: skipping Phase 3a scanner")
@@ -590,12 +566,6 @@ class AnalysisPhase:
             except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 log.warning("S17 bounded OTA probes unavailable: %s", exc)
 
-        cloud_web = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "cloud_web_server"
-             and str(device.get("security_profile") or "").casefold() == "vulnerable"),
-            None,
-        )
         cloud_metadata = next(
             (device for device in surface
              if str(device.get("role") or "").casefold() == "cloud_metadata_server"),
@@ -606,7 +576,12 @@ class AnalysisPhase:
              if str(device.get("role") or "").casefold() == "cloud_control_plane"),
             None,
         )
-        if cloud_web and cloud_metadata and cloud_control:
+        for cloud_web in surface:
+            if (
+                str(cloud_web.get("role") or "").casefold() != "cloud_web_server"
+                or not cloud_metadata or not cloud_control
+            ):
+                continue
             try:
                 from src.agent.tools.recon_tools import http_request
                 web_data = scanner_results.get(cloud_web.get("id", ""), {})

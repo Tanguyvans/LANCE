@@ -156,13 +156,39 @@ def _phase5_summary(
 def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
     """Return stable per-run metrics with the strict-v3 scenario score as primary."""
     specificity = evaluation.specificity
+    gt_by_severity = getattr(evaluation, "gt_by_severity", {})
+    # Older in-memory EvaluationResult fixtures may not carry the compact
+    # population field yet. Derive it only from a complete match list; never
+    # manufacture zero counts for an incomplete/legacy result.
+    raw_matches = getattr(evaluation, "matches", None)
+    total_gt = getattr(evaluation, "total_gt_vulns", None)
+    if (
+        not gt_by_severity and isinstance(raw_matches, list)
+        and isinstance(total_gt, int) and not isinstance(total_gt, bool)
+        and len(raw_matches) == total_gt
+    ):
+        gt_by_severity = {}
+        for match in raw_matches:
+            if isinstance(match, dict):
+                raw_severity = match.get("gt_severity")
+                severity = raw_severity.strip().casefold() if isinstance(raw_severity, str) else ""
+                if severity in {"critical", "high", "medium", "low", "info"}:
+                    gt_by_severity[severity] = gt_by_severity.get(severity, 0) + 1
 
     def rounded(value: Any, digits: int) -> float | None:
         return round(float(value), digits) if value is not None else None
 
     return {
         "recall": round(evaluation.recall, 3),
+        "score_unavailable_reason": getattr(evaluation, "score_unavailable_reason", None),
+        "funnel": getattr(evaluation, "funnel", {}),
+        # Preserve the populations used to distinguish undefined metrics from
+        # missing provenance when the result crosses the JSON boundary.
+        "gt_at_depth": getattr(evaluation, "gt_at_depth", {}),
+        "total_gt_vulns": getattr(evaluation, "total_gt_vulns", 0),
+        "total_attack_paths": getattr(evaluation, "total_attack_paths", 0),
         "recall_by_severity": getattr(evaluation, "recall_by_severity", {}),
+        "gt_by_severity": gt_by_severity,
         "critical_recall": getattr(evaluation, "critical_recall", None),
         "high_recall": getattr(evaluation, "high_recall", None),
         "medium_recall": getattr(evaluation, "medium_recall", None),
@@ -186,8 +212,8 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "bonus_duplicates": getattr(evaluation, "bonus_duplicates", 0),
         "weighted_score": round(evaluation.weighted_score, 3),
         "max_weighted_score": evaluation.max_weighted_score,
-        # strict-v3 uses quality-adjusted F1 (and control specificity) for
-        # positive scenarios; zero-GT controls retain binary specificity.
+        # Current strict-v3 uses final-confirmation F1; zero-GT controls retain
+        # binary specificity once execution and final reporting are evaluable.
         # Keep the weighted percentage under an explicit compatibility name.
         "score_pct": rounded(evaluation.scenario_score_pct, 1),
         "weighted_score_pct": round(evaluation.score_pct, 1),
@@ -222,6 +248,8 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "run_evidence_contract_version": getattr(evaluation, "run_evidence_contract_version", None),
         "evidence_contract_compatible": getattr(evaluation, "evidence_contract_compatible", False),
         "metrics_compatibility_reason": getattr(evaluation, "metrics_compatibility_reason", None),
+        "comparability_identity": getattr(evaluation, "comparability_identity", None),
+        "comparability_reason": getattr(evaluation, "comparability_reason", None),
         "evidence_provenance_available": getattr(evaluation, "evidence_provenance_available", False),
         "findings_with_declared_evidence": getattr(evaluation, "findings_with_declared_evidence", 0),
         "declared_evidence_coverage": getattr(evaluation, "declared_evidence_coverage", None),
@@ -259,8 +287,8 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "phase5_observed_hops": getattr(evaluation, "phase5_observed_hops", 0),
         "phase5_verified_hops": getattr(evaluation, "phase5_verified_hops", 0),
         "phase5_hop_coverage": rounded(getattr(evaluation, "phase5_hop_coverage", None), 3),
-        "phase5_pivot_attempts": getattr(evaluation, "phase5_pivot_attempts", 0),
-        "phase5_pivot_successes": getattr(evaluation, "phase5_pivot_successes", 0),
+        "phase5_pivot_attempts": getattr(evaluation, "phase5_pivot_attempts", None),
+        "phase5_pivot_successes": getattr(evaluation, "phase5_pivot_successes", None),
         "phase5_pivot_success_rate": rounded(getattr(evaluation, "phase5_pivot_success_rate", None), 3),
         "phase5_chain_faithfulness": rounded(getattr(evaluation, "phase5_chain_faithfulness", None), 3),
         "phase5_gt_targets_by_depth": getattr(evaluation, "phase5_gt_targets_by_depth", {}),
@@ -269,7 +297,6 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
         "verified_attack_paths": getattr(evaluation, "verified_attack_paths", 0),
         "intrusion_paths_available": getattr(evaluation, "intrusion_paths_available", False),
         "attack_paths_detected": getattr(evaluation, "attack_paths_detected", 0),
-        "total_attack_paths": getattr(evaluation, "total_attack_paths", 0),
         "mhr_1": getattr(evaluation, "mhr_1", None),
         "mhr_2": getattr(evaluation, "mhr_2", None),
         "mhr_3": getattr(evaluation, "mhr_3", None),
@@ -307,21 +334,50 @@ def _evaluation_metrics(evaluation: Any) -> dict[str, Any]:
 
 def _aggregate_batch_results(
     evaluations: Iterable[Any],
-    results: list[dict[str, Any]],
+    results: Iterable[dict[str, Any]],
     scenario_ids: Iterable[str],
 ) -> dict[str, Any]:
     """Build one aggregate schema for the CLI and dashboard batch runners."""
-    expected = list(dict.fromkeys(str(sid) for sid in scenario_ids))
-    if not expected:
-        return {}
+    evaluations = list(evaluations)
+    results = list(results)
+    planned_ids = [str(sid) for sid in scenario_ids]
+    expected = list(dict.fromkeys(planned_ids))
 
     from src.benchmark.aggregate import aggregate_evaluations
 
     completed = [result for result in results if result.get("metrics")]
+    planned_counts: dict[str, int] = {}
+    for sid in planned_ids:
+        planned_counts[sid] = planned_counts.get(sid, 0) + 1
+    result_counts: dict[str, int] = {}
+    for result in results:
+        sid = str(result.get("scenario_id", ""))
+        if sid:
+            result_counts[sid] = result_counts.get(sid, 0) + 1
+    evaluation_counts: dict[str, int] = {}
+    for evaluation in evaluations:
+        sid = str(getattr(evaluation, "scenario_id", None) or (evaluation.get("scenario_id") if isinstance(evaluation, dict) else ""))
+        if sid:
+            evaluation_counts[sid] = evaluation_counts.get(sid, 0) + 1
+    effective_ids = list(dict.fromkeys(
+        expected + list(result_counts) + list(evaluation_counts)
+    ))
+    if not effective_ids:
+        return {}
+    effective_expected = {
+        sid: max(planned_counts.get(sid, 0), result_counts.get(sid, 0), evaluation_counts.get(sid, 0))
+        for sid in effective_ids
+    }
+    effective_observed = {
+        sid: max(result_counts.get(sid, 0), evaluation_counts.get(sid, 0))
+        for sid in effective_ids
+    }
     official = aggregate_evaluations(
         evaluations,
-        expected_scenarios=expected,
-        scenario_splits={sid: resolve_scenario_split(sid) for sid in expected},
+        expected_scenarios=effective_ids,
+        scenario_splits={sid: resolve_scenario_split(sid) for sid in effective_ids},
+        expected_attempts=effective_expected,
+        observed_attempts=effective_observed,
     )
     process = [result["metrics"] for result in completed if result["metrics"].get("process_metrics_available")]
 
@@ -353,8 +409,8 @@ def _aggregate_batch_results(
         "total_tool_errors": tool_errors,
         "total_tool_calls": tool_calls,
         "tool_error_rate": round(tool_errors / tool_calls, 3) if tool_calls else None,
-        "scenarios_evaluated": len(completed),
-        "scenarios_skipped": len(expected) - len(completed),
+        "scenarios_evaluated": len({str(result.get("scenario_id")) for result in completed}),
+        "scenarios_skipped": len(effective_ids) - len({str(result.get("scenario_id")) for result in completed}),
         "phase5_incomplete_scenarios": [
             str(result.get("scenario_id"))
             for result in results

@@ -54,7 +54,7 @@ from src.agent.tools.graph_tools import (
     trigger_disbalance_on_exploit,
 )
 from src.agent.tools.recon_tools import RECON_TOOLS
-from src.agent.tools.tool_loader import filter_unavailable_tools, reset_tool_cache
+from src.agent.tools.tool_loader import filter_unavailable_tools
 from src.agent.tools.deliverable import (
     DELIVERABLE_TOOLS,
     set_output_dir,

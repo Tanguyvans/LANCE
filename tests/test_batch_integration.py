@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException
+import yaml
 
 from src.agent.batch import (
     _aggregate_batch_results,
@@ -18,6 +20,21 @@ from src.agent.batch import (
     _print_scenario_summary,
 )
 from src.benchmark.scenario_exports import resolve_scenario_split
+from src.benchmark.aggregate import aggregate_evaluations
+from src.benchmark.evaluator import evaluate
+from src.benchmark.evaluator import EvaluationResult
+
+
+_COMPARABILITY_IDENTITY = {
+    "provider": "fixture-provider", "model": "fixture-model",
+    "execution_profile": "full", "execution_profile_policy": "full",
+    "blind": False, "max_cost_usd": None, "max_tool_calls": None,
+    "effective_phases": [1, 2, 3, 4, 5, 6], "phase_models": {},
+    "execution_profile_config": {"schema_version": "2", "name": "full"},
+    "prompt_manifest_sha256": "fixture-prompts", "tool_manifest_sha256": "fixture-tools",
+    "scoring_policy": "strict-v2", "metric_contract_version": "strict-v3.7",
+    "evidence_contract_version": "evidence-v5",
+}
 
 
 def _evaluation(
@@ -46,7 +63,160 @@ def _evaluation(
         is_zero_gt=zero_gt,
         total_gt_vulns=0 if zero_gt else 1,
         scoring_policy="strict-v2",
+        comparability_identity=dict(_COMPARABILITY_IDENTITY),
     )
+
+
+@pytest.fixture
+def real_run_metadata(tmp_path, monkeypatch):
+    """Create producer metadata through Pipeline, with every external step mocked."""
+    import src.agent.pipeline as pipeline_module
+    import src.agent.tools.graph_tools as graph_tools
+    from src.agent.core import runtime
+
+    monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "producer")
+    monkeypatch.setattr(runtime, "load_lab_context", lambda: {
+        "device_count": 0, "link_count": 0, "cve_count": 0, "top_risk": "none",
+    })
+    monkeypatch.setattr(runtime, "init_weighted_graph", lambda: None)
+    monkeypatch.setattr(graph_tools, "_scenario_topology", None)
+    monkeypatch.setattr(graph_tools, "_backend", None)
+    monkeypatch.setattr(runtime, "set_output_dir", lambda *_: None)
+    monkeypatch.setattr(runtime, "set_cve_cache_only", lambda *_: None)
+    monkeypatch.setattr(pipeline_module, "run_phase", lambda *_: "completed")
+
+    run = pipeline_module.Pipeline(
+        provider=SimpleNamespace(model="review-model", provider="review-provider"),
+        execution_profile="full", phases=[1, 2, 3, 4], auto_teardown=False,
+        benchmark_split="dev-public", max_cost_usd=2.0,
+    )
+    run._check_prerequisites = lambda *_: True
+    run._check_conditional = lambda *_: True
+    run._build_graph_evidence_projection = lambda: None
+    run._build_recon_evidence_projection = lambda: None
+    run._persist_run = Mock()
+    run.run()
+    return json.loads((run.run_dir / "run_meta.json").read_text())
+
+
+def _evaluate_real_fixture(tmp_path, metadata, *, name="run", scenario="demo"):
+    run = tmp_path / name
+    run.mkdir()
+    finding = {
+        "id": "F1", "device_ip": "192.0.2.1", "device_id": "web",
+        "type": "data_exposure", "severity": "high", "service": "http",
+        "port": 80, "protocol": "tcp", "endpoint": "/backup.sql", "cve_ids": [],
+    }
+    (run / "run_meta.json").write_text(json.dumps(metadata))
+    (run / "03_vuln_analysis_raw.json").write_text(json.dumps({"candidates": [{"candidate_finding": finding}]}))
+    (run / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": [finding]}))
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "status": "CONFIRMED", "evidence_level": 2,
+        "tool_used": "http_get", "tools_used": ["http_get"], "evidence_refs": ["P1"],
+        "evidence": "password=secret",
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "vuln_id": "F1", "evidence_ref": "P1", "tool": "http_get",
+        "args": {"url": "http://192.0.2.1/backup.sql"},
+        "result": {"return_code": 0, "status_code": 200, "body": "password=secret"},
+    }) + "\n")
+    gt = run / "gt.yaml"
+    gt.write_text(yaml.safe_dump({
+        "scenario_id": scenario,
+        "vulnerabilities": [{
+            "id": "G1", "title": "Exposed backup", "ip": "192.0.2.1",
+            "category": "data_exposure", "severity": "high",
+            "accepted_types": ["data_exposure"], "services": ["http"],
+            "ports": [80], "protocols": ["tcp"], "endpoints": ["/backup.sql"],
+        }],
+    }))
+    return evaluate(run, gt, policy="strict-v3")
+
+
+def test_real_producer_metadata_reaches_evaluator_and_batch(tmp_path, real_run_metadata, monkeypatch):
+    evaluation = _evaluate_real_fixture(tmp_path, real_run_metadata)
+    assert evaluation.scenario_score_pct == 100.0
+    assert evaluation.comparability_identity is not None
+
+    metrics = _evaluation_metrics(evaluation)
+    assert metrics["comparability_identity"] == evaluation.comparability_identity
+    direct = aggregate_evaluations([evaluation, evaluation])
+    assert direct["macro_scenario_score_pct"] == 100.0
+    assert direct["metric_coverage"]["macro_scenario_score_pct"]["evaluated"] == 1
+    serialized = {"scenario_id": evaluation.scenario_id, **metrics}
+    assert aggregate_evaluations([serialized, serialized])["macro_scenario_score_pct"] == 100.0
+
+    monkeypatch.setattr("src.agent.batch.resolve_scenario_split", lambda _: "dev-public")
+    batch = _aggregate_batch_results(
+        [evaluation], [{"scenario_id": "demo", "metrics": metrics}], ["demo"]
+    )
+    assert batch["avg_score_pct"] == 100.0
+
+    missing = _evaluate_real_fixture(tmp_path, {}, name="missing", scenario="missing")
+    partial_metadata = dict(real_run_metadata)
+    partial_metadata.pop("model")
+    partial = _evaluate_real_fixture(
+        tmp_path, partial_metadata, name="partial", scenario="partial"
+    )
+    for invalid in (missing, partial):
+        assert invalid.comparability_identity is None
+        invalid_metrics = _evaluation_metrics(invalid)
+        rejected = _aggregate_batch_results(
+            [invalid],
+            [{"scenario_id": invalid.scenario_id, "metrics": invalid_metrics}],
+            [invalid.scenario_id],
+        )
+        assert rejected["avg_score_pct"] is None
+        assert rejected["comparability_status"] == "not_comparable"
+
+
+def test_batch_keeps_failed_repetition_in_attempt_denominator(monkeypatch):
+    evaluation = _evaluation(
+        "1", scenario_score_pct=100.0, f1=1.0, specificity=None, zero_gt=False
+    )
+    metrics = _evaluation_metrics(evaluation)
+    monkeypatch.setattr("src.agent.batch.resolve_scenario_split", lambda _: "dev-public")
+    aggregate = _aggregate_batch_results(
+        [evaluation],
+        [
+            {"scenario_id": "1", "metrics": metrics},
+            {"scenario_id": "1", "metrics": None, "status": "failed"},
+        ],
+        ["1", "1"],
+    )
+    assert aggregate["attempts"] == {
+        "unit": "attempts", "expected": 2, "observed": 2,
+        "evaluated": 1, "missing": 0, "unavailable": 1,
+    }
+    assert aggregate["per_scenario"]["1"]["metric_coverage"]["scenario_score_pct"]["unavailable"] == 1
+    assert aggregate["scenarios_evaluated"] == 1
+
+
+def test_batch_population_metadata_rejects_invalid_gt_values_without_stringifying():
+    evaluation = EvaluationResult(
+        scenario_id="1", run_dir="/tmp/run", ground_truth_file="/tmp/gt",
+        scenario_score_pct=100.0, total_gt_vulns=1,
+    )
+    evaluation.matches = [{"gt_severity": None, "gt_hop_depth": "unknown"}]
+    metrics = _evaluation_metrics(evaluation)
+    assert metrics["gt_by_severity"] == {}
+    direct = aggregate_evaluations([evaluation])
+    serialized = aggregate_evaluations([{"scenario_id": "1", **metrics}])
+    for metric in ("critical_recall", "mhr_1"):
+        assert direct["per_scenario"]["1"]["metric_coverage"][metric] == serialized[
+            "per_scenario"
+        ]["1"]["metric_coverage"][metric]
+
+
+def test_phase_model_metadata_preserves_integer_key_precedence():
+    from src.agent.pipeline import Pipeline
+
+    assert Pipeline._archived_phase_models({4: "model-a", "4": "model-b"}) == {
+        "4": "model-a"
+    }
+    assert Pipeline._archived_phase_models({"4": "model-b", 4: "model-a"}) == {
+        "4": "model-a"
+    }
 
 
 class TestScenarioSelection:
@@ -114,7 +284,7 @@ class TestBatchMetrics:
         assert metrics["weighted_score_pct"] == 0.0
         assert metrics["is_zero_gt"] is True
 
-    def test_missing_scenario_counts_as_zero_in_macro(self):
+    def test_missing_scenario_is_unavailable_in_macro(self):
         evaluation = _evaluation(
             "1",
             scenario_score_pct=100.0,
@@ -127,8 +297,8 @@ class TestBatchMetrics:
 
         aggregate = _aggregate_batch_results([evaluation], results, ["1", "2"])
 
-        assert aggregate["macro_scenario_score_pct"] == 50.0
-        assert aggregate["avg_score_pct"] == 50.0
+        assert aggregate["macro_scenario_score_pct"] is None
+        assert aggregate["avg_score_pct"] is None
         assert aggregate["missing_scenarios"] == ["2"]
         assert aggregate["scenarios_evaluated"] == 1
         assert aggregate["scenarios_skipped"] == 1
@@ -326,9 +496,19 @@ def test_mixed_batch_has_only_per_split_scores_including_missing_tests():
     assert aggregate["avg_score_pct"] is None
     assert aggregate["avg_f1"] is None
     assert aggregate["per_split"]["dev-public"]["macro_scenario_score_pct"] == 100
-    assert aggregate["per_split"]["test-public"]["macro_scenario_score_pct"] == 25
+    assert aggregate["per_split"]["test-public"]["macro_scenario_score_pct"] is None
     assert aggregate["per_scenario"]["29"]["split"] == "test-public"
     assert aggregate["missing_scenarios"] == ["29"]
+
+
+def test_batch_aggregate_rejects_incompatible_configurations_but_keeps_rows():
+    first = _evaluation("1", scenario_score_pct=100, f1=1, specificity=None, zero_gt=False)
+    second = _evaluation("2", scenario_score_pct=0, f1=0, specificity=None, zero_gt=False)
+    second.comparability_identity["model"] = "different-model"
+    aggregate = _aggregate_batch_results([first, second], [], ["1", "2"])
+    assert aggregate["macro_scenario_score_pct"] is None
+    assert aggregate["comparability_status"] == "not_comparable"
+    assert set(aggregate["per_scenario"]) == {"1", "2"}
 
 
 def test_batch_runner_preserves_test_group_through_evaluation(tmp_path, monkeypatch):

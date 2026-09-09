@@ -8,7 +8,7 @@ from src.agent.registry import AGENTS
 
 
 @pytest.mark.parametrize("profile", ["full", "compact"])
-def test_phase5_scope_guard_is_only_enforced_for_compact(
+def test_phase5_scope_guard_is_common_to_full_and_compact(
     mock_provider, output_dir, profile
 ):
     if profile == "compact":
@@ -35,12 +35,14 @@ def test_phase5_scope_guard_is_only_enforced_for_compact(
         command="ls ~/.ssh/; sshpass -p 'P@ssw0rd123' ssh root@192.168.100.11 'id'",
     ))
 
-    if profile == "compact":
-        assert result["error_kind"] == "intrusion_command_hostname_unverifiable"
-        assert calls == []
-    else:
-        assert result["success"] is True
-        assert len(calls) == 1
+    assert result["error_kind"] == "intrusion_command_hostname_unverifiable"
+    assert calls == []
+
+    positive = json.loads(guarded["function"](
+        ip="192.168.100.1", user="root", password="root", command="id",
+    ))
+    assert positive["success"] is True
+    assert len(calls) == 1
 
 
 class TestPhase5Context:

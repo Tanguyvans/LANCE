@@ -7,8 +7,10 @@ local OpenAI-compatible endpoint (ollama / vLLM) gets wired in.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from src.api.auth import require_admin_auth
 
 router = APIRouter()
 
@@ -47,7 +49,7 @@ def list_providers() -> dict:
 
 
 @router.post("")
-def create_provider(body: ProviderCreate) -> dict:
+def create_provider(body: ProviderCreate, _: None = Depends(require_admin_auth)) -> dict:
     """Create (or upsert) a provider."""
     db = _require_db()
     db.upsert_provider(
@@ -58,7 +60,7 @@ def create_provider(body: ProviderCreate) -> dict:
 
 
 @router.patch("/{name}")
-def update_provider(name: str, body: ProviderPatch) -> dict:
+def update_provider(name: str, body: ProviderPatch, _: None = Depends(require_admin_auth)) -> dict:
     """Partially update an existing provider."""
     db = _require_db()
     existing = db.get_provider(name)

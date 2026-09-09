@@ -18,6 +18,7 @@ def test_evaluation_contract_contains_dashboard_quality_metrics():
 
     expected = {
         "quality_adjusted_f1",
+        "funnel",
         "verified_f1",
         "exploitation_coverage",
         "phase4_completion_rate",
@@ -50,51 +51,32 @@ def test_evaluation_contract_contains_dashboard_quality_metrics():
     assert expected <= payload.keys()
 
 
-def test_benchmark_dashboard_renders_strict_v3_metric_groups():
-    html = (ROOT / "src" / "static" / "index.html").read_text(encoding="utf-8")
-    javascript = (ROOT / "src" / "static" / "app.js").read_text(encoding="utf-8")
-
-    for heading in ("Q-F1/Spec", "Preuves", "Exploit.", "Chemins", "Intrusion", "Effic."):
-        assert heading in html
-
-    for metric in (
-        "quality_adjusted_f1",
-        "evidence_f1",
-        "traceable_evidence_coverage",
-        "evidence_faithfulness",
-        "exploitation_coverage",
-        "phase4_completion_rate",
-        "quality_path_coverage",
-        "verified_path_coverage",
-        "mhr_${depth}_credited",
-        "cost_per_tp",
-        "cost_per_expected_vulnerability",
-        "turns_per_tp",
-        "phase5_target_coverage",
-        "phase5_hop_coverage",
-        "phase5_pivot_success_rate",
-        "phase5_chain_faithfulness",
-        "phase5_target_coverage_by_depth",
-        "phase5_target_attempt_coverage",
-        "phase5_compromise_rate",
-        "phase5_evidence_available",
-    ):
-        assert metric in javascript
-
-    assert "evidence_metrics_available" in javascript
-    assert "evidence_contract_compatible" in javascript
-    assert "metrics_compatibility_reason" in javascript
-    assert "score_error" in javascript
-    assert "Legacy" in javascript
-    assert "Non comparable" in javascript
-    assert "Score officiel" in javascript
-    assert "m?.score_pct != null" in javascript
+def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates():
+    html = (ROOT / "src/static/index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "src/static/app.js").read_text(encoding="utf-8")
+    table = html[html.index('<table id="bm-table"'):html.index('</table>', html.index('<table id="bm-table"'))]
+    renderer = javascript[javascript.index("function bmNumber("):javascript.index("// ── Modal")]
+    for heading in ("1. Candidats", "2. Après filtrage", "3. Rapport final", "Coût et efficacité", "Diagnostic"):
+        assert heading in table
+    assert table.count("<th>") + table.count('<th scope="col">') == 9
+    for legacy in ("quality_adjusted_f1", "evidence_f1", "weighted_score", "turns_per_tp", "cost_per_expected_vulnerability"):
+        assert legacy not in renderer
+    for metric in ("cost_per_valid_confirmation", "turns_per_valid_confirmation", "d.proofs",
+                   "phase5_target_attempt_coverage", "phase5_pivot_success_rate", "phase5_hop_coverage"):
+        assert metric in renderer
+    for text in ("Acceptées", "Rejetées", "Manquantes ou non attribuables", "F1 final", "Spécificité",
+                 "Avis LLM — diagnostic", "ni preuve d’exécution ni score officiel"):
+        assert text in renderer
+    assert "evidence_contract_compatible" in renderer
+    assert "metrics_compatibility_reason" in renderer
+    assert "renderFunnelDiagnostics(compatible ? s.funnel : null, s)" in renderer
+    assert "score_error" in renderer
+    assert '<details class="bm-funnel-diagnostics"><summary>' in renderer
+    assert 'data-bm-run=' in renderer
+    assert "button.dataset.bmRun" in renderer
+    assert "barMetric" not in renderer
     assert "score(agg.avg_score_pct)" in javascript
     assert "metrics.macro_scenario_score_pct" in javascript
-    assert "const totalPaths" in javascript
-    assert "s?.is_zero_gt === true" in javascript
-    assert "if (v == null) return null" in javascript
-    assert "barMetric != null ? pct(barMetric)" in javascript
 
 
 def test_benchmark_dashboard_requests_compact_paginated_results():

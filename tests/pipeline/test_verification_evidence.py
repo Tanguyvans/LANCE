@@ -94,7 +94,7 @@ def test_endpoint_extraction_keeps_prose_paths_without_url_host_artifacts():
     ) == ["/.env", "/update", "/firmware/"]
 
 
-def test_synthesize_exploit_result_accepts_evaluable_scan_and_socket_evidence():
+def test_synthesize_exploit_result_does_not_treat_ack_as_disclosure():
     nmap = _synthesize_exploit_result(
         {
             "id": "VULN-010",
@@ -148,8 +148,7 @@ def test_synthesize_exploit_result_accepts_evaluable_scan_and_socket_evidence():
     assert nmap["evidence_level"] == 2
     assert ssh["status"] == "EXPLOITED"
     assert ssh["evidence_level"] == 2
-    assert tcp["status"] == "EXPLOITED"
-    assert tcp["evidence_level"] == 2
+    assert tcp["status"] == "FAILED"
 
 
 def test_synthesize_exploit_result_accepts_unauthenticated_mqtt_websocket_upgrade():

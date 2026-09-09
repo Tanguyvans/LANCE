@@ -133,8 +133,7 @@ def normalise_full_finding_semantics(
 
 def finding_semantic_issue(
     finding: dict, *, source_kind: str = "", compact: bool = False,
-    device_role: str = "", device_profile: str = "",
-    scenario_id: int | str | None = None,
+    device_role: str = "",
     context_findings: list[dict] | None = None,
 ) -> str:
     """Return a deterministic metadata contradiction for a model finding.
@@ -156,23 +155,6 @@ def finding_semantic_issue(
     ).casefold()
     context_findings = context_findings or []
     role = device_role.casefold()
-    profile = device_profile.casefold()
-    scenario_number = str(scenario_id or "").strip().upper().removeprefix("S")
-
-    # The S14-S19 contracts label hardened and near-miss surfaces explicitly.
-    # Their positive controls are useful evidence, but publishing a model or
-    # scanner claim from them as a vulnerability is a false positive by
-    # construction. The vulnerable/cloned profiles remain eligible below.
-    # The scenario number is supplied by the aggregation call without changing
-    # this helper's public test-friendly API.
-    if (
-        not compact
-        and scenario_number in {"14", "15", "16", "17", "18", "19"}
-        and profile in {"hardened", "near_miss"}
-    ):
-        return "declared hardened or near-miss profile is a control, not a vulnerability surface"
-    if not compact and scenario_number == "14" and vuln_type == "weak_cipher":
-        return "S14 sparse contract does not score generic SSH cipher observations"
 
     # The S15 API fixtures answer unknown paths with a generic 200 body. The
     # 24/08 run shows that a model can mistake that fixture response for RCE,
@@ -226,14 +208,6 @@ def finding_semantic_issue(
                 pass
             else:
                 return "generic PKI metadata or a control response is not a scored finding"
-
-        # Sparse look-alike runs sometimes attach an SSH claim to a web, MQTT,
-        # Redis, or OT host. Only roles that actually declare SSH can publish
-        # an SSH cryptographic finding.
-        if role and scenario_number in {"14", "15", "16", "17", "18", "19"} and service == "ssh" and role not in {
-            "router", "ssh_server", "ssh_server_v2", "nvr_server",
-        }:
-            return "SSH finding is attached to a non-SSH role"
 
         if role == "api_identity_server" and vuln_type in {
             "data_exposure", "broken_access_control", "insecure_protocol", "no_auth",

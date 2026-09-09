@@ -739,7 +739,7 @@ class TestEvaluateMhr:
         assert result.tp_at_depth == {"0": 2}
 
 
-def test_full_phase5_protocol_access_is_measured_but_compact_is_unchanged(tmp_path):
+def test_phase5_protocol_contact_is_not_machine_compromise(tmp_path):
     vulns = [
         _gt(id="OPC", ip="192.168.100.20", device="opcua"),
         _gt(id="BAC", ip="192.168.100.21", device="bacnet"),
@@ -784,7 +784,7 @@ def test_full_phase5_protocol_access_is_measured_but_compact_is_unchanged(tmp_pa
 
     assert full.phase5_targets_total == 3
     assert full.phase5_targets_attempted == 3
-    assert full.phase5_targets_compromised == 3
+    assert full.phase5_targets_compromised == 0
 
     compact_dir = _write_run(tmp_path, findings, profile="compact", name="compact-run")
     (compact_dir / "05_intrusion.json").write_text(json.dumps({"chains": []}))
@@ -794,8 +794,26 @@ def test_full_phase5_protocol_access_is_measured_but_compact_is_unchanged(tmp_pa
     compact = evaluate(compact_dir, gt_path, policy=STRICT_V2)
 
     assert compact.phase5_targets_total == 3
-    assert compact.phase5_targets_attempted == 0
+    assert compact.phase5_targets_attempted == 3
     assert compact.phase5_targets_compromised == 0
+
+
+@pytest.mark.parametrize("profile", ["full", "compact"])
+def test_phase5_authenticated_ssh_access_is_shared_across_profiles(tmp_path, profile):
+    vuln = _gt(id="SSH", ip="192.168.100.30", device="ssh-server")
+    finding = _finding(id="SSH", ip="192.168.100.30", type="default_credentials")
+    run_dir = _write_run(tmp_path, [finding], profile=profile, name=f"ssh-{profile}")
+    (run_dir / "05_intrusion.json").write_text(json.dumps({"chains": []}))
+    (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+        "phase": 5, "tool": "ssh_exec",
+        "args": {"ip": "192.168.100.30", "user": "admin"},
+        "result": {"success": True, "return_code": 0, "stdout": "uid=1000(admin)"},
+    }) + "\n")
+    result = evaluate(
+        run_dir, _write_gt(tmp_path, [vuln], scenario_id=f"ssh-{profile}"), policy=STRICT_V2
+    )
+    assert result.phase5_targets_attempted == 1
+    assert result.phase5_targets_compromised == 1
 
 
 class TestEvaluatePathCoverage:
@@ -956,8 +974,8 @@ class TestEvaluatePathCoverage:
         assert result.verified_attack_paths == 1
         assert result.verified_path_coverage == 1.0
 
-    def test_phase5_metrics_credit_partial_lateral_compromise(self, tmp_path):
-        """A failed final pivot keeps the successful prefix measurable."""
+    def test_phase5_metrics_keep_direct_accesses_without_pivot_credit(self, tmp_path):
+        """Direct accesses remain measurable without claiming a causal pivot."""
         vulns = [
             _gt(id="V1", ip="192.168.100.1", device="router", hop_depth=0),
             _gt(id="V2", ip="192.168.100.12", device="web", hop_depth=1),
@@ -1015,12 +1033,12 @@ class TestEvaluatePathCoverage:
         assert result.phase5_compromise_rate == 0.667
         assert result.phase5_expected_hops == 2
         assert result.phase5_observed_hops == 2
-        assert result.phase5_verified_hops == 1
-        assert result.phase5_hop_coverage == 0.5
-        assert result.phase5_pivot_attempts == 2
-        assert result.phase5_pivot_successes == 1
-        assert result.phase5_pivot_success_rate == 0.5
-        assert result.phase5_chain_faithfulness == 0.5
+        assert result.phase5_verified_hops == 0
+        assert result.phase5_hop_coverage == 0.0
+        assert result.phase5_pivot_attempts is None
+        assert result.phase5_pivot_successes is None
+        assert result.phase5_pivot_success_rate is None
+        assert result.phase5_chain_faithfulness == 0.0
         assert result.phase5_gt_targets_by_depth == {"0": 1, "1": 1, "2": 1}
         assert result.phase5_compromised_targets_by_depth == {"0": 1, "1": 1}
         assert result.phase5_target_coverage_by_depth == {"0": 1.0, "1": 1.0, "2": 0.0}

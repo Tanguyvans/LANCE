@@ -63,6 +63,10 @@ DEFAULT_PRICING = {"input": 1.0, "output": 3.0}
 METRICS_SCHEMA_VERSION = 2
 
 
+class BudgetExceeded(RuntimeError):
+    """The measured run budget no longer permits another operation."""
+
+
 def _resolve_pricing(
     model: str, provider: str | None = None
 ) -> tuple[dict[str, float], str, bool]:
@@ -115,11 +119,14 @@ class PhaseUsage:
 class CostTracker:
     model: str = ""
     provider: str = ""
+    max_cost_usd: float | None = None
+    budget_exhausted: bool = False
     phases: list[PhaseUsage] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
     _first_phase_start: float | None = field(default=None, repr=False)
     _last_phase_end: float | None = field(default=None, repr=False)
+    _active: dict[int, float] = field(default_factory=dict, repr=False)
 
     def start_phase(self, agent_name: str) -> None:
         # Serialize pricing resolution so parallel agents share one catalog snapshot.
@@ -130,12 +137,16 @@ class CostTracker:
             )
             if self._first_phase_start is None or started_at < self._first_phase_start:
                 self._first_phase_start = started_at
-        self._thread_local.current = PhaseUsage(
+        current = PhaseUsage(
             agent_name=agent_name, model=self.model,
             input_price_per_million=pricing["input"],
             output_price_per_million=pricing["output"],
             pricing_source=pricing_source, cost_is_estimate=estimated,
         )
+        with self._lock:
+            self.phases.append(current)
+            self._active[id(current)] = started_at
+        self._thread_local.current = current
         self._thread_local.start_time = started_at
 
     def record_turn(
@@ -193,7 +204,7 @@ class CostTracker:
         ended_at = time.monotonic()
         current.duration_s = ended_at - start_time
         with self._lock:
-            self.phases.append(current)
+            self._active.pop(id(current), None)
             if self._last_phase_end is None or ended_at > self._last_phase_end:
                 self._last_phase_end = ended_at
         usage = current
@@ -211,15 +222,39 @@ class CostTracker:
                 sum(p.output_tokens for p in self.phases),
             )
 
+    def check_budget(self) -> None:
+        """Stop further work once observed usage reaches the configured limit.
+
+        This is an observed-usage limit, not a reservation of unknown future
+        provider charges. Concurrent in-flight calls may still complete.
+        """
+        if self.max_cost_usd is not None and self.total_cost() >= self.max_cost_usd:
+            self.budget_exhausted = True
+            raise BudgetExceeded(f"Observed cost limit reached (${self.max_cost_usd:.4f})")
+
+    def finalize(self) -> None:
+        """Freeze even interrupted worker usage before cleanup begins."""
+        ended = time.monotonic()
+        with self._lock:
+            for phase in self.phases:
+                started = self._active.pop(id(phase), None)
+                if started is not None:
+                    phase.duration_s = ended - started
+                    self._last_phase_end = ended
+
     def summary(self) -> dict:
         with self._lock:
             in_tok = sum(p.input_tokens for p in self.phases)
             out_tok = sum(p.output_tokens for p in self.phases)
             total_cost = sum(p.cost_usd() for p in self.phases)
-            agent_duration = sum(p.duration_s for p in self.phases)
+            now = time.monotonic()
+            def duration(p):
+                return now - self._active[id(p)] if id(p) in self._active else p.duration_s
+            agent_duration = sum(duration(p) for p in self.phases)
+            last_end = now if self._active else self._last_phase_end
             wall_duration = (
-                self._last_phase_end - self._first_phase_start
-                if self._first_phase_start is not None and self._last_phase_end is not None
+                last_end - self._first_phase_start
+                if self._first_phase_start is not None and last_end is not None
                 else 0.0
             )
             return {
@@ -255,7 +290,8 @@ class CostTracker:
                         "pricing_source": p.pricing_source,
                         "input_price_per_million": p.input_price_per_million,
                         "output_price_per_million": p.output_price_per_million,
-                        "duration_s": round(p.duration_s, 1),
+                        "duration_s": round(duration(p), 1),
+                        "completed": id(p) not in self._active,
                         "format_fallbacks": p.format_fallbacks,
                         "format_attempts": p.format_attempts,
                         "validation_failures": p.validation_failures,

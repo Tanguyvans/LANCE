@@ -531,8 +531,9 @@ def test_gateway_ota_and_redis_extractors_require_direct_evidence():
     )
 
 
-def test_s22_exploit_probe_extractors_keep_controls_clean():
+def test_test_fixture_answers_do_not_drive_the_scanner_or_prompts():
     from src.agent import scanner as scanner_mod
+    from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
     cases = (
         ("exploit_auth_server", "/login", 200, "operator-token-s22", "broken_access_control", 401),
         ("exploit_files_server", "/files", 200, "DEVICE-SECRET-S22", "data_exposure", 403),
@@ -540,6 +541,8 @@ def test_s22_exploit_probe_extractors_keep_controls_clean():
         ("exploit_privilege_server", "/jobs", 201, "root-maintenance", "privilege_escalation", 403),
     )
     for role, endpoint, status, marker, vuln_type, control_status in cases:
+        assert role not in ROLE_SPECIFIC_RULES
+        assert role not in scanner_mod.ROLE_EXTRA_SCANS
         device = {"id": role, "ip": "192.0.2.10", "role": role}
         positive = [{
             "tool": "http_request",
@@ -547,6 +550,10 @@ def test_s22_exploit_probe_extractors_keep_controls_clean():
             "result": json.dumps({"status_code": status, "body": marker}),
         }]
         findings = scanner_mod.extract_findings({"http": positive}, device)
-        assert any(finding["type"] == vuln_type for finding in findings)
+        assert not any(finding["type"] == vuln_type for finding in findings)
         control = dict(positive[0])
         control["result"] = json.dumps({"status_code": control_status, "body": "rejected"})
+        assert not any(
+            finding["type"] == vuln_type
+            for finding in scanner_mod.extract_findings({"http": [control]}, device)
+        )

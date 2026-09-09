@@ -177,7 +177,24 @@ def ingest_run_findings(run_dir: Path, model: str) -> int:
 
     Reads Phase 3 (03_vuln_analysis.json) and Phase 4 (04_exploitation.json),
     creates one document per finding with metadata for episodic memory.
+    Benchmark artifacts are never ingested, even through a direct/manual call.
     """
+    try:
+        metadata = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
+        scenario_path = run_dir / "scenario_meta.json"
+        scenario = json.loads(scenario_path.read_text(encoding="utf-8")) if scenario_path.exists() else {}
+        if (
+            not isinstance(metadata, dict) or not isinstance(scenario, dict)
+            or metadata.get("benchmark_split") not in (None, "unassigned")
+            or scenario.get("split") not in (None, "unassigned")
+            or metadata.get("scenario_id") is not None
+            or scenario.get("scenario_id") is not None
+        ):
+            return 0
+    except (OSError, ValueError):
+        # Legacy/unreadable metadata cannot establish non-benchmark provenance.
+        return 0
+
     documents = []
     metadatas = []
     ids = []

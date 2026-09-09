@@ -2537,327 +2537,123 @@ function updateBenchmarkPagination(loading) {
   document.getElementById('bm-next').disabled = loading || end >= _bmTotal;
 }
 
+function bmNumber(value, digits = 0) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  return Number(value).toLocaleString('fr-FR', {maximumFractionDigits: digits});
+}
+
+function bmRate(value) {
+  return value == null || !Number.isFinite(Number(value)) ? '—' : `${bmNumber(Number(value) * 100, 1)} %`;
+}
+
+function renderFunnelStage(stage, reportScore = null) {
+  if (!stage?.available) {
+    return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
+  }
+  const control = reportScore?.is_zero_gt === true;
+  const label = reportScore ? (control ? 'Spécificité' : 'F1 final') : 'F1';
+  const value = control ? reportScore.specificity : stage.f1;
+  return `<div class="bm-funnel-stage">
+    <span>Pred <strong>${bmNumber(stage.predictions)}</strong></span>
+    <span>VP ${bmNumber(stage.true_positives)} · FP ${bmNumber(stage.false_positives)} · FN ${bmNumber(stage.false_negatives)}</span>
+    <span>Préc. ${bmRate(stage.precision)} · Rappel ${bmRate(stage.recall)}</span>
+    <span class="${reportScore ? 'bm-final-score' : ''}">${label} ${bmRate(value)}</span>
+    ${control && value == null ? `<small>${escapeHtml(reportScore.score_unavailable_reason || 'Contrôle incomplet')}</small>` : ''}
+  </div>`;
+}
+
+function renderFunnelDiagnostics(funnel, score = {}) {
+  const d = funnel?.diagnostics || {};
+  const v = d.verification;
+  const p = d.proofs;
+  const proofs = p?.available
+    ? `Acceptées : ${bmNumber(p.accepted)}<br>Rejetées : ${bmNumber(p.rejected)}<br>Manquantes ou non attribuables : ${bmNumber(p.missing)}`
+    : 'Contrôle des preuves indisponible';
+  const verification = v ? `<p><strong>Vérification des pistes</strong><br>
+    Confirmées par le pipeline : ${bmNumber(v.confirmed)}<br>
+    Indéterminées : ${bmNumber(v.inconclusive)}<br>
+    Erreurs : ${bmNumber(v.error)}<br>Non testées : ${bmNumber(v.not_tested)}</p>` : '';
+  const losses = `<p><strong>Pertes dans l’entonnoir</strong><br>
+    Vraies pistes perdues au filtrage : ${bmNumber(d.true_candidates_lost_in_filter)}<br>
+    Vraies pistes non confirmées : ${bmNumber(d.true_candidates_not_confirmed)}<br>
+    Déclarations de niveau insuffisant : ${bmNumber(d.unsupported_declarations)}</p>`;
+  const network = score.phase5_metrics_available === true || score.total_attack_paths > 0
+    ? `<p><strong>Chemins et intrusion — diagnostic</strong><br>
+      Chemins vérifiés : ${bmNumber(score.verified_attack_paths)} / ${bmNumber(score.total_attack_paths)}<br>
+      Cibles compromises : ${bmNumber(score.phase5_targets_compromised)} / ${bmNumber(score.phase5_targets_total)}<br>
+      Cibles tentées : ${bmRate(score.phase5_target_attempt_coverage)}<br>
+      Pivots réussis : ${bmRate(score.phase5_pivot_success_rate)}<br>
+      Transitions vérifiées : ${bmRate(score.phase5_hop_coverage)}</p>` : '';
+  const execution = score.process_metrics_available === true
+    ? `<p><strong>Exécution</strong><br>Erreurs outils : ${bmNumber(score.total_tool_errors)} / ${bmNumber(score.total_tool_calls)}<br>
+      Validations de format : ${bmRate(score.validation_success_rate)}<br>
+      Tokens : ${bmNumber(score.total_tokens)}</p>` : '';
+  const judge = score.llm_judge_data;
+  const opinion = judge ? `<p><strong>Avis LLM — diagnostic</strong><br>
+    ${escapeHtml(judge.model || 'Modèle non renseigné')} : ${bmRate(judge.scenario_score ?? judge.f1_score ?? judge.specificity)}<br>
+    Avis sémantique historique, ni preuve d’exécution ni score officiel.</p>` : '';
+  return `<details class="bm-funnel-diagnostics"><summary>Diagnostic</summary>
+    <p><strong>Preuves du rapport final</strong><br>${proofs}</p>
+    <p>Une trace acceptée doit aussi correspondre à la vérité terrain pour compter comme VP.</p>
+    ${verification}${losses}<p>Une tentative infructueuse ne réfute pas une faille.</p>
+    ${network}${execution}${opinion}</details>`;
+}
+
 function renderBenchmarkTable() {
-  const filter = document.getElementById('bm-filter-scenario').value;
-  const modelFilter = document.getElementById('bm-filter-model').value;
-  const rows = (_bmData || []).filter(r =>
-    (!filter || r.scenario === filter) &&
-    (!modelFilter || r.model === modelFilter)
-  );
-
-  const pct = v => v != null ? (v * 100).toFixed(0) + '%' : '—';
-  const toRatio = v => {
-    if (v == null) return null;
-    const numeric = Number(v);
-    return Number.isFinite(numeric) ? numeric : null;
-  };
-  const barColor = v => {
-    if (v == null) return 'var(--muted)';
-    if (v >= 0.75) return 'var(--green)';
-    if (v >= 0.5)  return 'var(--orange)';
-    return 'var(--red)';
-  };
-
+  const scenario = document.getElementById('bm-filter-scenario').value;
+  const model = document.getElementById('bm-filter-model').value;
+  const rows = (_bmData || []).filter(r => (!scenario || r.scenario === scenario) && (!model || r.model === model));
   const tbody = document.getElementById('bm-tbody');
+  const noScore = '<span class="bm-no-score">—</span>';
   tbody.innerHTML = rows.map(r => {
-    const s = r.score;
+    const s = r.score || {};
     const sealed = isSealedRun(r);
-    const aggregate = sealed ? s?.metrics : null;
-    const recall = sealed ? toRatio(aggregate?.recall) : s?.recall;
-    const precision = sealed ? toRatio(aggregate?.precision) : s?.precision;
-    const f1 = sealed ? toRatio(aggregate?.f1) : toRatio(s?.f1_score);
-    const llmData = s?.llm_judge_data;
-    const noScore = `<span class="bm-no-score">—</span>`;
-    const evidenceCompatible = sealed || s?.evidence_contract_compatible !== false;
-    const compatibilityReason = s?.metrics_compatibility_reason || 'Contrat métrique legacy';
-    const legacyMetric = `<span class="bm-no-score" title="${escapeHtml(compatibilityReason)}">Legacy</span>`;
-    const modelShort = r.model ? escapeHtml(r.model.split('/').pop()) : '—';
-    const profileShort = r.execution_profile
-      ? `<span class="run-badge done">${escapeHtml(r.execution_profile)}</span>`
-      : '';
-
-    // strict-v3 uses Q-F1 for positive scenarios and specificity for controls.
-    const isControlScenario = !sealed && s?.is_zero_gt === true;
-    const qualityF1 = !sealed && !isControlScenario
-      ? toRatio(s?.quality_adjusted_f1)
-      : null;
-    const controlSpecificity = isControlScenario ? toRatio(s?.specificity) : null;
-    const primaryQuality = qualityF1 ?? controlSpecificity;
-    const barMetric = evidenceCompatible ? (primaryQuality ?? f1) : f1;
-    const barW = barMetric != null
-      ? Math.max(0, Math.min(100, Math.round(barMetric * 100)))
-      : 0;
-    const qualityF1Title = primaryQuality == null ? '' : isControlScenario
-      ? [
-          `Spécificité du contrôle: ${pct(controlSpecificity)}`,
-          `Violations: ${Number(s?.negative_control_violations || 0)}`,
-          `Contrôles évaluables: ${Number(s?.negative_controls_declared || 0) - Number(s?.negative_controls_unevaluable || 0)}`,
-          `Politique: ${s?.scoring_policy || 'inconnue'}`,
-        ].join('\n')
-      : [
-          `Détection: ${pct(toRatio(s?.detection_f1) ?? f1)}`,
-          `Matching crédité: ${pct(toRatio(s?.credited_f1))}`,
-          `Ajusté sévérité: ${pct(toRatio(s?.severity_adjusted_f1))}`,
-          `Qualité strict-v3: ${pct(qualityF1)}`,
-          `F1 vérifié: ${pct(toRatio(s?.verified_f1))}`,
-          `Politique: ${s?.scoring_policy || 'inconnue'}`,
-        ].join('\n');
-    const qualityF1Cell = (!sealed && !isControlScenario && !evidenceCompatible)
-      ? legacyMetric
-      : primaryQuality == null
-        ? noScore
-        : `<span class="bm-metric-main" style="color:${barColor(primaryQuality)}" title="${escapeHtml(qualityF1Title)}">${isControlScenario ? 'Spec ' : ''}${pct(primaryQuality)}</span>`;
-
-    // Evidence diagnostics remain null when Phase 4/tool provenance is absent.
-    let evidenceCell = noScore;
-    if (!sealed && !evidenceCompatible) {
-      evidenceCell = legacyMetric;
-    } else if (!sealed && s?.evidence_metrics_available) {
-      const evidenceF1 = toRatio(s.evidence_f1);
-      const traceable = toRatio(s.traceable_evidence_coverage);
-      const faithfulness = toRatio(s.evidence_faithfulness);
-      const contradiction = toRatio(s.evidence_contradiction_rate);
-      const evidenceTitle = [
-        `Evidence precision: ${pct(toRatio(s.evidence_precision))}`,
-        `Evidence recall: ${pct(toRatio(s.evidence_recall))}`,
-        `Evidence F1: ${pct(evidenceF1)}`,
-        `Couverture traçable: ${pct(traceable)}`,
-        `Faithfulness: ${pct(faithfulness)}`,
-        `Contradictions: ${pct(contradiction)}`,
-        `Claims soutenus: ${Number(s.evidence_claims_supported || 0)}/${Number(s.evidence_claims_total || 0)}`,
-      ].join('\n');
-      const evidenceMain = evidenceF1 != null
-        ? `F1 ${pct(evidenceF1)}`
-        : `Trace ${pct(traceable)}`;
-      evidenceCell = `<span class="bm-metric" title="${evidenceTitle}">
-        <span class="bm-metric-main">${evidenceMain}</span>
-        <span class="bm-metric-sub">Trace ${pct(traceable)} · Fid. ${pct(faithfulness)}</span>
-      </span>`;
-    }
-
-    let exploitCell = noScore;
-    if (!sealed && !evidenceCompatible) {
-      exploitCell = legacyMetric;
-    } else if (!sealed && s) {
-      const exploitation = toRatio(s.exploitation_coverage);
-      const phase4 = toRatio(s.phase4_completion_rate);
-      const verifiedF1 = toRatio(s.verified_f1);
-      const exploitTitle = [
-        `Couverture exploitation: ${pct(exploitation)}`,
-        `Phase 4 conclusive: ${Number(s.phase4_conclusive || 0)}/${Number(s.phase4_candidates || 0)} (${pct(phase4)})`,
-        `F1 vérifié: ${pct(verifiedF1)}`,
-        `TP exploités: ${Number(s.tp_exploited || 0)}/${Number(s.true_positives || 0)}`,
-      ].join('\n');
-      exploitCell = `<span class="bm-metric" title="${exploitTitle}">
-        <span class="bm-metric-main">${pct(exploitation)}</span>
-        <span class="bm-metric-sub">P4 ${pct(phase4)} · VF1 ${pct(verifiedF1)}</span>
-      </span>`;
-    }
-
-    let pathsCell = noScore;
-    const totalPaths = !sealed ? Number(s?.total_attack_paths || 0) : 0;
-    if (totalPaths > 0 && !evidenceCompatible) {
-      pathsCell = legacyMetric;
-    } else if (totalPaths > 0) {
-      const qualityPath = toRatio(s.quality_path_coverage);
-      const verifiedPath = toRatio(s.verified_path_coverage);
-      const mhr = [1, 2, 3].map(depth =>
-        toRatio(s[`mhr_${depth}_credited`] ?? s[`mhr_${depth}`])
-      );
-      const verifiedMhr = [1, 2, 3].map(depth =>
-        toRatio(s[`mhr_${depth}_verified`])
-      );
-      const pathTitle = [
-        `Chemins détectés: ${Number(s.attack_paths_detected || 0)}/${totalPaths}`,
-        `Couverture qualité: ${pct(qualityPath)}`,
-        `Couverture vérifiée: ${pct(verifiedPath)}`,
-        `MHR crédité 1/2/3: ${mhr.map(pct).join(' / ')}`,
-        `MHR vérifié 1/2/3: ${verifiedMhr.map(pct).join(' / ')}`,
-      ].join('\n');
-      pathsCell = `<span class="bm-metric" title="${pathTitle}">
-        <span class="bm-metric-main">Q ${pct(qualityPath)}</span>
-        <span class="bm-metric-sub">V ${pct(verifiedPath)} · M1 ${pct(mhr[0])}</span>
-      </span>`;
-    }
-
-    let intrusionCell = noScore;
-    if (!sealed && s?.phase5_metrics_available === true) {
-      const targetCoverage = toRatio(s.phase5_target_coverage);
-      const hopCoverage = toRatio(s.phase5_hop_coverage);
-      const pivotRate = toRatio(s.phase5_pivot_success_rate);
-      const faithfulness = toRatio(s.phase5_chain_faithfulness);
-      const intrusionTitle = [
-        `Cibles compromises: ${Number(s.phase5_targets_compromised || 0)}/${Number(s.phase5_targets_total || 0)} (${pct(targetCoverage)})`,
-        `Cibles tentées: ${Number(s.phase5_targets_attempted || 0)}/${Number(s.phase5_targets_total || 0)} (${pct(toRatio(s.phase5_target_attempt_coverage))})`,
-        `Taux de compromission: ${pct(toRatio(s.phase5_compromise_rate))}`,
-        `Journal de preuves Phase 5: ${s.phase5_evidence_available === true ? 'présent' : 'absent'}`,
-        `Pivots réussis: ${Number(s.phase5_pivot_successes || 0)}/${Number(s.phase5_pivot_attempts || 0)} (${pct(pivotRate)})`,
-        `Transitions vérifiées: ${Number(s.phase5_verified_hops || 0)}/${Number(s.phase5_expected_hops || 0)} (${pct(hopCoverage)})`,
-        `Fidélité des chaînes: ${pct(faithfulness)}`,
-        `Profondeur: ${JSON.stringify(s.phase5_target_coverage_by_depth || {})}`,
-      ].join('\n');
-      intrusionCell = `<span class="bm-metric" title="${intrusionTitle}">
-        <span class="bm-metric-main">C ${pct(targetCoverage)}</span>
-        <span class="bm-metric-sub">P ${pct(pivotRate)} · H ${pct(hopCoverage)}</span>
-      </span>`;
-    }
-
-    let efficiencyCell = noScore;
-    if (!sealed && s) {
-      const costPerTp = toRatio(s.cost_per_tp);
-      const costPerGt = toRatio(s.cost_per_expected_vulnerability);
-      const turnsPerTp = toRatio(s.turns_per_tp);
-      if (costPerTp != null || costPerGt != null || turnsPerTp != null) {
-        const efficiencyTitle = [
-          `Coût/TP: ${costPerTp != null ? '$' + costPerTp.toFixed(6) : '—'}`,
-          `Coût/vulnérabilité attendue: ${costPerGt != null ? '$' + costPerGt.toFixed(6) : '—'}`,
-          `Tours/TP: ${turnsPerTp != null ? turnsPerTp.toFixed(2) : '—'}`,
-          `Tokens: ${s.total_tokens != null ? Number(s.total_tokens).toLocaleString('fr-FR') : '—'}`,
-          `Appels outils: ${s.total_tool_calls != null ? Number(s.total_tool_calls) : '—'}`,
-          s.cost_is_estimate === true
-            ? 'Coût estimé'
-            : s.cost_is_estimate === false ? 'Coût mesuré' : 'Mode de coût indisponible',
-        ].join('\n');
-        const costLabel = costPerTp != null
-          ? `$${costPerTp.toFixed(4)}/TP`
-          : costPerGt != null ? `$${costPerGt.toFixed(4)}/GT` : 'Coût —';
-        efficiencyCell = `<span class="bm-metric" title="${efficiencyTitle}">
-          <span class="bm-metric-main">${costLabel}</span>
-          <span class="bm-metric-sub">${turnsPerTp != null ? turnsPerTp.toFixed(1) + ' tours/TP' : 'tours —'}</span>
-        </span>`;
-      }
-    }
-
-    let scoreLlmCell = noScore;
-    if (llmData) {
-        const judgeScore = llmData.scenario_score ?? llmData.f1_score ?? llmData.specificity;
-        let tooltip = `Modèle: ${escapeHtml(llmData.model || '?')}\nFournisseur: ${escapeHtml(llmData.provider || '?')}`;
-        if (llmData.specificity != null) {
-          tooltip += `\nSpécificité: ${pct(llmData.specificity)}`;
-        } else {
-          tooltip += `\nPrécision: ${pct(llmData.precision)}\nRappel: ${pct(llmData.recall)}`;
-        }
-        tooltip += `\nTP/FP/FN: ${Number(llmData.true_positives || 0)}/${Number(llmData.false_positives || 0)}/${Number(llmData.false_negatives || 0)}`;
-        if (llmData.duplicate_findings) tooltip += `\nDoublons: ${Number(llmData.duplicate_findings)}`;
-        if (llmData.prompt_version) tooltip += `\nPrompt: v${escapeHtml(llmData.prompt_version)}`;
-        if (llmData.judge_attempts) tooltip += `\nTentatives: ${Number(llmData.judge_attempts)}`;
-        if (llmData.finish_reason) tooltip += `\nArrêt: ${escapeHtml(llmData.finish_reason)}`;
-        if (llmData.input_tokens != null) tooltip += `\nTokens: ${Number(llmData.input_tokens || 0) + Number(llmData.output_tokens || 0)}`;
-        if (llmData.cost_usd != null) tooltip += `\nCoût juge: $${Number(llmData.cost_usd).toFixed(6)}`;
-        let extra = '';
-        if (llmData.clarity_score != null) {
-            const clarity = Number(llmData.clarity_score);
-            tooltip += `\nClarté: ${clarity.toFixed(2)}/5`;
-            if (llmData.remediation_score != null) tooltip += `\nRemédiation: ${Number(llmData.remediation_score).toFixed(2)}/5`;
-            extra = ` <span style="font-size:10px;color:var(--text)" title="Score qualitatif moyen">📝${clarity.toFixed(2)}</span>`;
-        }
-        scoreLlmCell = `<span title="${tooltip}" style="cursor:help">${pct(judgeScore)} 🤖${extra}</span>`;
-    }
-
-    // Match quality breakdown: % of each method
-    let qualityCell = noScore;
-    if (!sealed && s?.matches) {
-      const matched = s.matches.filter(m => m.matched);
-      const total = matched.length;
-      if (total > 0) {
-        const byCve  = matched.filter(m => m.match_method === 'cve').length;
-        const byStruct = matched.filter(m => m.match_method === 'exact-structural').length;
-        const byType = matched.filter(m => ['ip+type', 'exact-type'].includes(m.match_method)).length;
-        const byExplicit = matched.filter(m => m.match_method === 'explicit-category').length;
-        const byIp = matched.filter(m => m.match_method === 'ip+category').length;
-        const parts = [];
-        if (byCve)  parts.push(`<span title="CVE exact" style="color:var(--green)">CVE:${byCve}</span>`);
-        if (byStruct) parts.push(`<span title="Structure exacte" style="color:var(--green)">S:${byStruct}</span>`);
-        if (byType) parts.push(`<span title="IP+type" style="color:var(--accent)">T:${byType}</span>`);
-        if (byExplicit) parts.push(`<span title="Équivalence explicite" style="color:var(--yellow,#d29922)">E:${byExplicit}</span>`);
-        if (byIp)   parts.push(`<span title="IP seulement (loose)" style="color:var(--orange)">~:${byIp}</span>`);
-        qualityCell = parts.join(' ');
-      }
-    }
-
-    // score_pct
-    let scorePct = r.score_error
-      ? `<span class="bm-no-score" title="${escapeHtml(r.score_error)}">Erreur</span>`
-      : noScore;
-    if (sealed && aggregate?.overall_score != null) {
-      scorePct = `<span title="Agrégat signé">${pct(toRatio(aggregate.overall_score))}</span>`;
-    } else if (!sealed && !evidenceCompatible) {
-      scorePct = `<span class="bm-no-score" title="${escapeHtml(compatibilityReason)}">Non comparable</span>`;
-    } else if (s?.scenario_score_pct != null) {
-      scorePct = `<span title="Score officiel ${escapeHtml(s.scoring_policy || '')}">${s.scenario_score_pct.toFixed(1)}%</span>`;
-    } else if (s?.score_pct != null) {
-      scorePct = `<span title="${s.weighted_score}/${s.max_weighted_score}">${s.score_pct.toFixed(1)}%</span>`;
-    }
-    const weightedCell = !sealed && s
-      ? `${s.weighted_score}/${s.max_weighted_score}`
-      : noScore;
-
-    // Severity breakdown: C:found/total H:found/total M:found/total L:found/total
-    let sevCell = noScore;
-    if (!sealed && s?.matches) {
-      const SEV_KEYS = [['critical','C','var(--red)'],['high','H','var(--orange)'],['medium','M','var(--yellow,#d29922)'],['low','L','var(--green)']];
-      const parts = SEV_KEYS.map(([sev, label, color]) => {
-        const total = s.matches.filter(m => m.gt_severity === sev).length;
-        if (total === 0) return null;
-        const found = s.matches.filter(m => m.gt_severity === sev && m.matched).length;
-        const col = found === total ? color : found === 0 ? 'var(--red)' : 'var(--orange)';
-        return `<span style="color:${col}" title="${sev}: ${found}/${total} trouvées">${label}:${found}/${total}</span>`;
-      }).filter(Boolean);
-      if (parts.length) sevCell = `<span style="font-size:11px">${parts.join(' ')}</span>`;
-    }
-
-    const hallucTitle = s ? `Faux positifs: ${s.false_positives}` : '';
-    const hallucCell = s?.hallucination_rate != null
-      ? `<span style="color:${s.hallucination_rate > 0.3 ? 'var(--red)' : s.hallucination_rate > 0.1 ? 'var(--orange)' : 'var(--muted)'}" title="${hallucTitle}">${pct(s.hallucination_rate)}</span>`
-      : noScore;
-
-    const complianceTitle = s?.process_metrics_available ? `Validations: ${s.validation_successes || 0}/${s.validation_attempts || 0}\nFormat fallbacks: ${s.format_fallbacks || 0}/${s.format_attempts || 0}\nTool errors: ${s.total_tool_errors || 0}/${s.total_tool_calls || 0}` : "Métriques indisponibles pour cet ancien schéma";
-    const complianceCell = s?.process_metrics_available
-      ? `<span style="font-size:11px" title="${complianceTitle}">V:${pct(s.validation_success_rate)} · F:${pct(s.format_fallback_rate)} · O:${pct(s.tool_error_rate)}</span>`
-      : noScore;
-
-    const commitCell = r.commit
-      ? `<code style="font-size:10px;color:var(--muted)">${escapeHtml(r.commit)}</code>`
-      : '<span style="color:var(--muted)">—</span>';
-    const costValue = sealed ? aggregate?.cost_usd : r.cost;
-    const rowStatus = sealed && s?.status ? s.status : r.status;
-    const scenarioLabel = sealed ? `${r.scenario} · scellé` : r.scenario;
+    const compatible = s.evidence_contract_compatible !== false;
+    const stage = name => compatible ? s.funnel?.stages?.[name] : {
+      available: false, reason: s.metrics_compatibility_reason || 'Contrat métrique non comparable',
+    };
+    const aggregate = sealed ? s.metrics : null;
+    let report = renderFunnelStage(stage('confirmed'), s);
+    if (r.score_error) report = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;
+    if (sealed) report = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(aggregate?.overall_score)}<small>Détails scellés</small></div>`;
+    const cost = sealed ? aggregate?.cost_usd : (r.cost ?? s.total_cost_usd);
+    const efficiency = !sealed && compatible ? s.funnel?.diagnostics : null;
+    const dollars = value => value == null ? '—' : `$${bmNumber(value, 4)}`;
+    const costCell = `<div class="bm-efficiency"><span>${dollars(cost)} au total</span>
+      ${s.cost_is_estimate === true ? '<small>Coût estimé</small>' : ''}
+      ${sealed ? '' : `<small>${dollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>
+      ${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</small>`}</div>`;
+    const runId = escapeHtml(r.id);
+    const status = sealed && s.status ? s.status : r.status;
     return `<tr>
-      <td class="bm-run-id" onclick="switchView('main');viewRun('${escapeHtml(r.id)}')">${escapeHtml(r.id.replace(/_/g, ' '))}</td>
-      <td><span class="run-badge done">${escapeHtml(scenarioLabel)}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${modelShort}${profileShort ? `<br>${profileShort}` : ''}</td>
-      <td>${commitCell}</td>
-      <td><span class="run-badge ${escapeHtml(rowStatus)}">${escapeHtml(rowStatus)}</span></td>
-      <td>${costValue != null ? '$'+Number(costValue).toFixed(4) : '—'}</td>
-      <td>${efficiencyCell}</td>
-      <td>${recall != null ? pct(recall) : noScore}</td>
-      <td>${precision != null ? pct(precision) : noScore}</td>
-      <td>${f1 != null ? pct(f1) : noScore}</td>
-      <td>${qualityF1Cell}</td>
-      <td>${weightedCell}</td>
-      <td>${scorePct}</td>
-      <td style="font-weight:600;color:${barColor(llmData ? (llmData.scenario_score ?? llmData.f1_score ?? llmData.specificity) : null)}">${scoreLlmCell}</td>
-      <td style="font-size:11px">${qualityCell}</td>
-      <td>${sevCell}</td>
-      <td>${evidenceCell}</td>
-      <td>${exploitCell}</td>
-      <td>${pathsCell}</td>
-      <td>${intrusionCell}</td>
-      <td>${hallucCell}</td>
-      <td>${complianceCell}</td>
-      <td>
-        <div class="bm-bar-wrap" title="${barMetric != null ? pct(barMetric)+(qualityF1 != null ? ' Q-F1' : ' F1') : 'pas de score'}">
-          <div class="bm-bar" style="width:${barW}%;background:${barColor(barMetric)}"></div>
-        </div>
-      </td>
+      <td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(r.id.replace(/_/g, ' '))}</button>
+        ${r.commit ? `<small class="bm-commit">${escapeHtml(r.commit)}</small>` : ''}</td>
+      <td>${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</td>
+      <td>${sealed ? noScore : renderFunnelStage(stage('candidates'))}</td>
+      <td>${sealed ? noScore : renderFunnelStage(stage('filtered'))}</td>
+      <td>${report}</td>
+      <td class="bm-model">${escapeHtml(r.model || '—')}${r.execution_profile ? `<small>${escapeHtml(r.execution_profile)}</small>` : ''}</td>
+      <td><span class="run-badge ${escapeHtml(status || '')}">${escapeHtml(status || '—')}</span></td>
+      <td>${costCell}</td>
+      <td>${sealed ? noScore : renderFunnelDiagnostics(compatible ? s.funnel : null, s)}</td>
     </tr>`;
   }).join('');
+  tbody.querySelectorAll('[data-bm-run]').forEach(button => {
+    button.addEventListener('click', () => { switchView('main'); viewRun(button.dataset.bmRun); });
+  });
 }
 
 // ── Modal ──────────────────────────────────────────────────────────────────
 function closeModal(e) {
   if (e && e.target !== document.getElementById('modal-overlay')) return;
   const overlay = document.getElementById('modal-overlay');
+  _mgr.openVersion += 1;
+  _mgr.managerOpen = false;
+  // Never leave a provider-admin credential in the DOM or page memory when
+  // the modal is dismissed by Escape, the close button, or the backdrop.
+  _mgr.adminToken = '';
+  const adminTokenField = document.getElementById('mgr-admin-token');
+  if (adminTokenField) adminTokenField.value = '';
   resetScrollPosition(document.getElementById('modal-body'));
   overlay.classList.remove('open');
   if (overlay._prevFocus) { overlay._prevFocus.focus(); overlay._prevFocus = null; }
@@ -3122,13 +2918,33 @@ function _truncate(str, n) {
 // Reuses the generic #modal-overlay. Reads the SQLite registry via
 // /api/models/registry and edits it via the models/providers CRUD endpoints.
 // API keys live in .env — only the env-var NAME (api_key_env) is ever stored.
-const _mgr = { models: [], providers: [], editModel: null, editProvider: null, msg: '' };
+// The provider-admin credential is intentionally page-memory only. It is never
+// serialized into HTML, storage, URLs, or any request other than provider
+// mutations.
+const _mgr = {
+  models: [], providers: [], editModel: null, editProvider: null, msg: '', msgOk: true,
+  adminToken: '', openVersion: 0, managerOpen: false,
+};
 
-async function apiSend(method, url, body) {
+async function apiSend(method, url, body, options = {}) {
   try {
+    const headers = body ? { 'Content-Type': 'application/json' } : {};
+    const requestMethod = String(method || '').toUpperCase();
+    let providerMutation = false;
+    try {
+      const target = new URL(url, window.location.href);
+      const page = new URL(window.location.href);
+      providerMutation = target.origin === page.origin && (
+        (requestMethod === 'POST' && target.pathname === '/api/providers') ||
+        (requestMethod === 'PATCH' && /^\/api\/providers\/[^/]+$/.test(target.pathname))
+      );
+    } catch (_) {}
+    if (options.adminToken && providerMutation) {
+      headers.Authorization = `Bearer ${options.adminToken}`;
+    }
     const res = await fetch(url, {
-      method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      method: requestMethod,
+      headers: Object.keys(headers).length ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
@@ -3140,6 +2956,8 @@ async function apiSend(method, url, body) {
 }
 
 async function openModelsManager() {
+  const version = ++_mgr.openVersion;
+  _mgr.managerOpen = true;
   const overlay = document.getElementById('modal-overlay');
   document.getElementById('modal-title').textContent = '⚙️ Modèles & Providers';
   document.getElementById('modal-body').innerHTML =
@@ -3147,33 +2965,103 @@ async function openModelsManager() {
   overlay._prevFocus = document.activeElement;
   overlay.classList.add('open');
   _mgr.editModel = null; _mgr.editProvider = null; _mgr.msg = '';
-  await _mgrReload();
+  await _mgrReload(version);
+  if (_mgrIsCurrent(version)) document.getElementById('modal-close').focus();
 }
 
-async function _mgrReload() {
+function _mgrIsCurrent(version) {
+  if (version !== _mgr.openVersion || !_mgr.managerOpen) return false;
+  const overlay = document.getElementById('modal-overlay');
+  const title = document.getElementById('modal-title');
+  const compare = document.getElementById('compare-overlay');
+  return Boolean(
+    overlay && overlay.classList.contains('open') &&
+    title && title.textContent === '⚙️ Modèles & Providers' &&
+    !(compare && compare.classList.contains('open'))
+  );
+}
+
+async function _mgrReload(version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return false;
   const reg = await apiSend('GET', '/api/models/registry');
+  if (!_mgrIsCurrent(version)) return false;
   if (!reg.ok) {
     const detail = reg.data ? _formatErrDetail(reg.data.detail) : `HTTP ${reg.status}`;
     document.getElementById('modal-body').innerHTML =
       `<div style="padding:16px;color:#e06c75">Gestion indisponible : ${escapeHtml(detail)}` +
       `<br><span style="color:var(--muted);font-size:11px">La base SQLite est requise — lance ` +
       `<code>python3 -m src.db.seed</code> sur le maître.</span></div>`;
-    return;
+    return false;
   }
   _mgr.models = reg.data.models || [];
   _mgr.providers = reg.data.providers || [];
-  _renderManager();
+  _renderManager(version);
+  return true;
 }
 
-function _mgrSetMsg(text, ok = true) {
+function _mgrMessageMarkup() {
+  if (!_mgr.msg) return '<div id="mgr-message" role="status" aria-live="polite" tabindex="-1"></div>';
+  const bg = _mgr.msgOk ? 'rgba(70,180,90,0.15)' : 'rgba(224,108,117,0.18)';
+  const fg = _mgr.msgOk ? '#46b45a' : '#e06c75';
+  return `<div id="mgr-message" role="status" aria-live="polite" tabindex="-1" style="margin:6px 0;padding:6px 10px;border-radius:6px;font-size:12px;background:${bg};color:${fg}">${escapeHtml(_mgr.msg)}</div>`;
+}
+
+function _mgrSetMsg(text, ok = true, focus = false, version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return false;
   const bg = ok ? 'rgba(70,180,90,0.15)' : 'rgba(224,108,117,0.18)';
   const fg = ok ? '#46b45a' : '#e06c75';
-  _mgr.msg = `<div style="margin:6px 0;padding:6px 10px;border-radius:6px;font-size:12px;background:${bg};color:${fg}">${escapeHtml(text)}</div>`;
+  _mgr.msg = String(text);
+  _mgr.msgOk = ok;
+  const current = document.getElementById('mgr-message');
+  if (current) {
+    current.textContent = _mgr.msg;
+    current.style.margin = '6px 0';
+    current.style.padding = '6px 10px';
+    current.style.borderRadius = '6px';
+    current.style.fontSize = '12px';
+    current.style.background = bg;
+    current.style.color = fg;
+    if (focus) current.focus();
+  }
+  return true;
+}
+
+function _mgrReadAdminToken() {
+  const field = document.getElementById('mgr-admin-token');
+  // Keep the page-memory value synchronized with the visible field. Rendering
+  // rehydrates the property only; the token is never serialized into markup.
+  if (field) _mgr.adminToken = field.value;
+  return _mgr.adminToken;
+}
+
+function _mgrProviderRequest(method, url, body) {
+  const token = _mgrReadAdminToken();
+  return apiSend(method, url, body, token ? { adminToken: token } : {});
+}
+
+function _mgrProviderError(response) {
+  if (response.status === 401) {
+    return 'Clé admin absente ou invalide. Saisissez la clé administrateur puis réessayez.';
+  }
+  if (response.status === 503) {
+    const detail = response.data && response.data.detail;
+    if (detail && typeof detail === 'object' && detail.code === 'admin_auth_not_configured') {
+      return 'Gestion des providers indisponible : la clé admin n’est pas configurée côté serveur.';
+    }
+    return 'Gestion des providers indisponible : la base SQLite ou le service est indisponible.';
+  }
+  const detail = _formatErrDetail(response.data && response.data.detail);
+  // Keep a defensive redaction boundary if a future server error accidentally
+  // includes the in-memory credential.
+  return _mgr.adminToken && detail.includes(_mgr.adminToken)
+    ? detail.split(_mgr.adminToken).join('[clé masquée]')
+    : detail;
 }
 
 function _mgrPrice(v) { return (v === null || v === undefined) ? '—' : '$' + Number(v).toFixed(2); }
 
-function _renderManager() {
+function _renderManager(version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return false;
   const em = _mgr.editModel;     // model being edited (or null = add)
   const ep = _mgr.editProvider;  // provider being edited (or null = add)
   const provOpts = (sel) => _mgr.providers
@@ -3220,7 +3108,7 @@ function _renderManager() {
       #modal-body .mgr-form .full{grid-column:1/-1}
       #modal-body h4{margin:14px 0 4px}
     </style>
-    ${_mgr.msg}
+    ${_mgrMessageMarkup()}
 
     <h4>Modèles <span style="font-weight:400;color:var(--muted);font-size:11px">(${_mgr.models.length})</span></h4>
     <div style="overflow:auto;max-height:38vh">
@@ -3272,6 +3160,10 @@ function _renderManager() {
 
     <form class="mgr-form" data-form="provider">
       <div class="full"><strong>${ep ? 'Modifier le provider' : '+ Ajouter un provider'}</strong></div>
+      <label class="full">Clé admin pour modifier les providers
+        <input id="mgr-admin-token" type="password" ${inp} autocomplete="current-password" spellcheck="false" placeholder="Saisissez la clé administrateur">
+        <span style="font-size:10px;color:var(--muted)">Collage autorisé. Conservée uniquement en mémoire jusqu’à l’effacement.</span>
+      </label>
       <label>Nom<input id="mgr-p-name" ${inp} value="${ep ? escapeHtml(ep.name) : ''}" placeholder="ex: local" ${ep ? 'readonly' : 'required'}></label>
       <label>Type<select id="mgr-p-kind" ${inp}>
         <option value="cloud"${ep && ep.kind === 'cloud' ? ' selected' : ''}>cloud</option>
@@ -3284,60 +3176,84 @@ function _renderManager() {
       <div class="full" style="display:flex;gap:8px">
         <button type="submit">${ep ? 'Enregistrer' : 'Ajouter'}</button>
         ${ep ? '<button type="button" data-act="cancel-provider">Annuler</button>' : ''}
+        <button type="button" data-act="clear-admin-token" title="Effacer la clé conservée en mémoire">Effacer la clé et fermer</button>
       </div>
     </form>`;
 
   const body = document.getElementById('modal-body');
-  body.onclick = _mgrOnClick;
-  body.onchange = _mgrOnChange;
-  body.onsubmit = _mgrOnSubmit;
+  body.onclick = e => _mgrOnClick(e, version);
+  body.onchange = e => _mgrOnChange(e, version);
+  body.onsubmit = e => _mgrOnSubmit(e, version);
+  const adminTokenField = document.getElementById('mgr-admin-token');
+  if (adminTokenField) {
+    // Rehydrate the property after a successful reload; it is not emitted in
+    // the HTML template or persisted by browser storage.
+    adminTokenField.value = _mgr.adminToken;
+    adminTokenField.addEventListener('input', () => {
+      if (_mgrIsCurrent(version)) _mgr.adminToken = adminTokenField.value;
+    });
+  }
   _mgr.msg = '';
+  return true;
 }
 
 function _mgrSlugOf(el) { const tr = el.closest('tr[data-slug]'); return tr && tr.dataset.slug; }
 
-async function _mgrOnClick(e) {
+async function _mgrOnClick(e, version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return;
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
   const act = btn.dataset.act;
-  if (act === 'cancel-model') { _mgr.editModel = null; _renderManager(); return; }
-  if (act === 'cancel-provider') { _mgr.editProvider = null; _renderManager(); return; }
+  if (act === 'clear-admin-token') {
+    _mgr.adminToken = '';
+    const field = document.getElementById('mgr-admin-token');
+    if (field) field.value = '';
+    closeModal();
+    return;
+  }
+  if (act === 'cancel-model') { _mgr.editModel = null; _renderManager(version); return; }
+  if (act === 'cancel-provider') { _mgr.editProvider = null; _renderManager(version); return; }
 
   const slug = _mgrSlugOf(btn);
   if (act === 'star') {
     const m = _mgr.models.find(x => x.slug === slug);
-    await _mgrPatchModel(slug, { recommended: !m.recommended });
+    await _mgrPatchModel(slug, { recommended: !m.recommended }, version);
   } else if (act === 'edit') {
     _mgr.editModel = _mgr.models.find(x => x.slug === slug);
-    _renderManager();
+    _renderManager(version);
   } else if (act === 'del') {
     if (!confirm(`Supprimer le modèle « ${slug} » ?`)) return;
     const r = await apiSend('DELETE', `/api/models/${slug}`);
-    if (r.ok) { _mgrSetMsg(`Modèle supprimé : ${slug}`); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
-    await _mgrAfterChange();
+    if (!_mgrIsCurrent(version)) return;
+    if (r.ok) { _mgrSetMsg(`Modèle supprimé : ${slug}`, true, false, version); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false, false, version); }
+    await _mgrAfterChange(version);
   } else if (act === 'pedit') {
     const name = btn.closest('tr[data-name]').dataset.name;
     _mgr.editProvider = _mgr.providers.find(x => x.name === name);
-    _renderManager();
+    _renderManager(version);
   }
 }
 
-async function _mgrOnChange(e) {
+async function _mgrOnChange(e, version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return;
   if (e.target.dataset.act === 'toggle') {
     const slug = _mgrSlugOf(e.target);
-    await _mgrPatchModel(slug, { enabled: e.target.checked });
+    await _mgrPatchModel(slug, { enabled: e.target.checked }, version);
   }
 }
 
-async function _mgrPatchModel(slug, patch) {
+async function _mgrPatchModel(slug, patch, version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return;
   const r = await apiSend('PATCH', `/api/models/${slug}`, patch);
-  if (r.ok) { _mgrSetMsg(`Modèle mis à jour : ${slug}`); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
-  await _mgrAfterChange();
+  if (!_mgrIsCurrent(version)) return;
+  if (r.ok) { _mgrSetMsg(`Modèle mis à jour : ${slug}`, true, false, version); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false, false, version); }
+  await _mgrAfterChange(version);
 }
 
 function _num(id) { const v = document.getElementById(id).value.trim(); return v === '' ? null : Number(v); }
 
-async function _mgrOnSubmit(e) {
+async function _mgrOnSubmit(e, version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return;
   e.preventDefault();
   const form = e.target.dataset.form;
   if (form === 'model') {
@@ -3358,12 +3274,14 @@ async function _mgrOnSubmit(e) {
       r = await apiSend('PATCH', `/api/models/${_mgr.editModel.slug}`, payload);
     } else {
       payload.slug = document.getElementById('mgr-m-slug').value.trim();
-      if (!payload.slug) { _mgrSetMsg('Slug requis', false); _renderManager(); return; }
+      if (!payload.slug) { _mgrSetMsg('Slug requis', false, false, version); _renderManager(version); return; }
       r = await apiSend('POST', '/api/models', payload);
     }
-    if (r.ok) { _mgr.editModel = null; _mgrSetMsg('Modèle enregistré'); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
-    await _mgrAfterChange();
+    if (!_mgrIsCurrent(version)) return;
+    if (r.ok) { _mgr.editModel = null; _mgrSetMsg('Modèle enregistré', true, false, version); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false, false, version); }
+    await _mgrAfterChange(version);
   } else if (form === 'provider') {
+    _mgrReadAdminToken();
     const payload = {
       base_url: document.getElementById('mgr-p-baseurl').value.trim() || null,
       default_model: document.getElementById('mgr-p-default').value.trim() || null,
@@ -3372,19 +3290,29 @@ async function _mgrOnSubmit(e) {
     };
     let r;
     if (_mgr.editProvider) {
-      r = await apiSend('PATCH', `/api/providers/${_mgr.editProvider.name}`, payload);
+      r = await _mgrProviderRequest('PATCH', `/api/providers/${_mgr.editProvider.name}`, payload);
     } else {
       payload.name = document.getElementById('mgr-p-name').value.trim();
-      if (!payload.name) { _mgrSetMsg('Nom requis', false); _renderManager(); return; }
-      r = await apiSend('POST', '/api/providers', payload);
+      if (!payload.name) { _mgrSetMsg('Nom requis', false, false, version); _renderManager(version); return; }
+      r = await _mgrProviderRequest('POST', '/api/providers', payload);
     }
-    if (r.ok) { _mgr.editProvider = null; _mgrSetMsg('Provider enregistré'); } else { _mgrSetMsg(_formatErrDetail(r.data && r.data.detail), false); }
-    await _mgrAfterChange();
+    if (!_mgrIsCurrent(version)) return;
+    if (r.ok) {
+      _mgr.editProvider = null;
+      _mgrSetMsg('Provider enregistré', true, false, version);
+      await _mgrAfterChange(version);
+    } else {
+      // Keep the provider form (including its non-serialized key field) in
+      // place so a 401/503 can be retried without re-entering the form.
+      _mgrSetMsg(_mgrProviderError(r), false, r.status === 401 || r.status === 503, version);
+    }
   }
 }
 
 // Reload the registry, re-render the panel, and refresh the main model selector.
-async function _mgrAfterChange() {
-  await _mgrReload();
+async function _mgrAfterChange(version = _mgr.openVersion) {
+  if (!_mgrIsCurrent(version)) return;
+  const refreshed = await _mgrReload(version);
+  if (!refreshed || !_mgrIsCurrent(version)) return;
   try { await loadModels(); } catch (_) {}
 }

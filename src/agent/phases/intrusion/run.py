@@ -417,28 +417,8 @@ class IntrusionPhase:
         # and destination both participated in this Phase 5 action ledger;
         # never invent a path from an isolated attempted login.
         chains: list[dict] = []
-        for index, hint in enumerate(context_data.get("attack_chains", []), start=1):
-            if not isinstance(hint, dict):
-                continue
-            source_ip = str(hint.get("src_ip") or "").strip()
-            target_ip = str(hint.get("dst_ip") or "").strip()
-            if not source_ip or not target_ip:
-                continue
-            if not action_evidence.get(source_ip) or not action_evidence.get(target_ip):
-                continue
-            if source_ip not in entry_point_ips and source_ip not in compromised:
-                continue
-            if target_ip not in entry_point_ips and target_ip not in compromised:
-                continue
-            chains.append({
-                "id": f"chain_{index}",
-                "hops": [
-                    build_hop(source_ip, 1, target_ip),
-                    build_hop(target_ip, 2, None),
-                ],
-                "crown_jewel_reached": None,
-                "source": "05_intrusion_context.attack_chains + Phase 5 tool ledger",
-            })
+        # Keep individually observed accesses. Graph hints are plans, not
+        # evidence that one access originated from another compromised host.
 
         return {
             "summary": {

@@ -330,7 +330,7 @@ class TestPhase5Context:
         assert calls[0]["user"] == "admin"
         assert "config.json" in calls[0]["command"]
 
-    def test_compact_intrusion_synthesis_reconstructs_harvest_and_chains(
+    def test_compact_intrusion_synthesis_preserves_harvest_without_inventing_pivots(
         self, mock_provider, output_dir
     ):
         mock_provider.provider = "local-moe"
@@ -409,11 +409,11 @@ class TestPhase5Context:
             for credential in data["credential_pool"]
         )
         assert data["compromised_devices"][0]["credentials_found"][0]["password"] == "db-secret"
-        assert len(data["chains"]) == 1
-        assert [hop["device_id"] for hop in data["chains"][0]["hops"]] == [
-            "s1-router", "s1-ssh",
-        ]
-        assert data["summary"]["total_hops"] == 1
+        # Independent accesses and model-declared ``attack_chains`` are not
+        # causal pivot evidence; retain the useful harvest but do not invent
+        # a transition.
+        assert data["chains"] == []
+        assert data["summary"]["total_hops"] == 0
 
     def test_compact_post_access_recovery_is_disabled_for_full_profile(
         self, mock_provider, output_dir

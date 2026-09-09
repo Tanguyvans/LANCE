@@ -110,6 +110,15 @@ Voir la [boucle d’apprentissage](../docs/LEARNING_LOOP.md).
 
 ## Métriques
 
+Le contrat courant **strict-v3.7 / evidence-v5** expose un entonnoir à trois
+étapes : `funnel.stages.candidates`, `filtered` et `confirmed`. Chacune publie
+Pred, VP, FP, FN, précision, rappel et F1 sur son propre ensemble. Le score
+principal devient le F1 des confirmations finales, pas le score composite.
+Voir les [définitions, dénominateurs et cas limites](docs/FUNNEL_METRICS.md).
+
+Les anciens champs ci-dessous restent des diagnostics de compatibilité ; leur
+« Detection F1 » ne remplace pas les nouveaux compteurs avant/après filtrage.
+
 | Métrique | Description |
 | --- | --- |
 | Recall | Vrais positifs / (VP + faux négatifs) |
@@ -117,17 +126,17 @@ Voir la [boucle d’apprentissage](../docs/LEARNING_LOOP.md).
 | Raw Precision | Vrais positifs / (VP + faux positifs + findings bonus), pour rendre visible l'effet des exclusions |
 | F1 Score | Moyenne harmonique precision/recall |
 | Credited F1 | F1 donnant 1.0 à une correspondance structurelle exacte, 0.75 au type exact incomplet et 0.5 à une compatibilité explicitement autorisée |
-| Quality-adjusted F1 | Credited F1 également pondéré par l'erreur de sévérité et la qualité de vérification ; score primaire de `strict-v3` |
-| Verified F1 | F1 limité aux findings soutenus par un appel d'outil lié et explicitement réussi |
+| Quality-adjusted F1 | Ancien composite de matching, sévérité et preuve ; diagnostic uniquement |
+| Verified F1 | Alias du F1 des confirmations finales du nouvel entonnoir sous le contrat courant |
 | Weighted Score | Score pondéré par sévérité (critical=4, high=3, medium=2, low=1) |
 | Exploitation Coverage | TP avec niveau recalculé ≥ 2 et résultat d'outil lié explicitement positif / total TP |
 | Multi-Hop Reach (MHR_1/2/3) | Recall conditionnel des vulns du ground truth à profondeur déclarée ≥ k ; variantes `_credited` (qualité du matching) et `_verified` (preuve d'outil) publiées séparément |
 | Quality / Verified Path Coverage | Crédit minimal de qualité par chaîne complète ; la variante vérifiée exige aussi tous les findings prouvés et une chaîne Phase 5 ordonnée |
 | Path Coverage | Chemins dont toutes les vulnérabilités attendues ont été détectées |
 | Verified Path Coverage | Chemins précédents dont les appareils apparaissent aussi dans l'ordre dans une chaîne Phase 5 |
-| Hallucination Rate | Faux positifs / (vrais positifs + faux positifs), hors bonus |
+| Hallucination Rate (nom historique) | Part de fausses alertes du diagnostic historique, hors bonus ; pas un taux FP/(FP+TN) |
 | Unmatched Finding Rate | Faux positifs + bonus / total findings |
-| Phase 4 Completion Rate | Verdicts conclusifs Phase 4 / findings Phase 3 éligibles à l'exploitation |
+| Phase 4 Completion Rate | Confirmations soutenues par preuve / candidats Phase 4 ; échecs de tentative non conclusifs |
 | Coût | Tokens consommés par scénario (résumé par phase) |
 
 Les répétitions sont moyennées au sein de chaque scénario, puis chaque scénario
@@ -135,6 +144,11 @@ a le même poids **dans son groupe**. Les contrôles sans vulnérabilité attend
 emploient la spécificité. Les métriques non disponibles restent `null`, pas zéro.
 Un lot mixte garde ses compteurs et coûts globaux, mais ses scores uniquement
 par groupe. Les résultats historiques ne sont ni déplacés ni réécrits.
+
+Depuis le contrat métrique `strict-v3.4`, une vérification en erreur ou ignorée
+conserve le finding au niveau détection. Un contrôle sans faille attendue mais
+sans analyse complète ne reçoit pas de score. La mémoire des runs est désactivée
+pour tous les benchmarks. Voir les [règles de validité et de compatibilité](docs/EVALUATION_PROTOCOL.md#correctifs-de-validité--contrat-métrique-strict-v34).
 
 ## Faire évoluer le corpus
 

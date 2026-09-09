@@ -8,6 +8,7 @@ import pytest
 def mock_provider():
     provider = MagicMock()
     provider.model = "test-model"
+    provider.provider = "test-provider"
     provider.chat_with_tools.return_value = "Done."
     return provider
 

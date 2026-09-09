@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from src.agent.exploit_evidence import extract_endpoint_paths as _extract_endpoint_paths
+from src.agent.report_evidence import verification_state
 
 
 def _exploit_relpath(device_id: str, vuln_type: str, vuln_id: str) -> Path:
@@ -27,7 +28,7 @@ def _make_test_entry(
     branches.
     """
     result = result or {}
-    return {
+    entry = {
         "vuln_id": vuln.get("id", "VULN-???"),
         "device_id": result.get("device_id") or vuln.get("device_id", "unknown"),
         "device_ip": result.get("device_ip") or vuln.get("device_ip", ""),
@@ -71,6 +72,8 @@ def _make_test_entry(
         "description": result.get("description") or vuln.get("details", ""),
         "cve_ids": vuln.get("cve_ids", []),
     }
+    entry["verification_status"] = verification_state(entry)
+    return entry
 
 
 def _tool_records_for_vuln(run_dir: Path, vuln_id: str) -> list[dict]:

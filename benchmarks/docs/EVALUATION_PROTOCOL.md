@@ -2,6 +2,20 @@
 
 ## Protocole courant — catalogue 3.2.0
 
+Les métriques courantes suivent le contrat **strict-v3.7 / evidence-v5** :
+[entonnoir candidats, après filtrage et confirmations finales](FUNNEL_METRICS.md).
+Le score principal est le F1 final (ou la spécificité des contrôles), sans
+pondération de sévérité. `FAILED` ne signifie plus réfutation : c’est une
+tentative non concluante. Les correctifs `strict-v3.4` décrits plus bas restent
+un historique des protections introduites précédemment.
+La Phase 4 et l’évaluateur partagent désormais les règles sémantiques de preuve,
+avec contrôle indépendant de l’attribution des traces par l’évaluateur. Les
+preuves acceptées, rejetées et manquantes sont distinguées de la simple
+traçabilité. Les runs des anciens contrats ne sont pas promus au nouveau score.
+La version 3.7 renforce les preuves MySQL et rend les tentatives, succès et taux
+de pivot indisponibles tant que l'exécuteur ne fournit pas de provenance causale
+des transitions. Plusieurs accès directs ne démontrent pas un pivot.
+
 Le [catalogue](../catalog.yaml) est la référence pour les groupes. Un seul
 harness et un seul évaluateur sont utilisés pour les 29 scénarios publics.
 
@@ -35,7 +49,44 @@ Cette réorganisation conserve la répartition existante ; elle n’atteste pas 
 S20–S29 n’ont jamais servi à développer les prompts ou le code. Leur statut de
 test est **provisoire**, sous réserve d’un audit historique. Un jeu public n’est
 pas un oracle isolé techniquement : l’absence de contamination dépend aussi du
-protocole expérimental et de la provenance des données.
+protocole expérimental et de la provenance des données. L’audit du 7 septembre
+2026 a notamment trouvé des prompts et sondes codés spécifiquement pour S22.
+Leur suppression ne rend pas rétroactivement ce scénario indépendant : une
+mesure de généralisation exige un nouveau jeu de test non utilisé pour régler
+le harness.
+
+### Correctifs de validité — contrat métrique `strict-v3.4`
+
+- Le harness ne recharge plus les étiquettes de sécurité des topologies pour
+  supprimer des findings ou sélectionner une cible déjà déclarée vulnérable.
+  L’agrégation ne modifie plus les findings selon l’identifiant du scénario.
+  Les prompts, sondes et extracteurs contenant les réponses spécifiques à S22
+  sont retirés ; les outils HTTP génériques restent disponibles.
+- Tous les runs benchmark (`dev-public`, `test-public`, `lab-export`,
+  `eval-sealed`) désactivent la mémoire épisodique, en lecture comme en écriture.
+  Les appels à l’historique et aux collections persistantes sont refusés à la
+  frontière d’exécution des outils, sans effacer la base existante. Les skills
+  de méthode restent accessibles ; les CVE utilisent le snapshot figé.
+- En `strict-v3`, `ERROR`, `SKIPPED`, les statuts inconnus et les tests absents
+  conservent la prédiction de phase 3, y compris en compact, sans preuve
+  d’exploitation. Une erreur d’outil ne peut donc pas effacer un faux positif.
+  Un verdict conclusif négatif garde sa sémantique de réfutation.
+- Un contrôle sans vulnérabilité attendue n’obtient une spécificité que si
+  l’analyse de phase 3 est terminée sans erreur, porte sur au moins un équipement
+  et couvre tous les équipements annoncés. Sinon le score est `null`, accompagné
+  de `score_unavailable_reason` ; l’agrégation ne le transforme ni en 100 %, ni
+  en une observation à ignorer. Cela vérifie la complétude déclarée de l’analyse,
+  pas la couverture de machines qui n’auraient jamais été découvertes.
+- L’évaluateur résout le contrat commun depuis `ground_truth/`, contrôle son
+  empreinte pour les sous-dossiers dev/test et refuse un contrat partagé manquant
+  ou invalide. Les exports conservent leur contrat local. Le cache des scores
+  tient compte du contrat de matching et de la taxonomie.
+
+Les règles d’artefacts `evidence-v2` restent inchangées, mais les runs antérieurs
+au contrat métrique `strict-v3.4` n’ont pas de score primaire comparable avec
+cette version. Les politiques historiques explicites `legacy-v1` et `strict-v2`
+conservent leur filtrage des verdicts indéterminés. Aucun artefact de run n’est
+réécrit pour lui attribuer artificiellement le nouveau contrat.
 
 Les runs et artefacts existants ne sont pas réécrits. Des anciens runs CLI ou
 batch peuvent porter un label dev incorrect ; ne pas les agréger aveuglément.
@@ -171,7 +222,7 @@ de Phase 3. Chaque test est résolu individuellement :
 - `FAILED` ou `NOT_EXPLOITABLE` réfute le finding, sauf si la Phase 3 le
   déclarait déjà `confirmed` avec un extrait de preuve directe non vide ; ce
   conflit conserve uniquement un finding de niveau détection ;
-- `ERROR`, un statut inconnu ou l'absence de test correspondant est
+- `ERROR`, `SKIPPED`, un statut inconnu ou l'absence de test correspondant est
   indéterminé : le finding Phase 3 est conservé au niveau détection, sans
   crédit d'exploitation ni de traçabilité Phase 4.
 

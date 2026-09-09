@@ -1,7 +1,35 @@
 """Phase 3: aggregation, CVE validation, and canonical projections."""
 import json
+import pytest
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
+
+
+@pytest.mark.parametrize("scenario_id", ["14", "16", "22"])
+@pytest.mark.parametrize("label", ["vulnerable", "hardened", "near_miss"])
+def test_aggregation_does_not_read_or_filter_on_oracle_labels(
+    mock_provider, output_dir, monkeypatch, scenario_id, label,
+):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    pipeline.scenario_id = scenario_id
+    monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: json.dumps([{
+        "id": "ssh-1", "ip": "192.0.2.10", "role": "ssh_server", "security_profile": label,
+    }]))
+    def forbidden(*_args):
+        raise AssertionError("Aggregation must not reopen scenario definitions")
+    monkeypatch.setattr("src.agent.core.runtime.resolve_scenario_path", forbidden)
+    monkeypatch.setattr("src.agent.core.runtime.resolve_topology_path", forbidden)
+    (pipeline.run_dir / "03_device_ssh-1.json").write_text(json.dumps({
+        "vulnerabilities": [{
+            "id": "F1", "device_id": "ssh-1", "device_ip": "192.0.2.10",
+            "type": "weak_cipher", "severity": "HIGH", "service": "ssh", "port": 22,
+            "details": "SSH advertises aes128-cbc", "evidence": "aes128-cbc enabled",
+        }],
+    }))
+    pipeline._aggregate_device_vulns(AGENTS["vuln_analysis"])
+    output = json.loads((pipeline.run_dir / "03_vuln_analysis.json").read_text())
+    assert len(output["vulnerabilities"]) == 1
+    assert output["vulnerabilities"][0]["type"] == "weak_cipher"
 
 
 def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
@@ -61,6 +89,10 @@ def test_full_aggregation_keeps_model_queue_and_semantic_filter_raw(
         for candidate in raw["candidates"]
     )
     assert raw["candidate_count"] == 2
+    assert raw["schema_version"] == "2"
+    assert {c["candidate_finding"]["type"] for c in raw["candidates"]} == {
+        "info_disclosure", "weak_cipher",
+    }
 
 
 def test_full_aggregation_accepts_catalog_validated_terrapin_without_nvd_cpe(
@@ -389,7 +421,7 @@ class TestInformationPreservingArchitecture:
             for candidate in raw["candidates"]
         )
 
-    def test_compact_observations_require_phase2_support_and_defer_exploitation(
+    def test_compact_observations_require_phase2_support_without_blocking_verification(
         self, mock_provider, output_dir, monkeypatch
     ):
         mock_provider.provider = "local-moe"
@@ -493,7 +525,7 @@ class TestInformationPreservingArchitecture:
         )
         assert len(canonical["vulnerabilities"]) == 1
         assert canonical["vulnerabilities"][0]["type"] == "info_disclosure"
-        assert canonical["vulnerabilities"][0]["compact_detection_only"] is True
+        assert "compact_detection_only" not in canonical["vulnerabilities"][0]
         assert {
             (item["device_ip"], item["type"])
             for item in observations["observations"]
@@ -508,10 +540,10 @@ class TestInformationPreservingArchitecture:
         aggregate = json.loads(
             (pipeline.run_dir / "04_exploitation.json").read_text()
         )
-        assert pipeline._phase4_schedule["scheduled_count"] == 0
-        assert pipeline._phase4_schedule["skipped_count"] == 1
-        assert aggregate["summary"]["skipped_count"] == 1
-        assert aggregate["tests"][0]["status"] == "SKIPPED"
+        assert pipeline._phase4_schedule["scheduled_count"] == 1
+        assert pipeline._phase4_schedule["skipped_count"] == 0
+        assert aggregate["summary"]["skipped_count"] == 0
+        assert aggregate["tests"][0]["status"] == "ERROR"  # mock provider produced no proof
 
     def test_log_regression_unverified_cves_stay_raw_not_canonical(
         self, mock_provider, output_dir, monkeypatch

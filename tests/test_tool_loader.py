@@ -16,7 +16,6 @@ from src.agent.tools.tool_loader import (
     load_all_tools,
     register_python_handler,
     filter_unavailable_tools,
-    reset_tool_cache,
     DEFINITIONS_DIR,
 )
 
@@ -141,6 +140,40 @@ class TestBuildSubprocessFunction:
         assert parsed["return_code"] == 0
 
     @patch("src.agent.tools.recon_tools._run")
+    def test_mysql_query_uses_explicit_passwordless_tcp_probe(self, mock_run):
+        mock_run.return_value = {
+            "stdout": "root@192.0.2.17\troot@%",
+            "stderr": "",
+            "return_code": 0,
+        }
+        data = load_tool_yaml(DEFINITIONS_DIR / "mysql_query.yaml")
+        fn = build_subprocess_function(data)
+        result = json.loads(fn(
+            host="192.0.2.17", port=3306, user="root",
+            query="SELECT USER(), CURRENT_USER();", skip_ssl=True,
+        ))
+
+        command = mock_run.call_args.args[0]
+        assert command[:5] == [
+            "mysql", "--no-defaults", "--protocol=TCP", "--skip-password", "--connect-timeout=5",
+        ]
+        port_index = command.index("-P")
+        assert command[port_index:port_index + 2] == ["-P", "3306"]
+        assert result["execution_attestation"] == {
+            "protocol": "TCP", "host": "192.0.2.17", "port": 3306,
+            "user": "root", "query": "SELECT USER(), CURRENT_USER();",
+            "no_defaults": True, "protocol_tcp": True, "empty_password_cli": True,
+        }
+
+        json.loads(fn(
+            host="192.0.2.17", user="root",
+            query="SELECT USER(), CURRENT_USER();", skip_ssl=True,
+        ))
+        command_without_port = mock_run.call_args.args[0]
+        port_index = command_without_port.index("-P")
+        assert command_without_port[port_index:port_index + 2] == ["-P", "3306"]
+
+    @patch("src.agent.tools.recon_tools._run")
     def test_ssh_login_accepts_structured_arguments(self, mock_run):
         mock_run.return_value = {"stdout": "uid=1000(admin)", "stderr": "", "return_code": 0}
         data = load_tool_yaml(DEFINITIONS_DIR / "ssh_login.yaml")
@@ -157,8 +190,7 @@ class TestBuildSubprocessFunction:
         assert json.loads(result)["return_code"] == 0
 
     @patch("src.agent.tools.recon_tools._run")
-    def test_reset_tool_cache_prevents_cross_run_mqtt_replay(self, mock_run):
-        reset_tool_cache()
+    def test_mqtt_preserves_fresh_values_on_every_call(self, mock_run):
         mock_run.side_effect = [
             {"stdout": 'sensors/temp {"temp":1}', "stderr": "", "return_code": 0},
             {"stdout": 'sensors/temp {"temp":999}', "stderr": "", "return_code": 0},
@@ -169,15 +201,13 @@ class TestBuildSubprocessFunction:
 
         first = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
         replayed = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
-        reset_tool_cache()
         fresh = json.loads(fn(broker="192.0.2.10", topic="sensors/#"))
 
         assert first["stdout"] == 'sensors/temp {"temp":1}'
-        assert replayed["stdout"] == first["stdout"]
-        assert replayed["cache_replayed"] is True
+        assert replayed["stdout"] == 'sensors/temp {"temp":999}'
+        assert "cache_replayed" not in replayed
         assert fresh["stdout"] == 'sensors/temp {"temp":999}'
         assert "cache_replayed" not in fresh
-        reset_tool_cache()
 
 
 class TestLoadAllTools:

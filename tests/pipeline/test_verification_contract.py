@@ -87,25 +87,145 @@ def test_phase4_compact_probes_repair_http_endpoint_and_mysql_auth_check():
         "device_ip": "192.168.100.17", "port": 3306,
     }, compact=True)
     assert mysql["tool"] == "mysql_query"
+    assert mysql["args_hint"]["host"] == "192.168.100.17"
+    assert mysql["args_hint"]["port"] == 3306
     assert mysql["args_hint"]["user"] == "root"
     assert _phase4_requirement_matches(mysql, "mysql_query", mysql["args_hint"])
+    omitted_default_port = {key: value for key, value in mysql["args_hint"].items() if key != "port"}
+    assert _phase4_requirement_matches(mysql, "mysql_query", omitted_default_port)
     assert not _phase4_requirement_matches(
         mysql, "mysql_query", {**mysql["args_hint"], "skip_ssl": False}
     )
     assert not _phase4_requirement_matches(
         mysql, "mysql_query", {**mysql["args_hint"], "user": "admin"}
     )
-
-    result = _synthesize_exploit_result(
-        {"type": "default_credentials", "service": "mysql", "port": 3306},
-        [{
-            "tool": "mysql_query",
-            "args": mysql["args_hint"],
-            "result": json.dumps({"stdout": "root@localhost", "return_code": 0}),
-        }],
-        compact=True,
+    non_default_mysql = _phase4_verification_plan({
+        "type": "default_credentials", "service": "mysql",
+        "device_ip": "192.168.100.17", "port": 3307,
+    }, compact=True)
+    assert not _phase4_requirement_matches(
+        non_default_mysql, "mysql_query",
+        {key: value for key, value in non_default_mysql["args_hint"].items() if key != "port"},
     )
-    assert result["status"] == "EXPLOITED"
+
+    vuln = {
+        "type": "default_credentials", "service": "mysql",
+        "device_ip": "192.168.100.17", "port": 3306,
+    }
+    attestation = {
+        "protocol": "TCP", "host": "192.168.100.17", "port": 3306,
+        "user": "root", "query": mysql["args_hint"]["query"],
+        "no_defaults": True, "protocol_tcp": True, "empty_password_cli": True,
+    }
+    positive = _synthesize_exploit_result(
+        vuln, [{
+            "tool": "mysql_query", "args": mysql["args_hint"],
+            "result": json.dumps({
+                "stdout": "root@localhost\troot@%", "return_code": 0,
+                "execution_attestation": attestation,
+            }),
+        }], compact=True,
+    )
+    assert positive["status"] == "EXPLOITED"
+    assert _synthesize_exploit_result(
+        vuln, [{
+            "tool": "mysql_query", "args": mysql["args_hint"],
+            "result": json.dumps({
+                "stdout": "root@localhost\troot@%", "return_code": 0,
+                "execution_attestation": attestation,
+            }),
+        }], compact=False,
+    )["status"] == "EXPLOITED"
+
+    for mutation in (
+        {"result": {"stdout": "root@localhost\troot@%", "return_code": 0}},
+        {"args": {**mysql["args_hint"], "password": "secret"}},
+        {"args": {**mysql["args_hint"], "port": 3307}},
+        {"args": {**mysql["args_hint"], "query": "SELECT USER();"}},
+        {"result": {"stdout": "root@localhost\tadmin@%", "return_code": 0,
+                    "execution_attestation": attestation}},
+    ):
+        record = {
+            "tool": "mysql_query", "args": mutation.get("args", mysql["args_hint"]),
+            "result": json.dumps(mutation.get("result", {
+                "stdout": "root@localhost\troot@%", "return_code": 0,
+                "execution_attestation": attestation,
+            })),
+        }
+        assert _synthesize_exploit_result(vuln, [record], compact=True)["status"] == "FAILED"
+
+
+def test_mysql_proof_requires_bounded_execution_for_all_claim_types():
+    args = {
+        "host": "192.0.2.17", "port": 3306, "user": "root",
+        "query": "SELECT USER(), CURRENT_USER();", "skip_ssl": True,
+    }
+    for vuln_type, query, stdout in (
+        ("no_auth", "SELECT USER(), CURRENT_USER();", "root@localhost\troot@%"),
+        ("data_exposure", "SELECT CONCAT('password=', password) FROM users LIMIT 1;", "password=fixture-secret"),
+    ):
+        claim_args = {**args, "query": query}
+        attestation = {
+            "protocol": "TCP", "host": args["host"], "port": 3306,
+            "user": "root", "query": query,
+            "no_defaults": True, "protocol_tcp": True,
+            "empty_password_cli": True,
+        }
+        base = {
+            "return_code": 0, "stdout": stdout,
+            "execution_attestation": attestation,
+        }
+        finding = {
+            "type": vuln_type, "service": "mysql",
+            "device_ip": args["host"], "port": 3306,
+        }
+        result = {**base, "stdout": stdout}
+        assert _synthesize_exploit_result(
+            finding, [{"tool": "mysql_query", "args": claim_args, "result": json.dumps(result)}]
+        )["status"] == "EXPLOITED"
+        for mutation in (
+            {"execution_attestation": None},
+            {"cancelled": True},
+            {"timed_out": True},
+            {"execution_attestation": {**attestation, "host": "192.0.2.18"}},
+            {"stderr": "mysql: [ERROR] connection refused"},
+            {"stdout": "", "stderr": "mysql: [Warning] Using a password on the command line interface can be insecure."},
+        ):
+            rejected = {**result, **mutation}
+            assert _synthesize_exploit_result(
+                finding, [{"tool": "mysql_query", "args": claim_args, "result": json.dumps(rejected)}]
+            )["status"] != "EXPLOITED"
+
+    default_finding = {
+        "type": "default_credentials", "service": "mysql",
+        "device_ip": args["host"], "port": 3306,
+    }
+    identity_args = {**args, "query": "SELECT USER(), CURRENT_USER();"}
+    identity_attestation = {**attestation, "query": identity_args["query"]}
+    identity_result = {
+        "return_code": 0, "stdout": "root@localhost\troot@%",
+        "stderr": "mysql: [Warning] Using a password on the command line interface can be insecure.",
+        "execution_attestation": identity_attestation,
+    }
+    assert _synthesize_exploit_result(
+        default_finding, [{"tool": "mysql_query", "args": identity_args,
+                           "result": json.dumps(identity_result)}]
+    )["status"] == "EXPLOITED"
+    assert _synthesize_exploit_result(
+        {**default_finding, "device_ip": ""},
+        [{"tool": "mysql_query", "args": identity_args,
+          "result": json.dumps(identity_result)}],
+    )["status"] != "EXPLOITED"
+    for query in (
+        "SELECT USER(), CURRENT_USER(); SELECT 1;",
+        "SELECT USER(), CURRENT_USER(); -- trailing comment",
+    ):
+        rejected_args = {**identity_args, "query": query}
+        rejected = {**identity_result, "execution_attestation": {**identity_attestation, "query": query}}
+        assert _synthesize_exploit_result(
+            default_finding, [{"tool": "mysql_query", "args": rejected_args,
+                               "result": json.dumps(rejected)}]
+        )["status"] == "FAILED"
 
 
 def test_phase4_compact_selects_bounded_snmp_coap_and_ftp_probes():

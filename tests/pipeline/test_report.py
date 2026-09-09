@@ -48,6 +48,7 @@ def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output
 
     assert _report_phase4_summary({"confirmed": 2}, tests) == {
         "confirmed": 1, "verified_confirmed": 1, "unverified_confirmed": 1,
+        "inconclusive": 1, "not_tested": 0,
     }
 
     pipeline._generate_phase6_context()

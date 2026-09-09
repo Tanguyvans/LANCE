@@ -45,23 +45,12 @@ class VerificationPhase:
         vuln_data = json.loads(vuln_path.read_text(encoding="utf-8"))
         all_vulns = vuln_data.get("vulnerabilities", [])
 
-        # 2. Build exploit tasks for canonical findings. Direct compact
-        # observations remain in the detection queue, but are deliberately
-        # not sent to exploit agents because they do not need an intrusive
-        # verification to be useful and scoring them as exploitation would
-        # reintroduce the compact hallucination problem.
+        # 2. Verify every canonical finding, including configuration observations.
+        # Their service-specific plan uses non-intrusive checks (headers/banner),
+        # not an automatic skip that makes final confirmation impossible.
         exploit_tasks: list[dict] = []
         skipped_candidates: list[dict] = []
         for vuln in all_vulns:
-            if self._uses_compact_local_moe() and vuln.get("compact_detection_only"):
-                skipped_candidates.append({
-                    "vuln_id": vuln.get("id", ""),
-                    "reason": (
-                        "direct compact observation retained for detection; "
-                        "exploitation deferred"
-                    ),
-                })
-                continue
             category = runtime.exploit_category(str(vuln.get("type") or "")) or "data_access"
             requirement = _phase4_verification_plan(vuln, compact=self._uses_compact_local_moe())
             exploit_tasks.append({
@@ -557,9 +546,8 @@ class VerificationPhase:
     def _aggregate_exploit_results(self) -> None:
         """Merge Phase 3 findings + Phase 4 exploit results into 04_exploitation.json.
 
-        Phase 3 `confirmed` findings are trusted over Phase 4 FAILED/ERROR —
-        when the exploit agent can't reproduce a directly-observed vuln
-        (e.g. ssh_audit [fail] lines), we keep the Phase 3 evidence.
+        Preserve unsuccessful attempts as inconclusive or execution errors.
+        They are not negative evidence about the original Phase 3 candidate.
         """
         vuln_path = self.run_dir / "03_vuln_analysis.json"
         if not vuln_path.exists():
@@ -651,7 +639,7 @@ class VerificationPhase:
                             or "executed"
                         ),
                         "confirmed": confirmed,
-                        "not_exploitable": failed,
+                        "inconclusive": failed,
                         "errors": errors,
                     },
                     "scheduling": getattr(self, "_phase4_schedule", {}),

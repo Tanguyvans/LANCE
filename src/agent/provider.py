@@ -268,6 +268,8 @@ class LLMProvider:
         terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
 
         def create_completion(**kwargs):
+            if cost_tracker is not None:
+                cost_tracker.check_budget()
             client = self.client
             remaining = _deadline_remaining(deadline)
             if remaining is not None and hasattr(client, "with_options"):
@@ -451,6 +453,8 @@ class LLMProvider:
         ]
 
         def create_completion(**kwargs):
+            if cost_tracker is not None:
+                cost_tracker.check_budget()
             client = self.client
             remaining = _deadline_remaining(deadline)
             if remaining is not None and hasattr(client, "with_options"):

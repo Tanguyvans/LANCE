@@ -58,26 +58,22 @@ def test_s15_generic_api_fixture_is_not_a_model_finding():
     )
 
 
-def test_s14_s19_profile_controls_and_role_mismatch_are_not_published():
-    assert _finding_semantic_issue(
+def test_semantics_cannot_use_scenario_labels_to_discard_predictions():
+    import inspect
+    parameters = inspect.signature(_finding_semantic_issue).parameters
+    assert "device_profile" not in parameters
+    assert "scenario_id" not in parameters
+    assert not _finding_semantic_issue(
         {"type": "weak_cipher", "service": "ssh", "port": 22},
-        source_kind="model", device_role="ssh_server", device_profile="hardened", scenario_id="S14",
+        source_kind="model", device_role="ssh_server",
     )
-    assert "sparse contract" in _finding_semantic_issue(
-        {"type": "weak_cipher", "service": "ssh", "port": 22},
-        source_kind="model", device_role="ssh_server", device_profile="vulnerable", scenario_id="S14",
-    )
-    assert "non-SSH role" in _finding_semantic_issue(
-        {"type": "weak_cipher", "service": "ssh", "port": 22},
-        source_kind="model", device_role="mqtt_broker", scenario_id=19,
-    )
-    assert _finding_semantic_issue(
+    assert not _finding_semantic_issue(
         {"type": "info_disclosure", "service": "bacnet", "port": 47808},
-        source_kind="scanner_full", device_role="ot_bacnet_server", device_profile="hardened", scenario_id=19,
+        source_kind="scanner_full", device_role="ot_bacnet_server",
     )
     assert "Modbus role" in _finding_semantic_issue(
         {"type": "weak_cipher", "service": "ssh", "port": 22},
-        source_kind="model", device_role="modbus_server", scenario_id=19,
+        source_kind="model", device_role="modbus_server",
     )
 
 

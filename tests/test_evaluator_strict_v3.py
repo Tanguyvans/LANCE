@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from src.benchmark.evaluator import (
@@ -109,7 +110,8 @@ def test_legacy_export_without_source_hash_uses_trusted_manifest(monkeypatch, tm
 
     result = evaluate(run, ground_truth, policy=STRICT_V3)
 
-    assert result.scenario_score_pct == 50.0
+    assert result.quality_adjusted_f1 == 0.5
+    assert result.scenario_score_pct is None  # no final verification artifact
 
 
 def test_public_matching_catalog_covers_every_ground_truth_entry():
@@ -149,7 +151,8 @@ def test_exact_structure_gets_full_match_credit_but_detection_only_proof_credit(
     assert result.matches[0]["match_credit"] == 1.0
     assert result.matches[0]["structural_match"] is True
     assert result.matches[0]["verification_credit"] == 0.5
-    assert result.scenario_score_pct == 50.0
+    assert result.quality_adjusted_f1 == 0.5
+    assert result.scenario_score_pct is None
 
 
 def test_missing_structure_gets_partial_credit(tmp_path):
@@ -159,15 +162,17 @@ def test_missing_structure_gets_partial_credit(tmp_path):
     assert result.detection_f1 == 1.0
     assert result.credited_f1 == 0.75
     assert result.matches[0]["match_credit"] == 0.75
-    assert result.scenario_score_pct == 37.5
+    assert result.quality_adjusted_f1 == 0.375
+    assert result.scenario_score_pct is None
 
 
-def test_primary_score_includes_severity_error(tmp_path):
+def test_severity_error_remains_a_separate_quality_diagnostic(tmp_path):
     run, gt = _write(tmp_path, [_finding(severity="low")], [_gt(severity="critical")])
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.detection_f1 == 1.0
     assert result.severity_adjusted_f1 == 0.25
-    assert result.scenario_score_pct == 12.5
+    assert result.quality_adjusted_f1 == 0.125
+    assert result.scenario_score_pct is None
 
 
 def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
@@ -176,11 +181,12 @@ def test_verified_f1_requires_successful_linked_tool_call(tmp_path):
         "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
         "severity": "high", "service": "http", "port": 80,
         "protocol": "tcp", "endpoint": "/backup.sql", "status": "CONFIRMED",
+        "evidence_level": 2,
         "evidence": "credentials returned", "tool_used": "http_get",
     }]}))
     (run / "tool_calls.jsonl").write_text(json.dumps({
         "tool": "http_get", "args": {"url": "http://192.0.2.10/backup.sql"},
-        "result": {"success": True, "body": "password=secret"},
+        "result": {"success": True, "status_code": 200, "body": "password=secret"},
     }) + "\n")
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.verified_f1 == 1.0
@@ -199,7 +205,8 @@ def test_current_metric_contract_keeps_evidence_scores_enabled(tmp_path):
     (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
         "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
         "severity": "high", "service": "http", "port": 80,
-        "protocol": "tcp", "endpoint": "/backup.sql", "status": "EXPLOITED",
+        "protocol": "tcp", "endpoint": "/backup.sql", "status": "CONFIRMED",
+        "evidence_level": 2,
         "evidence": "credentials returned", "tool_used": "http_get",
     }]}))
     (run / "tool_calls.jsonl").write_text(json.dumps({
@@ -270,7 +277,7 @@ def test_mqtt_rc27_with_payload_is_positive_tool_evidence():
     }
 
     assert _tool_call_outcome(
-        record, _finding(type="no_auth", service="mqtt", port=1883)
+        record, _finding(device_ip="192.0.2.11", type="no_auth", service="mqtt", port=1883)
     ) is True
 
 
@@ -279,13 +286,121 @@ def test_phase4_error_is_incomplete(tmp_path):
     (run / "04_exploitation.json").write_text(json.dumps({
         "tests": [{"vuln_id": "F1", "status": "ERROR"}],
     }))
+    (run / "tool_calls.jsonl").write_text("")
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.phase4_candidates == 1
     assert result.phase4_conclusive == 0
     assert result.phase4_completion_rate == 0.0
 
 
-def test_negative_control_violation_reduces_primary_score(tmp_path):
+@pytest.mark.parametrize("status", ["ERROR", "SKIPPED", "TIMEOUT", "UNKNOWN", None])
+@pytest.mark.parametrize("compact", [False, True])
+def test_inconclusive_verification_cannot_remove_a_false_positive(tmp_path, status, compact):
+    findings = [_finding(), _finding(
+        id="F2", device_ip="192.0.2.20", compact_requires_verification=compact,
+    )]
+    run, gt = _write(tmp_path, findings)
+    before = evaluate(run, gt, policy=STRICT_V3)
+    (run / "04_exploitation.json").write_text(json.dumps({
+        "tests": [{"vuln_id": "F2", "status": status}] if status else [],
+    }))
+    after = evaluate(run, gt, policy=STRICT_V3)
+    assert after.false_positives == before.false_positives == 1
+    assert after.f1_score == before.f1_score
+    assert after.scenario_score_pct == before.scenario_score_pct
+    assert after.tp_exploited == 0
+
+
+@pytest.mark.parametrize("status", ["ERROR", "SKIPPED"])
+@pytest.mark.parametrize("evidence", ["", "GET /backup.sql returned credentials"])
+def test_inconclusive_verification_keeps_true_detection_without_proof(tmp_path, status, evidence):
+    run, gt = _write(tmp_path, [_finding(compact_requires_verification=True, evidence=evidence)])
+    before = evaluate(run, gt, policy=STRICT_V3)
+    (run / "04_exploitation.json").write_text(json.dumps({
+        "tests": [{"vuln_id": "F1", "status": status, "vuln_type": "network_exposure"}],
+    }))
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.true_positives == 1
+    assert result.tp_exploited == 0
+    assert result.scenario_score_pct == before.scenario_score_pct
+    assert result.matches[0]["phase4_verification"] == status.lower()
+
+
+@pytest.mark.parametrize("phase3", [
+    None,
+    {"status": "completed_with_device_errors", "devices_total": 3, "devices_analyzed": 0,
+     "devices_failed": [{"device_id": str(i)} for i in range(3)]},
+    {"status": "running", "devices_total": 3, "devices_analyzed": 3},
+    {"status": "completed", "devices_total": 3, "devices_analyzed": 2},
+    {"status": "completed", "devices_total": 0, "devices_analyzed": 0},
+    {"status": "completed", "devices_total": 3, "devices_analyzed": 4},
+    {"status": "completed", "devices_total": 3, "devices_analyzed": 3, "scanner_errors": ["timeout"]},
+    {"status": "completed", "devices_total": 3, "devices_analyzed": 3, "devices_failed": "invalid"},
+])
+def test_zero_gt_without_complete_analysis_has_no_official_score(tmp_path, phase3):
+    run, gt = _write(tmp_path, [], vulnerabilities=[])
+    if phase3 is not None:
+        (run / "03_phase3_status.json").write_text(json.dumps(phase3))
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.specificity is None
+    assert result.scenario_score_pct is None
+    assert "complete" in result.score_unavailable_reason
+
+
+@pytest.mark.parametrize("findings,expected", [([], 100.0), ([_finding()], 0.0)])
+def test_zero_gt_completed_analysis_can_be_scored(tmp_path, findings, expected):
+    run, gt = _write(tmp_path, findings, vulnerabilities=[])
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [
+        {"vuln_id": f["id"], "status": "CONFIRMED", "evidence_level": 2,
+         "tool_used": "http_get", "evidence": "password=secret"}
+        for f in findings
+    ]}))
+    (run / "tool_calls.jsonl").write_text("")
+    (run / "03_phase3_status.json").write_text(json.dumps({
+        "status": "completed", "devices_total": 3, "devices_analyzed": 3,
+        "devices_failed": [],
+    }))
+    result = evaluate(run, gt, policy=STRICT_V3)
+    assert result.scenario_score_pct == expected
+    assert result.score_unavailable_reason is None
+    metadata = json.loads((run / "run_meta.json").read_text())
+    metadata["metric_contract_version"] = "strict-v3.3"
+    (run / "run_meta.json").write_text(json.dumps(metadata))
+    legacy = evaluate(run, gt, policy=STRICT_V3)
+    assert legacy.scenario_score_pct is None
+    assert "strict-v3.3" in legacy.score_unavailable_reason
+
+
+@pytest.mark.parametrize("split", ["dev", "test"])
+def test_split_ground_truth_loads_shared_contract_and_checks_hash(tmp_path, split):
+    run, original_gt = _write(tmp_path, [_finding()])
+    directory = tmp_path / "ground_truth" / split
+    directory.mkdir(parents=True)
+    gt = directory / "scenario_test.yaml"
+    data = yaml.safe_load(original_gt.read_text())
+    # Override a derived primary type in the shared contract to prove it is read.
+    del data["vulnerabilities"][0]["accepted_types"]
+    gt.write_text(yaml.safe_dump(data))
+    sidecar = directory.parent / "matching_contracts.yaml"
+    contract = {
+        "schema_version": "strict-v3.2",
+        "source_hashes": {"test": hashlib.sha256(gt.read_bytes()).hexdigest()},
+        "scenarios": {"test": {"V1": {"accepted_types": ["no_auth"]}}},
+    }
+    sidecar.write_text(yaml.safe_dump(contract))
+    assert evaluate(run, gt, policy=STRICT_V3).true_positives == 0
+    gt.write_text(gt.read_text() + "\n")
+    with pytest.raises(ValueError, match="Stale strict-v3"):
+        evaluate(run, gt, policy=STRICT_V3)
+    sidecar.unlink()
+    with pytest.raises(ValueError, match="Missing shared"):
+        evaluate(run, gt, policy=STRICT_V3)
+    sidecar.write_text("scenarios: [invalid yaml")
+    with pytest.raises(ValueError, match="Invalid strict-v3"):
+        evaluate(run, gt, policy=STRICT_V3)
+
+
+def test_negative_control_violation_is_diagnostic_without_double_penalty(tmp_path):
     control = {
         "id": "C1", "ip": "192.0.2.20", "assertion": "anonymous_mqtt_denied",
     }
@@ -294,8 +409,9 @@ def test_negative_control_violation_reduces_primary_score(tmp_path):
     result = evaluate(run, gt, policy=STRICT_V3)
     assert result.negative_control_violations == 1
     assert result.negative_control_specificity == 0.0
-    assert result.negative_control_penalty_factor == 0.8
-    assert result.scenario_score_pct == 26.6
+    assert result.negative_control_penalty_factor == 1.0
+    assert result.scenario_score_pct is None
+    assert result.funnel["stages"]["filtered"]["false_positives"] == 1
 
 
 def test_unknown_cve_is_reported_and_cannot_match_cve_gt(tmp_path):
@@ -392,7 +508,7 @@ def test_unknown_well_formed_cve_is_separate_from_invalid_claims(tmp_path):
     assert result.invalid_cve_claims == 0
 
 
-def test_http_request_and_raw_socket_results_receive_semantic_verdicts():
+def test_http_request_and_raw_socket_results_require_semantic_verdicts():
     http = {
         "tool": "http_request",
         "result": {"status_code": 200, "body": "password=secret"},
@@ -408,7 +524,7 @@ def test_http_request_and_raw_socket_results_receive_semantic_verdicts():
     finding = _finding(data_extracted=["password=secret"])
     assert _tool_call_outcome(http, finding) is True
     assert _tool_call_outcome(denied, finding) is False
-    assert _tool_call_outcome(tcp, finding) is True
+    assert _tool_call_outcome(tcp, finding) is False
 
 
 def test_extracted_json_text_is_found_inside_structured_tool_output(tmp_path):

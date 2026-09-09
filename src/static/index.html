@@ -315,31 +315,18 @@
       Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.
     </div>
     <table id="bm-table" hidden>
+      <caption>Pred = prédictions · VP = vrais positifs · FP = faux positifs · FN = failles attendues non retrouvées à cette étape. Dans le rapport final, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
       <thead>
         <tr>
           <th>Run</th>
           <th>Scénario</th>
+          <th scope="col">1. Candidats</th>
+          <th scope="col">2. Après filtrage</th>
+          <th scope="col">3. Rapport final</th>
           <th>Modèle</th>
-          <th>Commit</th>
           <th>Statut</th>
-          <th>Coût</th>
-          <th title="Coût et nombre de tours rapportés aux vrais positifs">Effic. ⓘ</th>
-          <th>Recall</th>
-          <th>Precision</th>
-          <th>F1</th>
-          <th title="Quality-adjusted F1 pour les scénarios positifs, spécificité pour les contrôles">Q-F1/Spec ⓘ</th>
-          <th>Score</th>
-          <th>Score%</th>
-          <th>Score LLM</th>
-          <th title="CVE : correspondance CVE exacte | T : IP + type | ~ : IP + catégorie (loose)" style="cursor:help">Qualité ⓘ</th>
-          <th title="Sévérité globale trouvée vs attendue" style="cursor:help">Sévérité ⓘ</th>
-          <th title="F1 des preuves traçables, couverture et faithfulness">Preuves ⓘ</th>
-          <th title="Couverture d'exploitation, verdicts Phase 4 et F1 vérifié">Exploit. ⓘ</th>
-          <th title="Couverture qualité/vérifiée des chemins et Multi-Hop Reach">Chemins ⓘ</th>
-          <th title="Cibles compromises, pivots réussis et couverture des transitions Phase 5">Intrusion ⓘ</th>
-          <th title="Taux de faux positifs (hallucinations LLM)" style="cursor:help">Halluc. ⓘ</th>
-          <th title="V: validations réussies · F: fallbacks de format · O: erreurs outils" style="cursor:help">Qualité proc. ⓘ</th>
-          <th>Score qualité</th>
+          <th>Coût et efficacité</th>
+          <th>Diagnostic</th>
         </tr>
       </thead>
       <tbody id="bm-tbody"></tbody>

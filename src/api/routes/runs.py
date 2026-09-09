@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
+from src.benchmark.strict_v3 import matching_contract_path
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ _BENCHMARK_CACHE_INPUTS = (
     "run_meta.json",
     "03_phase3_status.json",
     "03_vuln_analysis.json",
+    "03_vuln_analysis_raw.json",
     "04_exploitation.json",
     "05_intrusion.json",
     "05_intrusion_context.json",
@@ -45,6 +47,8 @@ _COMPACT_SCORE_FIELDS = frozenset({
     "scoring_policy",
     "evidence_contract_compatible",
     "metrics_compatibility_reason",
+    "score_unavailable_reason",
+    "funnel",
     "is_zero_gt",
     "recall",
     "precision",
@@ -80,6 +84,7 @@ _COMPACT_SCORE_FIELDS = frozenset({
     "tp_exploited",
     "true_positives",
     "total_attack_paths",
+    "verified_attack_paths",
     "attack_paths_detected",
     "quality_path_coverage",
     "verified_path_coverage",
@@ -112,6 +117,7 @@ _COMPACT_SCORE_FIELDS = frozenset({
     "cost_per_expected_vulnerability",
     "turns_per_tp",
     "total_tokens",
+    "total_cost_usd",
     "total_tool_calls",
     "cost_is_estimate",
     "process_metrics_available",
@@ -366,6 +372,11 @@ def _benchmark_fingerprint(run_dir: Path, ground_truth: Path) -> str:
     digest.update(f"benchmark-cache-v{_BENCHMARK_CACHE_SCHEMA}\0strict-v3\0".encode())
     paths = [run_dir / name for name in _BENCHMARK_CACHE_INPUTS]
     paths.append(ground_truth)
+    paths.append(matching_contract_path(ground_truth))
+    paths.append(ROOT / "src" / "agent" / "vuln_taxonomy.py")
+    paths.append(ROOT / "src" / "agent" / "report_evidence.py")
+    paths.append(ROOT / "src" / "agent" / "exploit_evidence.py")
+    paths.extend(sorted((ROOT / "src" / "agent" / "evidence").glob("*.py")))
     paths.extend(sorted((ROOT / "src" / "benchmark").glob("*.py")))
     for path in paths:
         digest.update(str(path).encode("utf-8", errors="surrogateescape"))

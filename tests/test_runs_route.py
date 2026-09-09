@@ -54,6 +54,63 @@ class TestExtractCommit:
         assert _extract_commit(tmp_path) is None
 
 
+@pytest.mark.parametrize("split", ["dev", "test"])
+def test_score_cache_tracks_shared_contract_changes(tmp_path, split):
+    run = tmp_path / "run"
+    run.mkdir()
+    directory = tmp_path / "ground_truth" / split
+    directory.mkdir(parents=True)
+    gt = directory / "scenario_1.yaml"
+    gt.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+    sidecar = directory.parent / "matching_contracts.yaml"
+    absent = runs._benchmark_fingerprint(run, gt)
+    sidecar.write_text("schema_version: strict-v3.2\n")
+    created = runs._benchmark_fingerprint(run, gt)
+    sidecar.write_text("schema_version: strict-v3.2\nscenarios: {}\n")
+    assert len({absent, created, runs._benchmark_fingerprint(run, gt)}) == 3
+
+
+def test_score_cache_tracks_candidate_snapshot_changes(tmp_path):
+    run = tmp_path / "run"
+    run.mkdir()
+    gt = tmp_path / "gt.yaml"
+    gt.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+    registry = run / "03_vuln_analysis_raw.json"
+    absent = runs._benchmark_fingerprint(run, gt)
+    registry.write_text('{"candidates": []}')
+    created = runs._benchmark_fingerprint(run, gt)
+    registry.write_text('{"candidates": [{"candidate_id": "C1"}]}')
+    assert len({absent, created, runs._benchmark_fingerprint(run, gt)}) == 3
+
+
+@pytest.mark.parametrize("relative_module", [
+    "exploit_evidence.py", "evidence/records.py", "evidence/capabilities.py",
+    "evidence/new_proof_rule.py",
+])
+def test_score_cache_tracks_shared_proof_rules(tmp_path, monkeypatch, relative_module):
+    monkeypatch.setattr(runs, "ROOT", tmp_path)
+    run = tmp_path / "run"
+    run.mkdir()
+    gt = tmp_path / "gt.yaml"
+    gt.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+    module = tmp_path / "src" / "agent" / relative_module
+    module.parent.mkdir(parents=True)
+    absent = runs._benchmark_fingerprint(run, gt)
+    module.write_text("# first rules\n")
+    created = runs._benchmark_fingerprint(run, gt)
+    module.write_text("# updated shared proof rules\n")
+    assert len({absent, created, runs._benchmark_fingerprint(run, gt)}) == 3
+
+
+def test_compact_score_preserves_new_dashboard_proof_and_efficiency_fields():
+    score = {
+        "total_cost_usd": 4.5, "verified_attack_paths": 1, "total_attack_paths": 2,
+        "funnel": {"diagnostics": {"proofs": {"available": True, "accepted": 1, "rejected": 0, "missing": 0},
+                                  "cost_per_valid_confirmation": 4.5, "turns_per_valid_confirmation": 18}},
+    }
+    assert runs._compact_score(score) == score
+
+
 def _sealed_summary(scenario_id="20", benchmark_version=None):
     if benchmark_version is None:
         from src.benchmark.catalog import load_catalog
@@ -242,6 +299,7 @@ class TestRunEndpoints:
         assert exc.value.status_code == 404
 
     def test_public_hardened_variant_can_be_scored(self, tmp_path, monkeypatch):
+        from src.benchmark.metric_contract import metric_contract_metadata
         output_dir = tmp_path / "output"
         run_dir = output_dir / "public-run"
         run_dir.mkdir(parents=True)
@@ -253,6 +311,16 @@ class TestRunEndpoints:
         )
         monkeypatch.setattr(runs, "OUTPUT_DIR", output_dir)
 
+        incomplete = score_run("public-run")
+        assert incomplete["scenario_score_pct"] is None
+        assert incomplete["score_unavailable_reason"]
+        (run_dir / "run_meta.json").write_text(json.dumps(metric_contract_metadata()))
+        (run_dir / "03_phase3_status.json").write_text(json.dumps({
+            "status": "completed", "devices_total": 3, "devices_analyzed": 3,
+            "devices_failed": [],
+        }))
+        (run_dir / "04_exploitation.json").write_text(json.dumps({"tests": []}))
+        (run_dir / "tool_calls.jsonl").write_text("")
         result = score_run("public-run")
 
         assert result["scenario_id"] == "1h"
@@ -411,8 +479,10 @@ class TestRunEndpoints:
         assert len(calls) == 2
 
     def test_compact_score_keeps_only_table_match_fields(self):
+        funnel = {"schema_version": "funnel-v1", "stages": {"candidates": {"predictions": 12}}}
         compact = runs._compact_score({
             "recall": 0.5,
+            "funnel": funnel,
             "evidence_claim_assessments": [{"large": "payload"}],
             "matches": [{
                 "matched": True,
@@ -424,6 +494,7 @@ class TestRunEndpoints:
 
         assert compact == {
             "recall": 0.5,
+            "funnel": funnel,
             "matches": [{
                 "matched": True,
                 "match_method": "cve",

@@ -1106,6 +1106,13 @@ button:disabled { opacity: .35; cursor: default; }
   font-size: 12px;
 }
 
+#bm-table caption {
+  padding: 0 10px 12px;
+  color: var(--muted);
+  text-align: left;
+  line-height: 1.5;
+}
+
 #bm-table th {
   padding: 6px 10px;
   text-align: left;
@@ -1121,51 +1128,43 @@ button:disabled { opacity: .35; cursor: default; }
 #bm-table td {
   padding: 7px 10px;
   border-bottom: 1px solid rgba(48,54,61,.5);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 #bm-table tr:hover td { background: var(--white-hover); }
 
-#bm-table td.bm-run-id {
+.bm-run-link {
   font-family: monospace;
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 6px 0;
+  text-align: left;
   cursor: pointer;
 }
-#bm-table td.bm-run-id:hover { color: var(--accent); }
-
-.bm-bar-wrap {
-  width: 80px;
-  height: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.bm-bar {
-  height: 100%;
-  border-radius: 2px;
-  transition: width .3s ease;
-}
+.bm-run-link:hover { color: var(--accent); }
+.bm-run-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bm-commit, .bm-model small, .bm-efficiency small { display: block; margin-top: 6px; font-size: 12px; }
+.bm-model { min-width: 130px; max-width: 170px; overflow-wrap: anywhere; }
+.bm-efficiency { min-width: 160px; line-height: 1.5; }
+.bm-final-score { font-weight: 650; }
+.bm-unavailable small { display: block; max-width: 230px; white-space: normal; }
 .bm-no-score { color: var(--muted); font-size: 11px; font-style: italic; }
-.bm-metric {
-  display: block;
-  min-width: 86px;
-  white-space: nowrap;
-  cursor: help;
+
+.bm-funnel-stage {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
 }
-.bm-metric-main {
-  display: block;
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 600;
-}
-.bm-metric-sub {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 9px;
-}
+.bm-funnel-diagnostics { min-width: 90px; max-width: 320px; white-space: normal; font-size: 13px; }
+.bm-funnel-diagnostics[open] { min-width: 260px; }
+.bm-funnel-diagnostics summary { cursor: pointer; padding: 6px 0; }
+.bm-funnel-diagnostics summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bm-funnel-diagnostics p { margin: 8px 0; line-height: 1.5; }
 
 /* ── Compare modal ───────────────────────────────────────────────────────── */
 #compare-overlay {

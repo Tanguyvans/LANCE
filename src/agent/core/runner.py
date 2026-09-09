@@ -7,7 +7,6 @@ from uuid import uuid4
 import json
 import logging
 from src.agent.phases.intrusion.compact import COMPACT_INTRUSION_COMPLETION_TOOL
-from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.core import runtime
 
 
@@ -576,85 +575,9 @@ class AgentRunner:
         allowed.update(runtime.INTERNAL_TOOLS)
         return [tool for tool in tools if tool.get("name") in allowed]
 
-    def _wrap_tool(self, tool: dict, *, phase: int | str | None = None, agent: str | None = None) -> dict:
-        """Wrap a tool function to log its calls and results to tool_calls.jsonl."""
-        original_fn = tool["function"]
-        if original_fn is None:
-            return tool
-
-        log_path = self.run_dir / "tool_calls.jsonl"
-        tool_name = tool["name"]
-
-        def logged_fn(**kwargs):
-            evidence_ref = f"tc-{uuid4().hex}"
-            with self._artifact_log_lock:
-                if self.max_tool_calls is not None and self._tool_call_count >= self.max_tool_calls:
-                    raise RuntimeError(
-                        f"Sealed tool-call budget exhausted ({self.max_tool_calls} calls)"
-                    )
-                self._tool_call_count += 1
-                sequence = self._tool_call_count
-
-            def write_entry(result: object) -> None:
-                exploit_context = getattr(
-                    getattr(self, "_exploit_tool_context", None),
-                    "vulnerability", None,
-                ) or {}
-                entry = json.dumps({
-                    "timestamp": datetime.now().astimezone().isoformat(),
-                    "sequence": sequence,
-                    "tool": tool_name,
-                    "args": kwargs,
-                    "result": result if isinstance(result, str) else str(result),
-                    "phase": phase,
-                    "agent": agent,
-                    "evidence_ref": evidence_ref,
-                    **exploit_context,
-                }, ensure_ascii=False, default=str)
-                with self._artifact_log_lock:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(entry + "\n")
-
-            stop_event = getattr(self, "_stop_event", None)
-            if stop_event is not None and stop_event.is_set():
-                stopped = json.dumps({
-                    "ok": False,
-                    "error_kind": "run_stopped",
-                    "error": "Tool call cancelled because the run was stopped.",
-                    "tool": tool_name,
-                }, ensure_ascii=False)
-                write_entry(stopped)
-                return stopped
-
-            try:
-                if str(phase) == "5" and self._uses_compact_local_moe():
-                    scope_violation = _intrusion_scope_violation(
-                        tool_name,
-                        kwargs,
-                        self.context.get("target_subnet", ""),
-                    )
-                    if scope_violation is not None:
-                        refused = json.dumps(scope_violation, ensure_ascii=False)
-                        write_entry(refused)
-                        return refused
-                result = original_fn(**kwargs)
-            except Exception as exc:
-                try:
-                    write_entry(json.dumps({
-                        "error": str(exc),
-                        "exception_type": type(exc).__name__,
-                    }, ensure_ascii=False))
-                except Exception:
-                    pass  # Never mask the original tool exception with logging.
-                raise
-
-            try:
-                write_entry(result)
-            except Exception:
-                pass  # Never break the pipeline for logging.
-            return result
-
-        return {**tool, "function": logged_fn}
+    def _wrap_tool(self, tool: dict, *, phase=None, agent=None) -> dict:
+        from src.agent.core.executor import wrap_tool
+        return wrap_tool(self, tool, phase=phase, agent=agent)
 
     def _filter_skills(self, config: runtime.AgentConfig) -> str:
         """Filter skills by tag intersection with config.skill_filter.

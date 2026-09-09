@@ -1,6 +1,8 @@
 name: "mysql_query"
 command: "mysql"
-args: ["--connect-timeout=5", "-N"]
+# Keep this probe on TCP and explicitly disable password prompting.  CLI
+# options take precedence over inherited MYSQL_PWD/login-path credentials.
+args: ["--no-defaults", "--protocol=TCP", "--skip-password", "--connect-timeout=5", "-N"]
 enabled: true
 timeout: 15
 short_description: "MySQL/MariaDB query execution"
@@ -21,6 +23,13 @@ parameters:
     description: "Database user (e.g. 'root')"
     required: true
     flag: "-u"
+    format: "flag"
+  - name: "port"
+    type: "integer"
+    description: "Explicit TCP port"
+    required: false
+    default: 3306
+    flag: "-P"
     format: "flag"
   - name: "query"
     type: "string"

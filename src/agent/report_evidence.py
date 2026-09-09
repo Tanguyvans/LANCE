@@ -21,6 +21,22 @@ def is_verified_report_finding(test: dict) -> bool:
     )
 
 
+def verification_state(test: dict) -> str:
+    """Separate an execution failure from a demonstrated negative claim.
+
+    The current tools do not implement a general proof-of-absence validator.
+    In particular FAILED/NOT_EXPLOITABLE must not mean 'false positive'.
+    """
+    status = str(test.get("status") or "").upper()
+    if is_verified_report_finding(test):
+        return "confirmed"
+    if status in {"ERROR", "TIMEOUT"}:
+        return "error"
+    if status in {"SKIPPED", "UNTESTED", "NOT_TESTED"} or not status:
+        return "not_tested"
+    return "inconclusive"
+
+
 def report_phase4_summary(summary: dict, tests: list[dict]) -> dict:
     """Project counters without altering the original evidence artifact."""
     report_summary = dict(summary or {})
@@ -34,4 +50,7 @@ def report_phase4_summary(summary: dict, tests: list[dict]) -> dict:
     report_summary["confirmed"] = verified_count
     report_summary["verified_confirmed"] = verified_count
     report_summary["unverified_confirmed"] = unverified_confirmed
+    report_summary["inconclusive"] = sum(verification_state(t) == "inconclusive" for t in tests)
+    report_summary["not_tested"] = sum(verification_state(t) == "not_tested" for t in tests)
+    report_summary.pop("not_exploitable", None)
     return report_summary

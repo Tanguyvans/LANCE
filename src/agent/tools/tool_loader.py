@@ -25,34 +25,6 @@ DEFINITIONS_DIR = Path(__file__).parent / "definitions"
 REQUIRED_KEYS = {"name", "description", "parameters"}
 HARDWARE_KEYS = {"name", "description"}
 
-import hashlib
-
-# Cache for deduplicating tool outputs (Stateful Tooling)
-# Format: { "tool_name_target_context": {signature: original_line_or_response} }
-#
-# Important: cached repeats must replay the original evidence instead of
-# replacing it with a summary. Phase 4 aggregation depends on the concrete
-# tool output to decide whether a verdict is supported.
-_TOOL_CACHE: dict[str, dict[str, str]] = {}
-
-
-def reset_tool_cache() -> None:
-    """Drop evidence cached by earlier pipeline runs in this process."""
-    _TOOL_CACHE.clear()
-
-
-def _get_payload_signature(payload_str: str) -> str:
-    """Generate a signature based on payload type/structure rather than exact content."""
-    payload_stripped = payload_str.strip()
-    if payload_stripped.startswith("{") and payload_stripped.endswith("}"):
-        try:
-            data = json.loads(payload_stripped)
-            if isinstance(data, dict):
-                keys = ",".join(sorted(data.keys()))
-                return f"json_keys:{keys}"
-        except json.JSONDecodeError:
-            pass
-    return hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
 
 def load_tool_yaml(path: Path) -> dict[str, Any]:
     """Parse and validate a single tool YAML file."""
@@ -204,58 +176,32 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                 cmd.extend(positional_values)
 
         from src.agent.tools.recon_tools import _run
+        execution_attestation = None
+        if tool_def["name"] == "mysql_query":
+            try:
+                explicit_port = int(kwargs.get("port", 3306))
+            except (TypeError, ValueError):
+                explicit_port = None
+            execution_attestation = {
+                "protocol": "TCP",
+                "host": str(kwargs.get("host") or ""),
+                "port": explicit_port,
+                "user": str(kwargs.get("user") or ""),
+                "query": str(kwargs.get("query") or ""),
+                "no_defaults": "--no-defaults" in fixed_args,
+                "protocol_tcp": "--protocol=TCP" in fixed_args,
+                "empty_password_cli": (
+                    "--skip-password" in fixed_args or "--password=" in fixed_args
+                ),
+            }
         result = _run(cmd, timeout=effective_timeout)
+
+        if execution_attestation is not None:
+            result["execution_attestation"] = execution_attestation
 
         stdout = result.get("stdout", "")
         tool_name = tool_def["name"]
 
-        # --- Deduplication Cache Logic ---
-        if tool_name == "mqtt_listen" and stdout:
-            broker = kwargs.get("broker", "unknown")
-            topic = kwargs.get("topic", "#")
-            username = kwargs.get("username") or ""
-            password = kwargs.get("password") or ""
-            cache_key = f"mqtt_{broker}_{topic}_{username}_{password}"
-            if cache_key not in _TOOL_CACHE:
-                _TOOL_CACHE[cache_key] = {}
-
-            new_lines = []
-            replayed_lines = []
-            for line in stdout.splitlines():
-                parts = line.split(" ", 1)
-                if len(parts) == 2:
-                    topic, payload = parts
-                    sig = f"{topic}::{_get_payload_signature(payload)}"
-                    if sig not in _TOOL_CACHE[cache_key]:
-                        _TOOL_CACHE[cache_key][sig] = line
-                        new_lines.append(line)
-                    else:
-                        replayed_lines.append(_TOOL_CACHE[cache_key][sig])
-                else:
-                    new_lines.append(line)  # Keep unparseable lines
-
-            if not new_lines and stdout.strip():
-                result["stdout"] = "\n".join(replayed_lines) if replayed_lines else stdout
-                result["cache_replayed"] = True
-                result["cache_note"] = "Duplicate MQTT payload structures replayed from the first observation."
-            else:
-                result["stdout"] = "\n".join(new_lines)
-
-        elif tool_name == "curl_headers" and stdout:
-            url = kwargs.get("url", "unknown")
-            cache_key = f"curl_{url}"
-            sig = hashlib.sha256(stdout.encode("utf-8")).hexdigest()
-
-            if cache_key not in _TOOL_CACHE:
-                _TOOL_CACHE[cache_key] = {}
-
-            if sig in _TOOL_CACHE[cache_key]:
-                result["stdout"] = _TOOL_CACHE[cache_key][sig]
-                result["cache_replayed"] = True
-                result["cache_note"] = "Identical HTTP response replayed from the first observation."
-            else:
-                _TOOL_CACHE[cache_key][sig] = stdout
-        # ---------------------------------
 
         if filter_lines and result.get("stdout"):
             import re

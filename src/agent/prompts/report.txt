@@ -75,7 +75,7 @@ When filling the vulnerability table (Section 5), you MUST follow these rules:
 | Phase 4 Status | Report Status | Rule |
 |----------------|---------------|------|
 | CONFIRMED | **Confirmed** | NEVER downgrade to Potential. The exploit succeeded. |
-| NOT_EXPLOITABLE | **Not Exploitable** | The test ran but the exploit failed. |
+| NOT_EXPLOITABLE / FAILED | **Inconclusive** | This attempt failed to reproduce the finding; absence is not proven. |
 | ERROR | **Inconclusive** | Tool error — needs manual retest. |
 | *(no Phase 4 test)* | **Potential (untested)** | Phase 3 finding without Phase 4 validation. |
 | *(CVE match only)* | **Potential (CVE-based)** | Known CVE from NVD, no active test performed. |

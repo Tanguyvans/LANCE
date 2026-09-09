@@ -7,9 +7,18 @@ legacy derivation for public ground truths that predate those fields.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from src.agent.vuln_taxonomy import canonicalize
+
+
+def matching_contract_path(ground_truth: Path) -> Path:
+    """Resolve the shared public contract or an export-local sidecar."""
+    parent = ground_truth.parent
+    if parent.name in {"dev", "test"} and ground_truth.name.startswith("scenario_"):
+        parent = parent.parent
+    return parent / "matching_contracts.yaml"
 
 
 CATEGORY_PRIMARY_TYPES: dict[str, tuple[str, ...]] = {

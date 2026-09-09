@@ -24,6 +24,7 @@ from src.agent.phases.report.compact import CompactReportPhase
 from src.agent.core.runner import AgentRunner
 from src.agent.core.lifecycle import ScenarioLifecycle
 from src.agent.core.runtime import OUTPUT_DIR, log
+from src.agent.cost_tracker import BudgetExceeded
 
 
 class Pipeline(
@@ -43,6 +44,33 @@ class Pipeline(
     ScenarioLifecycle,
 ):
     """Orchestrate phase modules with one shared run lifecycle."""
+
+    @staticmethod
+    def _archived_phase_models(phase_models: dict[int | str, str]) -> dict[str, str]:
+        """Serialize the model selected by the runtime's int-then-string lookup."""
+        grouped: dict[str, dict[str, object]] = {}
+        for key, value in phase_models.items():
+            name = str(key)
+            entry = grouped.setdefault(name, {})
+            if isinstance(key, int) and not isinstance(key, bool):
+                entry["integer"] = value
+            elif isinstance(key, str):
+                entry["string"] = value
+            else:
+                entry["other"] = value
+        archived: dict[str, str] = {}
+        for name, entry in grouped.items():
+            integer = entry.get("integer")
+            string = entry.get("string")
+            # _execute_run uses ``int_value or string_value``.  Mirror that
+            # precedence in metadata, including a falsey integer fallback.
+            selected = integer or string
+            if selected is None:
+                selected = integer if "integer" in entry else string
+            if selected is None:
+                selected = entry.get("other")
+            archived[name] = selected  # type: ignore[assignment]
+        return archived
 
     def __init__(
         self,
@@ -145,7 +173,8 @@ class Pipeline(
             # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
             # on the same /24 via the OpenWrt router's WAN, then must pivot.
             self.target_network = runtime.BENCHMARK_SUBNET
-        self.tracker = runtime.CostTracker(model=provider.model, provider=provider.provider)
+        self.tracker = runtime.CostTracker(model=provider.model, provider=provider.provider,
+                                          max_cost_usd=self.max_cost_usd)
         self.context: dict = {}
         # Set by run(); shared with phase workers so a dashboard stop request
         # can cancel queued work instead of waiting for the whole phase.
@@ -172,44 +201,140 @@ class Pipeline(
         self._scenario_owned = False
         self._active_phase = None
         self._run_results: dict[str, str] = {}
+        primary_error = None
+        lifecycle_error = None
+
+        def capture_lifecycle_error(
+            step: str, exc: BaseException, *, usage: bool = False
+        ) -> None:
+            nonlocal lifecycle_error
+            (usage_errors if usage else lifecycle_errors).append(f"{step}: {exc}")
+            if lifecycle_error is None and isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                lifecycle_error = exc
+                # A lifecycle interruption after a stale budget flag is still
+                # an explicit stop.  A primary execution exception remains the
+                # cause of record and is never replaced by teardown noise.
+                if primary_error is None and self._termination in (None, "budget_exceeded"):
+                    self._termination = "stopped" if isinstance(exc, KeyboardInterrupt) else "failed"
+            log.exception("Pipeline lifecycle step failed: %s", step)
+
         try:
             results = self._execute_run(stream_callback, stop_event)
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as exc:
+            primary_error = exc
             self._termination = "stopped"
             raise
-        except BaseException:
+        except BudgetExceeded as exc:
+            # Budget exhaustion is a deliberate terminal cause, not a generic
+            # phase failure. Preserve it while still running the finally block.
+            primary_error = exc
+            self._termination = "budget_exceeded"
+            raise
+        except BaseException as exc:
+            primary_error = exc
             self._termination = "failed"
             if self._active_phase is not None:
                 self._run_results[self._active_phase] = "failed:exception"
             raise
         finally:
+            usage_status = "completed"
+            usage_errors: list[str] = []
+            lifecycle_errors: list[str] = []
+            try:
+                self.tracker.finalize()
+            except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                usage_status = "incomplete"
+                capture_lifecycle_error("finalize", exc, usage=True)
+            usage_json = None
+            try:
+                usage_json = self.tracker.to_json()
+            except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                usage_status = "incomplete"
+                capture_lifecycle_error("serialize", exc, usage=True)
+            if usage_json is not None:
+                try:
+                    (self.run_dir / "cost_summary.json").write_text(usage_json, encoding="utf-8")
+                except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                    usage_status = "incomplete"
+                    capture_lifecycle_error("write", exc, usage=True)
+
+            # A stop or phase outcome is more authoritative than a stale budget
+            # flag. Infer those causes before considering tracker state.
+            if self._termination is None and stop_event and stop_event.is_set():
+                self._termination = "stopped"
+            if self._termination is None:
+                inferred_status = runtime.run_status(self._run_results, None)
+                if inferred_status in {"failed", "stopped"}:
+                    self._termination = inferred_status
+                elif getattr(self, "_evidence_integrity_failed", False):
+                    self._termination = "failed"
+                else:
+                    try:
+                        if getattr(self.tracker, "budget_exhausted", False) is True:
+                            self._termination = "budget_exceeded"
+                    except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                        capture_lifecycle_error("budget", exc)
             cleanup = "not_required"
             if self._scenario_owned and self.auto_teardown and not self.dry_run:
                 try:
                     cleanup = "completed" if self._run_teardown(stream_callback) else "failed"
-                except Exception:
+                except (Exception, KeyboardInterrupt, SystemExit) as exc:
                     cleanup = "failed"
-                    log.exception("Run cleanup failed")
-            if self._termination is None and stop_event and stop_event.is_set():
+                    capture_lifecycle_error("cleanup", exc)
+            # The dashboard may request a stop while teardown is in progress.
+            # Re-check after cleanup, without replacing a primary/failed cause;
+            # a plain budget flag is still superseded by this explicit stop.
+            if (
+                stop_event and stop_event.is_set()
+                and primary_error is None
+                and self._termination in (None, "budget_exceeded")
+            ):
                 self._termination = "stopped"
             status = runtime.run_status(self._run_results, self._termination)
+            if getattr(self, "_evidence_integrity_failed", False):
+                status = "failed"
             if cleanup == "failed" and status == "completed":
                 status = "partial"
+            if usage_status == "incomplete" and status in {"completed", "skipped"}:
+                status = "partial"
             # Metadata failure must not hide the original execution exception.
+            metadata_status = "completed"
             try:
                 self._update_run_meta({
                     "status": status, "cleanup_status": cleanup,
                     "results": self._run_results,
+                    "evidence_integrity": not getattr(self, "_evidence_integrity_failed", False),
+                    "usage_status": usage_status,
+                    "usage_errors": usage_errors,
+                    "lifecycle_errors": lifecycle_errors,
                 })
-            except Exception:
-                log.exception("Could not persist terminal run state")
-            self._persist_run(status)
+            except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                metadata_status = "failed"
+                capture_lifecycle_error("metadata", exc)
+            try:
+                self._persist_run(status)
+            except (Exception, KeyboardInterrupt, SystemExit) as exc:
+                capture_lifecycle_error("run_persistence", exc)
+
+            # If a lifecycle-only interruption happened after a successful
+            # execution, report the terminal state then re-raise it. An
+            # execution exception already in flight always wins.
+            if lifecycle_error is not None and primary_error is None:
+                raise lifecycle_error.with_traceback(lifecycle_error.__traceback__)
 
         if stream_callback:
+            total_cost = None
+            try:
+                raw_total_cost = self.tracker.total_cost()
+                total_cost = round(raw_total_cost, 4) if raw_total_cost is not None else None
+            except Exception:
+                log.exception("Could not calculate final usage cost")
             stream_callback({
                 "type": "pipeline_done", "results": results,
                 "status": status, "cleanup_status": cleanup,
-                "total_cost_usd": round(self.tracker.total_cost(), 4),
+                "total_cost_usd": total_cost,
+                "usage_status": usage_status,
+                "metadata_status": metadata_status,
                 "run_dir": str(self.run_dir),
             })
         return results
@@ -253,7 +378,6 @@ class Pipeline(
         """
         # A dashboard stop is a run-level control, not a compact-model feature.
         self._stop_event = stop_event
-        runtime.reset_tool_cache()
         self.scenario_tool_policy = self._load_scenario_tool_policy(self.scenario_id)
         self._load_scenario_runtime_limits(self.scenario_id)
 
@@ -318,7 +442,15 @@ class Pipeline(
 
         # Save run metadata (git commit, model) for traceability
         run_meta = {
+            # Explicit planned configuration for reproducible aggregation.
+            # Campaign IDs and git SHA remain traceability only; neither is a
+            # substitute for these settings on a dirty checkout.
+            "provider": getattr(self.provider, "provider", None),
             "model": getattr(self.provider, "model", None),
+            "blind": bool(self.blind),
+            "max_cost_usd": self.max_cost_usd,
+            "max_tool_calls": self.max_tool_calls,
+            "phase_models": self._archived_phase_models(self.phase_models),
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
             "cve_lookup_policy": self.cve_lookup_policy,
@@ -329,6 +461,7 @@ class Pipeline(
             ),
             "runtime_unavailable_tools": self.runtime_unavailable_tools,
             "oracle_access": False,
+            "episodic_memory_enabled": self.benchmark_split == "unassigned",
             "requested_phases": (
                 self.requested_phases
                 if self.requested_phases is not None else [1, 2, 3, 4, 5, 6]
@@ -514,32 +647,47 @@ class Pipeline(
                 self._emit_intrusion_events(stream_callback)
 
             # Enforce budget limit after each phase
-            if self.max_cost_usd is not None and self.tracker.total_cost() >= self.max_cost_usd:
-                self._termination = "budget_exceeded"
-                log.warning(
-                    "Budget limit reached ($%.4f >= $%.4f) — stopping pipeline",
-                    self.tracker.total_cost(), self.max_cost_usd,
-                )
-                if stream_callback:
-                    stream_callback({
-                        "type": "error",
-                        "message": f"Budget dépassé (${self.tracker.total_cost():.4f} ≥ ${self.max_cost_usd:.4f}) — pipeline arrêté",
-                    })
-                break
+            if self.max_cost_usd is not None:
+                # A configured budget is a hard safety boundary.  If its cost
+                # check cannot be evaluated, stop before another phase rather
+                # than continuing without enforcement; run() still owns
+                # cleanup and preserves the resulting exception.
+                total_cost = self.tracker.total_cost()
+                if total_cost >= self.max_cost_usd:
+                    # Only a reached ceiling changes the existing phase flow.
+                    # Prefer the aggregate terminal cause over a stale budget
+                    # flag, including failures from an earlier phase.
+                    aggregate_status = runtime.run_status(results, None)
+                    if stop_event and stop_event.is_set():
+                        self._termination = "stopped"
+                    elif aggregate_status in {"failed", "stopped"}:
+                        self._termination = aggregate_status
+                    else:
+                        self._termination = "budget_exceeded"
+                    log.warning(
+                        "Budget limit reached ($%.4f >= $%.4f) — stopping pipeline",
+                        total_cost, self.max_cost_usd,
+                    )
+                    if stream_callback:
+                        stream_callback({
+                            "type": "error",
+                            "message": f"Budget dépassé (${total_cost:.4f} ≥ ${self.max_cost_usd:.4f}) — pipeline arrêté",
+                        })
+                    if self._termination in {"budget_exceeded", "failed", "stopped"}:
+                        break
 
         self._active_phase = None
 
-        # Print cost summary
-        self.tracker.print_summary()
+        # Console output is diagnostic only; terminal persistence happens in
+        # run()'s isolated finally block so it cannot abort teardown.
+        try:
+            self.tracker.print_summary()
+        except Exception:
+            log.exception("Could not print usage summary")
 
-        # Save cost summary to run directory
-        cost_path = self.run_dir / "cost_summary.json"
-        cost_path.write_text(self.tracker.to_json(), encoding="utf-8")
-        log.info("Cost summary saved to %s", cost_path)
-
-        # Episodic memory is intentionally disabled for sealed runs.  Otherwise
-        # later submissions could recover findings from earlier challenge seeds.
-        if not self.sealed:
+        # All benchmark runs are independent trials, including public dev/test.
+        # Never feed their findings into the persistent episodic memory.
+        if self.benchmark_split == "unassigned":
             try:
                 from src.agent.knowledge.ingest import ingest_run_findings
                 ingested = ingest_run_findings(self.run_dir, self.provider.model)

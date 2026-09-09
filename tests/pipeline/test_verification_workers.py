@@ -6,6 +6,37 @@ from src.agent.registry import AGENTS
 
 
 class TestInformationPreservingArchitecture:
+    def test_compact_configuration_observation_is_verified_not_automatically_skipped(
+        self, output_dir, monkeypatch,
+    ):
+        provider = MagicMock(provider="local-moe", model="lance-moe")
+        pipeline = Pipeline(provider=provider, execution_profile="compact")
+        pipeline.context["target_subnet"] = "192.0.2.0/24"
+        finding = {
+            "id": "V1", "device_id": "router", "device_ip": "192.0.2.1",
+            "type": "missing_header", "severity": "LOW", "service": "http",
+            "port": 80, "protocol": "tcp", "endpoint": "/",
+            "details": "Missing X-Frame-Options", "cve_ids": [],
+            "compact_detection_only": True,  # older saved observations must also run
+        }
+        (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": [finding]}))
+        calls = []
+
+        def curl_headers(**kwargs):
+            calls.append(kwargs)
+            return json.dumps({"return_code": 0, "stdout": "HTTP/1.1 200 OK\r\nServer: nginx\r\n\r\n"})
+
+        tool = pipeline._wrap_tool({"name": "curl_headers", "description": "headers",
+                                   "input_schema": {}, "function": curl_headers}, phase=4, agent="exploitation")
+        monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [tool])
+        provider.chat_with_tools.side_effect = TimeoutError("mock provider; exercise bounded fallback")
+        pipeline._run_exploit_agents(AGENTS["exploitation"])
+        aggregate = json.loads((pipeline.run_dir / "04_exploitation.json").read_text())
+        assert calls == [{"url": "http://192.0.2.1/"}]
+        assert aggregate["summary"]["skipped_count"] == 0
+        assert aggregate["tests"][0]["status"] == "CONFIRMED"
+        assert aggregate["tests"][0]["evidence_refs"]
+
     def test_phase4_empty_schedule_is_explicit_skip(
         self, mock_provider, output_dir
     ):
@@ -138,6 +169,7 @@ class TestInformationPreservingArchitecture:
         provider.provider = "local-moe"
         provider.model = "lance-moe"
         pipeline = Pipeline(provider=provider, execution_profile="compact")
+        pipeline.context["target_subnet"] = "192.0.2.0/24"
         finding = {
             "id": "VULN-TIMEOUT",
             "device_id": "router",

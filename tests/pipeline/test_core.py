@@ -448,21 +448,6 @@ def test_downstream_phase_selection_includes_prerequisites():
 
 class TestPipelineRun:
     @patch("src.agent.core.runtime.load_lab_context")
-    @patch("src.agent.core.runtime.reset_tool_cache")
-    def test_run_resets_process_tool_cache(
-        self, mock_reset_cache, mock_lab, mock_provider, output_dir
-    ):
-        mock_lab.return_value = {
-            "device_count": 0, "link_count": 0,
-            "cve_count": 0, "top_risk": "none",
-        }
-        pipeline = Pipeline(provider=mock_provider, dry_run=True, phases=[])
-
-        pipeline.run()
-
-        mock_reset_cache.assert_called_once_with()
-
-    @patch("src.agent.core.runtime.load_lab_context")
     def test_full_run_keeps_dashboard_stop_event(self, mock_lab, mock_provider, output_dir):
         from threading import Event
 
@@ -609,7 +594,7 @@ class TestInformationPreservingArchitecture:
         record = json.loads(
             (pipeline.run_dir / "tool_calls.jsonl").read_text().strip()
         )
-        result = json.loads(record["result"])
+        result = record["result"]
         assert record["sequence"] == 1
         assert record["tool"] == "failing_tool"
         assert record["phase"] == 3

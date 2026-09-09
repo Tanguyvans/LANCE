@@ -11,6 +11,7 @@ from src.agent.core.probes import (
 )
 from src.agent.vuln_taxonomy import canonicalize
 from src.agent.exploit_evidence import synthesize_exploit_result as _synthesize_exploit_result
+from src.agent.evidence.records import has_authentication
 
 
 # Full receives the same verification requirement as guidance but keeps its
@@ -275,10 +276,10 @@ def _phase4_verification_plan(
                     "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
         if service in {"mysql", "mariadb"} or port == 3306:
             return {"tool": "mysql_query", "target": ip, "port": port or 3306,
-                    "args_hint": {"host": ip, "user": "root",
+                    "args_hint": {"host": ip, "port": port or 3306, "user": "root",
                                   "query": "SELECT USER(), CURRENT_USER();",
                                   "skip_ssl": True},
-                    "success_condition": "query succeeds without a password"}
+                    "success_condition": "TCP query returns root USER() and CURRENT_USER() with a fixed empty CLI password"}
         return {"tool": "try_credential", "target": ip, "port": port, "service": service or "http",
                 "args_hint": {"ip": ip, "service": service or "http", "user": "admin", "password": "admin", "port": port}, "success_condition": "credential attempt result captured"}
     if vuln_type == "no_auth" and (service == "coap" or port == 5683):
@@ -354,10 +355,27 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
                 return False
     if tool == "mysql_query":
         hint = requirement.get("args_hint") or {}
+        expected_host = str(requirement.get("target") or "")
+        if expected_host and str(args.get("host") or "") != expected_host:
+            return False
+        expected_port = requirement.get("port")
+        try:
+            actual_port = args.get("port", 3306)
+            if actual_port is None:
+                return False
+            if expected_port not in (None, "") and int(actual_port) != int(expected_port):
+                return False
+        except (TypeError, ValueError):
+            return False
         expected_user = str(hint.get("user") or "").strip()
         if expected_user and str(args.get("user") or "").strip() != expected_user:
             return False
         if hint.get("skip_ssl") and not bool(args.get("skip_ssl")):
+            return False
+        if has_authentication(args):
+            return False
+        expected_query = str(hint.get("query") or "").strip()
+        if expected_query and str(args.get("query") or "").strip() != expected_query:
             return False
     if tool in {"http_get", "curl_headers", "http_request"}:
         raw_url = str(args.get("url") or "")

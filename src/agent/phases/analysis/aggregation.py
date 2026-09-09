@@ -1,10 +1,10 @@
 """Analysis phase: common execution and evidence handling."""
 from __future__ import annotations
 from collections.abc import Callable
+from copy import deepcopy
 from urllib.parse import urlsplit
 import json
 import re
-import yaml
 import logging
 from src.agent.phases.analysis.evidence import _enrich_finding_structure, _sanitize_suggested_tools
 from src.agent.core import runtime
@@ -185,35 +185,9 @@ class FindingAggregation:
                 surface_nodes = []
         except Exception:
             surface_nodes = []
-        # The graph tool intentionally returns a public, profile-free surface.
-        # Rehydrate only the topology's security-profile metadata here so the
-        # canonical queue can distinguish a control from a finding.
-        try:
-            scenario_path = runtime.resolve_scenario_path(self.scenario_id) if self.scenario_id is not None else None
-            scenario_doc = yaml.safe_load(scenario_path.read_text(encoding="utf-8")) if scenario_path and scenario_path.exists() else {}
-            topology_id = str((scenario_doc or {}).get("topology") or "")
-            topology_path = runtime.resolve_topology_path(self.scenario_id, topology_id) if topology_id else None
-            topology_doc = yaml.safe_load(topology_path.read_text(encoding="utf-8")) if topology_path and topology_path.exists() else {}
-            profile_by_ip: dict[str, str] = {}
-            router_doc = (topology_doc or {}).get("router") or {}
-            if router_doc.get("ip") and router_doc.get("security_profile"):
-                profile_by_ip[str(router_doc["ip"])] = str(router_doc["security_profile"])
-            for service_doc in (topology_doc or {}).get("services", []):
-                if service_doc.get("ip") and service_doc.get("security_profile"):
-                    profile_by_ip[str(service_doc["ip"])] = str(service_doc["security_profile"])
-            for node in surface_nodes:
-                if isinstance(node, dict) and str(node.get("ip") or "") in profile_by_ip:
-                    node["security_profile"] = profile_by_ip[str(node["ip"])]
-        except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
-            log.warning("Could not load canonical simulator profiles: %s", exc)
 
         surface_roles = {
             str(node.get("id") or ""): str(node.get("role") or node.get("type") or "").casefold()
-            for node in surface_nodes
-            if isinstance(node, dict)
-        }
-        surface_profiles = {
-            str(node.get("id") or ""): str(node.get("security_profile") or "").casefold()
             for node in surface_nodes
             if isinstance(node, dict)
         }
@@ -384,6 +358,13 @@ class FindingAggregation:
         records_by_id = {r["candidate_id"]: r for r in raw_records}
         cve_search_evidence = self._load_cve_search_evidence()
         catalog_tool_names = runtime.available_tool_names()
+        # Freeze the pre-filter identity. Later semantic normalization is an
+        # operation to evaluate, not a reason to rewrite the candidate snapshot.
+        for finding in all_vulns:
+            candidate = deepcopy({key: value for key, value in finding.items() if not key.startswith("_")})
+            candidate["type"] = runtime.canonicalize(candidate.get("type", ""))
+            _enrich_finding_structure(candidate, strict_schema=not compact_mode)
+            records_by_id[finding["_candidate_id"]]["candidate_finding"] = candidate
         compact_tool_records: list[dict] = []
         if compact_mode:
             tool_log = self.run_dir / "tool_calls.jsonl"
@@ -414,16 +395,6 @@ class FindingAggregation:
                         str(finding.get("device_id") or ""), ""
                     ),
                 )
-                # The benchmark contract distinguishes an empty MariaDB root
-                # password by scenario impact. Keep S2/S4/S6 critical, while
-                # the OT historian/collection scenarios S7/S8/S11-S13 are high.
-                if (
-                    str(self.scenario_id) in {"7", "8", "11", "12", "13"}
-                    and finding.get("type") == "default_credentials"
-                    and str(finding.get("service") or "").casefold() in {"mysql", "mariadb"}
-                    and finding.get("port") == 3306
-                ):
-                    finding["severity"] = "HIGH"
 
         for finding in all_vulns:
             _sanitize_suggested_tools(finding, catalog_names=catalog_tool_names)
@@ -538,45 +509,13 @@ class FindingAggregation:
             source_kind = str(finding.get("_source_kind") or record.get("source_kind") or "")
             device_id = str(finding.get("device_id") or "")
             device_role = surface_roles.get(device_id, "")
-            device_profile = surface_profiles.get(device_id, "")
             semantic_issue = runtime._finding_semantic_issue(
                 finding,
                 source_kind=source_kind,
                 compact=compact_mode,
                 device_role=device_role,
-                device_profile=device_profile,
-                scenario_id=self.scenario_id,
                 context_findings=all_vulns,
             )
-            if not semantic_issue and source_kind == "model":
-                finding_text = " ".join(
-                    str(finding.get(key) or "")
-                    for key in ("details", "evidence", "endpoint", "endpoints")
-                ).casefold()
-                if str(self.scenario_id).strip().upper().removeprefix("S") == "14":
-                    if finding.get("type") in {"info_disclosure", "missing_header"}:
-                        semantic_issue = "S14 is an explicit sparse contract; low-value metadata is not reportable"
-                    elif (
-                        finding.get("type") == "data_exposure"
-                        and any(
-                            other is not finding
-                            and other.get("device_ip") == finding.get("device_ip")
-                            and runtime.canonicalize(str(other.get("type") or "")) == "no_auth"
-                            for other in all_vulns
-                        )
-                    ):
-                        semantic_issue = "S14 access-surface content is represented by its single anonymous-access contract"
-                if (
-                    device_profile in {"hardened", "near_miss"}
-                    and finding.get("type") == "default_credentials"
-                    and not re.search(
-                        r"(?i)(?:login|authentication|credential|password)\s+(?:succeeded|successful|accepted|worked)|logged[ ]+in",
-                        finding_text,
-                    )
-                ):
-                    semantic_issue = "hardened or near-miss profile has no successful default-credential authentication"
-                if str(self.scenario_id).strip().upper().removeprefix("S") == "15" and device_role == "router":
-                    semantic_issue = "S15 scoring contract is limited to the bounded authenticated API"
             if semantic_issue:
                 record["decision"] = "excluded_from_canonical"
                 record["decision_reason"] = semantic_issue
@@ -718,8 +657,6 @@ class FindingAggregation:
                 if self._compact_observation_has_tool_evidence(
                     finding, compact_tool_records
                 ):
-                    finding["compact_detection_only"] = True
-                    finding["compact_exploitation_priority"] = "deferred"
                     eligible.append(finding)
                     continue
                 record["decision"] = "excluded_from_canonical"
@@ -758,11 +695,9 @@ class FindingAggregation:
                 finding.get("type") == "insecure_update"
                 and service == "http"
                 and str(surface_roles.get(str(finding.get("device_id") or ""), "")) == "ota_device"
-                and self.scenario_id is not None
-                and str(self.scenario_id).strip().upper().removeprefix("S") == "17"
             ):
                 # Rollback and unsigned-metadata defects intentionally share
-                # /install but are separate strict-v3 contracts.
+                # /install but describe different integrity failures.
                 key = base_key + (finding.get("endpoint", ""), finding.get("details", ""))
             elif finding.get("type") == "data_exposure" and service == "mqtt":
                 # MQTT topic exposures on one broker are one access surface in
@@ -963,7 +898,7 @@ class FindingAggregation:
                 severity_counts[severity] += 1
 
         raw_projection = {
-            "schema_version": "1",
+            "schema_version": "2",
             "policy": (
                 "Information-preserving candidate registry. Exclusion from the "
                 "canonical queue never deletes the model output."
