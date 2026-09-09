@@ -142,10 +142,27 @@ En compact local, une observation de configuration admise dans la file canonique
 n’est plus automatiquement ignorée : le plan adapté à son type la vérifie,
 par exemple avec `curl_headers` pour un en-tête manquant.
 
-Le dashboard présente neuf colonnes : run, scénario, les trois étapes, modèle,
-statut, coût/efficacité et un volet Diagnostic ouvrable au clavier. Le F1 final
-(ou la spécificité du contrôle) n’y est affiché qu’une fois. Les scores composites
-et doublons historiques restent dans le JSON ; ils ne concurrencent plus ce score.
+Le dashboard présente neuf colonnes : run, scénario, pistes détectées, pistes
+retenues, confirmations finales, modèle, statut, consommation et vérification.
+Chaque étape affiche sa population et ses VP/FP/FN. Le rappel est visible aux
+étapes intermédiaires ; leur précision et leur F1 sont dans des détails ouvrables
+au clavier. Les vraies pistes perdues au filtrage sont visibles dans les pistes
+retenues. La dernière étape affiche précision, rappel et un seul F1 final
+(ou la spécificité du contrôle). Les scores composites et doublons historiques
+restent dans le JSON ; ils ne concurrencent plus ce score.
+
+La colonne Vérification montre les pistes testées sur la population retenue,
+les non-testées, les tentatives indéterminées et les erreurs, même si le score
+final est indisponible. Une population vide n’a pas de taux de couverture défini ;
+des compteurs absents ou incohérents ne sont pas transformés en zéro. La
+couverture mesure les tentatives, pas les preuves acceptées ni les VP finaux.
+Le volet Diagnostic reste ouvrable au clavier pour les détails.
+
+Coût et tokens sont visibles sans ouvrir de détail, indépendamment de la
+disponibilité des métriques de processus ; les ratios par VP final sont repliés
+sous Efficacité. Les anciens contrats restent indisponibles pour les scores,
+sans masquer la consommation connue. Pour les runs scellés, seules les valeurs
+exposées par l’agrégat sont affichées, sans recours aux données individuelles.
 Les chemins, l’intrusion, l’exécution et l’avis éventuel du juge LLM sont des
 diagnostics secondaires, distincts des preuves et du score officiel.
 

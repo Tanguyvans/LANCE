@@ -1147,19 +1147,39 @@ button:disabled { opacity: .35; cursor: default; }
 .bm-run-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .bm-commit, .bm-model small, .bm-efficiency small { display: block; margin-top: 6px; font-size: 12px; }
 .bm-model { min-width: 130px; max-width: 170px; overflow-wrap: anywhere; }
-.bm-efficiency { min-width: 160px; line-height: 1.5; }
-.bm-final-score { font-weight: 650; }
+.bm-efficiency { min-width: 145px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.bm-efficiency > span { display: block; }
+.bm-final-metrics { color: var(--text); }
+.bm-final-metrics strong { display: block; margin-top: 3px; font-weight: 650; }
 .bm-unavailable small { display: block; max-width: 230px; white-space: normal; }
 .bm-no-score { color: var(--muted); font-size: 11px; font-style: italic; }
 
 .bm-funnel-stage {
   display: grid;
   gap: 4px;
-  min-width: 220px;
+  min-width: 145px;
   font-size: 13px;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
 }
+.bm-stage-count { font-weight: 600; }
+.bm-primary-recall { color: var(--accent); font-weight: 600; }
+.bm-stage-details, .bm-efficiency-details { color: var(--muted); }
+.bm-stage-details summary, .bm-efficiency-details summary { cursor: pointer; padding: 3px 0; }
+.bm-stage-details summary:focus-visible, .bm-efficiency-details summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.bm-stage-details span, .bm-efficiency-details small { display: block; padding-top: 3px; }
+.bm-verification-coverage {
+  display: grid;
+  gap: 3px;
+  min-width: 145px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.bm-verification-coverage strong { color: var(--text); }
+.bm-verification-coverage small { color: var(--muted); }
+.bm-verification-coverage.bm-unavailable span { color: var(--muted); }
 .bm-funnel-diagnostics { min-width: 90px; max-width: 320px; white-space: normal; font-size: 13px; }
 .bm-funnel-diagnostics[open] { min-width: 260px; }
 .bm-funnel-diagnostics summary { cursor: pointer; padding: 6px 0; }

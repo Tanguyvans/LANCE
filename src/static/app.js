@@ -2537,29 +2537,73 @@ function updateBenchmarkPagination(loading) {
   document.getElementById('bm-next').disabled = loading || end >= _bmTotal;
 }
 
+function bmFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function bmNumber(value, digits = 0) {
-  if (value == null || !Number.isFinite(Number(value))) return '—';
-  return Number(value).toLocaleString('fr-FR', {maximumFractionDigits: digits});
+  const number = bmFiniteNumber(value);
+  if (number == null) return '—';
+  return number.toLocaleString('fr-FR', {maximumFractionDigits: digits});
 }
 
 function bmRate(value) {
-  return value == null || !Number.isFinite(Number(value)) ? '—' : `${bmNumber(Number(value) * 100, 1)} %`;
+  const number = bmFiniteNumber(value);
+  return number == null ? '—' : `${bmNumber(number * 100, 1)} %`;
 }
 
-function renderFunnelStage(stage, reportScore = null) {
+function renderFunnelStage(stage, reportScore = null, { primary = false, filterLoss = null } = {}) {
   if (!stage?.available) {
     return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
   }
   const control = reportScore?.is_zero_gt === true;
-  const label = reportScore ? (control ? 'Spécificité' : 'F1 final') : 'F1';
+  const label = control ? 'Spécificité' : 'F1 final';
   const value = control ? reportScore.specificity : stage.f1;
+  const scoreDetails = reportScore
+    ? `<span class="bm-final-metrics"><span>Précision ${bmRate(stage.precision)} · Rappel ${bmRate(stage.recall)}</span><strong>${label} ${bmRate(value)}</strong></span>`
+    : `<details class="bm-stage-details"><summary>Détails métriques</summary>
+        <span>Précision ${bmRate(stage.precision)} · F1 ${bmRate(stage.f1)}</span></details>`;
+  const recall = reportScore ? '' : `<span class="${primary ? 'bm-primary-recall' : ''}">Rappel ${bmRate(stage.recall)}</span>`;
+  const lost = filterLoss == null ? '' : `<small class="bm-filter-loss">Vraies pistes perdues au filtrage : ${bmNumber(filterLoss)}</small>`;
   return `<div class="bm-funnel-stage">
-    <span>Pred <strong>${bmNumber(stage.predictions)}</strong></span>
+    <span class="bm-stage-count">Pistes <strong>${bmNumber(stage.predictions)}</strong></span>
     <span>VP ${bmNumber(stage.true_positives)} · FP ${bmNumber(stage.false_positives)} · FN ${bmNumber(stage.false_negatives)}</span>
-    <span>Préc. ${bmRate(stage.precision)} · Rappel ${bmRate(stage.recall)}</span>
-    <span class="${reportScore ? 'bm-final-score' : ''}">${label} ${bmRate(value)}</span>
+    ${recall}
+    ${scoreDetails}
+    ${lost}
     ${control && value == null ? `<small>${escapeHtml(reportScore.score_unavailable_reason || 'Contrôle incomplet')}</small>` : ''}
   </div>`;
+}
+
+function renderVerificationCoverage(funnel) {
+  const verification = funnel?.diagnostics?.verification;
+  if (!verification || typeof verification !== 'object') {
+    return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
+      <strong>Couverture</strong><span>— pistes testées</span><small>Données de vérification indisponibles</small></div>`;
+  }
+  const states = ['confirmed', 'inconclusive', 'error', 'not_tested'];
+  const counts = states.map(key => verification[key]);
+  const coherent = counts.every(value => Number.isInteger(value) && value >= 0);
+  if (!coherent) {
+    return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
+      <strong>Couverture</strong><span>— pistes testées</span><small>Population de vérification incomplète</small></div>`;
+  }
+  const total = counts.reduce((sum, value) => sum + value, 0);
+  const population = funnel?.stages?.filtered?.predictions;
+  if (population !== undefined && (!Number.isInteger(population) || population < 0 || population !== total)) {
+    return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
+      <strong>Couverture</strong><span>— pistes testées</span><small>Population de vérification incohérente</small></div>`;
+  }
+  if (total === 0) {
+    return `<div class="bm-verification-coverage" aria-label="Couverture de vérification indéfinie">
+      <strong>Couverture</strong><span>0/0 pistes testées</span><small>Population vide : couverture indéfinie</small></div>`;
+  }
+  const tested = total - counts[3];
+  const rate = bmFiniteNumber(funnel?.diagnostics?.verification_attempt_rate);
+  const rateLabel = rate == null ? '' : ` · ${bmRate(rate)}`;
+  return `<div class="bm-verification-coverage" aria-label="${tested} pistes testées sur ${total}">
+    <strong>Couverture</strong><span>${tested}/${total} pistes testées${rateLabel}</span>
+    <small>Non testées ${counts[3]} · indéterminées ${counts[1]} · erreurs ${counts[2]}</small></div>`;
 }
 
 function renderFunnelDiagnostics(funnel, score = {}) {
@@ -2586,8 +2630,7 @@ function renderFunnelDiagnostics(funnel, score = {}) {
       Transitions vérifiées : ${bmRate(score.phase5_hop_coverage)}</p>` : '';
   const execution = score.process_metrics_available === true
     ? `<p><strong>Exécution</strong><br>Erreurs outils : ${bmNumber(score.total_tool_errors)} / ${bmNumber(score.total_tool_calls)}<br>
-      Validations de format : ${bmRate(score.validation_success_rate)}<br>
-      Tokens : ${bmNumber(score.total_tokens)}</p>` : '';
+      Validations de format : ${bmRate(score.validation_success_rate)}</p>` : '';
   const judge = score.llm_judge_data;
   const opinion = judge ? `<p><strong>Avis LLM — diagnostic</strong><br>
     ${escapeHtml(judge.model || 'Modèle non renseigné')} : ${bmRate(judge.scenario_score ?? judge.f1_score ?? judge.specificity)}<br>
@@ -2617,25 +2660,34 @@ function renderBenchmarkTable() {
     if (r.score_error) report = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;
     if (sealed) report = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(aggregate?.overall_score)}<small>Détails scellés</small></div>`;
     const cost = sealed ? aggregate?.cost_usd : (r.cost ?? s.total_cost_usd);
+    const tokens = sealed ? aggregate?.total_tokens : s.total_tokens;
     const efficiency = !sealed && compatible ? s.funnel?.diagnostics : null;
-    const dollars = value => value == null ? '—' : `$${bmNumber(value, 4)}`;
-    const costCell = `<div class="bm-efficiency"><span>${dollars(cost)} au total</span>
+    const dollars = value => {
+      const number = bmFiniteNumber(value);
+      return number == null ? '—' : `$${bmNumber(number, 4)}`;
+    };
+    const efficiencyDetails = !sealed && compatible ? `<details class="bm-efficiency-details"><summary>Efficacité</summary><small>
+      ${dollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>
+      ${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</small></details>` : '';
+    const costCell = `<div class="bm-efficiency"><span>Coût ${dollars(cost)}</span>
+      <span>Tokens ${bmNumber(tokens)}</span>
       ${s.cost_is_estimate === true ? '<small>Coût estimé</small>' : ''}
-      ${sealed ? '' : `<small>${dollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>
-      ${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</small>`}</div>`;
+      ${efficiencyDetails}</div>`;
     const runId = escapeHtml(r.id);
     const status = sealed && s.status ? s.status : r.status;
     return `<tr>
       <td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(r.id.replace(/_/g, ' '))}</button>
         ${r.commit ? `<small class="bm-commit">${escapeHtml(r.commit)}</small>` : ''}</td>
       <td>${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</td>
-      <td>${sealed ? noScore : renderFunnelStage(stage('candidates'))}</td>
-      <td>${sealed ? noScore : renderFunnelStage(stage('filtered'))}</td>
+      <td>${sealed ? noScore : renderFunnelStage(stage('candidates'), null, {primary: true})}</td>
+      <td>${sealed ? noScore : renderFunnelStage(stage('filtered'), null, {
+        filterLoss: bmFiniteNumber(s.funnel?.diagnostics?.true_candidates_lost_in_filter),
+      })}</td>
       <td>${report}</td>
       <td class="bm-model">${escapeHtml(r.model || '—')}${r.execution_profile ? `<small>${escapeHtml(r.execution_profile)}</small>` : ''}</td>
       <td><span class="run-badge ${escapeHtml(status || '')}">${escapeHtml(status || '—')}</span></td>
       <td>${costCell}</td>
-      <td>${sealed ? noScore : renderFunnelDiagnostics(compatible ? s.funnel : null, s)}</td>
+      <td>${sealed ? noScore : `${renderVerificationCoverage(compatible ? s.funnel : null)}${renderFunnelDiagnostics(compatible ? s.funnel : null, s)}`}</td>
     </tr>`;
   }).join('');
   tbody.querySelectorAll('[data-bm-run]').forEach(button => {
