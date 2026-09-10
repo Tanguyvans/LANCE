@@ -56,9 +56,9 @@ def test_phase4_semantic_contract_accepts_ssh_audit_exit_code_three():
     )
 
 
-def test_phase4_semantic_contract_accepts_telnet_timeout_on_port_23():
-    assert _semantic_output_supports_finding(
-        "telnet_connect", {"stdout": "", "stderr": "", "return_code": 124},
+def test_phase4_semantic_contract_rejects_telnet_timeout_on_port_23():
+    assert not _semantic_output_supports_finding(
+        "telnet_connect", {"connected": True, "received_bytes": 0, "timed_out": True},
         {"type": "insecure_protocol", "port": 23},
     )
 
@@ -76,9 +76,9 @@ def test_phase4_tool_call_outcome_preserves_special_exit_codes():
         {"type": "weak_cipher", "port": 22},
     ) is True
     assert _tool_call_outcome(
-        {"tool": "telnet_connect", "result": json.dumps({"stdout": "", "return_code": 124})},
+        {"tool": "telnet_connect", "result": json.dumps({"connected": True, "received_bytes": 0, "timed_out": True})},
         {"type": "insecure_protocol", "port": 23},
-    ) is True
+    ) is False
 
 
 def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguration",

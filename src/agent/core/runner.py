@@ -244,7 +244,7 @@ class AgentRunner:
                     "- ssh_login(command_string) — validate SSH entry points with the recovered source credential\n"
                     "- ssh_exec(ip, user, password, command) — run a shell command on a compromised host\n"
                     "- try_credential(ip, service, user, password) — test recovered credentials on a target\n"
-                    "- telnet_connect(command_string) / ftp_list(url) — validate Telnet/FTP targets"
+                    "- telnet_connect(host, port=23, timeout=3) / ftp_list(url) — validate Telnet/FTP targets"
                 )
                 variables["intrusion_recon_tool_restriction"] = ""
                 variables["intrusion_entry_validation"] = (

@@ -1425,6 +1425,18 @@ def _record_implied_endpoints(record: dict) -> set[str]:
     return endpoints
 
 
+def _record_mqtt_topics(record: dict) -> set[str]:
+    """Return only explicit MQTT topic arguments (never stdout/payload text)."""
+    if _canonical_tool_name(record.get("tool")) != "mqtt_listen":
+        return set()
+    args = record.get("args") or {}
+    if not isinstance(args, dict):
+        return set()
+    value = args.get("topic")
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    return {str(item) for item in values if isinstance(item, str) and item != ""}
+
+
 def _canonical_tool_name(value: object) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", str(value).strip().casefold()).strip("_")
     aliases = {
@@ -1490,12 +1502,43 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
         if int(port) not in _record_implied_ports(record):
             return False
 
-    claimed_endpoints = _normalized_endpoints(finding.get("endpoint"))
-    if not claimed_endpoints:
-        claimed_endpoints.update(_normalized_endpoints(finding.get("endpoints")))
-    if claimed_endpoints:
-        if not claimed_endpoints & _record_implied_endpoints(record):
+    if record_tool == "mqtt_listen":
+        # MQTT's resource is a topic, not an HTTP path. A primary endpoint
+        # wins over secondary endpoints; use the latter only as a fallback.
+        primary = finding.get("endpoint")
+        claimed_topics = {primary} if isinstance(primary, str) and primary else set()
+        if not claimed_topics:
+            extra = finding.get("endpoints") or []
+            values = extra if isinstance(extra, (list, tuple, set)) else [extra]
+            claimed_topics = {value for value in values if isinstance(value, str) and value}
+        if claimed_topics and not claimed_topics & _record_mqtt_topics(record):
             return False
+    else:
+        claimed_endpoints = _normalized_endpoints(finding.get("endpoint"))
+        if not claimed_endpoints:
+            claimed_endpoints.update(_normalized_endpoints(finding.get("endpoints")))
+        # mqtt-ws no-auth has an implicit HTTP upgrade root. Keep this narrow
+        # protocol-specific default; an empty generic HTTP endpoint remains
+        # unconstrained.
+        if (
+            not claimed_endpoints
+            and str(finding.get("service") or "").strip().casefold() in {"mqtt-ws", "mqtt_websocket", "mqtt-websocket"}
+            and str(finding.get("type") or "").strip().casefold() == "no_auth"
+            and record_tool in {"http_get", "http_request", "curl_headers"}
+        ):
+            claimed_endpoints = {"/"}
+        ssh_placeholder_types = {
+            "default_credentials", "weak_cipher", "known_cve", "insecure_protocol", "no_auth",
+        }
+        ssh_placeholder = (
+            record_tool in {"ssh_login", "ssh_exec", "ssh_audit"}
+            and str(finding.get("service") or "").strip().casefold() == "ssh"
+            and canonicalize(str(finding.get("type") or "")) in ssh_placeholder_types
+            and claimed_endpoints == {"/"}
+        )
+        if claimed_endpoints and not ssh_placeholder:
+            if not claimed_endpoints & _record_implied_endpoints(record):
+                return False
     return True
 
 
@@ -1590,6 +1633,11 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
     """Return a conservative, tool-specific exploitation success verdict."""
     result = _tool_result_data(record)
     if isinstance(result, dict):
+        tool = str(record.get("tool", "")).strip()
+        if _canonical_tool_name(tool) == "telnet_connect":
+            # Always use the shared semantic contract, including explicit
+            # timeout/error fields and the required port.
+            return _semantic_output_supports_finding(tool, result, finding, args=record.get("args"))
         success = result.get("success")
         if isinstance(success, bool):
             return success
@@ -1611,10 +1659,6 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
             if return_code not in {0, 27}:
                 normal_nonzero = (
                     _canonical_tool_name(tool) == "ssh_audit" and return_code == 3
-                ) or (
-                    _canonical_tool_name(tool) == "telnet_connect"
-                    and _normalize_port((finding or {}).get("port")) == 23
-                    and return_code == 124
                 )
                 if not normal_nonzero:
                     return False

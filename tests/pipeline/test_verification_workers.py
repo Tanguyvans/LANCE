@@ -101,9 +101,8 @@ class TestInformationPreservingArchitecture:
 
         def telnet_connect(**kwargs):
             return json.dumps({
-                "stdout": "OpenWrt telnet banner",
-                "stderr": "",
-                "return_code": 0,
+                "connected": True, "received_bytes": 21,
+                "received_ascii": "OpenWrt telnet banner",
             })
 
         monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [{
@@ -134,7 +133,7 @@ class TestInformationPreservingArchitecture:
             assert kwargs["force_tool_on_stall"] is True
             assert kwargs["recover_required_tool_on_stall"] is True
             result = tools[0]["function"](
-                command_string="echo quit | timeout 3 nc 192.0.2.1 23"
+                host="192.0.2.1", port=23, timeout=3
             )
             with (pipeline.run_dir / "tool_calls.jsonl").open(
                 "a", encoding="utf-8"
@@ -142,7 +141,7 @@ class TestInformationPreservingArchitecture:
                 handle.write(json.dumps({
                     "tool": "telnet_connect",
                     "args": {
-                        "command_string": "echo quit | timeout 3 nc 192.0.2.1 23",
+                        "host": "192.0.2.1", "port": 23, "timeout": 3,
                     },
                     "result": result,
                     "vuln_id": "VULN-001",
@@ -191,9 +190,8 @@ class TestInformationPreservingArchitecture:
 
         def telnet_connect(**kwargs):
             return json.dumps({
-                "stdout": "OpenWrt telnet banner",
-                "stderr": "",
-                "return_code": 0,
+                "connected": True, "received_bytes": 21,
+                "received_ascii": "OpenWrt telnet banner",
             })
 
         tool = pipeline._wrap_tool({

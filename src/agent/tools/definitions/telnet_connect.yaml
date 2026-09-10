@@ -1,18 +1,22 @@
 name: "telnet_connect"
-command: "bash"
-args: ["-c"]
+handler: "python"
 enabled: true
 timeout: 10
-short_description: "Telnet/netcat connection attempt"
+short_description: "Bounded Telnet-like TCP probe"
 description: >
-  Attempt a TCP connection (via netcat) to prove a service is accessible.
-  Use for Telnet (port 23) or any raw TCP service.
-  Returns the banner/response as proof.
-  Example: echo quit | timeout 3 nc 192.168.100.1 23
+  Open a bounded TCP connection and send a fixed identity probe (id + newline).
+  A connection alone is not proof; inspect received_bytes/received_ascii.
 max_output: 1000
 parameters:
-  - name: "command_string"
+  - name: "host"
     type: "string"
-    description: "Netcat command (e.g. \"echo quit | timeout 3 nc 192.168.100.1 23\")"
+    description: "Target host or IP"
     required: true
-    format: "positional"
+  - name: "port"
+    type: "integer"
+    description: "Target TCP port (normally 23)"
+    required: true
+  - name: "timeout"
+    type: "integer"
+    description: "Connection/read timeout in seconds, bounded by the handler"
+    required: false

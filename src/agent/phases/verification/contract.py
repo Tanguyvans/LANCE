@@ -123,8 +123,10 @@ def _phase4_verification_plan(
     url = f"{base_url}{suffix}"
 
     if vuln_type in {"network_exposure", "no_auth"} and (service == "mqtt-ws" or port == 9001):
-        return {"tool": "http_request", "target": ip, "port": 9001,
-                "args_hint": {"url": f"http://{ip}:9001/", "method": "GET",
+        ws_port = port or 9001
+        return {"tool": "http_request", "target": ip, "port": ws_port,
+                "endpoint": endpoint or "/",
+                "args_hint": {"url": f"http://{ip}:{ws_port}{suffix}", "method": "GET",
                     "headers": {"Connection": "Upgrade", "Upgrade": "websocket",
                         "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}},
                 "success_condition": "HTTP 101 WebSocket upgrade or explicit handshake response"}
@@ -204,7 +206,7 @@ def _phase4_verification_plan(
     if vuln_type == "insecure_protocol":
         if service == "telnet" or port == 23:
             return {"tool": "telnet_connect", "target": ip, "port": 23,
-                    "args_hint": {"command_string": f"echo quit | timeout 3 nc {ip} 23"}, "success_condition": "Telnet interaction or banner captured"}
+                    "args_hint": {"host": ip, "port": 23, "timeout": 3}, "success_condition": "Telnet interaction returns bytes after the fixed identity probe"}
         if service == "ftp" or port == 21:
             return {"tool": "ftp_list", "target": ip, "port": 21,
                     "args_hint": {"url": f"ftp://{ip}/"}, "success_condition": "FTP listing or anonymous response captured"}
@@ -378,17 +380,37 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         if expected_query and str(args.get("query") or "").strip() != expected_query:
             return False
     if tool in {"http_get", "curl_headers", "http_request"}:
-        raw_url = str(args.get("url") or "")
-        if target not in raw_url:
-            return False
-        expected_port = requirement.get("port")
-        if expected_port and expected_port != 80 and f":{expected_port}" not in raw_url:
-            return False
-        endpoint = str(requirement.get("endpoint") or "")
-        if endpoint and endpoint not in raw_url:
+        raw_url = str(args.get("url") or "").strip()
+        hint = requirement.get("args_hint") or {}
+        expected_url = str(hint.get("url") or "").strip()
+        try:
+            actual = urlsplit(raw_url)
+            if actual.scheme.casefold() not in {"http", "https"} or not actual.hostname:
+                return False
+            actual_port = actual.port or (443 if actual.scheme.casefold() == "https" else 80)
+            if expected_url:
+                expected = urlsplit(expected_url)
+                if expected.scheme.casefold() not in {"http", "https"} or not expected.hostname:
+                    return False
+                expected_port = expected.port or (443 if expected.scheme.casefold() == "https" else 80)
+                if (actual.scheme.casefold(), actual.hostname, actual_port,
+                        actual.path or "/", actual.query) != (
+                        expected.scheme.casefold(), expected.hostname, expected_port,
+                        expected.path or "/", expected.query):
+                    return False
+            else:
+                expected_port = requirement.get("port")
+                if target and actual.hostname != target:
+                    return False
+                if expected_port not in (None, "") and actual_port != int(expected_port):
+                    return False
+                endpoint = str(requirement.get("endpoint") or "")
+                expected_path, _, expected_query = endpoint.partition("?")
+                if endpoint and (actual.path or "/", actual.query) != (expected_path or "/", expected_query):
+                    return False
+        except (TypeError, ValueError):
             return False
         if tool == "http_request":
-            hint = requirement.get("args_hint") or {}
             expected_method = str(hint.get("method") or "").upper()
             if expected_method and str(args.get("method") or "").upper() != expected_method:
                 return False
@@ -397,19 +419,31 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
             # Compact MQTT-WebSocket verification needs a real upgrade request;
             # accepting the URL alone lets a plain GET satisfy the required probe
             # while producing no useful Phase 4 evidence.
-            if requirement.get("port") == 9001:
-                expected_headers = {
-                    str(key).casefold(): str(value)
-                    for key, value in (hint.get("headers") or {}).items()
-                }
+            expected_headers = {
+                str(key).casefold(): str(value)
+                for key, value in (hint.get("headers") or {}).items()
+            }
+            if expected_headers:
                 supplied_headers = {
                     str(key).casefold(): str(value)
                     for key, value in (args.get("headers") or {}).items()
                 }
                 if any(supplied_headers.get(key) != value for key, value in expected_headers.items()):
                     return False
-    if tool == "telnet_connect" and target not in str(args.get("command_string") or ""):
-        return False
+    if tool == "telnet_connect":
+        if str(args.get("host") or "") != target:
+            return False
+        try:
+            if int(args.get("port")) != int(requirement.get("port") or 23):
+                return False
+        except (TypeError, ValueError):
+            return False
+        timeout = args.get("timeout", 3)
+        try:
+            if int(timeout) != 3:
+                return False
+        except (TypeError, ValueError):
+            return False
     if tool == "ftp_list" and target not in str(args.get("url") or ""):
         return False
     if tool in {"ssh_login", "try_credential"} and target not in json.dumps(args, ensure_ascii=False):

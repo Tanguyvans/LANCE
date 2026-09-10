@@ -28,6 +28,14 @@ def finding_identity_key(finding: dict) -> tuple:
         port = str(finding.get("port") or "").strip()
 
     endpoint_values = _values(finding.get("endpoint")) + _values(finding.get("endpoints"))
+    # mqtt-ws no-auth plans historically spell their implicit root endpoint
+    # either as ``/`` or as empty.  This is the sole non-HTTP default we
+    # collapse; HTTP and every other protocol keep endpoint identity exact.
+    finding_type = str(finding.get("type") or "").strip().casefold()
+    if (service in {"mqtt-ws", "mqtt_websocket", "mqtt-websocket"}
+            and finding_type == "no_auth"
+            and set(endpoint_values) == {"/"}):
+        endpoint_values = []
     if not endpoint_values and service in {"http", "https"}:
         endpoint_values = extract_endpoint_paths(finding.get("details"), finding.get("evidence"))
     endpoint_key = tuple(sorted(set(endpoint_values)))

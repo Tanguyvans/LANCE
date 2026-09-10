@@ -638,6 +638,39 @@ def tcp_send(
     })
 
 
+def telnet_connect(host: str, port: int = 23, timeout: int = 3) -> str:
+    """Probe a Telnet-like TCP service with a fixed, bounded identity input."""
+    effective_timeout = max(1, min(int(timeout or 3), 10))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(effective_timeout)
+    received = b""
+    connected = False
+    timed_out = False
+    try:
+        sock.connect((host, int(port)))
+        connected = True
+        sock.sendall(b"id\n")
+        try:
+            received = sock.recv(4096)
+        except socket.timeout:
+            timed_out = True
+    except socket.timeout:
+        timed_out = True
+    except OSError as exc:
+        return json.dumps({"connected": connected, "received_bytes": len(received), "error": f"{type(exc).__name__}: {exc}", "host": host, "port": int(port)})
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    return json.dumps({
+        "connected": connected, "received_bytes": len(received),
+        "received_hex": received.hex()[:4096],
+        "received_ascii": "".join(chr(b) if 32 <= b < 127 else "." for b in received[:512]),
+        "timed_out": timed_out, "host": host, "port": int(port),
+    })
+
+
 def udp_send(
     host: str,
     port: int,
@@ -920,6 +953,7 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "redis_cmd", redis_cmd)
     register_python_handler(tools, "http_request", http_request)
     register_python_handler(tools, "tcp_send", tcp_send)
+    register_python_handler(tools, "telnet_connect", telnet_connect)
     register_python_handler(tools, "udp_send", udp_send)
     register_python_handler(tools, "mtls_request", mtls_request)
     register_python_handler(tools, "tls_inspect", tls_inspect)

@@ -445,7 +445,7 @@ class CompactIntrusionPhase:
                 if service == "mqtt":
                     return "mqtt_listen", {"broker": target, "topic": "#", "count": 1, "timeout": 3}
                 if service == "telnet":
-                    return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {target} 23"}
+                    return "telnet_connect", {"host": target, "port": 23, "timeout": 3}
                 if service == "ftp":
                     return "ftp_list", {"url": f"ftp://{target}/"}
                 if service == "ssh":
@@ -578,7 +578,7 @@ class CompactIntrusionPhase:
                 if wanted == "mqtt":
                     return "mqtt_listen", {"broker": ip, "topic": "#", "count": 1, "timeout": 3}
                 if wanted == "telnet":
-                    return "telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}
+                    return "telnet_connect", {"host": ip, "port": 23, "timeout": 3}
                 if wanted == "ftp":
                     return "ftp_list", {"url": f"ftp://{ip}/"}
                 if wanted == "ssh":
@@ -1042,7 +1042,7 @@ class CompactIntrusionPhase:
             elif service in {"http", "https"} and "http_get" in tool_map:
                 entry_actions.append(("http_get", {"url": f"http://{ip}/"}))
             elif service == "telnet" and "telnet_connect" in tool_map:
-                entry_actions.append(("telnet_connect", {"command_string": f"echo quit | timeout 3 nc {ip} 23"}))
+                entry_actions.append(("telnet_connect", {"host": ip, "port": 23, "timeout": 3}))
             elif service == "ftp" and "ftp_list" in tool_map:
                 entry_actions.append(("ftp_list", {"url": f"ftp://{ip}/"}))
             elif service == "modbus" and "nmap_scan" in tool_map:

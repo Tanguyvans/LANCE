@@ -312,7 +312,9 @@ def test_phase4_default_credentials_mqtt_uses_authenticated_probe():
             "result": json.dumps({"stdout": "sensors/temp 22.5", "return_code": 27}),
         }],
     )
-    assert anonymous["status"] == "ERROR"
+    assert anonymous["status"] == "FAILED"
+    assert verification_state(anonymous) == "inconclusive"
+    assert anonymous["tool_used"] == "mqtt_listen"
 
     authenticated = _synthesize_exploit_result(
         vuln, [{

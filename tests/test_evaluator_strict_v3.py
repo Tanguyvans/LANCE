@@ -277,8 +277,13 @@ def test_mqtt_rc27_with_payload_is_positive_tool_evidence():
     }
 
     assert _tool_call_outcome(
-        record, _finding(device_ip="192.0.2.11", type="no_auth", service="mqtt", port=1883)
+        record, _finding(device_ip="192.0.2.11", type="no_auth", service="mqtt", port=1883, endpoint="#", evidence="MQTT anonymous subscription returned payload")
     ) is True
+
+    record["args"]["topic"] = "sensors/#"
+    assert _tool_call_outcome(
+        record, _finding(device_ip="192.0.2.11", type="no_auth", service="mqtt", port=1883, endpoint="#", evidence="MQTT anonymous subscription returned payload")
+    ) is False
 
 
 def test_phase4_error_is_incomplete(tmp_path):
@@ -511,10 +516,12 @@ def test_unknown_well_formed_cve_is_separate_from_invalid_claims(tmp_path):
 def test_http_request_and_raw_socket_results_require_semantic_verdicts():
     http = {
         "tool": "http_request",
+        "args": {"url": "http://192.0.2.10/backup.sql"},
         "result": {"status_code": 200, "body": "password=secret"},
     }
     denied = {
         "tool": "http_request",
+        "args": {"url": "http://192.0.2.10/backup.sql"},
         "result": {"status_code": 403, "body": "admin dashboard"},
     }
     tcp = {
@@ -524,6 +531,8 @@ def test_http_request_and_raw_socket_results_require_semantic_verdicts():
     finding = _finding(data_extracted=["password=secret"])
     assert _tool_call_outcome(http, finding) is True
     assert _tool_call_outcome(denied, finding) is False
+    assert _tool_call_outcome({**http, "args": {}}, finding) is False
+    assert _tool_call_outcome({**http, "args": {"url": "http://192.0.2.10/other"}}, finding) is False
     assert _tool_call_outcome(tcp, finding) is False
 
 

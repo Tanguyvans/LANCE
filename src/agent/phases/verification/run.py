@@ -663,99 +663,21 @@ class VerificationPhase:
         tools_used: list[str] | None = None,
         tool_records: list[dict] | None = None,
     ) -> dict:
-        """Return a single aggregated test entry for one Phase 3 finding."""
-        if not exploit_file.exists():
-            # Fallback: the exploit agent may have saved with a different VULN-ID.
-            # Scan for any {vuln_type}_VULN-*.json in the device directory.
-            device_dir = exploit_file.parent
-            vuln_type_prefix = exploit_file.name.split("_VULN-")[0]
-            candidates = sorted(device_dir.glob(f"{vuln_type_prefix}_VULN-*.json"))
-            if candidates:
-                # Pick the candidate with the highest evidence_level to avoid
-                # collisions when the same vuln_type has multiple findings on a device.
-                best = candidates[0]
-                best_level = -1
-                for c in candidates:
-                    try:
-                        c_level = json.loads(c.read_text(encoding="utf-8")).get("evidence_level", 0)
-                    except Exception:
-                        c_level = 0
-                    if c_level > best_level:
-                        best_level = c_level
-                        best = c
-                exploit_file = best
-            else:
-                if tool_records:
-                    semantic_result = runtime._synthesize_exploit_result(vuln, tool_records, compact=self._uses_compact_local_moe())
-                    semantic_status = str(semantic_result.get("status", "ERROR")).upper()
-                    final_status = "CONFIRMED" if semantic_status == "EXPLOITED" else semantic_status
-                    if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
-                        final_status = "ERROR"
-                    return _make_test_entry(vuln, status=final_status, result=semantic_result)
-                return _make_test_entry(
-                    vuln,
-                    status="ERROR",
-                    evidence="No Phase 4 exploit result was produced",
-                    evidence_level=0,
-                )
-
-        try:
-            result = json.loads(exploit_file.read_text(encoding="utf-8"))
-        except Exception as e:
-            log.warning("Failed to parse exploit result %s: %s", exploit_file, e)
-            return _make_test_entry(
-                vuln,
-                status="ERROR",
-                evidence=f"Failed to parse: {e}",
-                evidence_level=0,
-            )
-
-        result = dict(result)
-        result["evidence_refs"] = list(dict.fromkeys([
-            *(str(value).strip() for value in (result.get("evidence_refs") or [])),
-            *(str(value).strip() for value in (evidence_refs or [])),
-        ]))
-        result["tools_used"] = list(dict.fromkeys([
-            *(str(value).strip() for value in (result.get("tools_used") or [])),
-            *(str(value).strip() for value in (tools_used or [])),
-        ]))
-        status = str(result.get("status", "ERROR")).upper()
+        """Return one entry from fresh traces; model-file/metadata args are ignored."""
+        # The model file is retained as a raw artifact only; it is never read
+        # as a verdict. Fresh tool traces are the sole source of this entry.
         semantic_result = runtime._synthesize_exploit_result(vuln, tool_records or [], compact=self._uses_compact_local_moe())
         semantic_status = str(semantic_result.get("status", "ERROR")).upper()
-        if status == "EXPLOITED" and semantic_status == "EXPLOITED":
-            return _make_test_entry(
-                vuln,
-                status="CONFIRMED",
-                result={**result, **semantic_result},
-            )
-        if status == "EXPLOITED" and (
-            not runtime._has_positive_exploit_evidence(result)
-            or semantic_status != "EXPLOITED"
-        ):
-            log.warning("Downgrading unsupported EXPLOITED verdict for %s", vuln.get("id"))
-            return _make_test_entry(
-                vuln,
-                status=semantic_status if semantic_status in {"FAILED", "ERROR"} else "ERROR",
-                result={**result, **semantic_result},
-                evidence=(
-                    "Unsupported EXPLOITED verdict: no matching positive tool evidence. "
-                    + str(semantic_result.get("evidence") or result.get("evidence", ""))
-                ),
-                evidence_level=int(semantic_result.get("evidence_level", 0) or 0),
-            )
-        if status in {"CONFIRMED", "COMPROMISED"}:
-            if semantic_status == "EXPLOITED":
-                return _make_test_entry(
-                    vuln,
-                    status="CONFIRMED",
-                    result={**result, **semantic_result},
-                )
-            status = semantic_status if semantic_status in {"FAILED", "ERROR"} else "ERROR"
-            result = {**result, **semantic_result}
-        final_status = "CONFIRMED" if status == "EXPLOITED" else status
+        # Tool traces are authoritative for every model verdict, not only a
+        # model-positive one.  This prevents a stale FAILED/ERROR generated by
+        # the local model from masking concrete exploit evidence, while a
+        # model-positive result still cannot pass without that evidence.
+        final_status = "CONFIRMED" if semantic_status == "EXPLOITED" else semantic_status
+        # Once traces have been semantically classified, that classification
+        # is the sole status source, including an empty trace set (ERROR/0).
         if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
             final_status = "ERROR"
-        return _make_test_entry(vuln, status=final_status, result=result)
+        return _make_test_entry(vuln, status=final_status, result=semantic_result)
 
 
 def run(context, config, stream_callback=None):
