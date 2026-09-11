@@ -30,7 +30,10 @@ class TestAgentsRegistry:
             assert config.prompt_template
             assert config.deliverable_file
             assert isinstance(config.tools, list)
-            assert len(config.tools) > 0
+            if name == "report":
+                assert config.tools == []
+            else:
+                assert len(config.tools) > 0
 
     def test_unique_phases(self):
         phases = [a.phase for a in AGENTS.values()]

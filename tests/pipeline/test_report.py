@@ -1,5 +1,6 @@
 """Phase 6: report context, templates, and evidence-grounded composition."""
 import json
+from threading import Event
 from unittest.mock import patch
 import pytest
 from src.agent.pipeline import Pipeline
@@ -9,6 +10,7 @@ from src.agent.report_evidence import (
 )
 from src.agent.phases.report.validation import _local_report_memo_contradicts_context
 from src.agent.registry import AGENTS
+from src.agent.phases.registry import run_phase
 
 
 def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output_dir):
@@ -193,3 +195,55 @@ class TestInformationPreservingArchitecture:
         phase_done = [event for event in events if event.get("type") == "phase_done"]
         assert len(phase_done) == 1
         assert phase_done[0]["status"] == "completed"
+
+
+@pytest.mark.parametrize("profile,token_budget", [("compact", 1536), ("full", 2048)])
+def test_phase6_common_entry_is_toolless_and_one_shot(profile, token_budget, mock_provider, output_dir):
+    mock_provider.chat_with_tools.return_value = "Review the evidence-linked authentication findings."
+    pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
+    pipeline.context = {"device_count": 1, "target_subnet": "192.0.2.0/24"}
+    pipeline._stop_event = Event()
+    (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": []}))
+    (pipeline.run_dir / "04_exploitation.json").write_text(json.dumps({"summary": {}, "tests": []}))
+    pipeline._generate_phase6_context()
+    pipeline._pregenerate_report_sections()
+
+    events = []
+    status = run_phase(pipeline, AGENTS["report"], events.append)
+
+    assert status == "completed"
+    kwargs = mock_provider.chat_with_tools.call_args.kwargs
+    assert kwargs["tools"] == []
+    assert kwargs["max_turns"] == 1
+    assert kwargs["max_tokens"] == token_budget
+    assert len([event for event in events if event["type"] == "phase_start"]) == 1
+    assert len([event for event in events if event["type"] == "phase_done"]) == 1
+    assert pipeline.tracker.end_phase() is None
+
+
+@pytest.mark.parametrize("result,expected_cause", [("", "memo_empty"), (TimeoutError("late"), "timeout")])
+def test_phase6_note_failure_is_partial_and_does_not_reuse_stale_outputs(
+    result, expected_cause, mock_provider, output_dir
+):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
+    pipeline.context = {"device_count": 1}
+    pipeline._stop_event = Event()
+    (pipeline.run_dir / "06_report.md").write_text("STALE REPORT")
+    (pipeline.run_dir / "06_report_analysis.md").write_text("STALE NOTE")
+    (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": []}))
+    (pipeline.run_dir / "04_exploitation.json").write_text(json.dumps({"summary": {}, "tests": []}))
+    pipeline._generate_phase6_context()
+    pipeline._pregenerate_report_sections()
+    mock_provider.chat_with_tools.side_effect = result if isinstance(result, Exception) else None
+    if not isinstance(result, Exception):
+        mock_provider.chat_with_tools.return_value = result
+
+    status = run_phase(pipeline, AGENTS["report"])
+
+    assert status == f"partial:{expected_cause}"
+    assert not (pipeline.run_dir / "06_report_analysis.md").exists()
+    report = (pipeline.run_dir / "06_report.md").read_text()
+    assert "STALE" not in report
+    assert f"partial:{expected_cause}" in report
+    meta = json.loads((pipeline.run_dir / "run_meta.json").read_text())
+    assert meta["phase6_cause"] == expected_cause

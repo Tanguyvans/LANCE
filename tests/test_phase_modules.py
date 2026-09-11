@@ -31,7 +31,7 @@ def test_both_profiles_use_the_phase_entry(profile, phase):
     )
     config = SimpleNamespace(phase=phase)
     callback = Mock()
-    local_report = profile == "compact" and phase == 6
+    local_report = phase == 6
     assert run_phase(context, config, callback) == ("completed:local" if local_report else "completed")
     if local_report:
         context._run_local_report_phase.assert_called_once_with(config, callback)
@@ -43,21 +43,19 @@ def test_both_profiles_use_the_phase_entry(profile, phase):
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])
-def test_nonlocal_report_keeps_fallback_and_merge(profile):
+def test_report_profiles_share_the_bounded_entry(profile):
     context = SimpleNamespace(
         execution_profile=SimpleNamespace(name=profile),
         _uses_compact_local_moe=lambda: False,
-        _run_agent=Mock(side_effect=RuntimeError("provider failed")),
-        _run_local_report_phase=Mock(),
+        _run_agent=Mock(side_effect=RuntimeError("old report path must not run")),
+        _run_local_report_phase=Mock(return_value="partial:provider_error"),
         _update_run_meta=Mock(),
         _merge_report_with_prefill=Mock(),
     )
-    assert run_phase(context, SimpleNamespace(phase=6)) == "error"
-    context._merge_report_with_prefill.assert_called_once()
-    context._update_run_meta.assert_called_once_with({
-        "phase6_llm": "fallback", "phase6_error": "provider failed",
-    })
-    context._run_local_report_phase.assert_not_called()
+    assert run_phase(context, SimpleNamespace(phase=6)) == "partial:provider_error"
+    context._run_local_report_phase.assert_called_once()
+    context._run_agent.assert_not_called()
+    context._merge_report_with_prefill.assert_not_called()
 
 
 @pytest.mark.parametrize("method,module", [
@@ -69,7 +67,7 @@ def test_nonlocal_report_keeps_fallback_and_merge(profile):
     ("_run_exploit_agents", "src.agent.phases.verification.run"),
     ("_apply_compact_intrusion_tool_contract", "src.agent.phases.intrusion.compact"),
     ("_generate_intrusion_context", "src.agent.phases.intrusion.run"),
-    ("_run_local_report_phase", "src.agent.phases.report.compact"),
+    ("_run_local_report_phase", "src.agent.phases.report.run"),
     ("_run_agent", "src.agent.core.runner"),
     ("_run_teardown", "src.agent.core.lifecycle"),
 ])
@@ -90,19 +88,20 @@ def test_unknown_profile_does_not_silently_select_full():
         run_phase(context, SimpleNamespace(phase=1))
 
 
-def test_full_report_never_selects_the_compact_local_entry():
+def test_full_report_uses_the_same_bounded_entry():
     context = SimpleNamespace(
         execution_profile=SimpleNamespace(name="full"),
         _uses_compact_local_moe=Mock(return_value=True),
         _run_agent=Mock(return_value="completed"),
-        _run_local_report_phase=Mock(),
+        _run_local_report_phase=Mock(return_value="completed"),
         _update_run_meta=Mock(),
         _merge_report_with_prefill=Mock(),
     )
     assert run_phase(context, SimpleNamespace(phase=6)) == "completed"
     context._uses_compact_local_moe.assert_not_called()
-    context._run_local_report_phase.assert_not_called()
-    context._merge_report_with_prefill.assert_called_once()
+    context._run_local_report_phase.assert_called_once()
+    context._run_agent.assert_not_called()
+    context._merge_report_with_prefill.assert_not_called()
 
 
 @pytest.mark.parametrize("phase", ["graph", "recon", "analysis", "intrusion", "report"])

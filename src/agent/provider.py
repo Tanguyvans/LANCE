@@ -273,7 +273,13 @@ class LLMProvider:
             client = self.client
             remaining = _deadline_remaining(deadline)
             if remaining is not None and hasattr(client, "with_options"):
-                client = client.with_options(timeout=remaining)
+                # Retry here, with a recomputed remaining deadline, rather
+                # than letting SDK retries reuse the full request timeout.
+                client = client.with_options(timeout=remaining, max_retries=0)
+            if remaining is not None:
+                # Some Anthropic SDKs set a request-level 600s default that
+                # overrides the client timeout unless passed explicitly.
+                kwargs["timeout"] = remaining
             return client.messages.create(**kwargs)
 
         for turn in range(max_turns):
@@ -458,7 +464,9 @@ class LLMProvider:
             client = self.client
             remaining = _deadline_remaining(deadline)
             if remaining is not None and hasattr(client, "with_options"):
-                client = client.with_options(timeout=remaining)
+                # Retry here, with a recomputed remaining deadline, rather
+                # than letting SDK retries reuse the full request timeout.
+                client = client.with_options(timeout=remaining, max_retries=0)
             return client.chat.completions.create(**kwargs)
 
         for turn in range(max_turns):

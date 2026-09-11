@@ -37,7 +37,7 @@ def test_execution_profile_defaults_and_validation():
     assert compact.limits_for_phase(1, 20, 4096) == (12, 2048)
     assert compact.limits_for_phase(2, 50, 4096) == (50, 1536)
     assert compact.limits_for_phase(5, 80, 16384) == (50, 2048)
-    assert compact.limits_for_phase(6, 25, 16384) == (12, 4096)
+    assert compact.limits_for_phase(6, 25, 16384) == (1, 1536)
     assert StartRequest().execution_profile == "auto"
     assert (
         BatchRequest(batch_ids=["1"], execution_profile="compact").execution_profile
@@ -131,9 +131,7 @@ def test_compact_generic_phases_keep_required_tools_and_remove_noise():
         "save_deliverable", "ssh_exec", "ssh_login", "telnet_connect",
         "try_credential",
     }
-    assert compact_report == {
-        "read_deliverable", "save_deliverable",
-    }
+    assert compact_report == set()
     assert filter_profile_tools(resolve_execution_profile("full"), 2, tools) is tools
 
 

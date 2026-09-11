@@ -5,11 +5,39 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from src.agent.phases.report.context import build_report_analysis_context
 from src.agent.report_evidence import is_verified_report_finding as _is_verified_report_finding
 
 
 log = logging.getLogger(__name__)
+
+
+def _read_full_json(run_dir: Path, filename: str) -> dict:
+    path = run_dir / filename
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _full_report_sources(run_dir: Path) -> dict:
+    """Load complete sources for deterministic rendering, never prompt data."""
+    return {
+        "graph": _read_full_json(run_dir, "01_graph_evidence.json"),
+        "recon": _read_full_json(run_dir, "02_recon_evidence.json"),
+        "intrusion": _read_full_json(run_dir, "05_intrusion.json"),
+        "phase3_status": _read_full_json(run_dir, "03_phase3_status.json"),
+    }
+
+
+def _display_text(value, *, limit: int, source: str) -> str:
+    """Keep tables readable while making every presentation omission explicit."""
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}… [truncated; full value in {source}]"
 
 def pregenerate_report_sections(run_dir: Path) -> None:
     """Pre-generate heavy Markdown tables for the Phase 6 report.
@@ -25,6 +53,7 @@ def pregenerate_report_sections(run_dir: Path) -> None:
     if vuln_path.exists():
         data = json.loads(vuln_path.read_text(encoding="utf-8"))
         phase3_vulns = data.get("vulnerabilities", [])
+        compact_observations = data.get("configuration_observations", [])
 
     # Load phase 4 exploitation results
     exploit_path = run_dir / "04_exploitation.json"
@@ -63,7 +92,9 @@ def pregenerate_report_sections(run_dir: Path) -> None:
         if v.get("type") == "known_cve" and status_raw == "UNTESTED":
             claim_status = v.get("cve_claim_status", "unverified")
             status = f"Potential (CVE-based; {claim_status})"
-        title = (v.get("details") or "")[:80].replace("|", "/")
+        title = _display_text(
+            v.get("details") or "", limit=80, source="03_vuln_analysis.json"
+        ).replace("|", "/")
         sec5_rows.append(
             f"| {vid} | {v.get('device_id','')} ({v.get('device_ip','')}) "
             f"| {v.get('type','')} | {(v.get('severity') or '').upper()} "
@@ -85,7 +116,10 @@ def pregenerate_report_sections(run_dir: Path) -> None:
                 observation.get("details")
                 or observation.get("evidence")
                 or ""
-            )[:120].replace("|", "/")
+            )
+            title = _display_text(
+                title, limit=120, source="03_vuln_analysis.json"
+            ).replace("|", "/")
             observation_rows.append(
                 f"| {observation.get('id', '')} | "
                 f"{observation.get('device_id', '')} "
@@ -129,7 +163,10 @@ def pregenerate_report_sections(run_dir: Path) -> None:
     sec62_rows = []
     for t in confirmed_tests:
         data_list = t.get("data_extracted", [])
-        data_str = ("; ".join(str(d) for d in data_list[:2]) or "-")[:60].replace("|", "/")
+        data_str = _display_text(
+            "; ".join(str(d) for d in data_list[:2]) or "-",
+            limit=60, source="04_exploitation.json",
+        ).replace("|", "/")
         sec62_rows.append(
             f"| {t.get('vuln_id','')} | {t.get('device_id','')} "
             f"| {t.get('vuln_type','')} | {t.get('tool_used','-')} "
@@ -150,7 +187,10 @@ def pregenerate_report_sections(run_dir: Path) -> None:
         for item in t.get("data_extracted", []):
             item_str = str(item)
             if any(kw in item_str.lower() for kw in ("password", "passwd", "cred", "login", "user", "key", "token")):
-                creds_rows.append(f"| {t.get('device_id','')} | (see evidence) | {item_str[:80].replace('|','/')} | - | Phase 4 |")
+                creds_rows.append(
+                    f"| {t.get('device_id','')} | (see evidence) | "
+                    f"{_display_text(item_str, limit=80, source='04_exploitation.json').replace('|','/')} | - | Phase 4 |"
+                )
     sec63 = (
         "### 6.3 Credentials Recovered\n\n"
         "| Source | Username | Password/Key | Access Level | Retrieved From |\n"
@@ -167,6 +207,8 @@ def pregenerate_report_sections(run_dir: Path) -> None:
 def merge_report_with_prefill(
     run_dir: Path, run_context: dict, *, model: str,
     validate_report: Callable[[str], tuple[bool, str]],
+    analysis_status: str | None = None,
+    analysis_cause: str | None = None,
 ) -> None:
     """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 06_report.md
     with the deterministically-generated tables from 06_report_prefill.md.
@@ -210,10 +252,11 @@ def merge_report_with_prefill(
     ctx: dict = {}
     if context_path.exists():
         ctx = json.loads(context_path.read_text(encoding="utf-8"))
-    analysis_context = build_report_analysis_context(run_dir)
-    graph_context = analysis_context.get("graph", {})
-    recon_context = analysis_context.get("recon", {})
-    intrusion_context = analysis_context.get("intrusion", {})
+    full_sources = _full_report_sources(run_dir)
+    graph_context = full_sources["graph"]
+    recon_context = full_sources["recon"]
+    intrusion_context = full_sources["intrusion"]
+    phase3_status = full_sources["phase3_status"]
 
     run_date = datetime.now().astimezone().date().isoformat()
     n_devices = ctx.get("device_count", "?")
@@ -247,20 +290,31 @@ def merge_report_with_prefill(
     executed_phases.append("6")
     executed_phase_text = " -> ".join(executed_phases)
 
-    # Section 7 — Top critical attack paths from context
+    # Section 7 — deterministic attack-surface evidence.  Phase 5 is kept as
+    # raw declarations: this renderer must not turn model/tool claims into
+    # validated compromises or reconstructed pivots.
     critical_findings = ctx.get("top_critical_findings", [])
     sec7_rows = "\n".join(
         f"| {f.get('device_id','?')} ({f.get('device_ip','?')}) "
         f"| {f.get('type','?')} | {f.get('service','?')} "
-        f"| {f.get('title','?')[:70]} |"
+        f"| {_display_text(f.get('title','?'), limit=70, source='03_vuln_analysis.json')} |"
         for f in critical_findings[:10]
     )
     intrusion_summary = intrusion_context.get("summary", {})
     compromised = intrusion_context.get("compromised_devices", [])
+    raw_credentials = intrusion_context.get("credential_pool", [])
+    raw_crown_jewels = intrusion_context.get(
+        "crown_jewels_reached", intrusion_summary.get("crown_jewels_reached", [])
+    )
+    if not isinstance(raw_credentials, list):
+        raw_credentials = []
+    if not isinstance(raw_crown_jewels, list):
+        raw_crown_jewels = []
     sec73_rows = "\n".join(
         f"| {device.get('device_id', device.get('device', '?'))} "
         f"| {device.get('device_ip', device.get('ip', '?'))} "
-        f"| {device.get('access_method', device.get('service', '?'))} |"
+        f"| {device.get('access_method', device.get('service', '?'))} "
+        "| raw Phase 5 declaration; not independently validated |"
         for device in compromised
         if isinstance(device, dict)
     )
@@ -269,14 +323,37 @@ def merge_report_with_prefill(
         "| Device | Vuln Type | Service | Description |\n"
         "|--------|-----------|---------|-------------|\n"
         + (sec7_rows if sec7_rows else "| — | — | — | No critical findings |\n")
-        + "\n\n### 7.3 Infiltration Campaign\n\n"
+        + "\n\n### 7.3 Phase 5 raw declarations (non-validées)\n\n"
+        + "Les éléments ci-dessous proviennent de `05_intrusion.json` et sont "
+        "des déclarations brutes/non validées. Ils ne constituent pas une preuve "
+        "de compromission et aucun pivot n’est reconstruit ici.\n\n"
         + "| Metric | Value |\n|--------|-------|\n"
         + f"| Devices attempted | {intrusion_summary.get('devices_attempted', intrusion_summary.get('devices_targeted', 0))} |\n"
-        + f"| Devices compromised | {intrusion_summary.get('devices_compromised', len(compromised))} |\n"
-        + f"| Credentials harvested | {intrusion_summary.get('credentials_harvested', 0)} |\n"
-        + f"| Crown jewels reached | {intrusion_summary.get('crown_jewels_reached', 0)} |\n\n"
-        + "| Compromised device | IP | Access |\n|--------------------|----|--------|\n"
-        + (sec73_rows if sec73_rows else "| — | — | No successful compromise recorded |")
+        + f"| Devices declared compromised (raw) | {intrusion_summary.get('devices_compromised', len(compromised))} |\n"
+        + f"| Credentials declared harvested (raw) | {intrusion_summary.get('credentials_harvested', len(raw_credentials) if isinstance(raw_credentials, list) else 0)} |\n"
+        + f"| Crown jewels declared reached (raw) | {intrusion_summary.get('crown_jewels_reached', len(raw_crown_jewels) if isinstance(raw_crown_jewels, list) else 0)} |\n\n"
+        + "| Declared device (raw) | IP | Access declaration | Validation state |\n"
+        + "|----------------------|----|--------------------|------------------|\n"
+        + (sec73_rows if sec73_rows else "| — | — | No Phase 5 raw declaration | — |")
+        + "\n\n### 7.3.a Raw credential declarations (non-validées)\n\n"
+        + "| User | Service | Source | State |\n|------|---------|--------|-------|\n"
+        + "\n".join(
+            f"| {item.get('username', item.get('user', '—'))} | "
+            f"{item.get('service', '—')} | {item.get('source', '05_intrusion.json')} "
+            "| raw declaration; not independently validated |"
+            for item in raw_credentials if isinstance(item, dict)
+        )
+        + ("" if raw_credentials else "| — | — | — | no raw credential declaration |")
+        + "\n\n### 7.3.b Raw crown-jewel declarations (non-validées)\n\n"
+        + "| Device | Access | Data declaration | State |\n|--------|--------|------------------|-------|\n"
+        + "\n".join(
+            f"| {item.get('device_id', item.get('device', '—'))} | "
+            f"{item.get('access_method', item.get('service', '—'))} | "
+            f"{_display_text(item.get('data', item.get('evidence', '—')), limit=160, source='05_intrusion.json').replace('|', '/')} "
+            "| raw declaration; not independently validated |"
+            for item in raw_crown_jewels if isinstance(item, dict)
+        )
+        + ("" if raw_crown_jewels else "| — | — | no raw crown-jewel declaration | — |")
     )
 
     # Section 8 — Top devices by risk score
@@ -314,14 +391,32 @@ def merge_report_with_prefill(
         sec10 += "### CVEs identified\n\n" + "\n".join(f"- {c}" for c in sorted(cve_list)) + "\n\n"
     sec10 += "All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.\n"
     analysis_path = run_dir / "06_report_analysis.md"
-    if analysis_path.exists():
+    analysis_heading = "### 10.3 Analyse du modèle (non validée)"
+    if analysis_path.exists() and analysis_path.read_text(encoding="utf-8").strip():
         model_analysis = analysis_path.read_text(encoding="utf-8").strip()
         if model_analysis:
             sec10 += (
-                "\n### 10.3 Additional Model Analysis\n\n"
+                f"\n{analysis_heading}\n\n"
+                "Cette note est un complément analyste non validé. Elle ne crée "
+                "aucune confirmation, aucun pivot et ne modifie pas les preuves, "
+                "chiffres ou inventaires déterministes.\n\n"
                 + model_analysis
                 + "\n"
             )
+    else:
+        status = analysis_status or "unavailable"
+        cause = analysis_cause or "memo_absent"
+        outcome = "completed" if status == "usable" else (
+            "stopped" if cause == "stopped" else (
+                "budget_exceeded" if cause == "budget_exceeded" else f"partial:{cause}"
+            )
+        )
+        sec10 += (
+            f"\n{analysis_heading}\n\n"
+            f"Aucune note analyste utilisable n’a été promue. Issue phase6: `{outcome}`. État: `{status}`. "
+            f"Cause: `{cause}`. Le rapport déterministe et les artefacts complets "
+            "restent la seule source des preuves et chiffres.\n"
+        )
 
     topology_rows = "\n".join(
         f"| {node.get('id', node.get('name', '?'))} | {node.get('ip', '?')} "
@@ -360,6 +455,17 @@ def merge_report_with_prefill(
         "|--------|----|------------|-------------------|\n"
         + (recon_rows if recon_rows else "| — | — | — | No live service evidence |")
     )
+    scanner_errors = phase3_status.get("scanner_errors", [])
+    device_failures = phase3_status.get("devices_failed", 0)
+    phase3_limits = ""
+    if scanner_errors or device_failures:
+        phase3_limits = (
+            "\n\n### Upstream execution limits\n\n"
+            f"Phase 3 recorded {len(scanner_errors) if isinstance(scanner_errors, list) else 1} "
+            f"scanner error(s) and {device_failures} device worker failure(s). "
+            "These are execution limitations, not negative security findings; "
+            "see `03_phase3_status.json` for the complete record."
+        )
 
     fallback = (
         f"# Pentest Report — NATO Smart City IoT Lab\n\n"
@@ -384,7 +490,7 @@ def merge_report_with_prefill(
         f"- **Phases executed:** {executed_phase_text}\n"
         f"- **Tools used:** see tool_calls.jsonl for the authoritative executed-tool ledger\n\n"
         f"{sec3}\n\n"
-        f"{sec4}\n\n"
+        f"{sec4}{phase3_limits}\n\n"
         f"{prefill}\n\n"
         f"{sec7}\n\n"
         f"{sec8}\n\n"
@@ -393,3 +499,32 @@ def merge_report_with_prefill(
     )
     report_path.write_text(fallback, encoding="utf-8")
     print(f"  [fallback] 06_report.md generated from prefill ({report_path.stat().st_size:,} bytes)")
+
+
+def render_deterministic_report(
+    run_dir: Path,
+    run_context: dict,
+    *,
+    model: str,
+    validate_report: Callable[[str], tuple[bool, str]],
+    analysis_status: str,
+    analysis_cause: str,
+) -> None:
+    """Render the new Phase 6 report from evidence, never from an old draft.
+
+    The report path is an active projection, not an append-only evidence log.
+    Removing it before rendering prevents a validated report from a resumed
+    attempt from hiding a new timeout, stop, or rejected note. Historical
+    ledgers and source artifacts are untouched.
+    """
+    report_path = run_dir / "06_report.md"
+    if report_path.exists():
+        report_path.unlink()
+    merge_report_with_prefill(
+        run_dir,
+        run_context,
+        model=model,
+        validate_report=validate_report,
+        analysis_status=analysis_status,
+        analysis_cause=analysis_cause,
+    )

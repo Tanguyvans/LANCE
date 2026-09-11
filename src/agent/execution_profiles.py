@@ -116,8 +116,8 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
         phase4_local_max_tokens=2048,
         intrusion_max_turns=50,
         intrusion_max_tokens=2048,
-        report_max_turns=12,
-        report_max_tokens=4096,
+        report_max_turns=1,
+        report_max_tokens=1536,
     ),
     "full": ExecutionProfile(
         name="full",
@@ -137,8 +137,8 @@ EXECUTION_PROFILES: dict[str, ExecutionProfile] = {
         phase4_local_max_tokens=1536,
         intrusion_max_turns=80,
         intrusion_max_tokens=16384,
-        report_max_turns=25,
-        report_max_tokens=16384,
+        report_max_turns=1,
+        report_max_tokens=2048,
     ),
 }
 
@@ -165,9 +165,9 @@ COMPACT_PHASE_TOOL_NAMES: dict[int, frozenset[str]] = {
         "read_deliverable", "save_deliverable", "ssh_exec", "ssh_login",
         "telnet_connect", "try_credential",
     }),
-    6: frozenset({
-        "list_deliverables", "read_deliverable", "save_deliverable",
-    }),
+    # Phase 6 is a bounded analyst-note call. It has no provider tools; the
+    # deterministic renderer reads the run-local artifacts directly.
+    6: frozenset(),
 }
 
 
