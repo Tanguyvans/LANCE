@@ -1,6 +1,6 @@
 """LLM provider abstraction with tool-calling loops.
 
-Supports Anthropic, OpenAI-compatible APIs, and the user's local Codex
+Supports OpenAI-compatible APIs and the user's local Codex
 subscription session. Tools are defined once and translated internally.
 """
 from __future__ import annotations
@@ -73,7 +73,7 @@ OPENAI_PROVIDERS = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
-        "default_model": "anthropic/claude-sonnet-4",
+        "default_model": None,  # Legacy CLI provider: an explicit model is required.
     },
     "minimax": {
         "base_url": "https://api.minimax.io/v1",
@@ -114,14 +114,14 @@ def _resolve_provider_cfg(provider: str) -> dict | None:
 class LLMProvider:
     """Unified LLM interface with synchronous tool-calling loop."""
 
-    def __init__(self, provider: str = "anthropic", model: str | None = None):
+    def __init__(self, provider: str, model: str | None = None):
         self.provider = provider
         self.last_usage = {"input_tokens": 0, "output_tokens": 0}
         if provider == "anthropic":
-            import anthropic
-            self.client = anthropic.Anthropic()
-            self.model = model or "claude-sonnet-4-20250514"
-        elif provider == "codex":
+            raise ValueError("Anthropic is no longer supported; select another provider explicitly")
+        if provider == "openrouter" and not model:
+            raise ValueError("OpenRouter requires an explicit model")
+        if provider == "codex":
             from src.agent.codex_app_server import get_codex_catalog
 
             catalog = get_codex_catalog()
@@ -141,7 +141,7 @@ class LLMProvider:
         else:
             cfg = _resolve_provider_cfg(provider)
             if cfg is None:
-                known = ", ".join(["anthropic", "codex", *OPENAI_PROVIDERS])
+                known = ", ".join(["codex", *OPENAI_PROVIDERS])
                 raise ValueError(f"Unknown provider: {provider}. Available: {known}")
             import openai
             api_key_env = cfg.get("api_key_env") or ""
@@ -228,215 +228,18 @@ class LLMProvider:
             )
             self.last_usage = usage
             return result
-        if self.provider == "anthropic":
-            return self._anthropic_loop(
-                system_prompt, user_message, tools, tool_map, max_turns,
-                cost_tracker, max_tokens, stream_callback, required_tool,
-                terminate_after_tool, repeat_guard, terminal_unavailable_tools,
-                strict_required_tool, recover_required_tool_on_stall,
-                stop_event,
-                max_data_tool_calls,
-                force_completion_on_phase4_conclusive,
-                deadline,
-            )
-        else:
-            return self._openai_loop(
-                system_prompt, user_message, tools, tool_map, max_turns, cost_tracker,
-                max_tokens, stream_callback, required_tool, terminate_after_tool,
-                repeat_guard, terminal_unavailable_tools, strict_required_tool,
-                force_tool_on_stall, force_completion_on_recon_ready,
-                reopen_intrusion_tools_on_contract_error,
-                recover_required_tool_on_stall,
-                stop_event,
-                max_data_tool_calls,
-                force_completion_on_phase4_conclusive,
-                deadline=deadline,
-            )
-
-    def _anthropic_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None):
-        api_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]} for t in tools]
-        messages = [{"role": "user", "content": user_message}]
-        required_tool_called = False
-        reminder_sent = False
-        call_counts: dict[tuple[str, str], int] = {}
-        completion_only = False
-        no_tool_stalls = 0
-        data_tool_calls = 0
-        _REPEAT_THRESHOLD = 3
-        _NO_TOOL_STALL_THRESHOLD = 3
-
-        terminal_api_tools = [tool for tool in api_tools if tool["name"] == required_tool]
-
-        def create_completion(**kwargs):
-            if cost_tracker is not None:
-                cost_tracker.check_budget()
-            client = self.client
-            remaining = _deadline_remaining(deadline)
-            if remaining is not None and hasattr(client, "with_options"):
-                # Retry here, with a recomputed remaining deadline, rather
-                # than letting SDK retries reuse the full request timeout.
-                client = client.with_options(timeout=remaining, max_retries=0)
-            if remaining is not None:
-                # Some Anthropic SDKs set a request-level 600s default that
-                # overrides the client timeout unless passed explicitly.
-                kwargs["timeout"] = remaining
-            return client.messages.create(**kwargs)
-
-        for turn in range(max_turns):
-            if stop_event is not None and stop_event.is_set():
-                if stream_callback:
-                    stream_callback({"type": "turn_done", "turn": turn, "final": True, "terminated_by": "stop"})
-                return "(stopped by user)"
-            log.info("Turn %d/%d (anthropic)", turn + 1, max_turns)
-            if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
-                completion_only = True
-            active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
-            request_kwargs = {
-                "model": self.model,
-                "max_tokens": max_tokens,
-                "system": system_prompt,
-                "messages": messages,
-            }
-            if active_api_tools:
-                request_kwargs["tools"] = active_api_tools
-            response = _call_with_retry(
-                create_completion,
-                max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
-                deadline=deadline,
-                **request_kwargs,
-            )
-            text_parts = []
-            tool_calls = []
-            for block in response.content:
-                if block.type == "text": text_parts.append(block.text)
-                elif block.type == "tool_use": tool_calls.append(block)
-
-            if text_parts and stream_callback:
-                stream_callback({"type": "text_chunk", "text": "\n".join(text_parts), "turn": turn + 1})
-
-            if cost_tracker and hasattr(response, "usage"):
-                cost_tracker.record_turn(input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, tool_call_count=len(tool_calls))
-
-            if not tool_calls:
-                if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
-                    no_tool_stalls += 1
-                    if (
-                        no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD
-                        and not recover_required_tool_on_stall
-                    ):
-                        log.warning(
-                            "Required tool %s was not called after %d no-tool turns",
-                            required_tool, no_tool_stalls,
-                        )
-                        if stream_callback:
-                            stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
-                        return "\n".join(text_parts) or f"(required tool {required_tool} not called after repeated reminders)"
-                    reminder = f"IMPORTANT: Call '{required_tool}' before finishing."
-                    messages.append({"role": "assistant", "content": response.content})
-                    messages.append({"role": "user", "content": reminder})
-                    reminder_sent = True
-                    continue
-                if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True})
-                return "\n".join(text_parts)
-
-            no_tool_stalls = 0
-            terminal_unavailable = next(
-                (
-                    tc.name for tc in tool_calls
-                    if tc.name in terminate_on_unavailable_tools and tc.name not in tool_map
-                ),
-                None,
-            )
-            if terminal_unavailable:
-                log.info(
-                    "Terminating after unavailable legacy tool call in memo mode: %s",
-                    terminal_unavailable,
-                )
-                if stream_callback:
-                    stream_callback({
-                        "type": "turn_done", "turn": turn + 1, "final": True,
-                        "terminated_by": terminal_unavailable,
-                    })
-                return "\n".join(text_parts) or f"(terminated by unavailable {terminal_unavailable})"
-
-            if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": False})
-            messages.append({"role": "assistant", "content": response.content})
-
-            completion_only_at_turn = completion_only
-            repeated_tool_ids: set[str] = set()
-            for tc in tool_calls:
-                call_sig = (tc.name, json.dumps(tc.input, sort_keys=True))
-                call_counts[call_sig] = call_counts.get(call_sig, 0) + 1
-                if repeat_guard and call_counts[call_sig] >= _REPEAT_THRESHOLD:
-                    repeated_tool_ids.add(tc.id)
-                    if required_tool:
-                        completion_only = True
-
-            def _maybe_execute_anthropic(tc):
-                if completion_only_at_turn and required_tool and tc.name != required_tool:
-                    return json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
-                if tc.id in repeated_tool_ids:
-                    return json.dumps({"ok": False, "error": f"Tool {tc.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
-                return self._execute_tool(tc.name, tc.input, tool_map)
-
-            if stop_event is not None and stop_event.is_set():
-                if stream_callback:
-                    stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": "stop"})
-                return "(stopped by user)"
-            if stream_callback:
-                for tc in tool_calls: stream_callback({"type": "tool_call", "name": tc.name, "args": tc.input})
-            terminate_now = False
-            tool_results = []
-            # Phase tools use thread-local pipeline context. Execute them on the
-            # provider loop thread, in the same order as Anthropic's tool blocks.
-            for tc in tool_calls:
-                if (
-                    max_data_tool_calls is not None
-                    and tc.name != terminate_after_tool
-                    and data_tool_calls >= max_data_tool_calls
-                ):
-                    completion_only = True
-                    res = json.dumps({
-                        "ok": False,
-                        "error_kind": "phase4_tool_budget_exhausted",
-                        "error": (
-                            f"Phase 4 data-tool budget exhausted after "
-                            f"{max_data_tool_calls} calls. Save the deliverable now."
-                        ),
-                    })
-                else:
-                    res = _maybe_execute_anthropic(tc)
-                    if tc.name != terminate_after_tool:
-                        data_tool_calls += 1
-                        if max_data_tool_calls is not None and data_tool_calls >= max_data_tool_calls:
-                            completion_only = True
-                if (
-                    force_completion_on_phase4_conclusive
-                    and tc.name != terminate_after_tool
-                    and isinstance(res, str)
-                    and '"phase4_conclusive": true' in res.casefold()
-                ):
-                    completion_only = True
-                failed, fallback_used = self._tool_result_metadata(res)
-                if cost_tracker:
-                    if failed:
-                        cost_tracker.record_tool_error()
-                    if tc.name == "save_deliverable":
-                        cost_tracker.record_format_attempt(fallback_used=fallback_used)
-                # Only mark required_tool as called if it succeeded.
-                if required_tool and tc.name == required_tool and not failed:
-                    required_tool_called = True
-                if terminate_after_tool and tc.name == terminate_after_tool and not failed:
-                    terminate_now = True
-                if stream_callback: stream_callback({"type": "tool_result", "name": tc.name, "result": res[:2000]})
-                tool_results.append({"type": "tool_result", "tool_use_id": tc.id, "content": res})
-                if terminate_now:
-                    break
-            messages.append({"role": "user", "content": tool_results})
-            if terminate_now:
-                if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
-                return "\n".join(text_parts) if text_parts else f"(terminated by {terminate_after_tool})"
-        return "(max turns reached)"
+        return self._openai_loop(
+            system_prompt, user_message, tools, tool_map, max_turns, cost_tracker,
+            max_tokens, stream_callback, required_tool, terminate_after_tool,
+            repeat_guard, terminal_unavailable_tools, strict_required_tool,
+            force_tool_on_stall, force_completion_on_recon_ready,
+            reopen_intrusion_tools_on_contract_error,
+            recover_required_tool_on_stall,
+            stop_event,
+            max_data_tool_calls,
+            force_completion_on_phase4_conclusive,
+            deadline=deadline,
+        )
 
     def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]

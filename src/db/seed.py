@@ -6,7 +6,8 @@ Usage::
 
 Idempotent: creates the schema, upserts providers and offline fallback models,
 then backfills runs already on disk. The dashboard selector excludes OpenRouter
-and Codex; provider configurations remain available for historical runs and CLI use.
+and Codex; their configurations remain available for historical runs and CLI use.
+The removed Anthropic adapter is not seeded; existing records are kept for history.
 """
 from __future__ import annotations
 
@@ -70,7 +71,7 @@ _OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"
 
 
 def seed_providers() -> int:
-    """Seed cloud providers from the agent registry + anthropic + a local one."""
+    """Seed supported providers; leave historical registry rows untouched."""
     from src.agent.provider import OPENAI_PROVIDERS
 
     count = 0
@@ -83,16 +84,6 @@ def seed_providers() -> int:
             kind="cloud",
         )
         count += 1
-
-    # Anthropic uses the native SDK (no base_url in OPENAI_PROVIDERS).
-    upsert_provider(
-        name="anthropic",
-        base_url=None,
-        api_key_env="ANTHROPIC_API_KEY",
-        default_model="claude-sonnet-4-20250514",
-        kind="cloud",
-    )
-    count += 1
 
     # Authentication and models are resolved from the local Codex session at
     # runtime; no OAuth token or account identity is stored in SQLite.

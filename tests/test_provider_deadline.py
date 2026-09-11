@@ -10,13 +10,6 @@ from src.agent.provider import LLMProvider
 
 
 def sdk_response(provider):
-    if provider == "anthropic":
-        return {
-            "id": "msg_offline", "type": "message", "role": "assistant",
-            "model": "offline", "content": [{"type": "text", "text": "Observed evidence."}],
-            "stop_reason": "end_turn", "stop_sequence": None,
-            "usage": {"input_tokens": 10, "output_tokens": 3},
-        }
     return {
         "id": "chat_offline", "object": "chat.completion", "created": 1, "model": "offline",
         "choices": [{"index": 0, "finish_reason": "stop", "message": {
@@ -27,8 +20,8 @@ def sdk_response(provider):
 
 
 def make_provider(provider, transport):
-    module = pytest.importorskip("anthropic" if provider == "anthropic" else "openai")
-    client_class = module.Anthropic if provider == "anthropic" else module.OpenAI
+    module = pytest.importorskip("openai")
+    client_class = module.OpenAI
     instance = LLMProvider.__new__(LLMProvider)
     instance.provider = provider
     instance.model = "offline"
@@ -40,7 +33,7 @@ def make_provider(provider, transport):
     return instance, module
 
 
-@pytest.mark.parametrize("provider", ["local", "anthropic"])
+@pytest.mark.parametrize("provider", ["local", "minimax", "qwen", "glm"])
 @pytest.mark.parametrize("bounded", [False, True])
 def test_deadline_avoids_hidden_sdk_retries_and_leaves_unbounded_calls_unchanged(provider, bounded):
     requests = []
@@ -65,7 +58,7 @@ def test_deadline_avoids_hidden_sdk_retries_and_leaves_unbounded_calls_unchanged
         instance.client.close()
 
 
-@pytest.mark.parametrize("provider", ["local", "anthropic"])
+@pytest.mark.parametrize("provider", ["local", "minimax", "qwen", "glm"])
 def test_expired_deadline_never_sends_a_request(provider):
     requests = []
     instance, _ = make_provider(provider, httpx.MockTransport(lambda request: requests.append(request)))
@@ -77,7 +70,7 @@ def test_expired_deadline_never_sends_a_request(provider):
         instance.client.close()
 
 
-@pytest.mark.parametrize("provider", ["local", "anthropic"])
+@pytest.mark.parametrize("provider", ["local", "minimax", "qwen", "glm"])
 def test_application_retry_recomputes_remaining_timeout(provider, monkeypatch):
     clock = {"now": 100.0}
     timeouts = []

@@ -19,8 +19,10 @@ def main():
     )
     parser.add_argument(
         "--provider",
-        default=os.environ.get("AGENT_PROVIDER", "anthropic"),
-        choices=["anthropic", "codex", "openrouter", "minimax", "glm", "qwen", "local"],
+        default=os.environ.get("AGENT_PROVIDER") or None,
+        required=not bool(os.environ.get("AGENT_PROVIDER")),
+        choices=["codex", "openrouter", "minimax", "glm", "qwen", "local"],
+        help="Required unless AGENT_PROVIDER is set; no implicit provider fallback.",
     )
     parser.add_argument(
         "--model",
@@ -78,6 +80,8 @@ def main():
         help="Benchmark split policy. Sealed runs must be launched by the controller worker.",
     )
     args = parser.parse_args()
+    if args.provider == "anthropic":
+        parser.error("Anthropic is no longer supported; set --provider or AGENT_PROVIDER explicitly")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

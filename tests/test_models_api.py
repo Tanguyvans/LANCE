@@ -23,7 +23,7 @@ def test_selector_keeps_registry_models_and_excludes_removed_providers(tmp_path,
     monkeypatch.setattr("src.agent.pricing._load_openrouter_catalog", forbidden_catalog)
     monkeypatch.setattr("src.agent.pricing._load_pricing", forbidden_catalog)
     db.init_db()
-    for provider in ("local", "minimax", "openrouter", "codex"):
+    for provider in ("local", "minimax", "openrouter", "codex", "anthropic"):
         db.upsert_provider(provider)
         db.upsert_model(
             f"{provider}-model", provider=provider, enabled=True,
@@ -46,6 +46,7 @@ def test_selector_keeps_registry_models_and_excludes_removed_providers(tmp_path,
     # Reducing launch choices does not delete historical configuration.
     assert db.get_model("openrouter-model") is not None
     assert db.get_model("codex-model") is not None
+    assert db.get_model("anthropic-model") is not None
 
 
 @pytest.mark.parametrize("registry_unavailable", [False, True])

@@ -15,7 +15,7 @@ except ImportError:
 # Hardcoded pricing fallback (per million tokens, USD)
 # Used when the OpenRouter dynamic catalog is unavailable or doesn't contain the model.
 PRICING = {
-    # Anthropic
+    # Historical Anthropic runs remain readable; no active adapter depends on these rates.
     "claude-sonnet-4-20250514": {"input": 3.0, "output": 15.0},
     "anthropic/claude-sonnet-4": {"input": 3.0, "output": 15.0},
     "anthropic/claude-sonnet-4.5": {"input": 3.0, "output": 15.0},

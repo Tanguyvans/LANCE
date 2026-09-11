@@ -1,6 +1,6 @@
 """Embedding client using Voyage AI (voyage-4-lite).
 
-Anthropic recommends Voyage AI for embeddings. voyage-4-lite produces
+voyage-4-lite produces
 1024-dim vectors at $0.02/1M tokens with 200M free tokens per account.
 
 Requires VOYAGE_API_KEY in environment (.env).

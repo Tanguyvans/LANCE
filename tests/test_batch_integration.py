@@ -462,7 +462,7 @@ def test_cli_accepts_public_test_scenario(monkeypatch):
     pipeline = Mock(return_value=pipeline_instance)
     monkeypatch.setattr(agent_main, "LLMProvider", provider)
     monkeypatch.setattr(agent_main, "Pipeline", pipeline)
-    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "20"])
+    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--provider", "local", "--scenario", "20"])
 
     agent_main.main()
 
@@ -482,7 +482,7 @@ def test_cli_rejects_conflicting_split_before_provider(monkeypatch, selection):
 
     provider = Mock()
     monkeypatch.setattr(agent_main, "LLMProvider", provider)
-    monkeypatch.setattr(sys, "argv", ["agent", *selection])
+    monkeypatch.setattr(sys, "argv", ["agent", "--provider", "local", *selection])
     with pytest.raises(SystemExit) as exc:
         agent_main.main()
     assert exc.value.code == 2
@@ -544,7 +544,7 @@ def test_cli_accepts_public_hardened_variant(monkeypatch):
     pipeline = Mock(return_value=pipeline_instance)
     monkeypatch.setattr(agent_main, "LLMProvider", provider)
     monkeypatch.setattr(agent_main, "Pipeline", pipeline)
-    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--scenario", "S4h"])
+    monkeypatch.setattr(sys, "argv", ["python -m src.agent", "--provider", "local", "--scenario", "S4h"])
 
     agent_main.main()
 

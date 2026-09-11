@@ -551,19 +551,6 @@ class TestGraphTools:
 class TestProvider:
     """Test the LLM provider with mocked API calls."""
 
-    def _make_anthropic_provider(self, model=None):
-        """Create a provider with mocked anthropic client."""
-        import anthropic
-        with patch.object(anthropic, "Anthropic") as mock_cls:
-            provider = LLMProvider(provider="anthropic", model=model or "claude-sonnet-4-20250514")
-            provider.client = mock_cls.return_value
-        return provider
-
-    def test_anthropic_init(self):
-        provider = self._make_anthropic_provider()
-        assert provider.model == "claude-sonnet-4-20250514"
-        assert provider.provider == "anthropic"
-
     def test_openrouter_init(self):
         import openai
         with patch.object(openai, "OpenAI"):
@@ -596,79 +583,6 @@ class TestProvider:
         assert calls == []
         with pytest.raises(ValueError, match="Unknown provider"):
             LLMProvider(provider="invalid")
-
-    def test_anthropic_loop_text_response(self):
-        """Test that a simple text response terminates the loop."""
-        provider = self._make_anthropic_provider()
-
-        mock_text = MagicMock()
-        mock_text.type = "text"
-        mock_text.text = "Recon complete. No findings."
-
-        mock_response = MagicMock()
-        mock_response.content = [mock_text]
-
-        provider.client.messages.create.return_value = mock_response
-
-        result = provider.chat_with_tools(
-            system_prompt="You are a recon agent.",
-            user_message="Start recon.",
-            tools=[],
-            max_turns=5,
-        )
-        assert result == "Recon complete. No findings."
-
-    def test_anthropic_loop_with_tool_call(self):
-        """Test tool call -> result -> final response cycle."""
-        provider = self._make_anthropic_provider()
-
-        # First response: tool_use
-        mock_tool_use = MagicMock()
-        mock_tool_use.type = "tool_use"
-        mock_tool_use.name = "test_tool"
-        mock_tool_use.input = {"arg": "value"}
-        mock_tool_use.id = "tool_123"
-
-        mock_response_1 = MagicMock()
-        mock_response_1.content = [mock_tool_use]
-
-        # Second response: text
-        mock_text = MagicMock()
-        mock_text.type = "text"
-        mock_text.text = "Done."
-
-        mock_response_2 = MagicMock()
-        mock_response_2.content = [mock_text]
-
-        provider.client.messages.create.side_effect = [mock_response_1, mock_response_2]
-
-        tool_called = {}
-
-        def test_tool_fn(arg):
-            tool_called["arg"] = arg
-            return "tool result"
-
-        tools = [
-            {
-                "name": "test_tool",
-                "description": "A test tool",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"arg": {"type": "string"}},
-                    "required": ["arg"],
-                },
-                "function": test_tool_fn,
-            }
-        ]
-
-        result = provider.chat_with_tools(
-            system_prompt="test",
-            user_message="go",
-            tools=tools,
-            max_turns=5,
-        )
-        assert result == "Done."
-        assert tool_called["arg"] == "value"
 
     def test_execute_tool_error_handling(self):
         """Test that tool execution errors are returned as strings."""
@@ -719,22 +633,26 @@ def test_tool_result_metadata_detects_json_error_envelopes():
     assert LLMProvider._tool_result_metadata("plain successful output") == (False, False)
 
 
-def test_anthropic_repeated_calls_are_counted_on_parent_tracker_thread():
+def test_openai_repeated_calls_are_counted_on_parent_tracker_thread():
     provider = object.__new__(LLMProvider)
-    provider.provider = "anthropic"
+    provider.provider = "local"
     provider.model = "test-model"
     provider.client = MagicMock()
 
     responses = []
     for index in range(3):
-        tool_call = MagicMock(type="tool_use", input={"target": "same"}, id=f"tc-{index}")
-        tool_call.name = "probe"
-        responses.append(MagicMock(content=[tool_call], usage=MagicMock(input_tokens=1, output_tokens=1)))
+        tool_call = MagicMock(id=f"tc-{index}")
+        tool_call.function.name = "probe"
+        tool_call.function.arguments = '{"target": "same"}'
+        responses.append(MagicMock(
+            choices=[MagicMock(finish_reason="tool_calls", message=MagicMock(content=None, tool_calls=[tool_call]))],
+            usage=MagicMock(prompt_tokens=1, completion_tokens=1),
+        ))
     responses.append(MagicMock(
-        content=[MagicMock(type="text", text="done")],
-        usage=MagicMock(input_tokens=1, output_tokens=1),
+        choices=[MagicMock(finish_reason="stop", message=MagicMock(content="done", tool_calls=None))],
+        usage=MagicMock(prompt_tokens=1, completion_tokens=1),
     ))
-    provider.client.messages.create.side_effect = responses
+    provider.client.chat.completions.create.side_effect = responses
     executions = []
     tools = [{
         "name": "probe", "description": "probe", "input_schema": {"type": "object"},
@@ -753,17 +671,20 @@ def test_anthropic_repeated_calls_are_counted_on_parent_tracker_thread():
     assert usage.tool_errors == 1
 
 
-def test_anthropic_tool_execution_preserves_thread_local_context():
+def test_openai_tool_execution_preserves_thread_local_context():
     provider = object.__new__(LLMProvider)
-    provider.provider = "anthropic"
+    provider.provider = "local"
     provider.model = "test-model"
     provider.client = MagicMock()
 
-    tool_call = MagicMock(type="tool_use", input={}, id="tc-context")
-    tool_call.name = "probe_context"
-    provider.client.messages.create.side_effect = [
-        MagicMock(content=[tool_call], usage=MagicMock(input_tokens=1, output_tokens=1)),
-        MagicMock(content=[MagicMock(type="text", text="done")], usage=MagicMock(input_tokens=1, output_tokens=1)),
+    tool_call = MagicMock(id="tc-context")
+    tool_call.function.name = "probe_context"
+    tool_call.function.arguments = "{}"
+    provider.client.chat.completions.create.side_effect = [
+        MagicMock(choices=[MagicMock(finish_reason="tool_calls", message=MagicMock(content=None, tool_calls=[tool_call]))],
+                  usage=MagicMock(prompt_tokens=1, completion_tokens=1)),
+        MagicMock(choices=[MagicMock(finish_reason="stop", message=MagicMock(content="done", tool_calls=None))],
+                  usage=MagicMock(prompt_tokens=1, completion_tokens=1)),
     ]
 
     context = threading.local()

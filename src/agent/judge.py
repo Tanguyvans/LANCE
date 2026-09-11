@@ -296,15 +296,10 @@ def _extract_json(content: str) -> Any:
             raise ValueError(f"LLM Judge did not return valid JSON: {content[:200]}") from exc
 
 
-def _usage_tokens(response: Any, anthropic: bool) -> tuple[int, int]:
+def _usage_tokens(response: Any) -> tuple[int, int]:
     usage = getattr(response, "usage", None)
     if usage is None:
         return 0, 0
-    if anthropic:
-        return (
-            int(getattr(usage, "input_tokens", 0) or 0),
-            int(getattr(usage, "output_tokens", 0) or 0),
-        )
     return (
         int(getattr(usage, "prompt_tokens", 0) or 0),
         int(getattr(usage, "completion_tokens", 0) or 0),
@@ -364,7 +359,6 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
 
     provider = LLMProvider(provider=provider_name, model=model)
     max_tokens = min(16384, max(4096, 1024 + len(findings) * 320))
-    is_anthropic = provider.provider == "anthropic"
     is_codex = provider.provider == "codex"
     input_tokens = output_tokens = 0
     finish_reason = None
@@ -391,16 +385,6 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
             output_tokens += int(provider.last_usage.get("output_tokens") or 0)
             finish_reason = "completed"
             response = None
-        elif is_anthropic:
-            response = provider.client.messages.create(
-                model=provider.model,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                max_tokens=max_tokens,
-                temperature=0.0,
-            )
-            content = response.content[0].text.strip()
-            finish_reason = getattr(response, "stop_reason", None)
         else:
             request_args = {
                 "model": provider.model,
@@ -423,7 +407,7 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
             finish_reason = getattr(response.choices[0], "finish_reason", None)
 
         if not is_codex:
-            used_input, used_output = _usage_tokens(response, is_anthropic)
+            used_input, used_output = _usage_tokens(response)
             input_tokens += used_input
             output_tokens += used_output
         try:

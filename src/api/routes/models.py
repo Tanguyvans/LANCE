@@ -102,7 +102,6 @@ _STATIC_KEY_ENV = {
     "minimax": "MINIMAX_API_KEY",
     "glm": "GLM_API_KEY",
     "qwen": "DASHSCOPE_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
     "local": "LOCAL_API_KEY",
 }
 
@@ -158,8 +157,9 @@ def _entry(slug, label, recommended, provider, subscription,
 def list_models(refresh: bool = False) -> dict:
     """Read the selector's registry on every request, including refresh.
 
-    OpenRouter and Codex are excluded from launch choices. Their historical
-    registry entries remain available through the administration endpoint.
+    OpenRouter, Codex and the removed Anthropic adapter are excluded from launch
+    choices. Their historical registry entries remain available through the
+    administration endpoint.
     """
 
     # Preferred path: read curated models from the DB so they can be edited
@@ -188,7 +188,7 @@ def list_models(refresh: bool = False) -> dict:
     # Registry providers such as MiniMax and local inference remain editable.
     for row in rows:
         provider = row.get("provider")
-        if not provider or provider in {"openrouter", "codex"} or not bool(row.get("enabled")):
+        if not provider or provider in {"openrouter", "codex", "anthropic"} or not bool(row.get("enabled")):
             continue
         models.append(_entry(
             row["slug"], row.get("label") or row["slug"],
