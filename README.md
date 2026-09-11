@@ -82,6 +82,15 @@ Full logs are stored in `output/agent/<run>/ansible_*.log`, including automatic
 cleanup: retries are appended and partial output is retained on timeouts.
 These logs describe failures; they do not automatically repair SSH or Proxmox.
 
+For exceptions escaping the pipeline, `run_error.json` records the active phase,
+exception class, sanitized message, causal chain and bounded stack locations
+(without source lines or local variables). The same diagnostic is retained in
+`run_meta.json` under `run_error`; the sidecar is attempted before cleanup so a
+later metadata-write failure does not necessarily lose the original cause.
+Both writes are best-effort. These diagnostics do not retry a phase, generate a
+fallback report, change the execution profile or turn an unsuccessful run into
+a success. Older runs without this diagnostic remain readable.
+
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 

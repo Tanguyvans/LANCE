@@ -611,7 +611,7 @@ class AgentRunner:
         if not self.run_dir.exists():
             return "None (first phase)"
         private_names = {
-            "ground_truth.yaml", "run_meta.json", "scenario_meta.json",
+            "ground_truth.yaml", "run_meta.json", "run_error.json", "scenario_meta.json",
             "evaluation.json", "evaluation_summary.json",
         }
         files = sorted(

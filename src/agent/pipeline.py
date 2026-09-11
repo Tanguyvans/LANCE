@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from src.agent.phases.intrusion.compact import CompactIntrusionPhase
 from src.agent.core import runtime
@@ -23,6 +25,10 @@ from src.agent.phases.report.run import ReportPhase
 from src.agent.phases.report.compact import CompactReportPhase
 from src.agent.core.runner import AgentRunner
 from src.agent.core.lifecycle import ScenarioLifecycle
+from src.agent.core.run_diagnostics import (
+    build_run_error_diagnostic,
+    configured_secret_values,
+)
 from src.agent.core.runtime import OUTPUT_DIR, log
 from src.agent.cost_tracker import BudgetExceeded
 
@@ -202,7 +208,55 @@ class Pipeline(
         self._active_phase = None
         self._run_results: dict[str, str] = {}
         primary_error = None
+        self._run_error_diagnostic = None
         lifecycle_error = None
+
+        def record_primary_error(exc: BaseException) -> None:
+            """Best-effort pre-teardown diagnostic; never alter run semantics."""
+            try:
+                diagnostic = build_run_error_diagnostic(
+                    exc,
+                    phase=self._active_phase,
+                    secret_values=configured_secret_values(
+                        getattr(self, "provider", None),
+                        getattr(self, "custom_config", None),
+                        getattr(self, "scenario_lab_config", None),
+                    ),
+                )
+                self._run_error_diagnostic = diagnostic
+                sidecar = self.run_dir / "run_error.json"
+                temporary = self.run_dir / f".run_error.{uuid4().hex}.tmp"
+                try:
+                    temporary.write_text(
+                        json.dumps(diagnostic, indent=2), encoding="utf-8"
+                    )
+                except BaseException as diagnostic_error:
+                    log.warning(
+                        "Could not persist run error sidecar (%s)",
+                        type(diagnostic_error).__name__,
+                    )
+                else:
+                    try:
+                        # Replaces a pre-existing symlink itself, never its
+                        # target, while keeping the diagnostic write atomic.
+                        os.replace(temporary, sidecar)
+                    except BaseException as diagnostic_error:
+                        log.warning(
+                            "Could not install run error sidecar (%s)",
+                            type(diagnostic_error).__name__,
+                        )
+                finally:
+                    try:
+                        temporary.unlink(missing_ok=True)
+                    except BaseException:
+                        pass
+            except BaseException as diagnostic_error:
+                # A diagnostic must never replace the original exception or
+                # interfere with cleanup, usage finalization, or status.
+                log.warning(
+                    "Could not build run error diagnostic (%s)",
+                    type(diagnostic_error).__name__,
+                )
 
         def capture_lifecycle_error(
             step: str, exc: BaseException, *, usage: bool = False
@@ -223,18 +277,21 @@ class Pipeline(
         except KeyboardInterrupt as exc:
             primary_error = exc
             self._termination = "stopped"
+            record_primary_error(exc)
             raise
         except BudgetExceeded as exc:
             # Budget exhaustion is a deliberate terminal cause, not a generic
             # phase failure. Preserve it while still running the finally block.
             primary_error = exc
             self._termination = "budget_exceeded"
+            record_primary_error(exc)
             raise
         except BaseException as exc:
             primary_error = exc
             self._termination = "failed"
             if self._active_phase is not None:
                 self._run_results[self._active_phase] = "failed:exception"
+            record_primary_error(exc)
             raise
         finally:
             usage_status = "completed"
@@ -299,15 +356,18 @@ class Pipeline(
                 status = "partial"
             # Metadata failure must not hide the original execution exception.
             metadata_status = "completed"
+            metadata_updates = {
+                "status": status, "cleanup_status": cleanup,
+                "results": self._run_results,
+                "evidence_integrity": not getattr(self, "_evidence_integrity_failed", False),
+                "usage_status": usage_status,
+                "usage_errors": usage_errors,
+                "lifecycle_errors": lifecycle_errors,
+            }
+            if self._run_error_diagnostic is not None:
+                metadata_updates["run_error"] = self._run_error_diagnostic
             try:
-                self._update_run_meta({
-                    "status": status, "cleanup_status": cleanup,
-                    "results": self._run_results,
-                    "evidence_integrity": not getattr(self, "_evidence_integrity_failed", False),
-                    "usage_status": usage_status,
-                    "usage_errors": usage_errors,
-                    "lifecycle_errors": lifecycle_errors,
-                })
+                self._update_run_meta(metadata_updates)
             except (Exception, KeyboardInterrupt, SystemExit) as exc:
                 metadata_status = "failed"
                 capture_lifecycle_error("metadata", exc)
