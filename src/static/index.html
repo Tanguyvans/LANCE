@@ -49,10 +49,10 @@
       <label for="sel-model">Model global</label>
       <div class="model-picker-tools">
         <input id="model-search" type="search" placeholder="Filtrer les modèles…" autocomplete="off" aria-label="Filtrer les modèles">
-        <button id="btn-refresh-models" type="button" title="Actualiser les catalogues Codex et OpenRouter" aria-label="Actualiser les modèles">↻</button>
+        <button id="btn-refresh-models" type="button" title="Actualiser les modèles configurés" aria-label="Actualiser les modèles">↻</button>
       </div>
       <select id="sel-model">
-        <option value="">Chargement des catalogues…</option>
+        <option value="">Chargement des modèles…</option>
       </select>
       <div id="model-provider-status" class="model-provider-status" aria-live="polite"></div>
 
@@ -315,13 +315,13 @@
       Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.
     </div>
     <table id="bm-table" hidden>
-      <caption>Une piste est une faille possible, pas encore prouvée. VP = failles attendues correctement identifiées · FP = pistes ou déclarations non validées · FN = failles attendues sans résultat valide à cette étape. Après vérification, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
+      <caption>Une faille potentielle est une hypothèse à vérifier. Le filtrage sélectionne les failles à tester, sans les confirmer. VP = failles attendues correctement identifiées · FP = hypothèses ou déclarations comptées à tort comme positives · FN = failles attendues sans résultat valide à cette étape. Après vérification, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
       <thead>
         <tr>
           <th>Run</th>
           <th>Scénario</th>
-          <th scope="col"><span class="bm-stage-title">1. Failles suspectées</span><span class="bm-stage-help">Toutes les pistes proposées par l’agent</span></th>
-          <th scope="col"><span class="bm-stage-title">2. Pistes à vérifier</span><span class="bm-stage-help">Pistes conservées après filtrage, pas encore prouvées</span></th>
+          <th scope="col"><span class="bm-stage-title">1. Failles potentielles</span><span class="bm-stage-help">Toutes les hypothèses proposées par l’agent</span></th>
+          <th scope="col"><span class="bm-stage-title">2. Failles retenues</span><span class="bm-stage-help">Hypothèses sélectionnées pour vérification après filtrage</span></th>
           <th scope="col"><span class="bm-stage-title">3. Confirmations déclarées</span><span class="bm-stage-help">L’agent les dit confirmées ; l’évaluation contrôle les preuves</span></th>
           <th>Modèle</th>
           <th>Statut</th>

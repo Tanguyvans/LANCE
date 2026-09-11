@@ -492,19 +492,45 @@ def _detect_scenario(run_dir: Path) -> str | None:
 
 
 def _run_status(run_dir: Path) -> str:
-    """Infer run status from deliverable files."""
+    """Return a historical run's lifecycle status without guessing success.
+
+    Terminal pipeline runs persist their lifecycle state in ``run_meta.json``;
+    that state wins over the presence of reports or phase artifacts.  A
+    ``completed`` run is exposed as the legacy UI value ``done``.  If a
+    completed metadata record reports failed evidence integrity, expose it as
+    ``failed``; failed cleanup or incomplete usage expose it as ``partial``.
+    Missing, malformed, absent, or non-string status
+    metadata falls back to conservative artifact diagnostics: reports alone
+    never prove a successful run.
+    """
+    lifecycle_statuses = {
+        "completed", "done", "failed", "stopped", "partial",
+        "budget_exceeded", "running", "blocked", "skipped", "incomplete",
+    }
+
+    try:
+        run_meta = _read_run_meta(run_dir)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        run_meta = None
+
+    if isinstance(run_meta, dict):
+        metadata_status = run_meta.get("status")
+        if isinstance(metadata_status, str) and metadata_status in lifecycle_statuses:
+            if metadata_status in {"completed", "done"}:
+                if run_meta.get("evidence_integrity") is False:
+                    return "failed"
+                if (
+                    run_meta.get("cleanup_status") == "failed"
+                    or run_meta.get("usage_status") == "incomplete"
+                ):
+                    return "partial"
+                return "done"
+            return metadata_status
+
+    # Legacy runs may have no lifecycle metadata.  Keep useful diagnostics
+    # from their artifacts, but deliberately never infer success from a report.
     files = list(run_dir.glob("*"))
     names = [f.name for f in files]
-    phase5 = run_dir / "05_intrusion.json"
-    if phase5.exists():
-        try:
-            phase5_data = json.loads(phase5.read_text(encoding="utf-8"))
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            phase5_data = None
-        if isinstance(phase5_data, dict) and phase5_data.get("status") in {"incomplete", "blocked"}:
-            return "partial"
-    if "06_report.md" in names or "05_report.md" in names:
-        return "done"
     if any(n.startswith("04_") or n.startswith("05_") for n in names):
         return "partial"
     return "incomplete"

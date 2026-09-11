@@ -163,7 +163,7 @@ document.getElementById('btn-judge-run').onclick = async () => {
     if (!activeRunId) return;
     const modelSel = document.getElementById('sel-judge-model');
     const opt = modelSel.options[modelSel.selectedIndex];
-    if (!opt || !opt.value) return;
+    if (!opt || !opt.value || opt.disabled || !opt.dataset.provider) return;
     
     document.getElementById('btn-judge-run').disabled = true;
     document.getElementById('btn-judge-run').textContent = 'Évaluation...';
@@ -173,7 +173,7 @@ document.getElementById('btn-judge-run').onclick = async () => {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 model: opt.value,
-                provider: opt.dataset.provider || 'openrouter'
+                provider: opt.dataset.provider
             })
         });
         if (!res.ok) {
@@ -319,20 +319,10 @@ function bindModelPersistence(select) {
 }
 
 let _modelCatalog = [];
-let _modelProviderStatus = {};
-
-const MODEL_PROVIDER_ORDER = ['codex', 'minimax', 'openrouter', 'local'];
+const MODEL_PROVIDER_ORDER = ['local', 'minimax'];
 
 function modelGroupLabel(provider) {
-  const status = _modelProviderStatus[provider] || {};
-  if (provider === 'codex') {
-    const plan = status.plan_type ? status.plan_type.toUpperCase() : 'non connecté';
-    return `Codex — abonnement ${plan}`;
-  }
   if (provider === 'minimax') return 'MiniMax — Coding Plan';
-  if (provider === 'openrouter') {
-    return `OpenRouter — paiement à l’usage (${status.model_count || 0} modèles)`;
-  }
   if (provider === 'local') return 'Modèles locaux';
   return provider;
 }
@@ -340,8 +330,8 @@ function modelGroupLabel(provider) {
 function buildModelOption(model) {
   const opt = document.createElement('option');
   opt.value = model.id;
-  opt.dataset.provider = model.provider || 'openrouter';
-  const unavailable = model.available === false;
+  opt.dataset.provider = model.provider || '';
+  const unavailable = model.available === false || !model.provider;
   let label = model.label || model.id;
   if (model.subscription) {
     label += ' — inclus dans le plan';
@@ -359,7 +349,7 @@ function buildModelOption(model) {
 function groupedModels(models) {
   const groups = new Map();
   for (const model of models) {
-    const provider = model.provider || 'openrouter';
+    const provider = model.provider || '';
     if (!groups.has(provider)) groups.set(provider, []);
     groups.get(provider).push(model);
   }
@@ -404,17 +394,8 @@ function renderModelSelect(select, models, desiredValue = '', includeGlobal = fa
 function renderModelProviderStatus() {
   const target = document.getElementById('model-provider-status');
   if (!target) return;
-  const codex = _modelProviderStatus.codex || {};
-  const router = _modelProviderStatus.openrouter || {};
-  const codexText = codex.available
-    ? `Codex ${String(codex.plan_type || '').toUpperCase()} connecté · ${codex.model_count || 0} modèles`
-    : `Codex non connecté · ${codex.error || 'lancez codex login'}`;
-  const routerText = router.available
-    ? `OpenRouter connecté · ${router.model_count || 0} modèles avec outils`
-    : `OpenRouter non configuré · ${router.error || 'clé API absente'}`;
-  target.innerHTML =
-    `<span class="${codex.available ? 'provider-ok' : 'provider-warn'}">${escapeHtml(codexText)}</span><br>` +
-    `<span class="${router.available ? 'provider-ok' : 'provider-warn'}">${escapeHtml(routerText)}</span>`;
+  const available = _modelCatalog.filter(model => model.available !== false).length;
+  target.textContent = `${available} modèle${available > 1 ? 's' : ''} disponible${available > 1 ? 's' : ''} sur ${_modelCatalog.length}`;
 }
 
 function renderMainModelFilter() {
@@ -443,7 +424,6 @@ async function loadModels(forceRefresh = false) {
     const data = await fetchJSON('/api/models' + suffix);
     if (!data || !Array.isArray(data.models)) throw new Error('Réponse de catalogue invalide');
     _modelCatalog = data.models;
-    _modelProviderStatus = data.providers || {};
   } catch (e) {
     console.warn('API /api/models unavailable', e);
     const status = document.getElementById('model-provider-status');
@@ -1401,11 +1381,11 @@ async function startRun() {
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
-  if (!model || !selectedOpt || selectedOpt.disabled) {
+  if (!model || !selectedOpt || selectedOpt.disabled || !selectedOpt.dataset.provider) {
     addLog({type: 'error', message: 'Sélectionnez un modèle disponible avant de lancer le pipeline'});
     return;
   }
-  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
+  const provider = selectedOpt.dataset.provider;
   const teardown = document.getElementById('cb-teardown').checked;
   const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
   const mode     = document.querySelector('input[name="run-mode"]:checked').value;
@@ -1515,7 +1495,11 @@ async function startBatch() {
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
-  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
+  if (!model || !selectedOpt || selectedOpt.disabled || !selectedOpt.dataset.provider) {
+    addLog({type: 'error', message: 'Sélectionnez un modèle disponible avant de lancer le batch'});
+    return;
+  }
+  const provider = selectedOpt.dataset.provider;
   const phases   = expandSelectedPhases([...document.querySelectorAll('.phase-cb:checked')].map(c => parseInt(c.value)));
 
   resetNodeColors();
@@ -1581,7 +1565,8 @@ async function deployScenario() {
   const modelSel = document.getElementById('sel-model');
   const model    = modelSel.value;
   const selectedOpt = modelSel.options[modelSel.selectedIndex];
-  const provider = (selectedOpt && selectedOpt.dataset.provider) || 'openrouter';
+  // Deployment-only requests do not invoke a model.
+  const provider = selectedOpt?.dataset.provider;
 
   const btn = document.getElementById('btn-deploy');
   btn.disabled = true;
@@ -2552,7 +2537,7 @@ function bmRate(value) {
   return number == null ? '—' : `${bmNumber(number * 100, 1)} %`;
 }
 
-function renderFunnelStage(stage, reportScore = null, { primary = false, filterLoss = null } = {}) {
+function renderFunnelStage(stage, reportScore = null, { primary = false, filterLoss = null, countLabel = 'Failles potentielles' } = {}) {
   if (!stage?.available) {
     return `<div class="bm-funnel-stage bm-unavailable">Indisponible<small>${escapeHtml(stage?.reason || 'Ancien run ou artefact absent')}</small></div>`;
   }
@@ -2564,9 +2549,9 @@ function renderFunnelStage(stage, reportScore = null, { primary = false, filterL
     : `<details class="bm-stage-details"><summary>Détails métriques</summary>
         <span>Précision ${bmRate(stage.precision)} · F1 ${bmRate(stage.f1)}</span></details>`;
   const recall = reportScore ? '' : `<span class="${primary ? 'bm-primary-recall' : ''}">Rappel ${bmRate(stage.recall)}</span>`;
-  const lost = filterLoss == null ? '' : `<small class="bm-filter-loss">Vraies pistes perdues au filtrage : ${bmNumber(filterLoss)}</small>`;
+  const lost = filterLoss == null ? '' : `<small class="bm-filter-loss">Failles réelles écartées au filtrage : ${bmNumber(filterLoss)}</small>`;
   return `<div class="bm-funnel-stage">
-    <span class="bm-stage-count">${reportScore ? 'Déclarations' : 'Pistes'} <strong>${bmNumber(stage.predictions)}</strong></span>
+    <span class="bm-stage-count">${reportScore ? 'Déclarations' : escapeHtml(countLabel)} <strong>${bmNumber(stage.predictions)}</strong></span>
     <span>VP ${bmNumber(stage.true_positives)} · FP ${bmNumber(stage.false_positives)} · FN ${bmNumber(stage.false_negatives)}</span>
     ${recall}
     ${scoreDetails}
@@ -2579,30 +2564,30 @@ function renderVerificationCoverage(funnel) {
   const verification = funnel?.diagnostics?.verification;
   if (!verification || typeof verification !== 'object') {
     return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
-      <strong>Couverture</strong><span>— pistes testées</span><small>Données de vérification indisponibles</small></div>`;
+      <strong>Couverture</strong><span>— hypothèses testées</span><small>Données de vérification indisponibles</small></div>`;
   }
   const states = ['confirmed', 'inconclusive', 'error', 'not_tested'];
   const counts = states.map(key => verification[key]);
   const coherent = counts.every(value => Number.isInteger(value) && value >= 0);
   if (!coherent) {
     return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
-      <strong>Couverture</strong><span>— pistes testées</span><small>Population de vérification incomplète</small></div>`;
+      <strong>Couverture</strong><span>— hypothèses testées</span><small>Population de vérification incomplète</small></div>`;
   }
   const total = counts.reduce((sum, value) => sum + value, 0);
   const population = funnel?.stages?.filtered?.predictions;
   if (population !== undefined && (!Number.isInteger(population) || population < 0 || population !== total)) {
     return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
-      <strong>Couverture</strong><span>— pistes testées</span><small>Population de vérification incohérente</small></div>`;
+      <strong>Couverture</strong><span>— hypothèses testées</span><small>Population de vérification incohérente</small></div>`;
   }
   if (total === 0) {
     return `<div class="bm-verification-coverage" aria-label="Couverture de vérification indéfinie">
-      <strong>Couverture</strong><span>0/0 pistes testées</span><small>Population vide : couverture indéfinie</small></div>`;
+      <strong>Couverture</strong><span>0/0 hypothèses testées</span><small>Population vide : couverture indéfinie</small></div>`;
   }
   const tested = total - counts[3];
   const rate = bmFiniteNumber(funnel?.diagnostics?.verification_attempt_rate);
   const rateLabel = rate == null ? '' : ` · ${bmRate(rate)}`;
-  return `<div class="bm-verification-coverage" aria-label="${tested} pistes testées sur ${total}">
-    <strong>Couverture</strong><span>${tested}/${total} pistes testées${rateLabel}</span>
+  return `<div class="bm-verification-coverage" aria-label="${tested} hypothèses testées sur ${total}">
+    <strong>Couverture</strong><span>${tested}/${total} hypothèses testées${rateLabel}</span>
     <small>Non testées ${counts[3]} · indéterminées ${counts[1]} · erreurs ${counts[2]}</small></div>`;
 }
 
@@ -2613,13 +2598,13 @@ function renderFunnelDiagnostics(funnel, score = {}) {
   const proofs = p?.available
     ? `Acceptées : ${bmNumber(p.accepted)}<br>Rejetées : ${bmNumber(p.rejected)}<br>Manquantes ou non attribuables : ${bmNumber(p.missing)}`
     : 'Contrôle des preuves indisponible';
-  const verification = v ? `<p><strong>Vérification des pistes</strong><br>
-    Confirmées par le pipeline : ${bmNumber(v.confirmed)}<br>
+  const verification = v ? `<p><strong>Vérification des hypothèses</strong><br>
+    Déclarées confirmées par le pipeline : ${bmNumber(v.confirmed)}<br>
     Indéterminées : ${bmNumber(v.inconclusive)}<br>
     Erreurs : ${bmNumber(v.error)}<br>Non testées : ${bmNumber(v.not_tested)}</p>` : '';
   const losses = `<p><strong>Pertes dans l’entonnoir</strong><br>
-    Vraies pistes perdues au filtrage : ${bmNumber(d.true_candidates_lost_in_filter)}<br>
-    Vraies pistes non confirmées : ${bmNumber(d.true_candidates_not_confirmed)}<br>
+    Failles réelles écartées au filtrage : ${bmNumber(d.true_candidates_lost_in_filter)}<br>
+    Failles réelles non confirmées : ${bmNumber(d.true_candidates_not_confirmed)}<br>
     Déclarations de niveau insuffisant : ${bmNumber(d.unsupported_declarations)}</p>`;
   const network = score.phase5_metrics_available === true || score.total_attack_paths > 0
     ? `<p><strong>Chemins et intrusion — diagnostic</strong><br>
@@ -2681,6 +2666,7 @@ function renderBenchmarkTable() {
       <td>${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</td>
       <td>${sealed ? noScore : renderFunnelStage(stage('candidates'), null, {primary: true})}</td>
       <td>${sealed ? noScore : renderFunnelStage(stage('filtered'), null, {
+        countLabel: 'Failles retenues',
         filterLoss: bmFiniteNumber(s.funnel?.diagnostics?.true_candidates_lost_in_filter),
       })}</td>
       <td>${report}</td>
@@ -3267,7 +3253,7 @@ function _renderManager(version = _mgr.openVersion) {
       <label>base_url<input id="mgr-p-baseurl" ${inp} value="${ep ? escapeHtml(ep.base_url || '') : ''}" placeholder="https://… ou http://localhost:11434/v1"></label>
       <label>default_model<input id="mgr-p-default" ${inp} value="${ep ? escapeHtml(ep.default_model || '') : ''}"></label>
       <label class="full">Nom de la variable .env pour la clé (api_key_env) — <em>la clé elle-même se met dans <code>.env</code>, pas ici</em>
-        <input id="mgr-p-keyenv" ${inp} value="${ep ? escapeHtml(ep.api_key_env || '') : ''}" placeholder="ex: OPENROUTER_API_KEY"></label>
+        <input id="mgr-p-keyenv" ${inp} value="${ep ? escapeHtml(ep.api_key_env || '') : ''}" placeholder="ex: MINIMAX_API_KEY"></label>
       <div class="full" style="display:flex;gap:8px">
         <button type="submit">${ep ? 'Enregistrer' : 'Ajouter'}</button>
         ${ep ? '<button type="button" data-act="cancel-provider">Annuler</button>' : ''}

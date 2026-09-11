@@ -129,8 +129,71 @@ def _sealed_summary(scenario_id="20", benchmark_version=None):
 
 
 class TestRunVisibility:
-    def test_incomplete_phase5_is_not_marked_done(self, tmp_path):
-        (tmp_path / "05_intrusion.json").write_text(json.dumps({"status": "incomplete"}))
+    @pytest.mark.parametrize("status,expected", [
+        ("completed", "done"),
+        ("failed", "failed"),
+        ("stopped", "stopped"),
+        ("partial", "partial"),
+        ("budget_exceeded", "budget_exceeded"),
+        ("running", "running"),
+        ("blocked", "blocked"),
+        ("skipped", "skipped"),
+    ])
+    def test_run_meta_status_is_authoritative(self, tmp_path, status, expected):
+        (tmp_path / "run_meta.json").write_text(json.dumps({"status": status}))
+        (tmp_path / "06_report.md").write_text("report")
+
+        assert _run_status(tmp_path) == expected
+
+    @pytest.mark.parametrize("metadata", [
+        {},
+        {"status": "unknown"},
+        {"status": ["completed"]},
+        {"status": {"value": "completed"}},
+    ])
+    def test_invalid_or_absent_status_never_promotes_report_to_done(self, tmp_path, metadata):
+        if metadata:
+            (tmp_path / "run_meta.json").write_text(json.dumps(metadata))
+        (tmp_path / "06_report.md").write_text("historical report")
+
+        assert _run_status(tmp_path) == "incomplete"
+
+    def test_malformed_run_meta_keeps_conservative_artifact_diagnostics(self, tmp_path):
+        (tmp_path / "run_meta.json").write_text("not-json")
+        (tmp_path / "04_exploitation.json").write_text("{}")
+        (tmp_path / "06_report.md").write_text("partial report")
+
+        assert _run_status(tmp_path) == "partial"
+
+    @pytest.mark.parametrize("field,expected", [
+        ("evidence_integrity", "failed"),
+        ("cleanup_status", "partial"),
+        ("usage_status", "partial"),
+    ])
+    def test_completed_with_explicit_lifecycle_degradation_is_not_done(
+        self, tmp_path, field, expected,
+    ):
+        metadata = {"status": "completed"}
+        metadata[field] = {
+            "evidence_integrity": False,
+            "cleanup_status": "failed",
+            "usage_status": "incomplete",
+        }[field]
+        (tmp_path / "run_meta.json").write_text(json.dumps(metadata))
+        (tmp_path / "06_report.md").write_text("report")
+
+        assert _run_status(tmp_path) == expected
+
+    def test_completed_selection_without_report_is_done(self, tmp_path):
+        (tmp_path / "run_meta.json").write_text(json.dumps({"status": "completed"}))
+
+        assert _run_status(tmp_path) == "done"
+
+    @pytest.mark.parametrize("status", [
+        "incomplete", "blocked", ["incomplete"], {"value": "incomplete"},
+    ])
+    def test_phase5_artifact_with_non_string_status_is_partial(self, tmp_path, status):
+        (tmp_path / "05_intrusion.json").write_text(json.dumps({"status": status}))
         (tmp_path / "06_report.md").write_text("partial report")
 
         assert _run_status(tmp_path) == "partial"

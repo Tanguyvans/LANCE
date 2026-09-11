@@ -5,8 +5,8 @@ Usage::
     python3 -m src.db.seed
 
 Idempotent: creates the schema, upserts providers and offline fallback models,
-then backfills runs already on disk. OpenRouter and Codex catalogs are dynamic
-and are therefore not duplicated in SQLite.
+then backfills runs already on disk. The dashboard selector excludes OpenRouter
+and Codex; provider configurations remain available for historical runs and CLI use.
 """
 from __future__ import annotations
 

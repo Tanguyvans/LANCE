@@ -61,12 +61,12 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
     javascript = (ROOT / "src/static/app.js").read_text(encoding="utf-8")
     table = html[html.index('<table id="bm-table"'):html.index('</table>', html.index('<table id="bm-table"'))]
     renderer = javascript[javascript.index("function bmNumber("):javascript.index("// ── Modal")]
-    for heading in ("1. Failles suspectées", "2. Pistes à vérifier", "3. Confirmations déclarées", "Consommation", "Vérification"):
+    for heading in ("1. Failles potentielles", "2. Failles retenues", "3. Confirmations déclarées", "Consommation", "Vérification"):
         assert heading in table
-    assert "Une piste est une faille possible, pas encore prouvée" in table
+    assert "Une faille potentielle est une hypothèse à vérifier" in table
     assert table.count('class="bm-stage-help"') == 3
-    for explanation in ("Toutes les pistes proposées par l’agent",
-                        "Pistes conservées après filtrage, pas encore prouvées",
+    for explanation in ("Toutes les hypothèses proposées par l’agent",
+                        "Hypothèses sélectionnées pour vérification après filtrage",
                         "L’agent les dit confirmées ; l’évaluation contrôle les preuves",
                         "Après vérification, un VP exige aussi une preuve acceptée"):
         assert explanation in table
@@ -136,15 +136,15 @@ const row = {id: 'run_<safe>', scenario: 'S1', model: '<model>', status: 'done',
 context._bmData = [row];
 context.renderBenchmarkTable();
 let html = elements['bm-tbody'].innerHTML;
-assert(html.includes('Pistes <strong>2</strong>'));
-assert(html.includes('Pistes <strong>4</strong>'));
+assert(html.includes('Failles potentielles <strong>2</strong>'));
+assert(html.includes('Failles retenues <strong>4</strong>'));
 assert(html.includes('Déclarations <strong>2</strong>'));
-assert((html.match(/class="bm-stage-count">Pistes /g) || []).length === 2);
+assert((html.match(/class="bm-stage-count">Failles /g) || []).length === 2);
 assert((html.match(/class="bm-stage-count">Déclarations /g) || []).length === 1);
 assert(html.includes('VP 1 · FP 1 · FN 0'));
-assert(html.includes('3/4 pistes testées'));
+assert(html.includes('3/4 hypothèses testées'));
 assert(html.includes('indéterminées 1'));
-assert(html.includes('Vraies pistes perdues au filtrage : 1'));
+assert(html.includes('Failles réelles écartées au filtrage : 1'));
 assert(html.includes('Coût $0'));
 assert(html.includes('Tokens 0'));
 assert(html.includes('&lt;model&gt;'));
@@ -181,7 +181,7 @@ context._bmData = [{...row, id: 'zero-gt', cost: null, score: {
 context.renderBenchmarkTable();
 html = elements['bm-tbody'].innerHTML;
 assert(html.includes('Spécificité 100 %'));
-assert(html.includes('0/0 pistes testées'));
+assert(html.includes('0/0 hypothèses testées'));
 assert(html.includes('Tokens —'));
 
 for (const invalidTokens of [null, false, '']) {
@@ -205,7 +205,7 @@ for (const badFunnel of [invalidVerification, mismatchedPopulation]) {
   context.renderBenchmarkTable();
   html = elements['bm-tbody'].innerHTML;
   assert(html.includes('Couverture de vérification indisponible'));
-  assert(!html.includes('0/0 pistes testées'));
+  assert(!html.includes('0/0 hypothèses testées'));
 }
 
 elements['bm-tbody'].innerHTML = '';
@@ -213,11 +213,11 @@ context._bmData = [{...row, id: 'missing-rate', score: {...score,
   funnel: {...funnel, diagnostics: {...funnel.diagnostics, verification_attempt_rate: null}}}}];
 context.renderBenchmarkTable();
 html = elements['bm-tbody'].innerHTML;
-assert(html.includes('3/4 pistes testées'));
+assert(html.includes('3/4 hypothèses testées'));
 assert(!html.includes('0,0 %'));
 const missingRateCoverage = context.renderVerificationCoverage(
   context._bmData[0].score.funnel);
-assert(missingRateCoverage.includes('3/4 pistes testées'));
+assert(missingRateCoverage.includes('3/4 hypothèses testées'));
 assert(!missingRateCoverage.includes('%'));
 
 elements['bm-tbody'].innerHTML = '';

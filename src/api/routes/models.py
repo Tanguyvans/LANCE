@@ -1,9 +1,4 @@
-"""Models API — dynamic catalogs plus user-managed registry models.
-
-OpenRouter models come from its live, tool-capable catalog. Codex models and
-the active ChatGPT plan come from the user's local ``codex login`` session.
-Other providers remain managed by the SQLite registry.
-"""
+"""Models API — user-managed registry models for the dashboard selector."""
 from __future__ import annotations
 
 import logging
@@ -13,9 +8,6 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from pydantic import BaseModel, Field
-
-from src.agent.codex_app_server import get_codex_catalog
-from src.agent.pricing import _load_openrouter_catalog, _load_pricing
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -91,14 +83,13 @@ class ModelPatch(BaseModel):
     profile_policy: Literal["auto", "compact", "full"] | None = None
 
 
-# Minimal offline fallback. OpenRouter's real list is loaded dynamically.
+# Minimal offline fallback when the registry is empty or unavailable.
 # Schema: (slug, label, recommended, provider)
 #   - slug       : model ID passed to the LLM provider
 #   - label      : display name in the dropdown
 #   - recommended: if True, auto-selected by default
-#   - provider   : "openrouter" (pay-per-token) or "minimax" (subscription plan)
+#   - provider   : registry provider name
 CURATED_MODELS: list[tuple[str, str, bool, str]] = [
-    ("openrouter/auto",                     "OpenRouter Auto",            True,  "openrouter"),
     # MiniMax Coding Plan (subscription, $10/mo Starter — 1500 req/5h on MiniMax-M2.7)
     ("MiniMax-M2.7",                        "minimax-m2.7 (plan)",        False, "minimax"),
     ("MiniMax-M2.5",                        "minimax-m2.5 (plan)",        False, "minimax"),
@@ -108,13 +99,11 @@ CURATED_MODELS: list[tuple[str, str, bool, str]] = [
 
 # provider name -> env var holding its API key (fallback when the DB is absent)
 _STATIC_KEY_ENV = {
-    "openrouter": "OPENROUTER_API_KEY",
     "minimax": "MINIMAX_API_KEY",
     "glm": "GLM_API_KEY",
     "qwen": "DASHSCOPE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "local": "LOCAL_API_KEY",
-    "codex": None,
 }
 
 
@@ -130,11 +119,10 @@ def _key_present(provider, key_env_map):
     return bool(os.environ.get(env))
 
 
-def _entry(slug, label, recommended, provider, subscription, pricing,
+def _entry(slug, label, recommended, provider, subscription,
            db_in=None, db_out=None, key_present=True, **metadata):
-    """Build one response entry, enriched with live OpenRouter pricing.
+    """Build one response entry using prices configured in the registry.
 
-    Live $/M pricing wins; falls back to the price stored in the DB (if any).
     Subscription models have no per-token price.
     A model is available when its provider key is configured (``key_present``),
     independently of whether pricing is known (local models have no price).
@@ -151,9 +139,8 @@ def _entry(slug, label, recommended, provider, subscription, pricing,
             "output_per_mtok": None,
             **metadata,
         }
-    price = pricing.get(slug)
-    in_price = round(price["input"], 4) if price else (round(db_in, 4) if db_in is not None else None)
-    out_price = round(price["output"], 4) if price else (round(db_out, 4) if db_out is not None else None)
+    in_price = round(db_in, 4) if db_in is not None else None
+    out_price = round(db_out, 4) if db_out is not None else None
     return {
         "id": slug,
         "label": label + (" (recommandé)" if recommended else ""),
@@ -169,10 +156,11 @@ def _entry(slug, label, recommended, provider, subscription, pricing,
 
 @router.get("")
 def list_models(refresh: bool = False) -> dict:
-    """Return current executable models and provider connection status."""
-    openrouter_catalog = _load_openrouter_catalog(force_refresh=refresh)
-    pricing = _load_pricing()
-    codex = get_codex_catalog(force_refresh=refresh)
+    """Read the selector's registry on every request, including refresh.
+
+    OpenRouter and Codex are excluded from launch choices. Their historical
+    registry entries remain available through the administration endpoint.
+    """
 
     # Preferred path: read curated models from the DB so they can be edited
     # without touching the code. Any failure falls back to the hardcoded list.
@@ -195,96 +183,40 @@ def list_models(refresh: bool = False) -> dict:
     except Exception:
         key_env = {}
 
-    overrides = {row["slug"]: row for row in rows}
     models: list[dict] = []
-
-    # Codex is intentionally not persisted in the registry: both the model
-    # list and account plan belong to the currently logged-in local session.
-    for item in codex.get("models", []):
-        models.append(_entry(
-            item["id"], item["label"], bool(item.get("recommended")),
-            "codex", bool(codex.get("account_type") == "chatgpt"), pricing,
-            key_present=bool(codex.get("available")),
-            description=item.get("description") or "",
-            reasoning_efforts=item.get("reasoning_efforts") or [],
-            default_reasoning_effort=item.get("default_reasoning_effort"),
-            service_tiers=item.get("service_tiers") or [],
-            upgrade=item.get("upgrade"),
-            tool_capable=True,
-        ))
 
     # Registry providers such as MiniMax and local inference remain editable.
     for row in rows:
-        provider = row.get("provider") or "openrouter"
-        if provider in {"openrouter", "codex"} or not bool(row.get("enabled")):
+        provider = row.get("provider")
+        if not provider or provider in {"openrouter", "codex"} or not bool(row.get("enabled")):
             continue
         models.append(_entry(
             row["slug"], row.get("label") or row["slug"],
             bool(row.get("recommended")), provider,
-            bool(row.get("subscription")) or provider == "minimax", pricing,
+            bool(row.get("subscription")) or provider == "minimax",
             row.get("input_per_mtok"), row.get("output_per_mtok"),
             key_present=_key_present(provider, key_env),
             description="",
             tool_capable=True,
         ))
 
-    # With an empty/legacy DB, preserve the non-OpenRouter subscription fallback.
+    # Preserve the subscription fallback for an empty/unavailable registry.
     if not rows:
         for slug, label, recommended, provider in CURATED_MODELS:
-            if provider == "openrouter":
-                continue
             models.append(_entry(
-                slug, label, recommended, provider, provider == "minimax", pricing,
+                slug, label, recommended, provider, provider == "minimax",
                 key_present=_key_present(provider, key_env), tool_capable=True,
             ))
 
-    if openrouter_catalog:
-        for item in openrouter_catalog:
-            override = overrides.get(item["id"])
-            if override is not None and not bool(override.get("enabled")):
-                continue
-            models.append(_entry(
-                item["id"],
-                (override.get("label") if override else None) or item.get("name") or item["id"],
-                bool(override.get("recommended")) if override else False,
-                "openrouter", False, pricing,
-                override.get("input_per_mtok") if override else None,
-                override.get("output_per_mtok") if override else None,
-                key_present=_key_present("openrouter", key_env),
-                description=item.get("description") or "",
-                context_length=item.get("context_length"),
-                created=item.get("created"),
-                tool_capable=True,
-            ))
-    else:
-        for slug, label, recommended, provider in CURATED_MODELS:
-            if provider != "openrouter":
-                continue
-            models.append(_entry(
-                slug, label, recommended, provider, False, pricing,
-                key_present=_key_present(provider, key_env), tool_capable=True,
-            ))
-
-    openrouter_available = _key_present("openrouter", key_env)
+    providers = {}
+    for model in models:
+        status = providers.setdefault(model["provider"], {
+            "available": model["available"], "model_count": 0,
+        })
+        status["model_count"] += 1
     return {
         "models": models,
-        "providers": {
-            "codex": {
-                "available": bool(codex.get("available")),
-                "account_type": codex.get("account_type"),
-                "plan_type": codex.get("plan_type"),
-                "error": codex.get("error"),
-                "auth_command": codex.get("auth_command", "codex login"),
-                "model_count": len(codex.get("models", [])),
-            },
-            "openrouter": {
-                "available": openrouter_available,
-                "key_env": key_env.get("openrouter") or "OPENROUTER_API_KEY",
-                "error": None if openrouter_available else "Clé OPENROUTER_API_KEY absente",
-                "model_count": len(openrouter_catalog),
-                "catalog": "live_or_1h_cache" if openrouter_catalog else "offline_fallback",
-            },
-        },
+        "providers": providers,
     }
 
 
