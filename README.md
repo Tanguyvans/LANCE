@@ -91,6 +91,15 @@ Both writes are best-effort. These diagnostics do not retry a phase, generate a
 fallback report, change the execution profile or turn an unsuccessful run into
 a success. Older runs without this diagnostic remain readable.
 
+Full-profile intrusion now enters a save-only closing step when the model stops
+without its required deliverable. It permits at most three closing requests
+within the existing turn limit, with no further target actions; stop and cost
+limits still apply. A rejected or missing final submission leaves an explicitly
+incomplete diagnostic synthesis, not a successful campaign. The final phase
+event is emitted once after reconciliation and retains the measured usage.
+An accepted save is a format/lifecycle check; access and pivot credit still
+depend on the existing evidence evaluation, not on the model's declarations.
+
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 

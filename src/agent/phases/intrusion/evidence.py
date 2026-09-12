@@ -23,6 +23,20 @@ def block_without_actions(data: dict) -> str:
 
 
 def finalize_synthesis(data: dict, previous_status: str) -> str:
+    if previous_status.split(":", 1)[0] in {"stopped", "budget_exceeded"}:
+        set_diagnostic(data, previous_status.split(":", 1)[0], "Phase 5 interrupted; observations retained without campaign completion.")
+        return previous_status
     if not has_observable_actions(data):
         return block_without_actions(data)
-    return previous_status
+    missing = "not found" in previous_status or previous_status == "completed"
+    reason = "model_deliverable_missing" if missing else "model_deliverable_invalid"
+    data["completion"] = {
+        "status": "incomplete", "reason": reason,
+        "initial_validation_status": previous_status,
+        "source": "tool_calls.jsonl",
+    }
+    set_diagnostic(data, "incomplete", (
+        "Phase 5 model deliverable was not finalized. This file retains tool "
+        "observations only; it does not validate campaign completion or pivots."
+    ))
+    return "failed:phase5_completion_missing" if missing else "failed:phase5_completion_invalid"

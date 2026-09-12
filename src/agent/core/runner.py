@@ -177,6 +177,13 @@ class AgentRunner:
                 if isinstance(payload, dict):
                     payload["attempt_ref"] = attempt_ref
                     payload["validated"] = True
+                    if (
+                        config.name == "intrusion"
+                        and payload.get("status") == "saved"
+                        and payload.get("ok") is not False
+                        and not payload.get("error")
+                    ):
+                        self._full_intrusion_saved = True
                 return json.dumps(payload, ensure_ascii=False)
 
             wrapped.append({**tool, "function": transactional_save})
@@ -186,6 +193,9 @@ class AgentRunner:
         """Run a single agent phase."""
         if config.name == "intrusion":
             self._compact_intrusion_runtime_tools = None
+            self._phase5_pending_event = None
+            self._phase5_terminal_status = None
+            self._full_intrusion_saved = False
         # Set skill filter for this phase (hard filtering)
         filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
         runtime.set_skill_filter(filter_tags)
@@ -198,6 +208,7 @@ class AgentRunner:
         local_intrusion_memo = (
             config.name == "intrusion" and self._uses_compact_local_moe()
         )
+        full_intrusion = config.name == "intrusion" and self.execution_profile.name == "full"
         compact_local_recon = (
             config.name == "recon" and self._uses_compact_local_moe()
         )
@@ -403,6 +414,7 @@ class AgentRunner:
                 force_completion_on_recon_ready=compact_local_recon,
                 reopen_intrusion_tools_on_contract_error=local_intrusion_memo,
                 recover_required_tool_on_stall=local_intrusion_memo,
+                **({"finalize_required_tool_on_stall": True} if full_intrusion else {}),
                 # Recon has its own topology-aware progress contract.  The generic
                 # save-only cycle guard can otherwise deadlock it after an early save.
                 repeat_guard=config.name != "recon",
@@ -426,6 +438,8 @@ class AgentRunner:
         # Validate deliverable
         validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
+        if full_intrusion and valid and not self._full_intrusion_saved:
+            valid, msg = False, "Accepted Phase 5 submission not found in this execution"
         recovered_compact_recon = False
         if not valid and compact_local_recon:
             recovered_compact_recon = self._recover_compact_recon_deliverable(
@@ -439,9 +453,11 @@ class AgentRunner:
             if recovered_compact_recon
             else ("completed" if valid else f"failed:{msg}")
         )
-        # Compact Phase 5 may need deterministic reconciliation before the
-        # model's failed validation can become a terminal UI event. Full
-        # profiles keep the normal event ordering unchanged.
+        if full_intrusion and self._stop_event is not None and self._stop_event.is_set():
+            status = "stopped"
+        # Compact reconciliation keeps its existing completion contract.
+        # Full Phase 5 defers its event below until reconciliation has recorded
+        # the final outcome, with the original usage attached.
         defer_compact_intrusion_done = (
             config.phase == 5
             and local_intrusion_memo
@@ -452,15 +468,15 @@ class AgentRunner:
             self.tracker.record_validation_result(success=valid)
 
         usage = self.tracker.end_phase()
-        if usage and not defer_compact_intrusion_done:
+        if usage and not (defer_compact_intrusion_done or full_intrusion):
             print(
                 f"\n  Phase {config.phase} done: {usage.turns} turns, "
                 f"${usage.cost_usd():.4f}"
             )
-        elif defer_compact_intrusion_done:
+        elif defer_compact_intrusion_done or full_intrusion:
             print(
                 f"\n  Phase {config.phase} model pass ended; "
-                "compact reconciliation pending"
+                "reconciliation pending"
             )
 
         if valid:
@@ -476,8 +492,8 @@ class AgentRunner:
             projection = self._build_recon_evidence_projection()
             self._reconcile_phase2_attack_surface(projection)
 
-        if stream_callback and not defer_compact_intrusion_done:
-            stream_callback({
+        if not defer_compact_intrusion_done:
+            terminal_event = {
                 "type": "phase_done",
                 "phase": config.phase,
                 "name": config.name,
@@ -485,7 +501,13 @@ class AgentRunner:
                 "deliverable": config.deliverable_file,
                 "cost_usd": round(usage.cost_usd(), 4) if usage else 0,
                 "turns": usage.turns if usage else 0,
-            })
+            }
+            if full_intrusion:
+                # Reconciliation owns the terminal outcome. Keep real usage
+                # here so its single event cannot erase the phase's cost.
+                self._phase5_pending_event = terminal_event
+            elif stream_callback:
+                stream_callback(terminal_event)
 
         return status
 

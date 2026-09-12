@@ -49,11 +49,11 @@ def test_recovery_requires_both_terminal_completion_and_commit(terminal, committ
     assert commit.call_count == int(terminal)
 
 
-def test_same_evidence_keeps_profile_policies_distinct():
+def test_recovered_observations_do_not_complete_either_profile():
     full = {"summary": {"devices_attempted": 1}}
     compact = {"summary": {"devices_attempted": 1}}
-    assert finalize_synthesis(full, "failed:validation") == "failed:validation"
-    assert "status" not in full
+    assert finalize_synthesis(full, "failed:validation") == "failed:phase5_completion_invalid"
+    assert full["status"] == "incomplete"
     assert finalize_incomplete(compact, coverage_ok=True, coverage={}) == "failed:phase5_completion_missing"
     assert compact["status"] == "incomplete"
 

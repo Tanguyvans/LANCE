@@ -699,9 +699,8 @@ class Pipeline(
             if agent_config.phase == 2 and self.target_network:
                 self._infer_topology_links(stream_callback)
 
-            # After Phase 5 (intrusion): small models often run the campaign but
-            # never emit the final deliverable. Synthesize it from recorded tool
-            # calls so the report phase still has data. Then emit hop events.
+            # Finalize Phase 5 once. Missing model output may leave a diagnostic
+            # synthesis, never an automatically successful campaign or pivot.
             if agent_config.phase == 5:
                 self._ensure_intrusion_deliverable(agent_config, results, stream_callback)
                 self._emit_intrusion_events(stream_callback)

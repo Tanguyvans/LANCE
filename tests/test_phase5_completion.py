@@ -77,6 +77,7 @@ def test_full_profile_synthesis_preserves_failed_phase_status(pipeline):
     pipeline._uses_compact_local_moe.return_value = False
     results = {"intrusion": "failed:validation"}
     pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
-    assert results["intrusion"] == "failed:validation"
+    assert results["intrusion"] == "failed:phase5_completion_invalid"
+    assert json.loads((pipeline.run_dir / "05_intrusion.json").read_text())["status"] == "incomplete"
     pipeline._run_compact_intrusion_fallback.assert_not_called()
     pipeline._run_compact_intrusion_post_access.assert_not_called()

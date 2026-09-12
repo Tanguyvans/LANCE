@@ -17,9 +17,10 @@ class IntrusionPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
-        """Reconcile compact Phase 5 from tool evidence without hiding gaps.
+        """Finalize Phase 5 without hiding gaps or duplicating terminal events.
 
-        Full profiles keep the model-produced deliverable untouched.  Compact
+        Full runs require a fresh accepted submission; a missing one leaves
+        diagnostic observations and an incomplete outcome. Compact
         local-MoE runs use the tool ledger as the source of truth; a bounded
         fallback may complete missing actions, but incomplete coverage is
         reported as incomplete rather than promoted as a successful phase.
@@ -28,12 +29,17 @@ class IntrusionPhase:
 
         def finish(status: str, *, notify: bool = True) -> None:
             results[config.name] = status
+            self._phase5_terminal_status = status
+            pending = getattr(self, "_phase5_pending_event", None)
+            self._phase5_pending_event = None
             if stream_callback and notify:
                 stream_callback({
                     "type": "phase_done", "phase": config.phase,
-                    "name": config.name, "status": status,
+                    "name": config.name,
                     "deliverable": config.deliverable_file,
                     "cost_usd": 0, "turns": 0,
+                    **(pending if isinstance(pending, dict) else {}),
+                    "status": status,
                 })
 
         path = self.run_dir / config.deliverable_file
@@ -42,6 +48,11 @@ class IntrusionPhase:
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)
         compact = self._uses_compact_local_moe()
+        if (
+            isinstance(getattr(self, "_phase5_pending_event", None), dict)
+            and not getattr(self, "_full_intrusion_saved", False)
+        ):
+            valid = False
         terminal_completed = compact and self._compact_intrusion_completion_succeeded()
         if terminal_completed:
             already_reported = results.get(config.name) == "completed"
@@ -55,6 +66,8 @@ class IntrusionPhase:
                 finish("completed", notify=not already_reported)
                 return
         if valid and not compact:
+            if isinstance(getattr(self, "_phase5_pending_event", None), dict):
+                finish(results.get(config.name, "completed"))
             return
 
         coverage_ok, coverage = (True, {})
@@ -841,6 +854,23 @@ class IntrusionPhase:
             chains = data.get("chains", [])
             summary = data.get("summary", {})
             compromised_devices = data.get("compromised_devices", [])
+
+            terminal_status = str(getattr(self, "_phase5_terminal_status", "") or "").split(":", 1)[0]
+            if (
+                data.get("status") in {"incomplete", "blocked", "stopped", "budget_exceeded"}
+                or terminal_status in {"failed", "blocked", "stopped", "budget_exceeded"}
+            ):
+                # Recovery data is diagnostic, not a validated campaign. Do
+                # not emit successful intrusion/pivot events from this file.
+                stream_callback({
+                    "type": "warn",
+                    "message": (
+                        "Intrusion non finalisée — synthèse de diagnostic conservée ; "
+                        f"{summary.get('devices_compromised', 0)} accès recensé(s), "
+                        "sans validation de campagne ni de chemins multi-hop."
+                    ),
+                })
+                return
 
             # Emit one compromised event per device from the compromised_devices list
             for dev in compromised_devices:

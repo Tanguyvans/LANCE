@@ -177,6 +177,33 @@ class LLMProvider:
             fallback_used = bool(payload.get("fallback_used"))
         return failed, fallback_used
 
+    @staticmethod
+    def _terminal_tool_succeeded(result: str) -> bool:
+        """Require a non-empty, well-formed wrapper result for opt-in finalization."""
+        if not isinstance(result, str) or not result.strip():
+            return False
+        try:
+            payload = json.loads(result)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        failed, _ = LLMProvider._tool_result_metadata(result)
+        status = payload.get("status")
+        explicit_success = (
+            payload.get("ok") is True
+            or payload.get("success") is True
+            or (isinstance(status, str) and status.lower() in {
+                "saved",
+                "success",
+                "ok",
+                "complete",
+                "completed",
+                "campaign_complete",
+            })
+        )
+        return explicit_success and not failed
+
     def chat_with_tools(
         self,
         system_prompt: str,
@@ -199,6 +226,7 @@ class LLMProvider:
         force_completion_on_phase4_conclusive: bool = False,
         max_data_tool_calls: int | None = None,
         deadline: float | None = None,
+        finalize_required_tool_on_stall: bool = False,
     ) -> str:
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
@@ -239,9 +267,10 @@ class LLMProvider:
             max_data_tool_calls,
             force_completion_on_phase4_conclusive,
             deadline=deadline,
+            finalize_required_tool_on_stall=finalize_required_tool_on_stall,
         )
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -250,6 +279,8 @@ class LLMProvider:
         last_nonempty_text = ""
         call_counts: dict[tuple[str, str], int] = {}
         completion_only = False
+        finalization_only = False
+        finalization_requests = 0
         no_tool_stalls = 0
         data_tool_calls = 0
         force_any_tool_next_turn = False
@@ -261,12 +292,24 @@ class LLMProvider:
             if tool["function"]["name"] == required_tool
         ]
 
+        def finalization_unsatisfied(reason: str) -> str:
+            return (
+                "(required tool finalization unsatisfied: "
+                f"{required_tool or 'required tool'} — {reason})"
+            )
+
         def create_completion(**kwargs):
             if cost_tracker is not None:
                 cost_tracker.check_budget()
             client = self.client
             remaining = _deadline_remaining(deadline)
-            if remaining is not None and hasattr(client, "with_options"):
+            with_options = getattr(client, "with_options", None)
+            if finalize_required_tool_on_stall and finalization_only and callable(with_options):
+                options = {"max_retries": 0}
+                if remaining is not None:
+                    options["timeout"] = remaining
+                client = with_options(**options)
+            elif remaining is not None and callable(with_options):
                 # Retry here, with a recomputed remaining deadline, rather
                 # than letting SDK retries reuse the full request timeout.
                 client = client.with_options(timeout=remaining, max_retries=0)
@@ -280,7 +323,27 @@ class LLMProvider:
             log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
             if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
                 completion_only = True
-            active_api_tools = terminal_api_tools if completion_only and terminal_api_tools else api_tools
+                if finalize_required_tool_on_stall:
+                    finalization_only = True
+            if (
+                finalize_required_tool_on_stall
+                and required_tool
+                and not required_tool_called
+                and completion_only
+            ):
+                finalization_only = True
+            if finalization_only:
+                if finalization_requests >= 3:
+                    return finalization_unsatisfied("completion request budget exhausted")
+                finalization_requests += 1
+            active_api_tools = (
+                terminal_api_tools
+                if completion_only and (
+                    terminal_api_tools
+                    or (finalize_required_tool_on_stall and finalization_only)
+                )
+                else api_tools
+            )
             try:
                 request_kwargs = {
                     "model": self.model,
@@ -290,12 +353,18 @@ class LLMProvider:
                 if active_api_tools:
                     request_kwargs["tools"] = active_api_tools
                     request_kwargs["parallel_tool_calls"] = False
-                    if force_any_tool_next_turn:
+                    if finalize_required_tool_on_stall and finalization_only:
+                        request_kwargs["tool_choice"] = "required"
+                    elif force_any_tool_next_turn:
                         request_kwargs["tool_choice"] = "required"
                         force_any_tool_next_turn = False
                 response = _call_with_retry(
                     create_completion,
-                    max_retries=getattr(self, "_retry_limit", _MAX_RETRIES),
+                    max_retries=(
+                        0
+                        if finalize_required_tool_on_stall and finalization_only
+                        else getattr(self, "_retry_limit", _MAX_RETRIES)
+                    ),
                     deadline=deadline,
                     **request_kwargs,
                 )
@@ -325,7 +394,25 @@ class LLMProvider:
                     messages.append({"role": "user", "content": "Your previous tool call had invalid JSON arguments and was rejected. Please retry the tool call with properly formatted JSON."})
                     continue
                 raise
-            if not response.choices: continue
+            if not response.choices:
+                if (
+                    finalize_required_tool_on_stall
+                    and cost_tracker is not None
+                    and response.usage
+                ):
+                    cost_tracker.record_turn(
+                        input_tokens=response.usage.prompt_tokens or 0,
+                        output_tokens=response.usage.completion_tokens or 0,
+                        tool_call_count=0,
+                    )
+                if finalize_required_tool_on_stall and required_tool and not required_tool_called:
+                    completion_only = True
+                    finalization_only = True
+                    messages.append({
+                        "role": "user",
+                        "content": f"Call '{required_tool}' now using the results already collected.",
+                    })
+                continue
             choice = response.choices[0]
             message = choice.message
 
@@ -333,6 +420,21 @@ class LLMProvider:
                 cost_tracker.record_turn(input_tokens=response.usage.prompt_tokens or 0, output_tokens=response.usage.completion_tokens or 0, tool_call_count=len(message.tool_calls or []))
 
             if choice.finish_reason == "error":
+                if finalize_required_tool_on_stall and required_tool and not required_tool_called:
+                    # Do not issue an unbounded/nested fallback request for
+                    # opt-in finalization. Latch terminal mode immediately;
+                    # the next ordinary iteration consumes the bounded budget.
+                    completion_only = True
+                    finalization_only = True
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"The previous completion attempt failed. Call '{required_tool}' now "
+                            "using the results already collected."
+                        ),
+                    })
+                    reminder_sent = True
+                    continue
                 if malformed_retries < 2:
                     malformed_retries += 1
                     fallback = _call_with_retry(
@@ -366,8 +468,32 @@ class LLMProvider:
                 return last_nonempty_text or "(unexpected tool call without available tools)"
 
             if not message.tool_calls:
-                if required_tool and not required_tool_called and (strict_required_tool or completion_only or not reminder_sent):
+                if required_tool and not required_tool_called and (
+                    finalize_required_tool_on_stall
+                    or strict_required_tool
+                    or completion_only
+                    or not reminder_sent
+                ):
                     no_tool_stalls += 1
+                    if finalize_required_tool_on_stall:
+                        # A text-only response is the stall signal for the
+                        # opt-in path. From the next request onward, only the
+                        # required terminal tool remains exposed.
+                        completion_only = True
+                        finalization_only = True
+                        if finalization_requests >= 3:
+                            return finalization_unsatisfied("completion request budget exhausted")
+                        messages.append({"role": "assistant", "content": message.content or ""})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                f"You must call '{required_tool}' now using the results already collected. "
+                                "Do not describe completion or call any other tool."
+                            ),
+                        })
+                        reminder_sent = True
+                        force_any_tool_next_turn = True
+                        continue
                     if (
                         no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD
                         and not recover_required_tool_on_stall
@@ -439,6 +565,11 @@ class LLMProvider:
 
             if malformed_ids:
                 malformed_retries += 1
+                if finalize_required_tool_on_stall and any(
+                    tc.function.name == required_tool for tc in message.tool_calls
+                ):
+                    completion_only = True
+                    finalization_only = True
                 if cost_tracker:
                     for _ in malformed_ids:
                         cost_tracker.record_tool_error()
@@ -448,6 +579,8 @@ class LLMProvider:
                 if malformed_retries <= 3:
                     messages.append({"role": "user", "content": f"Your last tool call had invalid JSON arguments (IDs: {malformed_ids}). Please call the tool again with valid, properly escaped JSON."})
                     continue
+                if finalize_required_tool_on_stall and finalization_only:
+                    return finalization_unsatisfied("malformed terminal tool arguments")
                 return last_nonempty_text or "(malformed tool call JSON — max retries)"
 
             messages.append(message)
@@ -473,6 +606,8 @@ class LLMProvider:
                     and data_tool_calls >= max_data_tool_calls
                 ):
                     completion_only = True
+                    if finalize_required_tool_on_stall and required_tool:
+                        finalization_only = True
                     res = json.dumps({
                         "ok": False,
                         "error_kind": "phase4_tool_budget_exhausted",
@@ -481,18 +616,29 @@ class LLMProvider:
                             f"{max_data_tool_calls} calls. Save the deliverable now."
                         ),
                     })
-                elif completion_only_at_turn and required_tool and tc.function.name != required_tool:
+                elif (
+                    required_tool
+                    and tc.function.name != required_tool
+                    and (
+                        completion_only_at_turn
+                        or (finalize_required_tool_on_stall and finalization_only)
+                    )
+                ):
                     res = json.dumps({"ok": False, "error": f"Tool cycle detected. No more data-gathering calls are allowed; call {required_tool} now using the results already collected.", "error_kind": "completion_required"})
                 elif repeat_guard and call_counts[call_sig] >= _REPEAT_THRESHOLD:
                     res = json.dumps({"ok": False, "error": f"Tool {tc.function.name} called {_REPEAT_THRESHOLD}x with identical arguments, including interleaved calls. Stop gathering data and call {required_tool or 'the completion tool'} now using the results already collected.", "error_kind": "repeated_call"})
                     log.warning("Repeating tool detected: %s — injecting warning", tc.function.name)
                     if required_tool:
                         completion_only = True
+                        if finalize_required_tool_on_stall:
+                            finalization_only = True
                 else:
                     if tc.function.name != terminate_after_tool:
                         data_tool_calls += 1
                         if max_data_tool_calls is not None and data_tool_calls >= max_data_tool_calls:
                             completion_only = True
+                            if finalize_required_tool_on_stall and required_tool:
+                                finalization_only = True
                     res = self._execute_tool(tc.function.name, args, tool_map)
                 
                 failed, fallback_used = self._tool_result_metadata(res)
@@ -512,6 +658,8 @@ class LLMProvider:
                     and result_payload.get("phase4_conclusive") is True
                 ):
                     completion_only = True
+                    if finalize_required_tool_on_stall and required_tool:
+                        finalization_only = True
                     force_any_tool_next_turn = True
                 if (
                     force_completion_on_recon_ready
@@ -524,6 +672,8 @@ class LLMProvider:
                     # final evidence call completes the baseline, expose and
                     # require only the terminal save tool on the next turn.
                     completion_only = True
+                    if finalize_required_tool_on_stall and required_tool:
+                        finalization_only = True
                     force_any_tool_next_turn = True
                 if force_tool_on_stall and failed:
                     error_kind = (
@@ -532,12 +682,15 @@ class LLMProvider:
                     )
                     if error_kind == "recon_completion_required":
                         completion_only = True
+                        if finalize_required_tool_on_stall and required_tool:
+                            finalization_only = True
                         force_any_tool_next_turn = True
                 if (
                     reopen_intrusion_tools_on_contract_error
                     and required_tool == "complete_intrusion_campaign"
                     and tc.function.name == required_tool
                     and failed
+                    and not (finalize_required_tool_on_stall and finalization_only)
                     and isinstance(result_payload, dict)
                     and result_payload.get("error_kind") in {
                         "intrusion_contract_incomplete",
@@ -555,10 +708,23 @@ class LLMProvider:
                     if tc.function.name == "save_deliverable":
                         cost_tracker.record_format_attempt(fallback_used=fallback_used)
 
-                # Only mark required_tool as called if it succeeded.
-                if required_tool and tc.function.name == required_tool and not failed:
+                # Only mark required_tool as called if it succeeded. Opt-in
+                # finalization additionally requires an explicit success in
+                # the wrapper result, so empty/malformed/rejected saves cannot
+                # terminate and immediately latch save-only mode.
+                terminal_success = not failed
+                if (
+                    finalize_required_tool_on_stall
+                    and required_tool
+                    and tc.function.name == required_tool
+                ):
+                    terminal_success = self._terminal_tool_succeeded(res)
+                    if not terminal_success:
+                        completion_only = True
+                        finalization_only = True
+                if required_tool and tc.function.name == required_tool and terminal_success:
                     required_tool_called = True
-                if terminate_after_tool and tc.function.name == terminate_after_tool and not failed:
+                if terminate_after_tool and tc.function.name == terminate_after_tool and terminal_success:
                     terminate_now = True
                 if stream_callback: stream_callback({"type": "tool_result", "name": tc.function.name, "result": res[:2000]})
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": res})
@@ -567,6 +733,8 @@ class LLMProvider:
             if terminate_now:
                 if stream_callback: stream_callback({"type": "turn_done", "turn": turn + 1, "final": True, "terminated_by": terminate_after_tool})
                 return last_nonempty_text or f"(terminated by {terminate_after_tool})"
+        if finalize_required_tool_on_stall and required_tool and not required_tool_called:
+            return finalization_unsatisfied("max turns exhausted")
         return "(max turns reached)"
 
     @staticmethod

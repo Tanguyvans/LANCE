@@ -584,10 +584,13 @@ class TestPhase5Context:
             "summary": {"devices_compromised": 1},
             "compromised_devices": [{"device_ip": "192.0.2.10"}],
         }
-        (pipeline.run_dir / "05_intrusion.json").write_text(
-            json.dumps(model_output)
-        )
-        results = {"intrusion": "completed"}
+        def save_model_output(**request):
+            save = next(tool for tool in request["tools"] if tool["name"] == "save_deliverable")
+            save["function"](filename="05_intrusion.json", content=json.dumps(model_output))
+            return "Done."
+
+        mock_provider.chat_with_tools.side_effect = save_model_output
+        results = {"intrusion": pipeline._run_agent(AGENTS["intrusion"])}
         pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
 
         assert json.loads(
