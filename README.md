@@ -100,6 +100,15 @@ event is emitted once after reconciliation and retains the measured usage.
 An accepted save is a format/lifecycle check; access and pivot credit still
 depend on the existing evidence evaluation, not on the model's declarations.
 
+The live end-of-run summary displays audit precision, recall, F1 and VP/FP/FN
+from the final confirmed stage of the evaluation funnel. Legacy metrics remain
+available for compatibility but are not mixed into this summary. Intrusion is
+shown separately using evaluated target compromises, verified paths and verified
+network hops; unavailable evidence is not displayed as zero. Execution completion
+is not a claim of intrusion success: device-analysis failures, inconclusive or
+errored checks and unavailable evaluation are surfaced as explicit reservations.
+These messages do not change lifecycle status, scoring or proof requirements.
+
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)
 

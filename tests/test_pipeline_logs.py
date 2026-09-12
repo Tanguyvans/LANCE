@@ -190,7 +190,8 @@ assert(line.children[0].textContent.includes('résultat inconnu'));
 for (const status of ['failed','completed','partial','blocked','stopped','skipped','budget_exceeded']) {
   line = render({type:'pipeline_done', status, total_cost_usd:0});
   assert(line.children[0].textContent.includes('$0.0000'));
-  assert(line.children[0].textContent.includes('réussi') === (status === 'completed'));
+  assert(line.children[0].textContent.includes('Exécution terminée') === (status === 'completed'));
+  assert(!line.children[0].textContent.includes('Pipeline réussi'));
 }
 line = render({type:'pipeline_done', status:'failed', cleanup_status:'failed', total_cost_usd:null});
 assert(line.children[0].textContent.includes('Pipeline en échec'));

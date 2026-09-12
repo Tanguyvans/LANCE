@@ -1728,9 +1728,9 @@ function handleEvent(ev) {
 
   else if (t === 'evaluation_done') {
     const m = ev.metrics;
-    if (ev.status === 'completed' && m) {
-      const score = m.score_pct != null ? `${Number(m.score_pct).toFixed(1)}%` : 'N/A';
-      addLog({type:'info', message:`Évaluation terminée — Recall=${Number(m.recall).toFixed(3)} P=${Number(m.precision).toFixed(3)} F1=${Number(m.f1).toFixed(3)} Score=${score}`});
+    if (ev.status === 'completed') {
+      addLog({type:'info', message:formatAuditFinalSummary(ev)});
+      addLog({type:'info', message:formatIntrusionDiagnostics(m)});
     } else if (ev.status === 'skipped') {
       addLog({type:'warn', message:`Évaluation non calculée — ${ev.reason || 'ground truth indisponible'}`});
     } else {
@@ -2747,6 +2747,120 @@ function setCost(val) {
 // ── Event log ──────────────────────────────────────────────────────────────
 const MAX_LOG = 300;
 
+function _summaryFinite(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function _summaryInteger(value) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function _summaryCount(value) {
+  const integer = _summaryInteger(value);
+  return integer == null ? 'indisponible' : String(integer);
+}
+
+function _summaryPercent(value) {
+  const numeric = _summaryFinite(value);
+  return numeric == null ? 'indisponible' : `${(numeric * 100).toFixed(1)}%`;
+}
+
+function _confirmedFunnelStage(metrics) {
+  const funnel = metrics?.funnel;
+  if (!funnel || funnel.schema_version !== 'funnel-v1' || metrics.evidence_contract_compatible === false) {
+    return null;
+  }
+  const stage = funnel.stages?.confirmed;
+  return stage?.available === true ? stage : null;
+}
+
+function formatAuditFinalSummary(event) {
+  const stage = _confirmedFunnelStage(event?.metrics);
+  if (!stage) return 'Audit final — indisponible';
+  return `Audit final — VP=${_summaryCount(stage.true_positives)} FP=${_summaryCount(stage.false_positives)} FN=${_summaryCount(stage.false_negatives)} · Précision=${_summaryPercent(stage.precision)} · Rappel=${_summaryPercent(stage.recall)} · F1=${_summaryPercent(stage.f1)}`;
+}
+
+function formatIntrusionDiagnostics(metrics) {
+  const evidenceContractCompatible = metrics?.evidence_contract_compatible !== false;
+  const phase5EvidenceAvailable = evidenceContractCompatible && metrics?.phase5_evidence_available === true;
+  const phase5MetricsAvailable = evidenceContractCompatible && metrics?.phase5_metrics_available === true && phase5EvidenceAvailable;
+  const intrusionPathsAvailable = evidenceContractCompatible && metrics?.intrusion_paths_available === true && phase5EvidenceAvailable;
+  const targetSummary = phase5MetricsAvailable
+    ? `${_summaryCount(metrics.phase5_targets_compromised)}/${_summaryCount(metrics.phase5_targets_total)}`
+    : 'indisponible';
+  const pathSummary = intrusionPathsAvailable
+    ? `${_summaryCount(metrics.verified_attack_paths)}/${_summaryCount(metrics.total_attack_paths)}`
+    : 'indisponible';
+  const hopSummary = phase5MetricsAvailable
+    ? _summaryCount(metrics.phase5_verified_hops)
+    : 'indisponible';
+  return `Intrusion vérifiée — Cibles compromises=${targetSummary} · Chemins vérifiés=${pathSummary} · Transitions vérifiées=${hopSummary}`;
+}
+
+function _completionReservations(event) {
+  const reservations = [];
+  const metrics = event?.metrics;
+  const evaluationStatus = event?.evaluation_status;
+  if (evaluationStatus === 'skipped' || evaluationStatus === 'failed') {
+    const reason = event.evaluation_error || event.evaluation_reason || event.reason;
+    reservations.push(`Évaluation indisponible${reason ? ` (${String(reason)})` : ''}`);
+  } else if (evaluationStatus === 'completed' && !_confirmedFunnelStage(metrics)) {
+    reservations.push('Audit final indisponible');
+  }
+
+  const phase3Available = metrics?.phase3_metrics_available === true;
+  const phase3Total = _summaryInteger(metrics?.phase3_devices_total);
+  const phase3Analyzed = _summaryInteger(metrics?.phase3_devices_analyzed);
+  const phase3Failed = _summaryInteger(metrics?.phase3_devices_failed);
+  const knownIncompletePhase3Status = ['partial', 'failed', 'completed_with_device_errors'].includes(metrics?.phase3_status);
+  if (phase3Available && (phase3Failed > 0 || (phase3Total != null && phase3Analyzed != null && phase3Analyzed < phase3Total) || knownIncompletePhase3Status)) {
+    if (phase3Total != null && phase3Analyzed != null && phase3Failed != null) {
+      reservations.push(`Analyse partielle (${phase3Analyzed}/${phase3Total} analysés, ${phase3Failed} en échec)`);
+    } else {
+      reservations.push('Analyse Phase 3 partielle');
+    }
+  }
+
+  const verification = metrics?.funnel?.diagnostics?.verification;
+  if (verification && typeof verification === 'object') {
+    const details = [
+      ['inconclusive', 'indéterminée', 'indéterminées'],
+      ['error', 'erreur', 'erreurs'],
+      ['not_tested', 'non testée', 'non testées'],
+    ].map(([key, singular, plural]) => {
+      const count = _summaryInteger(verification[key]);
+      if (count == null || count === 0) return null;
+      return `${count} ${count === 1 ? singular : plural}`;
+    }).filter(Boolean);
+    if (details.length) reservations.push(`Vérification incomplète (${details.join(', ')})`);
+  }
+  return reservations;
+}
+
+function formatPipelineCompletionSummary(event) {
+  const labels = {
+    failed: 'Pipeline en échec', partial: 'Pipeline partiel',
+    stopped: 'Pipeline arrêté', blocked: 'Pipeline bloqué', skipped: 'Pipeline non exécuté',
+    budget_exceeded: 'Pipeline arrêté — budget atteint',
+  };
+  const warnings = [];
+  if (event?.cleanup_status === 'failed') warnings.push('Nettoyage en échec');
+  if (event?.usage_status === 'incomplete') warnings.push('Consommation incomplète');
+  if (event?.metadata_status === 'failed') warnings.push('Métadonnées en échec');
+
+  let text;
+  if (event?.status === 'completed') {
+    const reservations = _completionReservations(event).concat(warnings);
+    text = reservations.length
+      ? `Exécution terminée avec réserves — ${reservations.join(' ; ')}`
+      : 'Exécution terminée';
+  } else {
+    text = labels[event?.status] || 'Pipeline terminé — statut indisponible';
+    if (warnings.length) text += ` — ${warnings.join(' — ')}`;
+  }
+  return text;
+}
+
 function addLog(ev) {
   const log = document.getElementById('log');
   const t = ev.type || 'info';
@@ -2759,17 +2873,10 @@ function addLog(ev) {
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done') {
-    const labels = {
-      completed: 'réussi', failed: 'en échec', partial: 'partiel',
-      stopped: 'arrêté', blocked: 'bloqué', skipped: 'non exécuté',
-      budget_exceeded: 'arrêté — budget atteint',
-    };
     const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
       ? `$${ev.total_cost_usd.toFixed(4)}` : 'indisponible';
-    text = `Pipeline ${labels[ev.status] || 'terminé — statut indisponible'} — Total : ${cost}`;
-    if (ev.cleanup_status === 'failed') text += ' — Nettoyage en échec';
-    if (ev.usage_status === 'incomplete') text += ' — Consommation incomplète';
-    failed = ev.status === 'failed' || ev.cleanup_status === 'failed';
+    text = `${formatPipelineCompletionSummary(ev)} — Total : ${cost}`;
+    failed = ev.status === 'failed';
   }
   else if (t === 'batch_start')         text = `Batch démarré — ${ev.total} scénario(s) : ${(ev.ids||[]).map(i=>'S'+i).join(', ')}`;
   else if (t === 'batch_scenario_start') text = `[${ev.index}/${ev.total}] Démarrage S${ev.scenario_id}…`;
