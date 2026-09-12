@@ -45,6 +45,7 @@ class ReportPhase:
         deadline = time.monotonic() + max(0.01, float(runtime.LOCAL_MOE_REPORT_PHASE_TIMEOUT))
         pending_budget_error: BudgetExceeded | None = None
         analysis_context: dict = {}
+        completion_metadata: dict = {}
         note_status, cause, phase_error = "absent", "memo_absent", None
         cleanup_failed = False
 
@@ -91,6 +92,7 @@ class ReportPhase:
                         stream_callback, phase=config.phase, agent="report_analyst_note"
                     ),
                     repeat_guard=False, stop_event=self._stop_event, deadline=deadline,
+                    completion_metadata=completion_metadata,
                 )
                 text = str(result).strip() if result else ""
                 if text:
@@ -101,6 +103,10 @@ class ReportPhase:
                     note_status, cause = "not_promoted", "stopped"
                 elif time.monotonic() > deadline:
                     note_status, cause = "not_promoted", "timeout"
+                elif completion_metadata.get("finish_reason") == "length":
+                    note_status, cause = "not_promoted", "memo_truncated"
+                elif completion_metadata.get("finish_reason") not in (None, "stop"):
+                    note_status, cause = "not_promoted", "memo_incomplete"
                 elif not text or text in {
                     "(max turns reached)", "(malformed tool call JSON — max retries)",
                 }:
@@ -167,6 +173,8 @@ class ReportPhase:
             try:
                 self._update_run_meta({
                     "phase6_status": status,
+                    "phase6_report_contract": "report-v2",
+                    "phase6_finish_reason": completion_metadata.get("finish_reason"),
                     "phase6_llm": "analyst_note" if note_status == "usable" else "deterministic_only",
                     "phase6_note_status": note_status, "phase6_cause": terminal_cause,
                     "phase6_error": phase_error,

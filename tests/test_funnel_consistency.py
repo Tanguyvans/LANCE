@@ -298,21 +298,25 @@ def test_another_finding_file_cannot_donate_proof(tmp_path):
 @pytest.mark.parametrize('port,endpoint', [
     (9001, ''), (9001, '/'), (9001, '/mqtt?tenant=A'), (9002, '/mqtt?tenant=A'),
 ])
-def test_websocket_plan_and_proof_share_the_same_endpoint(port, endpoint):
+@pytest.mark.parametrize('kind,expected', [('no_auth', 'FAILED'), ('network_exposure', 'EXPLOITED')])
+def test_websocket_plan_and_proof_share_the_same_endpoint(port, endpoint, kind, expected):
     from src.agent.exploit_evidence import synthesize_exploit_result
     from src.agent.phases.verification.contract import (
         _phase4_requirement_matches, _phase4_verification_plan,
     )
 
-    vuln = ws(port=port, endpoint=endpoint, tool_used='http_request',
+    vuln = ws(type=kind, port=port, endpoint=endpoint, tool_used='http_request',
               evidence_refs=['proof-V1'])
     plan = _phase4_verification_plan(vuln)
     assert plan['args_hint']['url'] == f'http://192.0.2.1:{port}{endpoint or "/"}'
     assert _phase4_requirement_matches(plan, 'http_request', plan['args_hint'])
     call = {**record(), 'tool':'http_request', 'args':plan['args_hint'],
-            'result':{'status_code':101, 'body':'Switching Protocols'}}
+            'result':{'status_code':101, 'body':'', 'headers': {
+                'Connection':'Upgrade', 'Upgrade':'websocket',
+                'Sec-WebSocket-Accept':'s3pPLMBiTxaQ9kYGzzhZRbK+xOo=',
+            }}}
     assert _tool_call_matches_finding(vuln, call)
-    assert synthesize_exploit_result(vuln, [call])['status'] == 'EXPLOITED'
+    assert synthesize_exploit_result(vuln, [call])['status'] == expected
     wrong = {**call, 'args':{**call['args'], 'url':f'http://192.0.2.1:{port}/admin'}}
     assert not _phase4_requirement_matches(plan, 'http_request', wrong['args'])
     assert not _tool_call_matches_finding(vuln, wrong)

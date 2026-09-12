@@ -52,17 +52,25 @@ def build_input_schema(tool_def: dict[str, Any]) -> dict[str, Any]:
         }
         if "default" in param:
             prop["default"] = param["default"]
+        for schema_key in ("minimum", "maximum"):
+            if schema_key in param:
+                prop[schema_key] = param[schema_key]
 
         properties[param["name"]] = prop
 
         if param.get("required", False):
             required.append(param["name"])
 
-    return {
+    schema = {
         "type": "object",
         "properties": properties,
         "required": required,
     }
+    # Definitions can opt into a closed input object without changing the
+    # historical schema behavior of the other tools.
+    if "additionalProperties" in tool_def:
+        schema["additionalProperties"] = tool_def["additionalProperties"]
+    return schema
 
 
 def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
@@ -81,7 +89,52 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
     filter_lines = tool_def.get("filter_lines")
     max_output = tool_def.get("max_output")
 
+    parameter_names = {param["name"] for param in params}
+
+    def mqtt_argument_error() -> str:
+        return json.dumps({
+            "stdout": "",
+            "stderr": "Invalid MQTT tool arguments",
+            "return_code": 2,
+            "error_kind": "invalid_tool_arguments",
+            "error": "mqtt_listen arguments failed validation",
+        })
+
+    def canonicalize_mqtt_port(value: Any) -> int | None:
+        if type(value) is int:
+            port = value
+        elif type(value) is str and value.isascii() and value.isdigit():
+            try:
+                port = int(value)
+            except ValueError:
+                return None
+        else:
+            return None
+        return port if 1 <= port <= 65535 else None
+
     def generated_fn(**kwargs: Any) -> str:
+        if tool_def["name"] == "mqtt_listen":
+            # MQTT is the only declarative subprocess tool with strict
+            # runtime argument validation. Keep unknown values out of the
+            # returned error so credentials/secrets cannot be reflected.
+            if any(name not in parameter_names for name in kwargs):
+                return mqtt_argument_error()
+            broker = kwargs.get("broker")
+            topic_default = next(
+                (param.get("default") for param in params if param["name"] == "topic"),
+                None,
+            )
+            topic = kwargs.get("topic", topic_default)
+            if type(broker) is not str or not broker.strip():
+                return mqtt_argument_error()
+            if type(topic) is not str or not topic:
+                return mqtt_argument_error()
+            if "port" in kwargs:
+                port = canonicalize_mqtt_port(kwargs["port"])
+                if port is None:
+                    return mqtt_argument_error()
+                kwargs = {**kwargs, "port": port}
+
         # Compact local models occasionally use the structured credential
         # shape (ip/user/password/command) for ssh_login. Normalize that
         # shape instead of silently dropping all arguments and running
@@ -114,6 +167,7 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                 })
         cmd = [command] + list(fixed_args)
         positional_values = []
+        mqtt_flag_positions: dict[str, int] = {}
 
         for param in params:
             name = param["name"]
@@ -137,7 +191,10 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                     positional_values.extend(parts)
             elif fmt == "flag":
                 flag = param["flag"]
+                flag_position = len(cmd)
                 cmd.extend([flag, str(value)])
+                if tool_def["name"] == "mqtt_listen":
+                    mqtt_flag_positions[name] = flag_position
             elif fmt == "boolean_flag":
                 if value:
                     flag = param["flag"]
@@ -194,6 +251,20 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                     "--skip-password" in fixed_args or "--password=" in fixed_args
                 ),
             }
+        elif tool_def["name"] == "mqtt_listen":
+            def argv_value(name: str) -> str:
+                return str(cmd[mqtt_flag_positions[name] + 1])
+
+            execution_attestation = {
+                "protocol": "TCP",
+                "host": argv_value("broker"),
+                "port": int(argv_value("port")),
+                "topic": argv_value("topic"),
+            }
+            # Attest framing only when the actual fixed command requests the
+            # escaped JSON format. Never infer it from received payload text.
+            if list(fixed_args) == ["-F", "%j"]:
+                execution_attestation["output_format"] = "mosquitto-json-v1"
         result = _run(cmd, timeout=effective_timeout)
 
         if execution_attestation is not None:

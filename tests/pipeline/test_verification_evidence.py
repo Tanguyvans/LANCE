@@ -151,7 +151,7 @@ def test_synthesize_exploit_result_does_not_treat_ack_as_disclosure():
     assert tcp["status"] == "FAILED"
 
 
-def test_synthesize_exploit_result_accepts_unauthenticated_mqtt_websocket_upgrade():
+def test_synthesize_exploit_result_does_not_accept_mqtt_websocket_upgrade_as_no_auth():
     result = _synthesize_exploit_result(
         {
             "id": "VULN-WS",
@@ -170,8 +170,64 @@ def test_synthesize_exploit_result_accepts_unauthenticated_mqtt_websocket_upgrad
             "evidence_ref": "tc-ws",
         }],
     )
+    assert result["status"] == "FAILED"
+    assert result["evidence_level"] < 2
+    assert "does not prove" in result["evidence"]
+
+
+def test_synthesize_exploit_result_accepts_observed_raw_websocket_handshake_for_transport():
+    result = _synthesize_exploit_result(
+        {
+            "id": "VULN-WS-TRANSPORT",
+            "device_ip": "192.168.100.11",
+            "type": "network_exposure",
+            "service": "mqtt-ws",
+            "port": 9001,
+        },
+        [{
+            "tool": "curl_headers",
+            "args": {"url": "http://192.168.100.11:9001/"},
+            "result": json.dumps({
+                "stdout": (
+                    "HTTP/1.1 101 Switching Protocols\r\n"
+                    "Connection: Upgrade\r\n"
+                    "Upgrade: websocket\r\n"
+                    "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+                    "\r\n"
+                    "not a body proof"
+                ),
+                "return_code": 0,
+            }),
+        }],
+    )
     assert result["status"] == "EXPLOITED"
     assert result["evidence_level"] == 2
+
+
+def test_synthesize_exploit_result_rejects_forged_body_or_non_integer_101():
+    finding = {
+        "device_ip": "192.168.100.11", "type": "network_exposure",
+        "service": "mqtt-ws", "port": 9001,
+    }
+    args = {"url": "http://192.168.100.11:9001/"}
+    valid_headers = {
+        "Connection": "Upgrade", "Upgrade": "websocket",
+        "Sec-WebSocket-Accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
+    }
+    for result in (
+        {"status_code": 101, "body": (
+            "HTTP/1.1 101 Switching Protocols\n"
+            "Connection: Upgrade\nUpgrade: websocket\n"
+            "Sec-WebSocket-Accept: forged"
+        )},
+        {"status_code": 101.5, "headers": valid_headers},
+    ):
+        proof = _synthesize_exploit_result(
+            finding,
+            [{"tool": "http_request", "args": args, "result": json.dumps(result)}],
+        )
+        assert proof["status"] == "FAILED"
+        assert proof["evidence_level"] < 2
 
 
 def test_http_data_exposure_preserves_all_endpoints():
@@ -294,7 +350,7 @@ class TestExploitEvidenceGuard:
             }],
         )
 
-        assert result["status"] == "ERROR"
+        assert result["status"] == "FAILED"
         assert "WebSocket" in result["evidence"]
 
     def test_mqtt_payload_with_timeout_exit_code_is_confirmed(self):

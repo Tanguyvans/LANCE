@@ -10,7 +10,10 @@ from src.agent.core.probes import (
     _SNMP_V1_GET_SYS_DESCR_HEX,
 )
 from src.agent.vuln_taxonomy import canonicalize
-from src.agent.exploit_evidence import synthesize_exploit_result as _synthesize_exploit_result
+from src.agent.exploit_evidence import (
+    _is_mqtt_websocket_service,
+    synthesize_exploit_result as _synthesize_exploit_result,
+)
 from src.agent.evidence.records import has_authentication
 
 
@@ -45,6 +48,11 @@ PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ssh": frozenset({"ssh_login", "try_credential", "ssh_audit", "nmap_scan"}),
     "mqtt": frozenset({"mqtt_listen", "try_credential", "nmap_scan"}),
     "mqtt-ws": frozenset({"http_request", "http_get", "curl_headers"}),
+    "mqtt_websocket": frozenset({"http_request", "http_get", "curl_headers"}),
+    "mqtt-websocket": frozenset({"http_request", "http_get", "curl_headers"}),
+    "mqttws": frozenset({"http_request", "http_get", "curl_headers"}),
+    "websocket": frozenset({"http_request", "http_get", "curl_headers"}),
+    "ws": frozenset({"http_request", "http_get", "curl_headers"}),
     "http": frozenset({"http_get", "http_request", "curl_headers"}),
     "https": frozenset({"http_get", "http_request", "curl_headers", "mtls_request"}),
     "telnet": frozenset({"telnet_connect", "try_credential", "nmap_scan"}),
@@ -122,14 +130,18 @@ def _phase4_verification_plan(
     suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
     url = f"{base_url}{suffix}"
 
-    if vuln_type in {"network_exposure", "no_auth"} and (service == "mqtt-ws" or port == 9001):
+    if _is_mqtt_websocket_service(service):
         ws_port = port or 9001
         return {"tool": "http_request", "target": ip, "port": ws_port,
                 "endpoint": endpoint or "/",
                 "args_hint": {"url": f"http://{ip}:{ws_port}{suffix}", "method": "GET",
                     "headers": {"Connection": "Upgrade", "Upgrade": "websocket",
                         "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}},
-                "success_condition": "HTTP 101 WebSocket upgrade or explicit handshake response"}
+                "success_condition": (
+                    "Observed HTTP 101 WebSocket handshake proves only "
+                    "network_exposure; it cannot prove MQTT authentication, "
+                    "data exposure, or application access"
+                )}
     if vuln_type == "misconfiguration" and (service == "coap" or port == 5683):
         return {
             "tool": "udp_send", "target": ip, "port": 5683,
@@ -424,9 +436,12 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
                 for key, value in (hint.get("headers") or {}).items()
             }
             if expected_headers:
+                supplied_headers_value = args.get("headers")
+                if not isinstance(supplied_headers_value, dict):
+                    return False
                 supplied_headers = {
                     str(key).casefold(): str(value)
-                    for key, value in (args.get("headers") or {}).items()
+                    for key, value in supplied_headers_value.items()
                 }
                 if any(supplied_headers.get(key) != value for key, value in expected_headers.items()):
                     return False

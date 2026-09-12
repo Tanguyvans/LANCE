@@ -23,6 +23,13 @@ import networkx as nx
 from src.agent.vuln_taxonomy import canonicalize, is_config_only, NOISE_TYPES
 from src.agent.report_evidence import is_verified_report_finding
 from src.agent.exploit_evidence import synthesize_exploit_result
+from src.agent.evidence.mqtt import (
+    mqtt_actual_request,
+    mqtt_framing_declared,
+    normalize_mqtt_port,
+    primary_mqtt_claim,
+    trusted_mqtt_messages,
+)
 from src.benchmark.funnel import evaluate_funnel
 from src.benchmark.strict_v3 import (
     CONTROL_UNEVALUABLE_REASONS,
@@ -1367,6 +1374,9 @@ def _load_tool_call_records(run_dir: Path) -> tuple[list[dict], bool]:
 def _record_implied_ports(record: dict) -> set[int]:
     """Extract explicit ports and safe protocol defaults from tool arguments."""
     args = record.get("args") or {}
+    if _canonical_tool_name(record.get("tool")) == "mqtt_listen":
+        actual = mqtt_actual_request(args)
+        return {actual[1]} if actual is not None else set()
     ports = set(_normalized_values(
         args.get("port") if isinstance(args, dict) else None, integer=True,
     ))
@@ -1423,18 +1433,6 @@ def _record_implied_endpoints(record: dict) -> set[str]:
                     destination += "?" + parsed.query
                 endpoints.update(_normalized_endpoints(destination))
     return endpoints
-
-
-def _record_mqtt_topics(record: dict) -> set[str]:
-    """Return only explicit MQTT topic arguments (never stdout/payload text)."""
-    if _canonical_tool_name(record.get("tool")) != "mqtt_listen":
-        return set()
-    args = record.get("args") or {}
-    if not isinstance(args, dict):
-        return set()
-    value = args.get("topic")
-    values = value if isinstance(value, (list, tuple, set)) else [value]
-    return {str(item) for item in values if isinstance(item, str) and item != ""}
 
 
 def _canonical_tool_name(value: object) -> str:
@@ -1499,32 +1497,59 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
 
     port = finding.get("port")
     if port not in (None, ""):
-        if int(port) not in _record_implied_ports(record):
+        if record_tool == "mqtt_listen":
+            normalized_port = normalize_mqtt_port(port)
+            if normalized_port is None or normalized_port not in _record_implied_ports(record):
+                return False
+        elif int(port) not in _record_implied_ports(record):
             return False
 
     if record_tool == "mqtt_listen":
-        # MQTT's resource is a topic, not an HTTP path. A primary endpoint
-        # wins over secondary endpoints; use the latter only as a fallback.
-        primary = finding.get("endpoint")
-        claimed_topics = {primary} if isinstance(primary, str) and primary else set()
-        if not claimed_topics:
-            extra = finding.get("endpoints") or []
-            values = extra if isinstance(extra, (list, tuple, set)) else [extra]
-            claimed_topics = {value for value in values if isinstance(value, str) and value}
-        if claimed_topics and not claimed_topics & _record_mqtt_topics(record):
+        # MQTT's resource is a topic, not an HTTP path.  Keep legacy binding
+        # for exact requested/claimed topics, but permit wildcard widening only
+        # when the same strictly attested framed messages prove the claim.
+        actual = mqtt_actual_request(record.get("args") or {})
+        primary = primary_mqtt_claim(finding)
+        if actual is None:
             return False
+        _host, actual_port, requested_topic = actual
+        try:
+            claimed_port = finding.get("port")
+            normalized_claimed_port = (
+                normalize_mqtt_port(claimed_port)
+                if claimed_port not in (None, "") else None
+            )
+            if claimed_port not in (None, "") and normalized_claimed_port is None:
+                return False
+            if normalized_claimed_port is not None and normalized_claimed_port != actual_port:
+                return False
+        except (TypeError, ValueError):
+            return False
+        # A generic MQTT finding has no topic claim to bind.  Preserve the
+        # historical empty-endpoint record binding; semantic proof still
+        # validates framed messages against the actual requested filter.
+        if not primary:
+            return True
+        if requested_topic != primary:
+            result = _tool_result_data(record)
+            if not isinstance(result, dict) or not mqtt_framing_declared(result):
+                return False
+            if not trusted_mqtt_messages(
+                result, record.get("args") or {}, target_ip,
+                finding.get("port"), primary,
+            ):
+                return False
     else:
         claimed_endpoints = _normalized_endpoints(finding.get("endpoint"))
         if not claimed_endpoints:
             claimed_endpoints.update(_normalized_endpoints(finding.get("endpoints")))
-        # mqtt-ws no-auth has an implicit HTTP upgrade root. Keep this narrow
+        # MQTT-WS has an implicit HTTP upgrade root. Keep this narrow
         # protocol-specific default; an empty generic HTTP endpoint remains
         # unconstrained.
         if (
             not claimed_endpoints
-            and str(finding.get("service") or "").strip().casefold() in {"mqtt-ws", "mqtt_websocket", "mqtt-websocket"}
-            and str(finding.get("type") or "").strip().casefold() == "no_auth"
-            and record_tool in {"http_get", "http_request", "curl_headers"}
+            and _normalized_services(finding.get("service")) == {"mqtt-ws"}
+            and record_tool in {"http_get", "http_request", "curl_headers", "mtls_request"}
         ):
             claimed_endpoints = {"/"}
         ssh_placeholder_types = {
@@ -1634,6 +1659,8 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
     result = _tool_result_data(record)
     if isinstance(result, dict):
         tool = str(record.get("tool", "")).strip()
+        if _canonical_tool_name(tool) == "mqtt_listen":
+            return _semantic_output_supports_finding(tool, result, finding, args=record.get("args"))
         if _canonical_tool_name(tool) == "telnet_connect":
             # Always use the shared semantic contract, including explicit
             # timeout/error fields and the required port.

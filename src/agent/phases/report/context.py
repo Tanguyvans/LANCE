@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from src.agent.phases.report.grouping import group_findings_for_report
+from src.agent.phases.report.traceability import ReportTraceIndex
 from src.agent.report_evidence import (
     is_verified_report_finding as _is_verified_report_finding,
     report_phase4_summary as _report_phase4_summary,
@@ -116,7 +118,8 @@ def _project_value(value, *, path: str, omissions: dict[str, int], depth: int):
     return _short_text(str(value), path=path, omissions=omissions, limit=220)
 
 
-def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict) -> dict:
+def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict,
+                     execution_observations: list | None = None) -> dict:
     omissions: dict[str, int] = {}
     phase6_projection = {
         key: phase6.get(key)
@@ -125,6 +128,16 @@ def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict) ->
         )
         if key in phase6
     }
+    if phase6:
+        phase6_projection["count_semantics"] = (
+            "Phase 4-supported declarations, not unique flaws, accepted benchmark proofs "
+            "or code execution. Priority indices count severity-weighted declarations."
+        )
+    if "finding_grouping" in phase6:
+        phase6_projection["finding_grouping"] = _project_value(
+            phase6["finding_grouping"], path="phase6.finding_grouping",
+            omissions=omissions, depth=0,
+        )
     if phase6:
         phase6_projection["severity_breakdown"] = _project_value(
             phase6.get("severity_breakdown", {}), path="phase6.severity_breakdown",
@@ -245,6 +258,13 @@ def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict) ->
         "graph": graph_projection,
         "recon": recon_projection,
         "intrusion": intrusion_projection,
+        "execution_observations": _project_list(
+            execution_observations or [], path="execution_observations", omissions=omissions,
+            limit=8, projector=lambda item, path: _project_record(
+                item, path=path, omissions=omissions,
+                fields=("client_source_ip", "server_ip", "evidence_ref", "interpretation"),
+            ),
+        ),
         "full_evidence_references": [
             "01_graph_evidence.json", "01_graph_analysis.md",
             "02_recon_evidence.json", "02_recon.md",
@@ -350,6 +370,7 @@ def build_report_analysis_context(run_dir: Path) -> dict:
         _safe_json(run_dir / "01_graph_evidence.json"),
         _safe_json(run_dir / "02_recon_evidence.json"),
         _safe_json(run_dir / "05_intrusion.json"),
+        ReportTraceIndex(run_dir).ssh_source_observations(),
     )
 
 def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) -> None:
@@ -481,6 +502,12 @@ def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) 
         "device_count": assessed_device_count,
         "devices_with_findings": len(device_list),
         "total_vulnerabilities": total_vulns,
+        "finding_grouping": {
+            "source": "06_report_groups.json", "purpose": "presentation_only",
+            "hypotheses": len(phase3_vulns),
+            "groups": len(group_findings_for_report(phase3_vulns)),
+            "note": "Possible duplicate declarations; not unique flaws. Official metrics and all source hypotheses are unchanged.",
+        },
         **({"configuration_observations": compact_observations} if compact_observations else {}),
         "severity_breakdown": global_sev,
         "phase4_summary": phase4_summary,
@@ -490,7 +517,8 @@ def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) 
             "Only Phase 4 findings with status CONFIRMED and evidence level >= 2 "
             "are projected here. Unsupported confirmations are excluded from the "
             "report-facing context; full results remain in 04_exploitation.json "
-            "and raw tool output in tool_calls.jsonl."
+            "and raw tool output in tool_calls.jsonl. This selection does not "
+            "establish benchmark proof acceptance, unique flaws or code execution."
         ),
         "top_critical_findings": top_critical,
         "top_devices_by_risk": [
@@ -515,7 +543,7 @@ def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) 
         "NOTE": (
             "Sections 5 and 6 (vuln tables) are pre-generated in "
             "06_report_prefill.md. The primary inventory contains only "
-            "Phase 4-verified findings (CONFIRMED, evidence level >= 2); "
+            "Phase 4-supported declarations (CONFIRMED, evidence level >= 2); "
             "the complete candidate registry remains in the raw artifacts."
         ),
     }
@@ -526,7 +554,7 @@ def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) 
         encoding="utf-8",
     )
     log.info(
-        "Generated Phase 5 context: %d devices, %d vulns → %s (%d bytes)",
+        "Generated Phase 6 context: %d devices, %d declarations → %s (%d bytes)",
         len(device_list), total_vulns, out_path, out_path.stat().st_size,
     )
     print(

@@ -10,21 +10,21 @@
 
 | Metric | Value |
 |--------|-------|
-| Devices scanned | |
-| Vulnerabilities found | |
-| Confirmed exploitable (Phase 4) | |
-| Devices compromised (Phase 5) | |
-| Credentials harvested (Phase 5) | |
-| Crown jewels reached (Phase 5) | |
-| Data exfiltrated (Level 3 evidence) | |
-| Overall risk level | |
+| Devices in declared scope | |
+| Live reconnaissance devices | |
+| Phase 4-supported declarations | |
+| Inconclusive attempts (not refutations) | |
+| Highest declared severity (not overall risk) | |
+
+Counts describe declarations, not unique vulnerabilities, accepted benchmark
+proofs or compromised targets. No supported declaration does not mean no flaw.
 
 <!-- 5-10 lines: scope, key findings, overall risk, immediate actions required -->
 
 ## 2. Scope and Methodology
 
 - **Target subnet:** (from Phase 1 topology)
-- **Phases executed:** 1 (Graph) → 2 (Recon) → 3 (Vuln) → 4 (Exploit) → 5 (Intrusion) → 6 (Report)
+- **Artifacts available:** list recorded sources; presence does not establish phase completion
 - **Tools used:**
 - **Limitations:**
 
@@ -61,76 +61,86 @@
 *(Section 5 table is auto-generated — do not rewrite it)*
 
 **Status legend:**
-- **Confirmed** — Phase 4 exploitation succeeded
-- **Not Exploitable** — Phase 4 test ran, exploit failed
-- **Inconclusive** — Tool error, needs manual retest
-- **Potential (untested)** — Phase 3 finding, no Phase 4 test
-- **Potential (CVE-based)** — NVD match only, no active test
+
+- **Phase 4-supported declaration** — recorded CONFIRMED with evidence level >= 2; benchmark proof acceptance remains separate
+- **Inconclusive** — an unsuccessful attempt does not refute the flaw
+- **Error** — tool or execution failure; no security conclusion
+- **Untested hypothesis** — no Phase 4 observation
+- **CVE-based hypothesis** — a database match alone is not an active proof
 
 {{SECTION_6_TABLES}}
 
 *(Section 6 tables are auto-generated — do not rewrite them)*
 
-**Evidence levels:** 1=Detected (port open), 2=Exploited (logged in/connected), 3=Data exfiltrated (passwords/configs/PII retrieved)
+Evidence levels are recorded attributes, not automatic capability verdicts.
+Show the Phase 4 observation separately from the Phase 3 hypothesis, with
+explicit references and their diagnostics. A resolved reference is not proof
+of the security property. Distinguish configuration, exposure, data access,
+access and explicit code-execution claims; never infer execution from level 2/3.
 
-## 7. Attack Paths
+## 7. Intrusion declarations and attack-path limitations
 
-### 7.1 Critical Multi-Hop Chains
+### 7.1 Critical declarations to review
 
-<!-- Format: Internet → Device A (CVE) → Device B (CVE) → Target
-     Include path score and impact -->
+<!-- Critical findings are not verified network paths. -->
 
-### 7.2 Pivot Nodes
+### 7.2 Network-transition limitations
 
-| Device | Betweenness | Role |
-|--------|-------------|------|
+An access is not a pivot. A verified network transition requires an action
+actually executed from the prior access toward another machine. The report
+does not reconstruct pivots from graph paths or independent direct logins.
 
-### 7.3 Infiltration Campaign (Phase 5)
+### 7.3 Raw intrusion declarations (Phase 5, non-validées)
 
-<!-- Fill from 05_intrusion.json. If Phase 5 was skipped, write "Phase 5 not executed." -->
+<!-- Fill from 05_intrusion.json with raw/non-validated labels. If absent, say
+     artifact unavailable; do not infer whether Phase 5 executed. -->
 
 **Campaign summary:**
 
 | Metric | Value |
 |--------|-------|
-| Devices targeted | |
-| Devices compromised | |
-| Credentials harvested | |
-| Crown jewels reached | |
+| Devices declared targeted (raw) | |
+| Devices declared compromised (raw) | |
+| Credentials declared harvested (raw) | |
+| Crown jewels declared reached (raw) | |
 
-**Compromised devices:**
+**Devices declared compromised (raw, not independently validated):**
 
-| Device | IP | Access method | Credentials used | Data exfiltrated |
+| Device | IP | Access declaration | Credential declaration | Data declaration |
 |--------|----|---------------|-----------------|-----------------|
 
-**Credential harvest:**
+**Raw credential declarations (usability not established):**
 
-| Username | Password | Service | Harvested from | Used to compromise |
+| Username | Reference | Service | Declared source | Declared use (unvalidated) |
 |----------|----------|---------|---------------|-------------------|
 
-**Attack chains:**
+**Raw attack-chain declarations:**
 
-<!-- For each chain in 05_intrusion.json, write:
-     Hop 1: entry_ip (method) → Hop 2: pivot_ip (method) → ... → Crown jewel
-     Include the commands run and key output at each hop. -->
+<!-- Preserve source references; do not turn raw chains into verified hops. -->
 
-**Crown jewels reached:**
+**Crown jewels declared reached (raw):**
 
 <!-- For each crown jewel: device, access method, data retrieved (passwords, configs, shadow, DB dump) -->
 
-## 8. Risk Scores
+## 8. Remediation priority indices
 
-| Rank | Device | Risk Score | Max CVSS | Hops from Internet | Centrality |
-|------|--------|------------|----------|---------------------|------------|
+The priority index weights declarations by severity (C×4, H×3, M×2, L×1).
+It is not a benchmark score or a combined audit/intrusion score. Possible
+duplicates remain declarations; the report grouping does not modify VP/FP/FN.
+
+| Device | IP | Priority index | Declaration breakdown |
+|--------|----|----------------|-----------------------|
 
 ## 9. Remediation Recommendations
 
-### 9.1 IMMEDIATE (Confirmed HIGH/CRITICAL)
+### 9.1 PRIORITY REVIEW (supported CRITICAL declarations)
+
+<!-- If no CRITICAL declaration, state that; do not recommend addressing zero findings. -->
 
 | # | Device | Action | Rationale |
 |---|--------|--------|-----------|
 
-### 9.2 SHORT TERM (Potential HIGH + Confirmed MEDIUM)
+### 9.2 SHORT TERM (supported HIGH declarations)
 
 | # | Device | Action | Rationale |
 |---|--------|--------|-----------|
@@ -152,6 +162,8 @@
 All raw tool outputs are saved in `tool_calls.jsonl` in the run directory.
 
 
-### 10.3 Additional Model Analysis
+### 10.3 Analyse du modèle (non validée)
 
-<!-- Preserve useful model-generated nuance, hypotheses, contradictions, and recommendations that do not fit the standard sections. -->
+<!-- Optional complete analyst note only. Rejected/truncated notes are not promoted;
+     record explicit partial status instead. SSH_CONNECTION client sources are
+     not additional compromised targets, runner identities or pivot evidence. -->

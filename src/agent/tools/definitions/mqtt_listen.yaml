@@ -1,24 +1,37 @@
 name: "mqtt_listen"
 command: "mosquitto_sub"
-args: ["-v"]
+args: ["-F", "%j"]
 enabled: true
 timeout: 15
 short_description: "MQTT message listener"
 description: |
   Listen for MQTT messages on a broker to check if anonymous access is allowed and what topics are exposed.
+  Transport limitation: this tool is MQTT/TCP only, including when port 9001 is selected;
+  it is not WebSocket and does not alter TLS/certificate behavior.
   IMPORTANT — exit code interpretation:
-    return_code=0  : received all requested messages (anonymous access CONFIRMED)
-    return_code=27 : timeout waiting for messages but connection was established (anonymous access CONFIRMED — broker is just idle)
+    return_code=0  : listener completed; inspect the received messages for evidence
+    return_code=27 : listener timed out; only messages actually captured may support a finding
     return_code=5  : connection refused by broker (authentication required)
     return_code=1  : generic error (broker unreachable or refused)
-  A return_code of 27 with empty stdout means the broker accepted the anonymous connection but had no active traffic.
-  This is a HIGH severity finding: the MQTT broker allows unauthenticated access.
+  An exit code alone never confirms anonymous access. Empty output remains inconclusive.
+  stdout contains one JSON object per message (Mosquitto %j): topic and escaped payload
+  are separate fields, even when the payload contains newlines. A subscription to '#'
+  is not proof of every topic: inspect actual received topics and their payloads.
 parameters:
   - name: "broker"
     type: "string"
     description: "MQTT broker IP or hostname"
     required: true
     flag: "-h"
+    format: "flag"
+  - name: "port"
+    type: "integer"
+    description: "MQTT over TCP broker port (integer 1-65535; default: 1883)"
+    required: false
+    default: 1883
+    minimum: 1
+    maximum: 65535
+    flag: "-p"
     format: "flag"
   - name: "topic"
     type: "string"
@@ -54,7 +67,8 @@ parameters:
     flag: "-P"
     format: "flag"
 return_code_map:
-  0:  "anonymous_access_confirmed_messages_received"
-  27: "anonymous_access_confirmed_broker_idle"
+  0:  "listener_completed_inspect_received_messages"
+  27: "listener_timed_out_inspect_captured_messages"
   5:  "connection_refused_auth_required"
   1:  "generic_error_broker_unreachable"
+additionalProperties: false

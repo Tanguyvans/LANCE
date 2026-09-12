@@ -17,6 +17,7 @@ from src.agent.phases.registry import run_phase
 @pytest.fixture
 def report_run(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr("src.agent.pipeline.OUTPUT_DIR", tmp_path)
     monkeypatch.setattr("src.agent.cost_tracker._resolve_pricing", lambda *_a, **_kw: (
         {"input": 1.0, "output": 2.0}, "offline-review", True,
     ))

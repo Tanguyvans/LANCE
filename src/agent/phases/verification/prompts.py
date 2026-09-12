@@ -1,6 +1,18 @@
 """Service-specific verification instructions."""
 
 
+_MQTT_WEBSOCKET_INSTRUCTIONS = (
+    "MQTT over WebSocket requires an observed HTTP Upgrade handshake against "
+    "the exact host, port, and endpoint. HTTP 101 proves transport/network "
+    "exposure only. It does not prove no_auth, data_exposure, credentials, "
+    "subscribe/publish, or any other MQTT application access. No WebSocket "
+    "application validator is available, so those claims remain indeterminate "
+    "without observed MQTT-over-WebSocket messages. Do not use mqtt_listen: it "
+    "is MQTT/TCP only on every port. Do not treat HTTP 200 or a generic HTTP "
+    "service on port 9001 as MQTT-WS proof."
+)
+
+
 EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "credentials": {
         "ssh": (
@@ -66,3 +78,12 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
         "default": "Attempt code execution or unauthorized upload/firmware access. Report what is accessible and whether code execution is possible."
     }
 }
+
+
+# The evaluator normalises all of these spellings to MQTT-WS. Keep the same
+# transport-only contract in every Phase 4 category and for every profile.
+for _mqtt_ws_alias in (
+    "mqtt-ws", "mqtt_websocket", "mqtt-websocket", "mqttws", "websocket", "ws",
+):
+    for _category_instructions in EXPLOIT_INSTRUCTIONS.values():
+        _category_instructions[_mqtt_ws_alias] = _MQTT_WEBSOCKET_INSTRUCTIONS

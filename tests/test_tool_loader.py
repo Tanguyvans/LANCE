@@ -61,8 +61,18 @@ class TestBuildInputSchema:
     def test_mqtt_schema_has_defaults(self):
         data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
         schema = build_input_schema(data)
+        assert "MQTT/TCP only" in data["description"]
+        assert "not WebSocket" in data["description"]
         assert schema["properties"]["topic"]["default"] == "#"
         assert schema["properties"]["count"]["default"] == 10
+        assert schema["properties"]["port"] == {
+            "type": "integer",
+            "description": "MQTT over TCP broker port (integer 1-65535; default: 1883)",
+            "default": 1883,
+            "minimum": 1,
+            "maximum": 65535,
+        }
+        assert schema["additionalProperties"] is False
 
     def test_nmap_schema_required_field(self):
         """Nmap target must be required, ports optional."""
@@ -113,12 +123,109 @@ class TestBuildSubprocessFunction:
         fn = build_subprocess_function(data)
         fn(broker="192.168.88.100")
         cmd = mock_run.call_args[0][0]
+        assert cmd[:3] == ["mosquitto_sub", "-F", "%j"]
         assert "-h" in cmd
         assert "192.168.88.100" in cmd
         assert "-t" in cmd
         assert "#" in cmd
         assert "-C" in cmd
         assert "10" in cmd
+        port_index = cmd.index("-p")
+        assert cmd[port_index:port_index + 2] == ["-p", "1883"]
+
+    @pytest.mark.parametrize("port, expected", [(1884, "1884"), (9001, "9001"), ("9001", "9001")])
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_passes_explicit_tcp_port_and_attests_effective_values(
+        self, mock_run, port, expected
+    ):
+        mock_run.return_value = {"stdout": "message", "stderr": "", "return_code": 0}
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result = json.loads(fn(broker="broker.example", port=port, topic="sensors/#"))
+
+        command = mock_run.call_args.args[0]
+        port_index = command.index("-p")
+        assert command[port_index:port_index + 2] == ["-p", expected]
+        assert result["execution_attestation"] == {
+            "protocol": "TCP",
+            "host": "broker.example",
+            "port": int(expected),
+            "topic": "sensors/#",
+            "output_format": "mosquitto-json-v1",
+        }
+
+    @pytest.mark.parametrize("port", [None, True, False, 1883.0, 0, 65536, "-p", "1.0", " 1883"])
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_rejects_invalid_ports_before_execution(self, mock_run, port):
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result = json.loads(fn(broker="broker.example", port=port))
+
+        assert result["error_kind"] == "invalid_tool_arguments"
+        assert result["return_code"] == 2
+        mock_run.assert_not_called()
+
+    @pytest.mark.parametrize("kwargs", [
+        {},
+        {"broker": None},
+        {"broker": ""},
+        {"broker": "   "},
+        {"broker": "broker.example", "topic": None},
+        {"broker": "broker.example", "topic": ""},
+    ])
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_rejects_missing_or_empty_broker_and_topic(self, mock_run, kwargs):
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result = json.loads(fn(**kwargs))
+
+        assert result["error_kind"] == "invalid_tool_arguments"
+        mock_run.assert_not_called()
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_rejects_unbounded_digit_string_without_launching(self, mock_run):
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result = json.loads(fn(broker="broker.example", port="1" * 5000))
+
+        assert result["error_kind"] == "invalid_tool_arguments"
+        mock_run.assert_not_called()
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_attestation_tracks_flag_positions_for_flag_like_values(self, mock_run):
+        mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result = json.loads(fn(broker="-p", topic="-h", port=9001))
+
+        assert result["execution_attestation"] == {
+            "protocol": "TCP",
+            "host": "-p",
+            "port": 9001,
+            "topic": "-h",
+            "output_format": "mosquitto-json-v1",
+        }
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_rejects_unknown_kwargs_without_echoing_values(self, mock_run):
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result_text = fn(
+            broker="broker.example",
+            unexpected_secret="super-secret-password",
+        )
+        result = json.loads(result_text)
+
+        assert result["error_kind"] == "invalid_tool_arguments"
+        assert "unexpected_secret" not in result_text
+        assert "super-secret-password" not in result_text
+        mock_run.assert_not_called()
 
     @patch("src.agent.tools.recon_tools._run")
     def test_ssh_audit_port_suffix(self, mock_run):
@@ -208,6 +315,41 @@ class TestBuildSubprocessFunction:
         assert "cache_replayed" not in replayed
         assert fresh["stdout"] == 'sensors/temp {"temp":999}'
         assert "cache_replayed" not in fresh
+
+        assert first["execution_attestation"] == replayed["execution_attestation"] == fresh["execution_attestation"]
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_mqtt_attestation_does_not_include_credentials(self, mock_run):
+        mock_run.return_value = {"stdout": "ok", "stderr": "", "return_code": 0}
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        fn = build_subprocess_function(data)
+
+        result_text = fn(
+            broker="broker.example",
+            username="alice",
+            password="super-secret-password",
+        )
+        result = json.loads(result_text)
+
+        assert result["execution_attestation"] == {
+            "protocol": "TCP",
+            "host": "broker.example",
+            "port": 1883,
+            "topic": "#",
+            "output_format": "mosquitto-json-v1",
+        }
+        assert "alice" not in json.dumps(result["execution_attestation"])
+        assert "super-secret-password" not in json.dumps(result["execution_attestation"])
+
+    @patch("src.agent.tools.recon_tools._run")
+    def test_legacy_output_never_receives_json_framing_attestation(self, mock_run):
+        raw = '{"topic":"fixture","payload":"looks like JSON"}\n'
+        mock_run.return_value = {"stdout": raw, "stderr": "", "return_code": 0}
+        data = load_tool_yaml(DEFINITIONS_DIR / "mqtt_listen.yaml")
+        data["args"] = ["-v"]
+        result = json.loads(build_subprocess_function(data)(broker="192.0.2.1", topic="%j"))
+        assert result["stdout"] == raw
+        assert "output_format" not in result["execution_attestation"]
 
 
 class TestLoadAllTools:

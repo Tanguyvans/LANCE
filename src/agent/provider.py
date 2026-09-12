@@ -227,7 +227,11 @@ class LLMProvider:
         max_data_tool_calls: int | None = None,
         deadline: float | None = None,
         finalize_required_tool_on_stall: bool = False,
+        completion_metadata: dict | None = None,
     ) -> str:
+        # Caller-owned metadata avoids cross-talk between parallel workers.
+        if completion_metadata is not None:
+            completion_metadata.clear()
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
         if self.provider == "codex":
@@ -268,9 +272,10 @@ class LLMProvider:
             force_completion_on_phase4_conclusive,
             deadline=deadline,
             finalize_required_tool_on_stall=finalize_required_tool_on_stall,
+            completion_metadata=completion_metadata,
         )
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False, completion_metadata=None):
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
@@ -415,6 +420,9 @@ class LLMProvider:
                 continue
             choice = response.choices[0]
             message = choice.message
+            if completion_metadata is not None:
+                reason = getattr(choice, "finish_reason", None)
+                completion_metadata["finish_reason"] = reason if isinstance(reason, str) else None
 
             if cost_tracker and response.usage:
                 cost_tracker.record_turn(input_tokens=response.usage.prompt_tokens or 0, output_tokens=response.usage.completion_tokens or 0, tool_call_count=len(message.tool_calls or []))
@@ -446,6 +454,9 @@ class LLMProvider:
                         max_tokens=max_tokens,
                     )
                     if fallback.choices:
+                        if completion_metadata is not None:
+                            reason = getattr(fallback.choices[0], "finish_reason", None)
+                            completion_metadata["finish_reason"] = reason if isinstance(reason, str) else None
                         if cost_tracker and fallback.usage:
                             cost_tracker.record_turn(input_tokens=fallback.usage.prompt_tokens or 0, output_tokens=fallback.usage.completion_tokens or 0)
                         fb_content = fallback.choices[0].message.content or ""
