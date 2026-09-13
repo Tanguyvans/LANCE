@@ -1045,13 +1045,37 @@
         _modbus_expected: >-
           {{ benchmark_scenarios[scenario_id].services
              | selectattr('role', 'equalto', 'modbus_server') | list | length }}
-        _mqtt_results: "{{ mqtt_conn_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _db_results: "{{ db_nopass_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _ssh_results: "{{ ssh_creds_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _web_results: "{{ web_listing_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _web_version_results: "{{ web_version_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _redis_results: "{{ redis_ping_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
-        _modbus_results: "{{ modbus_svc_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        # Successful Ansible results usually omit 'skipped'. Only evaluate
+        # its value after checking that the attribute exists (Ansible 2.19+).
+        # These projections serve accounting only; source logs stay untouched.
+        _mqtt_results: >-
+          {{ (mqtt_conn_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (mqtt_conn_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _db_results: >-
+          {{ (db_nopass_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (db_nopass_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _ssh_results: >-
+          {{ (ssh_creds_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (ssh_creds_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _web_results: >-
+          {{ (web_listing_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (web_listing_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _web_version_results: >-
+          {{ (web_version_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (web_version_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _redis_results: >-
+          {{ (redis_ping_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (redis_ping_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
+        _modbus_results: >-
+          {{ (modbus_svc_check.results | default([]) | rejectattr('skipped', 'defined') | list)
+             + (modbus_svc_check.results | default([]) | selectattr('skipped', 'defined')
+                | rejectattr('skipped', 'sameas', true) | list) }}
 
     # RAPPORT FINAL
     # ════════════════════════════════════════════════════
