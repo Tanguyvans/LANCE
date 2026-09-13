@@ -35,7 +35,7 @@ def make_provider(provider, transport):
 
 @pytest.mark.parametrize("provider", ["local", "minimax", "qwen", "glm"])
 @pytest.mark.parametrize("bounded", [False, True])
-def test_deadline_avoids_hidden_sdk_retries_and_leaves_unbounded_calls_unchanged(provider, bounded):
+def test_deadline_avoids_hidden_sdk_retries(provider, bounded):
     requests = []
     def handle(request):
         requests.append(request)
@@ -52,8 +52,9 @@ def test_deadline_avoids_hidden_sdk_retries_and_leaves_unbounded_calls_unchanged
             assert len(requests) == 1
             assert 0 < requests[0].extensions["timeout"]["read"] <= 10
         else:
-            assert instance.chat_with_tools(**kwargs) == "Observed evidence."
-            assert len(requests) == 2
+            with pytest.raises(sdk.APITimeoutError):
+                instance.chat_with_tools(**kwargs)
+            assert len(requests) == 1
     finally:
         instance.client.close()
 

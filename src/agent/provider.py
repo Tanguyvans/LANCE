@@ -31,6 +31,14 @@ def _is_network_error(exc: Exception) -> bool:
     return type(exc).__name__ in _RETRYABLE_EXC_NAMES or isinstance(exc, (ConnectionError, TimeoutError))
 
 
+def _is_missing_user_query_error(exc: Exception) -> bool:
+    """A rejected conversation is not a transient server failure."""
+    return (
+        getattr(exc, "status_code", None) in {400, 500}
+        and "no user query found in messages" in str(exc).lower()
+    )
+
+
 def _deadline_remaining(deadline: float | None) -> float | None:
     """Return seconds remaining, or raise before a deadline-bounded call."""
     if deadline is None:
@@ -50,6 +58,8 @@ def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, deadline=None, **kwarg
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
+            if _is_missing_user_query_error(exc):
+                raise
             code = getattr(exc, "status_code", None)
             if code is None:
                 resp = getattr(exc, "response", None)
@@ -276,9 +286,12 @@ class LLMProvider:
         )
 
     def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False, completion_metadata=None):
+        if not isinstance(user_message, str) or not user_message.strip():
+            raise ValueError("A non-empty user message is required")
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
+        user_query_recovered = False
         required_tool_called = False
         reminder_sent = False
         last_nonempty_text = ""
@@ -309,15 +322,13 @@ class LLMProvider:
             client = self.client
             remaining = _deadline_remaining(deadline)
             with_options = getattr(client, "with_options", None)
-            if finalize_required_tool_on_stall and finalization_only and callable(with_options):
+            if callable(with_options):
+                # One retry owner: SDK retries would otherwise resend a rejected
+                # conversation before our compatibility guard can inspect it.
                 options = {"max_retries": 0}
                 if remaining is not None:
                     options["timeout"] = remaining
                 client = with_options(**options)
-            elif remaining is not None and callable(with_options):
-                # Retry here, with a recomputed remaining deadline, rather
-                # than letting SDK retries reuse the full request timeout.
-                client = client.with_options(timeout=remaining, max_retries=0)
             return client.chat.completions.create(**kwargs)
 
         for turn in range(max_turns):
@@ -374,6 +385,31 @@ class LLMProvider:
                     **request_kwargs,
                 )
             except Exception as exc:
+                if (
+                    _is_missing_user_query_error(exc)
+                    and not user_query_recovered
+                    and turn + 1 < max_turns
+                    and isinstance(messages[-1], dict)
+                    and messages[-1].get("role") == "tool"
+                    and not (finalization_only and finalization_requests >= 3)
+                ):
+                    # Some compatible endpoints reject a tool-ended history.
+                    # Preserve the original request and every tool call/result;
+                    # the next ordinary turn consumes the existing request budget.
+                    user_query_recovered = True
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "Continue the original user request using the tool results "
+                            "already present above. Do not repeat completed actions merely "
+                            "because the previous model request was rejected. All original "
+                            "constraints and evidence requirements still apply."
+                        ),
+                    })
+                    log.warning("Provider rejected tool-ended history; trying one bounded continuation")
+                    if stream_callback:
+                        stream_callback({"type": "provider_recovery", "reason": "missing_user_query", "turn": turn + 1})
+                    continue
                 # MiniMax (and some OpenAI-compatible APIs) return 400 when the conversation
                 # history contains a tool_call with malformed JSON arguments.
                 # Recovery: remove the offending assistant+tool messages and ask the LLM to retry.

@@ -3,7 +3,7 @@
 import json
 import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -460,7 +460,10 @@ def test_real_openai_client_with_mock_transport_uses_save_only_finalization():
         provider.client.close()
 
     assert requests[1]["tool_choice"] == "required"
-    provider.client.with_options.assert_called_once_with(max_retries=0)
+    assert provider.client.with_options.call_count == len(requests)
+    provider.client.with_options.assert_has_calls(
+        [call(max_retries=0)] * len(requests)
+    )
     assert [tool["function"]["name"] for tool in requests[1]["tools"]] == [
         "save_deliverable"
     ]

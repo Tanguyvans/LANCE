@@ -1161,6 +1161,9 @@ button:disabled { opacity: .35; cursor: default; }
 .bm-run-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .bm-commit, .bm-model small, .bm-efficiency small { display: block; margin-top: 6px; font-size: 12px; }
 .bm-model { min-width: 130px; max-width: 170px; overflow-wrap: anywhere; }
+.bm-reservations { display: block; margin-top: 6px; min-width: 160px; max-width: 240px; white-space: normal; overflow-wrap: anywhere; }
+.bm-contract { margin-bottom: 8px; white-space: normal; overflow-wrap: anywhere; }
+.bm-contract small { display: block; margin-top: 6px; }
 .bm-efficiency { min-width: 145px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .bm-efficiency > span { display: block; }
 .bm-final-metrics { color: var(--text); }

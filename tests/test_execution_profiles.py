@@ -180,6 +180,7 @@ def test_openai_loop_reserves_final_turns_for_required_deliverable():
     provider.provider = "openrouter"
     provider.model = "test"
     provider.client = MagicMock()
+    provider.client.with_options.return_value = provider.client
     provider.client.chat.completions.create.side_effect = [
         _openai_tool_response("scan", {"target": "a"}, "scan-1"),
         _openai_tool_response("scan", {"target": "b"}, "scan-2"),

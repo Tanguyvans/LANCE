@@ -2627,6 +2627,29 @@ function renderFunnelDiagnostics(funnel, score = {}) {
     ${network}${execution}${opinion}</details>`;
 }
 
+function renderBenchmarkContract(score) {
+  const version = value => escapeHtml(typeof value === 'string' && value ? value : 'non renseigné');
+  const label = score.evidence_contract_compatible === false
+    ? 'Contrat historique — non comparable'
+    : score.evidence_contract_compatible === true ? 'Contrat compatible' : 'Compatibilité non renseignée';
+  return `<details class="bm-contract"><summary>${label}</summary>
+    <small>Run : ${version(score.run_metric_contract_version)} · ${version(score.run_evidence_contract_version)}<br>
+    Évaluateur : ${version(score.metric_contract_version)} · ${version(score.evidence_contract_version)}</small>
+    ${score.metrics_compatibility_reason ? `<small>${escapeHtml(score.metrics_compatibility_reason)}</small>` : ''}</details>`;
+}
+
+function renderBenchmarkStatus(row, score, sealed) {
+  const status = sealed && score.status ? score.status : row.status;
+  const reservations = sealed ? [] : _completionReservations({
+    ...row.completion, metrics: score,
+    evaluation_status: row.score_error ? 'failed' : 'completed',
+    evaluation_error: row.score_error,
+  });
+  const warned = status === 'done' && reservations.length > 0;
+  return `<span class="run-badge ${escapeHtml(warned ? 'partial' : status || '')}">${warned ? 'Terminé avec réserves' : escapeHtml(status || '—')}</span>
+    ${reservations.length ? `<small class="bm-reservations">${reservations.map(escapeHtml).join('<br>')}</small>` : ''}`;
+}
+
 function renderBenchmarkTable() {
   const scenario = document.getElementById('bm-filter-scenario').value;
   const model = document.getElementById('bm-filter-model').value;
@@ -2659,7 +2682,6 @@ function renderBenchmarkTable() {
       ${s.cost_is_estimate === true ? '<small>Coût estimé</small>' : ''}
       ${efficiencyDetails}</div>`;
     const runId = escapeHtml(r.id);
-    const status = sealed && s.status ? s.status : r.status;
     return `<tr>
       <td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(r.id.replace(/_/g, ' '))}</button>
         ${r.commit ? `<small class="bm-commit">${escapeHtml(r.commit)}</small>` : ''}</td>
@@ -2671,9 +2693,9 @@ function renderBenchmarkTable() {
       })}</td>
       <td>${report}</td>
       <td class="bm-model">${escapeHtml(r.model || '—')}${r.execution_profile ? `<small>${escapeHtml(r.execution_profile)}</small>` : ''}</td>
-      <td><span class="run-badge ${escapeHtml(status || '')}">${escapeHtml(status || '—')}</span></td>
+      <td>${renderBenchmarkStatus(r, s, sealed)}</td>
       <td>${costCell}</td>
-      <td>${sealed ? noScore : `${renderVerificationCoverage(compatible ? s.funnel : null)}${renderFunnelDiagnostics(compatible ? s.funnel : null, s)}`}</td>
+      <td>${sealed ? noScore : `${renderBenchmarkContract(s)}${renderVerificationCoverage(compatible ? s.funnel : null)}${renderFunnelDiagnostics(compatible ? s.funnel : null, s)}`}</td>
     </tr>`;
   }).join('');
   tbody.querySelectorAll('[data-bm-run]').forEach(button => {
@@ -2801,6 +2823,10 @@ function _completionReservations(event) {
   const reservations = [];
   const metrics = event?.metrics;
   const evaluationStatus = event?.evaluation_status;
+  const reportStatus = typeof event?.phase6_status === 'string' ? event.phase6_status.split(':', 1)[0] : null;
+  if (['partial', 'failed', 'blocked'].includes(reportStatus)) {
+    reservations.push(event.phase6_cause === 'memo_truncated' ? 'Rapport partiel — note tronquée' : 'Rapport incomplet');
+  }
   if (evaluationStatus === 'skipped' || evaluationStatus === 'failed') {
     const reason = event.evaluation_error || event.evaluation_reason || event.reason;
     reservations.push(`Évaluation indisponible${reason ? ` (${String(reason)})` : ''}`);
@@ -2901,6 +2927,9 @@ function addLog(ev) {
   else if (t === 'text_chunk') {
     text = ev.text ? `[MODEL] ${_truncate(ev.text, 200)}` : null;
     fullText = ev.text || '';
+  }
+  else if (t === 'provider_recovery' && ev.reason === 'missing_user_query') {
+    text = 'Reprise du dialogue fournisseur — historique conservé après rejet du format (une tentative maximum)';
   }
   else if (t === 'deliverable_attempt') {
     const verdict = ev.valid ? 'accepted' : `rejected: ${ev.validation_error || 'invalid'}`;

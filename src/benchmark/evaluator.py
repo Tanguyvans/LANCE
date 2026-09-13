@@ -263,6 +263,7 @@ class EvaluationResult:
     # intentionally retained for JSON/API compatibility.
     scoring_policy: str = STRICT_V2.name
     metric_contract_version: str = METRIC_CONTRACT_VERSION
+    evidence_contract_version: str = EVIDENCE_CONTRACT_VERSION
     run_metric_contract_version: str | None = None
     run_evidence_contract_version: str | None = None
     evidence_contract_compatible: bool = True

@@ -48,6 +48,7 @@ class TestRepeatingToolDetector:
         responses.append(MagicMock(choices=[final_choice], usage=None))
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = responses
 
         api_tools = [{"type": "function", "function": {"name": "dummy", "description": "d", "parameters": {}}}]
@@ -88,6 +89,7 @@ class TestRepeatingToolDetector:
             usage=None,
         ))
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = responses
 
         provider.chat_with_tools(
@@ -132,6 +134,7 @@ class TestRepeatingToolDetector:
         save_call.id = "call_save"
         message = MagicMock(content="Memo only.", tool_calls=[save_call])
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(finish_reason="tool_calls", message=message)],
             usage=None,
@@ -176,6 +179,7 @@ class TestRepeatingToolDetector:
         choice = MagicMock(finish_reason="tool_calls", message=message)
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.return_value = MagicMock(
             choices=[choice], usage=None
         )
@@ -228,6 +232,7 @@ class TestRepeatingToolDetector:
             ],
         )
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(finish_reason="tool_calls", message=message)],
             usage=None,
@@ -266,6 +271,7 @@ class TestRepeatingToolDetector:
         complete_message = MagicMock(content=None, tool_calls=[complete_call])
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(finish_reason="stop", message=text_message)], usage=None),
             MagicMock(choices=[MagicMock(finish_reason="tool_calls", message=complete_message)], usage=None),
@@ -305,6 +311,7 @@ class TestRepeatingToolDetector:
         provider.model = "test"
         empty_message = MagicMock(content=None, tool_calls=None)
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.return_value = MagicMock(
             choices=[MagicMock(finish_reason="stop", message=empty_message)],
             usage=None,
@@ -346,6 +353,7 @@ class TestRepeatingToolDetector:
         terminal_message = MagicMock(content=None, tool_calls=[terminal_call])
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             MagicMock(choices=[MagicMock(finish_reason="stop", message=empty_message)], usage=None),
             MagicMock(choices=[MagicMock(finish_reason="stop", message=empty_message)], usage=None),
@@ -395,6 +403,7 @@ class TestRepeatingToolDetector:
             )
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             response("read_deliverable", "call_read"),
             response("save_deliverable", "call_save"),
@@ -455,6 +464,7 @@ class TestRepeatingToolDetector:
             )
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             response("nmap_scan", "call_scan"),
             response("save_deliverable", "call_save"),
@@ -515,6 +525,7 @@ class TestRepeatingToolDetector:
             )
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             response("mqtt_listen", "mqtt-1"),
             response("mqtt_listen", "mqtt-2"),
@@ -576,6 +587,7 @@ class TestRepeatingToolDetector:
             return MagicMock(choices=[choice], usage=None)
 
         provider.client = MagicMock()
+        provider.client.with_options.return_value = provider.client
         provider.client.chat.completions.create.side_effect = [
             response("scan", '{"target":"a"}', "call_a1"),
             response("scan", '{"target":"b"}', "call_b1"),

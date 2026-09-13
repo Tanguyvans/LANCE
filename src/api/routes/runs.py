@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = ROOT / "output" / "agent"
 
-_BENCHMARK_CACHE_SCHEMA = 1
+_BENCHMARK_CACHE_SCHEMA = 2
 _BENCHMARK_CACHE_INPUTS = (
     "scenario_meta.json",
     "run_meta.json",
@@ -45,6 +45,10 @@ _COMPACT_SCORE_FIELDS = frozenset({
     "status",
     "metrics",
     "scoring_policy",
+    "metric_contract_version",
+    "evidence_contract_version",
+    "run_metric_contract_version",
+    "run_evidence_contract_version",
     "evidence_contract_compatible",
     "metrics_compatibility_reason",
     "score_unavailable_reason",
@@ -80,6 +84,11 @@ _COMPACT_SCORE_FIELDS = frozenset({
     "phase4_candidates",
     "phase4_conclusive",
     "phase4_completion_rate",
+    "phase3_metrics_available",
+    "phase3_status",
+    "phase3_devices_total",
+    "phase3_devices_analyzed",
+    "phase3_devices_failed",
     "verified_f1",
     "tp_exploited",
     "true_positives",
@@ -593,6 +602,18 @@ def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, A
         "execution_profile": _extract_execution_profile(run_dir),
         "sealed": sealed,
     }
+    if not sealed:
+        try:
+            metadata = _read_run_meta(run_dir) or {}
+        except (OSError, TypeError, ValueError):
+            metadata = {}
+        # Only public lifecycle fields, never model text, credentials or sealed
+        # phase details. Missing historical metadata remains unknown.
+        entry["completion"] = {
+            key: metadata[key]
+            for key in ("phase6_status", "phase6_cause", "cleanup_status", "usage_status")
+            if isinstance(metadata.get(key), str)
+        }
 
     vuln_file = run_dir / "03_vuln_analysis.json"
     scenario_id = scenario.removeprefix("S")

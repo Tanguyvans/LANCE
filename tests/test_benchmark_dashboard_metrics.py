@@ -123,7 +123,7 @@ vm.runInContext(source, context);
 const stage = {available: true, predictions: 2, true_positives: 1,
   false_positives: 1, false_negatives: 0, precision: .5, recall: .5, f1: .5};
 const unavailable = {available: false, reason: 'Ancien contrat'};
-const funnel = {stages: {candidates: stage, filtered: {...stage, predictions: 4}, confirmed: stage}, diagnostics: {
+const funnel = {schema_version: 'funnel-v1', stages: {candidates: stage, filtered: {...stage, predictions: 4}, confirmed: stage}, diagnostics: {
   verification: {confirmed: 2, inconclusive: 1, error: 0, not_tested: 1},
   verification_attempt_rate: .75,
   true_candidates_lost_in_filter: 1,
@@ -151,6 +151,41 @@ assert(html.includes('&lt;model&gt;'));
 assert(!html.includes('<model>'));
 assert((html.match(/bm-final-metrics/g) || []).length === 1);
 assert(html.includes('<strong>F1 final 50 %</strong>'));
+assert(html.includes('Terminé avec réserves'));
+assert(html.includes('Vérification incomplète (1 indéterminée, 1 non testée)'));
+
+const completeFunnel = {...funnel, diagnostics: {verification: {
+  confirmed: 4, inconclusive: 0, error: 0, not_tested: 0}}};
+context._bmData = [{...row, score: {...score, funnel: completeFunnel,
+  phase3_metrics_available: true, phase3_devices_total: 4,
+  phase3_devices_analyzed: 3, phase3_devices_failed: 1,
+  run_evidence_contract_version: 'evidence-v8', evidence_contract_version: 'evidence-v10',
+  run_metric_contract_version: 'metric-v1', metric_contract_version: 'metric-v1',
+}}];
+context.renderBenchmarkTable();
+html = elements['bm-tbody'].innerHTML;
+assert(html.includes('Analyse partielle (3/4 analysés, 1 en échec)'));
+assert(html.includes('Terminé avec réserves'));
+assert(html.includes('evidence-v8'));
+assert(html.includes('evidence-v10'));
+assert(row.status === 'done');
+
+context._bmData = [{...row, score: {...score, funnel: completeFunnel}}];
+context.renderBenchmarkTable();
+assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec réserves'));
+assert(elements['bm-tbody'].innerHTML.includes('run-badge done'));
+
+context._bmData = [{...row, completion: {phase6_status: 'partial:memo_truncated', phase6_cause: 'memo_truncated'},
+  score: {...score, funnel: completeFunnel}}];
+context.renderBenchmarkTable();
+assert(elements['bm-tbody'].innerHTML.includes('Rapport partiel — note tronquée'));
+
+for (const status of ['failed', 'running', 'stopped', 'partial']) {
+  context._bmData = [{...row, status}];
+  context.renderBenchmarkTable();
+  assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec réserves'));
+  assert(elements['bm-tbody'].innerHTML.includes(`run-badge ${status}`));
+}
 
 elements['bm-tbody'].innerHTML = '';
 context._bmData = [{...row, id: 'legacy', score: {
@@ -165,6 +200,8 @@ assert(html.includes('Indisponible'));
 assert(html.includes('Données de vérification indisponibles'));
 assert(html.includes('Tokens 12'));
 assert(!html.includes('Coût $0'));
+assert(html.includes('Contrat historique — non comparable'));
+assert(html.includes('Audit final indisponible'));
 
 elements['bm-tbody'].innerHTML = '';
 context._bmData = [{...row, id: 'zero-gt', cost: null, score: {
@@ -233,7 +270,9 @@ console.log('BENCHMARK_DASHBOARD_VM_OK');
 '''
     completed = subprocess.run(
         [node, "-"],
-        input=script.replace("__BENCHMARK_RENDERER_SOURCE__", json.dumps(javascript[start:end])),
+        input=script.replace("__BENCHMARK_RENDERER_SOURCE__", json.dumps(
+            javascript[start:end] + javascript[javascript.index("function _summaryFinite("):javascript.index("\nfunction addLog")]
+        )),
         text=True,
         capture_output=True,
         timeout=5,
@@ -241,6 +280,37 @@ console.log('BENCHMARK_DASHBOARD_VM_OK');
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
     assert "BENCHMARK_DASHBOARD_VM_OK" in completed.stdout
+
+
+def test_compact_score_keeps_completion_and_contract_diagnostics():
+    from src.api.routes.runs import _compact_score
+
+    diagnostics = {
+        "phase3_metrics_available": True, "phase3_status": "completed_with_device_errors",
+        "phase3_devices_total": 4, "phase3_devices_analyzed": 3, "phase3_devices_failed": 1,
+        "metric_contract_version": "metric-v1", "run_metric_contract_version": "metric-v1",
+        "evidence_contract_version": "evidence-v10", "run_evidence_contract_version": "evidence-v8",
+        "evidence_contract_compatible": False,
+    }
+    assert _compact_score({**diagnostics, "private_observation": "not exported"}) == diagnostics
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+def test_benchmark_completion_metadata_is_allowlisted_and_never_exposes_sealed_details(tmp_path, monkeypatch, sealed):
+    from src.api.routes import runs
+
+    (tmp_path / "run_meta.json").write_text(json.dumps({
+        "status": "completed", "phase6_status": "partial", "phase6_cause": "memo_truncated",
+        "phase6_error": "private model text", "phase6_analysis": "private observation",
+    }))
+    monkeypatch.setattr(runs, "_load_sealed_summary", lambda *_: {"status": "done"})
+    entry = runs._benchmark_entry({"run_dir": tmp_path, "scenario": "S1", "sealed": sealed, "model": "test"}, compact=True)
+    if sealed:
+        assert "completion" not in entry
+    else:
+        assert entry["completion"] == {"phase6_status": "partial", "phase6_cause": "memo_truncated"}
+        assert entry["status"] == "done"
+    assert "private" not in json.dumps(entry)
 
 
 def test_benchmark_dashboard_requests_compact_paginated_results():

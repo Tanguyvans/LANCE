@@ -638,6 +638,7 @@ def test_openai_repeated_calls_are_counted_on_parent_tracker_thread():
     provider.provider = "local"
     provider.model = "test-model"
     provider.client = MagicMock()
+    provider.client.with_options.return_value = provider.client
 
     responses = []
     for index in range(3):
@@ -676,6 +677,7 @@ def test_openai_tool_execution_preserves_thread_local_context():
     provider.provider = "local"
     provider.model = "test-model"
     provider.client = MagicMock()
+    provider.client.with_options.return_value = provider.client
 
     tool_call = MagicMock(id="tc-context")
     tool_call.function.name = "probe_context"
