@@ -2574,7 +2574,7 @@ function renderVerificationCoverage(funnel) {
       <strong>Couverture</strong><span>— hypothèses testées</span><small>Population de vérification incomplète</small></div>`;
   }
   const total = counts.reduce((sum, value) => sum + value, 0);
-  const population = funnel?.stages?.filtered?.predictions;
+  const population = funnel?.diagnostics?.verification_population ?? funnel?.stages?.filtered?.predictions;
   if (population !== undefined && (!Number.isInteger(population) || population < 0 || population !== total)) {
     return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
       <strong>Couverture</strong><span>— hypothèses testées</span><small>Population de vérification incohérente</small></div>`;
@@ -2591,10 +2591,41 @@ function renderVerificationCoverage(funnel) {
     <small>Non testées ${counts[3]} · indéterminées ${counts[1]} · erreurs ${counts[2]}</small></div>`;
 }
 
+function renderClaimDiagnostics(diagnostic) {
+  if (diagnostic?.available !== true) return '<p>Qualification des déclarations non créditées indisponible pour ce run.</p>';
+  const labels = {
+    insufficient_evidence: 'Preuve insuffisante',
+    supported_outside_reference: 'Étayée, hors référentiel',
+    redundant_reference_claim: 'Autre déclaration du même attendu',
+    reference_assignment_conflict: 'Appariement au référentiel à examiner',
+    contradicted: 'Déclaration contredite',
+  };
+  const claims = Array.isArray(diagnostic.claims) ? diagnostic.claims : [];
+  const rows = claims.map(claim => {
+    const refs = Array.isArray(claim.evidence_refs) ? claim.evidence_refs.join(', ') : '';
+    return `<li><strong>${escapeHtml(claim.id || 'Sans identifiant')}</strong> — ${escapeHtml(labels[claim.category] || 'Indéterminée')}<br>
+      ${escapeHtml([claim.device_ip, claim.service, claim.port, claim.type].filter(v => v != null && v !== '').join(' · '))}
+      ${refs ? `<br>Références : ${escapeHtml(refs)}` : ''}</li>`;
+  }).join('');
+  const duplicates = Array.isArray(diagnostic.duplicate_sources) ? diagnostic.duplicate_sources : [];
+  const sources = duplicates.map(group => `<li>${escapeHtml((group.source_ids || []).join(', '))}${group.evidence_refs?.length ? ` — Références : ${escapeHtml(group.evidence_refs.join(', '))}` : ''}</li>`).join('');
+  return `<div class="bm-claim-diagnostics"><p><strong>Déclarations non créditées (FP) : ${bmNumber(diagnostic.false_positive_count)}</strong><br>
+    Une déclaration étayée hors référentiel reste un FP du benchmark, pas nécessairement une fausse observation.
+    Un échec de tentative ne démontre pas une contradiction.</p>
+    ${rows ? `<ul>${rows}</ul>` : '<p>Aucune déclaration non créditée.</p>'}
+    ${sources ? `<p><strong>Sources regroupées — exclues du décompte des doublons</strong></p><ul>${sources}</ul>` : ''}</div>`;
+}
+
 function renderFunnelDiagnostics(funnel, score = {}) {
   const d = funnel?.diagnostics || {};
   const v = d.verification;
   const p = d.proofs;
+  const preparation = d.environment_validation;
+  const preparationText = preparation?.status === 'passed' && preparation.scoreable !== false
+    ? 'Contrôles de préparation réussis. Cela ne certifie pas encore toutes les propriétés du référentiel.'
+    : preparation && preparation.status !== 'unavailable'
+      ? 'Préparation invalide ou incomplète : score indisponible, aucun FN attribué sur ce laboratoire.'
+      : 'Validation de préparation non documentée pour ce run.';
   const proofs = p?.available
     ? `Acceptées : ${bmNumber(p.accepted)}<br>Rejetées : ${bmNumber(p.rejected)}<br>Manquantes ou non attribuables : ${bmNumber(p.missing)}`
     : 'Contrôle des preuves indisponible';
@@ -2621,9 +2652,10 @@ function renderFunnelDiagnostics(funnel, score = {}) {
     ${escapeHtml(judge.model || 'Modèle non renseigné')} : ${bmRate(judge.scenario_score ?? judge.f1_score ?? judge.specificity)}<br>
     Avis sémantique historique, ni preuve d’exécution ni score officiel.</p>` : '';
   return `<details class="bm-funnel-diagnostics"><summary>Diagnostic</summary>
+    <p><strong>Préparation du laboratoire</strong><br>${preparationText}</p>
     <p><strong>Preuves du rapport final</strong><br>${proofs}</p>
     <p>Une trace acceptée doit aussi correspondre à la vérité terrain pour compter comme VP.</p>
-    ${verification}${losses}<p>Une tentative infructueuse ne réfute pas une faille.</p>
+    ${renderClaimDiagnostics(d.claims)}${verification}${losses}<p>Une tentative infructueuse ne réfute pas une faille.</p>
     ${network}${execution}${opinion}</details>`;
 }
 

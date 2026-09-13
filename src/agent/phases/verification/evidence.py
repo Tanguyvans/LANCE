@@ -73,6 +73,8 @@ def _make_test_entry(
         "cve_ids": vuln.get("cve_ids", []),
     }
     entry["verification_status"] = verification_state(entry)
+    if isinstance(result.get("crypto_observations"), list):
+        entry["crypto_observations"] = result["crypto_observations"]
     return entry
 
 

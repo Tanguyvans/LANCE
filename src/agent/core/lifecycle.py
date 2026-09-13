@@ -128,6 +128,17 @@ class ScenarioLifecycle:
 
     def _run_scenario_deploy(self, stream_callback: Callable[[dict], None] | None = None) -> bool:
         """Deploy and configure benchmark scenario VMs before pipeline starts."""
+        def preparation(status: str, phase: str) -> None:
+            # Controller-authored status, not an agent declaration. This is a
+            # prerequisite check, not a certificate covering every GT property.
+            self._update_run_meta({"environment_validation": {
+                "contract": "preflight-v1", "status": status, "phase": phase,
+                "scenario_id": str(self.scenario_id),
+                "scope": "deployment_injection_and_playbook_checks",
+                "all_ground_truth_properties_verified": False,
+            }})
+
+        preparation("pending", "deploy")
         if self.scenario_id is not None:
             scenario_id = str(self.scenario_id)
             export_store = runtime.default_export_store()
@@ -150,21 +161,27 @@ class ScenarioLifecycle:
         ok = self._run_playbook("03_deploy_scenario.yml", stream_callback, "deploy_start", "deploy_done")
         if not ok:
             log.error("Scenario deploy failed — aborting pipeline")
+            preparation("failed", "deploy")
             self._run_teardown(stream_callback)
             return False
         # 04 — inject vulnerabilities
+        preparation("pending", "inject")
         ok = self._run_playbook("04_inject_vulns.yml", stream_callback, "inject_start", "inject_done")
         if not ok:
             log.error("Vuln injection failed — aborting pipeline and cleaning scenario")
+            preparation("failed", "inject")
             self._run_teardown(stream_callback)
             return False
-        # 06 — verify all vulns are present before running the LLM. Benchmark
-        # scoring is invalid when the expected vulnerable state is incomplete.
+        # 06 checks required injected properties before spending model tokens.
+        # It does not yet certify every property in every scenario's GT.
+        preparation("pending", "verify")
         ok_verify = self._run_playbook("06_verify.yml", stream_callback, "verify_start", "verify_done")
         if not ok_verify:
             log.error("Vuln verification failed — aborting pipeline and cleaning scenario")
+            preparation("failed", "verify")
             self._run_teardown(stream_callback)
             return False
+        preparation("passed", "verify")
         return True
 
     def _teardown_all_running_scenarios(self, stream_callback: Callable[[dict], None] | None = None) -> None:

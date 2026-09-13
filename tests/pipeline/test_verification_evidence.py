@@ -146,8 +146,8 @@ def test_synthesize_exploit_result_does_not_treat_ack_as_disclosure():
 
     assert nmap["status"] == "EXPLOITED"
     assert nmap["evidence_level"] == 2
-    assert ssh["status"] == "EXPLOITED"
-    assert ssh["evidence_level"] == 2
+    assert ssh["status"] == "FAILED"
+    assert ssh["evidence_level"] == 1
     assert tcp["status"] == "FAILED"
 
 

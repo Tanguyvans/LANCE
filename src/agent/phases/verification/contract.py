@@ -209,7 +209,13 @@ def _phase4_verification_plan(
     if vuln_type in {"weak_cipher", "terrapin", "known_cve"}:
         if service == "ssh" or port == 22:
             return {"tool": "ssh_audit", "target": ip, "port": port or 22,
-                    "args_hint": {"host": ip, "port": port or 22}, "success_condition": "SSH audit output captured"}
+                    "args_hint": {"host": ip, "port": port or 22}, "success_condition": (
+                        "For weak_cipher, capture exact server-offered algorithm lines and a violation "
+                        "of the versioned SSH policy. Generic warn/fail labels, NIST-curve suspicions "
+                        "and HMAC-SHA1 alone are not proof. Configuration does not prove exploitation. "
+                        "For CVEs require a specific positive verdict; strict-KEX support or a "
+                        "conditional warning is not a Terrapin exploit."
+                    )}
         if service in {"https", "tls", "mqtts"} or port in {443, 8443, 8883}:
             return {"tool": "tls_inspect", "target": ip, "port": port or 443,
                     "args_hint": {"host": ip, "port": port or 443}, "success_condition": "TLS algorithms captured"}

@@ -11,11 +11,22 @@ from pathlib import Path
 from typing import Callable
 
 from src.agent.vuln_taxonomy import NOISE_TYPES, canonicalize
-from src.agent.finding_identity import finding_identity_key
+from src.agent.finding_identity import group_equivalent_findings
 from src.agent.report_evidence import verification_state
+from src.benchmark.claim_diagnostics import build_claim_diagnostics
 
 
 STAGES = ("candidates", "filtered", "confirmed")
+
+
+def _refs(finding: dict) -> list[str]:
+    values = finding.get("evidence_refs") or []
+    if isinstance(values, str):
+        values = [values]
+    if not isinstance(values, (list, tuple)):
+        values = []
+    return list(dict.fromkeys(ref for ref in [finding.get("evidence_ref"), *values]
+                             if isinstance(ref, str) and ref.strip()))
 
 
 def _read(path: Path, key: str) -> list | None:
@@ -33,24 +44,23 @@ def unique_predictions(findings: list[dict]) -> list[dict]:
     Model-authored IDs are not identities. Missing structure is not a wildcard:
     a vague claim cannot silently absorb a distinct, precise prediction.
     """
-    result: dict[tuple, dict] = {}
+    eligible = []
     for finding in findings:
         item = dict(finding)
         item["type"] = canonicalize(str(item.get("type") or ""))
         if item["type"] in NOISE_TYPES:
             continue
-        # Unidentifiable predictions remain separate audit errors, not one
-        # magically deduplicated claim shared across unrelated devices.
-        identity = finding_identity_key(item)
-        if not identity[0] or not identity[1]:
-            identity = (*identity, "unidentified_index", len(result))
-        if identity not in result:
-            result[identity] = item
-        else:
-            existing = result[identity]
-            if item.get("_evidence_supported") and not existing.get("_evidence_supported"):
-                result[identity] = item
-    return list(result.values())
+        eligible.append(item)
+    result = []
+    for members in group_equivalent_findings(eligible):
+        # Validation happened on original claims before grouping. Never borrow
+        # another member's refs to turn an unsupported claim into a proof.
+        selected = max(members, key=lambda f: (
+            bool(f.get("_evidence_supported")),
+            bool(f.get("product")) + bool(f.get("version")),
+        ))
+        result.append({**selected, "_dedup_members": members})
+    return result
 
 
 def stage_metrics(
@@ -124,6 +134,16 @@ def evaluate_funnel(
             duplicate_candidates=len(candidates) - observations - len(snapshots["candidates"]),
             filter_decisions=dict(decisions),
         )
+    diagnostics["deduplication"] = {
+        name: {
+            "removed": sum(len(f["_dedup_members"]) - 1 for f in findings),
+            "groups": [{
+                "source_ids": [m.get("id", m.get("_candidate_id", "")) for m in f["_dedup_members"]],
+                "evidence_refs": list(dict.fromkeys(ref for m in f["_dedup_members"]
+                    for ref in _refs(m))),
+            } for f in findings if len(f["_dedup_members"]) > 1],
+        } for name, findings in snapshots.items()
+    } if compatible else {"available": False}
 
     for name in STAGES:
         reason = None
@@ -139,6 +159,8 @@ def evaluate_funnel(
             reason = "Missing or invalid tool provenance log"
         if reason:
             stages[name] = unavailable_stage(reason)
+            if name == "confirmed":
+                diagnostics["claims"] = {"available": False, "reason": reason}
             continue
         findings = snapshots[name]
         supported = {i for i, f in enumerate(findings) if f.get("_evidence_supported")} if name == "confirmed" else None
@@ -155,6 +177,7 @@ def evaluate_funnel(
         stages[name] = stage_metrics(findings, gt_count, matches, supported=supported)
         if supported is not None:
             stages[name]["ground_truth_matches"] = len(match(findings))
+            diagnostics["claims"] = build_claim_diagnostics(findings, matches, match)
 
     # One verification state per canonical candidate. Duplicate or orphan test
     # IDs cannot inflate coverage, and conflicting results remain indeterminate.
@@ -181,6 +204,7 @@ def evaluate_funnel(
                 state = verification_state(entries[0])
             counts[state] += 1
         n = len(verification_findings)
+        diagnostics["verification_population"] = n
         diagnostics["verification"] = dict(counts)
         diagnostics["verification_attempt_rate"] = round((n - counts["not_tested"]) / n, 3) if n else None
         diagnostics["orphan_tests"] = sum(len(v) for k, v in by_id.items() if k not in ids)

@@ -7,7 +7,7 @@ import json
 import re
 import logging
 from src.agent.phases.analysis.evidence import _enrich_finding_structure, _sanitize_suggested_tools
-from src.agent.finding_identity import finding_identity_key
+from src.agent.finding_identity import finding_identity_key, group_equivalent_findings
 from src.agent.core import runtime
 
 
@@ -594,14 +594,16 @@ class FindingAggregation:
             severity = severity_rank.get((finding.get("severity") or "").casefold(), 0)
             return confirmed, traceability, detail_size, severity
 
-        groups: dict[tuple, list[dict]] = {}
-        for finding in eligible:
-            key = finding_identity_key(finding)
-            groups.setdefault(key, []).append(finding)
-
         deduped: list[dict] = []
-        for candidates in groups.values():
+        group_identities: dict[int, list[tuple]] = {}
+        for candidates in group_equivalent_findings(eligible):
             chosen = max(candidates, key=finding_quality)
+            group_identities[id(chosen)] = [finding_identity_key(item) for item in candidates]
+            # A unique compatible anchor supplies only actually recorded
+            # product/version metadata, never invented combinations.
+            for field in ("product", "version"):
+                if not chosen.get(field):
+                    chosen[field] = next((item[field] for item in candidates if item.get(field)), "")
             candidate_ids = [item["_candidate_id"] for item in candidates]
             evidence_refs: list[str] = []
             for candidate in candidates:
@@ -667,6 +669,9 @@ class FindingAggregation:
 
         for finding in final:
             finding_id = previous_ids.get(finding_identity_key(finding))
+            if not finding_id:
+                finding_id = next((previous_ids[key] for key in group_identities[id(finding)]
+                                   if key in previous_ids and previous_ids[key] not in used_ids), None)
             if not finding_id or finding_id in used_ids:
                 while f"VULN-{next_number:03d}" in used_ids:
                     next_number += 1

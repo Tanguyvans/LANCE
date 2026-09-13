@@ -51,8 +51,9 @@ def test_normalize_port(value, expected):
 
 def test_phase4_semantic_contract_accepts_ssh_audit_exit_code_three():
     assert _semantic_output_supports_finding(
-        "ssh_audit", {"stdout": "[fail] weak cipher", "return_code": 3},
-        {"type": "weak_cipher", "port": 22},
+        "ssh_audit", {"stdout": "(enc) aes128-cbc -- [fail] weak cipher", "return_code": 3},
+        {"type": "weak_cipher", "port": 22, "device_ip": "192.0.2.1", "service": "ssh"},
+        args={"host": "192.0.2.1", "port": 22},
     )
 
 
@@ -72,8 +73,9 @@ def test_phase4_semantic_contract_rejects_telnet_timeout_on_other_port():
 
 def test_phase4_tool_call_outcome_preserves_special_exit_codes():
     assert _tool_call_outcome(
-        {"tool": "ssh_audit", "result": json.dumps({"stdout": "[fail]", "return_code": 3})},
-        {"type": "weak_cipher", "port": 22},
+        {"tool": "ssh_audit", "args": {"host": "192.0.2.1", "port": 22},
+         "result": json.dumps({"stdout": "(enc) aes128-cbc -- [fail] weak cipher", "return_code": 3})},
+        {"type": "weak_cipher", "port": 22, "device_ip": "192.0.2.1", "service": "ssh"},
     ) is True
     assert _tool_call_outcome(
         {"tool": "telnet_connect", "result": json.dumps({"connected": True, "received_bytes": 0, "timed_out": True})},

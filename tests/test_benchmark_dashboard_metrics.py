@@ -154,6 +154,24 @@ assert(html.includes('<strong>F1 final 50 %</strong>'));
 assert(html.includes('Terminé avec réserves'));
 assert(html.includes('Vérification incomplète (1 indéterminée, 1 non testée)'));
 
+const queueCoverage = context.renderVerificationCoverage({...funnel,
+  stages: {...funnel.stages, filtered: {...funnel.stages.filtered, predictions: 2}},
+  diagnostics: {...funnel.diagnostics, verification_population: 4}});
+assert(queueCoverage.includes('3/4 hypothèses testées'));
+assert(!queueCoverage.includes('incohérente'));
+const claimsHtml = context.renderClaimDiagnostics({available: true, false_positive_count: 2,
+  claims: [{id: '<V1>', device_ip: '192.0.2.1', service: 'ssh', port: 22,
+    category: 'supported_outside_reference', evidence_refs: ['<ref>']},
+    {id: 'V2', category: 'insufficient_evidence', evidence_refs: []}],
+  duplicate_sources: [{source_ids: ['a', 'b'], evidence_refs: ['trace-a']}]});
+assert(claimsHtml.includes('Étayée, hors référentiel'));
+assert(claimsHtml.includes('Preuve insuffisante'));
+assert(claimsHtml.includes('192.0.2.1 · ssh · 22'));
+assert(claimsHtml.includes('&lt;V1&gt;') && !claimsHtml.includes('<V1>'));
+assert(claimsHtml.includes('&lt;ref&gt;') && !claimsHtml.includes('<ref>'));
+assert(claimsHtml.includes('a, b') && claimsHtml.includes('trace-a'));
+assert(context.renderClaimDiagnostics(null).includes('indisponible'));
+
 const completeFunnel = {...funnel, diagnostics: {verification: {
   confirmed: 4, inconclusive: 0, error: 0, not_tested: 0}}};
 context._bmData = [{...row, score: {...score, funnel: completeFunnel,

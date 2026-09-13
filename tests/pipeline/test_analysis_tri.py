@@ -56,8 +56,7 @@ def test_distinct_s1_patterns_are_not_suppressed(aggregate):
 @pytest.mark.parametrize("change", [
     {"device_ip": "192.0.2.11", "device_id": "other"},
     {"port": 8080}, {"protocol": "udp"}, {"endpoint": "/Config"},
-    {"endpoint": "/config?tenant=B"}, {"product": "different-product"},
-    {"version": "2"}, {"endpoints": ["/config", "/admin"]},
+    {"endpoint": "/config?tenant=B"}, {"endpoints": ["/config", "/admin"]},
 ])
 def test_distinct_structural_identity_survives(aggregate, change):
     canonical, _ = aggregate([finding(), finding(**change)])
@@ -96,6 +95,28 @@ def test_exact_duplicates_keep_both_provenances(aggregate):
     assert len(item["_provenance"]["candidate_ids"]) == 2
     assert len({r["canonical_finding_id"] for r in raw["candidates"]}) == 1
     assert {r["decision"] for r in raw["candidates"]} == {"selected", "deduplicated"}
+
+
+def test_metadata_enrichment_merges_only_equivalent_claims_and_keeps_id(aggregate):
+    first, _ = aggregate([finding(id="old", evidence_refs=["old-proof"])])
+    old_id = first["vulnerabilities"][0]["id"]
+    canonical, raw = aggregate([
+        finding(id="new", product="nginx", version="1.22", evidence_refs=["new-proof"]),
+        finding(id="old", evidence_refs=["old-proof"]),
+    ])
+    assert len(canonical["vulnerabilities"]) == 1
+    item = canonical["vulnerabilities"][0]
+    assert item["id"] == old_id
+    assert item["product"] == "nginx"
+    assert set(item["evidence_refs"]) == {"old-proof", "new-proof"}
+    assert len(raw["candidates"]) == 2
+    assert {r["raw_finding"]["id"] for r in raw["candidates"]} == {"old", "new"}
+
+
+@pytest.mark.parametrize("other", [{"product": "apache", "version": "1"}, {"product": "nginx", "version": "2"}])
+def test_conflicting_metadata_is_not_deduplicated(aggregate, other):
+    canonical, _ = aggregate([finding(product="nginx", version="1"), finding(**other), finding()])
+    assert len(canonical["vulnerabilities"]) == 3
 
 
 def test_ids_survive_reaggregation_and_reordering(aggregate):

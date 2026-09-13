@@ -67,3 +67,82 @@ def finding_identity_key(finding: dict) -> tuple:
         cves,
         tuple(conditions),
     )
+
+
+def _finding_sort_key(finding: dict) -> str:
+    """Return a stable ordering key without changing the finding object."""
+    return repr(sorted(finding.items(), key=lambda item: str(item[0])))
+
+
+def _metadata_dominates(small: tuple[str, str], large: tuple[str, str]) -> bool:
+    """Whether ``large`` is a strictly more-specific compatible tuple."""
+    if small == large:
+        return False
+    return all(not value or value == large[index] for index, value in enumerate(small))
+
+
+def group_equivalent_findings(findings: list[dict]) -> list[list[dict]]:
+    """Group findings equivalent under conservative metadata completion.
+
+    The base identity is the exact ``finding_identity_key`` with only its
+    product/version positions removed.  Within each base partition, metadata
+    buckets are joined to a unique compatible maximal bucket.  An incomplete
+    bucket compatible with multiple maxima remains separate, preventing it
+    from bridging conflicting product/version observations.  Findings missing
+    a target or type are deliberately never deduplicated.
+    """
+    partitions: dict[tuple, list[dict]] = {}
+    unidentifiable: list[dict] = []
+    for finding in findings:
+        key = finding_identity_key(finding)
+        if not key[0] or not key[1]:
+            unidentifiable.append(finding)
+            continue
+        base = key[:6] + key[8:]
+        partitions.setdefault(base, []).append(finding)
+
+    groups: list[list[dict]] = [[finding] for finding in unidentifiable]
+    for base, partition in partitions.items():
+        buckets: dict[tuple[str, str], list[dict]] = {}
+        for finding in partition:
+            key = finding_identity_key(finding)
+            metadata = (key[6], key[7])
+            buckets.setdefault(metadata, []).append(finding)
+
+        bucket_keys = sorted(buckets)
+        maxima = [
+            candidate for candidate in bucket_keys
+            if not any(
+                _metadata_dominates(candidate, other)
+                for other in bucket_keys
+            )
+        ]
+        assignments: dict[tuple[str, str], tuple[str, str]] = {}
+        for bucket in bucket_keys:
+            compatible_maxima = [
+                maximum for maximum in maxima
+                if _metadata_dominates(bucket, maximum) or bucket == maximum
+            ]
+            if len(compatible_maxima) == 1:
+                assignments[bucket] = compatible_maxima[0]
+
+        grouped: dict[tuple[str, str], list[dict]] = {}
+        for bucket in bucket_keys:
+            destination = assignments.get(bucket, bucket)
+            grouped.setdefault(destination, []).extend(
+                sorted(buckets[bucket], key=_finding_sort_key)
+            )
+        groups.extend(
+            sorted(
+                grouped.values(),
+                key=lambda group: (repr(base), _finding_sort_key(group[0])),
+            )
+        )
+
+    return sorted(
+        groups,
+        key=lambda group: (
+            repr(finding_identity_key(group[0])[:6] + finding_identity_key(group[0])[8:]),
+            _finding_sort_key(group[0]),
+        ),
+    )

@@ -110,6 +110,35 @@
       changed_when: false
       failed_when: false
 
+    - name: "[web_server] Vérifier réponse HTTP et version nginx réellement servie"
+      ansible.builtin.shell: |
+        set -o pipefail
+        headers=$(curl --silent --show-error --max-time 5 --max-redirs 0 --noproxy '*' \
+          --dump-header - --output /dev/null 'http://{{ item.ip }}/' 2>/dev/null) || {
+          echo FAIL
+          exit 0
+        }
+        printf '%s\n' "$headers" | awk '
+          /^HTTP\/[0-9.]+ / { status=$2; version=0; next }
+          {
+            line=$0
+            sub(/\r$/, "", line)
+            lower=tolower(line)
+            if (lower ~ /^server:[[:space:]]*nginx\/[0-9]+(\.[0-9]+)+[[:space:]]*$/) {
+              version=1
+            }
+          }
+          END { print (status == "200" && version == 1) ? "OK" : "FAIL" }'
+      args:
+        executable: /bin/bash
+      loop: "{{ benchmark_scenarios[scenario_id].services }}"
+      when:
+        - item.role == 'web_server'
+        - (item.security_profile | default('vulnerable')) == 'vulnerable'
+      register: web_version_check
+      changed_when: false
+      failed_when: false
+
     # ── SSH : creds par défaut ──
     - name: "[ssh_server] Vérifier port 22 ouvert"
       ansible.builtin.shell: >
@@ -976,6 +1005,54 @@
 
 
     # ════════════════════════════════════════════════════
+    - name: Préparer les résultats des checks vulnérables
+      ansible.builtin.set_fact:
+        _mqtt_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'mqtt_broker')
+             | rejectattr('security_profile', 'defined') | list | length
+             + benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'mqtt_broker')
+             | selectattr('security_profile', 'defined')
+             | selectattr('security_profile', 'equalto', 'vulnerable') | list | length }}
+        _db_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'db_server') | list | length }}
+        _ssh_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'ssh_server')
+             | rejectattr('security_profile', 'defined') | list | length
+             + benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'ssh_server')
+             | selectattr('security_profile', 'defined')
+             | selectattr('security_profile', 'equalto', 'vulnerable') | list | length }}
+        _web_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'web_server')
+             | rejectattr('security_profile', 'defined') | list | length
+             + benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'web_server')
+             | selectattr('security_profile', 'defined')
+             | selectattr('security_profile', 'equalto', 'vulnerable') | list | length }}
+        _redis_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'db_server_v2')
+             | rejectattr('security_profile', 'defined') | list | length
+             + benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'db_server_v2')
+             | selectattr('security_profile', 'defined')
+             | selectattr('security_profile', 'equalto', 'vulnerable') | list | length }}
+        _modbus_expected: >-
+          {{ benchmark_scenarios[scenario_id].services
+             | selectattr('role', 'equalto', 'modbus_server') | list | length }}
+        _mqtt_results: "{{ mqtt_conn_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _db_results: "{{ db_nopass_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _ssh_results: "{{ ssh_creds_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _web_results: "{{ web_listing_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _web_version_results: "{{ web_version_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _redis_results: "{{ redis_ping_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+        _modbus_results: "{{ modbus_svc_check.results | default([]) | rejectattr('skipped', 'sameas', true) | list }}"
+
     # RAPPORT FINAL
     # ════════════════════════════════════════════════════
 
@@ -989,12 +1066,46 @@
     - name: Évaluer les résultats — consolider les checks OK/FAIL
       ansible.builtin.set_fact:
         _check_router_ok: "{{ ('telnet' not in benchmark_scenarios[scenario_id].router_vulns) or ('OK' in (router_telnet_check.stdout | default(''))) }}"
-        _check_mqtt_ok:   "{{ 'FAIL' not in (mqtt_conn_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
-        _check_db_ok:     "{{ 'FAIL' not in (db_nopass_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
-        _check_ssh_ok:    "{{ 'FAIL' not in (ssh_creds_check.results   | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
-        _check_web_ok:    "{{ 'FAIL' not in (web_listing_check.results | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
-        _check_redis_ok:  "{{ 'FAIL' not in (redis_ping_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
-        _check_modbus_ok: "{{ 'FAIL' not in (modbus_svc_check.results  | default([]) | map(attribute='stdout', default='') | join(' ')) }}"
+        _check_mqtt_ok: >-
+          {{ (_mqtt_expected | int == 0) or
+             (_mqtt_results | length == _mqtt_expected | int and
+              (_mqtt_results | selectattr('rc', 'equalto', 0) | list | length == _mqtt_expected | int) and
+              (_mqtt_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _mqtt_expected | int) and
+              (_mqtt_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _mqtt_expected | int)) }}
+        _check_db_ok: >-
+          {{ (_db_expected | int == 0) or
+             (_db_results | length == _db_expected | int and
+              (_db_results | selectattr('rc', 'equalto', 0) | list | length == _db_expected | int) and
+              (_db_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _db_expected | int) and
+              (_db_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _db_expected | int)) }}
+        _check_ssh_ok: >-
+          {{ (_ssh_expected | int == 0) or
+             (_ssh_results | length == _ssh_expected | int and
+              (_ssh_results | selectattr('rc', 'equalto', 0) | list | length == _ssh_expected | int) and
+              (_ssh_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _ssh_expected | int) and
+              (_ssh_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _ssh_expected | int)) }}
+        _check_web_ok: >-
+          {{ (_web_expected | int == 0) or
+             (_web_results | length == _web_expected | int and
+              (_web_version_results | length == _web_expected | int) and
+              (_web_results | selectattr('rc', 'equalto', 0) | list | length == _web_expected | int) and
+              (_web_version_results | selectattr('rc', 'equalto', 0) | list | length == _web_expected | int) and
+              (_web_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _web_expected | int) and
+              (_web_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _web_expected | int) and
+              (_web_version_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _web_expected | int) and
+              (_web_version_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _web_expected | int)) }}
+        _check_redis_ok: >-
+          {{ (_redis_expected | int == 0) or
+             (_redis_results | length == _redis_expected | int and
+              (_redis_results | selectattr('rc', 'equalto', 0) | list | length == _redis_expected | int) and
+              (_redis_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _redis_expected | int) and
+              (_redis_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _redis_expected | int)) }}
+        _check_modbus_ok: >-
+          {{ (_modbus_expected | int == 0) or
+             (_modbus_results | length == _modbus_expected | int and
+              (_modbus_results | selectattr('rc', 'equalto', 0) | list | length == _modbus_expected | int) and
+              (_modbus_results | selectattr('stdout', 'search', '(?m)^OK$') | list | length == _modbus_expected | int) and
+              (_modbus_results | rejectattr('stdout', 'search', '(?m)^FAIL$') | list | length == _modbus_expected | int)) }}
         _check_s14_ok: >-
           {{ (manual_scenario | default(false) | bool and
               (manual_expected_control_count | default(0) | int == 0)) or
@@ -1040,6 +1151,7 @@
           DB root:       {{ 'OK' if _check_db_ok | bool else 'FAIL' }}
           SSH creds:     {{ 'OK' if _check_ssh_ok | bool else 'FAIL' }}
           Web listing:   {{ 'OK' if _check_web_ok | bool else 'FAIL' }}
+          Web HTTP/nginx version: {{ 'OK' if _check_web_ok | bool else 'FAIL (HTTP 200 + Server: nginx/<numeric-version> required)' }}
           Redis no-auth: {{ 'OK' if _check_redis_ok | bool else 'FAIL' }}
           Modbus:        {{ 'OK' if _check_modbus_ok | bool else 'FAIL' }}
           S14/S21 controls: {{ 'OK' if _check_s14_ok | bool else 'FAIL' }}

@@ -276,6 +276,7 @@ class EvaluationResult:
     scenario_score_pct: float | None = 0.0
     score_unavailable_reason: str | None = None
     funnel: dict = field(default_factory=dict)
+    environment_validation: dict = field(default_factory=dict)
 
     # Counts
     total_gt_vulns: int = 0
@@ -2943,13 +2944,29 @@ def evaluate(
         # Use the report's admission rule, then independently check matching
         # tool outputs. Detection metrics never read these post-test verdicts.
         confirmations = [finding["_report_finding"] for finding in llm_findings if finding.get("_report_eligible")]
+        preflight = run_metadata.get("environment_validation")
+        preflight_ok = preflight is None or (
+            isinstance(preflight, dict)
+            and preflight.get("contract") == "preflight-v1"
+            and preflight.get("status") == "passed"
+            and preflight.get("phase") == "verify"
+            and str(preflight.get("scenario_id")) == scenario_id
+        )
+        result.environment_validation = {**preflight, "scoreable": preflight_ok} if isinstance(preflight, dict) else {
+            "status": "unavailable", "all_ground_truth_properties_verified": False,
+        }
+        preflight_reason = (
+            "Préparation du laboratoire invalide ou incomplète : score indisponible ; "
+            "les failles attendues ne sont pas comptées comme FN de l’agent."
+        ) if not preflight_ok else None
         result.funnel = evaluate_funnel(
             run_dir, gt_count=len(gt_vulns), filtered=filtered, confirmations=confirmations,
             match=stage_match, validate=validated_indices,
-            compatible=evidence_compatible, provenance_available=provenance_log_available,
-            compatibility_reason=compatibility_reason, total_cost=total_cost_usd,
+            compatible=evidence_compatible and preflight_ok, provenance_available=provenance_log_available,
+            compatibility_reason=preflight_reason or compatibility_reason, total_cost=total_cost_usd,
             total_turns=total_turns,
         )
+        result.funnel["diagnostics"]["environment_validation"] = result.environment_validation
         final_stage = result.funnel["stages"]["confirmed"]
         filtered_stage = result.funnel["stages"]["filtered"]
         result.verified_f1 = final_stage["f1"]
