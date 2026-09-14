@@ -106,8 +106,9 @@ def test_synthesize_exploit_result_does_not_treat_ack_as_disclosure():
         },
         [{
             "tool": "modbus_scan",
+            "args": {"target": "192.168.100.50"},
             "result": json.dumps({
-                "stdout": "502/tcp open modbus\nUnit identifiers discovered",
+                "stdout": "502/tcp open modbus\n| modbus-discover:\n|   sid 0x01:\n|_    Device identification: Acme Meter v1.2",
                 "return_code": 0,
             }),
             "evidence_ref": "tc-modbus",

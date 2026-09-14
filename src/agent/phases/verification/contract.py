@@ -248,14 +248,16 @@ def _phase4_verification_plan(
                 "success_condition": "CoAP response received over unauthenticated UDP",
             }
         if service == "modbus" or port == 502:
-            if compact:
-                return {"tool": "nmap_scan", "target": ip, "port": 502,
-                        "required_port": 502, "required_scripts": "modbus-discover",
-                        "args_hint": {"target": ip, "ports": "502",
-                                      "scripts": "modbus-discover", "skip_discovery": True},
-                        "success_condition": "Modbus protocol response or authentication-disabled marker"}
-            return {"tool": "modbus_scan", "target": ip, "port": 502,
-                    "args_hint": {"target": ip}, "success_condition": "Modbus registers or service response captured"}
+            return {"tool": "nmap_scan", "target": ip, "port": port or 502,
+                    "required_port": port or 502, "required_scripts": "modbus-discover",
+                    "args_hint": {"target": ip, "ports": str(port or 502),
+                                  "scripts": "modbus-discover", "skip_discovery": True},
+                    "success_condition": (
+                        "The claimed host/port returns actual Slave ID data or Device "
+                        "identification inside a modbus-discover SID block. An open "
+                        "port, script name, SID alone or error does not prove no_auth. "
+                        "Identification is not register read/write or machine compromise."
+                    )}
         if compact and port in {102, 44818}:
             payload = _S7COMM_COTP_CR_HEX if port == 102 else _ENIP_LIST_IDENTITY_HEX
             return {
@@ -292,8 +294,14 @@ def _phase4_verification_plan(
                 "success_condition": "SNMP response to the public community read probe",
             }
         if service == "ssh" or port == 22:
-            return {"tool": "ssh_login", "target": ip, "port": 22,
-                    "args_hint": {"command_string": f"sshpass -p admin ssh -o StrictHostKeyChecking=no admin@{ip} 'id'"}, "success_condition": "login or authentication result captured"}
+            return {"tool": "ssh_login", "target": ip, "port": port or 22,
+                    "args_hint": {"command_string": f"sshpass -p admin ssh -p {port or 22} -o StrictHostKeyChecking=no admin@{ip} 'id'"},
+                    "success_condition": (
+                        "Observed SSH authentication to the claimed host/port with an "
+                        "explicit pair covered by ssh-weak-credentials-v1. A successful "
+                        "login with arbitrary credentials proves access only, not a weak "
+                        "credential or a vendor factory default."
+                    )}
         if service in {"mysql", "mariadb"} or port == 3306:
             return {"tool": "mysql_query", "target": ip, "port": port or 3306,
                     "args_hint": {"host": ip, "port": port or 3306, "user": "root",

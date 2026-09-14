@@ -1,6 +1,9 @@
 """Phase 3: per-device workers and prompt context."""
 import json
 from unittest.mock import patch
+
+import pytest
+
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AgentConfig
 
@@ -57,9 +60,13 @@ class TestDeviceAgents:
             user_msg = kwargs.get("user_message", "")
             for dev_id in ("mikrotik", "rpi5"):
                 if dev_id in user_msg:
-                    (run_dir / f"03_device_{dev_id}.json").write_text(
-                        json.dumps({"device_id": dev_id, "vulnerabilities": []})
-                    )
+                    save = next(tool["function"] for tool in kwargs["tools"] if tool["name"] == "save_deliverable")
+                    receipt = json.loads(save(
+                        filename=f"03_device_{dev_id}.json",
+                        content=json.dumps({"device_id": dev_id, "vulnerabilities": []}),
+                    ))
+                    assert receipt["validated"] is True
+                    assert receipt["status"] == "saved"
                     return "Done."
             # aggregator call
             (run_dir / "03_vuln_analysis.json").write_text(
@@ -186,6 +193,46 @@ class TestInformationPreservingArchitecture:
         mock_provider.provider = "openrouter"
         mock_provider.model = "large-model"
         assert pipeline._phase3_worker_count(4) == 4
+
+    @pytest.mark.parametrize("execution_profile", ["full", "compact"])
+    @pytest.mark.parametrize("configured_workers", [None, "4"])
+    def test_ollama_umons_phase3_uses_one_worker_in_any_profile(
+        self, mock_provider, output_dir, execution_profile,
+        configured_workers, monkeypatch
+    ):
+        mock_provider.provider = "ollama-umons"
+        pipeline = Pipeline(
+            provider=mock_provider,
+            execution_profile=execution_profile,
+        )
+        if configured_workers is None:
+            monkeypatch.delenv("LANCE_PHASE3_WORKERS", raising=False)
+        else:
+            monkeypatch.setenv("LANCE_PHASE3_WORKERS", configured_workers)
+
+        assert pipeline._phase3_worker_count(4) == 1
+
+    def test_ollama_umons_worker_cap_uses_effective_provider_after_phase_override(
+        self, mock_provider, output_dir, monkeypatch
+    ):
+        # The pipeline starts with one provider, then a phase override changes
+        # the active provider. The worker decision must use self.provider.
+        mock_provider.provider = "openrouter"
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        mock_provider.provider = "ollama-umons"
+        monkeypatch.setenv("LANCE_PHASE3_WORKERS", "4")
+
+        assert pipeline._phase3_worker_count(4) == 1
+
+    @pytest.mark.parametrize("provider_name", ["minimax", "glm"])
+    def test_non_ollama_umons_phase3_worker_override_is_preserved(
+        self, mock_provider, output_dir, provider_name, monkeypatch
+    ):
+        mock_provider.provider = provider_name
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        monkeypatch.setenv("LANCE_PHASE3_WORKERS", "2")
+
+        assert pipeline._phase3_worker_count(4) == 2
 
     @patch("src.agent.core.runtime.get_device_info")
     @patch("src.agent.core.runtime.get_attack_surface")

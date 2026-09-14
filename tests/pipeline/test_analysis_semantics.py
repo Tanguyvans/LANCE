@@ -123,7 +123,7 @@ def test_suggested_tools_are_restricted_to_canonical_catalog_names():
 
 def test_no_auth_nmap_open_port_requires_protocol_evidence():
     vuln = {
-        "type": "no_auth", "service": "unknown",
+        "type": "no_auth", "service": "ftp",
         "device_ip": "192.0.2.12", "port": 1234,
     }
     open_only = _synthesize_exploit_result(
@@ -131,7 +131,7 @@ def test_no_auth_nmap_open_port_requires_protocol_evidence():
             "tool": "nmap_scan",
             "args": {"target": "192.0.2.12", "ports": "1234"},
             "result": json.dumps({
-                "stdout": "1234/tcp open mystery", "return_code": 0,
+                "stdout": "1234/tcp open ftp", "return_code": 0,
             }),
         }],
     )
@@ -142,7 +142,7 @@ def test_no_auth_nmap_open_port_requires_protocol_evidence():
             "tool": "nmap_scan",
             "args": {"target": "192.0.2.12", "ports": "1234"},
             "result": json.dumps({
-                "stdout": "1234/tcp open mystery\nAnonymous login allowed",
+                "stdout": "1234/tcp open ftp\n| ftp-anon: Anonymous login allowed",
                 "return_code": 0,
             }),
         }],

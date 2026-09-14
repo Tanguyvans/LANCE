@@ -19,8 +19,11 @@ class AnalysisPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
     def _phase3_worker_count(self, device_count: int) -> int:
-        """Avoid request queue amplification on the single-lock local GPU server."""
-        if self._uses_local_moe():
+        """Limit local MoE and UMONS device analysis to one in-flight worker."""
+        # Use the active provider, including a Phase 3 model override. The
+        # UMONS run with four workers exhausted every 240s device deadline;
+        # serialize this provider without changing its prompts or deadline.
+        if self._uses_local_moe() or getattr(self.provider, "provider", "") == "ollama-umons":
             return 1
         configured = os.environ.get("LANCE_PHASE3_WORKERS", "").strip()
         if configured.isdigit() and int(configured) > 0:
@@ -298,6 +301,31 @@ class AnalysisPhase:
         }
         fallback_path.write_text(json.dumps(fallback, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def _phase3_promoted_deliverable(
+        self, device_id: str, filename: str, receipt: object,
+    ) -> tuple[bool, str]:
+        """Accept only this worker's valid transaction whose promotion is intact."""
+        final_path = self.run_dir / filename
+        if not isinstance(receipt, dict) or receipt.get("validated") is not True:
+            return False, f"missing_validated_deliverable: no valid save receipt for {device_id}"
+        if receipt.get("status") != "saved" or receipt.get("ok") is False or receipt.get("error"):
+            return False, f"missing_validated_deliverable: save promotion failed for {device_id}"
+        attempt_ref = receipt.get("attempt_ref")
+        if not isinstance(attempt_ref, str) or not attempt_ref:
+            return False, f"missing_validated_deliverable: save receipt has no attempt for {device_id}"
+        attempt_path = self.run_dir / attempt_ref
+        try:
+            root = os.path.realpath(self.run_dir)
+            if os.path.commonpath((root, os.path.realpath(attempt_path))) != root:
+                return False, f"missing_validated_deliverable: invalid attempt path for {device_id}"
+            if not attempt_path.is_file() or not final_path.is_file():
+                return False, f"missing_validated_deliverable: promoted file is missing for {device_id}"
+            if attempt_path.read_bytes() != final_path.read_bytes():
+                return False, f"missing_validated_deliverable: promoted file changed for {device_id}"
+        except OSError:
+            return False, f"missing_validated_deliverable: promoted file is unreadable for {device_id}"
+        return True, ""
+
     def _run_phase3(
         self,
         config: runtime.AgentConfig,
@@ -307,6 +335,9 @@ class AnalysisPhase:
         import time as _time
         from concurrent.futures import ThreadPoolExecutor
 
+        # This is run-local state consumed by deterministic aggregation; never
+        # infer it from an older status artifact.
+        self._phase3_execution_status = None
         phase3_status_path = self.run_dir / "03_phase3_status.json"
         phase3_status = {
             "status": "running",
@@ -780,6 +811,7 @@ class AnalysisPhase:
                     repeat_guard=False,
                     stop_event=self._stop_event,
                 )
+                analysis_text = ""
                 if result_text and result_text.strip() not in {
                     "(max turns reached)", "(malformed tool call JSON — max retries)",
                 }:
@@ -796,6 +828,10 @@ class AnalysisPhase:
                             None, phase=3, agent=f"analyze_{device_id}_result"
                         )({"type": "text_chunk", "text": analysis_text})
                 usage = self.tracker.end_phase()
+                if not analysis_text or _looks_unusable_model_memo(analysis_text):
+                    raise RuntimeError(
+                        "missing_validated_deliverable: no usable Phase 3 analysis memo"
+                    )
                 if usage:
                     print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
                 if stream_callback:
@@ -827,6 +863,26 @@ class AnalysisPhase:
                 device_config,
                 stream_callback,
             )
+            save_receipts: list[dict] = []
+            captured_tools = []
+            for tool in device_tools:
+                if tool.get("name") != "save_deliverable":
+                    captured_tools.append(tool)
+                    continue
+                original_save = tool["function"]
+
+                def capture_save(*args, _original=original_save, **kwargs):
+                    raw_receipt = _original(*args, **kwargs)
+                    try:
+                        receipt = json.loads(raw_receipt) if isinstance(raw_receipt, str) else raw_receipt
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        receipt = None
+                    if isinstance(receipt, dict):
+                        save_receipts.append(receipt)
+                    return raw_receipt
+
+                captured_tools.append({**tool, "function": capture_save})
+            device_tools = captured_tools
             variables["phase3_allowed_tools"] = ", ".join(
                 sorted({
                     str(tool.get("name")) for tool in device_tools
@@ -856,6 +912,16 @@ class AnalysisPhase:
                 deadline=_time.monotonic() + phase3_timeout_s,
             )
             usage = self.tracker.end_phase()
+            promoted, validation_error = self._phase3_promoted_deliverable(
+                device_id, deliverable_file, save_receipts[-1] if save_receipts else None
+            )
+            if not promoted:
+                log.warning(
+                    "Phase 3 analysis for %s did not produce a validated promoted deliverable; "
+                    "scanner findings remain canonical",
+                    device_id,
+                )
+                raise RuntimeError(validation_error)
             if usage:
                 print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
             if stream_callback:
@@ -866,20 +932,11 @@ class AnalysisPhase:
                     "run_dir": str(self.run_dir),
                 })
 
-            # Preserve scanner findings, but make a missing model save explicit.
-            deliverable_path = self.run_dir / deliverable_file
-            if not deliverable_path.exists() or not usage or not usage.format_attempts:
-                log.warning(
-                    "Phase 3 analysis for %s did not save a deliverable; "
-                    "scanner findings remain canonical",
-                    device_id,
-                )
-
         worker_count = self._phase3_worker_count(len(surface))
         if worker_count == 1 and len(surface) > 1:
             log.info(
-                "Phase 3 local MoE detected: serializing device agents to avoid "
-                "GPU queue timeouts and duplicate retries"
+                "Phase 3: serial device analysis (provider=%s, workers=1)",
+                getattr(self.provider, "provider", "unknown"),
             )
 
         phase3_status["worker_count"] = worker_count
@@ -914,9 +971,11 @@ class AnalysisPhase:
 
         phase3_status["status"] = (
             "completed_with_device_errors"
-            if phase3_failures or phase3_status["scanner_errors"]
+            if phase3_failures or phase3_status["scanner_errors"] or phase3_status.get("surface_error")
             else "completed"
         )
+        if phase3_status["status"] == "completed_with_device_errors":
+            self._phase3_execution_status = "executed_with_worker_errors"
         phase3_status["finished_at"] = datetime.now().astimezone().isoformat()
         _save_phase3_status()
 

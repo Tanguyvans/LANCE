@@ -336,7 +336,10 @@ class AgentRunner:
             self._aggregate_device_vulns(config, stream_callback)
             validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
             valid, msg = validator_fn(config.deliverable_file)
-            status = "completed" if valid else f"failed:{msg}"
+            if valid and config.name == "vuln_analysis":
+                status = getattr(self, "_phase3_execution_status", None) or "completed"
+            else:
+                status = "completed" if valid else f"failed:{msg}"
             if valid:
                 log.info("Phase %d deterministic aggregation validated: %s", config.phase, msg)
                 print(f"  Deliverable validated: {config.deliverable_file}")

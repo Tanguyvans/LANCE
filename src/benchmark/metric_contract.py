@@ -6,8 +6,8 @@ import hashlib
 from pathlib import Path
 
 
-METRIC_CONTRACT_VERSION = "strict-v3.11"
-EVIDENCE_CONTRACT_VERSION = "evidence-v11"
+METRIC_CONTRACT_VERSION = "strict-v3.12"
+EVIDENCE_CONTRACT_VERSION = "evidence-v12"
 
 
 def _tree_sha256(root: Path, pattern: str) -> str:

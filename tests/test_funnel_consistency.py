@@ -25,8 +25,8 @@ def record(tool='mqtt_listen', **args):
         defaults = {'broker':'192.0.2.1','topic':'$SYS/#','port':1883}
         stdout = '$SYS/broker/version fixture-1\n'
     else:
-        defaults = {'command_string':'sshpass -p fixture-password ssh -p 22 operator@192.0.2.1 id'}
-        stdout = 'uid=1000(operator) gid=1000(operator)\n'
+        defaults = {'command_string':"sshpass -p admin ssh -p 22 admin@192.0.2.1 'id'"}
+        stdout = 'uid=1000(admin) gid=1000(admin)\n'
     return {'tool':tool,'vuln_id':'V1','evidence_ref':'proof-V1','_evidence_ref':'proof-V1',
             'args':{**defaults, **args}, 'result':{'return_code':0,'stdout':stdout,'stderr':''}}
 

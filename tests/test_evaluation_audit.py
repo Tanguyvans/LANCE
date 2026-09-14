@@ -201,7 +201,10 @@ def test_realistic_cve_positive_output_is_preserved(tool, output, return_code):
         product="dropbear", version="2020.81", cve_ids=["CVE-2023-48795"],
     )
     result = synthesize_exploit_result(finding, [{
-        "tool": tool, "args": {"host": "192.0.2.1", "port": 22},
+        "tool": tool, "args": (
+            {"target": "192.0.2.1", "ports": "22"} if tool == "nmap_scan"
+            else {"host": "192.0.2.1", "port": 22}
+        ),
         "result": {"return_code": return_code, "stdout": output},
     }])
     assert result["status"] == "EXPLOITED"

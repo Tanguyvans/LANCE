@@ -1,11 +1,10 @@
-"""Scenario boundary checks for compact local intrusion actions."""
+"""Application-level destination checks shared by every execution profile."""
 from __future__ import annotations
 import ipaddress
 import re
 from urllib.parse import urlsplit
 
 
-# Applied only by the compact local contract; full does not invoke this parser.
 # Prevent compromised scenario hosts from bridging into management networks.
 _INTRUSION_DIRECT_TARGET_FIELDS = frozenset({"ip", "host", "broker", "target", "url"})
 
@@ -88,7 +87,8 @@ def _intrusion_scope_violation(
         }
 
     def in_scope(candidate: ipaddress._BaseNetwork) -> bool:
-        return any(candidate.subnet_of(network) for network in allowed)
+        return any(candidate.version == network.version and candidate.subnet_of(network)
+                   for network in allowed)
 
     def refusal(kind: str, target: str, message: str) -> dict:
         return {
@@ -108,14 +108,32 @@ def _intrusion_scope_violation(
         if kwargs.get(field) not in (None, "")
     ]
     for field, value in direct_values:
-        raw_value = str(value)
-        candidates = _intrusion_scope_candidates(raw_value)
-        if not candidates:
-            parsed = urlsplit(raw_value)
-            hostname = parsed.hostname if parsed.hostname else raw_value.split("/", 1)[0]
+        raw_value = str(value).strip()
+        try:
+            if field == "url":
+                # Only the URL authority is a destination. IPs in userinfo,
+                # paths, queries and fragments are never authorization facts.
+                if any(char.isspace() or ord(char) < 32 for char in raw_value):
+                    raise ValueError("invalid URL whitespace")
+                parsed = urlsplit(raw_value)
+                if parsed.scheme.casefold() not in {"http", "https", "ftp", "mqtt", "mqtts", "ws", "wss"}:
+                    raise ValueError("unsupported URL scheme")
+                if not parsed.hostname:
+                    raise ValueError("missing URL host")
+                _ = parsed.port  # Reject malformed authorities, too.
+                tokens = [str(ipaddress.ip_address(parsed.hostname))]
+            elif field == "target":
+                # Structured scanners support explicit IP/CIDR target lists,
+                # not arbitrary text containing one acceptable address.
+                tokens = re.split(r"[\s,]+", raw_value)
+            else:
+                tokens = [str(ipaddress.ip_address(raw_value))]
+            candidates = [(token, ipaddress.ip_network(token, strict=False))
+                          for token in tokens]
+        except ValueError:
             return refusal(
                 "intrusion_target_unverifiable",
-                str(hostname or raw_value),
+                field,
                 f"Phase 5 {field} must resolve to an explicit IP inside the scenario CIDRs.",
             )
         for token, candidate in candidates:
@@ -130,7 +148,7 @@ def _intrusion_scope_violation(
     # only the SSH endpoint would still permit a router shell to scan its WAN
     # interface, which is exactly the failure mode this guard closes.
     command_fields: list[tuple[str, str]] = []
-    if tool_name == "ssh_exec" and kwargs.get("command") not in (None, ""):
+    if tool_name in {"ssh_exec", "ssh_login"} and kwargs.get("command") not in (None, ""):
         command_fields.append(("command", str(kwargs.get("command"))))
     if tool_name in {"ssh_login", "telnet_connect"} and kwargs.get("command_string") not in (None, ""):
         command_fields.append(("command_string", str(kwargs.get("command_string"))))
