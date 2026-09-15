@@ -54,6 +54,19 @@ class TestReadDeliverable:
 
 
 class TestProviderDiagnosticIsolation:
+    def test_unrelated_cwd_alias_does_not_hide_a_run_deliverable(self, clean_output, monkeypatch):
+        (clean_output / "report.md").write_text("run report")
+        other = clean_output / "unrelated-cwd"
+        other.mkdir()
+        (other / "provider_events.jsonl").write_text("private")
+        (other / "report.md").symlink_to(other / "provider_events.jsonl")
+        monkeypatch.chdir(other)
+
+        assert json.loads(read_deliverable("report.md"))["content"] == "run report"
+        assert json.loads(save_deliverable("report.md", "updated"))["status"] == "saved"
+        assert (clean_output / "report.md").read_text() == "updated"
+        assert (other / "provider_events.jsonl").read_text() == "private"
+
     def test_observer_file_is_hidden_and_cannot_be_overwritten(self, clean_output):
         journal = clean_output / "provider_events.jsonl"
         journal.write_text('{"event":"terminal","reason":"test-canary"}\n')
@@ -71,7 +84,18 @@ class TestProviderDiagnosticIsolation:
         result = read_deliverable("alias.md")
         assert "error" in json.loads(result)
         assert "private-observer-canary" not in result
+        assert "error" in json.loads(save_deliverable("alias.md", "changed"))
         assert json.loads(list_deliverables())["deliverables"] == []
+
+    def test_ground_truth_alias_cannot_be_read_or_overwritten(self, clean_output):
+        ground_truth = clean_output / "ground_truth.yaml"
+        ground_truth.write_text("answer-key")
+        (clean_output / "ground-truth-alias.md").symlink_to(ground_truth)
+
+        assert "error" in json.loads(read_deliverable("ground-truth-alias.md"))
+        assert "error" in json.loads(save_deliverable("ground-truth-alias.md", "changed"))
+        assert json.loads(list_deliverables())["deliverables"] == []
+        assert ground_truth.read_text() == "answer-key"
 
     def test_reserved_name_cannot_redirect_writes(self, clean_output):
         target = clean_output / "report.md"

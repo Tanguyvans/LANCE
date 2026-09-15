@@ -1196,6 +1196,7 @@ function _setNodeColor(node, severity) {
 
 function resetNodeColors() {
   if (!cy) return;
+  clearIntrusionObservations();
   cy.nodes().forEach(n => {
     n.style('background-color', n.data('_origColor') || n.data('color'));
     n.style('border-color', 'rgba(255,255,255,.1)');
@@ -1211,11 +1212,19 @@ function activateSecurityMode() {
   document.getElementById('color-security')?.classList.add('active');
 }
 
-function markNodeCompromised(ip) {
+function markNodeAccessObserved(ip) {
   if (!cy) return;
   cy.nodes().forEach(n => {
     if (n.data('ip') === ip || n.id() === ip) {
-      if (!n.data('_origColor')) n.data('_origColor', n.style('background-color'));
+      if (!n.data('_accessBaseStyle')) {
+        n.data('_accessBaseStyle', {
+          'background-color': n.style('background-color'),
+          'border-color': n.style('border-color'),
+          'border-width': n.style('border-width'),
+        });
+        n.data('_accessBaseLabel', n.data('label') || n.id());
+      }
+      n.data('label', `${n.data('_accessBaseLabel')} · accès corroboré`);
       n.style('background-color', '#ff4444');
       n.style('border-color', '#cc0000');
       n.style('border-width', '3px');
@@ -1223,56 +1232,51 @@ function markNodeCompromised(ip) {
   });
 }
 
-function highlightAttackEdge(fromIp, toIp, fromId, toId, hopLabel) {
-  if (!cy) return;
-  const src = cy.nodes().filter(n => n.data('ip') === fromIp || n.id() === fromId).first();
-  const dst = cy.nodes().filter(n => n.data('ip') === toIp || n.id() === toId).first();
-  if (!src.length || !dst.length) return;
-  const edgeId = `intrusion-${src.id()}-${dst.id()}`;
-  if (!cy.getElementById(edgeId).length) {
-    cy.add({group:'edges', data:{
-      id: edgeId, source: src.id(), target: dst.id(),
-      type: 'intrusion', hop_label: hopLabel || '',
-    }});
-  }
-}
+let intrusionOverlayGeneration = 0;
 
-function markNodeEntryPoint(ip, deviceId) {
+function clearIntrusionObservations() {
+  intrusionOverlayGeneration++;
   if (!cy) return;
   cy.nodes().forEach(n => {
-    if (n.data('ip') === ip || n.id() === deviceId) {
-      n.data('intrusion_role', 'entry');
+    const base = n.data('_accessBaseStyle');
+    if (base) {
+      n.style(base);
+      n.data('label', n.data('_accessBaseLabel'));
+      n.removeData('_accessBaseStyle _accessBaseLabel');
     }
+    n.removeData('intrusion_role');
   });
+  cy.remove('edge[type="intrusion"]');
+}
+
+function applyIntrusionObservations(data) {
+  // Only the server's ledger-derived projection can qualify an access.
+  // Raw model JSON and legacy events are never upgraded by client heuristics.
+  clearIntrusionObservations();
+  const available = data?.schema_version === 'intrusion-observations-v1'
+    && data.available === true && Array.isArray(data.accesses)
+    && data.accesses.every(a => typeof a?.device_ip === 'string' && a.device_ip.trim()
+      && Array.isArray(a.evidence_refs) && a.evidence_refs.length > 0
+      && a.evidence_refs.every(ref => typeof ref === 'string' && ref.trim()));
+  if (!available) {
+    addLog({type:'warn', message:'Accès corroborés indisponibles — journal absent, incompatible ou non exploitable. Les déclarations ne valent pas preuve.'});
+    return;
+  }
+  const ips = [...new Set(data.accesses.map(a => a.device_ip))];
+  ips.forEach(markNodeAccessObserved);
+  const declared = data.declarations?.accesses;
+  const suffix = Number.isSafeInteger(declared) && declared >= 0
+    ? ` · ${declared} accès déclaré(s) par le modèle` : '';
+  addLog({type:'info', message:`Accès corroborés : ${ips.length}${suffix}${ips.length ? ' — ' + ips.join(', ') : ''}. Transitions réseau : preuve causale indisponible.`});
+  // The current executor supplies no causal transition records. Even two
+  // corroborated accesses, or a declared pivot_to, must not create an edge.
 }
 
 async function loadIntrusionOverlay(runId) {
-  const data = await fetchJSON(`/api/runs/${runId}/05_intrusion.json`);
-  if (!data || !data.content) return;
-  const content = data.content;
-
-  // Mark all compromised devices (including those not part of a chain)
-  if (content.compromised_devices) {
-    for (const dev of content.compromised_devices) {
-      markNodeCompromised(dev.device_ip);
-    }
-  }
-
-  if (!content.chains) return;
-  let globalHop = 0;
-  for (const chain of content.chains) {
-    for (let i = 0; i < chain.hops.length; i++) {
-      const hop = chain.hops[i];
-      globalHop++;
-      markNodeCompromised(hop.device_ip);
-      // First hop of first chain = entry point → yellow border
-      if (globalHop === 1) markNodeEntryPoint(hop.device_ip, hop.device_id);
-      if (hop.pivot_to) {
-        const label = `hop ${hop.hop_index ?? globalHop}`;
-        highlightAttackEdge(hop.device_ip, hop.pivot_to, hop.device_id, '', label);
-      }
-    }
-  }
+  const generation = ++intrusionOverlayGeneration;
+  const data = await fetchJSON(`/api/runs/${encodeURIComponent(runId)}/intrusion-observations`);
+  if (generation !== intrusionOverlayGeneration || (activeRunId && activeRunId !== runId)) return;
+  applyIntrusionObservations(data);
 }
 
 function _addDiscoveredEdge(srcIp, dstIp, linkType) {
@@ -1738,16 +1742,16 @@ function handleEvent(ev) {
     }
   }
 
-  else if (t === 'intrusion_hop') {
-    highlightAttackEdge(ev.from_ip, ev.to_ip, ev.from_id, ev.to_id, `hop ${ev.hop_index || ''}`);
-    markNodeCompromised(ev.to_ip);
-    if (ev.hop_index === 1) markNodeEntryPoint(ev.from_ip, ev.from_id);
-    addLog({type:'warn', message:`Pivot [${ev.hop_index}] ${ev.from_id||ev.from_ip} → ${ev.to_id||ev.to_ip} (${ev.method||''})`});
+  else if (t === 'intrusion_observations') {
+    applyIntrusionObservations(ev);
+  }
+
+  else if (t === 'intrusion_hop' || t === 'intrusion_compromised') {
+    addLog({type:'warn', message:'Déclaration d’intrusion historique non corroborée — aucun accès ni pivot ajouté au graphe.'});
   }
 
   else if (t === 'intrusion_done') {
-    const jewels = (ev.crown_jewels_reached||[]).join(', ') || 'aucun';
-    addLog({type:'info', message:`Intrusion terminée — ${ev.chains_successful||0}/${ev.chains||0} chaîne(s) réussie(s), ${ev.hops||0} hops, crown jewels: ${jewels}`});
+    addLog({type:'info', message:'Phase d’intrusion finalisée — les accès et objectifs atteints restent à distinguer des déclarations du modèle.'});
   }
 
   else if (t === 'topology_edge') {
@@ -2227,8 +2231,9 @@ async function viewRun(runId) {
     await fetchVulnResults(runId);
   }
 
-  // Overlay intrusion chains (pwned edges + compromised node colors)
-  if (!sealed && run.files.includes('05_intrusion.json')) {
+  // Ledger observations do not depend on the model saving its declaration.
+  // The server distinguishes an unavailable journal from zero accesses.
+  if (!sealed) {
     await loadIntrusionOverlay(runId);
   }
 }

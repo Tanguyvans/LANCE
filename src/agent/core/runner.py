@@ -13,6 +13,7 @@ from src.agent.core.provider_diagnostics import (
     sanitize_event,
     warn_diagnostic_failure,
 )
+from src.agent.artifacts import is_private_agent_artifact_path
 
 
 log = logging.getLogger(__name__)
@@ -670,11 +671,16 @@ class AgentRunner:
         if not self.run_dir.exists():
             return "None (first phase)"
         private_names = {
-            "ground_truth.yaml", "run_meta.json", "run_error.json", "scenario_meta.json",
+            "run_meta.json", "run_error.json", "scenario_meta.json",
             "evaluation.json", "evaluation_summary.json",
         }
         files = sorted(
             f.name for f in self.run_dir.glob("*")
-            if f.is_file() and not f.name.startswith(".") and f.name not in private_names
+            if (
+                f.is_file()
+                and not f.name.startswith(".")
+                and f.name not in private_names
+                and not is_private_agent_artifact_path(f)
+            )
         )
         return ", ".join(files) if files else "None (first phase)"

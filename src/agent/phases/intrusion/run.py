@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from src.agent.phases.intrusion.compact import COMPACT_INTRUSION_FALLBACK_MAX_ROUNDS
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.phases.intrusion.evidence import finalize_synthesis
+from src.agent.phases.intrusion.observations import project_intrusion_observations
 from src.agent.core import runtime
 
 
@@ -825,90 +826,42 @@ class IntrusionPhase:
             f"{len(credentials)} creds, {len(chains)} chains, {out_path.stat().st_size:,} bytes)"
         )
 
-    @staticmethod
-    def _repair_json(text: str) -> str:
-        """Best-effort repair for common LLM JSON issues (embedded unescaped quotes inside strings)."""
-        import re
-        # Replace control characters that break JSON
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
-        return text
-
     def _emit_intrusion_events(self, stream_callback) -> None:
-        """Parse 05_intrusion.json and emit intrusion_hop / intrusion_done SSE events."""
+        """Emit the evidence-backed Phase 5 projection and finalization notice."""
         if not stream_callback:
             return
-        intrusion_path = self.run_dir / "05_intrusion.json"
-        if not intrusion_path.exists():
-            return
-        try:
-            raw = intrusion_path.read_text(encoding="utf-8")
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                data = json.loads(self._repair_json(raw))
-        except Exception as exc:
-            log.warning("Failed to parse intrusion results for SSE: %s", exc)
-            return
+        projection = project_intrusion_observations(
+            self.run_dir,
+            evidence_integrity_failed=bool(
+                getattr(self, "_evidence_integrity_failed", False)
+            ),
+        )
+        stream_callback({"type": "intrusion_observations", **projection})
 
-        try:
-            chains = data.get("chains", [])
-            summary = data.get("summary", {})
-            compromised_devices = data.get("compromised_devices", [])
-
-            terminal_status = str(getattr(self, "_phase5_terminal_status", "") or "").split(":", 1)[0]
-            if (
-                data.get("status") in {"incomplete", "blocked", "stopped", "budget_exceeded"}
-                or terminal_status in {"failed", "blocked", "stopped", "budget_exceeded"}
-            ):
-                # Recovery data is diagnostic, not a validated campaign. Do
-                # not emit successful intrusion/pivot events from this file.
-                stream_callback({
-                    "type": "warn",
-                    "message": (
-                        "Intrusion non finalisée — synthèse de diagnostic conservée ; "
-                        f"{summary.get('devices_compromised', 0)} accès recensé(s), "
-                        "sans validation de campagne ni de chemins multi-hop."
-                    ),
-                })
-                return
-
-            # Emit one compromised event per device from the compromised_devices list
-            for dev in compromised_devices:
-                stream_callback({
-                    "type": "intrusion_compromised",
-                    "device_id": dev.get("device_id"),
-                    "device_ip": dev.get("device_ip"),
-                    "access_method": dev.get("access_method", ""),
-                    "credentials_found": len(dev.get("credentials_found", [])),
-                })
-
-            # Emit hop events for multi-hop chains
-            for chain in chains:
-                hops = chain.get("hops", [])
-                for i, hop in enumerate(hops):
-                    if i + 1 < len(hops):
-                        next_hop = hops[i + 1]
-                        stream_callback({
-                            "type": "intrusion_hop",
-                            "hop_index": i + 1,
-                            "from_ip": hop.get("device_ip"),
-                            "from_id": hop.get("device_id"),
-                            "to_ip": next_hop.get("device_ip"),
-                            "to_id": next_hop.get("device_id"),
-                            "method": hop.get("access_method", ""),
-                            "chain_id": chain.get("id"),
-                        })
-
+        terminal_status = str(getattr(self, "_phase5_terminal_status", "") or "")
+        if terminal_status.split(":", 1)[0] in {
+            "failed", "blocked", "stopped", "budget_exceeded"
+        }:
             stream_callback({
-                "type": "intrusion_done",
-                "devices_compromised": summary.get("devices_compromised", len(compromised_devices)),
-                "chains": summary.get("chains_attempted", len(chains)),
-                "hops": summary.get("total_hops", 0),
-                "crown_jewels_reached": summary.get("crown_jewels_reached", []),
-                "credentials_harvested": summary.get("credentials_harvested", 0),
+                "type": "warn",
+                "message": (
+                    "Intrusion non finalisée — observations conservées ; "
+                    f"{len(projection['accesses']) if projection['available'] else 'inconnus'} "
+                    "accès corroboré(s), sans validation de chemins multi-hop."
+                ),
             })
-        except Exception as exc:
-            log.warning("Failed to emit intrusion SSE events: %s", exc)
+            return
+
+        # Model-declared chains and counters are never success events. Keep a
+        # neutral completion marker for the existing UI, with counters derived
+        # only from the independent access projection.
+        if terminal_status != "completed" or not projection["available"]:
+            return
+        stream_callback({
+            "type": "intrusion_done",
+            "devices_compromised": len(projection["accesses"]),
+            "hops": 0,
+        })
 
 
 def run(context, config, stream_callback=None):

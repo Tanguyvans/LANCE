@@ -164,6 +164,7 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                     "stdout": "",
                     "stderr": "ssh_login requires command_string or ip/user/password",
                     "return_code": 2,
+                    "error_kind": "invalid_tool_arguments",
                 })
         cmd = [command] + list(fixed_args)
         positional_values = []

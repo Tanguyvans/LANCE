@@ -262,6 +262,62 @@ class TestListDeliverables:
         assert "01_graph_analysis.md" in result
         assert "02_recon.md" in result
 
+    def test_private_journal_and_alias_do_not_change_next_phase_deliverable_listing(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        (pipeline.run_dir / "01_graph_analysis.md").write_text("content")
+        without_journal = pipeline._list_previous_deliverables()
+
+        (pipeline.run_dir / "provider_events.jsonl").write_text("private")
+        (pipeline.run_dir / "journal-alias.md").symlink_to(
+            pipeline.run_dir / "provider_events.jsonl"
+        )
+        with_journal = pipeline._list_previous_deliverables()
+
+        assert with_journal == without_journal
+        assert with_journal == "01_graph_analysis.md"
+
+    def test_next_phase_run_agent_prompt_is_identical_with_private_journal(
+        self, mock_provider, output_dir
+    ):
+        pipeline = Pipeline(provider=mock_provider)
+        pipeline.context = {
+            "target_subnet": "192.168.100.0/24",
+            "device_count": "1",
+            "link_count": "1",
+            "cve_count": "0",
+            "top_risk": "none",
+            "network_topology_edges": "",
+            "scenario_context": "",
+            "nmap_scan_groups": "",
+        }
+        (pipeline.run_dir / "01_graph_analysis.md").write_text("content")
+        config = AgentConfig(
+            name="next_phase",
+            phase=2,
+            prompt_template="recon",
+            deliverable_file="02_recon.md",
+            tools=[],
+            user_message="Run the next phase.",
+        )
+
+        pipeline._run_agent(config)
+        without_journal = mock_provider.chat_with_tools.call_args.kwargs
+
+        (pipeline.run_dir / "provider_events.jsonl").write_text("private")
+        (pipeline.run_dir / "journal-alias.md").symlink_to(
+            pipeline.run_dir / "provider_events.jsonl"
+        )
+        pipeline._run_agent(config)
+        with_journal = mock_provider.chat_with_tools.call_args.kwargs
+
+        assert with_journal["system_prompt"] == without_journal["system_prompt"]
+        assert with_journal["user_message"] == without_journal["user_message"]
+        assert "01_graph_analysis.md" in with_journal["system_prompt"]
+        assert "provider_events.jsonl" not in with_journal["system_prompt"]
+        assert "journal-alias.md" not in with_journal["system_prompt"]
+
 
 class TestRunDir:
     def test_run_dir_is_timestamped(self, mock_provider, output_dir):

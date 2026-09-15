@@ -31,11 +31,14 @@ _FINISH_REASONS = frozenset({
 _EVENTS = frozenset({
     "invocation_started", "request", "response", "tool_proposed",
     "tool_executed", "tool_refused", "finalization_entered", "save_outcome",
-    "terminal",
+    "continuation_requested", "terminal",
 })
 _RESPONSE_TYPES = frozenset({
     "emptychoices", "emptymessage", "textonly", "tool_calls", "providererror",
     "finish_reasonerror", "length", "malformedargs",
+})
+_CONTINUATION_REASONS = frozenset({
+    "textonly", "emptychoices", "emptymessage", "finish_reasonerror", "length",
 })
 _ERROR_KINDS = frozenset({
     "no_user_query", "invalid_tool_arguments", "invalid_request", "transient",
@@ -150,6 +153,15 @@ def sanitize_event(
             value = _safe_int(event.get(key))
             if value is not None:
                 record[key] = value
+    if name == "continuation_requested":
+        reason = event.get("reason")
+        record["reason"] = reason if reason in _CONTINUATION_REASONS else "unknown"
+        response_category = event.get("response_category")
+        record["response_category"] = (
+            response_category if response_category in _CONTINUATION_REASONS else "unknown"
+        )
+        count = _safe_int(event.get("count"))
+        record["count"] = count if count in {1, 2} else None
     if name == "save_outcome":
         record["outcome"] = "accepted" if event.get("accepted") is True else "rejected"
         attempt_ref = _safe_ref(event.get("attempt_ref"))

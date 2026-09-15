@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.core.completion_policy import CompletionPolicy
 from src.agent.provider import LLMProvider
 
 
@@ -84,7 +85,7 @@ def _request_tool_names(request):
     return [item["function"]["name"] for item in request.kwargs.get("tools", [])]
 
 
-def test_stall_enters_save_only_mode_and_successful_save_terminates():
+def test_stall_gets_action_capable_continuation_and_successful_save_terminates():
     action = MagicMock(return_value='{"ok":true}')
     save = MagicMock(return_value='{"ok":true,"status":"saved"}')
     provider = _provider([
@@ -103,44 +104,57 @@ def test_stall_enters_save_only_mode_and_successful_save_terminates():
     assert action.call_count == 1
     save.assert_called_once_with(filename="result.json", content="done")
     finalization_request = provider.client.chat.completions.create.call_args_list[2]
-    assert _request_tool_names(finalization_request) == ["save_deliverable"]
+    assert _request_tool_names(finalization_request) == ["action", "save_deliverable"]
     assert finalization_request.kwargs["tool_choice"] == "required"
 
 
 def test_repeated_text_is_bounded_and_returns_explicit_unsatisfied_reason():
     action = MagicMock(return_value='{"ok":true}')
     save = MagicMock(return_value='{"ok":true}')
-    provider = _provider([_text("stall")] * 4)
+    provider = _provider([_text("stall")] * 5)
 
     result = _run(provider, _tools(action, save))
 
     assert "required tool finalization unsatisfied" in result
     assert "completion request budget exhausted" in result
-    assert provider.client.chat.completions.create.call_count == 4
+    assert provider.client.chat.completions.create.call_count == 5
     action.assert_not_called()
     save.assert_not_called()
-    for request in provider.client.chat.completions.create.call_args_list[1:]:
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
+    assert provider.client.chat.completions.create.call_args_list[1].kwargs["tool_choice"] == "required"
+    for request in provider.client.chat.completions.create.call_args_list[2:]:
         assert _request_tool_names(request) == ["save_deliverable"]
         assert request.kwargs["tool_choice"] == "required"
 
 
-def test_rejected_empty_and_rogue_action_calls_never_reopen_action_tools():
+def test_action_continuation_resets_incident_before_rejected_save():
     action = MagicMock(return_value='{"ok":true}')
-    save = MagicMock(side_effect=['{"ok":false,"error":"rejected"}', ""])
+    save = MagicMock(side_effect=['{"ok":false,"error":"rejected"}'] * 4)
     provider = _provider([
         _text("stall"),
         _tool_response("action", "{}", "rogue-1"),
-        _tool_response("save_deliverable", "{}", "save-1"),
-        _tool_response("save_deliverable", "{}", "save-2"),
+        _text("second stall"),
+        _tool_response("save_deliverable", '{"attempt":1}', "save-1"),
+        _tool_response("save_deliverable", '{"attempt":2}', "save-2"),
+        _tool_response("save_deliverable", '{"attempt":3}', "save-3"),
+        _tool_response("save_deliverable", '{"attempt":4}', "save-4"),
     ])
 
     result = _run(provider, _tools(action, save))
 
     assert "required tool finalization unsatisfied" in result
-    assert provider.client.chat.completions.create.call_count == 4
-    action.assert_not_called()
-    assert save.call_count == 2
-    for request in provider.client.chat.completions.create.call_args_list[1:]:
+    assert provider.client.chat.completions.create.call_count == 7
+    action.assert_called_once_with()
+    assert save.call_count == 4
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[2]) == [
+        "action", "save_deliverable"
+    ]
+    for request in provider.client.chat.completions.create.call_args_list[4:]:
         assert _request_tool_names(request) == ["save_deliverable"]
 
 
@@ -234,7 +248,7 @@ def test_opt_in_error_finish_uses_next_bounded_terminal_request_without_nested_f
     assert [
         _request_tool_names(request)
         for request in provider.client.chat.completions.create.call_args_list[1:]
-    ] == [["save_deliverable"], ["save_deliverable"]]
+    ] == [["action", "save_deliverable"], ["save_deliverable"]]
     assert all(
         request.kwargs.get("tool_choice") == "required"
         for request in provider.client.chat.completions.create.call_args_list[1:]
@@ -242,7 +256,7 @@ def test_opt_in_error_finish_uses_next_bounded_terminal_request_without_nested_f
     save.assert_called_once_with(filename="result.json", content="done")
 
 
-def test_opt_in_error_finish_before_terminal_mode_latches_save_only_immediately():
+def test_opt_in_error_finish_gets_one_action_capable_continuation():
     action = MagicMock()
     save = MagicMock(return_value='{"ok":true,"status":"saved"}')
     error = SimpleNamespace(
@@ -265,7 +279,7 @@ def test_opt_in_error_finish_before_terminal_mode_latches_save_only_immediately(
 
     assert provider.client.chat.completions.create.call_count == 2
     assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
-        "save_deliverable"
+        "action", "save_deliverable"
     ]
     assert provider.client.chat.completions.create.call_args_list[1].kwargs["tool_choice"] == "required"
     action.assert_not_called()
@@ -276,14 +290,18 @@ def test_empty_choices_latch_bounded_terminal_mode():
     action = MagicMock()
     save = MagicMock(return_value='{"ok":true}')
     empty = SimpleNamespace(choices=[], usage=None)
-    provider = _provider([empty, empty, empty, empty])
+    provider = _provider([empty, empty, empty, empty, empty])
 
     result = _run(provider, _tools(action, save))
 
     assert "required tool finalization unsatisfied" in result
     assert "completion request budget exhausted" in result
-    assert provider.client.chat.completions.create.call_count == 4
-    for request in provider.client.chat.completions.create.call_args_list[1:]:
+    assert provider.client.chat.completions.create.call_count == 5
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
+    assert provider.client.chat.completions.create.call_args_list[1].kwargs["tool_choice"] == "required"
+    for request in provider.client.chat.completions.create.call_args_list[2:]:
         assert _request_tool_names(request) == ["save_deliverable"]
         assert request.kwargs["tool_choice"] == "required"
     action.assert_not_called()
@@ -313,17 +331,20 @@ def test_malformed_save_arguments_consume_only_bounded_finalization_requests():
     action = MagicMock()
     save = MagicMock(return_value='{"ok":true}')
     malformed = _tool_response("save_deliverable", "{", "save")
-    provider = _provider([_text("stall"), malformed, malformed, malformed])
+    provider = _provider([_text("stall"), malformed, malformed, malformed, malformed])
 
     result = _run(provider, _tools(action, save))
 
     assert "required tool finalization unsatisfied" in result
-    assert provider.client.chat.completions.create.call_count == 4
+    assert provider.client.chat.completions.create.call_count == 5
     action.assert_not_called()
     save.assert_not_called()
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
     assert all(
         _request_tool_names(request) == ["save_deliverable"]
-        for request in provider.client.chat.completions.create.call_args_list[1:]
+        for request in provider.client.chat.completions.create.call_args_list[2:]
     )
 
 
@@ -465,7 +486,224 @@ def test_real_openai_client_with_mock_transport_uses_save_only_finalization():
         [call(max_retries=0)] * len(requests)
     )
     assert [tool["function"]["name"] for tool in requests[1]["tools"]] == [
-        "save_deliverable"
+        "action", "save_deliverable"
     ]
     action.assert_not_called()
     save.assert_called_once_with(filename="result.json", content="done")
+
+
+def test_completion_policy_allows_one_continuation_per_incident_and_two_total():
+    policy = CompletionPolicy()
+
+    assert policy.request_continuation(budget_reserved=False)
+    assert not policy.request_continuation(budget_reserved=False)
+    assert policy.finalization_only
+
+    policy = CompletionPolicy()
+    assert policy.request_continuation(budget_reserved=False)
+    policy.action_executed("action", "save_deliverable", result='{"ok":true}')
+    assert policy.request_continuation(budget_reserved=False)
+    policy.action_executed("action", "save_deliverable", result='{"ok":true}')
+    assert not policy.request_continuation(budget_reserved=False)
+    assert policy.continuation_count == 2
+
+
+@pytest.mark.parametrize("result", [
+    '{"ok":false,"error_kind":"intrusion_target_out_of_scope"}',
+    '{"ok":false,"error_kind":"intrusion_command_out_of_scope"}',
+    '{"ok":false,"error_kind":"unverifiable_execution_scope"}',
+    '{"ok":false,"error_kind":"run_stopped"}',
+    '{"ok":false,"error_kind":"benchmark_memory_disabled"}',
+    "Error executing action: network unavailable",
+])
+def test_refused_or_unusable_action_result_does_not_reset_incident(result):
+    policy = CompletionPolicy()
+    assert policy.request_continuation(budget_reserved=False)
+    policy.action_executed("action", "save_deliverable", result=result)
+    assert not policy.request_continuation(budget_reserved=False)
+
+
+def test_failed_authentication_result_is_an_observed_action():
+    policy = CompletionPolicy()
+    assert policy.request_continuation(budget_reserved=False)
+    policy.action_executed(
+        "action",
+        "save_deliverable",
+        result='{"ok":false,"authenticated":false}',
+    )
+    assert policy.request_continuation(budget_reserved=False)
+
+
+@pytest.mark.parametrize("action_result", [
+    '{"ok":false,"error_kind":"intrusion_scope_unavailable"}',
+    '{"ok":false,"error_kind":"intrusion_target_unverifiable"}',
+    '{"ok":false,"error_kind":"intrusion_target_out_of_scope"}',
+    '{"ok":false,"error_kind":"intrusion_command_out_of_scope"}',
+])
+def test_scope_refusal_does_not_reset_provider_interruption_incident(action_result):
+    action = MagicMock(return_value=action_result)
+    save = MagicMock(return_value='{"ok":true,"status":"saved"}')
+    provider = _provider([
+        _text("stall"),
+        _tool_response("action", "{}", "action-1"),
+        _text("still stalled"),
+        _tool_response("save_deliverable", "{}", "save-1"),
+    ])
+
+    _run(provider, _tools(action, save))
+
+    action.assert_called_once_with()
+    save.assert_called_once_with()
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[3]) == [
+        "save_deliverable"
+    ]
+
+
+@pytest.mark.parametrize("tool_name, arguments", [
+    ("mqtt_listen", {"broker": "192.0.2.1", "port": 0}),
+    ("ssh_login", {}),
+])
+def test_argument_rejection_before_execution_does_not_reset_incident(
+    monkeypatch, tool_name, arguments,
+):
+    from src.agent.tools.tool_loader import (
+        DEFINITIONS_DIR, build_subprocess_function, load_tool_yaml,
+    )
+
+    execute = MagicMock(side_effect=AssertionError("No subprocess may execute"))
+    monkeypatch.setattr("src.agent.tools.recon_tools._run", execute)
+    action = MagicMock(wraps=build_subprocess_function(
+        load_tool_yaml(DEFINITIONS_DIR / f"{tool_name}.yaml")
+    ))
+    save = MagicMock(return_value='{"ok":true,"status":"saved"}')
+    provider = _provider([
+        _text("stall"),
+        _tool_response(tool_name, json.dumps(arguments), "action-1"),
+        _text("still stalled"),
+        _tool_response("save_deliverable", "{}", "save-1"),
+    ])
+    tools = _tools(action, save)
+    tools[0]["name"] = tool_name
+    events = []
+
+    def observe(event):
+        events.append(event)
+
+    observe._provider_diagnostics = True
+    _run(provider, tools, stream_callback=observe)
+
+    action.assert_called_once_with(**arguments)
+    execute.assert_not_called()
+    save.assert_called_once_with()
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[3]) == [
+        "save_deliverable"
+    ]
+    assert len([e for e in events if e.get("event") == "continuation_requested"]) == 1
+
+
+def test_observed_failed_authentication_rearms_provider_continuation():
+    action = MagicMock(return_value='{"ok":false,"authenticated":false}')
+    save = MagicMock(return_value='{"ok":true,"status":"saved"}')
+    provider = _provider([
+        _text("stall"),
+        _tool_response("action", "{}", "action-1"),
+        _text("new stall after observation"),
+        _tool_response("save_deliverable", "{}", "save-1"),
+    ])
+
+    _run(provider, _tools(action, save))
+
+    action.assert_called_once_with()
+    save.assert_called_once_with()
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[3]) == [
+        "action", "save_deliverable"
+    ]
+
+
+def test_executor_error_does_not_reset_provider_interruption_incident():
+    action = MagicMock(side_effect=RuntimeError("network failure"))
+    save = MagicMock(return_value='{"ok":true,"status":"saved"}')
+    provider = _provider([
+        _text("stall"),
+        _tool_response("action", "{}", "action-1"),
+        _text("still stalled"),
+        _tool_response("save_deliverable", "{}", "save-1"),
+    ])
+
+    _run(provider, _tools(action, save))
+
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[3]) == [
+        "save_deliverable"
+    ]
+
+
+@pytest.mark.parametrize("interruption", [
+    "text", "emptychoices", "emptymessage", "length", "error"
+])
+def test_interruption_gets_action_continuation_then_save(interruption):
+    action = MagicMock(return_value='{"ok":false,"authenticated":false}')
+    save = MagicMock(return_value='{"ok":true,"status":"saved"}')
+    if interruption == "text":
+        first = _text("stall")
+    elif interruption == "emptychoices":
+        first = SimpleNamespace(choices=[], usage=None)
+    elif interruption == "emptymessage":
+        first = _text(None)
+    elif interruption == "length":
+        first = _text(None)
+        first.choices[0].finish_reason = "length"
+    else:
+        first = SimpleNamespace(
+            choices=[SimpleNamespace(
+                finish_reason="error",
+                message=SimpleNamespace(content=None, tool_calls=None),
+            )],
+            usage=None,
+        )
+    provider = _provider([
+        first,
+        _tool_response("action", "{}", "action-1"),
+        _tool_response("save_deliverable", "{}", "save-1"),
+    ])
+
+    _run(provider, _tools(action, save))
+
+    action.assert_called_once_with()
+    save.assert_called_once_with()
+    continuation_request = provider.client.chat.completions.create.call_args_list[1]
+    assert _request_tool_names(continuation_request) == ["action", "save_deliverable"]
+    assert continuation_request.kwargs["tool_choice"] == "required"
+
+
+def test_two_incidents_then_third_interruption_enters_finalization():
+    action = MagicMock(return_value='{"ok":true}')
+    save = MagicMock(return_value='{"ok":true}')
+    provider = _provider([
+        _text("stall-1"),
+        _tool_response("action", "{}", "action-1"),
+        _text("stall-2"),
+        _tool_response("action", "{}", "action-2"),
+        _text("stall-3"),
+        _text("closing-1"),
+        _text("closing-2"),
+        _text("closing-3"),
+    ])
+
+    result = _run(provider, _tools(action, save))
+
+    assert "required tool finalization unsatisfied" in result
+    action.assert_has_calls([call(), call()])
+    save.assert_not_called()
+    assert provider.client.chat.completions.create.call_count == 8
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[1]) == [
+        "action", "save_deliverable"
+    ]
+    assert _request_tool_names(provider.client.chat.completions.create.call_args_list[3]) == [
+        "action", "save_deliverable"
+    ]
+    for request in provider.client.chat.completions.create.call_args_list[5:]:
+        assert _request_tool_names(request) == ["save_deliverable"]
+        assert request.kwargs["tool_choice"] == "required"

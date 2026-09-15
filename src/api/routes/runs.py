@@ -900,6 +900,20 @@ def download_run(run_id: str):
     )
 
 
+@router.get("/{run_id}/intrusion-observations")
+def get_intrusion_observations(run_id: str):
+    """Return the read-only, evidence-backed Phase 5 UI projection."""
+    run_dir = _resolve_run_dir(run_id)
+    if _is_sealed_run(run_dir):
+        raise HTTPException(
+            status_code=403,
+            detail="Sealed runs expose aggregate evaluation summaries only",
+        )
+    from src.agent.phases.intrusion.observations import project_intrusion_observations
+
+    return project_intrusion_observations(run_dir)
+
+
 @router.get("/{run_id}/{filename}")
 def get_run_file(run_id: str, filename: str):
     """Return the content of a specific deliverable file."""

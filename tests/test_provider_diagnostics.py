@@ -78,6 +78,27 @@ def test_response_types_are_explicitly_allowlisted(response_type):
     assert event["response_type"] == response_type
 
 
+def test_continuation_diagnostics_are_allowlisted_without_payload_content():
+    event = sanitize_event(
+        {
+            "event": "continuation_requested",
+            "reason": "textonly",
+            "response_category": "textonly",
+            "count": 1,
+            "content": "private prompt",
+            "arguments": "secret args",
+        },
+        provider="openrouter",
+        model="model",
+        invocation_id="1234567890abcdef1234567890abcdef",
+        known_tools={"action"},
+    )
+    assert event["reason"] == "textonly"
+    assert event["response_category"] == "textonly"
+    assert event["count"] == 1
+    assert "content" not in event and "arguments" not in event
+
+
 def test_unknown_tool_and_metadata_values_are_safe():
     proposed = sanitize_event(
         {
@@ -451,7 +472,7 @@ def _tools(action=None, save=None):
 
 
 @pytest.mark.parametrize("kind", ["textonly", "emptychoices", "finish_reasonerror"])
-def test_thirteen_requests_nine_actions_parity_with_observer_on_and_off(tmp_path, monkeypatch, kind):
+def test_fourteen_requests_nine_actions_parity_with_observer_on_and_off(tmp_path, monkeypatch, kind):
     monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
     outcomes = []
     for observe in (False, True):
@@ -467,7 +488,7 @@ def test_thirteen_requests_nine_actions_parity_with_observer_on_and_off(tmp_path
             _response(tool_calls=[_tool_call("action", json.dumps({"index": i}), f"call-{i}")],
                       finish_reason="tool_calls", usage=usage)
             for i in range(9)
-        ] + [copy.deepcopy(tail) for _ in range(4)])
+        ] + [copy.deepcopy(tail) for _ in range(5)])
         provider = _provider([])
         requests = []
         def create(**kwargs):
@@ -488,14 +509,15 @@ def test_thirteen_requests_nine_actions_parity_with_observer_on_and_off(tmp_path
         outcomes.append((result, requests, action.call_args_list, save.call_args_list,
                          events, tracker.total_tokens(), tracker.total_cost()))
     assert outcomes[0] == outcomes[1]
-    assert len(outcomes[1][1]) == 13
+    assert len(outcomes[1][1]) == 14
     assert len(outcomes[1][2]) == 9
-    assert outcomes[1][5] == (1300, 130)
+    assert outcomes[1][5] == (1400, 140)
     records = _records(tmp_path / "True")
-    assert len([r for r in records if r["event"] == "request"]) == 13
-    assert len([r for r in records if r["event"] == "response"]) == 13
+    assert len([r for r in records if r["event"] == "request"]) == 14
+    assert len([r for r in records if r["event"] == "response"]) == 14
     assert len([r for r in records if r["event"] == "tool_executed"]) == 9
     assert [r["reason"] for r in records if r["event"] == "finalization_entered"] == [kind]
+    assert [r["count"] for r in records if r["event"] == "continuation_requested"] == [1]
     assert [r["cause"] for r in records if r["event"] == "terminal"] == ["terminalretryexhausted"]
 
 

@@ -14,6 +14,7 @@ from src.agent.provider import LLMProvider
 from src.agent.registry import AGENTS
 from src.agent.tools import deliverable
 from src.agent import validators
+from src.benchmark.metric_contract import EVIDENCE_CONTRACT_VERSION
 
 
 def response(*calls, text=None):
@@ -54,6 +55,10 @@ def full(tmp_path, monkeypatch):
     ))
     instance.tracker = CostTracker(model="offline", provider="ollama-umons")
     instance._filter_skills = Mock(return_value="")
+    (tmp_path / "run_meta.json").write_text(json.dumps({
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+        "evidence_integrity": True,
+    }))
     action = Mock(return_value=json.dumps({"success": False, "authenticated": False}))
     tools = [
         {"name": "try_credential", "description": "offline action", "input_schema": {}, "function": action},
@@ -95,7 +100,9 @@ def test_model_text_stop_is_followed_by_validated_save(full):
     assert status == "completed"
     assert full.offline_action.call_count == 1
     assert len(create.call_args_list) == 3
-    assert [t["function"]["name"] for t in create.call_args_list[-1].kwargs["tools"]] == ["save_deliverable"]
+    assert [t["function"]["name"] for t in create.call_args_list[-1].kwargs["tools"]] == [
+        "try_credential", "save_deliverable"
+    ]
     attempts = [json.loads(s) for s in (full.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()]
     assert attempts[-1]["valid"] is True
     diagnostics = [json.loads(s) for s in (full.run_dir / "provider_events.jsonl").read_text().splitlines()]
@@ -116,7 +123,7 @@ def test_failed_finalization_keeps_observations_but_not_success_events(full):
     status, events = run_phase(full)
     assert status == "failed:phase5_completion_missing"
     assert full.offline_action.call_count == 1
-    assert create.call_count <= 5
+    assert create.call_count <= 6
     data = json.loads((full.run_dir / "05_intrusion.json").read_text())
     assert data["status"] == "incomplete"
     assert data["summary"]["devices_attempted"] == 1
@@ -275,7 +282,7 @@ def test_sdk_does_not_retry_failed_closing_requests(full):
     requests = []
     def respond(request):
         requests.append(json.loads(request.content))
-        if len(requests) == 1:
+        if len(requests) <= 2:
             return httpx.Response(200, json={
                 "id": "offline", "object": "chat.completion", "created": 1, "model": "offline",
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": "Done"}, "finish_reason": "stop"}],
@@ -289,6 +296,9 @@ def test_sdk_does_not_retry_failed_closing_requests(full):
             full.provider._retry_limit = 2
             with pytest.raises(openai.InternalServerError):
                 full._run_agent(AGENTS["intrusion"])
-    assert len(requests) == 2
+    assert len(requests) == 3
+    assert [t["function"]["name"] for t in requests[1]["tools"]] == [
+        "try_credential", "save_deliverable"
+    ]
     assert [t["function"]["name"] for t in requests[-1]["tools"]] == ["save_deliverable"]
     full.offline_action.assert_not_called()

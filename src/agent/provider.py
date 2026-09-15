@@ -14,6 +14,8 @@ import time
 from collections.abc import Callable
 from uuid import uuid4
 
+from src.agent.core.completion_policy import CompletionPolicy
+
 log = logging.getLogger(__name__)
 
 # Status codes that warrant a retry (transient server-side errors)
@@ -151,6 +153,22 @@ class _ProviderDiagnostics:
             no_tool_stalls=no_tool_stalls,
             finalization_requests=finalization_requests,
             data_tool_calls=data_tool_calls,
+        )
+
+    def continuation_requested(
+        self,
+        reason: str,
+        *,
+        response_category: str,
+        count: int,
+        turn: int,
+    ) -> None:
+        self.emit(
+            "continuation_requested",
+            reason=reason,
+            response_category=response_category,
+            count=count,
+            turn=turn,
         )
 
 
@@ -472,6 +490,9 @@ class LLMProvider:
         _REPEAT_THRESHOLD = 3
         _NO_TOOL_STALL_THRESHOLD = 3
         request_context = {"turn": 0, "attempt": 0, "request_started": False}
+        completion_policy = (
+            CompletionPolicy() if finalize_required_tool_on_stall else None
+        )
 
         terminal_api_tools = [
             tool for tool in api_tools
@@ -488,6 +509,8 @@ class LLMProvider:
 
         def enter_finalization(reason: str, current_turn: int) -> None:
             nonlocal finalization_observed
+            if completion_policy is not None:
+                completion_policy.enter_finalization()
             if finalization_observed:
                 return
             finalization_observed = True
@@ -502,6 +525,53 @@ class LLMProvider:
         def finish(value: str, cause: str, *, current_turn: int | None = None, **fields) -> str:
             diagnostics.terminal(cause, turn=current_turn, **fields)
             return value
+
+        def handle_interruption(
+            response_category: str,
+            current_turn: int,
+            *,
+            assistant_content: str | None = None,
+        ) -> bool:
+            """Schedule a bounded action-capable continuation or latch closing."""
+            nonlocal completion_only, finalization_only, reminder_sent
+            nonlocal force_any_tool_next_turn
+            if completion_policy is None:
+                return False
+            continued = completion_policy.request_continuation(
+                budget_reserved=completion_only or finalization_only
+            )
+            if assistant_content is not None:
+                messages.append({"role": "assistant", "content": assistant_content})
+            if continued:
+                diagnostics.continuation_requested(
+                    response_category,
+                    response_category=response_category,
+                    count=completion_policy.continuation_count,
+                    turn=current_turn,
+                )
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Continue with one available action tool, or call "
+                        f"'{required_tool}' if you are finished."
+                    ),
+                })
+                reminder_sent = True
+                force_any_tool_next_turn = True
+                return True
+            completion_only = True
+            finalization_only = True
+            enter_finalization(response_category, current_turn)
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"Call '{required_tool}' now using the results already collected. "
+                    "Do not call any other tool."
+                ),
+            })
+            reminder_sent = True
+            force_any_tool_next_turn = True
+            return False
 
         def create_completion(**kwargs):
             if cost_tracker is not None:
@@ -548,6 +618,7 @@ class LLMProvider:
                 completion_only = True
                 if finalize_required_tool_on_stall:
                     finalization_only = True
+                    completion_policy.enter_finalization()
             if (
                 finalize_required_tool_on_stall
                 and required_tool
@@ -670,13 +741,7 @@ class LLMProvider:
                         tool_call_count=0,
                     )
                 if finalize_required_tool_on_stall and required_tool and not required_tool_called:
-                    completion_only = True
-                    finalization_only = True
-                    enter_finalization("emptychoices", turn + 1)
-                    messages.append({
-                        "role": "user",
-                        "content": f"Call '{required_tool}' now using the results already collected.",
-                    })
+                    handle_interruption("emptychoices", turn + 1)
                 continue
             choice = response.choices[0]
             message = choice.message
@@ -713,20 +778,11 @@ class LLMProvider:
 
             if choice.finish_reason == "error":
                 if finalize_required_tool_on_stall and required_tool and not required_tool_called:
-                    # Do not issue an unbounded/nested fallback request for
-                    # opt-in finalization. Latch terminal mode immediately;
-                    # the next ordinary iteration consumes the bounded budget.
-                    completion_only = True
-                    finalization_only = True
-                    enter_finalization("finish_reasonerror", turn + 1)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"The previous completion attempt failed. Call '{required_tool}' now "
-                            "using the results already collected."
-                        ),
-                    })
-                    reminder_sent = True
+                    handle_interruption(
+                        "finish_reasonerror",
+                        turn + 1,
+                        assistant_content=message.content or "",
+                    )
                     continue
                 if malformed_retries < 2:
                     malformed_retries += 1
@@ -802,29 +858,11 @@ class LLMProvider:
                 ):
                     no_tool_stalls += 1
                     if finalize_required_tool_on_stall:
-                        # A text-only response is the stall signal for the
-                        # opt-in path. From the next request onward, only the
-                        # required terminal tool remains exposed.
-                        completion_only = True
-                        finalization_only = True
-                        if finalization_requests >= 3:
-                            return finish(
-                                finalization_unsatisfied("completion request budget exhausted"),
-                                "terminalretryexhausted",
-                                current_turn=turn + 1,
-                                last_save_outcome=diagnostics.last_save_outcome,
-                            )
-                        enter_finalization(response_type, turn + 1)
-                        messages.append({"role": "assistant", "content": message.content or ""})
-                        messages.append({
-                            "role": "user",
-                            "content": (
-                                f"You must call '{required_tool}' now using the results already collected. "
-                                "Do not describe completion or call any other tool."
-                            ),
-                        })
-                        reminder_sent = True
-                        force_any_tool_next_turn = True
+                        handle_interruption(
+                            response_type,
+                            turn + 1,
+                            assistant_content=message.content or "",
+                        )
                         continue
                     if (
                         no_tool_stalls >= _NO_TOOL_STALL_THRESHOLD
@@ -1041,6 +1079,12 @@ class LLMProvider:
                     )
                 
                 failed, fallback_used = self._tool_result_metadata(res)
+                if completion_policy is not None and tool_was_executed:
+                    completion_policy.action_executed(
+                        tc.function.name,
+                        terminate_after_tool,
+                        result=res,
+                    )
                 try:
                     result_payload = json.loads(res)
                 except (TypeError, ValueError, json.JSONDecodeError):
