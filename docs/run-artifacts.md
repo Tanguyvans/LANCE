@@ -89,7 +89,7 @@ leur isolation de processus et de système de fichiers.
 
 ```bash
 python -m pytest -q tests/test_run_artifact_isolation.py tests/test_deliverable_tools.py tests/test_validators.py tests/test_intrusion_structure_validator.py
-python -m pytest -q tests
+python -m pytest -q tests model_training/tests
 ```
 
 Les tests d'isolation créent de vrais objets `Pipeline`, mais ne lancent ni

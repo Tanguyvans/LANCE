@@ -3,15 +3,15 @@
   "source_role": "canonical-git-workspace",
   "execution_role": "training-only-workspace",
   "push_files": [
-    "training/requirements.txt",
-    "training/README_FEEDBACK_TRAINING.md",
-    "training/README_QWEN3B.md",
-    "training/configs/qlora_qwen2_5_3b.yaml",
-    "training/preflight_3b.py",
-    "training/prepare_3b_datasets.py",
-    "training/templates/qwen2_5_tools_assistant_mask.jinja",
-    "training/train_qlora_3b.py",
-    "training/workspace_sync.json"
+    "model_training/requirements.txt",
+    "model_training/README_FEEDBACK_TRAINING.md",
+    "model_training/README_QWEN3B.md",
+    "model_training/configs/qlora_qwen2_5_3b.yaml",
+    "model_training/preflight_3b.py",
+    "model_training/prepare_3b_datasets.py",
+    "model_training/templates/qwen2_5_tools_assistant_mask.jinja",
+    "model_training/train_qlora_3b.py",
+    "model_training/workspace_sync.json"
   ],
   "pull_report_globs": [
     "output/preflight_3b_report.json",

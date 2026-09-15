@@ -14,7 +14,13 @@ réimplémentée dans Tanguy, testée, puis resynchronisée.
 
 ## Frontière de synchronisation
 
-La liste blanche est versionnée dans `training/workspace_sync.json`. L'outil
+Le code d’entraînement est désormais dans `model_training/` (anciennement
+`training/`). La synchronisation copie les nouveaux chemins sans supprimer les
+anciens fichiers distants. Après synchronisation explicite, utiliser les nouvelles
+commandes et mettre à jour les lanceurs personnels ; aucun transfert GPU n’est
+effectué par le simple renommage du dépôt.
+
+La liste blanche est versionnée dans `model_training/workspace_sync.json`. L'outil
 `scripts/training_workspace.py` applique les règles suivantes :
 
 - aperçu en lecture seule par défaut ;
@@ -53,9 +59,9 @@ Puis travailler chez Leo :
 
 ```bash
 cd /home/leo/LANCE
-PYTHONDONTWRITEBYTECODE=1 env/bin/python training/preflight_3b.py --strict-gpu-idle
+PYTHONDONTWRITEBYTECODE=1 env/bin/python model_training/preflight_3b.py --strict-gpu-idle
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  PYTHONPATH= env/bin/python training/train_qlora_3b.py --expert recon
+  PYTHONPATH= env/bin/python model_training/train_qlora_3b.py --expert recon
 ```
 
 Après un préflight ou un entraînement, prévisualiser puis collecter uniquement
@@ -91,7 +97,7 @@ dans un document versionné, avec le commit et les hashes du manifeste source.
 
 1. Créer et tester le fichier dans Tanguy.
 2. Ajouter son chemin relatif exact à `push_files` dans
-   `training/workspace_sync.json`.
+   `model_training/workspace_sync.json`.
 3. Ajouter ou adapter les tests de frontière.
 4. Vérifier `status`, puis utiliser `push --apply`.
 

@@ -45,7 +45,8 @@ docs/benchmark/v1/     Explications du benchmark
 benchmarks/           Catalogue, scénarios, vérités terrain, topologies, packs, Ansible
 src/agent/            Un pipeline, organisé en six phases
 src/benchmark/        Évaluateur indépendant des déclarations de l’agent
-tests/                Tests automatisés et régressions
+tests/                Tests automatisés de l’application et de l’évaluateur
+model_training/       Entraînement des modèles, configurations et tests dédiés
 ```
 
 Le déroulement est : graphe → reconnaissance → analyse/filtrage → vérification

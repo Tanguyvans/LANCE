@@ -20,7 +20,7 @@ split.
 Validate dataset composition without loading the model or requiring CUDA:
 
 ```bash
-env/bin/python training/train_qlora_3b.py \
+env/bin/python model_training/train_qlora_3b.py \
   --expert vuln \
   --validate-only
 ```
@@ -28,13 +28,13 @@ env/bin/python training/train_qlora_3b.py \
 Train the vulnerability expert with feedback:
 
 ```bash
-env/bin/python training/train_qlora_3b.py --expert vuln
+env/bin/python model_training/train_qlora_3b.py --expert vuln
 ```
 
 Disable feedback for a baseline run:
 
 ```bash
-env/bin/python training/train_qlora_3b.py \
+env/bin/python model_training/train_qlora_3b.py \
   --expert vuln \
   --feedback-repeat 0
 ```

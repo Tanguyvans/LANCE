@@ -7,7 +7,7 @@ pytest.importorskip("trl")
 
 from datasets import Dataset, concatenate_datasets
 
-from training.train_qlora_3b import (
+from model_training.train_qlora_3b import (
     estimate_total_update_steps,
     normalize_chat_features,
     resolve_num_train_epochs,

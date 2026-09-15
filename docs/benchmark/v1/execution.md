@@ -132,7 +132,7 @@ Avant publication d’une modification : tests positifs et négatifs ciblés, su
 complète, puis essai contrôlé de développement sur le mini-PC. Depuis la racine :
 
 ```bash
-python -m pytest --rootdir=. -q tests --tb=short
+python -m pytest --rootdir=. -q tests model_training/tests --tb=short
 ```
 
 Les tests locaux ne prouvent pas la disponibilité de l’endpoint réel ni la bonne

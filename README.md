@@ -71,8 +71,14 @@ For the code structure, see the [phase guide](src/agent/phases/README.md) and th
 | `benchmarks/scenarios/{dev,test}/` | Scenario definitions grouped by purpose |
 | `benchmarks/ground_truth/{dev,test}/` | Matching ground truths; shared scoring contract at the parent level |
 | `benchmarks/ansible/` | Proxmox deployment and injection playbooks |
-| `tests/` | Automated regression tests |
+| `model_training/` | Model and QLoRA/MoE expert training, configurations and dedicated tests |
+| `tests/` | Automated application, pipeline and evaluator regression tests |
 | `tests/pipeline/` | Pipeline tests grouped by phase and responsibility |
+
+For model training, start with [model_training/README.md](model_training/README.md).
+Run the complete code test suite with `python -m pytest -q` (both `tests/` and
+`model_training/tests/`). These automated code tests are distinct from the
+benchmark's held-out evaluation scenarios.
 
 ## Dashboard
 

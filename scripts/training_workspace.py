@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Iterable
 
 CANONICAL_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MANIFEST = CANONICAL_ROOT / "training" / "workspace_sync.json"
+DEFAULT_MANIFEST = CANONICAL_ROOT / "model_training" / "workspace_sync.json"
 DEFAULT_REMOTE_ROOT = Path(
     os.environ.get("LANCE_TRAINING_WORKSPACE", "/home/leo/LANCE")
 )

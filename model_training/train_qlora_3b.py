@@ -140,7 +140,7 @@ def main() -> None:
     if not dataset_path.is_file():
         raise FileNotFoundError(
             f"Prepared 3B dataset not found: {dataset_path}. "
-            "Run training/prepare_3b_datasets.py first."
+            "Run model_training/prepare_3b_datasets.py first."
         )
 
     model_id = model_config["name_or_path"]

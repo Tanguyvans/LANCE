@@ -19,7 +19,7 @@ from scripts.training_workspace import (
 def _manifest(**overrides) -> dict:
     manifest = {
         "schema_version": "1.0",
-        "push_files": ["training/train_qlora_3b.py"],
+        "push_files": ["model_training/train_qlora_3b.py"],
         "pull_report_globs": [
             "output/preflight_3b_report.json",
             "output/adapters/lance-qlora_moe_3b_20260724/*/adapter_config.json",
@@ -50,7 +50,7 @@ def test_rejects_blocked_and_parent_paths() -> None:
 def test_push_is_allowlisted_and_non_destructive(tmp_path: Path) -> None:
     source = tmp_path / "source"
     remote = tmp_path / "remote"
-    training = source / "training"
+    training = source / "model_training"
     training.mkdir(parents=True)
     remote.mkdir()
     (training / "train_qlora_3b.py").write_text("canonical\n")
@@ -60,11 +60,11 @@ def test_push_is_allowlisted_and_non_destructive(tmp_path: Path) -> None:
 
     plan = build_push_plan(source, remote, _manifest())
     assert [str(item.relative_path) for item in plan] == [
-        "training/train_qlora_3b.py"
+        "model_training/train_qlora_3b.py"
     ]
     assert plan[0].status == "create"
     assert apply_plan(plan) == 1
-    assert (remote / "training" / "train_qlora_3b.py").read_text() == "canonical\n"
+    assert (remote / "model_training" / "train_qlora_3b.py").read_text() == "canonical\n"
     assert unrelated.read_text() == "keep me\n"
 
 
@@ -105,11 +105,11 @@ def test_default_adapter_destination_matches_hmoe_service() -> None:
 
 
 def test_repository_manifest_includes_training_dependencies(tmp_path: Path) -> None:
-    root = Path(__file__).resolve().parents[1]
-    manifest = load_manifest(root / "training" / "workspace_sync.json")
+    root = Path(__file__).resolve().parents[2]
+    manifest = load_manifest(root / "model_training" / "workspace_sync.json")
     plan = build_push_plan(root, tmp_path, manifest)
 
-    assert Path("training/requirements.txt") in {item.relative_path for item in plan}
+    assert Path("model_training/requirements.txt") in {item.relative_path for item in plan}
 
 
 

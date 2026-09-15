@@ -37,13 +37,13 @@ Regenerate all datasets:
 
 ```bash
 cd /home/leo/LANCE
-PYTHONPATH= env/bin/python training/prepare_3b_datasets.py
+PYTHONPATH= env/bin/python model_training/prepare_3b_datasets.py
 ```
 
 Regenerate one expert:
 
 ```bash
-PYTHONPATH= env/bin/python training/prepare_3b_datasets.py --experts recon
+PYTHONPATH= env/bin/python model_training/prepare_3b_datasets.py --experts recon
 ```
 
 ## Preflight
@@ -54,7 +54,7 @@ safety:
 
 ```bash
 cd /home/leo/LANCE
-PYTHONDONTWRITEBYTECODE=1 env/bin/python training/preflight_3b.py --strict-gpu-idle
+PYTHONDONTWRITEBYTECODE=1 env/bin/python model_training/preflight_3b.py --strict-gpu-idle
 ```
 
 The command never loads model weights and never starts training. It writes a
@@ -66,7 +66,7 @@ After all four runs, validate that every adapter is complete and declares the
 Qwen2.5-3B base model, still without loading model weights:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 env/bin/python training/preflight_3b.py \
+PYTHONDONTWRITEBYTECODE=1 env/bin/python model_training/preflight_3b.py \
   --require-adapters --allow-existing-output
 ```
 
@@ -83,7 +83,7 @@ Train one expert:
 ```bash
 cd /home/leo/LANCE
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  PYTHONPATH= env/bin/python training/train_qlora_3b.py --expert recon
+  PYTHONPATH= env/bin/python model_training/train_qlora_3b.py --expert recon
 ```
 
 Available experts are `secretary`, `recon`, `vuln`, and `exploit`. This refreshed
@@ -99,7 +99,7 @@ Resume the latest checkpoint:
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  PYTHONPATH= env/bin/python training/train_qlora_3b.py \
+  PYTHONPATH= env/bin/python model_training/train_qlora_3b.py \
   --expert recon --resume-from-checkpoint
 ```
 
@@ -107,7 +107,7 @@ If a 6144-token expert still runs out of memory, retry it with:
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  PYTHONPATH= env/bin/python training/train_qlora_3b.py \
+  PYTHONPATH= env/bin/python model_training/train_qlora_3b.py \
   --expert recon --max-seq-length 4096
 ```
 

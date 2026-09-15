@@ -177,7 +177,7 @@ def runtime_checks() -> tuple[dict[str, Any], list[str], list[str]]:
 
 
 def run_dataset_validation(config_path: Path, experts: list[str]) -> list[str]:
-    command_path = PROJECT_ROOT / "training" / "train_qlora_3b.py"
+    command_path = PROJECT_ROOT / "model_training" / "train_qlora_3b.py"
     outputs: list[str] = []
     for expert in experts:
         command = [sys.executable, str(command_path), "--expert", expert, "--config", str(config_path), "--validate-only"]
@@ -204,7 +204,7 @@ def write_report(path: Path, report: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Preflight Qwen2.5-3B; never trains a model")
-    parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "training/configs/qlora_qwen2_5_3b.yaml")
+    parser.add_argument("--config", type=Path, default=PROJECT_ROOT / "model_training/configs/qlora_qwen2_5_3b.yaml")
     parser.add_argument("--experts", nargs="+", choices=EXPERTS, default=list(EXPERTS))
     parser.add_argument("--min-free-gb", type=float, default=40.0)
     parser.add_argument("--strict-gpu-idle", action="store_true")

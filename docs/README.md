@@ -20,6 +20,7 @@ son introduction.
 
 ## Guides complémentaires
 
+- [Entraînement des modèles et experts MoE](../model_training/README.md).
 - [Scénarios manuels hors catalogue](manual_scenarios.md).
 - [Infrastructure Ansible](../benchmarks/ansible/README.md) : installation et exploitation, à adapter au laboratoire.
 - [Boucle d’apprentissage](LEARNING_LOOP.md).
