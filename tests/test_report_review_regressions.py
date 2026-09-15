@@ -27,7 +27,6 @@ def report_run(tmp_path, monkeypatch):
         pipeline._stop_event = Event()
         pipeline.context = {"target_subnet": "192.168.100.0/24", "device_count": "4"}
         pipeline._run_results = {"exploitation": "completed", "intrusion": "completed"}
-        monkeypatch.setattr("src.agent.validators.OUTPUT_DIR", pipeline.run_dir)
         findings = [
             {"id": f"V{n}", "device_id": f"device-{n}", "device_ip": f"192.0.2.{n}",
              "type": "no_auth", "severity": "HIGH", "service": "mqtt", "port": 1883,
@@ -98,7 +97,7 @@ def test_report_is_composed_once_and_keeps_all_verified_rows(report_run, profile
     status = run_phase(pipeline, AGENTS["report"], events.append)
     assert status.partition(":")[0] == expected
     assert pipeline.provider.chat_with_tools.call_count == 1
-    valid, reason = runtime.VALIDATORS["final_report_markdown"]("06_report.md")
+    valid, reason = pipeline._validator("final_report_markdown")("06_report.md")
     assert valid, reason
     report = (pipeline.run_dir / "06_report.md").read_text()
     prefill = (pipeline.run_dir / "06_report_prefill.md").read_text()
@@ -154,7 +153,7 @@ def test_stale_note_and_final_report_cannot_hide_a_new_timeout(report_run, profi
 @pytest.mark.parametrize("profile", ["compact", "full"])
 def test_invalid_report_is_failure_even_with_usable_memo(report_run, profile, monkeypatch):
     pipeline = report_run(profile, "ok")
-    monkeypatch.setitem(runtime.VALIDATORS, "final_report_markdown", lambda _: (False, "offline_invalid"))
+    monkeypatch.setitem(runtime.VALIDATORS, "final_report_markdown", lambda _, **kwargs: (False, "offline_invalid"))
     events = []
     assert run_phase(pipeline, AGENTS["report"], events.append).startswith("failed:")
     assert events[-1]["status"].startswith("failed:")

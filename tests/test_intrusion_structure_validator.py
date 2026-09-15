@@ -3,13 +3,11 @@ import json
 
 import pytest
 
-import src.agent.validators as validators
 from src.agent.validators import VALIDATORS, validate_json_intrusion
 
 
 @pytest.fixture(autouse=True)
-def clean_output(tmp_path, monkeypatch):
-    monkeypatch.setattr(validators, "OUTPUT_DIR", tmp_path)
+def clean_output(tmp_path):
     return tmp_path
 
 
@@ -19,7 +17,7 @@ def write_json(output_dir, payload, filename="intrusion.json"):
         path.write_text(payload, encoding="utf-8")
     else:
         path.write_text(json.dumps(payload), encoding="utf-8")
-    return validate_json_intrusion(filename)
+    return validate_json_intrusion(filename, output_dir=output_dir)
 
 
 def zero_access():

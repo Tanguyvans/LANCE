@@ -2,7 +2,7 @@
 
 Artifact for the ACSAC 2026 paper submission. Contains two contributions:
 
-- **IoTChainBench** — 29 public network-scale IoT scenarios with per-vulnerability ground truth: S1–S19 for development and S20–S29 reserved for testing. Historical independence of the test set is not yet verified. See the [scenario catalogue](benchmarks/catalog.yaml) and [evaluation protocol](benchmarks/docs/EVALUATION_PROTOCOL.md).
+- **IoTChainBench** — 29 public network-scale IoT scenarios with per-vulnerability ground truth: S1–S19 for development and S20–S29 reserved for testing. Historical independence of the test set is not yet verified. See the [scenario catalogue](benchmarks/catalog.yaml) and [benchmark V1 documentation](docs/benchmark/v1/README.md).
 - **LANCE** — a six-phase LLM agent harness for multi-hop IoT penetration testing.
 
 ## Quick Start
@@ -58,6 +58,11 @@ strict allowlist to the execution-only GPU workspace. See the
 [training workspace guide](docs/TRAINING_WORKSPACES.md).
 
 ## Key Directories
+
+Start with the [documentation index](docs/README.md) and the
+[benchmark V1 reference](docs/benchmark/v1/README.md) (French).
+For the code structure, see the [phase guide](src/agent/phases/README.md) and the
+[run-local artifact contract](docs/run-artifacts.md) (French).
 
 | Path | Description |
 |------|-------------|

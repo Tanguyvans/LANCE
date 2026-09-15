@@ -3,6 +3,22 @@ import json
 from pathlib import Path
 
 
+def resolve_run_artifact(output_dir: Path, filename: str) -> Path:
+    """Resolve a relative artifact inside one run, rejecting escaping symlinks."""
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("filename must be a non-empty relative path")
+    relative = Path(filename)
+    if relative.is_absolute():
+        raise ValueError("absolute deliverable paths are not allowed")
+    root = Path(output_dir).resolve()
+    candidate = (root / relative).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("deliverable path escapes the output directory") from exc
+    return candidate
+
+
 PRIVATE_AGENT_ARTIFACT_NAMES: frozenset[str] = frozenset({
     "ground_truth.yaml",
     "provider_events.jsonl",

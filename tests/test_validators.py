@@ -14,52 +14,49 @@ from src.agent.validators import (
     validate_json_vuln_queue,
     validate_json_exploitation,
     VALIDATORS,
-    OUTPUT_DIR,
 )
 
 
 @pytest.fixture(autouse=True)
-def clean_output(tmp_path, monkeypatch):
-    """Use a temp directory for output/agent."""
-    import src.agent.validators as mod
-    monkeypatch.setattr(mod, "OUTPUT_DIR", tmp_path)
+def clean_output(tmp_path):
+    """Pass each test's output directory explicitly."""
     return tmp_path
 
 
 class TestValidateDefault:
     def test_missing_file(self, clean_output):
-        ok, msg = validate_default("nonexistent.md")
+        ok, msg = validate_default("nonexistent.md", output_dir=clean_output)
         assert not ok
         assert "not found" in msg
 
     def test_empty_file(self, clean_output):
         (clean_output / "empty.md").write_text("")
-        ok, msg = validate_default("empty.md")
+        ok, msg = validate_default("empty.md", output_dir=clean_output)
         assert not ok
         assert "empty" in msg
 
     def test_valid_file(self, clean_output):
         (clean_output / "valid.md").write_text("content")
-        ok, msg = validate_default("valid.md")
+        ok, msg = validate_default("valid.md", output_dir=clean_output)
         assert ok
 
 
 class TestValidateMarkdown:
     def test_no_headings(self, clean_output):
         (clean_output / "bad.md").write_text("No headings here")
-        ok, msg = validate_markdown_with_sections("bad.md")
+        ok, msg = validate_markdown_with_sections("bad.md", output_dir=clean_output)
         assert not ok
         assert "0" in msg
 
     def test_one_heading(self, clean_output):
         (clean_output / "one.md").write_text("## Only one\nContent")
-        ok, msg = validate_markdown_with_sections("one.md")
+        ok, msg = validate_markdown_with_sections("one.md", output_dir=clean_output)
         assert not ok
 
     def test_valid_markdown(self, clean_output):
         content = "## Section 1\nText\n## Section 2\nMore text"
         (clean_output / "good.md").write_text(content)
-        ok, msg = validate_markdown_with_sections("good.md")
+        ok, msg = validate_markdown_with_sections("good.md", output_dir=clean_output)
         assert ok
 
     def test_recon_rejects_short_single_device_report(self, clean_output):
@@ -71,13 +68,13 @@ class TestValidateMarkdown:
             "## 3. Key Findings\nNone"
         )
         (clean_output / "recon.md").write_text(content)
-        ok, msg = validate_recon_markdown("recon.md")
+        ok, msg = validate_recon_markdown("recon.md", output_dir=clean_output)
         assert not ok
         assert "rows" in msg or "short" in msg
 
     def test_report_rejects_missing_sections_and_placeholders(self, clean_output):
         (clean_output / "report.md").write_text("## 1. Executive Summary\nIncomplete")
-        ok, msg = validate_report_markdown("report.md")
+        ok, msg = validate_report_markdown("report.md", output_dir=clean_output)
         assert not ok
         assert "sections" in msg
 
@@ -88,7 +85,7 @@ class TestValidateMarkdown:
         )
         (clean_output / "final.md").write_text(content)
 
-        ok, msg = validate_final_report_markdown("final.md")
+        ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
 
         assert ok, msg
 
@@ -99,7 +96,7 @@ class TestValidateMarkdown:
         ) + "\n{{SECTION_5_TABLE}}\n"
         (clean_output / "final.md").write_text(content)
 
-        ok, msg = validate_final_report_markdown("final.md")
+        ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
 
         assert not ok
         assert "Unresolved" in msg
@@ -120,7 +117,7 @@ class TestValidateMarkdown:
         )
         (clean_output / "final.md").write_text(content)
 
-        ok, msg = validate_final_report_markdown("final.md")
+        ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
 
         assert not ok
         assert "Phase 4" in msg
@@ -129,13 +126,13 @@ class TestValidateMarkdown:
 class TestValidateJsonQueue:
     def test_invalid_json(self, clean_output):
         (clean_output / "bad.json").write_text("not json")
-        ok, msg = validate_json_vuln_queue("bad.json")
+        ok, msg = validate_json_vuln_queue("bad.json", output_dir=clean_output)
         assert not ok
         assert "Invalid JSON" in msg
 
     def test_missing_key(self, clean_output):
         (clean_output / "nokey.json").write_text('{"other": []}')
-        ok, msg = validate_json_vuln_queue("nokey.json")
+        ok, msg = validate_json_vuln_queue("nokey.json", output_dir=clean_output)
         assert not ok
         assert "vulnerabilities" in msg
 
@@ -145,14 +142,14 @@ class TestValidateJsonQueue:
             "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
         }], "summary": {"total": 1}}
         (clean_output / "good.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("good.json")
+        ok, msg = validate_json_vuln_queue("good.json", output_dir=clean_output)
         assert ok
 
 
     def test_queue_rejects_missing_structural_fields(self, clean_output):
         data = {"vulnerabilities": [{"id": "VULN-001"}]}
         (clean_output / "missing-structure.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("missing-structure.json")
+        ok, msg = validate_json_vuln_queue("missing-structure.json", output_dir=clean_output)
         assert not ok
         assert "structural fields" in msg
 
@@ -164,33 +161,33 @@ class TestValidateJsonQueue:
         (clean_output / "duplicates.json").write_text(json.dumps({
             "vulnerabilities": [finding, dict(finding)],
         }))
-        ok, msg = validate_json_vuln_queue("duplicates.json")
+        ok, msg = validate_json_vuln_queue("duplicates.json", output_dir=clean_output)
         assert not ok
         assert "Duplicate" in msg
 
     def test_empty_queue(self, clean_output):
         data = {"vulnerabilities": []}
         (clean_output / "empty.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("empty.json")
+        ok, msg = validate_json_vuln_queue("empty.json", output_dir=clean_output)
         assert ok  # Valid structure, just empty
 
 
 class TestValidateJsonExploitation:
     def test_invalid_json(self, clean_output):
         (clean_output / "bad.json").write_text("not json")
-        ok, msg = validate_json_exploitation("bad.json")
+        ok, msg = validate_json_exploitation("bad.json", output_dir=clean_output)
         assert not ok
         assert "Invalid JSON" in msg
 
     def test_missing_tests_key(self, clean_output):
         (clean_output / "nokey.json").write_text('{"other": []}')
-        ok, msg = validate_json_exploitation("nokey.json")
+        ok, msg = validate_json_exploitation("nokey.json", output_dir=clean_output)
         assert not ok
         assert "tests" in msg
 
     def test_tests_not_array(self, clean_output):
         (clean_output / "notarray.json").write_text('{"tests": "string"}')
-        ok, msg = validate_json_exploitation("notarray.json")
+        ok, msg = validate_json_exploitation("notarray.json", output_dir=clean_output)
         assert not ok
         assert "array" in msg
 
@@ -200,7 +197,7 @@ class TestValidateJsonExploitation:
             "tests": [{"vuln_id": "VULN-001", "status": "CONFIRMED"}],
         }
         (clean_output / "good.json").write_text(json.dumps(data))
-        ok, msg = validate_json_exploitation("good.json")
+        ok, msg = validate_json_exploitation("good.json", output_dir=clean_output)
         assert ok
 
     def test_exploitation_accepts_skipped_unscheduled_findings(self, clean_output):
@@ -222,7 +219,7 @@ class TestValidateJsonExploitation:
         }
         (clean_output / "skipped.json").write_text(json.dumps(data))
 
-        ok, msg = validate_json_exploitation("skipped.json")
+        ok, msg = validate_json_exploitation("skipped.json", output_dir=clean_output)
 
         assert ok, msg
 
@@ -242,7 +239,7 @@ class TestValidateJsonExploitation:
         }
         (clean_output / "all-errors.json").write_text(json.dumps(data))
 
-        ok, msg = validate_json_exploitation("all-errors.json")
+        ok, msg = validate_json_exploitation("all-errors.json", output_dir=clean_output)
 
         assert not ok
         assert "Missing per-vulnerability" in msg or "Phase 4" in msg
@@ -253,7 +250,7 @@ class TestValidateDeviceVulns:
         (clean_output / "fragment.json").write_text(json.dumps({
             "id": "CVE-001", "type": "known_cve",
         }))
-        ok, msg = validate_json_device_vulns("fragment.json")
+        ok, msg = validate_json_device_vulns("fragment.json", output_dir=clean_output)
         assert not ok
         assert "vulnerabilities" in msg
 
@@ -262,7 +259,7 @@ class TestValidateDeviceVulns:
             "device_id": "device-a",
             "vulnerabilities": [{"type": "missing_header"}],
         }))
-        ok, msg = validate_json_device_vulns("device.json")
+        ok, msg = validate_json_device_vulns("device.json", output_dir=clean_output)
         assert ok
 
 

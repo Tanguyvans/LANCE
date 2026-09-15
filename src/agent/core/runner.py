@@ -13,7 +13,8 @@ from src.agent.core.provider_diagnostics import (
     sanitize_event,
     warn_diagnostic_failure,
 )
-from src.agent.artifacts import is_private_agent_artifact_path
+from src.agent.artifacts import is_private_agent_artifact_path, resolve_run_artifact
+from src.agent.tools.deliverable import bind_deliverable_tool
 
 
 log = logging.getLogger(__name__)
@@ -21,6 +22,16 @@ log = logging.getLogger(__name__)
 
 class AgentRunner:
     """Phase operations using the shared run state; no independent lifecycle."""
+
+    def _validator(self, name: str) -> Callable[[str], tuple[bool, str]]:
+        """Capture this run's directory; validators never consult mutable globals."""
+        validator = runtime.VALIDATORS.get(name, runtime.VALIDATORS["default"])
+        root = self.run_dir.resolve()
+
+        def validate(filename: str) -> tuple[bool, str]:
+            return validator(filename, output_dir=root)
+
+        return validate
 
     def _model_stream_callback(
         self,
@@ -85,6 +96,7 @@ class AgentRunner:
         """
         wrapped: list[dict] = []
         for tool in tools:
+            tool = bind_deliverable_tool(tool, self.run_dir)
             if tool["name"] != "save_deliverable":
                 wrapped.append(tool)
                 continue
@@ -127,14 +139,14 @@ class AgentRunner:
                 elif strict_compact_recon:
                     normalized = self._finalize_compact_recon_markdown(normalized)
                 safe_name = target.replace("/", "__").replace("\\", "__")
-                attempt_dir = self.run_dir / ".attempts" / safe_name
+                attempt_dir = resolve_run_artifact(self.run_dir, f".attempts/{safe_name}")
                 attempt_dir.mkdir(parents=True, exist_ok=True)
                 suffix = Path(target).suffix or ".txt"
                 attempt_path = attempt_dir / f"attempt-{uuid4().hex}{suffix}"
                 attempt_path.write_text(normalized, encoding="utf-8")
                 attempt_ref = attempt_path.relative_to(self.run_dir).as_posix()
 
-                validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+                validator_fn = self._validator(config.validator)
                 valid, validation_error = validator_fn(attempt_ref)
                 if valid and config.name == "graph_analysis":
                     projection = self._build_graph_evidence_projection()
@@ -259,7 +271,6 @@ class AgentRunner:
         variables = {**self.context}
         variables["previous_deliverables"] = self._list_previous_deliverables()
         variables["expected_deliverable"] = config.deliverable_file
-        runtime.set_expected_deliverable(config.deliverable_file)
         variables["available_skills"] = self._filter_skills(config)
         variables["turn_budget"] = max_turns
         variables["intrusion_campaign_stop_turn"] = max(1, int(max_turns * 0.875))
@@ -365,7 +376,7 @@ class AgentRunner:
         # If this phase uses deterministic aggregation, skip the LLM and merge directly
         if config.deterministic_aggregation:
             self._aggregate_device_vulns(config, stream_callback)
-            validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+            validator_fn = self._validator(config.validator)
             valid, msg = validator_fn(config.deliverable_file)
             if valid and config.name == "vuln_analysis":
                 status = getattr(self, "_phase3_execution_status", None) or "completed"
@@ -397,7 +408,7 @@ class AgentRunner:
             if new_hosts and not self.dry_run:
                 self._run_discovery_followup(new_hosts, config, stream_callback)
             # Deterministic aggregation already wrote 04_exploitation.json
-            validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+            validator_fn = self._validator(config.validator)
             valid, msg = validator_fn(config.deliverable_file)
             if valid:
                 status = getattr(self, "_phase4_execution_status", None) or "completed"
@@ -474,7 +485,7 @@ class AgentRunner:
         # completion tool, not accepted as a model submission. Keep that
         # completion contract distinct from the model's structural validator.
         validator_name = "json_valid" if local_intrusion_memo else config.validator
-        validator_fn = runtime.VALIDATORS.get(validator_name, runtime.VALIDATORS["default"])
+        validator_fn = self._validator(validator_name)
         valid, msg = validator_fn(config.deliverable_file)
         if full_intrusion and valid and not self._full_intrusion_saved:
             valid, msg = False, "Accepted Phase 5 submission not found in this execution"

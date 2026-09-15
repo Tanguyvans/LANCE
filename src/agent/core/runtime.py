@@ -57,8 +57,6 @@ from src.agent.tools.recon_tools import RECON_TOOLS
 from src.agent.tools.tool_loader import filter_unavailable_tools
 from src.agent.tools.deliverable import (
     DELIVERABLE_TOOLS,
-    set_output_dir,
-    set_expected_deliverable,
     _extract_json,
 )
 from src.agent.tools.skill_tools import (

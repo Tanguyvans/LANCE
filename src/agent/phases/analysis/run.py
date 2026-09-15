@@ -732,7 +732,6 @@ class AnalysisPhase:
             variables["device_services"] = services_str
             variables["device_os"] = device_os
             variables["expected_deliverable"] = deliverable_file
-            runtime.set_expected_deliverable(deliverable_file)
             variables["scan_results"] = json.dumps(scan_for_prompt, separators=(',', ':'), ensure_ascii=False)
             variables["trivial_findings"] = json.dumps(
                 scan_data.get("findings", []), separators=(',', ':'), ensure_ascii=False

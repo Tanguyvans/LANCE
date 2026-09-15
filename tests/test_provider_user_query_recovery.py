@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from src.agent import provider as provider_module
+from src.agent.core import provider_transport
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.provider import LLMProvider
 
@@ -115,7 +115,7 @@ def test_persistent_rejection_raises_without_recovery_or_retries(status_code, mo
     provider = _make_provider(transport)
     provider._retry_limit = 5
     monkeypatch.setattr(
-        provider_module.time,
+        provider_transport.time,
         "sleep",
         lambda delay: pytest.fail(f"unexpected SDK retry sleep: {delay}"),
     )
@@ -139,7 +139,7 @@ def test_first_turn_rejection_does_not_trigger_recovery(status_code, monkeypatch
     provider = _make_provider(transport)
     provider._retry_limit = 5
     monkeypatch.setattr(
-        provider_module.time,
+        provider_transport.time,
         "sleep",
         lambda delay: pytest.fail(f"unexpected SDK retry sleep: {delay}"),
     )
@@ -207,7 +207,7 @@ def test_recovery_respects_budget_deadline_stop_and_max_turns(monkeypatch):
     assert len(stop_requests) == 2
 
     clock = {"now": 99.0}
-    monkeypatch.setattr(provider_module.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(provider_transport.time, "monotonic", lambda: clock["now"])
     deadline_requests, deadline_transport = make_tool_and_transport(lambda: clock.update(now=101.0))
     deadline_provider = _make_provider(deadline_transport)
     try:

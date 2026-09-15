@@ -44,7 +44,7 @@ class IntrusionPhase:
                 })
 
         path = self.run_dir / config.deliverable_file
-        validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+        validator_fn = self._validator(config.validator)
         valid = False
         if path.exists():
             valid, _ = validator_fn(config.deliverable_file)

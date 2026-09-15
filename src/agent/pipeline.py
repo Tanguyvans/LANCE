@@ -94,6 +94,7 @@ class Pipeline(
         benchmark_split: str | None = None,
         manage_scenario: bool = True,
         execution_profile: str = "auto",
+        output_dir: Path | None = None,  # Parent directory; each run gets its own child.
     ):
         self.provider = provider
         self.execution_profile_resolution = runtime.resolve_execution_profile_for_model(
@@ -188,14 +189,16 @@ class Pipeline(
 
         # Create timestamped run directory
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        self.run_dir = OUTPUT_DIR / timestamp
-        self.run_dir.mkdir(parents=True, exist_ok=True)
+        output_root = Path(output_dir if output_dir is not None else OUTPUT_DIR).resolve()
+        output_root.mkdir(parents=True, exist_ok=True)
+        self.run_dir = output_root / timestamp
+        while True:
+            try:
+                self.run_dir.mkdir()
+                break
+            except FileExistsError:
+                self.run_dir = output_root / f"{timestamp}_{uuid4().hex[:12]}"
         self.git_commit = runtime._get_git_commit()
-
-        # Point deliverable tools and validators at this run dir
-        runtime.set_output_dir(self.run_dir)
-        import src.agent.validators as val_mod
-        val_mod.OUTPUT_DIR = self.run_dir
 
     def run(
         self,

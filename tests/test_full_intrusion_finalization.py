@@ -13,7 +13,6 @@ from src.agent.pipeline import Pipeline
 from src.agent.provider import LLMProvider
 from src.agent.registry import AGENTS
 from src.agent.tools import deliverable
-from src.agent import validators
 from src.benchmark.metric_contract import EVIDENCE_CONTRACT_VERSION
 
 
@@ -33,8 +32,6 @@ def response(*calls, text=None):
 @pytest.fixture
 def full(tmp_path, monkeypatch):
     monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
-    monkeypatch.setattr(deliverable, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr(validators, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(runtime, "load_prompt", lambda *args: "Offline finalization test")
     instance = Pipeline.__new__(Pipeline)
     instance.run_dir = tmp_path
@@ -252,7 +249,7 @@ def test_repeated_actions_end_in_save_only_not_another_credential_burst(full):
 def test_stop_after_accepted_save_is_not_announced_as_success(full):
     original = deliverable.save_deliverable
     def stopping_save(**kwargs):
-        result = original(**kwargs)
+        result = original(**kwargs, output_dir=full.run_dir)
         full._stop_event.set()
         return result
     saved_tools = full._resolve_tools(AGENTS["intrusion"])

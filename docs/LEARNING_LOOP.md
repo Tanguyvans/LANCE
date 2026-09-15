@@ -30,7 +30,7 @@ vérifiable localement ; une origine absente n’est pas présumée être du dev
 Ces contrôles protègent le workflow ; ils ne prouvent pas qu’un contenu copié
 manuellement n’a jamais été exposé. La réserve de test S20–S29 reste provisoire
 tant que son indépendance historique n’a pas été vérifiée : voir le
-[protocole](../benchmarks/docs/EVALUATION_PROTOCOL.md).
+[protocole V1](benchmark/v1/evaluation.md).
 
 ## Commandes
 

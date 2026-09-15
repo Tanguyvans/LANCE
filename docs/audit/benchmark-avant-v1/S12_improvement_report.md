@@ -1,5 +1,10 @@
 # Rapport d'amélioration — Scénario 12 (Smart City Large Scale)
 
+> **Archive antérieure à la documentation V1**, conservée le 2026-09-15.
+> Les mentions « courant », versions, commandes et états ci-dessous décrivent
+> des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
+> Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
+
 **Date d'analyse :** 2026-04-17
 **Runs analysés :** 2026-04-16_133348 (MiniMax-M2.7), 2026-04-16_192535 (DeepSeek-v3)
 **Ground truth :** 42 vulnérabilités, score max = 125 pts

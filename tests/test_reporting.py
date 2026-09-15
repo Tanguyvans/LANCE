@@ -70,7 +70,7 @@ def test_fallback_report_uses_run_metadata(pipeline):
 
 
 def test_valid_report_merges_prefill_once(pipeline, monkeypatch):
-    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _: (True, "OK"))
+    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _, **kwargs: (True, "OK"))
     report = pipeline.run_dir / "06_report.md"
     report.write_text("Author narrative\n{{SECTION_5_TABLE}}\n{{SECTION_6_TABLES}}")
     pipeline._pregenerate_report_sections()
@@ -84,7 +84,7 @@ def test_valid_report_merges_prefill_once(pipeline, monkeypatch):
 
 @pytest.mark.parametrize("invalid", ["(max turns reached)", "invalid model report"])
 def test_invalid_report_is_replaced_by_fallback(pipeline, monkeypatch, invalid):
-    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _: (False, "invalid"))
+    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _, **kwargs: (False, "invalid"))
     pipeline._generate_phase6_context()
     pipeline._pregenerate_report_sections()
     report = pipeline.run_dir / "06_report.md"

@@ -171,6 +171,6 @@ class CompactReconPhase:
                 "name": "save_deliverable",
                 "result": str(result)[:2000],
             })
-        validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+        validator_fn = self._validator(config.validator)
         valid, _ = validator_fn(config.deliverable_file)
         return valid

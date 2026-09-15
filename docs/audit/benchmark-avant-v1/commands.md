@@ -1,5 +1,10 @@
 # Benchmark Commands
 
+> **Archive antérieure à la documentation V1**, conservée le 2026-09-15.
+> Les mentions « courant », versions, commandes et états ci-dessous décrivent
+> des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
+> Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
+
 ## Setup initial (une seule fois)
 
 ### 1. Installer les dépendances

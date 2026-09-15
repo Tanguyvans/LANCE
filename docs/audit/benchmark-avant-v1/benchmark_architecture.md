@@ -1,5 +1,10 @@
 # Architecture modulaire du benchmark
 
+> **Archive antérieure à la documentation V1**, conservée le 2026-09-15.
+> Les mentions « courant », versions, commandes et états ci-dessous décrivent
+> des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
+> Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
+
 > **Statut : implémentée** (à quelques déviations près décrites ci-dessous). Le générateur
 > `benchmarks/tools/compose_gt.py` existe et produit les ground truths depuis
 > `scenarios/` + `topologies/` + `packs/definitions/`. Écarts par rapport à la proposition

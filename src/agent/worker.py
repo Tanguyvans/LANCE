@@ -65,7 +65,6 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     import src.agent.pipeline as pipeline_module
 
-    pipeline_module.OUTPUT_DIR = args.output_dir
     provider = LLMProvider(provider=args.provider, model=args.model)
     pipeline = pipeline_module.Pipeline(
         provider=provider,
@@ -77,6 +76,7 @@ def main() -> None:
         manage_scenario=False,
         auto_teardown=False,
         execution_profile=args.execution_profile,
+        output_dir=args.output_dir,
     )
     results = pipeline.run()
 

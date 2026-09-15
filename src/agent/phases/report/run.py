@@ -31,7 +31,7 @@ class ReportPhase:
     def _merge_report_with_prefill(self) -> None:
         report_rendering.merge_report_with_prefill(
             self.run_dir, self.context, model=self.provider.model,
-            validate_report=runtime.VALIDATORS["report_markdown"],
+            validate_report=self._validator("report_markdown"),
         )
 
     def _run_local_report_phase(
@@ -146,12 +146,10 @@ class ReportPhase:
             try:
                 report_rendering.render_deterministic_report(
                     self.run_dir, self.context, model=self.provider.model,
-                    validate_report=runtime.VALIDATORS["report_markdown"],
+                    validate_report=self._validator("report_markdown"),
                     analysis_status=note_status, analysis_cause=cause,
                 )
-                final_valid, validation_message = runtime.VALIDATORS[
-                    "final_report_markdown"
-                ](config.deliverable_file)
+                final_valid, validation_message = self._validator("final_report_markdown")(config.deliverable_file)
             except Exception as exc:
                 validation_message = f"render_error:{exc}"
                 phase_error = phase_error or str(exc)

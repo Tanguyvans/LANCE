@@ -1,5 +1,10 @@
 # Protocole d’évaluation
 
+> **Archive antérieure à la documentation V1**, conservée le 2026-09-15.
+> Les mentions « courant », versions, commandes et états ci-dessous décrivent
+> des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
+> Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
+
 ## Protocole courant — catalogue 3.2.0
 
 Les métriques courantes suivent le contrat **strict-v3.8 / evidence-v6** :
@@ -16,7 +21,7 @@ La version 3.7 renforce les preuves MySQL et rend les tentatives, succès et tau
 de pivot indisponibles tant que l'exécuteur ne fournit pas de provenance causale
 des transitions. Plusieurs accès directs ne démontrent pas un pivot.
 
-Le [catalogue](../catalog.yaml) est la référence pour les groupes. Un seul
+Le [catalogue](../../../benchmarks/catalog.yaml) est la référence pour les groupes. Un seul
 harness et un seul évaluateur sont utilisés pour les 29 scénarios publics.
 
 | Groupe | Scénarios | Usage |

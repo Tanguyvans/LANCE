@@ -1543,6 +1543,6 @@ class CompactIntrusionPhase:
         data["completion_source"] = COMPACT_INTRUSION_COMPLETION_TOOL
         path = self.run_dir / "05_intrusion.json"
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        validator = runtime.VALIDATORS.get("json_valid", runtime.VALIDATORS["default"])
+        validator = self._validator("json_valid")
         valid, _ = validator("05_intrusion.json")
         return valid

@@ -855,7 +855,6 @@ class ReconPhase:
             variables["device_services"] = ", ".join(str(p) for p in host.get("open_ports", []))
             variables["device_os"] = "unknown"
             variables["expected_deliverable"] = deliverable_file
-            runtime.set_expected_deliverable(deliverable_file)
             variables["scan_results"] = json.dumps(scan_for_prompt, indent=2, ensure_ascii=False)
             variables["trivial_findings"] = json.dumps(
                 scan_data.get("findings", []), indent=2, ensure_ascii=False

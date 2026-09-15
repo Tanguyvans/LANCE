@@ -34,7 +34,7 @@ def _run_aggregated_case(monkeypatch, output_dir, mock_provider, phase3_status, 
     monkeypatch.setitem(
         runtime.VALIDATORS,
         "phase3_status_test",
-        lambda _filename: (valid, "invalid aggregation" if not valid else "valid"),
+        lambda _filename, **kwargs: (valid, "invalid aggregation" if not valid else "valid"),
     )
 
     status = pipeline._run_agent(CONFIG, events.append)

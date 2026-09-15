@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from src.agent import provider as provider_module
+from src.agent.core import provider_transport
 from src.agent.provider import LLMProvider
 
 
@@ -83,7 +83,7 @@ def test_application_retry_recomputes_remaining_timeout(provider, monkeypatch):
         return httpx.Response(200, json=sdk_response(provider))
     instance, _ = make_provider(provider, httpx.MockTransport(handle))
     instance._retry_limit = 1
-    monkeypatch.setattr(provider_module, "time", SimpleNamespace(
+    monkeypatch.setattr(provider_transport, "time", SimpleNamespace(
         monotonic=lambda: clock["now"],
         sleep=lambda delay: clock.update(now=clock["now"] + delay),
     ))

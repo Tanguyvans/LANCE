@@ -59,11 +59,15 @@ unique point d'entrée, avec les mêmes conditions et le même fallback qu'avant
 
 Les composants restent des mixins utilisant l'état du même `Pipeline`. Ce passage
 clarifie la propriété du code ; il n'isole pas encore les phases dans des contextes
-indépendants. Le runner coordonne encore certaines adaptations et les outils et
-validateurs conservent des variables globales. Ce ne sont pas six moteurs autonomes.
+indépendants. Le runner coordonne encore certaines adaptations. Les livrables et
+validateurs utilisent désormais un dossier explicite par run ; d'autres outils
+conservent des états globaux, notamment le contexte de graphe et la politique CVE.
+Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurrents.
 
-L'API, le CLI et les workers passent par `Pipeline`. L'override `pipeline.OUTPUT_DIR`
-reste disponible pour le worker isolé. Les helpers internes doivent être importés
+L'API, le CLI et les workers passent par `Pipeline`. Le worker fournit son dossier
+parent via `Pipeline(output_dir=...)`, sans modifier une variable globale.
+Voir le [contrat d'isolation des livrables](../../../docs/run-artifacts.md) pour
+les responsabilités, les exemples et les limites. Les helpers internes doivent être importés
 depuis leur module propriétaire, pas depuis la façade. Les réexportations ajoutées
 pendant la migration et les fichiers relais `agent/report_context.py` et
 `agent/report_rendering.py` ont été retirés : seuls les tests les utilisaient.

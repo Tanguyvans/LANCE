@@ -9,33 +9,30 @@ from src.agent.tools.deliverable import (
     read_deliverable,
     list_deliverables,
     aggregate_device_results,
-    set_output_dir,
     DELIVERABLE_TOOLS,
 )
 
 
 @pytest.fixture(autouse=True)
-def clean_output(tmp_path, monkeypatch):
-    """Use a temp directory for output/agent."""
-    import src.agent.tools.deliverable as mod
-    monkeypatch.setattr(mod, "OUTPUT_DIR", tmp_path)
+def clean_output(tmp_path):
+    """Pass each test's output directory explicitly."""
     return tmp_path
 
 
 class TestSaveDeliverable:
     def test_save_creates_file(self, clean_output):
-        result = json.loads(save_deliverable("test.md", "# Report\n## Section"))
+        result = json.loads(save_deliverable("test.md", "# Report\n## Section", output_dir=clean_output))
         assert result["status"] == "saved"
         assert (clean_output / "test.md").exists()
         assert (clean_output / "test.md").read_text() == "# Report\n## Section"
 
     def test_save_returns_size(self, clean_output):
         content = "x" * 100
-        result = json.loads(save_deliverable("big.md", content))
+        result = json.loads(save_deliverable("big.md", content, output_dir=clean_output))
         assert result["size"] == 100
 
     def test_save_rejects_empty_content(self, clean_output):
-        result = json.loads(save_deliverable("empty.md", "  \n"))
+        result = json.loads(save_deliverable("empty.md", "  \n", output_dir=clean_output))
         assert result["ok"] is False
         assert result["error_kind"] == "empty_deliverable"
         assert not (clean_output / "empty.md").exists()
@@ -44,12 +41,12 @@ class TestSaveDeliverable:
 class TestReadDeliverable:
     def test_read_existing(self, clean_output):
         (clean_output / "test.md").write_text("hello")
-        result = json.loads(read_deliverable("test.md"))
+        result = json.loads(read_deliverable("test.md", output_dir=clean_output))
         assert result["content"] == "hello"
         assert result["filename"] == "test.md"
 
     def test_read_missing(self, clean_output):
-        result = json.loads(read_deliverable("nonexistent.md"))
+        result = json.loads(read_deliverable("nonexistent.md", output_dir=clean_output))
         assert "error" in result
 
 
@@ -62,8 +59,8 @@ class TestProviderDiagnosticIsolation:
         (other / "report.md").symlink_to(other / "provider_events.jsonl")
         monkeypatch.chdir(other)
 
-        assert json.loads(read_deliverable("report.md"))["content"] == "run report"
-        assert json.loads(save_deliverable("report.md", "updated"))["status"] == "saved"
+        assert json.loads(read_deliverable("report.md", output_dir=clean_output))["content"] == "run report"
+        assert json.loads(save_deliverable("report.md", "updated", output_dir=clean_output))["status"] == "saved"
         assert (clean_output / "report.md").read_text() == "updated"
         assert (other / "provider_events.jsonl").read_text() == "private"
 
@@ -72,36 +69,36 @@ class TestProviderDiagnosticIsolation:
         journal.write_text('{"event":"terminal","reason":"test-canary"}\n')
         before = journal.read_bytes()
         (clean_output / "report.md").write_text("report")
-        assert json.loads(list_deliverables())["deliverables"] == ["report.md"]
-        assert "error" in json.loads(read_deliverable(journal.name))
-        assert "error" in json.loads(save_deliverable(journal.name, "overwritten"))
+        assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == ["report.md"]
+        assert "error" in json.loads(read_deliverable(journal.name, output_dir=clean_output))
+        assert "error" in json.loads(save_deliverable(journal.name, "overwritten", output_dir=clean_output))
         assert journal.read_bytes() == before
 
     def test_alias_cannot_expose_diagnostic_file(self, clean_output):
         journal = clean_output / "provider_events.jsonl"
         journal.write_text("private-observer-canary")
         (clean_output / "alias.md").symlink_to(journal)
-        result = read_deliverable("alias.md")
+        result = read_deliverable("alias.md", output_dir=clean_output)
         assert "error" in json.loads(result)
         assert "private-observer-canary" not in result
-        assert "error" in json.loads(save_deliverable("alias.md", "changed"))
-        assert json.loads(list_deliverables())["deliverables"] == []
+        assert "error" in json.loads(save_deliverable("alias.md", "changed", output_dir=clean_output))
+        assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == []
 
     def test_ground_truth_alias_cannot_be_read_or_overwritten(self, clean_output):
         ground_truth = clean_output / "ground_truth.yaml"
         ground_truth.write_text("answer-key")
         (clean_output / "ground-truth-alias.md").symlink_to(ground_truth)
 
-        assert "error" in json.loads(read_deliverable("ground-truth-alias.md"))
-        assert "error" in json.loads(save_deliverable("ground-truth-alias.md", "changed"))
-        assert json.loads(list_deliverables())["deliverables"] == []
+        assert "error" in json.loads(read_deliverable("ground-truth-alias.md", output_dir=clean_output))
+        assert "error" in json.loads(save_deliverable("ground-truth-alias.md", "changed", output_dir=clean_output))
+        assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == []
         assert ground_truth.read_text() == "answer-key"
 
     def test_reserved_name_cannot_redirect_writes(self, clean_output):
         target = clean_output / "report.md"
         target.write_text("untouched")
         (clean_output / "provider_events.jsonl").symlink_to(target)
-        assert "error" in json.loads(save_deliverable("provider_events.jsonl", "changed"))
+        assert "error" in json.loads(save_deliverable("provider_events.jsonl", "changed", output_dir=clean_output))
         assert target.read_text() == "untouched"
 
 
@@ -110,7 +107,7 @@ class TestDeliverablePathConfinement:
         outside = clean_output.parent / "secret.txt"
         outside.write_text("oracle-secret")
 
-        result = json.loads(read_deliverable("../secret.txt"))
+        result = json.loads(read_deliverable("../secret.txt", output_dir=clean_output))
 
         assert "error" in result
         assert "oracle-secret" not in json.dumps(result)
@@ -118,7 +115,7 @@ class TestDeliverablePathConfinement:
     def test_save_rejects_parent_traversal(self, clean_output):
         outside = clean_output.parent / "escaped.txt"
 
-        result = json.loads(save_deliverable("../escaped.txt", "should-not-exist"))
+        result = json.loads(save_deliverable("../escaped.txt", "should-not-exist", output_dir=clean_output))
 
         assert "error" in result
         assert not outside.exists()
@@ -126,8 +123,8 @@ class TestDeliverablePathConfinement:
     def test_absolute_paths_are_rejected(self, clean_output):
         target = clean_output / "absolute.md"
 
-        read_result = json.loads(read_deliverable(str(target)))
-        save_result = json.loads(save_deliverable(str(target), "content"))
+        read_result = json.loads(read_deliverable(str(target), output_dir=clean_output))
+        save_result = json.loads(save_deliverable(str(target), "content", output_dir=clean_output))
 
         assert "error" in read_result
         assert "error" in save_result
@@ -138,7 +135,7 @@ class TestDeliverablePathConfinement:
         outside.write_text("secret-via-symlink")
         (clean_output / "link.txt").symlink_to(outside)
 
-        result = json.loads(read_deliverable("link.txt"))
+        result = json.loads(read_deliverable("link.txt", output_dir=clean_output))
 
         assert "error" in result
         assert "secret-via-symlink" not in json.dumps(result)
@@ -148,7 +145,7 @@ class TestDeliverablePathConfinement:
         outside.write_text("original")
         (clean_output / "link.txt").symlink_to(outside)
 
-        result = json.loads(save_deliverable("link.txt", "overwritten"))
+        result = json.loads(save_deliverable("link.txt", "overwritten", output_dir=clean_output))
 
         assert "error" in result
         assert outside.read_text() == "original"
@@ -157,8 +154,8 @@ class TestDeliverablePathConfinement:
         hidden = clean_output / "ground_truth.yaml"
         hidden.write_text("answer-key")
 
-        read_result = json.loads(read_deliverable("ground_truth.yaml"))
-        save_result = json.loads(save_deliverable("ground_truth.yaml", "tampered"))
+        read_result = json.loads(read_deliverable("ground_truth.yaml", output_dir=clean_output))
+        save_result = json.loads(save_deliverable("ground_truth.yaml", "tampered", output_dir=clean_output))
 
         assert "error" in read_result
         assert "error" in save_result
@@ -171,12 +168,12 @@ class TestDeliverablePathConfinement:
         outside.write_text("secret")
         (clean_output / "outside-link.txt").symlink_to(outside)
 
-        result = json.loads(list_deliverables())
+        result = json.loads(list_deliverables(output_dir=clean_output))
 
         assert result["deliverables"] == ["visible.md"]
 
     def test_aggregate_rejects_path_pattern(self, clean_output):
-        result = json.loads(aggregate_device_results("../*.json"))
+        result = json.loads(aggregate_device_results("../*.json", output_dir=clean_output))
 
         assert result["vulnerabilities"] == []
         assert "error" in result
@@ -184,13 +181,13 @@ class TestDeliverablePathConfinement:
 
 class TestListDeliverables:
     def test_empty_dir(self, clean_output):
-        result = json.loads(list_deliverables())
+        result = json.loads(list_deliverables(output_dir=clean_output))
         assert result["deliverables"] == []
 
     def test_with_files(self, clean_output):
         (clean_output / "01_analysis.md").write_text("a")
         (clean_output / "02_recon.md").write_text("b")
-        result = json.loads(list_deliverables())
+        result = json.loads(list_deliverables(output_dir=clean_output))
         assert len(result["deliverables"]) == 2
         assert "01_analysis.md" in result["deliverables"]
 
@@ -206,7 +203,7 @@ class TestAggregateDeviceResults:
             "device_id": "s2-web",
             "vulnerabilities": [self.VULN],
         }))
-        result = json.loads(aggregate_device_results())
+        result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert len(result["vulnerabilities"]) == 1
         assert result["vulnerabilities"][0]["id"] == "VULN-001"
 
@@ -214,7 +211,7 @@ class TestAggregateDeviceResults:
         # Case: LLM output pure prose (s2-iot-gw / s2-jump pattern)
         self._write(clean_output / "03_device_s2-jump.json",
                     "Based on my analysis the device has weak ciphers and PasswordAuthentication enabled.")
-        result = json.loads(aggregate_device_results())
+        result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert len(result["vulnerabilities"]) == 1
         assert "error" in result["vulnerabilities"][0]
         assert "s2-jump" in result["vulnerabilities"][0]["error"]
@@ -223,7 +220,7 @@ class TestAggregateDeviceResults:
         # aggregate_device_results must recover JSON even if file starts with "json\n{...}"
         raw = 'json\n{"device_id": "s2-mqtt", "vulnerabilities": [' + json.dumps(self.VULN) + ']}'
         self._write(clean_output / "03_device_s2-mqtt.json", raw)
-        result = json.loads(aggregate_device_results())
+        result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert len(result["vulnerabilities"]) == 1
         assert result["vulnerabilities"][0]["type"] == self.VULN["type"]
 
@@ -233,7 +230,7 @@ class TestAggregateDeviceResults:
                 "device_id": device,
                 "vulnerabilities": [{"id": "VULN-001", "device_id": device, "severity": "HIGH"}],
             }))
-        result = json.loads(aggregate_device_results())
+        result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert len(result["vulnerabilities"]) == 2
 
     def test_empty_vulns_device_skipped_silently(self, clean_output):
@@ -241,7 +238,7 @@ class TestAggregateDeviceResults:
             "device_id": "s2-db",
             "vulnerabilities": [],
         }))
-        result = json.loads(aggregate_device_results())
+        result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert result["vulnerabilities"] == []
 
 

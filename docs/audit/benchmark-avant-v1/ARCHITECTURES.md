@@ -1,5 +1,10 @@
 # Architectures & Failles — Diagrammes
 
+> **Archive antérieure à la documentation V1**, conservée le 2026-09-15.
+> Les mentions « courant », versions, commandes et états ci-dessous décrivent
+> des états antérieurs ou des propositions ; ils ne font pas autorité aujourd’hui.
+> Voir la [documentation V1](../../benchmark/v1/README.md) pour l’état de référence.
+
 > **Document de conception.** Les architectures `A1`–`A8` et la taxonomie de packs `F1`–`F10`
 > ci-dessous forment le vocabulaire de design. Les packs **réellement livrés** sont `f0`–`f9`
 > (9 packs, cf. note dans « ## Packs de failles ») et ne coïncident pas un-à-un avec `F1`–`F10`.

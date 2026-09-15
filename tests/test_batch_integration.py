@@ -82,7 +82,6 @@ def real_run_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "init_weighted_graph", lambda: None)
     monkeypatch.setattr(graph_tools, "_scenario_topology", None)
     monkeypatch.setattr(graph_tools, "_backend", None)
-    monkeypatch.setattr(runtime, "set_output_dir", lambda *_: None)
     monkeypatch.setattr(runtime, "set_cve_cache_only", lambda *_: None)
     monkeypatch.setattr(pipeline_module, "run_phase", lambda *_: "completed")
 

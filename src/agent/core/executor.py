@@ -11,6 +11,7 @@ import time
 from uuid import uuid4
 
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
+from src.agent.tools.deliverable import bind_deliverable_tool
 
 
 class EvidenceWriteError(RuntimeError):
@@ -18,6 +19,7 @@ class EvidenceWriteError(RuntimeError):
 
 
 def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
+    tool = bind_deliverable_tool(tool, run.run_dir)
     original = tool["function"]
     if original is None:
         return tool

@@ -289,7 +289,7 @@ def test_provider_observation_retries_are_provider_errors_then_reset_on_success(
     class ProviderHTTPError(Exception):
         status_code = 500
 
-    monkeypatch.setattr("src.agent.provider.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("src.agent.core.provider_transport.time.sleep", lambda _seconds: None)
     provider = _provider([
         ProviderHTTPError("secret response body"),
         _response(content="recovered"),

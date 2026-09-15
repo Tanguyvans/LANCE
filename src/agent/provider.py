@@ -2,31 +2,32 @@
 
 Supports OpenAI-compatible APIs and the user's local Codex
 subscription session. Tools are defined once and translated internally.
+Network retries/deadlines live in core.provider_transport; model continuation
+and terminal-only state live in core.completion_policy.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
-
-from src.config import API_TIMEOUT
-import time
 from collections.abc import Callable
 from uuid import uuid4
 
 from src.agent.core.completion_policy import CompletionPolicy
+from src.agent.core.provider_transport import (
+    MAX_RETRIES as _MAX_RETRIES,
+    RETRYABLE_CODES as _RETRYABLE_CODES,
+    call_with_retry as _call_with_retry,
+    deadline_remaining as _deadline_remaining,
+    is_missing_user_query_error as _is_missing_user_query_error,
+    is_network_error as _is_network_error,
+)
+from src.config import API_TIMEOUT
 
 log = logging.getLogger(__name__)
 
-# Status codes that warrant a retry (transient server-side errors)
-_RETRYABLE_CODES = {429, 500, 502, 503, 529}
-_MAX_RETRIES = 5
-_RETRY_BASE_DELAY = 5.0  # seconds
 _LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "90"))
 _LOCAL_MOE_MAX_RETRIES = int(os.environ.get("LANCE_LOCAL_MOE_MAX_RETRIES", "2"))
-
-# Exception type names that indicate a network-level connection failure (no HTTP code)
-_RETRYABLE_EXC_NAMES = {"APIConnectionError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout"}
 
 
 def _safe_provider_callback(callback: Callable[[dict], None] | None, event: dict) -> None:
@@ -171,69 +172,6 @@ class _ProviderDiagnostics:
             turn=turn,
         )
 
-
-def _is_network_error(exc: Exception) -> bool:
-    """True for connection-level errors that have no HTTP status code."""
-    return type(exc).__name__ in _RETRYABLE_EXC_NAMES or isinstance(exc, (ConnectionError, TimeoutError))
-
-
-def _is_missing_user_query_error(exc: Exception) -> bool:
-    """A rejected conversation is not a transient server failure."""
-    return (
-        getattr(exc, "status_code", None) in {400, 500}
-        and "no user query found in messages" in str(exc).lower()
-    )
-
-
-def _deadline_remaining(deadline: float | None) -> float | None:
-    """Return seconds remaining, or raise before a deadline-bounded call."""
-    if deadline is None:
-        return None
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise TimeoutError("LLM request deadline exceeded")
-    return remaining
-
-
-def _call_with_retry(fn, *args, max_retries=_MAX_RETRIES, deadline=None, on_attempt=None, on_error=None, **kwargs):
-    """Call fn(*args, **kwargs), retrying on transient HTTP errors (429/5xx/529) and connection errors."""
-    last_exc = None
-    retry_limit = max(0, int(max_retries))
-    for attempt in range(retry_limit + 1):
-        _deadline_remaining(deadline)
-        if on_attempt is not None:
-            try:
-                on_attempt(attempt)
-            except Exception:
-                log.warning("Provider request observer unavailable")
-        try:
-            return fn(*args, **kwargs)
-        except Exception as exc:
-            if on_error is not None:
-                try:
-                    on_error(exc)
-                except Exception:
-                    log.warning("Provider error observer unavailable")
-            if _is_missing_user_query_error(exc):
-                raise
-            code = getattr(exc, "status_code", None)
-            if code is None:
-                resp = getattr(exc, "response", None)
-                if resp is not None:
-                    code = getattr(resp, "status_code", None)
-            retryable = (code in _RETRYABLE_CODES) or (code is None and _is_network_error(exc))
-            if retryable and attempt < retry_limit:
-                delay = _RETRY_BASE_DELAY * (2 ** attempt)
-                if deadline is not None:
-                    remaining = _deadline_remaining(deadline)
-                    if delay >= remaining:
-                        raise TimeoutError("LLM request deadline exceeded") from exc
-                log.warning("API error %s (attempt %d/%d) — retrying in %.0fs", code or type(exc).__name__, attempt + 1, retry_limit, delay)
-                time.sleep(delay)
-                last_exc = exc
-                continue
-            raise
-    raise last_exc
 
 OPENAI_PROVIDERS = {
     "openrouter": {

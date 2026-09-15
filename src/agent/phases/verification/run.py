@@ -154,7 +154,6 @@ class VerificationPhase:
                 "Compact profile: use the exposed service-specific tools, start with the "
                 "required probe, and stop once direct proof is sufficient."
             )
-            runtime.set_expected_deliverable(deliverable_file)
             variables["available_skills"] = ""
 
             phase_name = f"exploit_{device_id}_{vuln_type}"
