@@ -270,6 +270,277 @@ def validate_json_valid(filename: str) -> tuple[bool, str]:
     return True, "OK"
 
 
+def _intrusion_structure_error(path: str, reason: str) -> tuple[bool, str]:
+    """Return a structural error without echoing deliverable values."""
+    return False, f"Invalid intrusion structure at '{path}': {reason}"
+
+
+def _non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _non_negative_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _positive_integer(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def validate_json_intrusion(filename: str) -> tuple[bool, str]:
+    """Validate the structural contract for the Phase 5 intrusion artifact.
+
+    This validator deliberately checks shape and internal counters only. It
+    does not establish that an access, pivot, command, credential, or crown
+    jewel was proven by the network or by an evidence evaluator.
+    """
+    ok, msg = validate_default(filename)
+    if not ok:
+        return ok, msg
+
+    def reject_non_json_constant(_value: str):
+        raise ValueError("Non-standard JSON constant")
+
+    try:
+        data = json.loads(
+            (OUTPUT_DIR / filename).read_text(encoding="utf-8"),
+            parse_constant=reject_non_json_constant,
+        )
+    except (OSError, TypeError, ValueError):
+        return _intrusion_structure_error("$", "must contain valid JSON")
+
+    if not isinstance(data, dict):
+        return _intrusion_structure_error("$", "must be a JSON object")
+
+    rejected_statuses = {
+        "incomplete",
+        "partial",
+        "failed",
+        "error",
+        "draft",
+        "raw_non_validated",
+        "blocked", "stopped", "budget_exceeded",
+    }
+    if "status" in data:
+        if not isinstance(data["status"], str):
+            return _intrusion_structure_error("status", "must be a string when present")
+        if data["status"].strip().casefold() in rejected_statuses:
+            return _intrusion_structure_error("status", "is not promotable")
+    if "completion" in data:
+        completion = data["completion"]
+        if not isinstance(completion, dict):
+            return _intrusion_structure_error("completion", "must be an object")
+        if "status" in completion:
+            status = completion["status"]
+            if not isinstance(status, str) or status.strip().casefold() != "completed":
+                return _intrusion_structure_error("completion.status", "is not promotable")
+
+    required_top_level = {
+        "summary",
+        "credential_pool",
+        "compromised_devices",
+        "chains",
+    }
+    missing = required_top_level - set(data)
+    if missing:
+        return _intrusion_structure_error("$", "missing required fields")
+
+    summary = data["summary"]
+    if not isinstance(summary, dict):
+        return _intrusion_structure_error("summary", "must be an object")
+
+    required_summary = {
+        "devices_compromised",
+        "devices_attempted",
+        "credentials_harvested",
+        "total_hops",
+        "crown_jewels_reached",
+    }
+    if required_summary - set(summary):
+        return _intrusion_structure_error("summary", "missing required fields")
+    for field in (
+        "devices_compromised",
+        "devices_attempted",
+        "credentials_harvested",
+        "total_hops",
+    ):
+        if not _non_negative_integer(summary[field]):
+            return _intrusion_structure_error(
+                f"summary.{field}", "must be a non-negative integer"
+            )
+    if not isinstance(summary["crown_jewels_reached"], list):
+        return _intrusion_structure_error(
+            "summary.crown_jewels_reached", "must be a list"
+        )
+    for index, identifier in enumerate(summary["crown_jewels_reached"]):
+        if not _non_empty_string(identifier):
+            return _intrusion_structure_error(
+                f"summary.crown_jewels_reached[{index}]",
+                "must be a non-empty string",
+            )
+
+    credential_pool = data["credential_pool"]
+    if not isinstance(credential_pool, list):
+        return _intrusion_structure_error("credential_pool", "must be a list")
+    credential_fields = ("user", "password", "service", "source_ip", "source_device")
+    for index, credential in enumerate(credential_pool):
+        path = f"credential_pool[{index}]"
+        if not isinstance(credential, dict):
+            return _intrusion_structure_error(path, "must be an object")
+        if any(field not in credential for field in credential_fields):
+            return _intrusion_structure_error(path, "missing required fields")
+        if not isinstance(credential["user"], str):
+            return _intrusion_structure_error(f"{path}.user", "must be a string")
+        if not isinstance(credential["password"], str):
+            return _intrusion_structure_error(
+                f"{path}.password", "must be a string"
+            )
+        if not _non_empty_string(credential["service"]):
+            return _intrusion_structure_error(
+                f"{path}.service", "must be a non-empty string"
+            )
+        for field in ("source_ip", "source_device"):
+            if not isinstance(credential[field], str):
+                return _intrusion_structure_error(
+                    f"{path}.{field}", "must be a string"
+                )
+
+    compromised_devices = data["compromised_devices"]
+    if not isinstance(compromised_devices, list):
+        return _intrusion_structure_error(
+            "compromised_devices", "must be a list"
+        )
+    device_ids: set[str] = set()
+    device_fields = (
+        "device_id",
+        "device_ip",
+        "access_method",
+        "access_via",
+        "credentials_found",
+        "data_exfiltrated",
+    )
+    for index, device in enumerate(compromised_devices):
+        path = f"compromised_devices[{index}]"
+        if not isinstance(device, dict):
+            return _intrusion_structure_error(path, "must be an object")
+        if any(field not in device for field in device_fields):
+            return _intrusion_structure_error(path, "missing required fields")
+        for field in ("device_id", "device_ip", "access_method", "access_via"):
+            if not _non_empty_string(device[field]):
+                return _intrusion_structure_error(
+                    f"{path}.{field}", "must be a non-empty string"
+                )
+        if not isinstance(device["credentials_found"], list):
+            return _intrusion_structure_error(
+                f"{path}.credentials_found", "must be a list"
+            )
+        for credential_index, found in enumerate(device["credentials_found"]):
+            if not isinstance(found, dict):
+                return _intrusion_structure_error(
+                    f"{path}.credentials_found[{credential_index}]",
+                    "must be an object",
+                )
+        if not isinstance(device["data_exfiltrated"], str):
+            return _intrusion_structure_error(
+                f"{path}.data_exfiltrated", "must be a string"
+            )
+        device_id = device["device_id"]
+        if device_id in device_ids:
+            return _intrusion_structure_error(
+                f"{path}.device_id", "must be unique"
+            )
+        device_ids.add(device_id)
+
+    chains = data["chains"]
+    if not isinstance(chains, list):
+        return _intrusion_structure_error("chains", "must be a list")
+    chain_ids: set[str] = set()
+    transitions = 0
+    for chain_index, chain in enumerate(chains):
+        path = f"chains[{chain_index}]"
+        if not isinstance(chain, dict):
+            return _intrusion_structure_error(path, "must be an object")
+        if any(field not in chain for field in ("id", "hops", "crown_jewel_reached")):
+            return _intrusion_structure_error(path, "missing required fields")
+        if not _non_empty_string(chain["id"]):
+            return _intrusion_structure_error(f"{path}.id", "must be a non-empty string")
+        if chain["id"] in chain_ids:
+            return _intrusion_structure_error(f"{path}.id", "must be unique")
+        chain_ids.add(chain["id"])
+        if chain["crown_jewel_reached"] is not None and not _non_empty_string(
+            chain["crown_jewel_reached"]
+        ):
+            return _intrusion_structure_error(
+                f"{path}.crown_jewel_reached", "must be a non-empty string or null"
+            )
+        hops = chain["hops"]
+        if not isinstance(hops, list) or not hops:
+            return _intrusion_structure_error(f"{path}.hops", "must be a non-empty list")
+        transitions += max(0, len(hops) - 1)
+        hop_fields = (
+            "hop_index",
+            "device_id",
+            "device_ip",
+            "access_method",
+            "commands_run",
+            "output_summary",
+            "pivot_to",
+        )
+        for hop_position, hop in enumerate(hops):
+            hop_path = f"{path}.hops[{hop_position}]"
+            if not isinstance(hop, dict):
+                return _intrusion_structure_error(hop_path, "must be an object")
+            if any(field not in hop for field in hop_fields):
+                return _intrusion_structure_error(hop_path, "missing required fields")
+            if not _positive_integer(hop["hop_index"]):
+                return _intrusion_structure_error(
+                    f"{hop_path}.hop_index", "must be a positive integer"
+                )
+            if hop["hop_index"] != hop_position + 1:
+                return _intrusion_structure_error(
+                    f"{hop_path}.hop_index", "must be contiguous and 1-based"
+                )
+            for field in ("device_id", "device_ip", "access_method"):
+                if not _non_empty_string(hop[field]):
+                    return _intrusion_structure_error(
+                        f"{hop_path}.{field}", "must be a non-empty string"
+                    )
+            if not isinstance(hop["commands_run"], list):
+                return _intrusion_structure_error(
+                    f"{hop_path}.commands_run", "must be a list"
+                )
+            if any(not isinstance(command, str) for command in hop["commands_run"]):
+                return _intrusion_structure_error(
+                    f"{hop_path}.commands_run", "must contain only strings"
+                )
+            if not isinstance(hop["output_summary"], str):
+                return _intrusion_structure_error(
+                    f"{hop_path}.output_summary", "must be a string"
+                )
+            pivot_to = hop["pivot_to"]
+            if pivot_to is not None and not _non_empty_string(pivot_to):
+                return _intrusion_structure_error(
+                    f"{hop_path}.pivot_to", "must be a non-empty string or null"
+                )
+
+    if summary["devices_compromised"] != len(device_ids):
+        return _intrusion_structure_error(
+            "summary.devices_compromised",
+            "must equal the number of compromised device identifiers",
+        )
+    if summary["devices_attempted"] < summary["devices_compromised"]:
+        return _intrusion_structure_error(
+            "summary.devices_attempted",
+            "must be greater than or equal to devices_compromised",
+        )
+    if summary["total_hops"] != transitions:
+        return _intrusion_structure_error(
+            "summary.total_hops",
+            "must equal the number of chain transitions",
+        )
+    return True, "OK"
+
+
 VALIDATORS = {
     "default": validate_default,
     "markdown_with_sections": validate_markdown_with_sections,
@@ -281,4 +552,5 @@ VALIDATORS = {
     "json_exploitation": validate_json_exploitation,
     "json_exploit_result": validate_json_exploit_result,
     "json_valid": validate_json_valid,
+    "json_intrusion": validate_json_intrusion,
 }

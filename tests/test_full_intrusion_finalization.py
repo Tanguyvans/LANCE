@@ -31,6 +31,7 @@ def response(*calls, text=None):
 
 @pytest.fixture
 def full(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.agent.cost_tracker.get_dynamic_pricing", lambda _: None)
     monkeypatch.setattr(deliverable, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(validators, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(runtime, "load_prompt", lambda *args: "Offline finalization test")
@@ -65,8 +66,9 @@ def full(tmp_path, monkeypatch):
 
 ACTION = ("try_credential", {"ip": "192.0.2.1", "service": "ssh", "user": "test", "password": "test"})
 SAVE = ("save_deliverable", {"filename": "05_intrusion.json", "content": json.dumps({
-    "summary": {"devices_compromised": 0, "devices_attempted": 1, "total_hops": 0},
-    "chains": [], "compromised_devices": [],
+    "summary": {"devices_compromised": 0, "devices_attempted": 1, "total_hops": 0,
+                "credentials_harvested": 0, "crown_jewels_reached": []},
+    "chains": [], "compromised_devices": [], "credential_pool": [],
 })})
 
 
@@ -96,6 +98,16 @@ def test_model_text_stop_is_followed_by_validated_save(full):
     assert [t["function"]["name"] for t in create.call_args_list[-1].kwargs["tools"]] == ["save_deliverable"]
     attempts = [json.loads(s) for s in (full.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()]
     assert attempts[-1]["valid"] is True
+    diagnostics = [json.loads(s) for s in (full.run_dir / "provider_events.jsonl").read_text().splitlines()]
+    saves = [e for e in diagnostics if e["event"] == "save_outcome"]
+    assert len(saves) == 1
+    assert saves[0]["outcome"] == "accepted"
+    assert saves[0]["attempt_ref"] == attempts[-1]["attempt_ref"]
+    assert (full.run_dir / saves[0]["attempt_ref"]).is_file()
+    assert len({e["invocation_id"] for e in diagnostics}) == 1
+    assert all(str(e["phase"]) == "5" and e["agent"] == "intrusion" for e in diagnostics)
+    assert not any(e["type"] == "provider_diagnostic" for e in events)
+    assert full.tracker.total_tokens() == (300, 30)
 
 
 def test_failed_finalization_keeps_observations_but_not_success_events(full):
@@ -111,6 +123,10 @@ def test_failed_finalization_keeps_observations_but_not_success_events(full):
     assert data["chains"] == []
     assert not [e for e in events if e["type"] in {"intrusion_done", "intrusion_hop", "intrusion_compromised"}]
     assert any(e["type"] == "warn" for e in events)
+    diagnostics = [json.loads(s) for s in (full.run_dir / "provider_events.jsonl").read_text().splitlines()]
+    assert len([e for e in diagnostics if e["event"] == "request"]) == create.call_count
+    assert len([e for e in diagnostics if e["event"] == "terminal"]) == 1
+    assert not any(e["event"] == "save_outcome" and e["outcome"] == "accepted" for e in diagnostics)
 
 
 def test_invalid_save_cannot_be_promoted_to_completed(full):
@@ -121,6 +137,60 @@ def test_invalid_save_cannot_be_promoted_to_completed(full):
     attempts = [json.loads(s) for s in (full.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()]
     assert attempts and all(not a["valid"] for a in attempts)
     assert full.offline_action.call_count == 1
+    diagnostics = [json.loads(s) for s in (full.run_dir / "provider_events.jsonl").read_text().splitlines()]
+    saves = [e for e in diagnostics if e["event"] == "save_outcome"]
+    attempted_refs = {a["attempt_ref"] for a in attempts}
+    archived_saves = [e for e in saves if "attempt_ref" in e]
+    assert archived_saves
+    assert all(e["outcome"] == "rejected" for e in saves)
+    assert {e["attempt_ref"] for e in archived_saves} == attempted_refs
+
+
+@pytest.mark.parametrize("content", [
+    "{}", "[]", "null", "true", '"finished"',
+    '{"summary":{},"chains":[],"compromised_devices":[],"credential_pool":[]}',
+    json.dumps({**json.loads(SAVE[1]["content"]), "status": "incomplete"}),
+])
+def test_structurally_incomplete_json_is_archived_not_promoted(full, content):
+    invalid = ("save_deliverable", {"filename": "05_intrusion.json", "content": content})
+    full.provider.client.chat.completions.create.side_effect = [response(ACTION)] + [response(invalid)] * 6
+    status, events = run_phase(full)
+    assert status.startswith("failed:")
+    assert full._full_intrusion_saved is False
+    assert full.offline_action.call_count == 1
+    attempts = [json.loads(s) for s in (full.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()]
+    assert attempts and all(a["validator"] == "json_intrusion" and a["valid"] is False for a in attempts)
+    assert all((full.run_dir / a["attempt_ref"]).read_text() == content for a in attempts)
+    assert json.loads((full.run_dir / "05_intrusion.json").read_text())["status"] == "incomplete"
+    assert not any(e["type"] in {"intrusion_done", "intrusion_compromised", "intrusion_hop"} for e in events)
+
+
+def test_rejected_structure_can_be_repaired_without_repeating_actions(full):
+    invalid = ("save_deliverable", {"filename": "05_intrusion.json", "content": "{}"})
+    create = full.provider.client.chat.completions.create
+    create.side_effect = [response(ACTION), response(invalid), response(SAVE)]
+    status, events = run_phase(full)
+    assert status == "completed"
+    assert full.offline_action.call_count == 1
+    assert create.call_count == 3
+    attempts = [json.loads(s) for s in (full.run_dir / "deliverable_attempts.jsonl").read_text().splitlines()]
+    assert [a["valid"] for a in attempts] == [False, True]
+    assert len({a["attempt_ref"] for a in attempts}) == 2
+    assert json.loads((full.run_dir / "05_intrusion.json").read_text()) == json.loads(SAVE[1]["content"])
+    assert not any(e["type"] in {"intrusion_compromised", "intrusion_hop"} for e in events)
+    done = next(e for e in events if e["type"] == "intrusion_done")
+    assert done["devices_compromised"] == 0 and done["hops"] == 0
+
+
+def test_rejected_submission_does_not_overwrite_existing_valid_file(full):
+    original = SAVE[1]["content"]
+    (full.run_dir / "05_intrusion.json").write_text(original)
+    invalid = ("save_deliverable", {"filename": "05_intrusion.json", "content": "{}"})
+    full.provider.client.chat.completions.create.side_effect = [response(invalid)] * 6
+    status = full._run_agent(AGENTS["intrusion"])
+    assert status.startswith("failed:")
+    assert not full._full_intrusion_saved
+    assert (full.run_dir / "05_intrusion.json").read_text() == original
 
 
 def test_stop_does_not_trigger_an_extra_model_or_action_call(full):

@@ -41,6 +41,7 @@ _ALLOWED_ROOT_FILES = frozenset(
         "tool_calls.jsonl",
         "deliverable_attempts.jsonl",
         "model_outputs.jsonl",
+        "provider_events.jsonl",
         "cost_summary.json",
     }
 )

@@ -53,6 +53,34 @@ class TestReadDeliverable:
         assert "error" in result
 
 
+class TestProviderDiagnosticIsolation:
+    def test_observer_file_is_hidden_and_cannot_be_overwritten(self, clean_output):
+        journal = clean_output / "provider_events.jsonl"
+        journal.write_text('{"event":"terminal","reason":"test-canary"}\n')
+        before = journal.read_bytes()
+        (clean_output / "report.md").write_text("report")
+        assert json.loads(list_deliverables())["deliverables"] == ["report.md"]
+        assert "error" in json.loads(read_deliverable(journal.name))
+        assert "error" in json.loads(save_deliverable(journal.name, "overwritten"))
+        assert journal.read_bytes() == before
+
+    def test_alias_cannot_expose_diagnostic_file(self, clean_output):
+        journal = clean_output / "provider_events.jsonl"
+        journal.write_text("private-observer-canary")
+        (clean_output / "alias.md").symlink_to(journal)
+        result = read_deliverable("alias.md")
+        assert "error" in json.loads(result)
+        assert "private-observer-canary" not in result
+        assert json.loads(list_deliverables())["deliverables"] == []
+
+    def test_reserved_name_cannot_redirect_writes(self, clean_output):
+        target = clean_output / "report.md"
+        target.write_text("untouched")
+        (clean_output / "provider_events.jsonl").symlink_to(target)
+        assert "error" in json.loads(save_deliverable("provider_events.jsonl", "changed"))
+        assert target.read_text() == "untouched"
+
+
 class TestDeliverablePathConfinement:
     def test_read_rejects_parent_traversal(self, clean_output):
         outside = clean_output.parent / "secret.txt"

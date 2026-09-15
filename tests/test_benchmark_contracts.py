@@ -101,6 +101,7 @@ def test_artifact_allowlist_rejects_traversal_and_oracle_files():
     assert is_allowed_artifact("06_report_analysis.md") is True
     assert is_allowed_artifact("deliverable_attempts.jsonl") is True
     assert is_allowed_artifact("model_outputs.jsonl") is True
+    assert is_allowed_artifact("provider_events.jsonl") is True
     assert is_allowed_artifact(
         ".attempts/02_recon.md/attempt-abc.md"
     ) is True

@@ -274,6 +274,33 @@ class TestSealedSummaryTrustBoundary:
 
 
 class TestRunEndpoints:
+    @pytest.mark.parametrize("sealed", [False, True])
+    def test_provider_diagnostics_follow_existing_run_visibility(self, tmp_path, monkeypatch, sealed):
+        run_dir = tmp_path / "diagnostic-run"
+        run_dir.mkdir()
+        (run_dir / "run_meta.json").write_text(json.dumps({
+            "status": "failed", "benchmark_split": "eval-sealed" if sealed else "dev-public",
+        }))
+        content = '{"schema_version":"model.obs1","event":"terminal"}\n'
+        (run_dir / "provider_events.jsonl").write_text(content)
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        if sealed:
+            with pytest.raises(HTTPException) as exc:
+                get_run_file("diagnostic-run", "provider_events.jsonl")
+            assert exc.value.status_code == 403
+        else:
+            assert get_run_file("diagnostic-run", "provider_events.jsonl")["content"] == content
+        assert _run_status(run_dir) == "failed"
+
+    def test_provider_diagnostics_do_not_change_score_fingerprint(self, tmp_path):
+        run_dir = tmp_path / "diagnostic-run"
+        run_dir.mkdir()
+        gt = tmp_path / "gt.yaml"
+        gt.write_text("scenario_id: '1'\nvulnerabilities: []\n")
+        before = runs._benchmark_fingerprint(run_dir, gt)
+        (run_dir / "provider_events.jsonl").write_text('{"event":"terminal"}\n')
+        assert runs._benchmark_fingerprint(run_dir, gt) == before
+
     def test_run_id_cannot_escape_output_directory(self, tmp_path, monkeypatch):
         monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
 

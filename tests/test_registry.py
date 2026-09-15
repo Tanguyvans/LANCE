@@ -81,6 +81,9 @@ class TestAgentsRegistry:
     def test_intrusion_has_conditional(self):
         assert AGENTS["intrusion"].conditional == "04_exploitation.json"
 
+    def test_intrusion_requires_structured_submission(self):
+        assert AGENTS["intrusion"].validator == "json_intrusion"
+
     def test_report_prerequisites(self):
         assert AGENTS["report"].prerequisites == ["exploitation"]
 

@@ -226,7 +226,9 @@ For each crown jewel reached: document exact access path and data retrieved.
 **ALWAYS set `pivot_to`**: When you access device B FROM device A, device A's hop entry MUST have `pivot_to` = B's IP.
 A hop with `pivot_to: null` means dead end — only the last hop in a chain should be null.
 
-**Minimum chain depth**: Every chain should have ≥ 2 hops. If you only compromised the entry point, keep trying.
+**Chain depth follows evidence**: An isolated direct access may have one hop and zero
+network transitions. No access means empty chains and compromised_devices. Never add
+an unobserved hop merely to reach a minimum chain depth.
 
 **One device → many children**: From a single compromised device, you can pivot to MULTIPLE devices.
 Build a tree of compromises, not just a linear chain. Example:
@@ -249,6 +251,15 @@ do not add a successful hop.
 
 {{intrusion_final_instruction}}
 Pass RAW JSON — do NOT wrap in markdown code blocks.
+The saved object must contain all four sections shown below: summary, credential_pool,
+compromised_devices, and chains. Include all five summary fields, using non-negative
+integer counters (not strings). A completed assessment with zero accesses is valid;
+use empty arrays and truthful counters, not an empty object or invented successes.
+devices_compromised must match the unique compromised_devices; devices_attempted
+cannot be smaller. total_hops counts network transitions: sum(max(0, len(hops)-1))
+across chains. This structural count does not establish that a pivot is proven.
+If a save is rejected, repair its structure using existing observations. Do not claim
+completion for a draft, incomplete, failed, or non-validated diagnostic artifact.
 </instructions>
 
 <output>

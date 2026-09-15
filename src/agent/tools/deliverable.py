@@ -9,7 +9,12 @@ OUTPUT_DIR: Path = Path("output/agent")
 # Files written into the run dir for the evaluator/metadata that the agent
 # must never see. ground_truth.yaml is the benchmark answer key — exposing it
 # via read/list invalidates the score.
-_HIDDEN_DELIVERABLES: frozenset[str] = frozenset({"ground_truth.yaml"})
+_HIDDEN_DELIVERABLES: frozenset[str] = frozenset({
+    "ground_truth.yaml",
+    # Observer metadata must not change the model's context or be overwritten
+    # through its deliverable tools. Humans can inspect it through the run API.
+    "provider_events.jsonl",
+})
 
 
 def _resolve_deliverable_path(filename: str) -> Path:
@@ -34,7 +39,7 @@ def _resolve_deliverable_path(filename: str) -> Path:
     except ValueError as exc:
         raise ValueError("deliverable path escapes the output directory") from exc
 
-    if candidate.name in _HIDDEN_DELIVERABLES:
+    if relative.name in _HIDDEN_DELIVERABLES or candidate.name in _HIDDEN_DELIVERABLES:
         raise ValueError("deliverable is not accessible to agents")
     return candidate
 

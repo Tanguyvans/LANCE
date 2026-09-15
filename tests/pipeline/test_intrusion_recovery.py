@@ -482,8 +482,15 @@ class TestPhase5Context:
         pipeline = Pipeline(provider=mock_provider)
         run_dir = pipeline.run_dir
         model_output = {
-            "summary": {"devices_compromised": 1},
-            "compromised_devices": [{"device_ip": "192.0.2.10"}],
+            "summary": {"devices_compromised": 1, "devices_attempted": 1,
+                        "credentials_harvested": 0, "total_hops": 0,
+                        "crown_jewels_reached": []},
+            "credential_pool": [], "chains": [],
+            "compromised_devices": [{
+                "device_id": "test-device", "device_ip": "192.0.2.10",
+                "access_method": "try_credential:ssh", "access_via": "entry_point",
+                "credentials_found": [], "data_exfiltrated": "",
+            }],
         }
         (run_dir / "05_intrusion.json").write_text(json.dumps(model_output))
 
@@ -581,8 +588,15 @@ class TestPhase5Context:
         assert kwargs["max_tokens"] == 16384
 
         model_output = {
-            "summary": {"devices_compromised": 1},
-            "compromised_devices": [{"device_ip": "192.0.2.10"}],
+            "summary": {"devices_compromised": 1, "devices_attempted": 1,
+                        "credentials_harvested": 0, "total_hops": 0,
+                        "crown_jewels_reached": []},
+            "credential_pool": [], "chains": [],
+            "compromised_devices": [{
+                "device_id": "test-device", "device_ip": "192.0.2.10",
+                "access_method": "try_credential:ssh", "access_via": "entry_point",
+                "credentials_found": [], "data_exfiltrated": "",
+            }],
         }
         def save_model_output(**request):
             save = next(tool for tool in request["tools"] if tool["name"] == "save_deliverable")

@@ -8,6 +8,11 @@ import json
 import logging
 from src.agent.phases.intrusion.compact import COMPACT_INTRUSION_COMPLETION_TOOL
 from src.agent.core import runtime
+from src.agent.core.provider_diagnostics import (
+    append_event,
+    sanitize_event,
+    warn_diagnostic_failure,
+)
 
 
 log = logging.getLogger(__name__)
@@ -25,6 +30,27 @@ class AgentRunner:
     ) -> Callable[[dict], None]:
         """Archive complete model text chunks while forwarding live events."""
         def callback(event: dict) -> None:
+            if isinstance(event, dict) and event.get("type") == "provider_diagnostic":
+                record = sanitize_event(
+                    event,
+                    provider=getattr(self.provider, "provider", "unknown"),
+                    model=getattr(self.provider, "model", "unknown"),
+                    invocation_id=event.get("invocation_id"),
+                    known_tools={
+                        name for name in event.get("_known_tools", [])
+                        if isinstance(name, str) and len(name) <= 96
+                    },
+                    phase=phase,
+                    agent=agent,
+                    run_id=getattr(self.run_dir, "name", None),
+                )
+                if record is not None:
+                    # Provider names are normalised by the provider-side
+                    # emitter; the callback remains the confidentiality
+                    # boundary and never forwards this sidecar event.
+                    if not append_event(self.run_dir, record, lock=self._artifact_log_lock):
+                        warn_diagnostic_failure("write")
+                return
             if event.get("type") == "text_chunk" and event.get("text"):
                 record = {
                     "timestamp": datetime.now().astimezone().isoformat(),
@@ -39,6 +65,9 @@ class AgentRunner:
                         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             if downstream:
                 downstream(event)
+        # Provider diagnostics are an internal side-channel of this adapter;
+        # direct provider callers retain the exact legacy event stream.
+        callback._provider_diagnostics = True
         return callback
 
     def _apply_deliverable_transaction(
@@ -138,6 +167,7 @@ class AgentRunner:
                     "phase": config.phase,
                     "agent": config.name,
                     "filename": target,
+                    "validator": config.validator,
                     "attempt_ref": attempt_ref,
                     "size": len(normalized),
                     "valid": valid,
@@ -439,7 +469,11 @@ class AgentRunner:
         # usage will be recorded after validation
 
         # Validate deliverable
-        validator_fn = runtime.VALIDATORS.get(config.validator, runtime.VALIDATORS["default"])
+        # Compact local output is synthesized by the existing ledger-backed
+        # completion tool, not accepted as a model submission. Keep that
+        # completion contract distinct from the model's structural validator.
+        validator_name = "json_valid" if local_intrusion_memo else config.validator
+        validator_fn = runtime.VALIDATORS.get(validator_name, runtime.VALIDATORS["default"])
         valid, msg = validator_fn(config.deliverable_file)
         if full_intrusion and valid and not self._full_intrusion_saved:
             valid, msg = False, "Accepted Phase 5 submission not found in this execution"
