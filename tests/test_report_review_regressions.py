@@ -12,6 +12,7 @@ from src.agent.core import runtime
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.registry import AGENTS
 from src.agent.phases.registry import run_phase
+from src.benchmark.metric_contract import EVIDENCE_CONTRACT_VERSION
 
 
 @pytest.fixture
@@ -34,6 +35,7 @@ def report_run(tmp_path, monkeypatch):
             for n in (1, 2)
         ]
         data = {
+            "run_meta.json": {"evidence_contract_version": EVIDENCE_CONTRACT_VERSION, "evidence_integrity": True},
             "03_vuln_analysis.json": {"vulnerabilities": findings},
             "04_exploitation.json": {
                 "summary": {"total_tested": 2, "confirmed": 2, "errors": 0},
@@ -96,7 +98,7 @@ def test_report_is_composed_once_and_keeps_all_verified_rows(report_run, profile
     events = []
     status = run_phase(pipeline, AGENTS["report"], events.append)
     assert status.partition(":")[0] == expected
-    assert pipeline.provider.chat_with_tools.call_count == 1
+    assert pipeline.provider.chat_with_tools.call_count == 4  # two findings, intrusion limits, summary
     valid, reason = pipeline._validator("final_report_markdown")("06_report.md")
     assert valid, reason
     report = (pipeline.run_dir / "06_report.md").read_text()
@@ -115,7 +117,7 @@ def test_report_is_composed_once_and_keeps_all_verified_rows(report_run, profile
     assert len([e for e in events if e.get("type") == "phase_done"]) == 1
     assert events[-1]["status"].partition(":")[0] == expected
     assert pipeline.tracker.end_phase() is None
-    assert pipeline.tracker.total_tokens() == (500, 40)
+    assert pipeline.tracker.total_tokens() == (2000, 160)
     if behavior != "ok":
         assert "partial" in report.lower() or "partiel" in report.lower()
 
@@ -204,7 +206,7 @@ def test_usable_but_late_memo_is_not_promoted(report_run, profile):
     report = (pipeline.run_dir / "06_report.md").read_text()
     assert "Prioritize remediation" not in report
     assert "timeout" in report
-    assert pipeline.tracker.total_tokens() == (500, 40)
+    assert pipeline.tracker.total_tokens() == (2000, 160)
 
 
 def test_large_key_and_omission_metadata_cannot_overflow_prompt(report_run):

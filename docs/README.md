@@ -17,6 +17,7 @@ son introduction.
 
 - [Pipeline organisé par phase](../src/agent/phases/README.md).
 - [Isolation des livrables par run](run-artifacts.md).
+- [Rédaction du rapport par sections](report-writing.md).
 - [Authentification des actions administratives](provider-auth.md).
 
 ## Guides complémentaires

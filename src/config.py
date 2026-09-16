@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import os
 
-# Hard wall-clock budget for the bounded local-MoE report analysis. The report
-# is composed deterministically after this budget, even if the model stalls.
+# Total writing budget shared by all report cards, in both profiles. Keep the
+# existing environment variable so deployed operator limits remain respected.
 LOCAL_MOE_REPORT_PHASE_TIMEOUT = float(
-    os.environ.get("LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT", "120")
+    os.environ.get("LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT", "600")
 )
+REPORT_SECTION_TIMEOUT = float(os.environ.get("LANCE_REPORT_SECTION_TIMEOUT", "45"))
 
 # ── Network subnets ──────────────────────────────────────────────────────────
 

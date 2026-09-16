@@ -24,7 +24,7 @@ agent/
     ├── analysis/               # Phase 3 : run, compact, aggregation, evidence, prompts
     ├── verification/           # Phase 4 : run, contract, evidence, prompts
     ├── intrusion/              # Phase 5 : run, compact, evidence, scope
-    └── report/                 # Phase 6 : run, compact, context, rendering, validation
+    └── report/                 # Phase 6 : run, sections, context, rendering, validation…
 ```
 
 Les éléments sous chaque phase sont des modules Python, pas des commandes shell
@@ -55,8 +55,10 @@ enregistrés sous `05_report.md` reste prise en charge par l'application.
 
 Les conditions liées au moteur local restent inchangées. Choisir compact sur un
 modèle distant n'active pas les récupérations locales ; utiliser un moteur local
-avec full ne force pas compact. Le rapport choisit sa variante locale dans son
-unique point d'entrée, avec les mêmes conditions et le même fallback qu'avant.
+avec full ne force pas compact. Le rapport utilise une rédaction par fiches
+indépendantes et un assemblage déterministe, communs aux deux profils.
+Voir la [rédaction du rapport](../../../docs/report-writing.md) pour les limites,
+les fichiers produits et la reprise des fiches.
 
 ## Limites conservées explicitement
 

@@ -94,7 +94,7 @@ def test_local_report_memo_guard_rejects_false_compromise_claim():
 
 
 class TestInformationPreservingArchitecture:
-    def test_local_report_phase_is_one_shot_and_composes_final_report(
+    def test_local_report_composes_sections_without_resending_inventory(
         self, mock_provider, output_dir
     ):
         mock_provider.provider = "local-moe"
@@ -104,6 +104,8 @@ class TestInformationPreservingArchitecture:
         pipeline = Pipeline(provider=mock_provider, execution_profile="compact")
         pipeline.context = {"target_subnet": "192.168.100.0/24"}
         run_dir = pipeline.run_dir
+        (run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": []}))
+        (run_dir / "04_exploitation.json").write_text(json.dumps({"tests": []}))
         (run_dir / "06_phase6_context.json").write_text(json.dumps({
             "device_count": 4,
             "total_vulnerabilities": 2,
@@ -183,7 +185,7 @@ class TestInformationPreservingArchitecture:
         assert kwargs["tools"] == []
         assert kwargs["max_turns"] == 1
         assert kwargs["deadline"] > 0
-        assert "192.168.100.11" in kwargs["system_prompt"]
+        assert "192.168.100.11" not in kwargs["system_prompt"]  # summary receives counters, not the inventory
         report = (run_dir / "06_report.md").read_text()
         assert "## 1." in report and "## 10." in report
         assert "{{SECTION_5_TABLE}}" not in report
@@ -197,8 +199,8 @@ class TestInformationPreservingArchitecture:
         assert phase_done[0]["status"] == "completed"
 
 
-@pytest.mark.parametrize("profile,token_budget", [("compact", 1536), ("full", 2048)])
-def test_phase6_common_entry_is_toolless_and_one_shot(profile, token_budget, mock_provider, output_dir):
+@pytest.mark.parametrize("profile", ["compact", "full"])
+def test_phase6_common_entry_uses_bounded_toolless_sections(profile, mock_provider, output_dir):
     mock_provider.chat_with_tools.return_value = "Review the evidence-linked authentication findings."
     pipeline = Pipeline(provider=mock_provider, execution_profile=profile)
     pipeline.context = {"device_count": 1, "target_subnet": "192.0.2.0/24"}
@@ -215,7 +217,8 @@ def test_phase6_common_entry_is_toolless_and_one_shot(profile, token_budget, moc
     kwargs = mock_provider.chat_with_tools.call_args.kwargs
     assert kwargs["tools"] == []
     assert kwargs["max_turns"] == 1
-    assert kwargs["max_tokens"] == token_budget
+    assert kwargs["max_tokens"] == pipeline.execution_profile.report_max_tokens
+    assert mock_provider.chat_with_tools.call_count == 2  # intrusion limits and summary, no hypotheses
     assert len([event for event in events if event["type"] == "phase_start"]) == 1
     assert len([event for event in events if event["type"] == "phase_done"]) == 1
     assert pipeline.tracker.end_phase() is None

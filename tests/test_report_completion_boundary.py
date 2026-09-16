@@ -33,14 +33,15 @@ def test_real_provider_finish_reason_controls_note_promotion(report_run, profile
         assert run_phase(pipeline, AGENTS["report"]) == expected
     finally:
         provider.client.close()
-    assert len(requests) == 1
+    assert len(requests) == 4
     meta = json.loads((pipeline.run_dir / "run_meta.json").read_text())
     assert meta["phase6_finish_reason"] == reason
-    assert meta["phase6_report_contract"] == "report-v2"
+    assert meta["phase6_report_contract"] == "sectioned-report"
+    assert meta["phase6_section_count"] == 4
     assert (pipeline.run_dir / "06_report_analysis.md").exists() == (reason == "stop")
     assert (pipeline.run_dir / "06_report.md").exists()
     assert (pipeline.run_dir / "04_exploitation.json").read_bytes() == original
-    assert pipeline.tracker.total_tokens() == (10, 3)
+    assert pipeline.tracker.total_tokens() == (40, 12)
 
 
 def test_completion_metadata_is_per_call_and_fallback_updates_reason():

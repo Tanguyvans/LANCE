@@ -600,12 +600,19 @@ def merge_report_with_prefill(
                 for item in source_observations
             ) + "\n"
         )
+    sectioned = (run_dir / "06_report_sections.json").exists()
+    if sectioned:
+        cards = (run_dir / "06_report_cards.md").read_text(encoding="utf-8")
+        intrusion_cards = (run_dir / "06_report_intrusion_cards.md").read_text(encoding="utf-8")
+        prefill += "\n\n### Fiches de toutes les hypothèses — rédaction indépendante\n\n" + cards
+        sec7 += "\n\n### Fiches d’intrusion — observations séparées des déclarations\n\n" + intrusion_cards
+    executive_note = ""
     analysis_path = run_dir / "06_report_analysis.md"
     analysis_heading = "### 10.3 Analyse du modèle (non validée)"
     if analysis_path.exists() and analysis_path.read_text(encoding="utf-8").strip():
         model_analysis = analysis_path.read_text(encoding="utf-8").strip()
         if model_analysis:
-            sec10 += (
+            note = (
                 f"\n{analysis_heading}\n\n"
                 "Cette note est un complément analyste non validé. Elle ne crée "
                 "aucune confirmation, aucun pivot et ne modifie pas les preuves, "
@@ -613,6 +620,15 @@ def merge_report_with_prefill(
                 + model_analysis
                 + "\n"
             )
+            if sectioned:
+                import html
+                executive_note = (
+                    "### Synthèse exécutive — analyse du modèle non validée\n\n"
+                    "Cette synthèse ne remplace pas les fiches, les preuves ou les chiffres du pipeline.\n\n"
+                    "<p>" + html.escape(model_analysis).replace("\n", "<br>") + "</p>\n"
+                )
+            else:
+                sec10 += note
     else:
         status = analysis_status or "unavailable"
         cause = analysis_cause or "memo_absent"
@@ -697,6 +713,7 @@ def merge_report_with_prefill(
         f"declared scope of {n_devices} devices. These are not unique vulnerabilities, "
         f"accepted benchmark proofs or confirmed machine compromises. Consult the "
         f"observations, reference diagnostics and raw candidate registry before remediation decisions.\n\n"
+        f"{executive_note}\n\n"
         f"## 2. Scope and Methodology\n\n"
         f"- **Target subnet:** {run_context.get('target_subnet', 'see topology')}\n"
         f"- **Artifacts available (not execution status):** {available_artifacts}\n"
