@@ -56,7 +56,7 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     },
     "data_access": {
         "mqtt": "For MQTT no_auth (port 1883): mqtt_listen(broker=\"{ip}\", topic=\"#\", count=10, timeout=8) — capture messages, extract credentials/keys\n",
-        "http": "For HTTP data_exposure: http_get(URL) using URLs from Phase 3 evidence. If evidence mentions /backup/file.sql, use http_get(\"http://{ip}/backup/file.sql\")\nFor HTTP directory_listing: http_get(base_url) first to confirm, then http_get(listed_file_url) for each listed file\nIf the URL from evidence returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence.",
+        "http": "For HTTP(S) data_exposure: http_get(URL) using URLs from Phase 3 evidence and the declared origin {url}. Preserve its scheme and port. Start with the affected URL in the verification requirement.\nFor HTTP directory_listing: fetch the affected directory first, then relevant listed files on the same origin.\nIf the URL from evidence returns 404, mark the Phase 4 attempt as FAILED and preserve the 404 as evidence.",
         "telnet": "For Telnet (port 23): telnet_connect(host=\"{ip}\", port=23, timeout=3) — require received bytes; a connection or timeout alone is inconclusive\n",
         "mysql": "For MySQL/MariaDB (port 3306): mysql_query(host=\"{ip}\", user=\"root\", query=\"SHOW DATABASES;\", skip_ssl=true) — show data\n",
         "ftp": "For FTP (port 21): ftp_list(\"ftp://{ip}/\") then ftp_list(\"ftp://{ip}/config/\") — show files\n",
@@ -68,9 +68,10 @@ EXPLOIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "injection": {
         "http": (
             "Attempt code execution or unauthorized upload/firmware access.\n"
-            "For file upload (web_upload role, port 80): http_get(\"http://{ip}/uploads/\") to check for uploaded files, then http_get(\"http://{ip}/\") to confirm upload endpoint exists\n"
-            "For firmware update without signature (iot_gateway, port 80): if curl_headers on /firmware/ shows an Index of with firmware files and no .sig/.asc/.sha256/.sha512 sidecar, report insecure_update HIGH; if /update accepts an update request, confirm it with the required http_request POST with a non-empty probe body.\n"
-            "For web API RCE (web_server_v2, port 80): http_get(\"http://{ip}/api/exec\") then check if POST returns uid=0\n"
+            "Use the declared HTTP(S) origin {url}, preserving its scheme and port, and the affected endpoint in the verification requirement.\n"
+            "For file upload: inspect the upload endpoint identified in Phase 3 evidence to check for uploaded files.\n"
+            "For firmware update without signature: if curl_headers on /firmware/ shows an Index of with firmware files and no .sig/.asc/.sha256/.sha512 sidecar, report insecure_update HIGH; if /update accepts an update request, confirm it with the required http_request POST with a non-empty probe body.\n"
+            "For web API RCE: inspect the affected API endpoint, then check whether the required POST returns command-execution evidence.\n"
             "Report what is accessible and whether code execution is possible."
         ),
         "nodered": (

@@ -7,6 +7,7 @@ import threading
 import logging
 from src.agent.phases.verification.contract import (
     COMPACT_PHASE4_DEFAULT_MAX_WORKERS,
+    _phase4_http_target,
     _phase4_apply_verification_contract,
     _phase4_local_verification_tools,
     _phase4_requirement_matches,
@@ -124,15 +125,13 @@ class VerificationPhase:
 
             # Build exploit instructions with variable substitution
             cat_instructions = EXPLOIT_INSTRUCTIONS.get(category, {})
-            service_key = "http" if service == "https" else service
+            service_key = str(service).strip().casefold()
+            service_key = "http" if service_key == "https" else service_key
             instructions = cat_instructions.get(service_key, cat_instructions.get("default", ""))
             instructions = instructions.replace("{ip}", device_ip)
             instructions = instructions.replace("{port}", str(port))
             # Build URL for data_access category
-            if service in ("http", "https") and port:
-                url = f"http://{device_ip}:{port}" if port != 80 else f"http://{device_ip}"
-            else:
-                url = f"http://{device_ip}"
+            url, _ = _phase4_http_target(vuln)
             instructions = instructions.replace("{url}", url)
 
             variables = {**self.context}

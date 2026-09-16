@@ -119,12 +119,31 @@ def _normalise_phase4_endpoint(value: object) -> str:
     return raw or "/"
 
 
+def _phase4_http_target(vuln: dict) -> tuple[str, int]:
+    """Share the declared HTTP origin between probe plans and model guidance.
+
+    The service determines the scheme, not the port: HTTP on 443 must not
+    become HTTPS, and HTTPS on 80 must not become plaintext HTTP.
+    """
+    scheme = "https" if str(vuln.get("service") or "").strip().casefold() == "https" else "http"
+    default_port = 443 if scheme == "https" else 80
+    try:
+        port = int(vuln.get("port")) or default_port
+    except (TypeError, ValueError):
+        port = default_port
+    host = str(vuln.get("device_ip") or "").strip()
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    authority = host if port == default_port else f"{host}:{port}"
+    return f"{scheme}://{authority}", port
+
+
 def _phase4_verification_plan(
     vuln: dict, *, compact: bool = False
 ) -> dict[str, object]:
     """Return the minimum fresh verification required for one finding."""
     vuln_type = canonicalize(str(vuln.get("type") or "").casefold())
-    service = str(vuln.get("service") or "").casefold()
+    service = str(vuln.get("service") or "").strip().casefold()
     ip = str(vuln.get("device_ip") or "")
     port = vuln.get("port")
     try:
@@ -132,7 +151,7 @@ def _phase4_verification_plan(
     except (TypeError, ValueError):
         port = None
     endpoint = _normalise_phase4_endpoint(vuln.get("endpoint"))
-    base_url = f"http://{ip}:{port}" if port and port != 80 else f"http://{ip}"
+    base_url, http_port = _phase4_http_target(vuln)
     suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
     url = f"{base_url}{suffix}"
 
@@ -194,12 +213,12 @@ def _phase4_verification_plan(
             r"(?i)\b(?:x-frame-options|strict-transport-security|content-security-policy)\b",
             str(vuln.get("details") or ""),
         ))) or ["x-frame-options", "strict-transport-security", "content-security-policy"]
-        return {"tool": "curl_headers", "target": ip, "port": port or 80,
+        return {"tool": "curl_headers", "target": ip, "port": http_port,
                 "args_hint": {"url": url}, "required_headers": required_headers,
                 "success_condition": "all required security headers are absent"}
     if vuln_type == "insecure_update" and service in {"http", "https"}:
         return {
-            "tool": "http_request", "target": ip, "port": port or 80,
+            "tool": "http_request", "target": ip, "port": http_port,
             "endpoint": endpoint,
             "args_hint": {
                 "url": url, "method": "POST",
@@ -212,7 +231,7 @@ def _phase4_verification_plan(
         }
     if vuln_type == "code_injection" and service in {"http", "https"}:
         return {
-            "tool": "http_request", "target": ip, "port": port or 80,
+            "tool": "http_request", "target": ip, "port": http_port,
             "endpoint": endpoint,
             "args_hint": {
                 "url": url, "method": "POST",
@@ -224,7 +243,7 @@ def _phase4_verification_plan(
             "success_condition": "HTTP response contains command execution proof",
         }
     if vuln_type in {"directory_listing", "data_exposure", "code_injection", "no_auth", "broken_access_control"} and service in {"http", "https"}:
-        return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+        return {"tool": "http_get", "target": ip, "port": http_port, "endpoint": endpoint,
                 "args_hint": {"url": url}, "success_condition": "affected HTTP endpoint fetched"}
     if vuln_type == "data_exposure" and (service == "ftp" or port == 21):
         ftp_suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
@@ -240,7 +259,7 @@ def _phase4_verification_plan(
         if service == "mqtt" or port in {1883, 8883}:
             return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
                     "args_hint": {"broker": ip, "topic": "$SYS/#", "count": 5, "timeout": 5}, "success_condition": "$SYS metrics or broker version captured"}
-        return {"tool": "curl_headers", "target": ip, "port": port or 80,
+        return {"tool": "curl_headers", "target": ip, "port": http_port,
                 "args_hint": {"url": url}, "success_condition": "disclosing headers captured"}
     if vuln_type in {"weak_cipher", "terrapin", "known_cve"}:
         if service == "ssh" or port == 22:
@@ -306,7 +325,7 @@ def _phase4_verification_plan(
                 "success_condition": "unauthenticated protocol negotiation or identity response",
             }
         if service in {"http", "https"}:
-            return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+            return {"tool": "http_get", "target": ip, "port": http_port, "endpoint": endpoint,
                     "args_hint": {"url": url}, "success_condition": "unauthenticated endpoint fetched"}
     if vuln_type in {"default_credentials", "privilege_escalation"}:
         if service == "mqtt" or port in {1883, 8883}:
@@ -361,7 +380,7 @@ def _phase4_verification_plan(
         return {"tool": "mqtt_listen", "target": ip, "port": port or 1883,
                 "args_hint": {"broker": ip, "topic": "#", "count": 5, "timeout": 5}, "success_condition": "MQTT service response captured"}
     if service in {"http", "https"}:
-        return {"tool": "http_get", "target": ip, "port": port or 80, "endpoint": endpoint,
+        return {"tool": "http_get", "target": ip, "port": http_port, "endpoint": endpoint,
                 "args_hint": {"url": url}, "success_condition": "HTTP response captured"}
     return {"tool": "nmap_scan", "target": ip, "port": port,
             "args_hint": {"target": ip, "ports": str(port or "-"), "skip_discovery": True}, "success_condition": "target service evidence captured"}

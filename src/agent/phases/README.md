@@ -47,6 +47,9 @@ enregistrés sous `05_report.md` reste prise en charge par l'application.
 - **Contrats et preuves** : modifier les fichiers de la phase concernée. Le contrat
   de vérification est commun : full reçoit ses exigences comme guidage, compact
   peut imposer leur exécution. Les règles d'intrusion compacte sont dans `scope.py`.
+  Pour HTTP(S), le plan et les consignes partagent la construction de l'origine
+  dans `verification/contract.py` : le service détermine HTTP ou HTTPS et un port
+  explicite reste inchangé. Une consigne correctement ciblée n'est pas une preuve.
 - **Infrastructure** : `core` porte le cycle de vie et les dépendances techniques,
   pas les règles métier des six phases.
 
