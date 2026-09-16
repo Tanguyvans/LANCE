@@ -17,6 +17,11 @@ La référence courante est la [documentation V1](../../benchmark/v1/README.md).
 | [Rapport S12](S12_improvement_report.md) | `benchmarks/docs/S12_improvement_report.md` |
 | [Commandes](commands.md) | `benchmarks/docs/commands.md` |
 | [Configuration Proxmox](proxmox_config.md) | `benchmarks/docs/proxmox_config.md` |
+| [Catalogue d’attaques Word — février 2026](nato_iot_attack_catalog.docx) | `nato_iot_attack_catalog.docx` |
 
-Seuls des textes sont déplacés. Aucun scénario, résultat de run, ground truth,
+Le Word est conservé à l’identique pour sa valeur historique. Son inventaire
+matériel, ses chaînes et sa bibliographie ne sont pas des capacités validées.
+Sa version de lecture actualisée est le [catalogue des attaques Markdown](../../benchmark/catalogue-attaques.md).
+
+Seuls des documents sont déplacés. Aucun scénario, résultat de run, ground truth,
 contrat de calcul ou script de déploiement n’est modifié par cette réorganisation.

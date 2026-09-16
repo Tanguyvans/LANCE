@@ -312,6 +312,38 @@ def test_provider_observation_retries_are_provider_errors_then_reset_on_success(
     assert "secret response body" not in json.dumps(records)
 
 
+def test_response_only_missing_user_query_is_recorded_as_known_provider_error(tmp_path):
+    class ResponseOnlyProviderError(Exception):
+        response = SimpleNamespace(
+            status_code=500,
+            json=lambda: {"error": {"message": "no user query found in messages"}},
+        )
+
+    tool_call = _tool_call("action")
+    provider = _provider([
+        _response(tool_calls=[tool_call], finish_reason="tool_calls"),
+        ResponseOnlyProviderError("opaque provider error"),
+    ])
+    action = MagicMock(return_value='{"ok":true}')
+    callback = _runner(tmp_path)
+
+    with pytest.raises(ResponseOnlyProviderError):
+        provider.chat_with_tools(
+            "sys", "go", [{
+                "name": "action", "description": "action", "input_schema": {},
+                "function": action,
+            }], max_turns=2, stream_callback=callback,
+        )
+
+    errors = [
+        record for record in _records(tmp_path)
+        if record.get("response_type") == "providererror"
+    ]
+    assert errors[-1]["error_kind"] == "no_user_query"
+    assert errors[-1]["status_code"] == 500
+    action.assert_called_once_with()
+
+
 def test_retry_backoff_deadline_is_terminal_deadline_after_observed_sdk_error(tmp_path):
     class ProviderHTTPError(Exception):
         status_code = 500

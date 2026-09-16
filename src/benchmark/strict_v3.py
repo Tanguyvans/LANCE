@@ -37,7 +37,7 @@ CATEGORY_PRIMARY_TYPES: dict[str, tuple[str, ...]] = {
     "broken_access_control": ("broken_access_control",),
 }
 
-# Rules are intentionally narrow.  Unlike CATEGORY_TO_TYPE in strict-v2, they
+# Rules are intentionally narrow. Unlike the category ordering hints, they
 # describe semantic equivalence for one GT entry rather than broad category
 # compatibility.
 TITLE_TYPE_RULES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (

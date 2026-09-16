@@ -43,6 +43,39 @@ def _safe_json(path: Path) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _execution_facts(run_dir: Path) -> dict:
+    """Ledger facts for the analyst, never proof or completion verdicts."""
+    calls = cve_calls = 0
+    intact = True
+    try:
+        with (run_dir / "tool_calls.jsonl").open(encoding="utf-8") as ledger:
+            for line in ledger:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    intact = False
+                    continue
+                if not isinstance(record, dict) or not isinstance(record.get("tool"), str):
+                    intact = False
+                    continue
+                calls += 1
+                cve_calls += record["tool"] == "cve_search"
+    except (OSError, UnicodeError):
+        intact = False
+    return {
+        "source": "tool_calls.jsonl", "ledger_readable": intact,
+        "recorded_calls": calls if intact else None,
+        "cve_search_calls": cve_calls if intact else None,
+        "interpretation": (
+            "Counts are recorded calls, not successful searches or vulnerability proofs. "
+            "An empty confirmed CVE inventory does not imply searches were absent. "
+            "An unavailable ledger does not establish zero calls."
+        ),
+    }
+
+
 def _short_text(value, *, path: str, omissions: dict[str, int], limit: int = _TEXT_LIMIT):
     """Project text without silently losing the existence of omitted data."""
     if not isinstance(value, str):
@@ -119,7 +152,9 @@ def _project_value(value, *, path: str, omissions: dict[str, int], depth: int):
 
 
 def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict,
-                     execution_observations: list | None = None) -> dict:
+                     execution_observations: list | None = None,
+                     execution_facts: dict | None = None,
+                     unresolved_tests: list | None = None) -> dict:
     omissions: dict[str, int] = {}
     phase6_projection = {
         key: phase6.get(key)
@@ -258,6 +293,15 @@ def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict,
         "graph": graph_projection,
         "recon": recon_projection,
         "intrusion": intrusion_projection,
+        "execution_facts": execution_facts or {},
+        "unresolved_tests": _project_list(
+            unresolved_tests or [], path="unresolved_tests", omissions=omissions,
+            limit=12, projector=lambda item, path: _project_record(
+                item, path=path, omissions=omissions,
+                fields=("vuln_id", "device_ip", "vuln_type", "service", "port",
+                        "status", "verification_status", "evidence"),
+            ),
+        ),
         "execution_observations": _project_list(
             execution_observations or [], path="execution_observations", omissions=omissions,
             limit=8, projector=lambda item, path: _project_record(
@@ -365,12 +409,19 @@ def _project_context(phase6: dict, graph: dict, recon: dict, intrusion: dict,
 
 def build_report_analysis_context(run_dir: Path) -> dict:
     """Prepare compact authoritative evidence for a one-shot local analysis."""
+    tests = _safe_json(run_dir / "04_exploitation.json").get("tests", [])
+    unresolved = [
+        item for item in tests
+        if isinstance(item, dict) and not _is_verified_report_finding(item)
+    ] if isinstance(tests, list) else []
     return _project_context(
         _safe_json(run_dir / "06_phase6_context.json"),
         _safe_json(run_dir / "01_graph_evidence.json"),
         _safe_json(run_dir / "02_recon_evidence.json"),
         _safe_json(run_dir / "05_intrusion.json"),
         ReportTraceIndex(run_dir).ssh_source_observations(),
+        _execution_facts(run_dir),
+        unresolved,
     )
 
 def generate_phase6_context(run_dir: Path, run_context: dict, *, compact: bool) -> None:

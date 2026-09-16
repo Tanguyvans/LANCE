@@ -15,6 +15,11 @@ l’accès à Proxmox et les templates. La configuration machine relève du
 [guide Ansible](../../../benchmarks/ansible/README.md) et de ses playbooks ; les
 adresses et secrets ne doivent pas être recopiés dans cette documentation.
 Utiliser l’environnement Python 3.12 validé pour le dépôt.
+La vérification MQTT sur WebSocket utilise `paho-mqtt` 2.x, déclaré dans
+`requirements.txt` : mettre à jour les dépendances avec le code. La sonde est
+anonyme et en lecture seule ; elle n’accepte pas les URL complètes ni les chemins
+contenant une query ou un fragment. Ces cas restent explicitement non vérifiables
+par cette sonde, sans remplacement silencieux du chemin.
 
 Le dashboard lance le pipeline sur la VM maître, pas sur le navigateur client.
 Choisir un scénario de développement, le modèle voulu et explicitement `full`
@@ -43,6 +48,12 @@ Vérifier [le parseur CLI](../../../src/agent/__main__.py) avant de transposer u
 configuration du dashboard. Ne pas changer de modèle ou de profil pour contourner
 silencieusement une panne fournisseur.
 
+Si un fournisseur refuse une conversation terminée par un résultat d’outil avec
+`no user query found in messages`, une continuation conserve l’historique sans
+réexécuter les outils. Elle est autorisée une fois par état de conversation,
+dans les budgets existants. Un rejet persistant reste une erreur ; les événements
+fournisseur permettent de distinguer cette reprise d’un retry réseau.
+
 Un groupe explicite incompatible avec le scénario est refusé. `--split auto`
 suit le catalogue. `--phases` sert à des exécutions ciblées, pas à prétendre avoir
 validé le pipeline complet.
@@ -59,6 +70,13 @@ Les six phases partagent le même moteur. Les sauvegardes sont validées avant
 d’être admises comme livrables ; les tentatives rejetées restent dans `.attempts/`.
 Un rapport enregistré ou une validation de format réussie ne démontre ni une
 intrusion réussie ni une exécution intégralement terminée.
+
+En full, une intrusion sans livrable requis peut entrer dans une clôture limitée
+à la sauvegarde : au plus trois requêtes, dans le budget de tours existant, sans
+nouvelle action sur les cibles. Les limites de coût et l’arrêt restent applicables.
+Une soumission absente ou rejetée laisse une synthèse explicitement incomplète.
+L’événement final de phase est émis une seule fois après réconciliation, avec
+la consommation mesurée. Une sauvegarde admise ne prouve ni accès ni pivot.
 
 ## Statut et score sont indépendants
 
@@ -104,6 +122,17 @@ Commencer par la cause terminale et la phase, puis les événements fournisseur
 ou les traces d’outils correspondantes. `provider_events.jsonl` est un diagnostic
 de métadonnées, pas un journal de preuves ; il n’est pas exposé comme livrable au
 modèle. Une erreur d’écriture peut laisser certains diagnostics absents.
+
+Les opérations Ansible indiquent playbook, tentative, horaires, durée et code
+retour. Leurs sorties sont collectées à la fin de chaque commande, pas ligne par
+ligne ; les reprises sont ajoutées au journal et les sorties partielles conservées
+en cas de timeout. Ces journaux ne réparent pas automatiquement SSH ou Proxmox.
+
+Pour une exception terminale, `run_error.json` conserve classe, message filtré,
+chaîne causale et emplacements de pile bornés, sans code source ni variables locales.
+Son écriture est tentée avant nettoyage ; une copie figure dans `run_meta.json`.
+Les deux écritures sont best-effort. Ce diagnostic ne relance pas une phase,
+ne produit pas de rapport de secours et ne change ni le profil ni le statut.
 
 Exemples d’interprétation :
 

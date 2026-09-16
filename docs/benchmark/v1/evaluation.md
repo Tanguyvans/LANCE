@@ -2,9 +2,14 @@
 
 [Vue d’ensemble](README.md) · [Scénarios](scenarios.md) · [Exécution](execution.md)
 
-Référence : `strict-v3.12 / evidence-v12`, schéma `funnel-v1`.
 Le benchmark connaît les failles attendues. Un audit réel sans vérité terrain
 ne permet pas de calculer exhaustivement les FN ou le rappel.
+
+Un seul moteur d’évaluation est maintenu, commun au dashboard, aux batches et au
+minage des erreurs d’apprentissage. Les anciens runs restent consultables avec
+leur contrat d’origine ; ils ne sont pas réétiquetés comme compatibles. Pour
+reproduire un ancien calcul, utiliser son commit Git, pas une branche legacy du
+moteur actuel. Ce nettoyage ne change pas les règles de preuve courantes.
 
 ## 1. Trois étapes, trois populations
 
@@ -24,6 +29,12 @@ conservatrice, pas selon les seuls identifiants du modèle. Des machines, servic
 endpoints ou conditions distincts ne sont pas fusionnés arbitrairement. Chaque
 étape est appariée séparément, un-à-un, à la vérité terrain. Le registre des
 candidats absent n’est jamais reconstruit à partir des seuls survivants.
+
+Avant vérification, deux hypothèses MQTT issues du modèle et du scanner peuvent
+être regroupées si une même observation complète archivée les relie sans
+ambiguïté. Les topics, identités et conditions distincts restent séparés ; les
+candidats bruts et leur provenance sont conservés. Ce regroupement évite des
+tests redondants, sans confirmer la faille ni modifier les anciens résultats.
 
 Pour `N` prédictions distinctes et `G` failles attendues :
 
@@ -48,6 +59,19 @@ Un `success: true`, un code de retour nul ou un rapport bien formé ne suffit pa
 Par exemple, une ouverture WebSocket ne démontre pas un accès MQTT anonyme ;
 un message MQTT sans attribution fiable au topic annoncé ne démontre pas la
 fuite alléguée. Une bannière de version ne démontre pas à elle seule une exploitation.
+
+La note d’analyse du rapport reçoit aussi les appels CVE comptés dans le journal
+et les tentatives non concluantes avec leurs motifs. Une liste vide de CVE
+confirmées ne signifie pas qu’aucune recherche n’a été menée. Cette note reste
+non validée : elle n’ajoute ni preuve, ni crédit au benchmark.
+
+Ces exigences sont identiques en full et compact :
+
+- **SSH** : requête identifiable et arguments structurés, sans shell local.
+- **HTTP** : pas de preuve attribuée à la requête initiale après une redirection ; chaque destination nécessite un nouvel appel contrôlé.
+- **MQTT** : cible, port TCP et topic effectifs sont enregistrés dans `execution_attestation`, sans que cette attestation prouve un accès. Ports invalides et arguments inconnus sont refusés.
+- **Topics MQTT** : les messages structurés (`-F %j`, format `mosquitto-json-v1`) doivent correspondre à la souscription et au topic annoncé ; seule leur charge utile justifie une fuite. Le stdout brut est conservé. Les anciennes traces non structurées ne permettent pas d’élargir une attribution à d’autres topics.
+- **MQTT sur WebSocket** : `mqtt_ws_listen` effectue une souscription anonyme en lecture seule. La preuve exige des réponses MQTT CONNACK/SUBACK acceptées et un message PUBLISH reçu, attribués à la bonne IP, au port, au chemin et au topic. Un upgrade HTTP ou `mqtt_listen` (TCP, même sur 9001) ne suffit pas. Cette souscription ne prouve ni shell ni pivot.
 
 Les preuves sont comptées **acceptées**, **rejetées**, ou **manquantes/non
 attribuables** pour les déclarations finales dédupliquées. Une trace acceptée
@@ -141,6 +165,16 @@ Les contrats incompatibles et données manquantes restent signalés, sans invent
 de zéros. Les anciens résultats restent consultables sans être réétiquetés pour
 obtenir le score courant. Le statut d’exécution est une autre dimension :
 [un bon F1 ne garantit pas un run réussi](execution.md#statut-et-score-sont-indépendants).
+
+## Lecture du rapport
+
+Le rapport distingue déclarations soutenues en Phase 4, preuves acceptées par
+l’évaluateur, VP de la vérité terrain et exécution de code. Une référence d’outil
+apporte de la traçabilité, pas une validation sémantique à elle seule. Les totaux
+de sévérité comptent les déclarations ; `06_report_groups.json` signale les
+doublons possibles sans changer la file de vérification ni les VP/FP/FN.
+Une sortie tronquée par la limite du modèle reste `partial:memo_truncated`,
+sans promouvoir une note d’analyse incomplète. Les anciens rapports ne sont pas réécrits.
 
 ## Sources du code
 

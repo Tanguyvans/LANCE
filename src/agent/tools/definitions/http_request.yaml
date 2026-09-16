@@ -4,11 +4,12 @@ enabled: true
 timeout: 30
 short_description: "Full HTTP request (methods, headers, body, redirects)"
 description: >
-  Make an arbitrary HTTP request with full control over method, headers, body, redirect-following, and
+  Make an HTTP request with control over method, headers, body, and
   TLS verification. Use when curl_headers/http_get are too rigid — e.g. PUT/PATCH/DELETE, custom headers,
   raw JSON body, JWT in Authorization, Cookie chains, manual redirect control. Returns JSON with
-  status_code, response headers, body (truncated to ~8 KB), final URL, and elapsed seconds. Verifies
-  TLS by default but you can pass verify_tls=false for self-signed lab targets.
+  status_code, response headers, body (truncated to ~8 KB), final URL, and elapsed seconds.
+  Automatic redirects are disabled. Request each Location URL separately so its scope is checked.
+  TLS verification defaults to false for self-signed lab targets.
 parameters:
   - name: "url"
     type: "string"
@@ -28,7 +29,7 @@ parameters:
     required: false
   - name: "follow_redirects"
     type: "boolean"
-    description: "Follow 3xx redirects (default true)."
+    description: "Must be false (default). Automatic redirects are disabled; request Location separately."
     required: false
   - name: "verify_tls"
     type: "boolean"

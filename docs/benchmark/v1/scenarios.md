@@ -9,6 +9,9 @@ publics**. Il est la référence pour les identifiants et les groupes ; les noms
 ci-dessous en sont repris. Le nom d’un scénario décrit son objectif, pas une
 capacité déjà démontrée par le pipeline.
 
+Le [catalogue des attaques](../catalogue-attaques.md) détaille l’objectif de
+chaque scénario S1–S29, les familles concernées et les limites des simulations.
+
 | Groupe | Scénarios | Usage |
 | --- | --- | --- |
 | Développement : `dev-public`, dossier `dev/` | S1–S19 | Diagnostic, changements et choix de configuration |

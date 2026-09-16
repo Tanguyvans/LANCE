@@ -1,6 +1,6 @@
 name: "http_get"
 command: "curl"
-args: ["-s", "--connect-timeout", "5", "--max-time", "10"]
+args: ["-q", "-s", "--connect-timeout", "5", "--max-time", "10", "--max-redirs", "0", "--globoff"]
 enabled: true
 timeout: 15
 short_description: "HTTP GET with full body response"

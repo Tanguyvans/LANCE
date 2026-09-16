@@ -31,6 +31,15 @@
 </div>
 
 <!-- ── Sub-agent progress bar (phase 3) ─────────────────────────────────── -->
+<details id="admin-access" class="admin-access">
+  <summary>Accès administrateur — requis pour les actions</summary>
+  <div class="admin-access-fields">
+    <label for="admin-action-token">Clé administrateur</label>
+    <input id="admin-action-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="admin-action-help">
+    <button type="button" onclick="document.getElementById('admin-action-token').value = ''; document.getElementById('admin-action-help').textContent = 'Clé effacée de cette page.';">Effacer</button>
+    <span id="admin-action-help" role="status">Conservée uniquement dans cette page, jamais enregistrée. Les consultations restent disponibles sans clé.</span>
+  </div>
+</details>
 <div id="sub-agent-bar" hidden>
   <span id="sub-agent-count" class="sa-count"></span>
   <div id="sub-agent-chips"></div>

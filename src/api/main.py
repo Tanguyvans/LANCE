@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from src.api.auth import require_mutation_auth
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -29,12 +30,13 @@ app = FastAPI(
     title="NATO Smart City IoT — Pentest Orchestrator",
     version="2.0.0",
     docs_url="/api/docs",
+    dependencies=[Depends(require_mutation_auth)],
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

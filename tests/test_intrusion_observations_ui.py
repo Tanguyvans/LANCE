@@ -191,7 +191,7 @@ def test_real_server_projection_reaches_dashboard_without_model_claim_promotion(
     (tmp_path / "tool_calls.jsonl").write_text(json.dumps({
         "tool": "ssh_exec", "phase": 5, "execution_origin": "runner",
         "evidence_ref": "tc-" + "a" * 32,
-        "args": {"ip": "192.0.2.1", "command": "id"},
+        "args": {"ip": "192.0.2.1", "user": "test", "password": "test", "command": "id"},
         "result": {"return_code": 0, "stdout": "uid=1000(test)"},
     }) + "\n")
     projection = project_intrusion_observations(tmp_path)

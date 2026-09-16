@@ -5,6 +5,7 @@
 La [documentation du benchmark V1](benchmark/v1/README.md) est le point d’entrée :
 
 - [Scénarios](benchmark/v1/scenarios.md) : corpus, topologies, vérités terrain et séparation dev/test.
+- [Catalogue des attaques](benchmark/catalogue-attaques.md) : familles, objectifs S1–S29, simulations et propositions hors couverture actuelle.
 - [Évaluation](benchmark/v1/evaluation.md) : détection, preuves, intrusion et interprétation des métriques.
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 
@@ -16,7 +17,7 @@ son introduction.
 
 - [Pipeline organisé par phase](../src/agent/phases/README.md).
 - [Isolation des livrables par run](run-artifacts.md).
-- [Authentification des mutations de fournisseurs](provider-auth.md).
+- [Authentification des actions administratives](provider-auth.md).
 
 ## Guides complémentaires
 

@@ -1,0 +1,45 @@
+name: "mqtt_ws_listen"
+handler: python
+requires_modules: ["paho.mqtt"]
+enabled: true
+short_description: "Read-only MQTT-over-WebSocket verifier"
+description: |
+  Perform one anonymous MQTT v3.1.1 CONNECT, SUBSCRIBE, and bounded received
+  PUBLISH capture over the exact WebSocket endpoint. This is not an HTTP 101
+  checker and is not MQTT/TCP; port 9001 is only valid when it actually speaks
+  MQTT over WebSocket. The tool never publishes, authenticates, follows a
+  redirect, uses a proxy, resolves a hostname, or accepts custom headers.
+parameters:
+  - name: "ip"
+    type: "string"
+    description: "Broker IP literal; hostnames and URLs are rejected"
+    required: true
+  - name: "port"
+    type: "integer"
+    description: "WebSocket listener port, 1-65535"
+    required: true
+    minimum: 1
+    maximum: 65535
+  - name: "path"
+    type: "string"
+    description: "Exact WebSocket HTTP path, such as /mqtt; not a URL or topic"
+    required: true
+  - name: "topic"
+    type: "string"
+    description: "MQTT topic filter to subscribe to"
+    required: true
+  - name: "count"
+    type: "integer"
+    description: "Maximum messages to capture, 1-100 (default: 1)"
+    required: false
+    default: 1
+    minimum: 1
+    maximum: 100
+  - name: "timeout"
+    type: "integer"
+    description: "End-to-end deadline in seconds, 1-60 (default: 5)"
+    required: false
+    default: 5
+    minimum: 1
+    maximum: 60
+additionalProperties: false

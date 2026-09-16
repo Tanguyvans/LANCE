@@ -7,6 +7,7 @@ and terminal-only state live in core.completion_policy.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -19,6 +20,8 @@ from src.agent.core.provider_transport import (
     RETRYABLE_CODES as _RETRYABLE_CODES,
     call_with_retry as _call_with_retry,
     deadline_remaining as _deadline_remaining,
+    _exception_has_text,
+    _status_code_for_exception,
     is_missing_user_query_error as _is_missing_user_query_error,
     is_network_error as _is_network_error,
 )
@@ -90,20 +93,11 @@ class _ProviderDiagnostics:
     def provider_error(self, exc: Exception | None = None, *, turn: int, request_num: int | None) -> None:
         """Observe SDK-boundary error metadata without retaining its message."""
         error_kind = "unknown"
-        status_code = None
+        status_code = _status_code_for_exception(exc) if exc is not None else None
         if exc is not None:
-            status_code = getattr(exc, "status_code", None)
-            if status_code is None:
-                response = getattr(exc, "response", None)
-                status_code = getattr(response, "status_code", None) if response is not None else None
-            try:
-                status_code = int(status_code) if status_code is not None else None
-            except (TypeError, ValueError, OverflowError):
-                status_code = None
-            lowered = str(exc).lower()
             if _is_missing_user_query_error(exc):
                 error_kind = "no_user_query"
-            elif "invalid function arguments" in lowered or "invalid params" in lowered:
+            elif _exception_has_text(exc, "invalid function arguments") or _exception_has_text(exc, "invalid params"):
                 error_kind = "invalid_tool_arguments"
             elif status_code == 400:
                 error_kind = "invalid_request"
@@ -414,7 +408,10 @@ class LLMProvider:
         api_tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
         messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}]
         malformed_retries = 0
-        user_query_recovered = False
+        # A provider can reject more than one legitimate tool-ended turn in a
+        # single chat. Guard by the exact history state so each state gets at
+        # most one continuation, while max_turns remains the outer bound.
+        recovered_tool_histories: set[str] = set()
         required_tool_called = False
         reminder_sent = False
         last_nonempty_text = ""
@@ -463,6 +460,37 @@ class LLMProvider:
         def finish(value: str, cause: str, *, current_turn: int | None = None, **fields) -> str:
             diagnostics.terminal(cause, turn=current_turn, **fields)
             return value
+
+        def tool_history_key() -> str:
+            """Fingerprint the request state without changing the sent history."""
+            normalized = []
+            for message in messages:
+                if isinstance(message, dict):
+                    normalized.append(message)
+                    continue
+                dump = getattr(message, "model_dump", None)
+                if callable(dump):
+                    try:
+                        normalized.append(dump(exclude_none=False))
+                        continue
+                    except Exception:
+                        pass
+                normalized.append({
+                    "role": getattr(message, "role", None),
+                    "content": getattr(message, "content", None),
+                    "tool_calls": getattr(message, "tool_calls", None),
+                })
+            try:
+                encoded = json.dumps(
+                    normalized,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    default=str,
+                ).encode("utf-8")
+            except (TypeError, ValueError):
+                encoded = repr([(type(message).__name__, id(message)) for message in messages]).encode()
+            return hashlib.sha256(encoded).hexdigest()
 
         def handle_interruption(
             response_category: str,
@@ -612,16 +640,19 @@ class LLMProvider:
             except Exception as exc:
                 if (
                     _is_missing_user_query_error(exc)
-                    and not user_query_recovered
                     and turn + 1 < max_turns
                     and isinstance(messages[-1], dict)
                     and messages[-1].get("role") == "tool"
                     and not (finalization_only and finalization_requests >= 3)
                 ):
+                    history_key = tool_history_key()
+                    if history_key in recovered_tool_histories:
+                        raise
+                    recovered_tool_histories.add(history_key)
                     # Some compatible endpoints reject a tool-ended history.
                     # Preserve the original request and every tool call/result;
-                    # the next ordinary turn consumes the existing request budget.
-                    user_query_recovered = True
+                    # the next turn consumes the existing request budget. The
+                    # key prevents repeated recovery of the same request state.
                     messages.append({
                         "role": "user",
                         "content": (

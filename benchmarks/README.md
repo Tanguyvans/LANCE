@@ -3,6 +3,7 @@
 La documentation courante est dans **[docs/benchmark/v1/](../docs/benchmark/v1/README.md)** :
 
 - [Scénarios et séparation dev/test](../docs/benchmark/v1/scenarios.md).
+- [Catalogue des attaques et objectifs S1–S29](../docs/benchmark/catalogue-attaques.md).
 - [Évaluation, preuves et métriques](../docs/benchmark/v1/evaluation.md).
 - [Exécution et diagnostic](../docs/benchmark/v1/execution.md).
 

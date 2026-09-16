@@ -1,26 +1,23 @@
 name: "ssh_login"
-command: "bash"
-args: ["-c"]
+handler: python
 enabled: true
 timeout: 15
 short_description: "SSH login attempt with credentials"
 description: >
-  Attempt SSH login with credentials. Executes a command on the remote host
-  and returns the output as proof. Use to PROVE default credential vulnerabilities.
-  IMPORTANT: Always include legacy algorithm options to handle IoT devices with weak crypto:
-  sshpass -p PASSWORD ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc USER@HOST 'COMMAND'
-  Common IoT default creds: admin:admin, root:root, ubnt:ubnt, pi:raspberry.
-  Example: sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@192.168.100.13 'id && cat /etc/iot/config.json'
+  Attempt SSH authentication with ip, user, password, port and a remote command
+  (default id). Local shell execution is forbidden. Legacy crypto options are
+  supplied by the executor. A successful remote command is access evidence,
+  not automatically proof of every vulnerability on the target.
 max_output: 3000
 parameters:
   - name: "command_string"
     type: "string"
-    description: "Full sshpass command (e.g. \"sshpass -p admin ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa -o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc admin@192.168.100.13 'id && cat /etc/iot/config.json'\")"
+    description: "Deprecated compatibility input: one literal sshpass SSH command only; parsed into structured arguments, never executed by a local shell. Prefer ip/user/password/command."
     required: false
     format: "positional"
   # Some compact local models emit the structured form used by try_credential
-  # instead of the historical command_string form. The loader normalizes it
-  # to the same safe sshpass command before execution.
+  # instead of the historical command_string form. The Python handler validates
+  # both forms and executes a fixed sshpass/ssh argument vector, without bash.
   - name: "ip"
     type: "string"
     description: "Target IP for the structured form"

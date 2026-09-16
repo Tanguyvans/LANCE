@@ -6,8 +6,12 @@ from urllib.parse import urlsplit
 import json
 import re
 import logging
-from src.agent.phases.analysis.evidence import _enrich_finding_structure, _sanitize_suggested_tools
-from src.agent.finding_identity import finding_identity_key, group_equivalent_findings
+from src.agent.phases.analysis.evidence import (
+    _enrich_finding_structure,
+    _sanitize_suggested_tools,
+)
+from src.agent.phases.analysis.mqtt_grouping import group_mqtt_producer_findings
+from src.agent.finding_identity import finding_identity_key
 from src.agent.core import runtime
 
 
@@ -596,7 +600,9 @@ class FindingAggregation:
 
         deduped: list[dict] = []
         group_identities: dict[int, list[tuple]] = {}
-        for candidates in group_equivalent_findings(eligible):
+        for candidates, producer_normalized in group_mqtt_producer_findings(
+            eligible, run_dir=self.run_dir,
+        ):
             chosen = max(candidates, key=finding_quality)
             group_identities[id(chosen)] = [finding_identity_key(item) for item in candidates]
             # A unique compatible anchor supplies only actually recorded
@@ -606,27 +612,49 @@ class FindingAggregation:
                     chosen[field] = next((item[field] for item in candidates if item.get(field)), "")
             candidate_ids = [item["_candidate_id"] for item in candidates]
             evidence_refs: list[str] = []
+            candidate_evidence_refs: dict[str, list[str]] = {}
             for candidate in candidates:
+                candidate_refs: list[str] = []
                 for field in ("evidence_ref", "evidence_refs"):
                     values = candidate.get(field)
                     if not isinstance(values, (list, tuple, set)):
                         values = [values]
                     for value in values:
                         ref = str(value or "").strip()
+                        if ref and ref not in candidate_refs:
+                            candidate_refs.append(ref)
                         if ref and ref not in evidence_refs:
                             evidence_refs.append(ref)
+                candidate_evidence_refs[candidate["_candidate_id"]] = candidate_refs
+            chosen_evidence_refs = candidate_evidence_refs.get(chosen["_candidate_id"], [])
             chosen["_provenance"] = {
                 "selected_candidate_id": chosen["_candidate_id"],
                 "candidate_ids": candidate_ids,
+                "candidate_sources": {
+                    item["_candidate_id"]: {
+                        "source_file": records_by_id[item["_candidate_id"]].get("source_file", ""),
+                        "source_kind": records_by_id[item["_candidate_id"]].get("source_kind", ""),
+                        "source_index": records_by_id[item["_candidate_id"]].get("source_index"),
+                    }
+                    for item in candidates
+                },
                 "source_files": sorted({
                     records_by_id[item["_candidate_id"]].get("source_file", "")
                     for item in candidates
                     if records_by_id[item["_candidate_id"]].get("source_file", "")
                 }),
-                "evidence_refs": evidence_refs,
+                # Producer-backed grouping never promotes another member's
+                # proof onto the selected finding.  The complete per-candidate
+                # ref map remains auditable here and in the raw registry.
+                "evidence_refs": chosen_evidence_refs if producer_normalized else evidence_refs,
+                "candidate_evidence_refs": candidate_evidence_refs,
                 "raw_projection": "03_vuln_analysis_raw.json",
+                "grouping_basis": (
+                    "archived_phase3_mqtt_observation"
+                    if producer_normalized else "conservative_finding_identity"
+                ),
             }
-            if evidence_refs:
+            if evidence_refs and not producer_normalized:
                 chosen["evidence_refs"] = evidence_refs
             deduped.append(chosen)
             for item in candidates:

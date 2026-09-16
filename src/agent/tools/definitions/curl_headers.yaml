@@ -1,6 +1,6 @@
 name: "curl_headers"
 command: "curl"
-args: ["-s", "-D", "-", "--max-time", "10", "-L"]
+args: ["-q", "-s", "-D", "-", "--max-time", "10", "--max-redirs", "0", "--globoff"]
 enabled: true
 timeout: 15
 max_output: 3000

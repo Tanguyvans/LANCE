@@ -308,9 +308,28 @@ def test_websocket_plan_and_proof_share_the_same_endpoint(port, endpoint, kind, 
     vuln = ws(type=kind, port=port, endpoint=endpoint, tool_used='http_request',
               evidence_refs=['proof-V1'])
     plan = _phase4_verification_plan(vuln)
-    assert plan['args_hint']['url'] == f'http://192.0.2.1:{port}{endpoint or "/"}'
-    assert _phase4_requirement_matches(plan, 'http_request', plan['args_hint'])
-    call = {**record(), 'tool':'http_request', 'args':plan['args_hint'],
+    if kind == 'network_exposure':
+        assert plan['tool'] == 'http_request'
+        assert plan['args_hint']['url'] == f'http://192.0.2.1:{port}{endpoint or "/"}'
+        assert _phase4_requirement_matches(plan, 'http_request', plan['args_hint'])
+    else:
+        assert plan['tool'] == 'mqtt_ws_listen'
+        assert plan['args_hint']['ip'] == '192.0.2.1'
+        assert plan['args_hint']['port'] == port
+        if '?' in endpoint:
+            assert plan.get('plan_error')
+            assert not _phase4_requirement_matches(plan, 'mqtt_ws_listen', plan['args_hint'])
+        else:
+            assert plan['args_hint']['path'] == (endpoint or '/')
+            assert _phase4_requirement_matches(plan, 'mqtt_ws_listen', plan['args_hint'])
+    # Keep this HTTP-101 fixture as a negative application-proof regression;
+    # only the network_exposure branch is allowed to confirm it.
+    http_args = {'url': f'http://192.0.2.1:{port}{endpoint or "/"}',
+                 'method': 'GET', 'headers': {
+                     'Connection': 'Upgrade', 'Upgrade': 'websocket',
+                     'Sec-WebSocket-Version': '13',
+                     'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ=='}}
+    call = {**record(), 'tool':'http_request', 'args':http_args,
             'result':{'status_code':101, 'body':'', 'headers': {
                 'Connection':'Upgrade', 'Upgrade':'websocket',
                 'Sec-WebSocket-Accept':'s3pPLMBiTxaQ9kYGzzhZRbK+xOo=',

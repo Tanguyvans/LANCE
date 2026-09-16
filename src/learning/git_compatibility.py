@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
+from src.benchmark.evaluator import STRICT_V3
+
 
 class CompatibilityError(RuntimeError):
     """Raised when a snapshot cannot be annotated safely."""
@@ -92,7 +94,7 @@ def annotate_snapshot(snapshot_dir: Path) -> dict[str, Any]:
                     source_commit,
                     ["src/agent/pipeline.py", "src/agent/prompts", "src/agent/tools"],
                 ),
-                "learning_reference": "current evaluator with strict-v2 policy",
+                "learning_reference": f"current evaluator with {STRICT_V3.name} policy",
             }
             if not compatibility["ground_truth"]["changed"]:
                 ground_truth_unchanged += 1
@@ -101,7 +103,7 @@ def annotate_snapshot(snapshot_dir: Path) -> dict[str, Any]:
                 "available": False,
                 "source_commit": source_short or None,
                 "current_commit": current_commit,
-                "learning_reference": "current evaluator with strict-v2 policy",
+                "learning_reference": f"current evaluator with {STRICT_V3.name} policy",
             }
         run["git_compatibility"] = compatibility
 
@@ -109,7 +111,7 @@ def annotate_snapshot(snapshot_dir: Path) -> dict[str, Any]:
         "current_commit": current_commit,
         "runs_checked": len(manifest["runs"]),
         "runs_with_unchanged_ground_truth": ground_truth_unchanged,
-        "learning_reference": "current evaluator with strict-v2 policy",
+        "learning_reference": f"current evaluator with {STRICT_V3.name} policy",
     }
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",

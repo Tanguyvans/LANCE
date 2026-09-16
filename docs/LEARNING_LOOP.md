@@ -64,8 +64,11 @@ python -m src.learning.git_compatibility \
   output/imported/nato-master-YYYY-MM-DD
 ```
 
-Le minage utilise volontairement l’évaluateur `strict-v2` actuel. Le manifeste
-conserve les deltas Git pour distinguer une erreur du modèle d’une éventuelle
+Le minage utilise le même évaluateur actuel que le dashboard. Les runs dont le
+contrat de preuves est incompatible, ou dont la préparation du laboratoire est
+invalide, sont ignorés avec un motif explicite. Les anciens résultats restent
+consultables, mais ne sont pas automatiquement convertis en exemples actuels.
+Le manifeste conserve les deltas Git pour distinguer une erreur du modèle d’une
 évolution de la logique d’évaluation.
 
 Créer un corpus de revue :

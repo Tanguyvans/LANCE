@@ -11,7 +11,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-import shlex
 import shutil
 from pathlib import Path
 from typing import Any, Callable
@@ -81,6 +80,9 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
       - "flag": [flag, str(value)] appended to command list
       - "port_suffix": value appended to previous positional arg with ":"
     """
+    if tool_def["name"] == "ssh_login":
+        from src.agent.tools.recon_tools import ssh_login
+        return ssh_login
     command = tool_def["command"]
     fixed_args = tool_def.get("args", [])
     timeout = tool_def.get("timeout", 30)
@@ -135,37 +137,6 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
                     return mqtt_argument_error()
                 kwargs = {**kwargs, "port": port}
 
-        # Compact local models occasionally use the structured credential
-        # shape (ip/user/password/command) for ssh_login. Normalize that
-        # shape instead of silently dropping all arguments and running
-        # `bash -c` without a command.
-        if tool_def["name"] == "ssh_login" and not kwargs.get("command_string"):
-            ip = str(kwargs.get("ip") or "").strip()
-            user = str(kwargs.get("user") or "").strip()
-            password = str(kwargs.get("password") or "")
-            remote_command = str(kwargs.get("command") or "id").strip() or "id"
-            if ip and user and password:
-                try:
-                    port = int(kwargs.get("port") or 22)
-                except (TypeError, ValueError):
-                    port = 22
-                kwargs = {
-                    "command_string": (
-                        f"sshpass -p {shlex.quote(password)} ssh "
-                        "-o StrictHostKeyChecking=no "
-                        "-o UserKnownHostsFile=/dev/null "
-                        "-o ConnectTimeout=5 "
-                        f"-p {port} {shlex.quote(user)}@{ip} "
-                        f"{shlex.quote(remote_command)}"
-                    ),
-                }
-            else:
-                return json.dumps({
-                    "stdout": "",
-                    "stderr": "ssh_login requires command_string or ip/user/password",
-                    "return_code": 2,
-                    "error_kind": "invalid_tool_arguments",
-                })
         cmd = [command] + list(fixed_args)
         positional_values = []
         mqtt_flag_positions: dict[str, int] = {}
@@ -181,9 +152,9 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
 
             if fmt == "positional":
                 raw = str(value)
-                # For "bash -c" style tools, pass command_string as a single
-                # argument — splitting would break shell commands.
-                if command == "bash" and "-c" in fixed_args:
+                # Keep URLs intact (commas are valid paths), as well as the
+                # command argument of the remaining legacy bash tools.
+                if command == "curl" or (command == "bash" and "-c" in fixed_args):
                     positional_values.append(raw)
                 else:
                     # Split on commas/spaces so multi-target strings
@@ -211,27 +182,6 @@ def build_subprocess_function(tool_def: dict[str, Any]) -> Callable[..., str]:
         effective_timeout = timeout
         if "timeout" in kwargs:
             effective_timeout = int(kwargs["timeout"]) + 5
-
-        # Legacy embedded SSH services frequently only offer SHA-1 KEX/ciphers.
-        # Add compatibility flags for the declarative ssh_login tool while
-        # preserving any explicit model-supplied options and command autonomy.
-        if tool_def["name"] == "ssh_login" and command == "bash" and "-c" in fixed_args:
-            command_string = next((str(v) for v in positional_values if str(v).strip()), "")
-            if command_string and "KexAlgorithms=" not in command_string:
-                legacy = (
-                    "-o KexAlgorithms=+diffie-hellman-group14-sha1,"
-                    "diffie-hellman-group-exchange-sha1 "
-                    "-o HostKeyAlgorithms=+ssh-rsa "
-                    "-o Ciphers=+aes128-cbc,aes192-cbc,aes256-cbc "
-                )
-                command_string = command_string.replace("ssh ", "ssh " + legacy, 1)
-                first_value = next((str(x) for x in positional_values if str(x).strip()), "")
-                positional_values = [
-                    command_string if str(v) == first_value else v
-                    for v in positional_values
-                ]
-                cmd = [command] + list(fixed_args)
-                cmd.extend(positional_values)
 
         from src.agent.tools.recon_tools import _run
         execution_attestation = None

@@ -72,6 +72,19 @@ def test_nontransient_error_is_preserved_without_retry(clock, error):
     assert clock["delays"] == []
 
 
+def test_response_only_missing_user_query_error_is_not_retried(clock):
+    error = HTTPError(500, "ignored exception text", response_only=True)
+    error.response.json = lambda: {"error": {"message": "no user query found in messages"}}
+    call = MagicMock(side_effect=error)
+
+    with pytest.raises(HTTPError) as caught:
+        transport.call_with_retry(call, max_retries=5)
+
+    assert caught.value is error
+    call.assert_called_once_with()
+    assert clock["delays"] == []
+
+
 def test_deadline_prevents_first_call(clock):
     call = MagicMock()
     with pytest.raises(TimeoutError, match="deadline exceeded"):

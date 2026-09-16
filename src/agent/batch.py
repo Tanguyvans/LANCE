@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path, resolve_scenario_split
+from src.agent.batch_outcomes import batch_cost_summary, batch_run_status
 
 ROOT = Path(__file__).resolve().parents[2]
 GT_DIR = ROOT / "benchmarks" / "ground_truth"
@@ -398,7 +399,7 @@ def _aggregate_batch_results(
         "avg_precision": official["macro_positive_precision"],
         "avg_f1": official["macro_positive_f1"],
         "avg_score_pct": official["macro_scenario_score_pct"],
-        "total_cost_usd": sum(float(metrics["total_cost_usd"]) for metrics in (result["metrics"] for result in completed) if metrics.get("total_cost_usd") is not None),
+        **batch_cost_summary(results),
         "process_metrics_runs": len(process),
         "format_fallbacks": format_fallbacks,
         "format_attempts": format_attempts,
@@ -473,6 +474,7 @@ def run_batch(
             results.append({
                 "scenario_id": sid,
                 "status": "skipped",
+                "cost_usd": 0.0,
                 "reason": "no ground truth file",
             })
             continue
@@ -533,7 +535,6 @@ def run_batch(
             "phase5": phase5,
             "phase5_status": phase5["status"],
             "cost_usd": cost,
-            "status": "phase5_incomplete" if phase5["status"] == "incomplete" else "ok",
         }
 
         try:
@@ -543,13 +544,10 @@ def run_batch(
             entry["metrics"] = _evaluation_metrics(ev)
         except Exception as exc:
             print(f"  [!] Evaluation failed: {exc}")
-            entry["status"] = (
-                "phase5_incomplete"
-                if entry.get("phase5_status") == "incomplete"
-                else "evaluation_failed"
-            )
             entry["reason"] = str(exc)
 
+        entry["status"] = batch_run_status(run_dir, run_results,
+            phase5_status=phase5["status"], evaluated=bool(entry.get("metrics")))
         results.append(entry)
         _print_scenario_summary(sid, entry)
 
@@ -586,7 +584,7 @@ def _print_scenario_summary(sid: str, entry: dict) -> None:
         print(
             f"  S{sid}: Recall={m['recall']:.3f}  Precision={m['precision']:.3f}  "
             f"F1={m['f1']:.3f}  Score={score}  "
-            f"TP={m['tp']}  FP={m['fp']}  FN={m['fn']}  Cost=${cost:.4f}"
+            f"TP={m['tp']}  FP={m['fp']}  FN={m['fn']}  Cost=${cost:.4f}  Status={entry.get('status', 'unknown')}"
         )
     elif entry.get("status") == "failed":
         print(f"  S{sid}: pipeline failed ({entry.get('reason', 'unknown error')}). Cost=${cost:.4f}")
@@ -638,7 +636,7 @@ def _print_batch_table(results: list[dict], aggregate: dict, summary_path: Path)
             f"{fmt(aggregate['avg_precision'], col['p'])} {fmt(aggregate['avg_f1'], col['f1'])} "
             f"{fmt(aggregate['avg_score_pct'], col['sc'], 1)}"
             f"{'':>{col['tp'] + col['fp'] + col['fn'] + 3}} "
-            f"${aggregate['total_cost_usd']:>{col['cost'] - 1}.4f}"
+            f"{fmt(aggregate.get('total_cost_usd'), col['cost'], 4)}"
         )
         if aggregate.get("mixed_splits"):
             for split, metrics in aggregate["per_split"].items():

@@ -84,7 +84,7 @@ class TestReconTools:
         assert result["return_code"] == 0
         assert "nginx" in result["stdout"]
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["curl", "-s", "-D", "-", "--max-time", "10", "-L", "http://192.168.88.231"]
+        assert cmd == ["curl", "-q", "-s", "-D", "-", "--max-time", "10", "--max-redirs", "0", "--globoff", "http://192.168.88.231"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_listen(self, mock_run):

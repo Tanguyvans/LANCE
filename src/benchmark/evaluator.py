@@ -20,7 +20,7 @@ from collections import Counter
 import yaml
 import networkx as nx
 
-from src.agent.vuln_taxonomy import canonicalize, is_config_only, NOISE_TYPES
+from src.agent.vuln_taxonomy import canonicalize, NOISE_TYPES
 from src.agent.report_evidence import is_verified_report_finding
 from src.agent.exploit_evidence import synthesize_exploit_result
 from src.agent.evidence.mqtt import (
@@ -29,6 +29,12 @@ from src.agent.evidence.mqtt import (
     normalize_mqtt_port,
     primary_mqtt_claim,
     trusted_mqtt_messages,
+)
+from src.agent.evidence.mqtt_ws import (
+    mqtt_ws_actual_request,
+    mqtt_ws_claim_path,
+    mqtt_ws_claim_topic,
+    trusted_mqtt_ws_messages,
 )
 from src.benchmark.funnel import evaluate_funnel
 from src.benchmark.strict_v3 import (
@@ -50,49 +56,15 @@ from src.benchmark.comparability import configuration_identity
 
 @dataclass(frozen=True)
 class EvaluationPolicy:
-    """Matching/scoring behaviour for a benchmark evaluation.
-
-    ``legacy-v1`` preserves historical scores. ``strict-v2`` is intended for
-    new benchmark results: CVEs are target-bound, loose IP+severity matching is
-    disabled, and unmatched "common" findings are not silently auto-bonused.
-    """
+    """Identity of the single supported evaluation contract."""
 
     name: str
-    require_cve_same_ip: bool
-    allow_loose_match: bool
-    allow_auto_bonus: bool
-    use_explicit_contracts: bool = False
-    min_match_credit: float = 0.0
-    require_traceable_bonus: bool = False
-    severity_in_primary_score: bool = False
+    min_match_credit: float = 0.5
 
 
-LEGACY_V1 = EvaluationPolicy(
-    name="legacy-v1",
-    require_cve_same_ip=False,
-    allow_loose_match=True,
-    allow_auto_bonus=True,
-)
-STRICT_V2 = EvaluationPolicy(
-    name="strict-v2",
-    require_cve_same_ip=True,
-    allow_loose_match=False,
-    allow_auto_bonus=False,
-)
-STRICT_V3 = EvaluationPolicy(
-    name="strict-v3",
-    require_cve_same_ip=True,
-    allow_loose_match=False,
-    allow_auto_bonus=False,
-    use_explicit_contracts=True,
-    min_match_credit=0.5,
-    require_traceable_bonus=True,
-    severity_in_primary_score=True,
-)
+STRICT_V3 = EvaluationPolicy(name="strict-v3")
 
 EVALUATION_POLICIES: dict[str, EvaluationPolicy] = {
-    LEGACY_V1.name: LEGACY_V1,
-    STRICT_V2.name: STRICT_V2,
     STRICT_V3.name: STRICT_V3,
 }
 
@@ -100,7 +72,9 @@ EVALUATION_POLICIES: dict[str, EvaluationPolicy] = {
 def resolve_policy(policy: str | EvaluationPolicy) -> EvaluationPolicy:
     """Resolve a policy name while failing closed on unknown policy values."""
     if isinstance(policy, EvaluationPolicy):
-        return policy
+        if policy == STRICT_V3:
+            return STRICT_V3
+        raise ValueError("Unsupported evaluation policy; use the current contract")
     try:
         return EVALUATION_POLICIES[policy]
     except KeyError as exc:
@@ -228,7 +202,7 @@ class MatchResult:
     llm_id: str = ""
     llm_type: str = ""
     llm_severity: str = ""
-    match_method: str = ""        # "cve", "ip+type", "ip+category"
+    match_method: str = ""        # cve, exact-structural, exact-type, explicit-category
     severity_match: bool = False  # True if LLM severity == GT severity
     phase4_verification: str = ""  # confirmed, error, not_tested, conflict, etc.
     match_credit: float = 0.0
@@ -236,21 +210,6 @@ class MatchResult:
     verification_credit: float = 0.0
     gt_hop_depth: int = 0         # Min number of network segments crossed from attacker
                                    # to reach gt_ip. 0 = direct, 1 = behind 1 firewall, etc.
-
-
-# Types considered "bonus" when found on a device that already has matched vulns.
-# These are real config findings a pentester WOULD report but may be absent from GT.
-# Note: no_auth is included because router admin interfaces (LuCI, etc.) are real
-# findings that scanners legitimately detect even when not explicitly in ground truth.
-BONUS_TYPES_AUTO: set[str] = {
-    "info_disclosure", "missing_header", "weak_cipher",
-    "insecure_protocol", "terrapin", "version_leak",
-    "no_auth",
-    # CVEs found by LLM that aren't in GT are real findings a pentester would report
-    "known_cve",
-    # Directory listing is a real config finding often not enumerated in GT
-    "directory_listing",
-}
 
 
 @dataclass
@@ -261,7 +220,7 @@ class EvaluationResult:
 
     # Evaluation protocol / scenario-level metric. Historical fields below are
     # intentionally retained for JSON/API compatibility.
-    scoring_policy: str = STRICT_V2.name
+    scoring_policy: str = STRICT_V3.name
     metric_contract_version: str = METRIC_CONTRACT_VERSION
     evidence_contract_version: str = EVIDENCE_CONTRACT_VERSION
     run_metric_contract_version: str | None = None
@@ -415,16 +374,14 @@ class EvaluationResult:
     gt_at_depth: dict = field(default_factory=dict)  # {0: 5, 1: 3, 2: 1} — GT counts per depth bucket
     tp_at_depth: dict = field(default_factory=dict)  # {0: 4, 1: 2, 2: 0} — TP counts per depth bucket
 
-    # An attack path is detected only when every GT vulnerability referenced by
     mhr_1_credited: float | None = None
     mhr_2_credited: float | None = None
     mhr_3_credited: float | None = None
     mhr_1_verified: float | None = None
     mhr_2_verified: float | None = None
     mhr_3_verified: float | None = None
-    # ``vulnerabilities_used`` was matched. This remains a diagnostic metric;
-    # strict-v3 uses the quality-adjusted F1; historical policies retain their
-    # original primary-score semantics.
+    # Path detection requires every GT vulnerability in ``vulnerabilities_used``
+    # to match. This is diagnostic; the audit score is the proof-validated F1.
     total_attack_paths: int = 0
     attack_paths_detected: int = 0
     path_coverage: float = 0.0
@@ -470,27 +427,6 @@ class EvaluationResult:
 
 
 # ── Matching logic ────────────────────────────────────────────────────────────
-
-def _match_by_cve(
-    gt_vuln: dict,
-    llm_findings: list[dict],
-    *,
-    require_same_ip: bool = False,
-) -> dict | None:
-    """Match a GT vulnerability by CVE ID, optionally bound to the target IP."""
-    gt_cve = gt_vuln.get("cve")
-    if not gt_cve:
-        return None
-    gt_cve_norm = gt_cve.upper()
-    gt_ip = gt_vuln.get("ip", "")
-    for f in llm_findings:
-        if require_same_ip and (not gt_ip or f.get("device_ip", "") != gt_ip):
-            continue
-        llm_cves = [c.upper() for c in (f.get("cve_ids") or [])]
-        if gt_cve_norm in llm_cves:
-            return f
-    return None
-
 
 def _infer_type_from_title(title: str) -> str | None:
     """Extract an expected LLM type from the GT title keywords.
@@ -622,66 +558,6 @@ def _infer_type_from_title(title: str) -> str | None:
     for keyword, llm_type in keyword_map:
         if keyword in title_lower:
             return llm_type
-    return None
-
-
-def _match_by_ip_and_type(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Match by IP + compatible type or category.
-
-    Priority order:
-    1. Exact type match from GT title keywords (e.g., title "Telnet" → prefer insecure_protocol)
-    2. Exact type match from GT category (e.g., category=data_exposure → prefer type=data_exposure)
-    3. Any type in the compatible set from category
-    """
-    gt_ip = gt_vuln.get("ip", "")
-    gt_category = gt_vuln.get("category", "")
-    gt_title = gt_vuln.get("title", "")
-    compatible_types = CATEGORY_TO_TYPE.get(gt_category, set())
-
-    # Pass 1: infer type from title keywords (most specific)
-    inferred_type = _infer_type_from_title(gt_title)
-    if inferred_type:
-        for f in llm_findings:
-            if f.get("device_ip") != gt_ip:
-                continue
-            f_type = f.get("type", "")
-            if f_type == inferred_type or canonicalize(f_type) == inferred_type:
-                return f
-
-    # Pass 2: exact type match (LLM type == GT category, after canonicalization)
-    for f in llm_findings:
-        if f.get("device_ip") != gt_ip:
-            continue
-        f_type = f.get("type", "")
-        if f_type == gt_category or canonicalize(f_type) == gt_category:
-            return f
-
-    # Pass 3: any type in the compatible set (after canonicalization)
-    for f in llm_findings:
-        if f.get("device_ip") != gt_ip:
-            continue
-        f_type = f.get("type", "")
-        if f_type in compatible_types or canonicalize(f_type) in compatible_types:
-            return f
-    return None
-
-
-def _match_by_ip_and_service(gt_vuln: dict, llm_findings: list[dict]) -> dict | None:
-    """Loose match: same IP + exact severity (last resort).
-
-    This compatibility fallback is intentionally half-weighted by the scorer. It
-    catches tool outputs that identify the affected host and impact but use an
-    unknown type string. Exact severity is required to reduce cross-vulnerability
-    collisions when multiple findings share the same IP.
-    """
-    gt_ip = gt_vuln.get("ip", "")
-    gt_sev = gt_vuln.get("severity", "low").lower()
-    for f in llm_findings:
-        if f.get("device_ip") != gt_ip:
-            continue
-        llm_sev = (f.get("severity") or "low").lower()
-        if llm_sev == gt_sev:
-            return f
     return None
 
 
@@ -854,38 +730,16 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
 def match_vuln(
     gt_vuln: dict,
     llm_findings: list[dict],
-    policy: str | EvaluationPolicy = STRICT_V2.name,
+    policy: str | EvaluationPolicy = STRICT_V3.name,
 ) -> tuple[dict | None, str]:
     """Try to match a ground truth vuln to an LLM finding. Returns (finding, method)."""
     resolved = resolve_policy(policy)
-    if resolved.use_explicit_contracts:
-        best: tuple[dict | None, str, float] = (None, "", 0.0)
-        for finding in llm_findings:
-            method, credit, _ = _strict_v3_match(gt_vuln, finding)
-            if credit >= resolved.min_match_credit and credit > best[2]:
-                best = (finding, method, credit)
-        return best[0], best[1]
-    f = _match_by_cve(
-        gt_vuln,
-        llm_findings,
-        require_same_ip=resolved.require_cve_same_ip,
-    )
-    if f:
-        return f, "cve"
-
-    # In strict mode a GT entry carrying a CVE must be identified by that CVE;
-    # a generic type on the same host is insufficient.
-    if resolved.require_cve_same_ip and gt_vuln.get("cve"):
-        return None, ""
-
-    f = _match_by_ip_and_type(gt_vuln, llm_findings)
-    if f:
-        return f, "ip+type"
-    if resolved.allow_loose_match:
-        f = _match_by_ip_and_service(gt_vuln, llm_findings)
-        if f:
-            return f, "ip+category"
-    return None, ""
+    best: tuple[dict | None, str, float] = (None, "", 0.0)
+    for finding in llm_findings:
+        method, credit, _ = _strict_v3_match(gt_vuln, finding)
+        if credit >= resolved.min_match_credit and credit > best[2]:
+            best = (finding, method, credit)
+    return best[0], best[1]
 
 
 # ── Multi-Hop Reach (MHR) ──────────────────────────────────────────────────────
@@ -899,7 +753,7 @@ def _match_predictions(
     edges = {}
     method_weight = {
         "cve": 4000, "exact-structural": 3500, "exact-type": 2500,
-        "explicit-category": 1500, "ip+type": 2000, "ip+category": 1000,
+        "explicit-category": 1500,
     }
 
     def specificity(pair):
@@ -914,12 +768,9 @@ def _match_predictions(
             found, method = match_vuln(gt, [finding], policy=policy)
             if found is None:
                 continue
-            if policy.use_explicit_contracts:
-                method, credit, structural = _strict_v3_match(gt, finding)
-                if credit < policy.min_match_credit:
-                    continue
-            else:
-                credit, structural = (0.5 if method == "ip+category" else 1.0), False
+            method, credit, structural = _strict_v3_match(gt, finding)
+            if credit < policy.min_match_credit:
+                continue
             severity_bonus = 100 if str(finding.get("severity", "")).lower() == str(gt.get("severity", "")).lower() else 0
             finding_type = str(finding.get("type", ""))
             bonus_penalty = 500 if bonus_types and (
@@ -1400,7 +1251,7 @@ def _record_implied_ports(record: dict) -> set[int]:
     defaults = {
         "ssh_login": 22, "ssh_exec": 22, "ssh_audit": 22,
         "mqtt_listen": 1883, "mysql_query": 3306, "redis_cmd": 6379,
-        "modbus_scan": 502, "telnet_connect": 23,
+        "mqtt_ws_listen": 9001, "modbus_scan": 502, "telnet_connect": 23,
     }
     default = defaults.get(str(record.get("tool", "")).strip())
     if _canonical_tool_name(record.get("tool")) == "try_credential" and isinstance(args, dict):
@@ -1466,7 +1317,7 @@ def _finding_tool_names(finding: dict) -> set[str]:
             "nmap_scan", "nmap_discovery", "python_exec", "tcp_send", "udp_send",
             "http_get", "http_request", "curl_headers", "ssh_login", "ssh_exec",
             "ssh_audit", "mqtt_listen", "mysql_query", "ftp_list", "redis_cmd",
-            "telnet_connect", "modbus_scan", "try_credential", "mtls_request",
+            "mqtt_ws_listen", "telnet_connect", "modbus_scan", "try_credential", "mtls_request",
         ):
             if re.search(rf"(?<![a-z0-9]){re.escape(known)}(?![a-z0-9])", canonical):
                 names.add(known)
@@ -1499,12 +1350,39 @@ def _tool_call_matches_finding(finding: dict, record: dict) -> bool:
 
     port = finding.get("port")
     if port not in (None, ""):
-        if record_tool == "mqtt_listen":
+        if record_tool == "mqtt_ws_listen":
             normalized_port = normalize_mqtt_port(port)
             if normalized_port is None or normalized_port not in _record_implied_ports(record):
                 return False
-        elif int(port) not in _record_implied_ports(record):
+        elif record_tool == "mqtt_listen":
+            normalized_port = normalize_mqtt_port(port)
+            if normalized_port is None or normalized_port not in _record_implied_ports(record):
+                return False
+        else:
+            try:
+                if int(port) not in _record_implied_ports(record):
+                    return False
+            except (TypeError, ValueError):
+                return False
+
+    if record_tool == "mqtt_ws_listen":
+        if _normalized_services(finding.get("service")) != {"mqtt-ws"}:
             return False
+        actual = mqtt_ws_actual_request(record.get("args") or {})
+        if actual is None:
+            return False
+        _host, actual_port, actual_path, actual_topic = actual
+        raw_port = finding.get("port")
+        expected_port = 9001 if raw_port in (None, "") else normalize_mqtt_port(raw_port)
+        if expected_port is None:
+            return False
+        if actual_port != expected_port:
+            return False
+        if actual_path != mqtt_ws_claim_path(finding):
+            return False
+        if actual_topic != mqtt_ws_claim_topic(finding):
+            return False
+        return True
 
     if record_tool == "mqtt_listen":
         # MQTT's resource is a topic, not an HTTP path.  Keep legacy binding
@@ -1661,7 +1539,7 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
     result = _tool_result_data(record)
     if isinstance(result, dict):
         tool = str(record.get("tool", "")).strip()
-        if _canonical_tool_name(tool) == "mqtt_listen":
+        if _canonical_tool_name(tool) in {"mqtt_listen", "mqtt_ws_listen"}:
             return _semantic_output_supports_finding(tool, result, finding, args=record.get("args"))
         if _canonical_tool_name(tool) == "telnet_connect":
             # Always use the shared semantic contract, including explicit
@@ -1692,7 +1570,7 @@ def _tool_call_outcome(record: dict, finding: dict | None = None) -> bool | None
                 if not normal_nonzero:
                     return False
         supported_tools = {
-            "mqtt_listen", "ssh_login", "ssh_exec", "redis_cmd", "mysql_query",
+            "mqtt_listen", "mqtt_ws_listen", "ssh_login", "ssh_exec", "redis_cmd", "mysql_query",
             "ftp_list", "telnet_connect", "ssh_audit", "modbus_scan",
             "nmap_scan", "nmap_discovery", "http_get", "curl_headers",
             "http_request", "mtls_request", "tcp_send", "udp_send", "python_exec",
@@ -1859,21 +1737,6 @@ def _assess_evidence_claims(
     }
 
 
-def _phase3_has_direct_evidence(finding: dict | None) -> bool:
-    """Return whether Phase 3 declares direct evidence under its artifact contract.
-
-    Phase 3 prompts reserve ``exploitation_status=confirmed`` for raw tool
-    output that directly demonstrates the vulnerability.  Requiring a non-empty
-    evidence excerpt avoids treating a bare status label as proof.
-    """
-    if not finding:
-        return False
-    return (
-        str(finding.get("exploitation_status", "")).strip().lower() == "confirmed"
-        and bool(str(finding.get("evidence", "")).strip())
-    )
-
-
 def _phase3_detection_finding(finding: dict, verification_status: str) -> dict:
     """Keep a Phase 3 finding as detection-level, without exploitation credit."""
     return {
@@ -1904,13 +1767,13 @@ def _phase3_detection_finding(finding: dict, verification_status: str) -> dict:
     }
 
 
-def _load_llm_findings(run_dir: Path, *, preserve_unverified: bool = False) -> list[dict]:
+def _load_llm_findings(run_dir: Path) -> list[dict]:
     """Return findings after resolving Phase 4 verdicts individually.
 
-    CONFIRMED enriches the corresponding Phase 3 finding. With strict-v3,
+    CONFIRMED enriches the corresponding Phase 3 finding.
     FAILED, ERROR, SKIPPED, unknown and missing tests retain the Phase 3
     prediction without exploitation credit: failure to reproduce is not
-    refutation. Historical policies keep their original filtering.
+    refutation. Proof validation remains separate from prediction loading.
     """
     exploit_file = run_dir / "04_exploitation.json"
     vuln_file = run_dir / "03_vuln_analysis.json"
@@ -1944,8 +1807,7 @@ def _load_llm_findings(run_dir: Path, *, preserve_unverified: bool = False) -> l
                 tested_p3_indices.add(p3_index)
             status = str(t.get("status", "")).strip().upper()
             if (
-                preserve_unverified
-                and status not in _EXPLOITED_PHASE4_STATUSES
+                status not in _EXPLOITED_PHASE4_STATUSES
                 and not (is_legacy_findings and not status)
             ):
                 # An inconclusive test cannot change the identity/type of the
@@ -1961,26 +1823,6 @@ def _load_llm_findings(run_dir: Path, *, preserve_unverified: bool = False) -> l
             if not vuln_type and p3:
                 vuln_type = p3.get("type", "")
             if vuln_type in NOISE_TYPES:
-                continue
-            if status in _FAILED_PHASE4_STATUSES:
-                if (
-                    _phase3_has_direct_evidence(p3)
-                    and not p3.get("compact_requires_verification")
-                    and p3.get("type", "") not in NOISE_TYPES
-                ):
-                    findings.append(_phase3_detection_finding(
-                        p3, "conflicting_direct_phase3_evidence",
-                    ))
-                continue
-            if status in _NON_REPORTABLE_PHASE4_STATUSES:
-                continue
-            if not is_legacy_findings and status not in _EXPLOITED_PHASE4_STATUSES:
-                if (
-                    p3
-                    and not p3.get("compact_requires_verification")
-                    and p3.get("type", "") not in NOISE_TYPES
-                ):
-                    findings.append(_phase3_detection_finding(p3, "unknown_status"))
                 continue
             finding = {
                 "id": vuln_id,
@@ -2040,7 +1882,6 @@ def _load_llm_findings(run_dir: Path, *, preserve_unverified: bool = False) -> l
         for p3_index, p3 in enumerate(p3_findings):
             if (
                 p3_index not in tested_p3_indices
-                and (preserve_unverified or not p3.get("compact_requires_verification"))
                 and p3.get("type", "") not in NOISE_TYPES
             ):
                 findings.append(_phase3_detection_finding(p3, "not_tested"))
@@ -2123,7 +1964,7 @@ def _load_phase3_metrics(run_dir: Path) -> dict[str, object]:
 def evaluate(
     run_dir: Path,
     ground_truth_file: Path,
-    policy: str | EvaluationPolicy = STRICT_V2.name,
+    policy: str | EvaluationPolicy = STRICT_V3.name,
 ) -> EvaluationResult:
     resolved_policy = resolve_policy(policy)
 
@@ -2133,38 +1974,37 @@ def evaluate(
     gt_controls = gt_data.get("controls", []) or []
     gt_attack_paths = gt_data.get("attack_paths", [])
     scenario_id = str(gt_data.get("scenario_id", "?"))
-    if resolved_policy.use_explicit_contracts:
-        contract_file = matching_contract_path(ground_truth_file)
-        if contract_file.parent != ground_truth_file.parent and not contract_file.is_file():
-            raise ValueError(f"Missing shared strict-v3 contract: {contract_file}")
-        if contract_file.is_file():
-            try:
-                contract_data = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
-                if contract_data.get("schema_version") != "strict-v3.2":
-                    raise ValueError(f"Unsupported strict-v3 contract schema: {contract_file}")
-                expected_hash = str((contract_data.get("source_hashes", {}) or {}).get(scenario_id, ""))
-                actual_hash = hashlib.sha256(ground_truth_file.read_bytes()).hexdigest()
-                # A pre-fix custom export can have a valid, immutable contract
-                # but no source hash.  Its full export manifest is verified before
-                # allowing this narrowly scoped compatibility fallback.
-                if not expected_hash and _is_trusted_exported_ground_truth(ground_truth_file):
-                    expected_hash = actual_hash
-                if not expected_hash or expected_hash != actual_hash:
-                    raise ValueError(
-                        f"Stale strict-v3 contract for S{scenario_id}; regenerate {contract_file}"
-                    )
-                scenario_contracts = (contract_data.get("scenarios", {}) or {}).get(scenario_id)
-                if not isinstance(scenario_contracts, dict):
-                    raise ValueError(f"Missing strict-v3 contracts for S{scenario_id}")
-                gt_vulns = [
-                    {
-                        **scenario_contracts.get(str(vulnerability.get("id", "")), {}),
-                        **vulnerability,
-                    }
-                    for vulnerability in gt_vulns
-                ]
-            except (OSError, UnicodeError, yaml.YAMLError, AttributeError) as exc:
-                raise ValueError(f"Invalid strict-v3 contract: {contract_file}") from exc
+    contract_file = matching_contract_path(ground_truth_file)
+    if contract_file.parent != ground_truth_file.parent and not contract_file.is_file():
+        raise ValueError(f"Missing shared strict-v3 contract: {contract_file}")
+    if contract_file.is_file():
+        try:
+            contract_data = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
+            if contract_data.get("schema_version") != "strict-v3.2":
+                raise ValueError(f"Unsupported strict-v3 contract schema: {contract_file}")
+            expected_hash = str((contract_data.get("source_hashes", {}) or {}).get(scenario_id, ""))
+            actual_hash = hashlib.sha256(ground_truth_file.read_bytes()).hexdigest()
+            # A pre-fix custom export can have a valid, immutable contract
+            # but no source hash.  Its full export manifest is verified before
+            # allowing this narrowly scoped compatibility fallback.
+            if not expected_hash and _is_trusted_exported_ground_truth(ground_truth_file):
+                expected_hash = actual_hash
+            if not expected_hash or expected_hash != actual_hash:
+                raise ValueError(
+                    f"Stale strict-v3 contract for S{scenario_id}; regenerate {contract_file}"
+                )
+            scenario_contracts = (contract_data.get("scenarios", {}) or {}).get(scenario_id)
+            if not isinstance(scenario_contracts, dict):
+                raise ValueError(f"Missing strict-v3 contracts for S{scenario_id}")
+            gt_vulns = [
+                {
+                    **scenario_contracts.get(str(vulnerability.get("id", "")), {}),
+                    **vulnerability,
+                }
+                for vulnerability in gt_vulns
+            ]
+        except (OSError, UnicodeError, yaml.YAMLError, AttributeError) as exc:
+            raise ValueError(f"Invalid strict-v3 contract: {contract_file}") from exc
     raw_weights = gt_data.get("scoring", {}).get(
         "weights", {"critical": 4, "high": 3, "medium": 2, "low": 1}
     )
@@ -2188,9 +2028,7 @@ def evaluate(
             f"computed ({max_score}). Using computed value."
         )
 
-    llm_findings = _load_llm_findings(
-        run_dir, preserve_unverified=resolved_policy.use_explicit_contracts,
-    )
+    llm_findings = _load_llm_findings(run_dir)
     run_metric_version, run_evidence_version, evidence_compatible, compatibility_reason = (
         _run_metric_contract_status(run_dir)
     )
@@ -2333,40 +2171,6 @@ def evaluate(
     result.invalid_cve_claims = (
         result.malformed_cve_claims + result.inapplicable_cve_claims
     )
-
-    # Legacy completion: strict-v3 uses the canonical funnel population below.
-    p3_path = run_dir / "03_vuln_analysis.json"
-    p4_path = run_dir / "04_exploitation.json"
-    if not resolved_policy.use_explicit_contracts and p3_path.is_file() and p4_path.is_file():
-        try:
-            p3_raw = json.loads(p3_path.read_text(encoding="utf-8"))
-            p4_raw = json.loads(p4_path.read_text(encoding="utf-8"))
-            candidates = [
-                finding for finding in (p3_raw.get("vulnerabilities", []) or [])
-                if finding.get("type", "") not in NOISE_TYPES
-                and not is_config_only(finding.get("type", ""))
-            ]
-            candidate_ids = [str(finding.get("id", "")) for finding in candidates]
-            conclusive_statuses = _EXPLOITED_PHASE4_STATUSES | _FAILED_PHASE4_STATUSES
-            conclusive_ids = [
-                str(test.get("vuln_id") or test.get("id", ""))
-                for test in (p4_raw.get("tests", []) or [])
-                if str(test.get("status", "")).strip().upper() in conclusive_statuses
-            ]
-            remaining = Counter(candidate_ids)
-            conclusive_count = 0
-            for vuln_id in conclusive_ids:
-                if remaining[vuln_id] > 0:
-                    remaining[vuln_id] -= 1
-                    conclusive_count += 1
-            result.phase4_candidates = len(candidate_ids)
-            result.phase4_conclusive = conclusive_count
-            result.phase4_completion_rate = (
-                round(result.phase4_conclusive / result.phase4_candidates, 3)
-                if result.phase4_candidates else 1.0
-            )
-        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
-            result.phase4_completion_rate = None
 
     if result.evidence_metrics_available:
         result.findings_with_declared_evidence = sum(
@@ -2519,11 +2323,6 @@ def evaluate(
     result.medium_recall = result.recall_by_severity["medium"]
     result.low_recall = result.recall_by_severity["low"]
 
-    # Devices that have at least one matched GT finding — used to classify "bonus" findings.
-    matched_device_ips: set[str] = {
-        m["gt_ip"] for m in result.matches if m.get("matched") and m.get("gt_ip")
-    }
-
     # Classify unmatched LLM findings: bonus (real but not in GT) vs false positive.
     accepted_bonus_counts: Counter[str] = Counter()
     accepted_bonus_signatures: set[tuple] = set()
@@ -2540,33 +2339,24 @@ def evaluate(
             bonus_types and (f_type in bonus_types or f_type_canon in bonus_types)
         )
         if explicit_bonus:
-            if resolved_policy.require_traceable_bonus:
-                signature = (
-                    f_type_canon, f_ip, f.get("port"),
-                    tuple(sorted(_normalized_endpoints(f.get("endpoint")))),
-                )
-                type_cap = max(0, int(per_type_caps.get(f_type_canon, default_per_type_cap)))
-                if f.get("traceable_evidence") is not True:
-                    result.bonus_untraceable += 1
-                    result.bonus_overflow += 1
-                elif signature in accepted_bonus_signatures:
-                    result.bonus_duplicates += 1
-                    result.bonus_overflow += 1
-                elif result.bonus_findings >= bonus_allowance or accepted_bonus_counts[f_type_canon] >= type_cap:
-                    result.bonus_cap_exceeded += 1
-                    result.bonus_overflow += 1
-                else:
-                    is_bonus = True
-                    accepted_bonus_signatures.add(signature)
-                    accepted_bonus_counts[f_type_canon] += 1
+            signature = (
+                f_type_canon, f_ip, f.get("port"),
+                tuple(sorted(_normalized_endpoints(f.get("endpoint")))),
+            )
+            type_cap = max(0, int(per_type_caps.get(f_type_canon, default_per_type_cap)))
+            if f.get("traceable_evidence") is not True:
+                result.bonus_untraceable += 1
+                result.bonus_overflow += 1
+            elif signature in accepted_bonus_signatures:
+                result.bonus_duplicates += 1
+                result.bonus_overflow += 1
+            elif result.bonus_findings >= bonus_allowance or accepted_bonus_counts[f_type_canon] >= type_cap:
+                result.bonus_cap_exceeded += 1
+                result.bonus_overflow += 1
             else:
                 is_bonus = True
-        elif (
-            resolved_policy.allow_auto_bonus
-            and (f_type in BONUS_TYPES_AUTO or f_type_canon in BONUS_TYPES_AUTO)
-            and f_ip in matched_device_ips
-        ):
-            is_bonus = True
+                accepted_bonus_signatures.add(signature)
+                accepted_bonus_counts[f_type_canon] += 1
 
         finding_summary = {
             "id": f.get("id"),
@@ -2912,79 +2702,78 @@ def evaluate(
     # while inventing a TN denominator from host counts is not statistically
     # defensible. The aggregate clean-control rate is therefore the mean of this
     # binary specificity across zero-GT scenarios/runs.
-    if resolved_policy.use_explicit_contracts:
-        def stage_match(findings: list[dict]) -> dict[int, int]:
-            return {entry[0]: gi for gi, entry in _match_predictions(
-                gt_vulns, findings, resolved_policy,
-            ).items()}
+    def stage_match(findings: list[dict]) -> dict[int, int]:
+        return {entry[0]: gi for gi, entry in _match_predictions(
+            gt_vulns, findings, resolved_policy,
+        ).items()}
 
-        def validated_indices(findings: list[dict]) -> set[int]:
-            _assign_evidence_refs(findings, tool_calls)
-            supported = set()
-            for index, finding in enumerate(findings):
-                records = _matching_tool_calls(finding, tool_calls)
-                valid = _coerce_evidence_level(finding) >= 2 and any(
-                    _tool_call_outcome(record, finding) is True
-                    and isinstance(_tool_result_data(record), dict)
-                    and _semantic_output_supports_finding(
-                        str(record.get("tool") or ""), _tool_result_data(record), finding,
-                        args=record.get("args"),
-                    )
-                    for record in records
+    def validated_indices(findings: list[dict]) -> set[int]:
+        _assign_evidence_refs(findings, tool_calls)
+        supported = set()
+        for index, finding in enumerate(findings):
+            records = _matching_tool_calls(finding, tool_calls)
+            valid = _coerce_evidence_level(finding) >= 2 and any(
+                _tool_call_outcome(record, finding) is True
+                and isinstance(_tool_result_data(record), dict)
+                and _semantic_output_supports_finding(
+                    str(record.get("tool") or ""), _tool_result_data(record), finding,
+                    args=record.get("args"),
                 )
-                finding["_proof_status"] = "accepted" if valid else ("rejected" if records else "missing")
-                if valid:
-                    supported.add(index)
-            return supported
-
-        try:
-            filtered = json.loads((run_dir / "03_vuln_analysis.json").read_text()).get("vulnerabilities", [])
-        except (OSError, ValueError, AttributeError):
-            filtered = []
-        # Use the report's admission rule, then independently check matching
-        # tool outputs. Detection metrics never read these post-test verdicts.
-        confirmations = [finding["_report_finding"] for finding in llm_findings if finding.get("_report_eligible")]
-        preflight = run_metadata.get("environment_validation")
-        preflight_ok = preflight is None or (
-            isinstance(preflight, dict)
-            and preflight.get("contract") == "preflight-v1"
-            and preflight.get("status") == "passed"
-            and preflight.get("phase") == "verify"
-            and str(preflight.get("scenario_id")) == scenario_id
-        )
-        result.environment_validation = {**preflight, "scoreable": preflight_ok} if isinstance(preflight, dict) else {
-            "status": "unavailable", "all_ground_truth_properties_verified": False,
-        }
-        preflight_reason = (
-            "Préparation du laboratoire invalide ou incomplète : score indisponible ; "
-            "les failles attendues ne sont pas comptées comme FN de l’agent."
-        ) if not preflight_ok else None
-        result.funnel = evaluate_funnel(
-            run_dir, gt_count=len(gt_vulns), filtered=filtered, confirmations=confirmations,
-            match=stage_match, validate=validated_indices,
-            compatible=evidence_compatible and preflight_ok, provenance_available=provenance_log_available,
-            compatibility_reason=preflight_reason or compatibility_reason, total_cost=total_cost_usd,
-            total_turns=total_turns,
-        )
-        result.funnel["diagnostics"]["environment_validation"] = result.environment_validation
-        final_stage = result.funnel["stages"]["confirmed"]
-        filtered_stage = result.funnel["stages"]["filtered"]
-        result.verified_f1 = final_stage["f1"]
-        result.phase4_candidates = filtered_stage["predictions"] if filtered_stage["available"] else 0
-        result.phase4_conclusive = 0
-        # Conclusive credit requires an independently supported confirmation;
-        # failed attempts and tool errors never count as refutations.
-        if final_stage["available"]:
-            # Use the same canonical population as the final report, including
-            # configuration findings. Mixing it with the legacy exploit-only
-            # denominator can produce a completion rate above 100%.
-            result.phase4_conclusive = final_stage["predictions"] - final_stage["invalid_evidence"]
-            result.phase4_completion_rate = (
-                round(result.phase4_conclusive / result.phase4_candidates, 3)
-                if result.phase4_candidates else None
+                for record in records
             )
-        else:
-            result.phase4_completion_rate = None
+            finding["_proof_status"] = "accepted" if valid else ("rejected" if records else "missing")
+            if valid:
+                supported.add(index)
+        return supported
+
+    try:
+        filtered = json.loads((run_dir / "03_vuln_analysis.json").read_text()).get("vulnerabilities", [])
+    except (OSError, ValueError, AttributeError):
+        filtered = []
+    # Use the report's admission rule, then independently check matching
+    # tool outputs. Detection metrics never read these post-test verdicts.
+    confirmations = [finding["_report_finding"] for finding in llm_findings if finding.get("_report_eligible")]
+    preflight = run_metadata.get("environment_validation")
+    preflight_ok = preflight is None or (
+        isinstance(preflight, dict)
+        and preflight.get("contract") == "preflight-v1"
+        and preflight.get("status") == "passed"
+        and preflight.get("phase") == "verify"
+        and str(preflight.get("scenario_id")) == scenario_id
+    )
+    result.environment_validation = {**preflight, "scoreable": preflight_ok} if isinstance(preflight, dict) else {
+        "status": "unavailable", "all_ground_truth_properties_verified": False,
+    }
+    preflight_reason = (
+        "Préparation du laboratoire invalide ou incomplète : score indisponible ; "
+        "les failles attendues ne sont pas comptées comme FN de l’agent."
+    ) if not preflight_ok else None
+    result.funnel = evaluate_funnel(
+        run_dir, gt_count=len(gt_vulns), filtered=filtered, confirmations=confirmations,
+        match=stage_match, validate=validated_indices,
+        compatible=evidence_compatible and preflight_ok, provenance_available=provenance_log_available,
+        compatibility_reason=preflight_reason or compatibility_reason, total_cost=total_cost_usd,
+        total_turns=total_turns,
+    )
+    result.funnel["diagnostics"]["environment_validation"] = result.environment_validation
+    final_stage = result.funnel["stages"]["confirmed"]
+    filtered_stage = result.funnel["stages"]["filtered"]
+    result.verified_f1 = final_stage["f1"]
+    result.phase4_candidates = filtered_stage["predictions"] if filtered_stage["available"] else 0
+    result.phase4_conclusive = 0
+    # Conclusive credit requires an independently supported confirmation;
+    # failed attempts and tool errors never count as refutations.
+    if final_stage["available"]:
+        # Use the same canonical population as the final report, including
+        # configuration findings. Mixing it with the legacy exploit-only
+        # denominator can produce a completion rate above 100%.
+        result.phase4_conclusive = final_stage["predictions"] - final_stage["invalid_evidence"]
+        result.phase4_completion_rate = (
+            round(result.phase4_conclusive / result.phase4_candidates, 3)
+            if result.phase4_candidates else None
+        )
+    else:
+        result.phase4_completion_rate = None
 
     if result.is_zero_gt:
         control_analysis_complete = (
@@ -2995,9 +2784,8 @@ def evaluate(
             and result.phase3_devices_analyzed == result.phase3_devices_total
             and result.phase3_devices_failed == 0
         )
-        if resolved_policy.use_explicit_contracts:
-            control_analysis_complete = control_analysis_complete and final_stage["available"]
-        if resolved_policy.use_explicit_contracts and not control_analysis_complete:
+        control_analysis_complete = control_analysis_complete and final_stage["available"]
+        if not control_analysis_complete:
             result.specificity = None
             result.scenario_score_pct = None
             result.score_unavailable_reason = (
@@ -3005,33 +2793,13 @@ def evaluate(
                 or "Zero-GT control requires complete Phase 3 analysis and evaluable final confirmations"
             )
         else:
-            control_fp = final_stage["false_positives"] if resolved_policy.use_explicit_contracts else fp
+            control_fp = final_stage["false_positives"]
             result.specificity = 1.0 if control_fp == 0 else 0.0
             result.scenario_score_pct = result.specificity * 100.0
     else:
         result.specificity = None
-        if resolved_policy.use_explicit_contracts:
-            result.scenario_score_pct = round(final_stage["f1"] * 100, 1) if final_stage["f1"] is not None else None
-            result.score_unavailable_reason = final_stage.get("reason")
-        elif resolved_policy.severity_in_primary_score:
-            control_specificity = (
-                result.negative_control_specificity
-                if result.negative_control_specificity is not None else 1.0
-            )
-            # A control violation is already an FP. Bound the additional control
-            # penalty to 20% so one control cannot erase an otherwise valid run.
-            result.negative_control_penalty_factor = 0.8 + 0.2 * control_specificity
-            if result.quality_adjusted_f1 is not None:
-                result.scenario_score_pct = round(
-                    result.quality_adjusted_f1
-                    * result.negative_control_penalty_factor
-                    * 100.0,
-                    1,
-                )
-            else:
-                result.scenario_score_pct = None
-        else:
-            result.scenario_score_pct = round(result.f1_score * 100.0, 1)
+        result.scenario_score_pct = round(final_stage["f1"] * 100, 1) if final_stage["f1"] is not None else None
+        result.score_unavailable_reason = final_stage.get("reason")
 
     # Multi-Hop Reach — fraction of GT vulns at depth >= k that were detected.
     # Computed on result.matches (which carries gt_hop_depth per match).
@@ -3282,7 +3050,7 @@ def main() -> None:
         "--policy",
         choices=sorted(EVALUATION_POLICIES),
         default=STRICT_V3.name,
-        help="Evaluation policy (strict-v3 is the evidence-aware default; strict-v2/legacy-v1 reproduce historical scores)",
+        help="Evaluation policy (Current evidence-aware evaluation; reproduce historical calculations with their original Git commit)",
     )
     args = parser.parse_args()
 

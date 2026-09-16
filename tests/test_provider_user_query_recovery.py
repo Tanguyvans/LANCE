@@ -27,12 +27,12 @@ def _completion(message, *, finish_reason="stop"):
     }
 
 
-def _tool_completion():
+def _tool_completion(call_id="call-1"):
     return _completion({
         "role": "assistant",
         "content": None,
         "tool_calls": [{
-            "id": "call-1",
+            "id": call_id,
             "type": "function",
             "function": {"name": "probe", "arguments": "{}"},
         }],
@@ -99,6 +99,44 @@ def test_tool_result_recovery_is_one_continuation_with_history_and_one_tool_call
     assert messages[1]["content"] == "Original request"
     assert messages[3]["tool_call_id"] == "call-1"
     assert "Continue the original user request" in messages[4]["content"]
+
+
+def test_distinct_tool_result_turns_each_get_one_bounded_recovery():
+    requests = []
+    responses = [
+        _tool_completion("call-1"),
+        _error_response(500),
+        _tool_completion("call-2"),
+        _error_response(500),
+        httpx.Response(200, json=_completion({"role": "assistant", "content": "Done."})),
+    ]
+
+    def transport(request):
+        requests.append(json.loads(request.content))
+        response = responses[len(requests) - 1]
+        return response if isinstance(response, httpx.Response) else httpx.Response(200, json=response)
+
+    tool = MagicMock(return_value='{"ok":true}')
+    provider = _make_provider(transport)
+    try:
+        assert provider.chat_with_tools(
+            "system", "Original request", _tool_spec(tool), max_turns=5
+        ) == "Done."
+    finally:
+        provider.client.close()
+
+    assert len(requests) == 5
+    assert tool.call_count == 2
+    assert [message["role"] for message in requests[2]["messages"]] == [
+        "system", "user", "assistant", "tool", "user"
+    ]
+    assert [message["role"] for message in requests[4]["messages"]] == [
+        "system", "user", "assistant", "tool", "user", "assistant", "tool", "user"
+    ]
+    assert all(
+        "Continue the original user request" in request["messages"][-1]["content"]
+        for request in (requests[2], requests[4])
+    )
 
 
 @pytest.mark.parametrize("status_code", [400, 500])
@@ -170,6 +208,35 @@ def test_500_after_no_tool_fallback_fails_fast_without_recovery():
         provider.client.close()
 
     assert len(requests) == 2
+
+
+def test_unknown_500_retries_without_model_recovery(monkeypatch):
+    requests = []
+
+    def transport(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(200, json=_tool_completion())
+        return httpx.Response(500, json={"error": {"message": "unrelated server failure"}})
+
+    provider = _make_provider(transport)
+    provider._retry_limit = 2
+    monkeypatch.setattr(provider_transport.time, "sleep", lambda _delay: None)
+    try:
+        with pytest.raises(Exception, match="unrelated server failure"):
+            provider.chat_with_tools(
+                "system", "Original request", _tool_spec(lambda: '{"ok":true}'), max_turns=5
+            )
+    finally:
+        provider.client.close()
+
+    assert len(requests) == 4
+    assert all(
+        request["messages"] == requests[1]["messages"]
+        for request in requests[2:]
+    )
+    assert all(message["role"] != "user" or message["content"] == "Original request"
+               for message in requests[1]["messages"])
 
 
 def test_recovery_respects_budget_deadline_stop_and_max_turns(monkeypatch):

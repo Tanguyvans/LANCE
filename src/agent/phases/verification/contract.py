@@ -15,6 +15,8 @@ from src.agent.exploit_evidence import (
     synthesize_exploit_result as _synthesize_exploit_result,
 )
 from src.agent.evidence.records import has_authentication
+from src.agent.evidence.mqtt import normalize_mqtt_port
+from src.agent.evidence.mqtt_ws import mqtt_ws_claim_path, mqtt_ws_claim_topic
 
 
 # Full receives the same verification requirement as guidance but keeps its
@@ -34,6 +36,7 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
     }),
     "data_access": frozenset({
         "http_get", "http_request", "curl_headers", "mqtt_listen",
+        "mqtt_ws_listen",
         "mysql_query", "redis_cmd", "ftp_list", "telnet_connect",
         "nmap_scan", "tcp_send", "udp_send",
     }),
@@ -47,12 +50,15 @@ PHASE4_LOCAL_CATEGORY_TOOL_NAMES = {
 PHASE4_LOCAL_SERVICE_TOOL_NAMES = {
     "ssh": frozenset({"ssh_login", "try_credential", "ssh_audit", "nmap_scan"}),
     "mqtt": frozenset({"mqtt_listen", "try_credential", "nmap_scan"}),
-    "mqtt-ws": frozenset({"http_request", "http_get", "curl_headers"}),
-    "mqtt_websocket": frozenset({"http_request", "http_get", "curl_headers"}),
-    "mqtt-websocket": frozenset({"http_request", "http_get", "curl_headers"}),
-    "mqttws": frozenset({"http_request", "http_get", "curl_headers"}),
-    "websocket": frozenset({"http_request", "http_get", "curl_headers"}),
-    "ws": frozenset({"http_request", "http_get", "curl_headers"}),
+    # Both paths remain available to the scope guard: the requirement
+    # selects mqtt_ws_listen for application claims and http_request for the
+    # historical network_exposure/HTTP-101 transport claim.
+    "mqtt-ws": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
+    "mqtt_websocket": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
+    "mqtt-websocket": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
+    "mqttws": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
+    "websocket": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
+    "ws": frozenset({"mqtt_ws_listen", "http_request", "http_get", "curl_headers"}),
     "http": frozenset({"http_get", "http_request", "curl_headers"}),
     "https": frozenset({"http_get", "http_request", "curl_headers", "mtls_request"}),
     "telnet": frozenset({"telnet_connect", "try_credential", "nmap_scan"}),
@@ -130,7 +136,10 @@ def _phase4_verification_plan(
     suffix = endpoint if endpoint.startswith("/") else (f"/{endpoint}" if endpoint else "/")
     url = f"{base_url}{suffix}"
 
-    if _is_mqtt_websocket_service(service):
+    # HTTP 101 remains the narrow, historical transport-only proof for a
+    # network_exposure finding. Keep query-bearing HTTP paths intact here;
+    # MQTT application claims use the dedicated paho exchange below.
+    if _is_mqtt_websocket_service(service) and vuln_type == "network_exposure":
         ws_port = port or 9001
         return {"tool": "http_request", "target": ip, "port": ws_port,
                 "endpoint": endpoint or "/",
@@ -142,6 +151,33 @@ def _phase4_verification_plan(
                     "network_exposure; it cannot prove MQTT authentication, "
                     "data exposure, or application access"
                 )}
+
+    if _is_mqtt_websocket_service(service):
+        raw_port = vuln.get("port")
+        ws_port = 9001 if raw_port in (None, "") else normalize_mqtt_port(raw_port)
+        ws_path = mqtt_ws_claim_path(vuln)
+        ws_topic = mqtt_ws_claim_topic(vuln)
+        raw_path = vuln.get("path") if vuln.get("path") not in (None, "") else vuln.get("endpoint")
+        plan = {"tool": "mqtt_ws_listen", "target": ip, "port": ws_port,
+                # Preserve an invalid claim for diagnostics; never silently
+                # turn '/mqtt?tenant=A' into '/mqtt'.
+                "endpoint": ws_path if ws_path is not None else raw_path,
+                "path": ws_path, "topic": ws_topic,
+                "args_hint": {"ip": ip, "port": ws_port, "path": ws_path,
+                    "topic": ws_topic, "count": 1, "timeout": 8},
+                "success_condition": (
+                    "Real MQTTv311 CONNECT/CONNACK and SUBSCRIBE/SUBACK over the "
+                    "exact WebSocket path, followed by at least one matching "
+                    "received PUBLISH. This anonymous read-only probe does not "
+                    "test credentials or grant access/pivot credit."
+                )}
+        if ws_port is None or ws_path is None or ws_topic is None:
+            plan["plan_error"] = (
+                "MQTT WebSocket application verification requires a valid port, "
+                "one exact HTTP path without a query/fragment/URL, and one "
+                "unambiguous MQTT topic filter; the finding claim is not probeable"
+            )
+        return plan
     if vuln_type == "misconfiguration" and (service == "coap" or port == 5683):
         return {
             "tool": "udp_send", "target": ip, "port": 5683,
@@ -367,6 +403,25 @@ def _phase4_requirement_matches(requirement: dict, tool: str, args: dict) -> boo
         for key in ("username", "password"):
             if key in hint and str(args.get(key) or "") != str(hint[key]):
                 return False
+    if tool == "mqtt_ws_listen":
+        hint = requirement.get("args_hint") or {}
+        if (
+            requirement.get("plan_error")
+            or not isinstance(requirement.get("path"), str)
+            or not isinstance(requirement.get("topic"), str)
+        ):
+            return False
+        if set(args) - {"ip", "port", "path", "topic", "count", "timeout"}:
+            return False
+        for key in ("ip", "port", "path", "topic", "count", "timeout"):
+            if key in hint and args.get(key) != hint[key]:
+                return False
+        if str(args.get("ip") or "") != target:
+            return False
+        if requirement.get("path") != str(args.get("path") or ""):
+            return False
+        if requirement.get("topic") != str(args.get("topic") or ""):
+            return False
     if tool == "try_credential":
         expected_service = str(requirement.get("service") or "").casefold()
         actual_service = str(args.get("service") or "").casefold()

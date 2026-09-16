@@ -33,7 +33,7 @@ _COMPARABILITY_IDENTITY = {
     "effective_phases": [1, 2, 3, 4, 5, 6], "phase_models": {},
     "execution_profile_config": {"schema_version": "2", "name": "full"},
     "prompt_manifest_sha256": "fixture-prompts", "tool_manifest_sha256": "fixture-tools",
-    "scoring_policy": "strict-v2", "metric_contract_version": METRIC_CONTRACT_VERSION,
+    "scoring_policy": "strict-v3", "metric_contract_version": METRIC_CONTRACT_VERSION,
     "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
 }
 
@@ -63,7 +63,7 @@ def _evaluation(
         specificity=specificity,
         is_zero_gt=zero_gt,
         total_gt_vulns=0 if zero_gt else 1,
-        scoring_policy="strict-v2",
+        scoring_policy="strict-v3",
         comparability_identity=dict(_COMPARABILITY_IDENTITY),
     )
 
@@ -531,6 +531,40 @@ def test_batch_runner_preserves_test_group_through_evaluation(tmp_path, monkeypa
     assert pipeline.call_args.kwargs["benchmark_split"] == "test-public"
     assert result.split == "test-public"
     assert summary["aggregate"]["per_split"]["test-public"]["macro_scenario_score_pct"] == 50
+
+
+@pytest.mark.parametrize("runner", ["cli", "api"])
+@pytest.mark.parametrize("status", ["partial", "failed", "completed"])
+def test_batch_producers_preserve_lifecycle_and_failed_cost(tmp_path, monkeypatch, runner, status):
+    from src.agent import batch
+    from src.api.routes import pipeline as route
+    from unittest.mock import patch
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "run_meta.json").write_text(json.dumps({"status": status}))
+    instance = Mock(run_dir=run_dir)
+    instance.tracker.total_cost.return_value = 1.25
+    instance.run.return_value = {"intrusion": "completed", "report": "completed"}
+    result = _evaluation("20", scenario_score_pct=100, f1=1, specificity=None, zero_gt=False)
+    monkeypatch.setattr("src.agent.pipeline.Pipeline", Mock(return_value=instance))
+    monkeypatch.setattr("src.benchmark.evaluator.evaluate", Mock(return_value=result))
+    monkeypatch.setattr(batch, "_phase5_summary", lambda *_: {"status": "completed"})
+    provider = SimpleNamespace(model="test")
+    if runner == "cli":
+        monkeypatch.setattr(batch, "OUTPUT_DIR", tmp_path)
+        summary = json.loads(batch.run_batch("20", provider).read_text())
+    else:
+        monkeypatch.setattr("src.agent.provider.LLMProvider", Mock(return_value=provider))
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *_: None)
+        with patch.dict(route._state, {"recent_events": [], "queue": None, "loop": None,
+                                      "stop_event": None, "running": True}):
+            route._batch_thread(route.BatchRequest(batch_ids=["20"], model="test", provider="local"))
+            summary = next(ev for ev in route._state["recent_events"] if ev["type"] == "batch_done")
+    entry = summary["scenarios" if runner == "cli" else "results"][0]
+    assert entry["metrics"]["f1"] == 1
+    assert entry["status"] == ("ok" if status == "completed" else status)
+    assert summary["aggregate"]["total_cost_usd"] == 1.25
 
 
 def test_cli_accepts_public_hardened_variant(monkeypatch):

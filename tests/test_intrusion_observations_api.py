@@ -20,7 +20,7 @@ def api(tmp_path, monkeypatch):
     (run / "tool_calls.jsonl").write_text(json.dumps({
         "phase": 5, "execution_origin": "runner", "tool": "ssh_exec",
         "evidence_ref": "tc-" + "b" * 32,
-        "args": {"ip": "192.0.2.1", "password": "secret-canary"},
+        "args": {"ip": "192.0.2.1", "user": "test", "password": "secret-canary", "command": "id"},
         "result": {"return_code": 0, "stdout": "uid=1000(test)"},
     }) + "\n")
     monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)

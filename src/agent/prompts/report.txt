@@ -19,6 +19,11 @@ exactly as: “Analyse du modèle (non validée)”.
 Return only useful nuance that does not fit the deterministic report: tensions
 between projections, limitations, hypotheses to review, and remediation
 priorities. Never invent facts and never replace source evidence with prose.
+Use execution_facts for recorded CVE-search activity; an empty cve_list is not
+evidence that no search occurred. Missing ledger facts mean unknown, not zero.
+Use unresolved_tests for open verification limits, without guessing their
+targets or treating FAILED attempts as refutations. Omitted fields remain
+unknown. Write in clear French without mixing languages.
 Use a few complete sentences and finish well within the output budget. Do not
 start an enumeration you cannot finish. Do not interpret an address in tool
 stdout as an additional target: an SSH_CONNECTION client address is an observed

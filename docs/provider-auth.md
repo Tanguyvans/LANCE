@@ -1,7 +1,6 @@
-# Authentification des mutations de providers
+# Authentification des actions administratives
 
-Les écritures du registre SQLite via `POST /api/providers` et
-`PATCH /api/providers/{name}` exigent un en-tête :
+Toutes les routes API de mutation (`POST`, `PUT`, `PATCH`, `DELETE`) exigent un en-tête :
 
 ```text
 Authorization: Bearer <LANCE_ADMIN_TOKEN>
@@ -15,16 +14,31 @@ en-tête absent, mal formé ou invalide renvoie `401` avec
 `WWW-Authenticate: Bearer`. La comparaison du jeton est constante et le jeton
 n’est jamais inclus dans une réponse.
 
-Le `GET /api/providers` et les autres routes restent inchangés dans ce lot.
-Cette protection ne constitue donc pas une authentification complète de
-l’application : elle couvre uniquement les deux mutations du registre des
-providers.
+Cela couvre les runs et batches, leur arrêt, le déploiement et le nettoyage,
+la génération de scénarios, l'évaluation LLM et les modifications de modèles
+et fournisseurs. La dépendance est posée sur l'application FastAPI : les
+nouvelles mutations sont également protégées par défaut. Les lectures restent
+accessibles sans clé : les rapports et journaux ne sont pas rendus confidentiels.
+
+## Tableau de bord
+
+Saisissez la clé dans « Accès administrateur », en haut de la page, avant une
+action. Ce champ mot de passe possède un libellé et un retour d'erreur ; il
+s'ouvre après un refus `401`. La clé reste dans la page, sans stockage
+persistant. « Effacer » la retire du champ, et un rechargement la supprime.
+Elle n'est envoyée que pour les mutations API de même origine ; les redirections
+de ces requêtes sont refusées. Le navigateur et l'API doivent être servis sur
+la même origine ; les mutations depuis une autre origine sont refusées par CORS.
 
 Dans le gestionnaire « Modèles & Providers », la clé est saisie dans un champ
 mot de passe visible et peut être collée. Elle reste uniquement en mémoire
 JavaScript de la page, n’est pas persistée. L’action « Effacer la clé et
 fermer », la croix, Échap et la fermeture par le fond la suppriment de la
 mémoire et du DOM.
+
+Ce champ historique prime sur le champ global pour les mutations de fournisseurs
+uniquement. Sa fermeture n'efface pas le champ global. Utilisez le champ global
+pour les autres actions, notamment les modifications des modèles.
 
 ## Déploiement
 
@@ -34,3 +48,6 @@ le gestionnaire de secrets ou l’environnement du service. Ne l’ajoutez jamai
 à Git, à `.env.example`, à une capture d’écran ou à une URL. Exposez le
 gestionnaire uniquement derrière HTTPS ou un tunnel de confiance avec contrôle
 d’accès ; ce jeton ne remplace pas cette protection réseau.
+
+Sans configuration de `LANCE_ADMIN_TOKEN`, les actions du dashboard sont
+volontairement bloquées. La CLI locale n'utilise pas cette authentification HTTP.

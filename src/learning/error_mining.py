@@ -31,11 +31,11 @@ from typing import Any, Iterable
 import yaml
 
 from src.benchmark.catalog import CatalogError, DEV_PUBLIC, load_catalog, public_scenario_split
-from src.benchmark.evaluator import _load_llm_findings, evaluate, resolve_policy
+from src.benchmark.evaluator import STRICT_V3, _load_llm_findings, evaluate, resolve_policy
 
 
 SCHEMA_VERSION = "1.1"
-DEFAULT_POLICY = "strict-v2"
+DEFAULT_POLICY = STRICT_V3.name
 REVIEW_STATUSES = frozenset({"pending", "accepted", "rejected"})
 ERROR_TYPES = frozenset({
     "false_negative",
@@ -846,6 +846,13 @@ def _mine_run(
         if item.get("id") is not None
     }
     result = evaluate(run_dir, gt_path, policy=policy)
+    if not result.evidence_contract_compatible:
+        raise LearningLoopError(result.metrics_compatibility_reason or "Incompatible evaluation contract")
+    if (
+        run_meta.get("environment_validation") is not None
+        and result.environment_validation.get("scoreable") is not True
+    ):
+        raise LearningLoopError("Invalid laboratory preparation; run excluded from learning")
     source = _source(
         run_dir, scenario_id, scenario_meta, run_meta, policy, run_id=run_id
     )
@@ -1264,7 +1271,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mine.add_argument("--output", type=Path, required=True)
     mine.add_argument("--ground-truth-dir", type=Path)
     mine.add_argument("--run-id", action="append", dest="run_ids")
-    mine.add_argument("--policy", default=DEFAULT_POLICY)
+    mine.add_argument("--policy", choices=[DEFAULT_POLICY], default=DEFAULT_POLICY)
     mine.add_argument("--allow-custom", action="store_true")
     mine.add_argument("--overwrite", action="store_true")
 

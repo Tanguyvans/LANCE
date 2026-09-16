@@ -130,6 +130,13 @@ def ssh_request(record: dict[str, Any]) -> dict[str, Any] | None:
     return _structured(args)
 
 
+def legacy_ssh_command(command_string: object) -> str | None:
+    """Extract a remote command only from the closed historical SSH grammar."""
+    if _legacy(command_string) is None:
+        return None
+    return _unquote(_LEGACY_RE.fullmatch(command_string.strip()).group("command"))
+
+
 def known_weak_ssh_credential(request: dict[str, Any] | None) -> bool:
     """Whether a parsed SSH request uses one of the finite weak pairs."""
     if not isinstance(request, dict):

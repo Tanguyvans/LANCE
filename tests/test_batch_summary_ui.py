@@ -29,6 +29,6 @@ def test_batch_summary_separates_groups_and_supports_historical_results():
     assert "test-public: F1=0.000 Recall=0.000 Score=N/A" in mixed
     assert "Avg" not in mixed
     assert "Avg F1=0.500" in historical
-    assert empty == "Batch terminé — Total $0.0000"
+    assert empty == "Batch terminé — Total indisponible"
     assert source.count("message:batchSummaryText(ev)") == 1
     assert source.count("text = batchSummaryText(ev)") == 1

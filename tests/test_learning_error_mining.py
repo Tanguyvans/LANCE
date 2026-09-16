@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from src.benchmark.metric_contract import metric_contract_metadata
+
 from src.learning.error_mining import (
     LearningLoopError,
     export_accepted,
@@ -59,6 +61,7 @@ def _write_run(root: Path, name: str = "run-1", *, split: str = "dev-public") ->
         "git_commit": "abc123",
     }), encoding="utf-8")
     (run / "run_meta.json").write_text(json.dumps({
+        **metric_contract_metadata(),
         "benchmark_split": split,
         "model": "test-model",
     }), encoding="utf-8")

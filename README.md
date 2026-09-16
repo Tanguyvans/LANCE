@@ -82,85 +82,19 @@ benchmark's held-out evaluation scenarios.
 
 ## Dashboard
 
-Live run view (topology, per-phase events) and cross-model benchmark comparison:
+Follow the topology and each phase live, then compare benchmark runs:
 
-Scenario preparation, injection, verification and automatic cleanup report the
-playbook, attempt number, timestamps, duration and exit code. Failed operations
-show their diagnostic output in keyboard-accessible details; the final message
-distinguishes failure, partial completion and cancellation from success.
-Ansible output is collected when each command finishes, not streamed line by line.
-Full logs are stored in `output/agent/<run>/ansible_*.log`, including automatic
-cleanup: retries are appended and partial output is retained on timeouts.
-These logs describe failures; they do not automatically repair SSH or Proxmox.
+- **Audit:** potential findings, retained hypotheses and evidence-checked declarations.
+- **Intrusion:** corroborated accesses and verified paths, with explicit limits on pivot evidence, separate from audit scores.
+- **Execution:** completed, partial, failed or stopped runs, with diagnostic logs.
+- **Consumption:** tokens, elapsed time and cost, including failed attempts.
 
-For exceptions escaping the pipeline, `run_error.json` records the active phase,
-exception class, sanitized message, causal chain and bounded stack locations
-(without source lines or local variables). The same diagnostic is retained in
-`run_meta.json` under `run_error`; the sidecar is attempted before cleanup so a
-later metadata-write failure does not necessarily lose the original cause.
-Both writes are best-effort. These diagnostics do not retry a phase, generate a
-fallback report, change the execution profile or turn an unsuccessful run into
-a success. Older runs without this diagnostic remain readable.
+A completed run does not mean every vulnerability was confirmed. Comparisons
+keep development and test scenarios separate and flag incompatible results.
 
-Full-profile intrusion now enters a save-only closing step when the model stops
-without its required deliverable. It permits at most three closing requests
-within the existing turn limit, with no further target actions; stop and cost
-limits still apply. A rejected or missing final submission leaves an explicitly
-incomplete diagnostic synthesis, not a successful campaign. The final phase
-event is emitted once after reconciliation and retains the measured usage.
-An accepted save is a format/lifecycle check; access and pivot credit still
-depend on the existing evidence evaluation, not on the model's declarations.
-
-The live end-of-run summary displays audit precision, recall, F1 and VP/FP/FN
-from the final confirmed stage of the evaluation funnel. Legacy metrics remain
-available for compatibility but are not mixed into this summary. Intrusion is
-shown separately using evaluated target compromises, verified paths and verified
-network hops; unavailable evidence is not displayed as zero. Execution completion
-is not a claim of intrusion success: device-analysis failures, inconclusive or
-errored checks and unavailable evaluation are surfaced as explicit reservations.
-These messages do not change lifecycle status, scoring or proof requirements.
-
-MQTT listener calls explicitly pass their TCP port (1883 by default) to the
-process. Invalid ports and unknown MQTT arguments are rejected before launch.
-The tool ledger preserves the requested arguments alongside the result's
-`execution_attestation` (effective host, TCP port and topic); this metadata does
-not prove a successful connection and adds no credential copy. MQTT/TCP on port
-9001 is still not MQTT-over-WebSocket. This execution fix does not change proof
-criteria or retrofit older traces: a historical unsupported port argument is
-not evidence that the requested port was contacted.
-
-The `evidence-v9` contract separates MQTT-over-WebSocket transport exposure from
-application access: an observed WebSocket upgrade can support `network_exposure`,
-but cannot confirm anonymous MQTT access or message disclosure. The current HTTP
-tools do not capture MQTT exchanges over WebSocket, and `mqtt_listen` uses TCP;
-without suitable application evidence these claims remain inconclusive. The
-same rule applies in full and compact profiles. Historical `evidence-v8` scores
-remain historical and are not silently reclassified or pooled with the new
-contract; precision/recall/F1 formulas are unchanged.
-
-The `evidence-v10` contract additionally binds MQTT wildcard observations to the
-actual message topics. New listener calls use Mosquitto's escaped JSON output
-(`-F %j`); the execution attestation records `output_format: mosquitto-json-v1`.
-The raw stdout remains unchanged in the ledger. Only messages covered by both
-the subscription and the claimed topic can support that claim, and disclosure
-checks inspect their payloads, not unrelated messages or topic names. Target,
-port, references and the MQTT/TCP versus WebSocket boundary still apply.
-Historical unframed `-v` output is not sufficient to widen an exact subscription
-match to another claimed topic: payload newlines make such attribution ambiguous.
-Older scores remain distinguishable by their evidence contract; this change
-does not rewrite historical runs or group duplicate findings.
-
-New Phase 6 outputs record `phase6_report_contract: report-v2`. The report
-distinguishes Phase 4-supported declarations from accepted benchmark proofs,
-ground-truth positives, and code execution. Its evidence column uses the
-Phase 4 observation and explicit tool references; reference lookup is labelled
-as traceability, not semantic proof validation. Severity totals and priority
-indices count declarations, not unique vulnerabilities or benchmark scores.
-`06_report_groups.json` preserves the IDs and input positions of possible
-duplicates for review only; it never changes the verification queue or VP/FP/FN.
-A provider completion ending with `length` leaves an explicit
-`partial:memo_truncated` report, with no promoted analyst note. Source evidence
-and measured consumption are preserved. Historical reports are not rewritten.
+See [evaluation and evidence](docs/benchmark/v1/evaluation.md),
+[execution and diagnostics](docs/benchmark/v1/execution.md), and
+[administrator access](docs/provider-auth.md) for details.
 
 ![Dashboard — live run](docs/images/dashboard-main.png)
 ![Dashboard — benchmark comparison](docs/images/dashboard-benchmark.png)

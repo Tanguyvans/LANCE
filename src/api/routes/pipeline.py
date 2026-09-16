@@ -17,6 +17,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
+from src.agent.batch_outcomes import batch_run_status
 
 router = APIRouter()
 
@@ -561,11 +562,8 @@ def _batch_thread(req: BatchRequest):
                 "phase5_status": phase5["status"],
                 "cost_usd": cost,
                 "metrics": metrics,
-                "status": (
-                    "phase5_incomplete"
-                    if phase5["status"] == "incomplete"
-                    else ("ok" if metrics else "evaluation_failed")
-                ),
+                "status": batch_run_status(run_dir, run_results,
+                    phase5_status=phase5["status"], evaluated=bool(metrics)),
             }
             if evaluation_error:
                 entry["reason"] = evaluation_error
@@ -761,7 +759,9 @@ async def stream_events():
             if event.get("type") == "__done__":
                 break
             yield {"data": json.dumps(event)}
-            if event.get("type") in ("pipeline_done", "error"):
+            # Sub-pipeline completion and errors can be followed by evaluation,
+            # teardown and further scenarios. Only the worker owns stream end.
+            if event.get("type") == "teardown_done" and event.get("manual") is True:
                 break
 
     return EventSourceResponse(generator())

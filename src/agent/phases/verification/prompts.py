@@ -2,14 +2,17 @@
 
 
 _MQTT_WEBSOCKET_INSTRUCTIONS = (
-    "MQTT over WebSocket requires an observed HTTP Upgrade handshake against "
-    "the exact host, port, and endpoint. HTTP 101 proves transport/network "
-    "exposure only. It does not prove no_auth, data_exposure, credentials, "
-    "subscribe/publish, or any other MQTT application access. No WebSocket "
-    "application validator is available, so those claims remain indeterminate "
-    "without observed MQTT-over-WebSocket messages. Do not use mqtt_listen: it "
-    "is MQTT/TCP only on every port. Do not treat HTTP 200 or a generic HTTP "
-    "service on port 9001 as MQTT-WS proof."
+    "MQTT over WebSocket requires the dedicated read-only mqtt_ws_listen probe "
+    "against the exact IP, port, HTTP path, and MQTT topic. It must observe a "
+    "real MQTTv3.1.1 CONNECT/CONNACK, SUBSCRIBE/SUBACK, and at least one "
+    "matching received PUBLISH. For network_exposure only, the historical "
+    "HTTP 101 handshake remains valid transport-only proof; HTTP 101 alone "
+    "does not prove an MQTT application claim. HTTP 200, plain TCP, a wrong "
+    "path/topic, an auth-required response, or empty output is not proof. "
+    "Call only with ip=literal, port, path, topic, count=1, timeout=8. "
+    "Do not use mqtt_listen: it is MQTT/TCP only. This probe is anonymous and "
+    "read-only; it never tests credentials, publishes, or grants access/pivot "
+    "credit from a subscription alone."
 )
 
 

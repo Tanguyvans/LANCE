@@ -4,7 +4,7 @@ Cette documentation décrit ce que LANCE et IoTChainBench font actuellement,
 leurs règles d’évaluation et leurs limites. Elle ne décrit pas une architecture
 future et ne constitue pas une validation de tous les scénarios sur le laboratoire.
 
-## Référence et versions
+## Référence
 
 État du code relu le **15 septembre 2026**, sur la base Git
 `1ea2c34d5f0791b888122de0c43a478bab626368`, avec les changements d’extraction du
@@ -14,16 +14,21 @@ de publication contenant ces changements comme référence, puis consigner le SH
 effectivement exécuté pour chaque campagne. Aucun déploiement n’est attesté par
 cette page.
 
-| Repère | Valeur dans l’état décrit | Source faisant autorité |
-| --- | --- | --- |
-| Référence documentaire | V1 | Cette documentation |
-| Catalogue | `3.2.0` | [catalog.yaml](../../../benchmarks/catalog.yaml) |
-| Contrat métrique | `strict-v3.12` | [metric_contract.py](../../../src/benchmark/metric_contract.py) |
-| Contrat de preuve | `evidence-v12` | Même module |
-| Entonnoir | `funnel-v1` | [funnel.py](../../../src/benchmark/funnel.py) |
+**V1 reste le nom de cette référence documentaire**, pas le numéro de chaque
+correction. Les identifiants techniques sont conservés dans les métadonnées des
+runs ; leurs sources sont le [catalogue](../../../benchmarks/catalog.yaml),
+les [contrats d’évaluation](../../../src/benchmark/metric_contract.py) et
+l’[entonnoir](../../../src/benchmark/funnel.py).
 
-Ces versions sont distinctes. Organiser la documentation en V1 ne renomme ni
-les contrats, ni les anciens runs, ni le catalogue.
+### Quand changer un contrat ?
+
+- Texte, affichage, diagnostic ou refactoring à comportement identique : garder le contrat ; le commit Git trace le changement.
+- Modification des critères de preuve, du calcul des scores ou d’un format incompatible : changer uniquement le contrat concerné et documenter la différence.
+- Ne jamais renuméroter les anciens runs ni les rendre artificiellement compatibles.
+
+Une correction courte peut changer les résultats : c’est son effet, pas sa taille,
+qui détermine si un changement de contrat est nécessaire. Le README décrit l’état
+courant ; il ne reçoit pas un paragraphe d’historique à chaque correction.
 
 ## Les quatre questions séparées
 
@@ -61,6 +66,10 @@ exposés et les budgets. **Full reste disponible** et peut être choisi explicit
 2. [Évaluation](evaluation.md) : calculs, preuves, FP et limites de l’intrusion.
 3. [Exécution](execution.md) : lancement, statut, diagnostic et validation.
 
+En complément, le [catalogue des attaques](../catalogue-attaques.md) relie les
+familles de menaces aux objectifs S1–S29 et sépare implémentations, simulations
+et propositions historiques.
+
 Pour intervenir dans le code : [guide des phases](../../../src/agent/phases/README.md)
 et [contrat des livrables](../../run-artifacts.md).
 
@@ -76,5 +85,5 @@ et [contrat des livrables](../../run-artifacts.md).
   ni la réussite d’une campagne S1–S29 sur le mini-PC.
 
 Les anciens guides sont conservés dans les [archives](../../audit/benchmark-avant-v1/README.md).
-Pour maintenir cette référence, mettre à jour les versions et la validation
-effectivement réalisée, sans transformer un résultat ancien en résultat courant.
+Pour maintenir cette référence, mettre à jour le comportement décrit et la
+validation effectivement réalisée, sans transformer un résultat ancien en résultat courant.

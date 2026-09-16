@@ -115,6 +115,7 @@ TOOL_GROUPS: dict[str, list[dict]] = {
 RECON_READ_ONLY_TOOL_NAMES = frozenset({
     "arp_scan", "curl_headers", "decode_value", "dig_query", "enum4linux",
     "ftp_list", "gobuster_dir", "http_get", "modbus_scan", "mqtt_listen",
+    "mqtt_ws_listen",
     "nikto_scan", "nmap_discovery", "nmap_scan", "nuclei_scan", "nvd_lookup",
     "openssl_inspect", "searchsploit", "smbclient_list", "sqlmap", "ssh_audit",
     "tls_inspect", "traceroute", "whatweb", "wpscan",

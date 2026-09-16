@@ -49,7 +49,7 @@ function _setScenarioLabSection(section) {
 }
 
 async function _scenarioLabRequest(url, options = {}) {
-  const response = await fetch(url, {
+  const response = await adminFetch(url, {
     ...options,
     headers: {'Content-Type': 'application/json', ...(options.headers || {})},
   });

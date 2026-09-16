@@ -114,7 +114,7 @@ class TestBuildSubprocessFunction:
         fn = build_subprocess_function(data)
         fn(url="http://192.168.88.1")
         cmd = mock_run.call_args[0][0]
-        assert cmd == ["curl", "-s", "-D", "-", "--max-time", "10", "-L", "http://192.168.88.1"]
+        assert cmd == ["curl", "-q", "-s", "-D", "-", "--max-time", "10", "--max-redirs", "0", "--globoff", "http://192.168.88.1"]
 
     @patch("src.agent.tools.recon_tools._run")
     def test_mqtt_flags_and_defaults(self, mock_run):
@@ -289,11 +289,10 @@ class TestBuildSubprocessFunction:
         result = fn(ip="192.0.2.10", user="admin", password="admin", command="id")
 
         cmd = mock_run.call_args[0][0]
-        assert cmd[:2] == ["bash", "-c"]
-        command = cmd[2]
-        assert "UserKnownHostsFile=/dev/null" in command
-        assert "admin@192.0.2.10" in command
-        assert "id" in command
+        assert cmd[:4] == ["sshpass", "-p", "admin", "ssh"]
+        assert "UserKnownHostsFile=/dev/null" in cmd
+        assert cmd[-2:] == ["admin@192.0.2.10", "id"]
+        assert "bash" not in cmd
         assert json.loads(result)["return_code"] == 0
 
     @patch("src.agent.tools.recon_tools._run")
@@ -489,7 +488,7 @@ class TestExpectedTools:
 
     def test_tool_count(self):
         tools = load_all_tools()
-        assert len(tools) == 42
+        assert len(tools) == 43
 
     def test_expected_names(self):
         names = {t["name"] for t in load_all_tools()}
@@ -513,7 +512,7 @@ class TestExpectedTools:
         }
         expected_new_python = {
             "python_exec", "http_request", "tcp_send", "udp_send", "mtls_request",
-            "tls_inspect", "decode_value",
+            "tls_inspect", "decode_value", "mqtt_ws_listen",
         }
         expected = (
             expected_sw | expected_exploit | expected_hw

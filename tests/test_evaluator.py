@@ -9,19 +9,14 @@ import yaml
 
 from src.benchmark.evaluator import (
     CATEGORY_TO_TYPE,
-    LEGACY_V1,
-    STRICT_V2,
+    STRICT_V3,
     EvaluationResult,
     MatchResult,
-    _match_by_cve,
-    _match_by_ip_and_service,
-    _match_by_ip_and_type,
     compute_mhr,
     _derive_evidence_level,
     _has_tool_provenance,
     _load_tool_call_records,
     _normalize_port,
-    _phase3_has_direct_evidence,
     _tool_call_outcome,
     _semantic_output_supports_finding,
     evaluate,
@@ -87,6 +82,7 @@ def _gt(id="V1", ip="192.168.100.11", severity="high", category="misconfiguratio
         cve=None, device="s1-mqtt", hop_depth=0):
     return {"id": id, "ip": ip, "severity": severity, "category": category,
             "cve": cve, "device": device, "title": f"Vuln {id}",
+            **({"accepted_types": ["no_auth"]} if category == "misconfiguration" else {}),
             "hop_depth": hop_depth}
 
 
@@ -156,84 +152,6 @@ class TestCategoryToType:
 
 # ── Unit tests: matching functions ────────────────────────────────────────────
 
-class TestMatchByCve:
-    def test_exact_match(self):
-        gt = _gt(cve="CVE-2023-48795")
-        findings = [_finding(cve_ids=["CVE-2023-48795"])]
-        assert _match_by_cve(gt, findings) is findings[0]
-
-    def test_no_cve_in_gt_returns_none(self):
-        gt = _gt(cve=None)
-        findings = [_finding(cve_ids=["CVE-2023-48795"])]
-        assert _match_by_cve(gt, findings) is None
-
-    def test_cve_not_in_findings_returns_none(self):
-        gt = _gt(cve="CVE-2023-48795")
-        findings = [_finding(cve_ids=["CVE-2021-0001"])]
-        assert _match_by_cve(gt, findings) is None
-
-    def test_empty_findings(self):
-        gt = _gt(cve="CVE-2023-48795")
-        assert _match_by_cve(gt, []) is None
-
-    def test_finding_with_no_cve_ids(self):
-        gt = _gt(cve="CVE-2023-48795")
-        findings = [_finding()]  # cve_ids=[]
-        assert _match_by_cve(gt, findings) is None
-
-
-class TestMatchByIpAndType:
-    def test_match_misconfiguration_no_auth(self):
-        gt = _gt(category="misconfiguration", ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.11", type="no_auth")]
-        assert _match_by_ip_and_type(gt, findings) is findings[0]
-
-    def test_match_cve_terrapin(self):
-        gt = _gt(category="cve", ip="192.168.100.14")
-        findings = [_finding(ip="192.168.100.14", type="terrapin")]
-        assert _match_by_ip_and_type(gt, findings) is findings[0]
-
-    def test_match_no_authentication_category(self):
-        gt = _gt(category="no_authentication", ip="192.168.100.15")
-        findings = [_finding(ip="192.168.100.15", type="no_auth")]
-        assert _match_by_ip_and_type(gt, findings) is findings[0]
-
-    def test_match_code_injection_category(self):
-        gt = _gt(category="code_injection", ip="192.168.100.12")
-        findings = [_finding(ip="192.168.100.12", type="rce")]
-        assert _match_by_ip_and_type(gt, findings) is findings[0]
-
-    def test_wrong_ip_no_match(self):
-        gt = _gt(category="misconfiguration", ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.99", type="no_auth")]
-        assert _match_by_ip_and_type(gt, findings) is None
-
-    def test_wrong_type_no_match(self):
-        gt = _gt(category="default_credentials", ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.11", type="terrapin")]
-        assert _match_by_ip_and_type(gt, findings) is None
-
-    def test_unknown_category_no_match(self):
-        gt = _gt(category="unknown_category", ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.11", type="no_auth")]
-        assert _match_by_ip_and_type(gt, findings) is None
-
-
-class TestMatchByIpAndService:
-    def test_any_finding_on_same_ip(self):
-        gt = _gt(ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.11", type="version_leak")]
-        assert _match_by_ip_and_service(gt, findings) is findings[0]
-
-    def test_different_ip_no_match(self):
-        gt = _gt(ip="192.168.100.11")
-        findings = [_finding(ip="192.168.100.99")]
-        assert _match_by_ip_and_service(gt, findings) is None
-
-    def test_empty_findings(self):
-        gt = _gt(ip="192.168.100.11")
-        assert _match_by_ip_and_service(gt, []) is None
-
 
 class TestMatchVuln:
     def test_priority_cve_over_ip_type(self):
@@ -245,22 +163,21 @@ class TestMatchVuln:
         assert match is f_cve
         assert method == "cve"
 
-    def test_ip_type_before_loose(self):
-        # f_unknown has an unrecognised type → would only match via loose (ip+category)
-        # f_type has a compatible type → should win via ip+type even if listed second
+    def test_explicit_type_matches_after_unknown_type(self):
+        # An unknown type is rejected; the explicitly accepted type matches.
         gt = _gt(category="misconfiguration", ip="192.168.100.11")
         f_unknown = _finding(id="F1", ip="192.168.100.11", type="totally_unknown")
         f_type    = _finding(id="F2", ip="192.168.100.11", type="no_auth")
         match, method = match_vuln(gt, [f_unknown, f_type])
         assert match is f_type
-        assert method == "ip+type"
+        assert method == "exact-type"
 
-    def test_fallback_to_loose(self):
+    def test_no_fallback_to_loose(self):
         gt = _gt(category="misconfiguration", ip="192.168.100.11")
         findings = [_finding(ip="192.168.100.11", type="unknown_type")]
-        match, method = match_vuln(gt, findings, policy=LEGACY_V1)
-        assert match is findings[0]
-        assert method == "ip+category"
+        match, method = match_vuln(gt, findings)
+        assert match is None
+        assert method == ""
 
     def test_no_match(self):
         gt = _gt(ip="192.168.100.11")
@@ -270,7 +187,7 @@ class TestMatchVuln:
         assert method == ""
 
 
-class TestStrictV2Matching:
+class TestCurrentMatching:
     def test_default_policy_is_strict(self):
         gt = _gt(ip="192.168.100.11", severity="high")
         finding = _finding(ip="192.168.100.11", type="unknown_type", severity="high")
@@ -284,7 +201,7 @@ class TestStrictV2Matching:
         gt = _gt(ip="192.168.100.11", severity="high")
         finding = _finding(ip="192.168.100.11", type="unknown_type", severity="high")
 
-        match, method = match_vuln(gt, [finding], policy=STRICT_V2)
+        match, method = match_vuln(gt, [finding], policy=STRICT_V3)
 
         assert match is None
         assert method == ""
@@ -297,10 +214,8 @@ class TestStrictV2Matching:
             cve_ids=["CVE-2023-48795"],
         )
 
-        legacy_match, _ = match_vuln(gt, [finding], policy=LEGACY_V1)
-        strict_match, method = match_vuln(gt, [finding], policy=STRICT_V2)
+        strict_match, method = match_vuln(gt, [finding], policy=STRICT_V3)
 
-        assert legacy_match is finding
         assert strict_match is None
         assert method == ""
 
@@ -308,7 +223,7 @@ class TestStrictV2Matching:
         gt = _gt(ip="192.168.100.11", category="cve", cve="CVE-2023-48795")
         finding = _finding(ip="192.168.100.11", type="known_cve", cve_ids=[])
 
-        match, method = match_vuln(gt, [finding], policy="strict-v2")
+        match, method = match_vuln(gt, [finding], policy="strict-v3")
 
         assert match is None
         assert method == ""
@@ -373,15 +288,16 @@ class TestEvaluateLooseMatchPenalty:
         result = evaluate(run_dir, gt_file)
         assert result.weighted_score == 3.0  # full weight (high=3)
 
-    def test_loose_match_half_weight(self, tmp_path):
+    def test_loose_match_receives_no_credit(self, tmp_path):
         vulns = [_gt(id="V1", severity="high", category="misconfiguration", ip="192.168.100.11")]
-        # type "unknown_type" forces ip+category fallback
+        # Same IP and severity cannot compensate for an unknown type.
         findings = [_finding(id="F1", ip="192.168.100.11", type="unknown_type")]
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns, max_score=3)
 
-        result = evaluate(run_dir, gt_file, policy=LEGACY_V1)
-        assert result.weighted_score == 1.5  # 0.5 * 3 (high)
+        result = evaluate(run_dir, gt_file)
+        assert result.weighted_score == 0.0
+        assert result.false_positives == 1
 
     def test_cve_match_full_weight(self, tmp_path):
         vulns = [_gt(id="V1", severity="critical", category="cve",
@@ -448,7 +364,7 @@ class TestEvaluateScorePct:
 
 
 class TestEvaluateBonusTypes:
-    def test_bonus_not_counted_as_fp(self, tmp_path):
+    def test_unproven_bonus_is_counted_as_fp(self, tmp_path):
         vulns = [_gt(id="V1", severity="high", category="misconfiguration")]
         findings = [
             _finding(id="F1", ip="192.168.100.11", type="no_auth"),
@@ -459,12 +375,12 @@ class TestEvaluateBonusTypes:
         gt_file = _write_gt(tmp_path, vulns, bonus_types=["weak_cipher", "missing_header"])
 
         result = evaluate(run_dir, gt_file)
-        assert result.false_positives == 0
-        assert result.bonus_findings == 2
-        assert result.precision == 1.0
+        assert result.false_positives == 2
+        assert result.bonus_findings == 0
+        assert result.precision == pytest.approx(1 / 3, rel=1e-3)
         assert result.raw_precision == pytest.approx(1 / 3, rel=1e-3)
         assert result.unmatched_finding_rate == pytest.approx(2 / 3, rel=1e-3)
-        assert result.bonus_finding_rate == pytest.approx(2 / 3, rel=1e-3)
+        assert result.bonus_finding_rate == 0.0
 
     def test_non_bonus_type_counted_as_fp(self, tmp_path):
         vulns = [_gt(id="V1", severity="high", category="misconfiguration")]
@@ -488,14 +404,14 @@ class TestEvaluateBonusTypes:
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns)
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
-        assert result.scoring_policy == "strict-v2"
+        assert result.scoring_policy == "strict-v3"
         assert result.true_positives == 1
         assert result.false_positives == 1
         assert result.bonus_findings == 0
 
-    def test_strict_keeps_explicit_gt_bonus(self, tmp_path):
+    def test_explicit_bonus_without_trace_is_not_exempt(self, tmp_path):
         vulns = [_gt(id="V1", severity="high", category="misconfiguration")]
         findings = [
             _finding(id="F1", ip="192.168.100.11", type="no_auth"),
@@ -504,10 +420,10 @@ class TestEvaluateBonusTypes:
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns, bonus_types=["weak_cipher"])
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
-        assert result.false_positives == 0
-        assert result.bonus_findings == 1
+        assert result.false_positives == 1
+        assert result.bonus_findings == 0
 
 
 class TestEvaluateFindingIdentity:
@@ -520,7 +436,7 @@ class TestEvaluateFindingIdentity:
         run_dir = _write_run(tmp_path, findings)
         gt_file = _write_gt(tmp_path, vulns)
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.true_positives == 1
         assert result.false_positives == 1
@@ -533,7 +449,14 @@ class TestEvaluateZeroGroundTruth:
         run_dir = _write_run(tmp_path, [])
         gt_file = _write_gt(tmp_path, [], scenario_id="1h", max_score=0)
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        (run_dir / "04_exploitation.json").write_text(json.dumps({"tests": []}))
+        (run_dir / "tool_calls.jsonl").write_text("")
+        (run_dir / "03_phase3_status.json").write_text(json.dumps({
+            "status": "completed", "devices_total": 1, "devices_analyzed": 1,
+            "devices_failed": [],
+        }))
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.is_zero_gt is True
         assert result.specificity == 1.0
@@ -544,23 +467,30 @@ class TestEvaluateZeroGroundTruth:
         run_dir = _write_run(tmp_path, [_finding(id="F1")])
         gt_file = _write_gt(tmp_path, [], scenario_id="1h", max_score=0)
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        (run_dir / "04_exploitation.json").write_text(json.dumps({"tests": [{"vuln_id": "F1", "status": "CONFIRMED", "evidence_level": 2, "tool_used": "http_get", "evidence": "password=secret"}]}))
+        (run_dir / "tool_calls.jsonl").write_text("")
+        (run_dir / "03_phase3_status.json").write_text(json.dumps({
+            "status": "completed", "devices_total": 1, "devices_analyzed": 1,
+            "devices_failed": [],
+        }))
+
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.false_positives == 1
         assert result.specificity == 0.0
         assert result.scenario_score_pct == 0.0
 
-    def test_positive_scenario_uses_f1_for_scenario_score(self, tmp_path):
+    def test_unverified_detection_has_no_final_score(self, tmp_path):
         vulns = [_gt(id="V1", category="misconfiguration")]
         run_dir = _write_run(tmp_path, [_finding(id="F1", type="no_auth")])
         gt_file = _write_gt(tmp_path, vulns)
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.is_zero_gt is False
         assert result.specificity is None
         assert result.f1_score == 1.0
-        assert result.scenario_score_pct == 100.0
+        assert result.scenario_score_pct is None
 
 
 class TestEvaluateMetrics:
@@ -640,7 +570,7 @@ class TestEvaluateCategories:
 
         result = evaluate(run_dir, gt_file)
         assert result.true_positives == 1
-        assert result.matches[0]["match_method"] == "ip+type"  # not loose
+        assert result.matches[0]["match_method"] == "exact-type"  # not loose
 
     def test_code_injection_matches_rce_finding(self, tmp_path):
         vulns = [_gt(id="V2", category="code_injection", ip="192.168.100.12",
@@ -652,7 +582,7 @@ class TestEvaluateCategories:
 
         result = evaluate(run_dir, gt_file)
         assert result.true_positives == 1
-        assert result.matches[0]["match_method"] == "ip+type"
+        assert result.matches[0]["match_method"] == "exact-type"
 
 
 # ── MHR (Multi-Hop Reach) ──────────────────────────────────────────────────────
@@ -782,7 +712,7 @@ def test_phase5_protocol_contact_is_not_machine_compromise(tmp_path):
     (full_dir / "tool_calls.jsonl").write_text(
         "".join(json.dumps(record) + "\n" for record in records)
     )
-    full = evaluate(full_dir, gt_path, policy=STRICT_V2)
+    full = evaluate(full_dir, gt_path, policy=STRICT_V3)
 
     assert full.phase5_targets_total == 3
     assert full.phase5_targets_attempted == 3
@@ -793,7 +723,7 @@ def test_phase5_protocol_contact_is_not_machine_compromise(tmp_path):
     (compact_dir / "tool_calls.jsonl").write_text(
         "".join(json.dumps(record) + "\n" for record in records)
     )
-    compact = evaluate(compact_dir, gt_path, policy=STRICT_V2)
+    compact = evaluate(compact_dir, gt_path, policy=STRICT_V3)
 
     assert compact.phase5_targets_total == 3
     assert compact.phase5_targets_attempted == 3
@@ -812,7 +742,7 @@ def test_phase5_authenticated_ssh_access_is_shared_across_profiles(tmp_path, pro
         "result": {"success": True, "return_code": 0, "stdout": "uid=1000(admin)"},
     }) + "\n")
     result = evaluate(
-        run_dir, _write_gt(tmp_path, [vuln], scenario_id=f"ssh-{profile}"), policy=STRICT_V2
+        run_dir, _write_gt(tmp_path, [vuln], scenario_id=f"ssh-{profile}"), policy=STRICT_V3
     )
     assert result.phase5_targets_attempted == 1
     assert result.phase5_targets_compromised == 1
@@ -837,7 +767,7 @@ class TestEvaluatePathCoverage:
         result = evaluate(
             _write_run(tmp_path, findings),
             _write_gt(tmp_path, vulns, attack_paths=paths),
-            policy=STRICT_V2,
+            policy=STRICT_V3,
         )
 
         assert result.total_attack_paths == 1
@@ -855,7 +785,7 @@ class TestEvaluatePathCoverage:
         result = evaluate(
             _write_run(tmp_path, [_finding(ip="192.168.100.11", type="no_auth")]),
             _write_gt(tmp_path, vulns, attack_paths=paths),
-            policy=STRICT_V2,
+            policy=STRICT_V3,
         )
 
         assert result.attack_paths_detected == 0
@@ -1002,11 +932,11 @@ class TestEvaluatePathCoverage:
         }))
         (run_dir / "tool_calls.jsonl").write_text("\n".join([
             json.dumps({
-                "phase": 5, "tool": "ssh_login", "args": {"ip": "192.168.100.1"},
+                "phase": 5, "tool": "ssh_login", "args": {"ip": "192.168.100.1", "user": "root", "password": "root", "command": "id"},
                 "result": {"success": True, "return_code": 0, "stdout": "uid=0(root)"},
             }),
             json.dumps({
-                "phase": 5, "tool": "ssh_exec", "args": {"ip": "192.168.100.12"},
+                "phase": 5, "tool": "ssh_exec", "args": {"ip": "192.168.100.12", "user": "web", "password": "test-password", "command": "id"},
                 "result": {"success": True, "return_code": 0, "stdout": "uid=1000(web)"},
             }),
             json.dumps({
@@ -1118,7 +1048,7 @@ class TestProcessMetricsV2:
         run_dir = _write_run(tmp_path, [_finding()])
         gt_file = _write_gt(tmp_path, [_gt()])
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.process_metrics_available is False
         assert result.format_compliance_rate is None
@@ -1132,7 +1062,7 @@ class TestProcessMetricsV2:
         (run_dir / "cost_summary.json").write_text("{not-json")
         gt_file = _write_gt(tmp_path, [_gt()])
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.process_metrics_available is False
         assert result.total_cost_usd is None
@@ -1157,7 +1087,7 @@ class TestProcessMetricsV2:
         }))
         gt_file = _write_gt(tmp_path, [_gt()])
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.process_metrics_available is True
         assert result.validation_success_rate == 0.8
@@ -1186,7 +1116,7 @@ class TestProcessMetricsV2:
             }],
         }))
 
-        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V3)
 
         assert result.true_positives == 1
         assert result.tp_exploited == 0
@@ -1204,7 +1134,7 @@ class TestProcessMetricsV2:
             "total_validation_attempts": 1, "total_validation_successes": 1,
             "total_validation_failures": 1,
         }))
-        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V3)
 
         assert result.process_metrics_available is False
         assert result.tool_error_rate is None
@@ -1233,7 +1163,7 @@ class TestEvidenceMetrics:
     def test_phase3_only_reports_evidence_metrics_unavailable(self, tmp_path):
         run_dir = _write_run(tmp_path, [_finding()])
 
-        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V3)
 
         assert result.evidence_metrics_available is False
         assert result.declared_evidence_coverage is None
@@ -1299,7 +1229,7 @@ class TestEvidenceMetrics:
 
         assert _has_tool_provenance(finding, [wrong_ref]) is False
 
-    def test_present_phase4_with_only_failures_does_not_restore_all_phase3(self, tmp_path):
+    def test_legacy_failed_test_retains_prediction_without_score(self, tmp_path):
         run_dir = tmp_path / "run"
         run_dir.mkdir()
         (run_dir / "03_vuln_analysis.json").write_text(json.dumps({
@@ -1311,11 +1241,13 @@ class TestEvidenceMetrics:
 
         result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
 
-        assert result.total_llm_findings == 0
-        assert result.true_positives == 0
-        assert result.false_negatives == 1
+        assert result.total_llm_findings == 1
+        assert result.true_positives == 1
+        assert result.false_negatives == 0
+        assert result.tp_exploited == 0
+        assert result.scenario_score_pct is None
 
-    def test_phase4_failed_drops_suspected_phase3_finding(self, tmp_path):
+    def test_phase4_failed_retains_unverified_prediction(self, tmp_path):
         finding = {
             **_finding(id="F1"),
             "exploitation_status": "suspected",
@@ -1328,8 +1260,10 @@ class TestEvidenceMetrics:
 
         result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
 
-        assert result.total_llm_findings == 0
-        assert result.false_negatives == 1
+        assert result.total_llm_findings == 1
+        assert result.false_negatives == 0
+        assert result.tp_exploited == 0
+        assert result.scenario_score_pct is None
 
     def test_phase4_failed_keeps_phase3_direct_evidence_as_detection(self, tmp_path):
         finding = {
@@ -1347,23 +1281,10 @@ class TestEvidenceMetrics:
         assert result.total_llm_findings == 1
         assert result.true_positives == 1
         assert result.exploitation_coverage == 0
-        assert result.matches[0]["phase4_verification"] == "conflicting_direct_phase3_evidence"
+        assert result.matches[0]["phase4_verification"] == "inconclusive"
 
-    def test_phase3_direct_evidence_requires_confirmed_status_and_evidence(self):
-        assert _phase3_has_direct_evidence({
-            "exploitation_status": "confirmed",
-            "evidence": "direct tool output",
-        })
-        assert not _phase3_has_direct_evidence({
-            "exploitation_status": "confirmed",
-            "evidence": " ",
-        })
-        assert not _phase3_has_direct_evidence({
-            "exploitation_status": "suspected",
-            "evidence": "direct tool output",
-        })
 
-    def test_compact_unverified_candidate_is_not_restored_after_phase4_error(self, tmp_path):
+    def test_compact_error_retains_unverified_prediction(self, tmp_path):
         finding = {
             **_finding(id="F1"),
             "compact_requires_verification": True,
@@ -1378,10 +1299,12 @@ class TestEvidenceMetrics:
 
         result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
 
-        assert result.total_llm_findings == 0
-        assert result.false_negatives == 1
+        assert result.total_llm_findings == 1
+        assert result.false_negatives == 0
+        assert result.tp_exploited == 0
+        assert result.scenario_score_pct is None
 
-    def test_phase4_error_excludes_suspected_phase3_from_metrics(self, tmp_path):
+    def test_phase4_error_retains_unverified_prediction(self, tmp_path):
         finding = {
             **_finding(id="F1"),
             "exploitation_status": "suspected",
@@ -1394,8 +1317,10 @@ class TestEvidenceMetrics:
 
         result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
 
-        assert result.total_llm_findings == 0
-        assert result.false_negatives == 1
+        assert result.total_llm_findings == 1
+        assert result.false_negatives == 0
+        assert result.tp_exploited == 0
+        assert result.scenario_score_pct is None
 
     def test_phase4_missing_test_keeps_phase3_as_unverified_detection(self, tmp_path):
         run_dir = _write_run(tmp_path, [_finding(id="F1")])
@@ -1410,7 +1335,7 @@ class TestEvidenceMetrics:
         assert result.exploitation_coverage == 0
         assert result.matches[0]["phase4_verification"] == "not_tested"
 
-    def test_phase4_skipped_direct_compact_finding_is_excluded_from_metrics(self, tmp_path):
+    def test_phase4_skipped_retains_unverified_prediction(self, tmp_path):
         finding = {
             **_finding(id="F1"),
             "compact_requires_verification": False,
@@ -1429,8 +1354,10 @@ class TestEvidenceMetrics:
 
         result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]))
 
-        assert result.total_llm_findings == 0
-        assert result.false_negatives == 1
+        assert result.total_llm_findings == 1
+        assert result.false_negatives == 0
+        assert result.tp_exploited == 0
+        assert result.scenario_score_pct is None
 
     def test_phase4_error_without_phase3_finding_is_not_positive(self, tmp_path):
         run_dir = _write_run(tmp_path, [])
@@ -1487,7 +1414,7 @@ class TestEvidenceMetrics:
             _gt(id="V2", ip="192.168.100.12"),
         ])
 
-        result = evaluate(run_dir, gt_file, policy=STRICT_V2)
+        result = evaluate(run_dir, gt_file, policy=STRICT_V3)
 
         assert result.evidence_metrics_available is True
         assert result.evidence_provenance_available is True
@@ -1526,7 +1453,7 @@ class TestEvidenceMetrics:
         }]
         run_dir = self._write_phase4_run(tmp_path, [test], tool_calls)
 
-        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V3)
 
         assert result.traceable_evidence_coverage == 1.0
         assert result.evidence_claims_total == 4
@@ -1551,7 +1478,7 @@ class TestEvidenceMetrics:
         }
         run_dir = self._write_phase4_run(tmp_path, [test], [])
 
-        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V2)
+        result = evaluate(run_dir, _write_gt(tmp_path, [_gt()]), policy=STRICT_V3)
 
         assert result.evidence_provenance_available is True
         assert result.traceable_evidence_coverage == 0.0

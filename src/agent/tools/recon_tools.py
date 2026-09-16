@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 from src.cve_lookup import query_nvd
 from src.agent.tools.runtime import get_tool_stop_event, run_cooperatively
+from src.agent.tools.mqtt_ws import mqtt_ws_listen
 
 _ANSI_ESC = re.compile(r'\x1b\[[0-9;]*[mK]')
 _SSH_LEGACY_OPTIONS = [
@@ -209,9 +210,21 @@ def arp_scan(**kwargs) -> str:
 
 def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) -> str:
     """Execute a shell command on a remote host via SSH."""
+    from src.agent.evidence.credentials import ssh_request
+    request = ssh_request({"tool": "ssh_exec", "args": {
+        "ip": ip, "user": user, "password": password, "port": port,
+    }})
+    if (request is None or not isinstance(password, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", user)
+            or not isinstance(command, str) or not command.strip()
+            or any("\x00" in value for value in (user, password, command))):
+        return json.dumps({"error_kind": "invalid_tool_arguments", "error": "Invalid SSH arguments"})
     cmd = [
         "sshpass", "-p", password,
         "ssh",
+        "-F", "/dev/null",
+        "-o", "PubkeyAuthentication=no",
+        "-o", "PreferredAuthentications=password,keyboard-interactive",
         "-o", "StrictHostKeyChecking=no",
         "-o", "UserKnownHostsFile=/dev/null",
         "-o", "ConnectTimeout=10",
@@ -233,25 +246,30 @@ def ssh_exec(ip: str, user: str, password: str, command: str, port: int = 22) ->
     return json.dumps(result)
 
 
+def ssh_login(command_string: str | None = None, **kwargs) -> str:
+    """Compatibility alias: parse historical syntax, never execute a local shell."""
+    from src.agent.evidence.credentials import ssh_request, legacy_ssh_command
+    if command_string is not None:
+        request = ssh_request({"tool": "ssh_login", "args": {"command_string": command_string}})
+        command = legacy_ssh_command(command_string)
+        if request is None or command is None:
+            return json.dumps({"error_kind": "invalid_tool_arguments", "error": "Use structured SSH arguments; arbitrary local shell commands are refused"})
+        return ssh_exec(request["host"], request["user"], request["password"], command, request["port"])
+    if set(kwargs) - {"ip", "user", "password", "command", "port"}:
+        return json.dumps({"error_kind": "invalid_tool_arguments", "error": "Unknown SSH arguments"})
+    return ssh_exec(kwargs.get("ip"), kwargs.get("user"), kwargs.get("password"),
+                    kwargs.get("command", "id"), kwargs.get("port", 22))
+
+
 def try_credential(ip: str, service: str, user: str, password: str, port: int | None = None) -> str:
     """Test a username/password credential against a service (ssh|http|ftp|mqtt)."""
     service = service.lower().strip()
 
     if service == "ssh":
         p = port or 22
-        cmd = [
-            "sshpass", "-p", password,
-            "ssh",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=10",
-            "-o", "BatchMode=no",
-            *_SSH_LEGACY_OPTIONS,
-            f"-p{p}",
-            f"{user}@{ip}",
-            "echo __ok__",
-        ]
-        result = _run(cmd, timeout=15)
+        result = json.loads(ssh_exec(ip, user, password, "echo __ok__", p))
+        if result.get("error_kind"):
+            return json.dumps(result)
         success = result["return_code"] == 0 and "__ok__" in result["stdout"]
         return json.dumps({"success": success, "authenticated": success, "service": "ssh", "port": p,
                            "stdout": result["stdout"][:200], "stderr": result["stderr"][:200]})
@@ -259,10 +277,10 @@ def try_credential(ip: str, service: str, user: str, password: str, port: int | 
     if service == "http":
         p = port or 80
         url = f"http://{ip}:{p}/"
-        probe = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        probe = ["curl", "-q", "--max-redirs", "0", "--globoff", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                  "--connect-timeout", "10", url]
         anonymous = _run(probe, timeout=15)
-        auth_probe = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        auth_probe = ["curl", "-q", "--max-redirs", "0", "--globoff", "-s", "-o", "/dev/null", "-w", "%{http_code}",
                       "--connect-timeout", "10", "-u", f"{user}:{password}", url]
         result = _run(auth_probe, timeout=15)
         anon_code = anonymous["stdout"].strip()
@@ -555,11 +573,13 @@ def http_request(
     method: str = "GET",
     headers: dict | None = None,
     body: str | None = None,
-    follow_redirects: bool = True,
+    follow_redirects: bool = False,
     verify_tls: bool = False,
     timeout: int = 10,
 ) -> str:
     """Full HTTP request via the `requests` library."""
+    if follow_redirects is not False:
+        return json.dumps({"error_kind": "invalid_tool_arguments", "error": "Automatic redirects are disabled. Request the Location URL separately so its destination is scope-checked."})
     try:
         import requests
     except ImportError:
@@ -572,7 +592,7 @@ def http_request(
             url=url,
             headers=headers or None,
             data=body if body is not None else None,
-            allow_redirects=bool(follow_redirects),
+            allow_redirects=False,
             verify=bool(verify_tls),
             timeout=effective_timeout,
         )
@@ -947,6 +967,8 @@ def _load_recon_tools() -> list[dict]:
     register_python_handler(tools, "modbus_write", modbus_write)
     register_python_handler(tools, "arp_scan", arp_scan)
     register_python_handler(tools, "ssh_exec", ssh_exec)
+    register_python_handler(tools, "ssh_login", ssh_login)
+    register_python_handler(tools, "mqtt_ws_listen", mqtt_ws_listen)
     register_python_handler(tools, "try_credential", try_credential)
     register_python_handler(tools, "traceroute", traceroute)
     register_python_handler(tools, "python_exec", python_exec)

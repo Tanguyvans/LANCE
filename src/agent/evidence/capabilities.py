@@ -37,7 +37,8 @@ def access_supported(record: dict) -> bool:
     result = result_data(record)
     tool = record.get("tool")
     if tool in {"ssh_login", "ssh_exec"}:
-        return command_access_supported(result)
+        from src.agent.evidence.credentials import ssh_request
+        return ssh_request(record) is not None and command_access_supported(result)
     if tool == "try_credential":
         from src.agent.exploit_evidence import _credential_result_supported
         args = record.get("args")

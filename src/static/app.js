@@ -55,7 +55,11 @@ function batchSummaryText(ev) {
   if (!groups.length && agg.avg_f1 !== undefined) {
     groups.push(`Avg F1=${number(agg.avg_f1)} Recall=${number(agg.avg_recall)} Score=${score(agg.avg_score_pct)}`);
   }
-  return ['Batch terminé', ...groups, `Total $${(ev.total_cost_usd || 0).toFixed(4)}`].join(' — ');
+  const total = ev.total_cost_usd;
+  const cost = typeof total === 'number' && Number.isFinite(total)
+    ? `Total $${total.toFixed(4)}`
+    : `Total indisponible${typeof agg.known_cost_usd === 'number' ? ` (coût connu : $${agg.known_cost_usd.toFixed(4)})` : ''}`;
+  return ['Batch terminé', ...groups, cost].join(' — ');
 }
 
 function _formatErrDetail(detail) {
@@ -168,7 +172,7 @@ document.getElementById('btn-judge-run').onclick = async () => {
     document.getElementById('btn-judge-run').disabled = true;
     document.getElementById('btn-judge-run').textContent = 'Évaluation...';
     try {
-        const res = await fetch(`/api/runs/${activeRunId}/evaluate/llm`, {
+        const res = await adminFetch(`/api/runs/${activeRunId}/evaluate/llm`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1467,7 +1471,7 @@ async function startRun() {
     body.excluded_vulns = [...document.querySelectorAll('.vuln-cb:not(:checked)')].map(cb => cb.value);
   }
 
-  const res = await fetch('/api/pipeline/start', {
+  const res = await adminFetch('/api/pipeline/start', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body),
@@ -1514,7 +1518,7 @@ async function startBatch() {
 
   const blind = document.getElementById("cb-batch-blind-mode")?.checked || false;
   const executionProfile = document.querySelector("input[name=execution-profile]:checked")?.value || "auto";
-  const res = await fetch('/api/pipeline/batch', {
+  const res = await adminFetch('/api/pipeline/batch', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ batch_ids: ids, model, provider, phases: phases.length < 5 ? phases : null, blind, execution_profile: executionProfile }),
@@ -1535,7 +1539,7 @@ async function stopRun() {
   btn.disabled = true;
   btn.textContent = 'Arrêt…';
   try {
-    const response = await fetch('/api/pipeline/stop', { method: 'POST' });
+    const response = await adminFetch('/api/pipeline/stop', { method: 'POST' });
     if (!response.ok) {
       const err = await response.json().catch(() => ({detail: response.statusText}));
       addLog({type:'error', message:`Arrêt refusé : ${_formatErrDetail(err.detail)}`});
@@ -1581,7 +1585,7 @@ async function deployScenario() {
   setCost(0);
 
   try {
-    const r = await fetch('/api/pipeline/start', {
+    const r = await adminFetch('/api/pipeline/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({model, provider, scenario_id: scenarioId, deploy_only: true}),
@@ -1617,7 +1621,7 @@ async function teardownScenario() {
   btn.textContent = 'Teardown…';
   addLog({type:'info', message:`Teardown S${scenarioId} en cours…`});
   try {
-    const r = await fetch('/api/pipeline/teardown', {
+    const r = await adminFetch('/api/pipeline/teardown', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({scenario_id: scenarioId}),
@@ -1769,12 +1773,12 @@ function handleEvent(ev) {
     const metrics = m
       ? `Recall=${m.recall.toFixed(3)} P=${m.precision.toFixed(3)} F1=${m.f1.toFixed(3)} Score=${score} TP=${m.tp} FP=${m.fp} FN=${m.fn}`
       : 'pas de ground truth';
-    addLog({type:'info', message:`[Batch ${ev.index}/${ev.total}] S${ev.scenario_id} terminé — ${metrics} — $${(ev.cost_usd||0).toFixed(4)}`});
+    addLog({type:'info', message:`[Batch ${ev.index}/${ev.total}] S${ev.scenario_id} — statut ${ev.status || 'indisponible'} — ${metrics} — $${(ev.cost_usd||0).toFixed(4)}`});
     loadRuns();
   }
 
   else if (t === 'batch_done') {
-    setCost(ev.total_cost_usd || 0);
+    setCost(ev.total_cost_usd);
     document.getElementById('btn-start').disabled = false;
     document.getElementById('btn-batch-start').disabled = false;
     const stopBtn = document.getElementById('btn-stop');
@@ -2800,7 +2804,8 @@ function clearPhasePills() {
 
 // ── Cost ───────────────────────────────────────────────────────────────────
 function setCost(val) {
-  document.getElementById('cost-val').textContent = '$' + (val || 0).toFixed(4);
+  document.getElementById('cost-val').textContent =
+    typeof val === 'number' && Number.isFinite(val) ? '$' + val.toFixed(4) : 'Indisponible';
 }
 
 // ── Event log ──────────────────────────────────────────────────────────────
@@ -2947,7 +2952,7 @@ function addLog(ev) {
     const m = ev.metrics;
     const score = m?.score_pct != null ? `${m.score_pct.toFixed(1)}%` : 'N/A';
     text = m
-      ? `[${ev.index}/${ev.total}] S${ev.scenario_id} — F1=${m.f1.toFixed(3)} Score=${score} TP=${m.tp} FP=${m.fp} FN=${m.fn} $${(ev.cost_usd||0).toFixed(4)}`
+      ? `[${ev.index}/${ev.total}] S${ev.scenario_id} — ${ev.status || 'statut indisponible'} — F1=${m.f1.toFixed(3)} Score=${score} TP=${m.tp} FP=${m.fp} FN=${m.fn} $${(ev.cost_usd||0).toFixed(4)}`
       : `[${ev.index}/${ev.total}] S${ev.scenario_id} terminé $${(ev.cost_usd||0).toFixed(4)}`;
   }
   else if (t === 'batch_done') {
@@ -3180,6 +3185,40 @@ const _mgr = {
   adminToken: '', openVersion: 0, managerOpen: false,
 };
 
+async function adminFetch(url, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const target = new URL(url, window.location.href);
+  const page = new URL(window.location.href);
+  const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const suppliedHeaders = options.headers?.entries instanceof Function
+    ? Array.from(options.headers.entries()) : Object.entries(options.headers || {});
+  const headers = Object.fromEntries(suppliedHeaders.filter(([name]) => name.toLowerCase() !== 'authorization'));
+  if (!mutation || target.origin !== page.origin || !target.pathname.startsWith('/api/')) {
+    // Never forward credentials explicitly supplied by a caller to another origin.
+    return fetch(url, {...options, headers});
+  }
+  const field = typeof document !== 'undefined' ? document.getElementById('admin-action-token') : null;
+  const suppliedToken = suppliedHeaders.find(([name]) => name.toLowerCase() === 'authorization');
+  if (suppliedToken) headers.Authorization = suppliedToken[1];
+  if (!headers.Authorization && field?.value) headers.Authorization = `Bearer ${field.value}`;
+  const response = await fetch(url, {...options, headers, redirect: 'error'});
+  if ([401, 503].includes(response.status) && field) {
+    const help = document.getElementById('admin-action-help');
+    if (response.status === 401) {
+      document.getElementById('admin-access').open = true;
+      help.textContent = 'Clé absente ou invalide : saisissez-la puis relancez votre action.';
+      field.focus();
+    } else {
+      const error = await response.clone().json().catch(() => ({}));
+      if (error.detail?.code === 'admin_auth_not_configured') {
+        document.getElementById('admin-access').open = true;
+        help.textContent = 'Configurez LANCE_ADMIN_TOKEN sur le serveur avant de lancer une action.';
+      }
+    }
+  }
+  return response;
+}
+
 async function apiSend(method, url, body, options = {}) {
   try {
     const headers = body ? { 'Content-Type': 'application/json' } : {};
@@ -3196,7 +3235,7 @@ async function apiSend(method, url, body, options = {}) {
     if (options.adminToken && providerMutation) {
       headers.Authorization = `Bearer ${options.adminToken}`;
     }
-    const res = await fetch(url, {
+    const res = await adminFetch(url, {
       method: requestMethod,
       headers: Object.keys(headers).length ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,

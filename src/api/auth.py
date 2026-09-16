@@ -1,7 +1,7 @@
 """Small, reusable authentication dependency for administrative API actions.
 
-The provider registry is deliberately fail-closed: a deployment without an
-``LANCE_ADMIN_TOKEN`` cannot mutate it.  This module does not log or return
+API mutations are deliberately fail-closed: a deployment without an
+``LANCE_ADMIN_TOKEN`` cannot execute them. This module does not log or return
 the configured token.
 """
 from __future__ import annotations
@@ -66,3 +66,9 @@ def require_admin_auth(request: Request) -> None:
 
     if not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
         _unauthorized()
+
+
+def require_mutation_auth(request: Request) -> None:
+    """All API mutations are administrative; reads remain unchanged."""
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        require_admin_auth(request)

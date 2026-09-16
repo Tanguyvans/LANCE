@@ -58,8 +58,11 @@ def test_phase4_verification_plan_selects_precise_probe_per_finding():
         "type": "no_auth", "service": "mqtt-ws",
         "device_ip": "192.168.100.11", "port": 9001,
     })
-    assert ws_no_auth["tool"] == "http_request"
-    assert ws_no_auth["args_hint"]["url"].endswith(":9001/")
+    assert ws_no_auth["tool"] == "mqtt_ws_listen"
+    assert ws_no_auth["args_hint"] == {
+        "ip": "192.168.100.11", "port": 9001, "path": "/", "topic": "#",
+        "count": 1, "timeout": 8,
+    }
 
     listing = _phase4_verification_plan({
         "type": "directory_listing", "service": "http",
