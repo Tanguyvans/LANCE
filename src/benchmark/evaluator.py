@@ -577,12 +577,6 @@ def _normalized_values(value: object, *, integer: bool = False) -> set:
     return normalized
 
 
-def _normalize_port(value: object) -> int | None:
-    """Return one valid TCP/UDP port, or None for missing/invalid input."""
-    ports = {port for port in _normalized_values(value, integer=True) if 0 < port <= 65535}
-    return min(ports) if ports else None
-
-
 def _normalized_services(value: object) -> set[str]:
     aliases = {
         "mqtt_websocket": "mqtt-ws", "mqtt-websocket": "mqtt-ws",
@@ -846,19 +840,6 @@ _PHASE5_FULL_ATTEMPT_TOOLS: frozenset[str] = frozenset({
 })
 _PHASE5_FULL_COMPROMISE_TOOLS = _PHASE5_FULL_ATTEMPT_TOOLS
 _PHASE5_IP_RE = re.compile(r"(?<![0-9])(?:\d{1,3}\.){3}\d{1,3}(?![0-9])")
-
-
-def _phase5_result(record: dict) -> dict:
-    raw = record.get("result")
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            value = json.loads(raw)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return {}
-        return value if isinstance(value, dict) else {}
-    return {}
 
 
 def _phase5_record_targets(record: dict) -> set[str]:
@@ -1222,8 +1203,6 @@ def _load_tool_call_records(run_dir: Path) -> tuple[list[dict], bool]:
     return [r for r in records if r["_evidence_ref"] not in duplicates], intact
 
 
-
-
 def _record_implied_ports(record: dict) -> set[int]:
     """Extract explicit ports and safe protocol defaults from tool arguments."""
     args = record.get("args") or {}
@@ -1474,16 +1453,6 @@ def _matching_tool_calls(finding: dict, tool_calls: list[dict]) -> list[dict]:
         return [record for record in tool_calls if record.get("_evidence_ref") in refs
                 and _tool_call_matches_finding(finding, record)]
     return [record for record in tool_calls if _tool_call_matches_finding(finding, record)]
-
-def _has_tool_provenance(finding: dict, tool_calls: list[dict]) -> bool:
-    """Return whether a finding cites a tool call made against the same target.
-
-    Matching is deliberately strict and deterministic: the declared tool name
-    must exactly equal a logged tool name, and a finding with a target IP must
-    have that IP in the logged arguments or result. This measures traceability,
-    not semantic correctness of the free-text evidence excerpt.
-    """
-    return bool(_matching_tool_calls(finding, tool_calls))
 
 
 def _derive_evidence_level(test: dict) -> int:

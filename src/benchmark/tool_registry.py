@@ -222,11 +222,6 @@ def tools_for_services(services: list[str], phase: str) -> set[str]:
     return result
 
 
-def tools_for_role(role: str, phase: str, explicit_services: list[dict[str, Any]] | None = None) -> set[str]:
-    descriptors = service_descriptors(role, explicit_services)
-    return tools_for_services([str(item.get("name", "")) for item in descriptors], phase)
-
-
 def tool_policy_for_phase(policy: dict[str, Any], phase: str) -> set[str] | None:
     """Return an allowlist for a phase, or None when the phase is unrestricted."""
     if not policy:

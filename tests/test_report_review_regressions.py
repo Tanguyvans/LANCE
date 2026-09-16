@@ -183,7 +183,7 @@ def test_deterministic_report_preserves_large_inventory_and_service_types(report
 
 
 def test_actual_prompt_projection_obeys_utf8_byte_bound_for_large_nested_fields(report_run):
-    from src.agent.phases.report.context import build_report_analysis_context, REPORT_CONTEXT_MAX_BYTES
+    from src.agent.phases.report.sections import CONTEXT_MAX_BYTES
     pipeline = report_run("full", "ok")
     huge = "é🔒" * 18000
     for filename in ("01_graph_evidence.json", "06_phase6_context.json", "05_intrusion.json"):
@@ -191,11 +191,10 @@ def test_actual_prompt_projection_obeys_utf8_byte_bound_for_large_nested_fields(
         data = json.loads(source.read_text())
         data.update({"note": huge, "generated_for": huge, "summary": {"long": huge}})
         source.write_text(json.dumps(data))
-    projection = build_report_analysis_context(pipeline.run_dir)
-    encoded = json.dumps(projection, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    assert len(encoded) <= REPORT_CONTEXT_MAX_BYTES
-    assert projection["omissions"]
-    assert "05_intrusion.json" in projection["full_evidence_references"]
+    assert run_phase(pipeline, AGENTS["report"]) == "completed"
+    for call in pipeline.provider.chat_with_tools.call_args_list:
+        assert len(call.kwargs["system_prompt"].encode("utf-8")) <= CONTEXT_MAX_BYTES
+        assert huge not in call.kwargs["system_prompt"]
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])
@@ -210,11 +209,12 @@ def test_usable_but_late_memo_is_not_promoted(report_run, profile):
 
 
 def test_large_key_and_omission_metadata_cannot_overflow_prompt(report_run):
-    from src.agent.phases.report.context import build_report_analysis_context, REPORT_CONTEXT_MAX_BYTES
+    from src.agent.phases.report.sections import CONTEXT_MAX_BYTES
     pipeline = report_run("full", "ok")
     source = pipeline.run_dir / "05_intrusion.json"
     source.write_text(json.dumps({"summary": {"LONG_KEY_" * 12000: "é" * 18000}}))
-    projection = build_report_analysis_context(pipeline.run_dir)
-    encoded = json.dumps(projection, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    assert len(encoded) <= REPORT_CONTEXT_MAX_BYTES
-    assert projection["bounds"]["serialized_bytes"] == len(encoded)
+    original = source.read_bytes()
+    assert run_phase(pipeline, AGENTS["report"]) == "completed"
+    assert all(len(c.kwargs["system_prompt"].encode()) <= CONTEXT_MAX_BYTES
+               for c in pipeline.provider.chat_with_tools.call_args_list)
+    assert source.read_bytes() == original

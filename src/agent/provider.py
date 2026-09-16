@@ -29,6 +29,29 @@ from src.config import API_TIMEOUT
 
 log = logging.getLogger(__name__)
 
+
+def _record_completion_metadata(metadata, choice, usage) -> None:
+    """Keep counters, never private reasoning text; missing counters stay unknown."""
+    if metadata is None:
+        return
+
+    def count(value):
+        return value if type(value) is int and value >= 0 else None
+
+    message = choice.message
+    reasoning = getattr(message, "reasoning", None)
+    if not isinstance(reasoning, str):
+        reasoning = getattr(message, "reasoning_content", None)
+    details = getattr(usage, "completion_tokens_details", None)
+    metadata.update(
+        finish_reason=choice.finish_reason if isinstance(choice.finish_reason, str) else None,
+        input_tokens=count(getattr(usage, "prompt_tokens", None)),
+        output_tokens=count(getattr(usage, "completion_tokens", None)),
+        reasoning_tokens=count(getattr(details, "reasoning_tokens", None)),
+        reasoning_chars=len(reasoning) if isinstance(reasoning, str) else None,
+        visible_chars=len(message.content) if isinstance(message.content, str) else 0,
+    )
+
 _LOCAL_MOE_API_TIMEOUT = float(os.environ.get("LANCE_LOCAL_MOE_API_TIMEOUT", "90"))
 _LOCAL_MOE_MAX_RETRIES = int(os.environ.get("LANCE_LOCAL_MOE_MAX_RETRIES", "2"))
 
@@ -167,12 +190,20 @@ class _ProviderDiagnostics:
         )
 
 
+REMOVED_PROVIDERS = frozenset({"anthropic", "openrouter", "codex"})
+
+
+def validate_provider_choice(provider: str) -> str:
+    """Reject retired execution adapters even when historical DB rows exist."""
+    if not isinstance(provider, str) or not provider.strip():
+        raise ValueError("Select a provider explicitly")
+    if provider.strip().casefold() in REMOVED_PROVIDERS:
+        label = {"anthropic": "Anthropic", "openrouter": "OpenRouter", "codex": "Codex"}[provider.strip().casefold()]
+        raise ValueError(f"{label} is no longer supported; select another provider explicitly")
+    return provider
+
+
 OPENAI_PROVIDERS = {
-    "openrouter": {
-        "base_url": "https://openrouter.ai/api/v1",
-        "api_key_env": "OPENROUTER_API_KEY",
-        "default_model": None,  # Legacy CLI provider: an explicit model is required.
-    },
     "minimax": {
         "base_url": "https://api.minimax.io/v1",
         "api_key_env": "MINIMAX_API_KEY",
@@ -214,51 +245,29 @@ class LLMProvider:
 
     def __init__(self, provider: str, model: str | None = None):
         self.provider = provider
-        self.last_usage = {"input_tokens": 0, "output_tokens": 0}
-        if provider == "anthropic":
-            raise ValueError("Anthropic is no longer supported; select another provider explicitly")
-        if provider == "openrouter" and not model:
-            raise ValueError("OpenRouter requires an explicit model")
-        if provider == "codex":
-            from src.agent.codex_app_server import get_codex_catalog
-
-            catalog = get_codex_catalog()
-            if not catalog.get("available"):
-                raise ValueError(catalog.get("error") or "Aucun abonnement Codex disponible")
-            available_models = [item["id"] for item in catalog.get("models", [])]
-            if model and model not in available_models:
-                raise ValueError(f"Modèle Codex indisponible pour ce compte : {model}")
-            default = next(
-                (item["id"] for item in catalog.get("models", []) if item.get("recommended")),
-                available_models[0] if available_models else None,
-            )
-            if not default:
-                raise ValueError("Aucun modèle Codex disponible pour ce compte")
-            self.client = None
-            self.model = model or default
-        else:
-            cfg = _resolve_provider_cfg(provider)
-            if cfg is None:
-                known = ", ".join(["codex", *OPENAI_PROVIDERS])
-                raise ValueError(f"Unknown provider: {provider}. Available: {known}")
-            import openai
-            api_key_env = cfg.get("api_key_env") or ""
-            request_timeout = (
-                _LOCAL_MOE_API_TIMEOUT
-                if provider == "local-moe"
-                else API_TIMEOUT
-            )
-            self.client = openai.OpenAI(
-                base_url=cfg["base_url"],
-                api_key=os.environ.get(api_key_env) or "not-needed",
-                timeout=request_timeout,
-            )
-            self._retry_limit = (
-                _LOCAL_MOE_MAX_RETRIES
-                if provider == "local-moe"
-                else _MAX_RETRIES
-            )
-            self.model = model or cfg.get("default_model") or ""
+        validate_provider_choice(provider)
+        cfg = _resolve_provider_cfg(provider)
+        if cfg is None:
+            known = ", ".join(OPENAI_PROVIDERS)
+            raise ValueError(f"Unknown provider: {provider}. Available: {known}")
+        import openai
+        api_key_env = cfg.get("api_key_env") or ""
+        request_timeout = (
+            _LOCAL_MOE_API_TIMEOUT
+            if provider == "local-moe"
+            else API_TIMEOUT
+        )
+        self.client = openai.OpenAI(
+            base_url=cfg["base_url"],
+            api_key=os.environ.get(api_key_env) or "not-needed",
+            timeout=request_timeout,
+        )
+        self._retry_limit = (
+            _LOCAL_MOE_MAX_RETRIES
+            if provider == "local-moe"
+            else _MAX_RETRIES
+        )
+        self.model = model or cfg.get("default_model") or ""
 
 
     @staticmethod
@@ -326,6 +335,7 @@ class LLMProvider:
         deadline: float | None = None,
         finalize_required_tool_on_stall: bool = False,
         completion_metadata: dict | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         # Caller-owned metadata avoids cross-talk between parallel workers.
         if completion_metadata is not None:
@@ -338,31 +348,6 @@ class LLMProvider:
         )
         tool_map = {t["name"]: t["function"] for t in tools}
         terminal_unavailable_tools = frozenset(terminate_on_unavailable_tools or ())
-        if self.provider == "codex":
-            from src.agent.codex_app_server import run_codex_turn
-            result, usage = run_codex_turn(
-                model=self.model,
-                system_prompt=system_prompt,
-                user_message=user_message,
-                tools=tools,
-                execute_tool=self._execute_tool,
-                max_turns=max_turns,
-                max_tokens=max_tokens,
-                cost_tracker=cost_tracker,
-                stream_callback=stream_callback,
-                required_tool=required_tool,
-                terminate_after_tool=terminate_after_tool,
-                repeat_guard=repeat_guard,
-                strict_required_tool=strict_required_tool,
-                stop_event=stop_event,
-                max_data_tool_calls=max_data_tool_calls,
-                force_completion_on_phase4_conclusive=force_completion_on_phase4_conclusive,
-                force_completion_on_recon_ready=force_completion_on_recon_ready,
-                reopen_intrusion_tools_on_contract_error=reopen_intrusion_tools_on_contract_error,
-                deadline=deadline,
-            )
-            self.last_usage = usage
-            return result
         diagnostics = _ProviderDiagnostics(self.provider, self.model, event_callback, tools)
         diagnostics.emit("invocation_started")
         try:
@@ -379,6 +364,7 @@ class LLMProvider:
                 deadline=deadline,
                 finalize_required_tool_on_stall=finalize_required_tool_on_stall,
                 completion_metadata=completion_metadata,
+                reasoning_effort=reasoning_effort,
                 diagnostics=diagnostics,
             )
         except Exception as exc:
@@ -399,7 +385,7 @@ class LLMProvider:
             )
             raise
 
-    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False, completion_metadata=None, diagnostics=None):
+    def _openai_loop(self, system_prompt, user_message, tools, tool_map, max_turns, cost_tracker=None, max_tokens=4096, stream_callback=None, required_tool=None, terminate_after_tool=None, repeat_guard=True, terminate_on_unavailable_tools=frozenset(), strict_required_tool=False, force_tool_on_stall=False, force_completion_on_recon_ready=False, reopen_intrusion_tools_on_contract_error=False, recover_required_tool_on_stall=False, stop_event=None, max_data_tool_calls=None, force_completion_on_phase4_conclusive=False, deadline=None, finalize_required_tool_on_stall=False, completion_metadata=None, diagnostics=None, reasoning_effort=None):
         if not isinstance(user_message, str) or not user_message.strip():
             raise ValueError("A non-empty user message is required")
         if diagnostics is None:
@@ -579,7 +565,7 @@ class LLMProvider:
                 if stream_callback:
                     stream_callback({"type": "turn_done", "turn": turn, "final": True, "terminated_by": "stop"})
                 return finish("(stopped by user)", "stop", current_turn=turn + 1)
-            log.info("Turn %d/%d (openrouter)", turn + 1, max_turns)
+            log.info("Turn %d/%d (%s)", turn + 1, max_turns, self.provider)
             if required_tool and not required_tool_called and turn >= max(1, max_turns - 2):
                 completion_only = True
                 if finalize_required_tool_on_stall:
@@ -617,6 +603,8 @@ class LLMProvider:
                     "messages": messages,
                     "max_tokens": max_tokens,
                 }
+                if reasoning_effort is not None:
+                    request_kwargs["reasoning_effort"] = reasoning_effort
                 if active_api_tools:
                     request_kwargs["tools"] = active_api_tools
                     request_kwargs["parallel_tool_calls"] = False
@@ -732,9 +720,7 @@ class LLMProvider:
                 request_num=diagnostics.request_num,
                 turn=turn + 1,
             )
-            if completion_metadata is not None:
-                reason = finish_reason
-                completion_metadata["finish_reason"] = reason if isinstance(reason, str) else None
+            _record_completion_metadata(completion_metadata, choice, response.usage)
 
             for tc in message.tool_calls or []:
                 diagnostics.tool(
@@ -762,6 +748,7 @@ class LLMProvider:
                         model=self.model,
                         messages=messages,
                         max_tokens=max_tokens,
+                        **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}),
                         on_attempt=note_attempt,
                         on_error=observe_request_error,
                     )
@@ -779,9 +766,7 @@ class LLMProvider:
                             request_num=diagnostics.request_num,
                             turn=turn + 1,
                         )
-                        if completion_metadata is not None:
-                            reason = getattr(fallback_choice, "finish_reason", None)
-                            completion_metadata["finish_reason"] = reason if isinstance(reason, str) else None
+                        _record_completion_metadata(completion_metadata, fallback_choice, fallback.usage)
                         if cost_tracker and fallback.usage:
                             cost_tracker.record_turn(input_tokens=fallback.usage.prompt_tokens or 0, output_tokens=fallback.usage.completion_tokens or 0)
                         fb_content = fallback_choice.message.content or ""

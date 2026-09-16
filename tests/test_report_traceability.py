@@ -3,7 +3,6 @@ import json
 
 import pytest
 
-from src.agent.phases.report.context import build_report_analysis_context, REPORT_CONTEXT_MAX_BYTES
 from src.agent.phases.report.traceability import ReportTraceIndex
 
 
@@ -55,10 +54,6 @@ def test_source_addresses_are_labelled_without_extending_inventory(tmp_path):
     assert len(sources) == 1
     assert sources[0]["client_source_ip"] == "192.0.2.200"
     assert "not an additional target" in sources[0]["interpretation"]
-    context = build_report_analysis_context(tmp_path)
-    assert context["execution_observations"] == sources
-    assert context["graph"]["nodes"] == []
-    assert context["intrusion"] == {}
     assert (tmp_path / "tool_calls.jsonl").read_bytes() == source_bytes
 
 
@@ -82,11 +77,7 @@ def test_unattributed_stdout_never_creates_execution_source(tmp_path, changes):
     assert index(tmp_path, [record(**changes)]).ssh_source_observations() == []
 
 
-def test_source_context_is_bounded_and_duplicate_refs_excluded(tmp_path):
+def test_duplicate_refs_excluded_and_all_unique_source_observations_retained(tmp_path):
     assert index(tmp_path, [record(), record()]).ssh_source_observations() == []
-    index(tmp_path, [record(evidence_ref=f"tc-{n}") for n in range(30)])
-    context = build_report_analysis_context(tmp_path)
-    assert len(context["execution_observations"]) == 8
-    assert context["omissions"]["execution_observations"] == 22
-    encoded = json.dumps(context, ensure_ascii=False, separators=(",", ":")).encode()
-    assert len(encoded) == context["bounds"]["serialized_bytes"] <= REPORT_CONTEXT_MAX_BYTES
+    trace = index(tmp_path, [record(evidence_ref=f"tc-{n}") for n in range(30)])
+    assert len(trace.ssh_source_observations()) == 30

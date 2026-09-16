@@ -6,8 +6,15 @@ from unittest.mock import Mock
 import pytest
 
 from src.agent.pipeline import Pipeline
-from src.agent.validators import VALIDATORS
 from src.agent.phases.report import context as report_context, rendering as report_rendering
+from src.agent.phases.report.sections import build_cards
+
+
+def render(pipeline):
+    report_rendering.render_deterministic_report(
+        pipeline.run_dir, pipeline.context, model=pipeline.provider.model,
+        analysis_status="unavailable", analysis_cause="memo_absent",
+    )
 
 
 @pytest.fixture
@@ -53,43 +60,42 @@ def test_prefill_contains_verified_finding_only(pipeline):
 def test_analysis_context_tolerates_absent_or_malformed_optional_files(pipeline):
     (pipeline.run_dir / "01_graph_evidence.json").write_text("malformed")
     (pipeline.run_dir / "02_recon_evidence.json").write_text("[]")
-    context = pipeline._build_local_report_analysis_context()
-    assert context["phase6"] == {}
-    assert context["recon"]["device_count"] == 0
-    assert context["intrusion"] == {}
+    cards, summary = build_cards(pipeline.run_dir)
+    assert len([c for c in cards if c["kind"] == "finding"]) == 2
+    assert summary["intrusion"]["available"] is False
+    assert summary["intrusion"]["observed_access_count"] is None
 
 
 def test_fallback_report_uses_run_metadata(pipeline):
     pipeline._generate_phase6_context()
     pipeline._pregenerate_report_sections()
-    pipeline._merge_report_with_prefill()
+    render(pipeline)
     text = (pipeline.run_dir / "06_report.md").read_text()
     assert "report-test-model" in text
     assert "192.0.2.0/24" in text
     assert "{{SECTION_5_TABLE}}" not in text
 
 
-def test_valid_report_merges_prefill_once(pipeline, monkeypatch):
-    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _, **kwargs: (True, "OK"))
+def test_report_is_rebuilt_from_facts_not_an_old_narrative(pipeline):
     report = pipeline.run_dir / "06_report.md"
     report.write_text("Author narrative\n{{SECTION_5_TABLE}}\n{{SECTION_6_TABLES}}")
+    pipeline._generate_phase6_context()
     pipeline._pregenerate_report_sections()
-    pipeline._merge_report_with_prefill()
+    render(pipeline)
     first = report.read_text()
-    pipeline._merge_report_with_prefill()
+    render(pipeline)
     assert report.read_text() == first
-    assert "Author narrative" in first
+    assert "Author narrative" not in first
     assert "device-1" in first
 
 
 @pytest.mark.parametrize("invalid", ["(max turns reached)", "invalid model report"])
-def test_invalid_report_is_replaced_by_fallback(pipeline, monkeypatch, invalid):
-    monkeypatch.setitem(VALIDATORS, "report_markdown", lambda _, **kwargs: (False, "invalid"))
+def test_invalid_report_is_replaced_by_fallback(pipeline, invalid):
     pipeline._generate_phase6_context()
     pipeline._pregenerate_report_sections()
     report = pipeline.run_dir / "06_report.md"
     report.write_text(invalid)
-    pipeline._merge_report_with_prefill()
+    render(pipeline)
     assert "report-test-model" in report.read_text()
 
 
@@ -100,11 +106,12 @@ def test_report_modules_support_independent_run_directories(tmp_path):
         context = {"device_count": count, "target_subnet": name}
         report_context.generate_phase6_context(directory, context, compact=False)
         report_rendering.pregenerate_report_sections(directory)
-        report_rendering.merge_report_with_prefill(
-            directory, context, model=name, validate_report=lambda _: (False, "missing"),
+        report_rendering.render_deterministic_report(
+            directory, context, model=name,
+            analysis_status="unavailable", analysis_cause="memo_absent",
         )
     for name, count in [("first", 3), ("second", 7)]:
         directory = tmp_path / name
-        data = report_context.build_report_analysis_context(directory)
-        assert data["phase6"]["device_count"] == count
+        data = json.loads((directory / "06_phase6_context.json").read_text())
+        assert data["device_count"] == count
         assert f"**Model:** {name}" in (directory / "06_report.md").read_text()

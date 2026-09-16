@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.agent.provider import LLMProvider
+from src.agent.provider import LLMProvider, validate_provider_choice
 from src.agent.pipeline import Pipeline
 
 
@@ -21,8 +21,7 @@ def main():
         "--provider",
         default=os.environ.get("AGENT_PROVIDER") or None,
         required=not bool(os.environ.get("AGENT_PROVIDER")),
-        choices=["codex", "openrouter", "minimax", "glm", "qwen", "local"],
-        help="Required unless AGENT_PROVIDER is set; no implicit provider fallback.",
+        help="Provider registered in LANCE, or minimax/glm/qwen. Required unless AGENT_PROVIDER is set.",
     )
     parser.add_argument(
         "--model",
@@ -80,8 +79,10 @@ def main():
         help="Benchmark split policy. Sealed runs must be launched by the controller worker.",
     )
     args = parser.parse_args()
-    if args.provider == "anthropic":
-        parser.error("Anthropic is no longer supported; set --provider or AGENT_PROVIDER explicitly")
+    try:
+        validate_provider_choice(args.provider)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

@@ -551,12 +551,12 @@ class TestGraphTools:
 class TestProvider:
     """Test the LLM provider with mocked API calls."""
 
-    def test_openrouter_init(self):
+    def test_supported_provider_init(self):
         import openai
         with patch.object(openai, "OpenAI"):
-            provider = LLMProvider(provider="openrouter", model="mistral-7b")
-        assert provider.model == "mistral-7b"
-        assert provider.provider == "openrouter"
+            provider = LLMProvider(provider="minimax", model="MiniMax-M2")
+        assert provider.model == "MiniMax-M2"
+        assert provider.provider == "minimax"
 
     def test_local_moe_init_uses_bounded_proxy_timeout_and_retry(self):
         import openai

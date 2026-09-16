@@ -284,12 +284,3 @@ def trusted_mqtt_ws_messages(
             "captured_at": valid["captured_at"],
         })
     return accepted
-
-
-def mqtt_ws_exchange_proven(
-    result: dict, args: dict, target_ip: object, target_port: object,
-    target_path: object, claim_topic: str,
-) -> bool:
-    return bool(trusted_mqtt_ws_messages(
-        result, args, target_ip, target_port, target_path, claim_topic,
-    ))

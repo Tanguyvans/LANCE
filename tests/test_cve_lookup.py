@@ -11,7 +11,6 @@ from src.cve_lookup import (
     _parse_cve_item,
     classify_cve_compatibility,
     classify_cve_results,
-    cve_matches_query,
     load_cpe_mapping,
     query_nvd,
     scan_device,
@@ -149,50 +148,50 @@ class TestCVECompatibility:
             "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
             versionEndExcluding="9.6",
         )
-        assert cve_matches_query("OpenSSH 9.2", matches)
-        assert not cve_matches_query("OpenSSH 9.6", matches)
+        assert classify_cve_compatibility("OpenSSH 9.2", matches).status != "incompatible"
+        assert classify_cve_compatibility("OpenSSH 9.6", matches).status == "incompatible"
 
     def test_old_openssh_cve_is_rejected_for_modern_version(self):
         matches = self.match(
             "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
             versionEndIncluding="2.9",
         )
-        assert not cve_matches_query("OpenSSH 9.2", matches)
+        assert classify_cve_compatibility("OpenSSH 9.2", matches).status == "incompatible"
 
     def test_old_nginx_cve_is_rejected_for_nginx_122(self):
         matches = self.match(
             "cpe:2.3:a:nginx:nginx:*:*:*:*:*:*:*:*",
             versionEndExcluding="1.14.1",
         )
-        assert not cve_matches_query("nginx 1.22", matches)
+        assert classify_cve_compatibility("nginx 1.22", matches).status == "incompatible"
 
     def test_product_mismatch_is_rejected(self):
         mysql_matches = self.match(
             "cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*",
             versionEndIncluding="5.6",
         )
-        assert not cve_matches_query("openSUSE Leap 5.6", mysql_matches)
+        assert classify_cve_compatibility("openSUSE Leap 5.6", mysql_matches).status == "incompatible"
 
     def test_exact_mosquitto_version_matches(self):
         matches = self.match(
             "cpe:2.3:a:eclipse:mosquitto:2.0.21:*:*:*:*:*:*:*"
         )
-        assert cve_matches_query("mosquitto version 2.0.21", matches)
-        assert not cve_matches_query("mosquitto version 2.0.20", matches)
+        assert classify_cve_compatibility("mosquitto version 2.0.21", matches).status != "incompatible"
+        assert classify_cve_compatibility("mosquitto version 2.0.20", matches).status == "incompatible"
 
     def test_common_apache_alias_matches_http_server_cpe(self):
         matches = self.match(
             "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
             versionEndExcluding="2.4.50",
         )
-        assert cve_matches_query("Apache 2.4.49", matches)
+        assert classify_cve_compatibility("Apache 2.4.49", matches).status != "incompatible"
 
     def test_not_applicable_cpe_version_does_not_match_numeric_version(self):
         matches = self.match("cpe:2.3:a:vendor:product:-:*:*:*:*:*:*:*")
-        assert not cve_matches_query("product 1.0", matches)
+        assert classify_cve_compatibility("product 1.0", matches).status == "incompatible"
 
     def test_product_only_query_remains_available(self):
-        assert cve_matches_query("OpenSSH", [])
+        assert classify_cve_compatibility("OpenSSH", []).status != "incompatible"
 
     def test_product_only_and_missing_config_are_indeterminate(self):
         assert classify_cve_compatibility("OpenSSH", []).status == "indeterminate"

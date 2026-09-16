@@ -20,6 +20,19 @@ NOTE_MAX_CHARS = 4_000
 MANIFEST = "06_report_sections.json"
 
 
+def generation_policy(provider: str, token_limit: int) -> dict:
+    """Bound prose recovery without changing analysis/verification model settings.
+
+    The registered ollama / ollama-* providers use Ollama's documented
+    reasoning_effort control. Other compatible APIs receive no extra option.
+    """
+    ollama = provider == "ollama" or provider.startswith("ollama-")
+    return {
+        "token_limits": [token_limit, max(token_limit, min(8192, token_limit * 2))],
+        "reasoning_effort": "none" if ollama else None,
+    }
+
+
 def encoded(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

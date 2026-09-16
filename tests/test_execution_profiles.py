@@ -38,9 +38,9 @@ def test_execution_profile_defaults_and_validation():
     assert compact.limits_for_phase(2, 50, 4096) == (50, 1536)
     assert compact.limits_for_phase(5, 80, 16384) == (50, 2048)
     assert compact.limits_for_phase(6, 25, 16384) == (1, 1536)
-    assert StartRequest().execution_profile == "auto"
+    assert StartRequest(model="offline-test", provider="local").execution_profile == "auto"
     assert (
-        BatchRequest(batch_ids=["1"], execution_profile="compact").execution_profile
+        BatchRequest(model="offline-test", provider="local", batch_ids=["1"], execution_profile="compact").execution_profile
         == "compact"
     )
     with pytest.raises(ValueError, match="Unknown execution profile"):

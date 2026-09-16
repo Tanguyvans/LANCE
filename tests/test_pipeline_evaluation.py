@@ -33,7 +33,7 @@ def test_missing_generated_ground_truth_is_reported(tmp_path, monkeypatch):
 
     event = _evaluate_single_run(
         _PipelineStub(run_dir),
-        StartRequest(scenario_id="gen-api-deadbeef00"),
+        StartRequest(model="offline-test", provider="local", scenario_id="gen-api-deadbeef00"),
     )
 
     assert event["status"] == "skipped"
@@ -76,7 +76,7 @@ def test_generated_run_is_evaluated_and_persisted(tmp_path, monkeypatch):
 
     event = _evaluate_single_run(
         _PipelineStub(run_dir),
-        StartRequest(scenario_id="gen-api-deadbeef00"),
+        StartRequest(model="offline-test", provider="local", scenario_id="gen-api-deadbeef00"),
     )
 
     assert event["status"] == "completed"
@@ -158,7 +158,7 @@ def test_single_run_emits_evaluation_before_pipeline_done(tmp_path, monkeypatch)
         },
     )
 
-    pipeline_route._pipeline_thread(StartRequest(scenario_id="1"))
+    pipeline_route._pipeline_thread(StartRequest(model="offline-test", provider="local", scenario_id="1"))
 
     received = []
     while not events.empty():
@@ -166,4 +166,3 @@ def test_single_run_emits_evaluation_before_pipeline_done(tmp_path, monkeypatch)
     types = [event["type"] for event in received]
     assert types[:2] == ["evaluation_done", "pipeline_done"]
     assert received[1]["metrics"] == {"f1": 1.0}
-

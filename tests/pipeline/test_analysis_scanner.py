@@ -350,7 +350,7 @@ class TestScannerEvidenceExtraction:
     def test_ssh_port_forwarding_is_not_in_default_extractors(self):
         from src.agent import scanner as scanner_mod
 
-        assert scanner_mod._extract_ssh_port_forwarding not in scanner_mod.FINDING_EXTRACTORS
+        assert not hasattr(scanner_mod, "_extract_ssh_port_forwarding")
 
     def test_missing_headers_are_limited_to_supported_web_roles(self):
         from src.agent import scanner as scanner_mod

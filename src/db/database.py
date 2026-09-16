@@ -311,20 +311,6 @@ def delete_model(slug: str) -> bool:
         return False
 
 
-def set_model_enabled(slug: str, enabled: bool) -> bool:
-    """Toggle a model's enabled flag; return True if the model exists."""
-    try:
-        with get_conn() as conn:
-            cur = conn.execute(
-                "UPDATE models SET enabled = ? WHERE slug = ?",
-                (int(enabled), slug),
-            )
-            return cur.rowcount > 0
-    except sqlite3.Error as exc:
-        log.warning("set_model_enabled(%s) failed: %s", slug, exc)
-        return False
-
-
 # ── Runs / scores / usage ────────────────────────────────────────────────────
 
 def record_run(meta: dict[str, Any]) -> int | None:

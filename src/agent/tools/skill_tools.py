@@ -37,11 +37,6 @@ def set_cve_cache_only(enabled: bool) -> None:
     _CVE_CACHE_ONLY = bool(enabled)
 
 
-def cve_cache_only_enabled() -> bool:
-    """Return whether live CVE fetches are disabled for the current process."""
-    return _CVE_CACHE_ONLY
-
-
 # ── Frontmatter parsing ─────────────────────────────────────────
 
 def _parse_skill_file(path: Path) -> dict[str, Any]:

@@ -86,11 +86,6 @@ def _catalog_pricing(catalog: list[dict[str, Any]]) -> dict[str, dict[str, float
     return pricing
 
 
-def _fetch_openrouter_pricing() -> dict[str, dict[str, float]]:
-    """Compatibility helper retained for callers and tests."""
-    return _catalog_pricing(_fetch_openrouter_catalog())
-
-
 def _load_cache() -> dict[str, Any] | None:
     """Load the cached catalog if it exists and is fresh."""
     if not CACHE_PATH.exists():
@@ -166,7 +161,7 @@ def _load_openrouter_catalog(*, force_refresh: bool = False) -> list[dict[str, A
 
 
 def _load_pricing() -> dict[str, dict[str, float]]:
-    """Get pricing derived from the same catalog shown by the dashboard."""
+    """Load public tariff metadata for estimates, independently of launch choices."""
     global _memory_cache
     if _memory_cache is not None:
         return _memory_cache

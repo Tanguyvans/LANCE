@@ -5,9 +5,7 @@ Usage::
     python3 -m src.db.seed
 
 Idempotent: creates the schema, upserts providers and offline fallback models,
-then backfills runs already on disk. The dashboard selector excludes OpenRouter
-and Codex; their configurations remain available for historical runs and CLI use.
-The removed Anthropic adapter is not seeded; existing records are kept for history.
+then backfills runs already on disk. Removed providers are not seeded or executable; existing records are kept for history.
 """
 from __future__ import annotations
 
@@ -85,17 +83,6 @@ def seed_providers() -> int:
         )
         count += 1
 
-    # Authentication and models are resolved from the local Codex session at
-    # runtime; no OAuth token or account identity is stored in SQLite.
-    upsert_provider(
-        name="codex",
-        base_url=None,
-        api_key_env=None,
-        default_model=None,
-        kind="subscription",
-    )
-    count += 1
-
     # Local OpenAI-compatible endpoint (ollama / vLLM). base_url from OLLAMA_BASE_URL
     # so each host points at its own/the shared Ollama; editable later via the UI.
     upsert_provider(
@@ -159,13 +146,10 @@ def backfill_runs() -> int:
 
         scenario_id = scen_meta.get("scenario_id")
         model = scen_meta.get("model") or run_meta.get("model") or cost.get("model")
-        from src.agent.codex_app_server import is_codex_model
-        provider = (
-            "codex" if model and is_codex_model(str(model))
-            else "minimax" if model and "/" not in str(model)
-            else "openrouter"
-        )
-        status = "completed" if (d / "06_report.md").exists() else "partial"
+        # Historical metadata is authoritative; a model name or a report file
+        # cannot identify the provider or certify successful execution.
+        provider = run_meta.get("provider") or scen_meta.get("provider") or cost.get("provider") or "unknown"
+        status = run_meta.get("status") or "partial"
 
         run_id = record_run({
             "run_dir": str(d),

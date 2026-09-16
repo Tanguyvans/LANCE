@@ -341,10 +341,6 @@ class AgentRunner:
             template = template.replace("{{model}}", self.provider.model)
             variables["deliverable_template"] = template
 
-        # For Phase 6: tell the LLM to leave {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}}
-        # as-is — Python will inject the real tables in _merge_report_with_prefill()
-        # Do NOT inject the prefill into the prompt — it would make the system prompt too large.
-
         # Load and compose prompt
         prompt_template = (
             "intrusion_compact" if local_intrusion_memo

@@ -14,9 +14,9 @@ from src.benchmark.evaluator import (
     MatchResult,
     compute_mhr,
     _derive_evidence_level,
-    _has_tool_provenance,
+    _matching_tool_calls,
     _load_tool_call_records,
-    _normalize_port,
+    _record_implied_ports,
     _tool_call_outcome,
     _semantic_output_supports_finding,
     evaluate,
@@ -41,8 +41,8 @@ from src.benchmark.metric_contract import (
         (65536, None),
     ],
 )
-def test_normalize_port(value, expected):
-    assert _normalize_port(value) == expected
+def test_observed_record_ports_are_validated(value, expected):
+    assert _record_implied_ports({"tool": "tcp_send", "args": {"port": value}}) == ({expected} if expected is not None else set())
 
 def test_phase4_semantic_contract_accepts_ssh_audit_exit_code_three():
     assert _semantic_output_supports_finding(
@@ -1201,8 +1201,8 @@ class TestEvidenceMetrics:
         wrong_tool = {**correct, "tool": "nmap"}
         wrong_target = {**correct, "args": {"ip": "192.168.100.99"}}
 
-        assert _has_tool_provenance(finding, [correct]) is True
-        assert _has_tool_provenance(finding, [wrong_tool, wrong_target]) is False
+        assert bool(_matching_tool_calls(finding, [correct])) is True
+        assert bool(_matching_tool_calls(finding, [wrong_tool, wrong_target])) is False
 
     def test_tool_provenance_does_not_match_ip_prefix(self):
         finding = {"tool_used": "nmap", "device_ip": "192.168.1.1"}
@@ -1212,7 +1212,7 @@ class TestEvidenceMetrics:
             "result": {"success": True},
         }
 
-        assert _has_tool_provenance(finding, [record]) is False
+        assert bool(_matching_tool_calls(finding, [record])) is False
 
     def test_explicit_evidence_refs_prevent_cross_finding_reuse(self):
         finding = {
@@ -1227,7 +1227,7 @@ class TestEvidenceMetrics:
             "result": {"success": True},
         }
 
-        assert _has_tool_provenance(finding, [wrong_ref]) is False
+        assert bool(_matching_tool_calls(finding, [wrong_ref])) is False
 
     def test_legacy_failed_test_retains_prediction_without_score(self, tmp_path):
         run_dir = tmp_path / "run"

@@ -51,3 +51,26 @@ d’accès ; ce jeton ne remplace pas cette protection réseau.
 
 Sans configuration de `LANCE_ADMIN_TOKEN`, les actions du dashboard sont
 volontairement bloquées. La CLI locale n'utilise pas cette authentification HTTP.
+
+## Fournisseurs d’exécution
+
+OpenRouter, Codex et Anthropic ne sont plus des fournisseurs exécutables dans
+LANCE : CLI, worker, API de lancement et évaluation LLM les refusent explicitement.
+Le pont d’exécution Codex est supprimé. Leurs anciennes lignes dans le registre
+et leurs résultats restent consultables ; aucune migration ne les efface.
+
+Pour lancer un run, choisir explicitement `provider` et `model` dans l’API.
+La CLI et le worker exigent `--provider` ou `AGENT_PROVIDER` ; ils n’ont plus
+de fournisseur implicite. Les fournisseurs personnalisés enregistrés en base,
+notamment Ollama et les endpoints locaux, restent disponibles. Un modèle choisi
+pour une phase particulière doit être enregistré avec son fournisseur : son
+nom ne permet plus de deviner un abonnement ou un fournisseur cloud.
+
+La source de tarifs OpenRouter reste utilisée pour **estimer les coûts**, pas
+pour exécuter des modèles. Elle peut effectuer des requêtes de catalogue public ;
+aucun prompt ne lui est envoyé par ce mécanisme. Les tarifs historiques et les
+compteurs de tokens ne sont pas supprimés.
+
+Le backfill des anciens runs reprend le fournisseur et le statut des métadonnées.
+Sans fournisseur enregistré, il indique `unknown` ; sans statut, `partial`.
+La présence d’un rapport n’est pas une preuve de réussite.

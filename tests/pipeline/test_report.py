@@ -61,8 +61,9 @@ def test_phase6_context_excludes_unsupported_confirmations(mock_provider, output
     assert _is_verified_report_finding(tests[0])
     assert not _is_verified_report_finding(tests[1])
 
-    local_context = pipeline._build_local_report_analysis_context()
-    assert [test["vuln_id"] for test in local_context["phase6"]["phase4_tests"]] == ["V1"]
+    from src.agent.phases.report.sections import build_cards
+    cards, _ = build_cards(run_dir)
+    assert [c["facts"]["recorded_verification_state"] for c in cards if c["kind"] == "finding"] == ["confirmed", "inconclusive"]
 
 
 @pytest.mark.parametrize("profile", ["full", "compact"])

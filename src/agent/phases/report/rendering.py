@@ -7,9 +7,7 @@ new proof/evaluation system.
 """
 from __future__ import annotations
 import json
-import logging
 from collections import Counter
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from src.agent.report_evidence import (
@@ -19,9 +17,6 @@ from src.agent.report_evidence import (
 from src.agent.phases.report.grouping import group_findings_for_report
 from src.agent.phases.report.traceability import ReportTraceIndex
 from src.agent.vuln_taxonomy import VULN_TYPE_ALIASES
-
-
-log = logging.getLogger(__name__)
 
 
 def _read_full_json(run_dir: Path, filename: str) -> dict:
@@ -395,48 +390,17 @@ def pregenerate_report_sections(run_dir: Path) -> None:
     prefill_path.write_text(prefill, encoding="utf-8")
     print(f"  [prefill] 06_report_prefill.md ({prefill_path.stat().st_size:,} bytes, {len(supported_rows)} supported declarations)")
 
-def merge_report_with_prefill(
+def _render_report_from_facts(
     run_dir: Path, run_context: dict, *, model: str,
-    validate_report: Callable[[str], tuple[bool, str]],
     analysis_status: str | None = None,
     analysis_cause: str | None = None,
 ) -> None:
-    """Replace {{SECTION_5_TABLE}} / {{SECTION_6_TABLES}} placeholders in 06_report.md
-    with the deterministically-generated tables from 06_report_prefill.md.
-
-    The normal Phase 6 entry point always builds a fresh deterministic report
-    and appends only the optional analyst note. Placeholder replacement remains
-    solely for legacy callers; report existence is never an execution verdict.
-    """
+    """Assemble the report from complete artifacts and optional commentary."""
     report_path = run_dir / "06_report.md"
     prefill_path = run_dir / "06_report_prefill.md"
-
-    if not prefill_path.exists():
-        return
-
     prefill = prefill_path.read_text(encoding="utf-8")
 
-    if report_path.exists():
-        content = report_path.read_text(encoding="utf-8")
-        # If the file only contains a sentinel (max turns reached), treat it as absent
-        if content.strip() in {"(max turns reached)", "(malformed tool call JSON — max retries)"}:
-            report_path.unlink()
-        else:
-            valid, validation_error = validate_report("06_report.md")
-            if not valid:
-                log.warning(
-                    "Phase 6 report invalid before merge (%s) — using deterministic fallback",
-                    validation_error,
-                )
-                report_path.unlink()
-            else:
-                merged = content.replace("{{SECTION_5_TABLE}}", prefill).replace("{{SECTION_6_TABLES}}", "")
-                if merged != content:
-                    report_path.write_text(merged, encoding="utf-8")
-                    print(f"  [merge] Injected prefill tables into 06_report.md ({report_path.stat().st_size:,} bytes)")
-                return
-
-    # Fallback: LLM never saved the report — build a complete one from prefill + context
+    # Read complete run artifacts; the model never supplies the report structure.
     context_path = run_dir / "06_phase6_context.json"
     ctx: dict = {}
     if context_path.exists():
@@ -735,7 +699,6 @@ def render_deterministic_report(
     run_context: dict,
     *,
     model: str,
-    validate_report: Callable[[str], tuple[bool, str]],
     analysis_status: str,
     analysis_cause: str,
 ) -> None:
@@ -749,11 +712,10 @@ def render_deterministic_report(
     report_path = run_dir / "06_report.md"
     if report_path.exists():
         report_path.unlink()
-    merge_report_with_prefill(
+    _render_report_from_facts(
         run_dir,
         run_context,
         model=model,
-        validate_report=validate_report,
         analysis_status=analysis_status,
         analysis_cause=analysis_cause,
     )

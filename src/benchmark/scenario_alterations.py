@@ -628,28 +628,6 @@ def _matches_finding(finding: dict[str, Any], selectors: list[str]) -> bool:
     return bool(values & set(selectors))
 
 
-def _drop_findings_and_paths(gt: dict[str, Any], paths: list[dict[str, Any]], keep: set[str]) -> list[dict[str, Any]]:
-    gt["vulnerabilities"] = [
-        item for item in gt.get("vulnerabilities", [])
-        if item.get("id") in keep or item.get("template_key") in keep
-    ]
-    gt["controls"] = [
-        item for item in gt.get("controls", [])
-        if item.get("id") in keep or item.get("template_key") in keep
-    ]
-    existing = {item["id"] for item in gt["vulnerabilities"]}
-    result = []
-    for path in paths:
-        used = [item for item in path.get("vulnerabilities_used", []) if item in existing]
-        original = path.get("vulnerabilities_used", [])
-        if original and not used:
-            continue
-        path = copy.deepcopy(path)
-        path["vulnerabilities_used"] = used
-        result.append(path)
-    return result
-
-
 def _apply_post_item(gt: dict[str, Any], paths: list[dict[str, Any]], topology: dict[str, Any], spec: dict[str, Any], item: dict[str, Any], index: int, seed: int) -> list[dict[str, Any]]:
     kind = item["type"]
     params = item.get("parameters", {})

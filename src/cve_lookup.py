@@ -346,11 +346,6 @@ def classify_cve_compatibility(query: str, cpe_matches: list[dict]) -> CVECompat
     )
 
 
-def cve_matches_query(query: str, cpe_matches: list[dict]) -> bool:
-    """Backward-compatible predicate: only explicit incompatibility is False."""
-    return classify_cve_compatibility(query, cpe_matches).status != "incompatible"
-
-
 _COMPATIBILITY_ORDER = {
     "compatible": 0,
     "conditional": 1,
@@ -372,11 +367,6 @@ def classify_cve_results(query: str, results: list[CVEResult]) -> list[CVEResult
             result.compatibility_status, _COMPATIBILITY_ORDER["indeterminate"]
         ),
     )
-
-
-def filter_compatible_cves(query: str, results: list[CVEResult]) -> list[CVEResult]:
-    """Compatibility alias retained for callers; candidates are now annotated, not filtered."""
-    return classify_cve_results(query, results)
 
 
 def query_nvd(query: str, api_key: str | None = None) -> list[CVEResult]:

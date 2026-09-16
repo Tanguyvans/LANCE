@@ -110,7 +110,7 @@ def _api_events(tmp_path, monkeypatch, result, status="completed"):
     monkeypatch.setattr(agent_provider, "LLMProvider", Provider)
     monkeypatch.setattr(route, "resolve_ground_truth_path", lambda _: ground_truth)
     monkeypatch.setattr(evaluator, "evaluate", lambda *args, **kwargs: result)
-    route._pipeline_thread(route.StartRequest(scenario_id="1"))
+    route._pipeline_thread(route.StartRequest(model="offline-test", provider="local", scenario_id="1"))
     received = []
     while not events.empty():
         received.append(events.get_nowait())

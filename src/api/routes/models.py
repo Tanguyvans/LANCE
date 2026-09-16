@@ -8,6 +8,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from pydantic import BaseModel, Field
+from src.agent.provider import REMOVED_PROVIDERS
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -157,8 +158,8 @@ def _entry(slug, label, recommended, provider, subscription,
 def list_models(refresh: bool = False) -> dict:
     """Read the selector's registry on every request, including refresh.
 
-    OpenRouter, Codex and the removed Anthropic adapter are excluded from launch
-    choices. Their historical registry entries remain available through the
+    Retired adapters are excluded from launch choices and cannot execute.
+    Their historical registry entries remain available through the
     administration endpoint.
     """
 
@@ -188,7 +189,7 @@ def list_models(refresh: bool = False) -> dict:
     # Registry providers such as MiniMax and local inference remain editable.
     for row in rows:
         provider = row.get("provider")
-        if not provider or provider in {"openrouter", "codex", "anthropic"} or not bool(row.get("enabled")):
+        if not provider or provider in REMOVED_PROVIDERS or not bool(row.get("enabled")):
             continue
         models.append(_entry(
             row["slug"], row.get("label") or row["slug"],

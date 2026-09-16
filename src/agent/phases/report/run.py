@@ -16,8 +16,6 @@ log = logging.getLogger(__name__)
 
 
 class ReportPhase:
-    def _build_local_report_analysis_context(self) -> dict:
-        return report_context.build_report_analysis_context(self.run_dir)
 
     def _generate_phase6_context(self) -> None:
         report_context.generate_phase6_context(
@@ -27,11 +25,6 @@ class ReportPhase:
     def _pregenerate_report_sections(self) -> None:
         report_rendering.pregenerate_report_sections(self.run_dir)
 
-    def _merge_report_with_prefill(self) -> None:
-        report_rendering.merge_report_with_prefill(
-            self.run_dir, self.context, model=self.provider.model,
-            validate_report=self._validator("report_markdown"),
-        )
 
     def _run_local_report_phase(
         self, config: runtime.AgentConfig,
@@ -74,15 +67,17 @@ class ReportPhase:
                     card = cards[index]
                 prompt = sections.section_prompt(card)
                 token_limit = self.execution_profile.report_max_tokens
+                policy = sections.generation_policy(self.provider.provider, token_limit)
                 fingerprint = sections.digest({"card": card, "prompt": prompt,
                                                "provider": self.provider.provider, "model": self.provider.model,
-                                               "tokens": token_limit, "contract": manifest["contract"]})
+                                               "generation": policy, "contract": manifest["contract"]})
                 filename = f"06_report_sections/{fingerprint}.json"
                 record = sections.reusable(self.run_dir, filename, fingerprint, card)
                 reused = record is not None
                 if record is None:
                     record = {"fingerprint": fingerprint, "card": card, "status": "unavailable",
-                              "cause": "memo_absent", "finish_reason": None, "text": ""}
+                              "cause": "memo_absent", "finish_reason": None, "text": "",
+                              "generation": policy, "attempts": []}
                     if stopped():
                         record["cause"] = "stopped"
                     elif pending_budget_error is not None:
@@ -94,52 +89,69 @@ class ReportPhase:
                     elif len(prompt.encode("utf-8")) > sections.CONTEXT_MAX_BYTES:
                         record["cause"] = "context_too_large"
                     else:
-                        metadata = {}
-                        call_deadline = min(deadline, time.monotonic() + max(0.01, runtime.REPORT_SECTION_TIMEOUT))
-                        try:
-                            self.tracker.check_budget()
-                            result = self.provider.chat_with_tools(
-                                system_prompt=prompt, user_message="Rédige uniquement cette section maintenant.",
-                                tools=[], max_turns=1, max_tokens=token_limit,
-                                cost_tracker=self.tracker,
-                                stream_callback=self._model_stream_callback(
-                                    stream_callback, phase=config.phase, agent=f"report_{card['key']}"),
-                                repeat_guard=False, stop_event=self._stop_event, deadline=call_deadline,
-                                completion_metadata=metadata,
-                            )
-                            text = str(result).strip() if result else ""
-                            record["finish_reason"] = metadata.get("finish_reason")
-                            record["draft"] = text
-                            if text:
-                                self._model_stream_callback(None, phase=config.phase, agent=f"report_{card['key']}")(
-                                    {"type": "text_chunk", "text": text})
-                            if stopped():
-                                record["cause"] = "stopped"
-                            elif time.monotonic() > call_deadline:
-                                record["cause"] = "timeout"
-                            elif metadata.get("finish_reason") == "length":
-                                record["cause"] = "memo_truncated"
-                            elif metadata.get("finish_reason") not in (None, "stop"):
-                                record["cause"] = "memo_incomplete"
-                            elif not text or text in {"(max turns reached)", "(malformed tool call JSON — max retries)"}:
-                                record["cause"] = "memo_empty"
-                            elif (len(text) > sections.NOTE_MAX_CHARS or _looks_unusable_model_memo(text)
-                                  or _local_report_memo_contradicts_context(text, {})):
-                                record["cause"] = "memo_rejected"
-                            else:
-                                record.update(status="usable", cause="none", text=text,
-                                              text_digest=sections.digest(text))
-                        except BudgetExceeded as exc:
-                            pending_budget_error = exc
-                            record["cause"] = "budget_exceeded"
-                        except Exception as exc:
-                            record["cause"] = ("stopped" if stopped() else "timeout" if
-                                isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower()
-                                or time.monotonic() > call_deadline else "provider_error")
+                        for attempt_index, attempt_tokens in enumerate(policy["token_limits"]):
+                            if stopped() or time.monotonic() >= deadline:
+                                record["cause"] = "stopped" if stopped() else "timeout"
+                                break
+                            metadata = {}
+                            started = time.monotonic()
+                            call_deadline = min(deadline, started + max(0.01, runtime.REPORT_SECTION_TIMEOUT))
+                            attempt = {"number": attempt_index + 1, "max_tokens": attempt_tokens}
+                            try:
+                                self.tracker.check_budget()
+                                request_options = ({"reasoning_effort": policy["reasoning_effort"]}
+                                                   if policy["reasoning_effort"] is not None else {})
+                                result = self.provider.chat_with_tools(
+                                    system_prompt=prompt, user_message="Rédige uniquement cette section maintenant.",
+                                    tools=[], max_turns=1, max_tokens=attempt_tokens,
+                                    cost_tracker=self.tracker,
+                                    stream_callback=self._model_stream_callback(
+                                        stream_callback, phase=config.phase, agent=f"report_{card['key']}"),
+                                    repeat_guard=False, stop_event=self._stop_event, deadline=call_deadline,
+                                    completion_metadata=metadata, **request_options,
+                                )
+                                text = str(result).strip() if result else ""
+                                record["finish_reason"] = metadata.get("finish_reason")
+                                record["draft"] = text
+                                attempt.update(metadata=metadata, draft=text)
+                                if text:
+                                    self._model_stream_callback(None, phase=config.phase, agent=f"report_{card['key']}")(
+                                        {"type": "text_chunk", "text": text})
+                                if stopped():
+                                    record["cause"] = "stopped"
+                                elif time.monotonic() > call_deadline:
+                                    record["cause"] = "timeout"
+                                elif metadata.get("finish_reason") == "length":
+                                    record["cause"] = "memo_truncated"
+                                elif metadata.get("finish_reason") not in (None, "stop"):
+                                    record["cause"] = "memo_incomplete"
+                                elif not text or text in {"(max turns reached)", "(malformed tool call JSON — max retries)"}:
+                                    record["cause"] = "memo_empty"
+                                elif (len(text) > sections.NOTE_MAX_CHARS or _looks_unusable_model_memo(text)
+                                      or _local_report_memo_contradicts_context(text, {})):
+                                    record["cause"] = "memo_rejected"
+                                else:
+                                    record.update(status="usable", cause="none", text=text,
+                                                  text_digest=sections.digest(text))
+                            except BudgetExceeded as exc:
+                                pending_budget_error = exc
+                                record["cause"] = "budget_exceeded"
+                            except Exception as exc:
+                                attempt["error_kind"] = type(exc).__name__
+                                record["finish_reason"] = None
+                                record["cause"] = ("stopped" if stopped() else "timeout" if
+                                    isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower()
+                                    or time.monotonic() > call_deadline else "provider_error")
+                            attempt.update(cause=record["cause"], duration_s=round(time.monotonic() - started, 3))
+                            record["attempts"].append(attempt)
+                            sections.write_object(self.run_dir, filename, record)
+                            if record["cause"] != "memo_truncated":
+                                break
                     sections.write_object(self.run_dir, filename, record)
                 entry = {"key": card["key"], "kind": card["kind"], "artifact": filename,
                          "fingerprint": fingerprint, "facts_digest": sections.digest(card),
                          "status": record["status"], "cause": record["cause"], "reused": reused,
+                         "attempt_count": len(record.get("attempts", [])),
                          "finish_reason": record.get("finish_reason")}
                 manifest["sections"].append(entry)
                 sections.write_object(self.run_dir, sections.MANIFEST, manifest)
@@ -163,7 +175,6 @@ class ReportPhase:
                     sections.render_cards(self.run_dir, manifest, intrusion=True), encoding="utf-8")
                 report_rendering.render_deterministic_report(
                     self.run_dir, self.context, model=self.provider.model,
-                    validate_report=self._validator("report_markdown"),
                     analysis_status="usable" if summary_text else "unavailable", analysis_cause=cause,
                 )
                 final_valid, validation_message = self._validator("final_report_markdown")(config.deliverable_file)

@@ -1568,29 +1568,6 @@ def _extract_ldap_no_tls(entries: list[dict], device: dict, svc_name: str) -> li
     return []
 
 
-def _extract_ssh_port_forwarding(entries: list[dict], device: dict, svc_name: str) -> list[dict]:
-    """ssh_server/ssh_server_v2 with port 22 open → suspected AllowTcpForwarding misconfiguration."""
-    role = device.get("role", "")
-    if role != "ssh_server":
-        return []
-    for entry in entries:
-        if entry["tool"] != "nmap_scan":
-            continue
-        result = _parse_result(entry)
-        stdout = result.get("stdout", "")
-        if "22/tcp" not in stdout or "open" not in stdout:
-            continue
-        return [_make_finding(
-            device, "misconfiguration", "HIGH", "ssh", 22,
-            "SSH port forwarding likely unrestricted (AllowTcpForwarding not disabled) — tunnel to other network zones possible",
-            "nmap: 22/tcp open — AllowTcpForwarding not confirmed disabled",
-            status="suspected",
-            technique="ssh -L <port>:<ot-ip>:<port> <user>@<ip> to verify tunnel capability",
-            tools=["nmap_scan"],
-        )]
-    return []
-
-
 # All extractors in order
 def _extract_api_authorization_findings(
     entries: list[dict], device: dict, svc_name: str

@@ -10,9 +10,7 @@ from src.agent.phases.intrusion.evidence import finalize_synthesis
 from src.agent.phases.intrusion.observations import project_intrusion_observations
 from src.agent.core import runtime
 
-
 log = logging.getLogger(__name__)
-
 
 class IntrusionPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
@@ -123,7 +121,6 @@ class IntrusionPhase:
         allowed_credentials: set[tuple[str, str]] = set()
         seen_cred: set = set()
         attempted: set = set()  # all IPs touched by Phase 5 action tools
-        action_evidence: dict[str, list[dict]] = {}
 
         def _host_from_url(value: object) -> str:
             raw = str(value or "").strip()
@@ -200,8 +197,6 @@ class IntrusionPhase:
         # synthesized deliverable carries real device names, not blanks.
         ip_to_id: dict = {}
         entry_point_ips: set[str] = set()
-        entry_evidence: dict[str, str] = {}
-        context_data: dict = {}
         ctx_path = self.run_dir / "05_intrusion_context.json"
         if compact_synthesis and not ctx_path.exists():
             context_from_ledger = self._load_compact_intrusion_context()
@@ -213,12 +208,10 @@ class IntrusionPhase:
         if ctx_path.exists():
             try:
                 ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
-                context_data = ctx if isinstance(ctx, dict) else {}
                 for entry in ctx.get("entry_points", []):
                     if isinstance(entry, dict) and entry.get("device_ip"):
                         ip = str(entry["device_ip"])
                         entry_point_ips.add(ip)
-                        entry_evidence[ip] = str(entry.get("evidence") or "").strip()
                 for entry in (ctx.get("entry_points", []) + ctx.get("all_targets", [])):
                     did, dip = entry.get("device_id"), entry.get("device_ip")
                     if dip and did and dip not in ip_to_id:
@@ -278,11 +271,6 @@ class IntrusionPhase:
                 ip = _target_from_tool(str(tool or ""), args)
                 if tool in {"try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list"} and ip:
                     attempted.add(ip)
-                    action_evidence.setdefault(ip, []).append({
-                        "tool": str(tool or ""),
-                        "args": args,
-                        "result": res,
-                    })
                 stdout = str(res.get("stdout") or res.get("output") or "") if isinstance(res, dict) else ""
                 authenticated = (
                     isinstance(res, dict)
@@ -343,93 +331,7 @@ class IntrusionPhase:
                             })
                             allowed_credentials.add((user, password))
 
-        def action_is_positive(record: dict) -> bool:
-            tool = str(record.get("tool") or "")
-            result = record.get("result") or {}
-            if not isinstance(result, dict):
-                return False
-            if tool == "try_credential":
-                return result.get("success") is True and result.get("authenticated", True) is not False
-            if tool in {"ssh_login", "ssh_exec"}:
-                stdout = str(result.get("stdout") or result.get("output") or "")
-                return (
-                    result.get("success") is True
-                    or result.get("return_code") == 0
-                    or bool(re.search(r"\buid=\d+", stdout))
-                )
-            if tool == "mqtt_listen":
-                return (
-                    result.get("return_code") in {0, 27}
-                    and bool(str(result.get("stdout") or "").strip())
-                )
-            if tool in {"http_get", "curl_headers"}:
-                return (
-                    result.get("return_code") == 0
-                    or isinstance(result.get("status_code"), int)
-                    and 200 <= result["status_code"] < 400
-                )
-            if tool in {"telnet_connect", "ftp_list"}:
-                return result.get("return_code") == 0
-            return False
-
-        def action_details(ip: str) -> tuple[str, list[str], str]:
-            records = action_evidence.get(ip, [])
-            if not records:
-                return "context_entry", [], ""
-            positive = next(
-                (record for record in records if action_is_positive(record)),
-                None,
-            )
-            if positive is None and entry_evidence.get(ip):
-                return (
-                    "confirmed_context_entry",
-                    ["05_intrusion_context.json entry evidence"],
-                    entry_evidence[ip][:400],
-                )
-            selected = positive or records[-1]
-            tool = str(selected.get("tool") or "context_entry")
-            args = selected.get("args") or {}
-            if not isinstance(args, dict):
-                args = {}
-            command = str(args.get("command_string") or args.get("command") or "").strip()
-            if not command:
-                command = f"{tool} entry probe"
-            result = selected.get("result") or {}
-            if isinstance(result, dict):
-                output = str(
-                    result.get("stdout")
-                    or result.get("body")
-                    or result.get("received_ascii")
-                    or result.get("interpretation")
-                    or result.get("stderr")
-                    or ""
-                ).strip()
-            else:
-                output = str(result).strip()
-            return tool, [command[:300]], output[:400]
-
-        def build_hop(ip: str, index: int, pivot_to: str | None) -> dict:
-            method, commands, output = action_details(ip)
-            device_id = ip_to_id.get(ip, ip)
-            if ip in compromised:
-                method = str(compromised[ip].get("access_method") or method)
-                if compromised[ip].get("data_exfiltrated"):
-                    output = str(compromised[ip]["data_exfiltrated"])[:400]
-            return {
-                "hop_index": index,
-                "device_id": device_id,
-                "device_ip": ip,
-                "access_method": method,
-                "commands_run": commands,
-                "output_summary": output,
-                "pivot_to": pivot_to,
-            }
-
         devices = list(compromised.values())
-        # The context contains the bounded attack-chain hypotheses produced
-        # from confirmed Phase 3/4 evidence. Promote only chains whose source
-        # and destination both participated in this Phase 5 action ledger;
-        # never invent a path from an isolated attempted login.
         chains: list[dict] = []
         # Keep individually observed accesses. Graph hints are plans, not
         # evidence that one access originated from another compromised host.
@@ -862,7 +764,6 @@ class IntrusionPhase:
             "devices_compromised": len(projection["accesses"]),
             "hops": 0,
         })
-
 
 def run(context, config, stream_callback=None):
     return context._run_agent(config, stream_callback)

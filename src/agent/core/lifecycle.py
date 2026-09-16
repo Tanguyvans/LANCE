@@ -280,30 +280,21 @@ class ScenarioLifecycle:
     def _save_ground_truth(self):
         """Generate a custom development GT after the worker has finished.
 
-        Preset ground truths stay in the evaluator store and are never copied to
-        an active run directory.  Sealed runs are categorically forbidden here.
+        Preset ground truths stay in the evaluator store and are never copied
+        here, including when custom generation returns no data. Sealed runs
+        are categorically forbidden here.
         """
-        import shutil
-
         if self.sealed:
             raise RuntimeError("Ground truth access is forbidden in sealed workers")
 
-        gt_dest = self.run_dir / "ground_truth.yaml"
+        if not self.custom_config:
+            return
 
-        if self.custom_config:
-            # Custom mode: generate GT dynamically from selected packs/vulns
-            gt = self._generate_custom_gt()
-            if gt:
-                gt_dest.write_text(yaml.dump(gt, default_flow_style=False, allow_unicode=True, sort_keys=False))
-                log.info("Custom ground truth generated: %d vulns", len(gt.get("vulnerabilities", [])))
-                return
-
-        # Legacy helper for explicit post-run development workflows only.  The
-        # normal preset pipeline does not call this branch anymore.
-        gt_path = runtime.resolve_ground_truth_path(self.scenario_id)
-        if gt_path.exists():
-            shutil.copy2(gt_path, gt_dest)
-            log.info("Ground truth copied to run dir: %s", gt_dest)
+        gt = self._generate_custom_gt()
+        if gt:
+            gt_dest = self.run_dir / "ground_truth.yaml"
+            gt_dest.write_text(yaml.dump(gt, default_flow_style=False, allow_unicode=True, sort_keys=False))
+            log.info("Custom ground truth generated: %d vulns", len(gt.get("vulnerabilities", [])))
 
     def _generate_custom_gt(self) -> dict | None:
         """Generate a ground truth from custom config (architecture + selected packs + excluded vulns)."""

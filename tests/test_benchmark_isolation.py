@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
+from src.agent.core.lifecycle import ScenarioLifecycle
 from src.agent.pipeline import Pipeline
 from src.benchmark.contracts import ChallengeContract, ChallengeScope, RunLimits
 
@@ -90,6 +93,80 @@ def test_public_preset_no_longer_copies_ground_truth(tmp_path, monkeypatch):
         pipeline.run()
     save_gt.assert_not_called()
     assert not (pipeline.run_dir / "ground_truth.yaml").exists()
+
+
+@pytest.fixture
+def custom_gt_context(tmp_path):
+    context = SimpleNamespace(
+        sealed=False,
+        custom_config={"architecture": "test-topology"},
+        scenario_id="1",
+        run_dir=tmp_path,
+        _generate_custom_gt=MagicMock(),
+    )
+    with patch(
+        "src.agent.core.lifecycle.runtime.resolve_ground_truth_path",
+        side_effect=AssertionError("Worker must not resolve preset ground truth"),
+    ) as resolve_gt:
+        yield context
+        resolve_gt.assert_not_called()
+
+
+def test_save_ground_truth_preset_is_noop(custom_gt_context):
+    context = custom_gt_context
+    context.custom_config = None
+    ScenarioLifecycle._save_ground_truth(context)
+    context._generate_custom_gt.assert_not_called()
+    assert not (context.run_dir / "ground_truth.yaml").exists()
+
+
+@pytest.mark.parametrize("custom_config", [None, {"architecture": "test-topology"}])
+def test_save_ground_truth_sealed_refuses_even_direct_calls(custom_gt_context, custom_config):
+    context = custom_gt_context
+    context.sealed = True
+    context.custom_config = custom_config
+    with pytest.raises(RuntimeError, match="Ground truth access is forbidden"):
+        ScenarioLifecycle._save_ground_truth(context)
+    context._generate_custom_gt.assert_not_called()
+    assert not (context.run_dir / "ground_truth.yaml").exists()
+
+
+def test_save_ground_truth_writes_custom_generation(custom_gt_context):
+    context = custom_gt_context
+    generated = {"scenario_id": "custom", "vulnerabilities": [{"id": "custom-1"}]}
+    context._generate_custom_gt.return_value = generated
+    ScenarioLifecycle._save_ground_truth(context)
+    context._generate_custom_gt.assert_called_once_with()
+    assert yaml.safe_load((context.run_dir / "ground_truth.yaml").read_text()) == generated
+
+
+@pytest.mark.parametrize("generated", [None, {}])
+def test_save_ground_truth_empty_custom_has_no_preset_fallback(custom_gt_context, generated):
+    context = custom_gt_context
+    context._generate_custom_gt.return_value = generated
+    ScenarioLifecycle._save_ground_truth(context)
+    context._generate_custom_gt.assert_called_once_with()
+    assert not (context.run_dir / "ground_truth.yaml").exists()
+
+
+def test_save_ground_truth_generation_failure_propagates(custom_gt_context):
+    context = custom_gt_context
+    context._generate_custom_gt.side_effect = ValueError("Invalid custom topology")
+    with pytest.raises(ValueError, match="Invalid custom topology"):
+        ScenarioLifecycle._save_ground_truth(context)
+    assert not (context.run_dir / "ground_truth.yaml").exists()
+
+
+@pytest.mark.parametrize("preset", [True, False])
+def test_save_ground_truth_noop_preserves_existing_file(custom_gt_context, preset):
+    context = custom_gt_context
+    if preset:
+        context.custom_config = None
+    context._generate_custom_gt.return_value = None
+    gt_file = context.run_dir / "ground_truth.yaml"
+    gt_file.write_text("historical: unchanged\n")
+    ScenarioLifecycle._save_ground_truth(context)
+    assert gt_file.read_text() == "historical: unchanged\n"
 
 
 def test_sealed_tool_groups_remove_history_and_python(tmp_path, monkeypatch):

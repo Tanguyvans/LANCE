@@ -12,7 +12,8 @@ from uuid import uuid4
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+from src.agent.provider import validate_provider_choice
 from sse_starlette.sse import EventSourceResponse
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
@@ -55,9 +56,17 @@ _state_lock = threading.Lock()
 _MAX_RECENT_EVENTS = 200
 
 
-class StartRequest(BaseModel):
-    model: str = "google/gemini-2.0-flash-001"
-    provider: str = "openrouter"
+class ModelSelection(BaseModel):
+    model: str = Field(min_length=1)
+    provider: str = Field(min_length=1)
+
+    @field_validator("provider")
+    @classmethod
+    def supported_provider(cls, value: str) -> str:
+        return validate_provider_choice(value)
+
+
+class StartRequest(ModelSelection):
     scenario_id: str | None = None
     phases: list[int] | None = None
     auto_teardown: bool = True
@@ -388,10 +397,8 @@ def get_status():
     }
 
 
-class BatchRequest(BaseModel):
+class BatchRequest(ModelSelection):
     batch_ids: list[str]       # e.g. ["1", "2", "3"] or ["all"]
-    model: str = "google/gemini-2.0-flash-001"
-    provider: str = "openrouter"
     phases: list[int] | None = None
     blind: bool = False        # Deploy each scenario but hide topology from agent
     execution_profile: Literal["auto", "compact", "full"] = "auto"

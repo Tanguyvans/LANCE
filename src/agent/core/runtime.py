@@ -33,7 +33,7 @@ from src.agent.execution_profiles import (
     phase3_tool_names,
     resolve_execution_profile_for_model,
 )
-from src.agent.provider import LLMProvider
+from src.agent.provider import LLMProvider, validate_provider_choice
 from src.agent.results import prerequisite_status_allows_artifact, run_status
 from src.agent.artifacts import artifact_available
 from src.config import (
@@ -79,20 +79,16 @@ log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output/agent")
 
 def _resolve_model_provider(model: str) -> str:
-    """Resolve a model's provider from the registry, with legacy fallback."""
+    """Resolve phase overrides explicitly; never guess a provider from a name."""
     try:
         from src.db.database import get_model
 
         row = get_model(model)
-        if row and row.get("provider"):
-            return row["provider"]
-    except Exception:
-        pass
-
-    from src.agent.codex_app_server import is_codex_model
-    if is_codex_model(model):
-        return "codex"
-    return "minimax" if "/" not in model else "openrouter"
+    except Exception as exc:
+        raise ValueError(f"Cannot resolve provider for {model!r}: model registry unavailable") from exc
+    if row and row.get("provider"):
+        return validate_provider_choice(row["provider"])
+    raise ValueError(f"No provider registered for {model!r}; register the model before selecting it for a phase")
 
 def _build_intrusion_tools() -> list[dict]:
     """Extract bounded Phase 5 action tools from RECON_TOOLS."""

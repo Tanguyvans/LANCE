@@ -161,9 +161,6 @@ class CostTracker:
             current.tool_calls += tool_call_count
             current.turns += 1
 
-    def record_format_fallback(self) -> None:
-        """Record a structured-save attempt that required recovery."""
-        self.record_format_attempt(fallback_used=True)
 
     def record_format_attempt(self, fallback_used: bool = False) -> None:
         current = getattr(self._thread_local, "current", None)
@@ -174,9 +171,6 @@ class CostTracker:
             if fallback_used:
                 current.format_fallbacks += 1
 
-    def record_validation_failure(self) -> None:
-        """Record a failed validation attempt (legacy call-site helper)."""
-        self.record_validation_result(success=False)
 
     def record_validation_result(self, success: bool) -> None:
         current = getattr(self._thread_local, "current", None)

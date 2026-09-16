@@ -22,7 +22,6 @@ from src.agent.phases.analysis.compact import CompactAnalysisPhase
 from src.agent.phases.verification.run import VerificationPhase
 from src.agent.phases.intrusion.run import IntrusionPhase
 from src.agent.phases.report.run import ReportPhase
-from src.agent.phases.report.compact import CompactReportPhase
 from src.agent.core.runner import AgentRunner
 from src.agent.core.lifecycle import ScenarioLifecycle
 from src.agent.core.run_diagnostics import (
@@ -45,7 +44,6 @@ class Pipeline(
     IntrusionPhase,
     CompactIntrusionPhase,
     ReportPhase,
-    CompactReportPhase,
     AgentRunner,
     ScenarioLifecycle,
 ):

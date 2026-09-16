@@ -2,6 +2,10 @@
 
 La phase 6 est commune aux profils full et compact. Elle ne demande plus au
 modèle de résumer tous les résultats dans une seule réponse.
+L’ancien constructeur de contexte global et la classe compacte vide ont été
+retirés. Le rendu reconstruit toujours le rapport à partir des faits ; il ne
+fusionne plus un ancien rapport rédigé par le modèle avec des tableaux.
+La lecture des rapports historiques par le tableau de bord reste disponible.
 
 ## Composition
 
@@ -33,6 +37,21 @@ autres fiches peuvent être rédigées. Le statut de la phase est alors `partial
 Un arrêt ou un dépassement de budget conserve son statut propre ; une erreur
 d’assemblage ou de validation finale reste un échec.
 
+Une section tronquée (`finish_reason=length`) bénéficie d'une seule nouvelle
+tentative, depuis les mêmes faits et sans réinjecter le brouillon incomplet.
+Le plafond de sortie est doublé (au plus 8 192 tokens pour cette reprise, sans
+réduire un plafond initial supérieur). Les deux tentatives sont conservées dans
+l'instantané de la fiche. Les autres causes ne déclenchent pas cette reprise.
+Les arrêts, le budget financier et le délai global restent prioritaires.
+
+Pour les fournisseurs enregistrés sous `ollama` ou `ollama-*`, seule la rédaction
+de phase 6 demande `reasoning_effort=none`, selon le
+[contrat Ollama](https://docs.ollama.com/api/openai-compatibility).
+Le raisonnement des phases d'analyse, de vérification et d'intrusion reste
+inchangé, tout comme le profil full/compact. Aucun paramètre supplémentaire
+n'est imposé aux autres fournisseurs. Un serveur incompatible reste en erreur :
+la réponse n'est pas promue artificiellement et le réglage n'est pas ignoré en silence.
+
 Lors d’une nouvelle invocation de la phase 6 dans le même dossier de run, seules
 les fiches utilisables dont les sources, le prompt et le modèle sont identiques
 sont réutilisées. Les fiches en échec ou modifiées sont régénérées ; la synthèse
@@ -45,12 +64,20 @@ transforme pas un échec d’intrusion en succès et ne résout pas ses causes.
 
 ## Limites et consommation
 
-- Appels séquentiels sans outils, un appel par fiche non réutilisable.
+- Appels séquentiels sans outils, jusqu'à deux générations par fiche non
+  réutilisable, la seconde uniquement après troncature. Les reprises de transport
+  du fournisseur restent distinctes et bornées par le délai de l'appel.
 - Contexte limité à 24 000 octets par appel. Une fiche trop volumineuse conserve
   tous ses faits dans le rapport mais sa rédaction est signalée indisponible.
 - Les extraits de résultats d’outils sont bornés et signalés comme extraits ; les
   références renvoient toujours au journal complet.
-- Limite de sortie du profil conservée ; budget et tokens toujours comptabilisés.
+- Limite de sortie du profil conservée pour la première tentative ; reprise
+  bornée à un plafond supérieur. Toutes les consommations retournées par le
+  fournisseur sont comptabilisées, y compris celles des brouillons rejetés.
+- Chaque tentative conserve sa cause, son plafond de tokens, sa durée et les
+  compteurs de tokens disponibles. Le nombre de caractères de raisonnement et
+  de réponse visible aide au diagnostic ; le texte du raisonnement n'est pas
+  archivé. Un compteur absent reste inconnu, pas zéro.
 - `LANCE_REPORT_SECTION_TIMEOUT` : 45 secondes par appel par défaut.
 - `LANCE_LOCAL_MOE_REPORT_PHASE_TIMEOUT` : 600 secondes pour l’ensemble de la
   rédaction par défaut. Ce nom de configuration existant vaut pour les deux profils.
@@ -70,8 +97,10 @@ fiches déjà exploitables. Les délais peuvent être ajustés au fournisseur.
 | `06_report_analysis.md` | Synthèse courte, seulement si sa génération est exploitable. |
 | `06_report.md` | Rapport final déterministe. |
 
-Les instantanés sont un cache local au run, pas un historique immuable de chaque
-tentative. Les livrables et le journal d’outils originaux restent les sources.
+Les instantanés conservent les tentatives de la dernière génération de leur
+fiche ; une nouvelle invocation peut remplacer un instantané en échec. Ce n'est
+pas un historique immuable. Le cache tient compte des réglages de génération.
+Les livrables et le journal d’outils originaux restent les sources.
 
 ## Vérification locale
 
@@ -82,3 +111,11 @@ python -m pytest -q tests model_training/tests
 
 Les tests de rédaction utilisent des fournisseurs simulés : ils vérifient les
 frontières et les reprises, pas la qualité rédactionnelle réelle du modèle.
+
+Essai réel ciblé du 16 septembre 2026 : les neuf sections tronquées du run
+`2026-09-16_154821` ont été régénérées en mémoire avec `qwen3.8:27b` sur
+`ollama-umons`, `reasoning_effort=none` et 2 048 tokens. Les neuf appels se sont
+terminés avec `finish_reason=stop` et ont passé les contrôles de rédaction dès
+la première tentative. Aucun outil ni scénario n'a été relancé, aucun fichier
+du run historique n'a été remplacé. Cet essai n'est pas une validation d'un
+nouveau run S1 complet ni une garantie de qualité rédactionnelle.

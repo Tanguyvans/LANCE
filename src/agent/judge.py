@@ -13,7 +13,7 @@ from typing import Any
 
 import yaml
 
-from src.agent.provider import LLMProvider
+from src.agent.provider import LLMProvider, validate_provider_choice
 from src.benchmark.evaluator import _load_llm_findings
 
 PROMPT_VERSION = "2.0.0"
@@ -335,6 +335,7 @@ def _json_mode_unsupported(exc: Exception) -> bool:
 
 
 def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: str) -> dict:
+    validate_provider_choice(provider_name)
     gt_data = yaml.safe_load(gt_file.read_text(encoding="utf-8")) or {}
     if not isinstance(gt_data, dict):
         raise ValueError("Ground truth must be a YAML object")
@@ -359,7 +360,6 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
 
     provider = LLMProvider(provider=provider_name, model=model)
     max_tokens = min(16384, max(4096, 1024 + len(findings) * 320))
-    is_codex = provider.provider == "codex"
     input_tokens = output_tokens = 0
     finish_reason = None
     assessments = None
@@ -373,43 +373,29 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
                 "and verify that every finding appears exactly once before responding."
             )
 
-        if is_codex:
-            content = provider.chat_with_tools(
-                system_prompt=system_prompt,
-                user_message=user_message,
-                tools=[],
-                max_turns=1,
-                max_tokens=max_tokens,
-            ).strip()
-            input_tokens += int(provider.last_usage.get("input_tokens") or 0)
-            output_tokens += int(provider.last_usage.get("output_tokens") or 0)
-            finish_reason = "completed"
-            response = None
-        else:
-            request_args = {
-                "model": provider.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                "max_tokens": max_tokens,
-                "temperature": 0.0,
-                "response_format": {"type": "json_object"},
-            }
-            try:
-                response = provider.client.chat.completions.create(**request_args)
-            except Exception as exc:
-                if not _json_mode_unsupported(exc):
-                    raise
-                request_args.pop("response_format")
-                response = provider.client.chat.completions.create(**request_args)
-            content = response.choices[0].message.content.strip()
-            finish_reason = getattr(response.choices[0], "finish_reason", None)
+        request_args = {
+            "model": provider.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            response = provider.client.chat.completions.create(**request_args)
+        except Exception as exc:
+            if not _json_mode_unsupported(exc):
+                raise
+            request_args.pop("response_format")
+            response = provider.client.chat.completions.create(**request_args)
+        content = response.choices[0].message.content.strip()
+        finish_reason = getattr(response.choices[0], "finish_reason", None)
 
-        if not is_codex:
-            used_input, used_output = _usage_tokens(response)
-            input_tokens += used_input
-            output_tokens += used_output
+        used_input, used_output = _usage_tokens(response)
+        input_tokens += used_input
+        output_tokens += used_output
         try:
             assessments = _validate_assessments(_extract_json(content), gt, findings)
             break

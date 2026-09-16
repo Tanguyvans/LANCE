@@ -14,7 +14,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.agent.provider import LLMProvider
+from src.agent.provider import LLMProvider, validate_provider_choice
 from src.benchmark.artifacts import create_submission_bundle
 from src.benchmark.contracts import ChallengeContract, ContractError
 
@@ -32,7 +32,8 @@ def _load_contract(path: Path) -> ChallengeContract:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run an isolated sealed benchmark worker")
     parser.add_argument("--contract", required=True, type=Path)
-    parser.add_argument("--provider", default=os.environ.get("AGENT_PROVIDER", "openrouter"))
+    parser.add_argument("--provider", default=os.environ.get("AGENT_PROVIDER") or None,
+                        required=not bool(os.environ.get("AGENT_PROVIDER")))
     parser.add_argument("--model", default=os.environ.get("AGENT_MODEL"))
     parser.add_argument(
         "--execution-profile",
@@ -43,6 +44,10 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path(os.environ.get("WORKER_OUTPUT_DIR", "/work/output")))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    try:
+        validate_provider_choice(args.provider)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # The controller credential must stay in the trusted control plane.
     leaked_controller_vars = [

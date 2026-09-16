@@ -19,7 +19,7 @@ def test_selector_keeps_registry_models_and_excludes_removed_providers(tmp_path,
     def forbidden_catalog(*args, **kwargs):
         raise AssertionError("The selector must not query removed catalogs or pricing")
 
-    monkeypatch.setattr("src.agent.codex_app_server.get_codex_catalog", forbidden_catalog)
+    assert not (Path(__file__).resolve().parents[1] / "src/agent/codex_app_server.py").exists()
     monkeypatch.setattr("src.agent.pricing._load_openrouter_catalog", forbidden_catalog)
     monkeypatch.setattr("src.agent.pricing._load_pricing", forbidden_catalog)
     db.init_db()

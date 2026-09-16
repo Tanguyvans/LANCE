@@ -57,6 +57,8 @@ def test_truncated_card_does_not_abort_others_and_only_failed_card_is_retried(re
     assert "TRUNCATED-DRAFT" not in (p.run_dir / "06_report.md").read_text()
     rejected = sections.read_object(p.run_dir, m["sections"][1]["artifact"])
     assert rejected["draft"] == "TRUNCATED-DRAFT"
+    assert [a["cause"] for a in rejected["attempts"]] == ["memo_truncated"] * 2
+    assert [a["max_tokens"] for a in rejected["attempts"]] == [2048, 4096]
 
     p.provider.chat_with_tools.reset_mock()
     p.provider.chat_with_tools.side_effect = original
@@ -67,6 +69,102 @@ def test_truncated_card_does_not_abort_others_and_only_failed_card_is_retried(re
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"
     p.provider.chat_with_tools.assert_not_called()
+
+
+@pytest.mark.parametrize("profile", ["full", "compact"])
+def test_one_truncation_recovers_without_rewriting_other_cards(report_run, profile):
+    p = report_run(profile, "ok")
+    original = p.provider.chat_with_tools.side_effect
+    counts = Counter()
+    sources = {name: (p.run_dir / name).read_bytes() for name in
+               ("03_vuln_analysis.json", "04_exploitation.json", "05_intrusion.json")}
+    def generate(**kw):
+        key = prompt_card(kw)["key"]
+        counts[key] += 1
+        if key == "finding-0001":
+            kw["cost_tracker"].record_turn(20, 10)
+            kw["completion_metadata"].update(finish_reason="length" if counts[key] == 1 else "stop",
+                                               output_tokens=10, reasoning_tokens=None, reasoning_chars=0)
+            return "REJECTED-DRAFT" if counts[key] == 1 else "Review the linked evidence."
+        return original(**kw)
+    p.provider.chat_with_tools.side_effect = generate
+    assert run_phase(p, AGENTS["report"]) == "completed"
+    assert counts == {"finding-0001": 2, "finding-0002": 1, "intrusion-limits": 1, "summary": 1}
+    calls = p.provider.chat_with_tools.call_args_list
+    assert [c.kwargs["max_tokens"] for c in calls[:2]] == [p.execution_profile.report_max_tokens, p.execution_profile.report_max_tokens * 2]
+    assert calls[0].kwargs["system_prompt"] == calls[1].kwargs["system_prompt"]
+    assert "REJECTED-DRAFT" not in (p.run_dir / "06_report.md").read_text()
+    entry = manifest(p)["sections"][0]
+    record = sections.read_object(p.run_dir, entry["artifact"])
+    assert entry["attempt_count"] == 2
+    assert [a["cause"] for a in record["attempts"]] == ["memo_truncated", "none"]
+    assert p.tracker.total_tokens() == (1540, 140)
+    assert all((p.run_dir / name).read_bytes() == data for name, data in sources.items())
+    p.provider.chat_with_tools.reset_mock()
+    assert run_phase(p, AGENTS["report"]) == "completed"
+    p.provider.chat_with_tools.assert_not_called()
+
+
+@pytest.mark.parametrize("guard", ["budget", "stop", "deadline"])
+def test_truncation_recovery_respects_run_guards(report_run, monkeypatch, guard):
+    import importlib
+    from src.agent.cost_tracker import BudgetExceeded
+    module = importlib.import_module("src.agent.phases.report.run")
+    p = report_run("full", "ok")
+    clock = {"now": 1.0}
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock["now"])
+    def generate(**kw):
+        kw["completion_metadata"]["finish_reason"] = "length"
+        if guard == "stop":
+            p._stop_event.set()
+        elif guard == "deadline":
+            clock["now"] = 10_000
+        else:
+            def fail_budget():
+                raise BudgetExceeded("test budget exhausted")
+            monkeypatch.setattr(p.tracker, "check_budget", fail_budget)
+        return "REJECTED-DRAFT"
+    p.provider.chat_with_tools.side_effect = generate
+    if guard == "budget":
+        with pytest.raises(BudgetExceeded):
+            run_phase(p, AGENTS["report"])
+    else:
+        assert run_phase(p, AGENTS["report"]) == ("stopped" if guard == "stop" else "partial:timeout")
+    assert p.provider.chat_with_tools.call_count == 1
+    assert "REJECTED-DRAFT" not in (p.run_dir / "06_report.md").read_text()
+
+
+def test_retry_provider_failure_stays_partial_and_keeps_first_attempt(report_run):
+    p = report_run("full", "ok")
+    original = p.provider.chat_with_tools.side_effect
+    count = 0
+    def generate(**kw):
+        nonlocal count
+        if prompt_card(kw)["key"] != "finding-0001":
+            return original(**kw)
+        count += 1
+        if count == 1:
+            kw["completion_metadata"]["finish_reason"] = "length"
+            return "REJECTED-DRAFT"
+        raise RuntimeError("provider unavailable")
+    p.provider.chat_with_tools.side_effect = generate
+    assert run_phase(p, AGENTS["report"]) == "partial:provider_error"
+    entry = manifest(p)["sections"][0]
+    record = sections.read_object(p.run_dir, entry["artifact"])
+    assert record["attempts"][0]["draft"] == "REJECTED-DRAFT"
+    assert record["attempts"][1]["error_kind"] == "RuntimeError"
+    assert entry["finish_reason"] is None
+    assert count == 2
+
+
+def test_generation_settings_invalidate_cache(report_run):
+    from dataclasses import replace
+    p = report_run("full", "ok")
+    assert run_phase(p, AGENTS["report"]) == "completed"
+    p.execution_profile = replace(p.execution_profile, report_max_tokens=1024)
+    p.provider.chat_with_tools.reset_mock()
+    assert run_phase(p, AGENTS["report"]) == "completed"
+    assert p.provider.chat_with_tools.call_count == 4
 
 
 def test_changed_source_invalidates_only_its_card(report_run):

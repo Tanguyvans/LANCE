@@ -2,14 +2,14 @@ import json
 
 import pytest
 
-from src.agent.phases.report.context import build_report_analysis_context, REPORT_CONTEXT_MAX_BYTES
+from src.agent.phases.report.sections import build_cards, section_prompt, CONTEXT_MAX_BYTES
 
 
 def test_empty_cve_inventory_does_not_hide_recorded_searches(tmp_path):
     ledger = tmp_path / "tool_calls.jsonl"
     ledger.write_text('\n'.join(json.dumps({"tool": "cve_search", "result": []}) for _ in range(13)))
     before = ledger.read_bytes()
-    context = build_report_analysis_context(tmp_path)
+    _, context = build_cards(tmp_path)
     assert context["execution_facts"]["cve_search_calls"] == 13
     assert context["execution_facts"]["recorded_calls"] == 13
     assert ledger.read_bytes() == before
@@ -19,7 +19,8 @@ def test_empty_cve_inventory_does_not_hide_recorded_searches(tmp_path):
 def test_missing_or_malformed_ledger_is_not_zero_searches(tmp_path, contents):
     if contents is not None:
         (tmp_path / "tool_calls.jsonl").write_text(contents)
-    facts = build_report_analysis_context(tmp_path)["execution_facts"]
+    _, context = build_cards(tmp_path)
+    facts = context["execution_facts"]
     assert facts["ledger_readable"] is False
     assert facts["cve_search_calls"] is None
 
@@ -30,13 +31,14 @@ def test_indeterminate_targets_and_reasons_are_bounded_context_not_confirmations
               "evidence": "No application exchange observed. " * 200} for i in range(20)]
     path = tmp_path / "04_exploitation.json"
     path.write_text(json.dumps({"tests": tests}))
+    (tmp_path / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": [
+        {"id": t["vuln_id"], "device_ip": t["device_ip"]} for t in tests
+    ]}))
     before = path.read_bytes()
-    context = build_report_analysis_context(tmp_path)
-    assert len(context["unresolved_tests"]) == 12
-    assert context["omissions"]["unresolved_tests"] == 8
-    assert context["unresolved_tests"][0]["service"] == "mqtt-ws"
-    assert context["phase6"] == {}
-    assert context["intrusion"] == {}
+    cards, summary = build_cards(tmp_path)
+    findings = [c for c in cards if c["kind"] == "finding"]
+    assert len(findings) == 20  # No global inventory cutoff.
+    assert findings[0]["facts"]["tests"][0]["record"]["service"] == "mqtt-ws"
+    assert summary["recorded_verification_states"] == {"inconclusive": 20}
     assert path.read_bytes() == before
-    size = len(json.dumps(context, ensure_ascii=False, separators=(",", ":")).encode())
-    assert context["bounds"]["serialized_bytes"] == size <= REPORT_CONTEXT_MAX_BYTES
+    assert all(len(section_prompt(card).encode()) <= CONTEXT_MAX_BYTES for card in findings)

@@ -16,7 +16,8 @@ from uuid import uuid4
 import yaml
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from src.agent.provider import validate_provider_choice
 
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
 from src.benchmark.strict_v3 import matching_contract_path
@@ -813,6 +814,11 @@ def score_run(run_id: str):
 class LLMJudgeRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     provider: str = Field(min_length=1, max_length=50, pattern=r"^[A-Za-z0-9._-]+$")
+
+    @field_validator("provider")
+    @classmethod
+    def supported_provider(cls, value: str) -> str:
+        return validate_provider_choice(value)
 
 @router.post("/{run_id}/evaluate/llm")
 def evaluate_run_llm(run_id: str, request: LLMJudgeRequest):

@@ -55,7 +55,7 @@ def test_validated_one_to_one_metrics_penalize_duplicates():
 
     validated = judge._validate_assessments(parsed, gt, findings)
     result = judge._build_result(
-        validated, gt, findings, model="judge-model", provider="openrouter"
+        validated, gt, findings, model="judge-model", provider="test-cloud"
     )
 
     assert result["true_positives"] == 1
@@ -168,7 +168,7 @@ def test_evaluate_sends_evidence_and_records_provenance(tmp_path, monkeypatch):
             return response
 
     class FakeProvider:
-        provider = "openrouter"
+        provider = "test-cloud"
         model = "openai/gpt-4o"
         client = SimpleNamespace(
             chat=SimpleNamespace(completions=FakeCompletions())
@@ -179,14 +179,14 @@ def test_evaluate_sends_evidence_and_records_provenance(tmp_path, monkeypatch):
 
     monkeypatch.setattr(judge, "LLMProvider", FakeProvider)
     result = judge.evaluate_with_llm(
-        tmp_path, gt_file, "openai/gpt-4o", "openrouter"
+        tmp_path, gt_file, "openai/gpt-4o", "test-cloud"
     )
 
     user_message = captured["messages"][1]["content"]
     assert "CONNACK return_code=0" in user_message
     assert "CONNACK succeeds" in user_message
     assert "UNTRUSTED DATA" in captured["messages"][0]["content"]
-    assert result["provider"] == "openrouter"
+    assert result["provider"] == "test-cloud"
     assert result["prompt_version"] == judge.PROMPT_VERSION
     assert len(result["prompt_sha256"]) == 64
     assert result["input_tokens"] == 100
@@ -244,7 +244,7 @@ def test_invalid_first_response_is_regenerated_once(tmp_path, monkeypatch):
             return responses.pop(0)
 
     class FakeProvider:
-        provider = "openrouter"
+        provider = "test-cloud"
         model = "openai/gpt-4o"
         client = SimpleNamespace(
             chat=SimpleNamespace(completions=FakeCompletions())
@@ -255,7 +255,7 @@ def test_invalid_first_response_is_regenerated_once(tmp_path, monkeypatch):
 
     monkeypatch.setattr(judge, "LLMProvider", FakeProvider)
     result = judge.evaluate_with_llm(
-        tmp_path, gt_file, "openai/gpt-4o", "openrouter"
+        tmp_path, gt_file, "openai/gpt-4o", "test-cloud"
     )
 
     assert len(calls) == 2

@@ -27,7 +27,6 @@ def test_both_profiles_use_the_phase_entry(profile, phase):
         _uses_compact_local_moe=Mock(return_value=profile == "compact"),
         _run_local_report_phase=Mock(return_value="completed:local"),
         _update_run_meta=Mock(),
-        _merge_report_with_prefill=Mock(),
     )
     config = SimpleNamespace(phase=phase)
     callback = Mock()
@@ -39,7 +38,6 @@ def test_both_profiles_use_the_phase_entry(profile, phase):
     else:
         context._run_agent.assert_called_once_with(config, callback)
         context._run_local_report_phase.assert_not_called()
-    assert context._merge_report_with_prefill.call_count == int(phase == 6 and not local_report)
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])
@@ -50,12 +48,10 @@ def test_report_profiles_share_the_bounded_entry(profile):
         _run_agent=Mock(side_effect=RuntimeError("old report path must not run")),
         _run_local_report_phase=Mock(return_value="partial:provider_error"),
         _update_run_meta=Mock(),
-        _merge_report_with_prefill=Mock(),
     )
     assert run_phase(context, SimpleNamespace(phase=6)) == "partial:provider_error"
     context._run_local_report_phase.assert_called_once()
     context._run_agent.assert_not_called()
-    context._merge_report_with_prefill.assert_not_called()
 
 
 @pytest.mark.parametrize("method,module", [
@@ -95,19 +91,23 @@ def test_full_report_uses_the_same_bounded_entry():
         _run_agent=Mock(return_value="completed"),
         _run_local_report_phase=Mock(return_value="completed"),
         _update_run_meta=Mock(),
-        _merge_report_with_prefill=Mock(),
     )
     assert run_phase(context, SimpleNamespace(phase=6)) == "completed"
     context._uses_compact_local_moe.assert_not_called()
     context._run_local_report_phase.assert_called_once()
     context._run_agent.assert_not_called()
-    context._merge_report_with_prefill.assert_not_called()
 
 
-@pytest.mark.parametrize("phase", ["graph", "recon", "analysis", "intrusion", "report"])
+@pytest.mark.parametrize("phase", ["graph", "recon", "analysis", "intrusion"])
 def test_compact_modules_only_define_adaptations(phase):
     module = import_module(f"src.agent.phases.{phase}.compact")
     assert not hasattr(module, "run")
+
+
+def test_report_has_no_empty_profile_shim_or_global_prompt_builder():
+    assert not hasattr(Pipeline, "_build_local_report_analysis_context")
+    assert not hasattr(Pipeline, "_merge_report_with_prefill")
+    assert not (Path(__file__).resolve().parents[1] / "src/agent/phases/report/compact.py").exists()
 
 
 @pytest.mark.parametrize("folder", ["shared", "full", "compact"])

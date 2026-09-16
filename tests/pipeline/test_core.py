@@ -15,13 +15,22 @@ from src.agent.registry import AgentConfig
 def test_resolve_model_provider_uses_registry(monkeypatch):
     monkeypatch.setattr(
         "src.db.database.get_model",
-        lambda model: {"provider": "local-moe"} if model == "lance-moe" else None,
+        lambda model: {"provider": {"lance-moe": "local-moe", "MiniMax-M2.7": "minimax"}[model]}
+        if model in {"lance-moe", "MiniMax-M2.7"} else None,
     )
 
     assert _resolve_model_provider("lance-moe") == "local-moe"
     assert _resolve_model_provider("MiniMax-M2.7") == "minimax"
-    assert _resolve_model_provider("openai/gpt-4o") == "openrouter"
-    assert _resolve_model_provider("gpt-5.6-sol") == "codex"
+    for unknown in ("openai/gpt-4o", "gpt-5.6-sol", "unregistered-local-model"):
+        with pytest.raises(ValueError, match="No provider registered"):
+            _resolve_model_provider(unknown)
+
+
+@pytest.mark.parametrize("provider", ["codex", "openrouter", "anthropic"])
+def test_phase_override_cannot_reenable_removed_provider(monkeypatch, provider):
+    monkeypatch.setattr("src.db.database.get_model", lambda _: {"provider": provider})
+    with pytest.raises(ValueError, match="no longer supported"):
+        _resolve_model_provider("historical-model")
 
 
 def test_local_memo_guard_rejects_placeholders_and_empty_evidence_blocks():

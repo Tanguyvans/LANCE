@@ -362,7 +362,7 @@ def test_dashboard_start_accepts_public_variant(monkeypatch):
 
     monkeypatch.setattr(route.threading, "Thread", NoopThread)
     route._state["running"] = False
-    request = route.StartRequest(scenario_id="S1h")
+    request = route.StartRequest(model="offline-test", provider="local", scenario_id="S1h")
     try:
         response = asyncio.run(route.start_pipeline(request))
         assert response == {"status": "started"}
@@ -387,7 +387,7 @@ def test_dashboard_start_accepts_public_test_scenario(monkeypatch):
 
     monkeypatch.setattr(route.threading, "Thread", NoopThread)
     route._state["running"] = False
-    request = route.StartRequest(scenario_id="20")
+    request = route.StartRequest(model="offline-test", provider="local", scenario_id="20")
     try:
         assert asyncio.run(route.start_pipeline(request)) == {"status": "started"}
         assert request.scenario_id == "20"
@@ -430,7 +430,7 @@ def test_dashboard_rejects_start_while_teardown_is_running():
     })
     try:
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(route.start_pipeline(route.StartRequest()))
+            asyncio.run(route.start_pipeline(route.StartRequest(model="offline-test", provider="local")))
         assert exc.value.status_code == 409
         assert "teardown" in str(exc.value.detail).lower()
     finally:

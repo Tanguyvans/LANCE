@@ -27,7 +27,7 @@ def test_related_report_declarations_keep_original_predictions_and_proofs(tmp_pa
     assert "possible duplicates" in rendered
     generate_phase6_context(tmp_path, {"device_count": 1}, compact=False)
     render_deterministic_report(
-        tmp_path, {"device_count": 1}, model="offline", validate_report=lambda _: (True, "ok"),
+        tmp_path, {"device_count": 1}, model="offline",
         analysis_status="absent", analysis_cause="memo_absent",
     )
     assert "V1" in (tmp_path / "06_report.md").read_text()
