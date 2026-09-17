@@ -2839,6 +2839,9 @@ function renderBenchmarkTable() {
   const model = modelEl?.value || '';
   const rows = (_bmData || []).filter(r => (!scenario || r.scenario === scenario) && (!model || r.model === model));
   const tbody = document.getElementById('bm-tbody');
+  // Park the persistent panel before replacing the rows that may contain it.
+  const panel = document.getElementById('bm-selected-run');
+  if (panel) document.getElementById('bm-panel-home')?.appendChild(panel);
   if (_bmOpenRunId == null) _bmOpenRunId = _bmReadStoredOpenRun();
   if (_bmOpenRunId != null && !rows.some(r => String(r.id) === String(_bmOpenRunId))) _bmOpenRunId = null;
   tbody.innerHTML = rows.map(r => {
@@ -2865,13 +2868,13 @@ function renderBenchmarkTable() {
       + (s.cost_is_estimate === true ? '<small>Coût estimé</small>' : '') + `</div></td>`
       + `<td><button type="button" class="bm-details-btn" data-bm-details="${runId}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="bm-selected-run">${open ? 'Sélectionné' : 'Consulter'}</button></td>`
       + `</tr>`;
-    return mainRow;
+    return mainRow + (open ? '<tr class="bm-details-row"><td colspan="8"><div id="bm-inline-details"></div></td></tr>' : '');
   }).join('');
-  const panel = document.getElementById('bm-selected-run');
   const selected = rows.find(r => String(r.id) === String(_bmOpenRunId));
   if (panel) {
     panel.hidden = !selected;
     panel.innerHTML = selected ? renderBenchmarkDetails(selected, selected.score || {}, isSealedRun(selected)) : '';
+    if (selected) document.getElementById('bm-inline-details')?.appendChild(panel);
     panel.querySelectorAll('[data-bm-tab]').forEach(button => {
       button.addEventListener('click', () => selectBenchmarkTab(button.dataset.bmTab));
       button.addEventListener('keydown', event => {

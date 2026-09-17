@@ -1,7 +1,7 @@
 """Details-toggle behavior for the compact benchmark comparison table.
 
 The comparison row stays compact (8 columns, one Details control per run);
-investigation happens in a single full-width panel outside the comparison table.
+Investigation happens in one tabbed row immediately after the selected run.
 """
 import json
 import shutil
@@ -47,7 +47,8 @@ def test_benchmark_details_rendering_contracts():
     assert "data-bm-details=" in renderer
     assert "aria-expanded=" in renderer
     assert "aria-controls=" in renderer
-    assert 'bm-details-row' not in renderer
+    assert '<tr class="bm-details-row"><td colspan="8">' in renderer
+    assert "return mainRow + (open ?" in renderer
     assert 'role="tablist"' in renderer
     assert 'role="tabpanel"' in renderer
     # Exactly one open panel at a time, retained across benign refresh.
@@ -143,7 +144,9 @@ assert(html.includes('Failles retenues</th><td>4</td>'));
 assert(html.includes('Confirmations déclarées</th><td>2</td>'));
 assert(html.includes('Vérification et preuves'));
 assert(html.includes('Consommation'));
-assert(!elements['bm-tbody'].innerHTML.includes('role="tabpanel"'), 'panels stay outside comparison rows');
+assert((elements['bm-tbody'].innerHTML.match(/class="bm-details-row"/g) || []).length === 1);
+assert(elements['bm-tbody'].innerHTML.indexOf('data-bm-details="run_a"') < elements['bm-tbody'].innerHTML.indexOf('class="bm-details-row"'));
+assert(elements['bm-tbody'].innerHTML.indexOf('class="bm-details-row"') < elements['bm-tbody'].innerHTML.indexOf('data-bm-details="run_b"'), 'details directly precede the next run');
 assert((elements['bm-selected-run'].innerHTML.match(/role="tabpanel"/g) || []).length === 4);
 assert((elements['bm-selected-run'].innerHTML.match(/tabindex="0" hidden/g) || []).length === 3);
 context.selectBenchmarkTab('proofs');
@@ -157,6 +160,7 @@ assert(elements['bm-selected-run'].innerHTML.includes('data-bm-tab="proofs" aria
 context.toggleBenchmarkDetails('run_b');
 html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(elements['bm-selected-run'].innerHTML.includes('data-bm-tab="audit" aria-selected="true"'));
+assert(elements['bm-tbody'].innerHTML.indexOf('data-bm-details="run_b"') < elements['bm-tbody'].innerHTML.indexOf('class="bm-details-row"'));
 assert((html.match(/role="tablist"/g) || []).length === 1);
 assert(html.includes(`id="${context.bmDetailsPanelId('run_b')}-audit"`));
 assert(!elements['bm-selected-run'].innerHTML.includes(context.bmDetailsPanelId('run_a')));
