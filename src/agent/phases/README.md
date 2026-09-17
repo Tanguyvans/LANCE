@@ -19,7 +19,7 @@ agent/
 │   └── memo.py                 # Contrôles structurels des mémos Markdown
 └── phases/
     ├── registry.py             # Routage par numéro de phase, pas par profil
-    ├── graph/                  # Phase 1 : run.py, compact.py
+    ├── graph/                  # Phase 1 : run.py, compact.py, recovery.py
     ├── recon/                  # Phase 2 : run.py, compact.py
     ├── analysis/               # Phase 3 : run, compact, aggregation, evidence, prompts
     ├── verification/           # Phase 4 : run, contract, evidence, prompts

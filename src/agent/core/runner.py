@@ -13,7 +13,11 @@ from src.agent.core.provider_diagnostics import (
     sanitize_event,
     warn_diagnostic_failure,
 )
-from src.agent.artifacts import is_private_agent_artifact_path, resolve_run_artifact
+from src.agent.artifacts import (
+    is_private_agent_artifact,
+    is_private_agent_artifact_path,
+    resolve_run_artifact,
+)
 from src.agent.tools.deliverable import bind_deliverable_tool
 
 
@@ -261,6 +265,23 @@ class AgentRunner:
             )
             tools = [tool for tool in tools if tool.get("name") != "save_deliverable"]
         tools = self._apply_deliverable_transaction(tools, config, stream_callback)
+        # Full-profile Phase 1 keeps its autonomous report composition, but a
+        # provider output truncation (finish_reason=length) with no validated
+        # save is recoverable from the recorded graph observations. Compact
+        # mode keeps its deterministic rendering and never enters this path.
+        full_graph = (
+            config.name == "graph_analysis"
+            and self.execution_profile.name == "full"
+            and not self._uses_compact_local_moe()
+        )
+        graph_completion: dict = {}
+        if full_graph:
+            # The provider records each response's finish_reason before
+            # executing that response's tool calls, so the gate sees the
+            # proposing response: a truncated response's save is rejected
+            # before the transaction (never archived, promoted, or
+            # validated), while every other save passes through untouched.
+            tools = self._apply_truncated_save_gate(tools, graph_completion)
         if local_intrusion_memo:
             tools = self._apply_compact_intrusion_tool_contract(
                 tools, phase=config.phase, agent=config.name
@@ -460,6 +481,9 @@ class AgentRunner:
                 # save-only cycle guard can otherwise deadlock it after an early save.
                 repeat_guard=config.name != "recon",
                 stop_event=self._stop_event,
+                # Caller-owned truncation metadata is only needed for the
+                # full-profile Phase 1 recovery gate below.
+                **({"completion_metadata": graph_completion} if full_graph else {}),
             )
         except Exception as exc:
             if not local_intrusion_memo:
@@ -493,11 +517,51 @@ class AgentRunner:
             if recovered_compact_recon:
                 valid, msg = validator_fn(config.deliverable_file)
 
-        status = (
-            "completed:synthesized"
-            if recovered_compact_recon
-            else ("completed" if valid else f"failed:{msg}")
-        )
+        recovered_full_graph = False
+        graph_recovery_stopped = False
+        if not valid and full_graph:
+            # Budget exhaustion keeps its original cause: it propagates to
+            # the run so the outcome is budget_exceeded, never truncation.
+            recovered_full_graph, full_graph_recovery_error = (
+                self._recover_truncated_full_graph(
+                    config, tools, stream_callback,
+                    completion=graph_completion,
+                )
+            )
+            if recovered_full_graph:
+                valid, msg = validator_fn(config.deliverable_file)
+                if not valid:
+                    recovered_full_graph = False
+                    full_graph_recovery_error = (
+                        f"failed: recovered file failed revalidation: {msg}"
+                    )
+            if not recovered_full_graph:
+                if full_graph_recovery_error.startswith("stopped:"):
+                    # A stop aborts recovery with its own cause: never a
+                    # truncation diagnosis and never a success.
+                    graph_recovery_stopped = True
+                    msg = full_graph_recovery_error
+                elif full_graph_recovery_error.startswith("failed:"):
+                    # Recovery was attempted after an observed truncation and
+                    # failed: report the explicit truncation cause instead of
+                    # only the missing-file diagnosis.
+                    msg = (
+                        "truncated_output: full Phase 1 graph response truncated "
+                        "(finish_reason=length) with no validated save; bounded "
+                        "save-only recovery failed: "
+                        f"{full_graph_recovery_error[len('failed:'):].strip()}"
+                    )
+
+        if recovered_full_graph:
+            status = "completed:recovered"
+        elif graph_recovery_stopped:
+            status = "stopped"
+        else:
+            status = (
+                "completed:synthesized"
+                if recovered_compact_recon
+                else ("completed" if valid else f"failed:{msg}")
+            )
         if full_intrusion and self._stop_event is not None and self._stop_event.is_set():
             status = "stopped"
         # Compact reconciliation keeps its existing completion contract.
@@ -674,19 +738,21 @@ class AgentRunner:
         return "\n".join(lines)
 
     def _list_previous_deliverables(self) -> str:
-        """List available deliverables for prompt variable."""
+        """List available deliverables for prompt variable.
+
+        Visibility matches the deliverable-tool boundary in
+        :mod:`src.agent.artifacts`: the same predicate hides laboratory
+        setup/verification internals here so the prompt listing cannot drift
+        from what ``read_deliverable`` refuses.
+        """
         if not self.run_dir.exists():
             return "None (first phase)"
-        private_names = {
-            "run_meta.json", "run_error.json", "scenario_meta.json",
-            "evaluation.json", "evaluation_summary.json",
-        }
         files = sorted(
             f.name for f in self.run_dir.glob("*")
             if (
                 f.is_file()
                 and not f.name.startswith(".")
-                and f.name not in private_names
+                and not is_private_agent_artifact(f.name)
                 and not is_private_agent_artifact_path(f)
             )
         )

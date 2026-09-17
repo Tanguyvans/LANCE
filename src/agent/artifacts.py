@@ -22,15 +22,35 @@ def resolve_run_artifact(output_dir: Path, filename: str) -> Path:
 PRIVATE_AGENT_ARTIFACT_NAMES: frozenset[str] = frozenset({
     "ground_truth.yaml",
     "provider_events.jsonl",
+    # Run-control sidecars: lab configuration and post-run scoring inputs.
+    # The pipeline and the operator API keep reading them directly from disk;
+    # only agent-facing tool access is denied here.
+    "scenario_meta.json",
+    "run_meta.json",
+    "run_error.json",
+    "evaluation.json",
+    "evaluation_summary.json",
 })
+
+_LAB_LOG_PREFIX = "ansible_"
+_LAB_LOG_SUFFIX = ".log"
 
 
 def is_private_agent_artifact(path: str | Path) -> bool:
-    """Return whether a path names an artifact private to the agent runtime."""
+    """Return whether a path names an artifact private to the agent runtime.
+
+    Besides the exact control filenames above, laboratory setup/verification
+    logs (``ansible_<playbook>.log``) are private as a class: they record the
+    injected vulnerabilities and verification checks, so every playbook log is
+    covered without enumerating playbook names.
+    """
     try:
-        return Path(path).name in PRIVATE_AGENT_ARTIFACT_NAMES
+        name = Path(path).name
     except (TypeError, ValueError):
         return False
+    if name in PRIVATE_AGENT_ARTIFACT_NAMES:
+        return True
+    return name.startswith(_LAB_LOG_PREFIX) and name.endswith(_LAB_LOG_SUFFIX)
 
 
 def is_private_agent_artifact_path(path: str | Path) -> bool:

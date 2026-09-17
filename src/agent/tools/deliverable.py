@@ -167,6 +167,12 @@ def aggregate_device_results(pattern: str = "03_device_*.json", *, output_dir: P
     for f in sorted(output_dir.glob(pattern)):
         try:
             safe_path = _resolve_deliverable_path(f.name, output_dir=output_dir)
+        except ValueError:
+            # Private laboratory internals and escaping symlinks stay
+            # invisible: skipping keeps the aggregate from confirming whether
+            # such a file even exists.
+            continue
+        try:
             data = json.loads(_extract_json(safe_path.read_text(encoding="utf-8")))
             if isinstance(data, list):
                 results.extend(data)

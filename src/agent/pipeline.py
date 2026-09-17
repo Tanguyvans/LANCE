@@ -14,6 +14,7 @@ from src.agent.core import runtime
 from src.agent.phases.registry import run_phase
 from src.agent.phases.graph.run import GraphPhase
 from src.agent.phases.graph.compact import CompactGraphPhase
+from src.agent.phases.graph.recovery import GraphRecoveryPhase
 from src.agent.phases.recon.run import ReconPhase
 from src.agent.phases.recon.compact import CompactReconPhase
 from src.agent.phases.analysis.run import AnalysisPhase
@@ -35,6 +36,7 @@ from src.agent.cost_tracker import BudgetExceeded
 class Pipeline(
     GraphPhase,
     CompactGraphPhase,
+    GraphRecoveryPhase,
     ReconPhase,
     CompactReconPhase,
     AnalysisPhase,

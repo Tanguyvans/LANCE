@@ -90,10 +90,36 @@ Ne pas partager des fonctions d'outils déjà liées entre deux runs.
   d'un autre run ne peut pas la remplacer.
 - Les chemins absolus, les traversées vers un autre dossier et les liens
   symboliques existants qui en sortent sont refusés, y compris pour les tentatives.
-- Les outils continuent de masquer la vérité terrain et `provider_events.jsonl`.
+- Les outils masquent la vérité terrain, `provider_events.jsonl` et les
+  internes du laboratoire (`scenario_meta.json`, `run_meta.json`,
+  `run_error.json`, `evaluation.json`, `evaluation_summary.json`, `ansible_*.log`) : voir la section
+  « Visibilité des internes du laboratoire » ci-dessous.
 - Les appels d'outils conservent leur journal, leurs références et leurs contrôles.
 - Une structure valide ne constitue pas une preuve de faille, d'accès ou de pivot.
 - Full/compact, budgets, scores et versions des contrats d'évaluation sont inchangés.
+
+## Visibilité des internes du laboratoire
+
+Les journaux Ansible (`ansible_<playbook>.log`), `scenario_meta.json` et les
+autres sidecars de contrôle (`run_meta.json`, `run_error.json`,
+`evaluation.json`, `evaluation_summary.json`) restent sur disque pour le
+diagnostic opérateur et l'API, qui les lisent par chemin direct.
+
+Côté agent, la frontière est appliquée dans le code, pas dans les prompts :
+
+- `agent/artifacts.py` (`is_private_agent_artifact`) refuse les noms exacts
+  et toute la classe `ansible_*.log`, sans énumérer les playbooks ;
+  `is_private_agent_artifact_path` applique la même règle à la cible résolue,
+  ce qui bloque les alias par lien symbolique.
+- `agent/tools/deliverable.py` refuse ces fichiers en lecture, écriture et
+  listage ; `aggregate_device_results` les ignore silencieusement pour ne pas
+  confirmer leur existence.
+- `agent/core/runner.py` (`previous_deliverables`) réutilise le même prédicat
+  pour que l'invite ne propose jamais ce que les outils refusent.
+
+Les livrables légitimes des phases (`01_*`, `02_*`, `03_device_*`,
+`05_intrusion_context.json`, …) restent lisibles. Aucun score ni vérité
+terrain n'est modifié par cette frontière.
 
 ## Diagnostic des erreurs de vérification
 
