@@ -143,7 +143,7 @@ assert((html.match(/class="bm-stage-count">Failles /g) || []).length === 2);
 assert((html.match(/class="bm-stage-count">Déclarations /g) || []).length === 1);
 assert(html.includes('VP 1 · FP 1 · FN 0'));
 assert(html.includes('3/4 hypothèses testées'));
-assert(html.includes('indéterminées 1'));
+assert(html.includes('Non concluantes 1'));
 assert(html.includes('Failles réelles écartées au filtrage : 1'));
 assert(html.includes('Coût $0'));
 assert(html.includes('Tokens 0'));
@@ -151,8 +151,9 @@ assert(html.includes('&lt;model&gt;'));
 assert(!html.includes('<model>'));
 assert((html.match(/bm-final-metrics/g) || []).length === 1);
 assert(html.includes('<strong>F1 final 50 %</strong>'));
-assert(html.includes('Terminé avec réserves'));
-assert(html.includes('Vérification incomplète (1 indéterminée, 1 non testée)'));
+assert(html.includes('>Terminé</span>'));
+assert(!html.includes('Vérification incomplète'));
+assert(html.includes('Non testées 1'));
 
 const queueCoverage = context.renderVerificationCoverage({...funnel,
   stages: {...funnel.stages, filtered: {...funnel.stages.filtered, predictions: 2}},
@@ -183,14 +184,14 @@ context._bmData = [{...row, score: {...score, funnel: completeFunnel,
 context.renderBenchmarkTable();
 html = elements['bm-tbody'].innerHTML;
 assert(html.includes('Analyse partielle (3/4 analysés, 1 en échec)'));
-assert(html.includes('Terminé avec réserves'));
+assert(html.includes('Terminé avec incidents techniques'));
 assert(html.includes('evidence-v8'));
 assert(html.includes('evidence-v10'));
 assert(row.status === 'done');
 
 context._bmData = [{...row, score: {...score, funnel: completeFunnel}}];
 context.renderBenchmarkTable();
-assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec réserves'));
+assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec incidents techniques'));
 assert(elements['bm-tbody'].innerHTML.includes('run-badge done'));
 
 context._bmData = [{...row, completion: {phase6_status: 'partial:memo_truncated', phase6_cause: 'memo_truncated'},
@@ -201,7 +202,7 @@ assert(elements['bm-tbody'].innerHTML.includes('Rapport partiel — note tronqu�
 for (const status of ['failed', 'running', 'stopped', 'partial']) {
   context._bmData = [{...row, status}];
   context.renderBenchmarkTable();
-  assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec réserves'));
+  assert(!elements['bm-tbody'].innerHTML.includes('Terminé avec incidents techniques'));
   assert(elements['bm-tbody'].innerHTML.includes(`run-badge ${status}`));
 }
 

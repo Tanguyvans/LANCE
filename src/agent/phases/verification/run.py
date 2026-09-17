@@ -18,8 +18,10 @@ from src.agent.phases.verification.evidence import (
     _exploit_relpath,
     _make_test_entry,
     _tool_records_for_vuln,
+    verification_attempted,
 )
 from src.agent.core import runtime
+from src.agent.report_evidence import verification_state
 
 
 log = logging.getLogger(__name__)
@@ -646,9 +648,7 @@ class VerificationPhase:
             json.dumps(
                 {
                     "summary": {
-                        "total_tested": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("scheduled_count", len(tests)),
+                        "total_tested": sum(verification_state(test) != "not_tested" for test in tests),
                         "candidate_count": getattr(
                             self, "_phase4_schedule", {}
                         ).get("candidate_count", len(tests)),
@@ -699,10 +699,16 @@ class VerificationPhase:
         if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
             final_status = "ERROR"
         entry = _make_test_entry(vuln, status=final_status, result=semantic_result)
+        # A scheduled worker without a tool observation is not an effective test.
+        # Keep ERROR and execution diagnostics separately: lack of a test cannot
+        # turn a provider failure into an evidence conclusion.
+        entry["verification_attempted"] = verification_attempted(tool_records or [])
+        entry["verification_status"] = verification_state(entry)
         diagnostics = getattr(self, "_phase4_execution_errors", {}).get(str(vuln.get("id", "")), [])
         if diagnostics:
             # Diagnostics explain interruptions, but cannot promote or erase proof.
             entry["execution_errors"] = [dict(item) for item in diagnostics]
+        entry["execution_error_count"] = len(diagnostics)
         return entry
 
 

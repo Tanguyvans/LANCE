@@ -19,6 +19,7 @@ son introduction.
 - [Isolation des livrables par run](run-artifacts.md).
 - [Rédaction du rapport par sections](report-writing.md).
 - [Authentification et fournisseurs d’exécution](provider-auth.md).
+- [Session administrateur de 8 heures](admin-session.md).
 
 ## Guides complémentaires
 

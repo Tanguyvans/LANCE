@@ -36,8 +36,9 @@
   <div class="admin-access-fields">
     <label for="admin-action-token">Clé administrateur</label>
     <input id="admin-action-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="admin-action-help">
-    <button type="button" onclick="document.getElementById('admin-action-token').value = ''; document.getElementById('admin-action-help').textContent = 'Clé effacée de cette page.';">Effacer</button>
-    <span id="admin-action-help" role="status">Conservée uniquement dans cette page, jamais enregistrée. Les consultations restent disponibles sans clé.</span>
+    <button type="button" onclick="loginAdminSession()">Se connecter pour 8 h</button>
+    <button type="button" onclick="logoutAdminSession()">Déconnexion</button>
+    <span id="admin-action-help" role="status">Une connexion conserve votre accès après actualisation. La clé n’est pas enregistrée dans le navigateur.</span>
   </div>
 </details>
 <div id="sub-agent-bar" hidden>

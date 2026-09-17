@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
 from src.api.routes import (
+    admin_session,
     models,
     pipeline,
     providers,
@@ -43,6 +44,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # API routers
+app.include_router(admin_session.router, prefix="/api/admin/session", tags=["admin"])
 app.include_router(topology.router,  prefix="/api/topology",  tags=["topology"])
 app.include_router(runs.router,      prefix="/api/runs",      tags=["runs"])
 app.include_router(pipeline.router,  prefix="/api/pipeline",  tags=["pipeline"])

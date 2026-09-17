@@ -117,7 +117,8 @@ class TestInformationPreservingArchitecture:
             (pipeline.run_dir / "04_exploitation.json").read_text()
         )
         assert pipeline._phase4_execution_status is None
-        assert aggregate["summary"]["total_tested"] == 1
+        assert aggregate["summary"]["total_tested"] == 0
+        assert aggregate["tests"][0]["verification_status"] == "not_tested"
         assert aggregate["summary"]["candidate_count"] == 1
         assert aggregate["summary"]["skipped_count"] == 0
         assert aggregate["summary"]["errors"] == 1

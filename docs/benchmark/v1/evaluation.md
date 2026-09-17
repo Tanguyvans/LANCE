@@ -102,7 +102,13 @@ canonique, alors que les scores portent sur les populations statistiques
 dédupliquées. Ne pas supposer que leurs dénominateurs sont toujours identiques.
 
 `Couverture = (hypothèses retenues − non testées) / hypothèses retenues`.
-Les tentatives indéterminées ou en erreur restent donc incluses dans les tentatives.
+Les tentatives non concluantes ou interrompues après démarrage effectif restent
+incluses. Pour les nouveaux résultats, `verification_attempted: false` indique
+qu'aucune observation d'outil de vérification n'a été produite (la planification,
+la lecture des métadonnées et les refus avant exécution ne suffisent pas).
+Un timeout du modèle avant cette tentative est donc « Non testée », avec son
+incident technique conservé séparément. L'absence de ce champ dans un ancien
+run ne permet pas de reconstruire cette information : son interprétation historique reste inchangée.
 **100 % testées ne signifie pas 100 % confirmées ni une exécution complète.**
 Une population vide donne un taux indisponible.
 
@@ -111,6 +117,17 @@ Une population vide donne un taux indisponible.
 - `error` : erreur de vérification, dont timeout.
 - `not_tested` : absence de test ou test explicitement ignoré.
 - `refuted` : réservé ; aucun vérificateur générique de preuve d’absence n’est implémenté.
+
+L'affichage utilise trois catégories : **Confirmées** (preuve acceptée par le
+contrat de vérification), **Non concluantes** (preuves insuffisantes, y compris
+les anciens résultats `error` sans conclusion), **Non testées** (aucune tentative).
+Le contrôle indépendant des preuves du rapport et les scores restent séparés.
+Les incidents techniques sont affichés à part : ils peuvent coexister avec
+une confirmation valide, une non-conclusion ou une absence de tentative.
+`execution_error_count` compte les erreurs du worker, pas les résultats négatifs
+d'un outil. Les hypothèses non concluantes/non testées ne dégradent pas, à elles
+seules, le statut d'exécution. Les interruptions, rapports incomplets, échecs de
+nettoyage ou d'évaluation restent signalés.
 
 Les identifiants ambigus ou plusieurs résultats concurrents ne gonflent pas la
 couverture : leur état devient indéterminé. Les tests orphelins sont suivis à part.

@@ -30,6 +30,8 @@ def verification_state(test: dict) -> str:
     status = str(test.get("status") or "").upper()
     if is_verified_report_finding(test):
         return "confirmed"
+    if test.get("verification_attempted") is False:
+        return "not_tested"
     if status in {"ERROR", "TIMEOUT"}:
         return "error"
     if status in {"SKIPPED", "UNTESTED", "NOT_TESTED"} or not status:

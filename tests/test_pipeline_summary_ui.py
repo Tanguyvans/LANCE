@@ -79,7 +79,7 @@ def test_confirmed_funnel_wins_over_legacy_metrics_and_intrusion_is_separate():
 def test_absent_or_incompatible_confirmed_contract_never_falls_back(metrics):
     result = _run_node([{"event": {"metrics": metrics, "evaluation_status": "completed", "status": "completed"}}])[0]
     assert result["audit"] == "Audit final — indisponible"
-    assert "Exécution terminée avec réserves" in result["pipeline"]
+    assert "Exécution terminée avec incidents techniques" in result["pipeline"]
     assert "Audit final indisponible" in result["pipeline"]
 
 
@@ -147,13 +147,23 @@ def test_completion_reservations_are_concise_and_do_not_change_lifecycle():
                    "diagnostics": {"verification": {"confirmed": 10, "inconclusive": 2, "error": 1, "not_tested": 1}}},
     }
     result = _run_node([{"event": {"status": "completed", "evaluation_status": "completed", "metrics": metrics}}])[0]
-    assert "Exécution terminée avec réserves" in result["pipeline"]
+    assert "Exécution terminée avec incidents techniques" in result["pipeline"]
     assert "3/4 analysés" in result["pipeline"]
     assert "1 en échec" in result["pipeline"]
-    assert "2 indéterminées" in result["pipeline"]
-    assert "1 erreur" in result["pipeline"]
-    assert "1 non testée" in result["pipeline"]
+    assert "Incidents techniques de vérification : 1" in result["pipeline"]
+    assert "indéterminées" not in result["pipeline"]
+    assert "non testée" not in result["pipeline"]
     assert "Pipeline en échec" not in result["pipeline"]
+
+
+def test_inconclusive_findings_do_not_degrade_execution():
+    metrics = {"funnel": {"schema_version": "funnel-v1", "stages": {"confirmed": {"available": True}},
+                          "diagnostics": {"verification": {"confirmed": 13, "inconclusive": 3, "error": 0, "not_tested": 0}}}}
+    result = _run_node([{"event": {"status": "completed", "evaluation_status": "completed", "metrics": metrics}}])[0]
+    assert result["pipeline"] == "Exécution terminée"
+    metrics["funnel"]["diagnostics"]["verification_execution_errors"] = 1
+    result = _run_node([{"event": {"status": "completed", "evaluation_status": "completed", "metrics": metrics}}])[0]
+    assert "Incidents techniques de vérification : 1" in result["pipeline"]
 
 
 def test_completed_warnings_are_reservations_and_complete_counts_need_no_status_field():
@@ -170,7 +180,7 @@ def test_completed_warnings_are_reservations_and_complete_counts_need_no_status_
                     "cleanup_status": "failed", "usage_status": "incomplete", "metadata_status": "failed"}},
         {"event": {"status": "completed", "evaluation_status": "completed", "metrics": complete_metrics}},
     ])
-    assert "Exécution terminée avec réserves" in results[0]["pipeline"]
+    assert "Exécution terminée avec incidents techniques" in results[0]["pipeline"]
     assert "Nettoyage en échec" in results[0]["pipeline"]
     assert "Consommation incomplète" in results[0]["pipeline"]
     assert "Métadonnées en échec" in results[0]["pipeline"]

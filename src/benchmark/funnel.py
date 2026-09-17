@@ -206,6 +206,11 @@ def evaluate_funnel(
         n = len(verification_findings)
         diagnostics["verification_population"] = n
         diagnostics["verification"] = dict(counts)
+        diagnostics["verification_execution_errors"] = sum(
+            (t["execution_error_count"] > 0 if type(t.get("execution_error_count")) is int
+             else bool(t.get("execution_errors")) or str(t.get("status", "")).upper() in {"ERROR", "TIMEOUT"})
+            for t in tests if isinstance(t, dict)
+        )
         diagnostics["verification_attempt_rate"] = round((n - counts["not_tested"]) / n, 3) if n else None
         diagnostics["orphan_tests"] = sum(len(v) for k, v in by_id.items() if k not in ids)
         diagnostics["unsupported_declarations"] = sum(

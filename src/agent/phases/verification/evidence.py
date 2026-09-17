@@ -4,6 +4,24 @@ import json
 from pathlib import Path
 from src.agent.exploit_evidence import extract_endpoint_paths as _extract_endpoint_paths
 from src.agent.report_evidence import verification_state
+from src.agent.core.completion_policy import ACTION_REFUSAL_ERROR_KINDS
+
+
+def verification_attempted(records: list[dict]) -> bool:
+    """An executed tool observation, not scheduling or a pre-execution refusal."""
+    for record in records:
+        if record.get("tool") in {None, "", "save_deliverable", "read_deliverable", "list_deliverables", "get_device_info", "get_network_topology", "get_attack_surface"}:
+            continue
+        result = record.get("result")
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except (ValueError, TypeError):
+                pass
+        if isinstance(result, dict) and result.get("error_kind") in ACTION_REFUSAL_ERROR_KINDS:
+            continue
+        return True
+    return False
 
 
 def _exploit_relpath(device_id: str, vuln_type: str, vuln_id: str) -> Path:

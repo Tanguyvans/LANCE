@@ -2597,7 +2597,7 @@ function renderVerificationCoverage(funnel) {
   const rateLabel = rate == null ? '' : ` · ${bmRate(rate)}`;
   return `<div class="bm-verification-coverage" aria-label="${tested} hypothèses testées sur ${total}">
     <strong>Couverture</strong><span>${tested}/${total} hypothèses testées${rateLabel}</span>
-    <small>Non testées ${counts[3]} · indéterminées ${counts[1]} · erreurs ${counts[2]}</small></div>`;
+    <small>Confirmées ${counts[0]} · Non concluantes ${counts[1] + counts[2]} · Non testées ${counts[3]}</small></div>`;
 }
 
 function renderClaimDiagnostics(diagnostic) {
@@ -2639,9 +2639,11 @@ function renderFunnelDiagnostics(funnel, score = {}) {
     ? `Acceptées : ${bmNumber(p.accepted)}<br>Rejetées : ${bmNumber(p.rejected)}<br>Manquantes ou non attribuables : ${bmNumber(p.missing)}`
     : 'Contrôle des preuves indisponible';
   const verification = v ? `<p><strong>Vérification des hypothèses</strong><br>
-    Déclarées confirmées par le pipeline : ${bmNumber(v.confirmed)}<br>
-    Indéterminées : ${bmNumber(v.inconclusive)}<br>
-    Erreurs : ${bmNumber(v.error)}<br>Non testées : ${bmNumber(v.not_tested)}</p>` : '';
+    Confirmées — preuve acceptée : ${bmNumber(v.confirmed)}<br>
+    Non concluantes — preuves insuffisantes : ${bmNumber(Number.isInteger(v.inconclusive) && Number.isInteger(v.error) ? v.inconclusive + v.error : null)}<br>
+    Non testées — aucune tentative : ${bmNumber(v.not_tested)}<br>
+    Incidents techniques de vérification : ${bmNumber(d.verification_execution_errors ?? v.error)}<br>
+    Une vérification interrompue peut rester non concluante ; elle ne réfute pas la faille.</p>` : '';
   const losses = `<p><strong>Pertes dans l’entonnoir</strong><br>
     Failles réelles écartées au filtrage : ${bmNumber(d.true_candidates_lost_in_filter)}<br>
     Failles réelles non confirmées : ${bmNumber(d.true_candidates_not_confirmed)}<br>
@@ -2687,7 +2689,7 @@ function renderBenchmarkStatus(row, score, sealed) {
     evaluation_error: row.score_error,
   });
   const warned = status === 'done' && reservations.length > 0;
-  return `<span class="run-badge ${escapeHtml(warned ? 'partial' : status || '')}">${warned ? 'Terminé avec réserves' : escapeHtml(status || '—')}</span>
+  return `<span class="run-badge ${escapeHtml(warned ? 'partial' : status || '')}">${warned ? 'Terminé avec incidents techniques' : status === 'done' ? 'Terminé' : escapeHtml(status || '—')}</span>
     ${reservations.length ? `<small class="bm-reservations">${reservations.map(escapeHtml).join('<br>')}</small>` : ''}`;
 }
 
@@ -2889,19 +2891,9 @@ function _completionReservations(event) {
     }
   }
 
-  const verification = metrics?.funnel?.diagnostics?.verification;
-  if (verification && typeof verification === 'object') {
-    const details = [
-      ['inconclusive', 'indéterminée', 'indéterminées'],
-      ['error', 'erreur', 'erreurs'],
-      ['not_tested', 'non testée', 'non testées'],
-    ].map(([key, singular, plural]) => {
-      const count = _summaryInteger(verification[key]);
-      if (count == null || count === 0) return null;
-      return `${count} ${count === 1 ? singular : plural}`;
-    }).filter(Boolean);
-    if (details.length) reservations.push(`Vérification incomplète (${details.join(', ')})`);
-  }
+  const diagnostics = metrics?.funnel?.diagnostics;
+  const errors = _summaryInteger(diagnostics?.verification_execution_errors ?? diagnostics?.verification?.error);
+  if (errors > 0) reservations.push(`Incidents techniques de vérification : ${errors}`);
   return reservations;
 }
 
@@ -2920,7 +2912,7 @@ function formatPipelineCompletionSummary(event) {
   if (event?.status === 'completed') {
     const reservations = _completionReservations(event).concat(warnings);
     text = reservations.length
-      ? `Exécution terminée avec réserves — ${reservations.join(' ; ')}`
+      ? `Exécution terminée avec incidents techniques — ${reservations.join(' ; ')}`
       : 'Exécution terminée';
   } else {
     text = labels[event?.status] || 'Pipeline terminé — statut indisponible';
@@ -3197,6 +3189,7 @@ async function adminFetch(url, options = {}) {
     // Never forward credentials explicitly supplied by a caller to another origin.
     return fetch(url, {...options, headers});
   }
+  headers['X-Lance-Admin-Session'] = '1';
   const field = typeof document !== 'undefined' ? document.getElementById('admin-action-token') : null;
   const suppliedToken = suppliedHeaders.find(([name]) => name.toLowerCase() === 'authorization');
   if (suppliedToken) headers.Authorization = suppliedToken[1];
@@ -3206,7 +3199,7 @@ async function adminFetch(url, options = {}) {
     const help = document.getElementById('admin-action-help');
     if (response.status === 401) {
       document.getElementById('admin-access').open = true;
-      help.textContent = 'Clé absente ou invalide : saisissez-la puis relancez votre action.';
+      help.textContent = 'Session absente ou expirée, ou clé invalide : connectez-vous puis relancez votre action.';
       field.focus();
     } else {
       const error = await response.clone().json().catch(() => ({}));
@@ -3217,6 +3210,46 @@ async function adminFetch(url, options = {}) {
     }
   }
   return response;
+}
+
+async function loginAdminSession() {
+  const field = document.getElementById('admin-action-token');
+  const help = document.getElementById('admin-action-help');
+  try {
+    const response = await adminFetch('/api/admin/session', {method: 'POST'});
+    if (!response.ok) return;
+    field.value = '';
+    _mgr.adminToken = '';
+    const providerField = document.getElementById('mgr-admin-token');
+    if (providerField) providerField.value = '';
+    help.textContent = 'Connecté pour 8 heures, même après actualisation.';
+  } catch (_) { help.textContent = 'Connexion impossible. Vérifiez l’accès au serveur.'; }
+}
+
+async function logoutAdminSession() {
+  const help = document.getElementById('admin-action-help');
+  try {
+    const response = await adminFetch('/api/admin/session', {method: 'DELETE'});
+    if (!response.ok) return;
+    document.getElementById('admin-action-token').value = '';
+    _mgr.adminToken = '';
+    const providerField = document.getElementById('mgr-admin-token');
+    if (providerField) providerField.value = '';
+    help.textContent = 'Déconnecté.';
+  } catch (_) { help.textContent = 'Déconnexion non confirmée : serveur inaccessible.'; }
+}
+
+async function refreshAdminSession() {
+  try {
+    const response = await fetch('/api/admin/session', {cache: 'no-store'});
+    if (response.ok && (await response.json()).authenticated) {
+      document.getElementById('admin-action-help').textContent = 'Session administrateur active.';
+    }
+  } catch (_) { /* Normal actions retain their authentication checks. */ }
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('DOMContentLoaded', refreshAdminSession);
 }
 
 async function apiSend(method, url, body, options = {}) {
@@ -3453,7 +3486,7 @@ function _renderManager(version = _mgr.openVersion) {
 
     <form class="mgr-form" data-form="provider">
       <div class="full"><strong>${ep ? 'Modifier le provider' : '+ Ajouter un provider'}</strong></div>
-      <label class="full">Clé admin pour modifier les providers
+      <label class="full">Clé admin (inutile si une session est déjà ouverte)
         <input id="mgr-admin-token" type="password" ${inp} autocomplete="current-password" spellcheck="false" placeholder="Saisissez la clé administrateur">
         <span style="font-size:10px;color:var(--muted)">Collage autorisé. Conservée uniquement en mémoire jusqu’à l’effacement.</span>
       </label>

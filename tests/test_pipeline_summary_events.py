@@ -175,7 +175,7 @@ def test_api_to_dashboard_uses_final_audit_and_separate_verified_intrusion(tmp_p
     assert "Score=" not in audit
     assert "2/4" in intrusion and "1/4" in intrusion
     assert "0" in intrusion and "6" not in intrusion
-    assert "terminée avec réserves" in terminal
+    assert "terminée avec incidents techniques" in terminal
     assert "1.2078" in terminal
     assert "réussi" not in terminal
     # Rendering is not allowed to rewrite saved legacy fields or the funnel.
@@ -192,7 +192,7 @@ def test_successful_evaluation_never_overrides_terminal_failure(tmp_path, monkey
     assert events[1]["status"] == status
     lines = _render_events(events)
     assert word in lines[-1]["text"]
-    assert "terminée avec réserves" not in lines[-1]["text"]
+    assert "terminée avec incidents techniques" not in lines[-1]["text"]
     if status == "failed":
         assert "log-failed" in lines[-1]["className"]
 
@@ -209,7 +209,7 @@ def test_zero_intrusion_success_is_not_an_execution_error(tmp_path, monkeypatch)
     intrusion = next(line["text"] for line in lines if "Intrusion" in line["text"])
     assert "0/4" in intrusion
     assert "Exécution terminée" in lines[-1]["text"]
-    assert "avec réserves" not in lines[-1]["text"]
+    assert "avec incidents techniques" not in lines[-1]["text"]
 
 
 def test_incompatible_evidence_never_displays_verified_claims(tmp_path, monkeypatch):
@@ -225,4 +225,4 @@ def test_incompatible_evidence_never_displays_verified_claims(tmp_path, monkeypa
     assert "2/4" not in intrusion
     assert "1/4" not in intrusion
     assert "0.714" not in audit and "76.9" not in audit and "76,9" not in audit
-    assert "avec réserves" in lines[-1]["text"]
+    assert "avec incidents techniques" in lines[-1]["text"]
