@@ -6,6 +6,7 @@ itself. Adding a ``kind='local'`` provider with a custom ``base_url`` is how a
 local OpenAI-compatible endpoint (ollama / vLLM) gets wired in.
 """
 from __future__ import annotations
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -27,6 +28,7 @@ def _require_db():
 
 # api_key is intentionally absent — only the env-var NAME is stored.
 class ProviderCreate(BaseModel):
+    request_mode: Literal["sequential", "parallel"] = "sequential"
     name: str
     base_url: str | None = None
     api_key_env: str | None = None
@@ -35,6 +37,7 @@ class ProviderCreate(BaseModel):
 
 
 class ProviderPatch(BaseModel):
+    request_mode: Literal["sequential", "parallel"] = "sequential"
     base_url: str | None = None
     api_key_env: str | None = None
     default_model: str | None = None
@@ -55,6 +58,7 @@ def create_provider(body: ProviderCreate, _: None = Depends(require_admin_auth))
     db.upsert_provider(
         name=body.name, base_url=body.base_url, api_key_env=body.api_key_env,
         default_model=body.default_model, kind=body.kind or "cloud",
+        request_mode=body.request_mode,
     )
     return db.get_provider(body.name)
 
@@ -70,5 +74,6 @@ def update_provider(name: str, body: ProviderPatch, _: None = Depends(require_ad
     db.upsert_provider(
         name=name, base_url=merged.get("base_url"), api_key_env=merged.get("api_key_env"),
         default_model=merged.get("default_model"), kind=merged.get("kind") or "cloud",
+        request_mode=merged.get("request_mode", "sequential"),
     )
     return db.get_provider(name)

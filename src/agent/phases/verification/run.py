@@ -70,6 +70,9 @@ class VerificationPhase:
             "skipped_candidates": skipped_candidates,
         }
         self._phase4_execution_status = None
+        # Runner-owned diagnostics, never populated from model deliverables.
+        # Reset on each invocation so a successful rerun cannot inherit errors.
+        self._phase4_execution_errors = {}
         if not exploit_tasks:
             self._phase4_execution_status = "skipped:no_safely_exploitable_candidates"
             log.info("Phase 4: no safely exploitable candidates — skipping agents")
@@ -100,6 +103,23 @@ class VerificationPhase:
         def _record_worker_error(message: str) -> None:
             with worker_error_lock:
                 worker_errors.append(message)
+
+        def _record_execution_error(vuln_id: str, exc: Exception, stage: str) -> None:
+            exception_type = type(exc).__name__
+            timed_out = isinstance(exc, TimeoutError) or exception_type in {
+                "APITimeoutError", "ReadTimeout", "ConnectTimeout", "Timeout",
+            }
+            diagnostic = {
+                "stage": stage,
+                "kind": "timeout" if timed_out else "exception",
+                "exception_type": exception_type,
+            }
+            # Exception messages may contain credentials or request payloads.
+            status_code = getattr(exc, "status_code", None)
+            if type(status_code) is int:
+                diagnostic["http_status"] = status_code
+            with worker_error_lock:
+                self._phase4_execution_errors.setdefault(str(vuln_id), []).append(diagnostic)
 
         def _get_device_lock(device_ip: str) -> threading.Lock:
             with _locks_guard:
@@ -261,6 +281,7 @@ class VerificationPhase:
                                 stop_event=stop_event,
                             )
                         except Exception as exc:
+                            _record_execution_error(vuln_id, exc, "provider_call")
                             provider_error = f"{type(exc).__name__}: {exc}"
                             result_text = ""
                             log.warning(
@@ -291,6 +312,7 @@ class VerificationPhase:
                                 try:
                                     fallback_tool["function"](**fallback_args)
                                 except Exception as exc:
+                                    _record_execution_error(vuln_id, exc, "fallback_probe")
                                     log.warning(
                                         "Compact Phase 4 fallback probe failed for %s: %s",
                                         vuln_id,
@@ -361,6 +383,7 @@ class VerificationPhase:
                                 encoding="utf-8",
                             )
                 except Exception as exc:
+                    _record_execution_error(vuln_id, exc, "verification_worker")
                     message = f"{phase_name}: {exc}"
                     _record_worker_error(message)
                     log.exception("Exploit agent failed: %s", phase_name)
@@ -675,7 +698,12 @@ class VerificationPhase:
         # is the sole status source, including an empty trace set (ERROR/0).
         if final_status not in {"CONFIRMED", "FAILED", "ERROR"}:
             final_status = "ERROR"
-        return _make_test_entry(vuln, status=final_status, result=semantic_result)
+        entry = _make_test_entry(vuln, status=final_status, result=semantic_result)
+        diagnostics = getattr(self, "_phase4_execution_errors", {}).get(str(vuln.get("id", "")), [])
+        if diagnostics:
+            # Diagnostics explain interruptions, but cannot promote or erase proof.
+            entry["execution_errors"] = [dict(item) for item in diagnostics]
+        return entry
 
 
 def run(context, config, stream_callback=None):

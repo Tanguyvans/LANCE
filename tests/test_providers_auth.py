@@ -25,7 +25,7 @@ class FakeDB:
     def get_provider(self, name):
         return self.rows.get(name)
 
-    def upsert_provider(self, *, name, base_url, api_key_env, default_model, kind):
+    def upsert_provider(self, *, name, base_url, api_key_env, default_model, kind, request_mode="sequential"):
         self.write_count += 1
         self.rows[name] = {
             "name": name,
@@ -33,6 +33,7 @@ class FakeDB:
             "api_key_env": api_key_env,
             "default_model": default_model,
             "kind": kind,
+            "request_mode": request_mode,
         }
 
 
@@ -151,10 +152,21 @@ def test_valid_post_and_patch_are_authorized(monkeypatch):
     )
 
     assert created.status_code == 200
+    assert created.json()["request_mode"] == "sequential"
     assert updated.status_code == 200
     assert updated.json()["default_model"] == "updated-model"
     assert db.write_count == 2
     assert "server-token-r16" not in created.text + updated.text
+
+
+def test_provider_mode_validation_and_patch_preservation(monkeypatch):
+    monkeypatch.setenv("LANCE_ADMIN_TOKEN", "test-token")
+    client, db = _client(monkeypatch)
+    headers = {"Authorization": "Bearer test-token"}
+    assert client.post("/api/providers", json={**_provider_payload(), "request_mode": "parallel"}, headers=headers).status_code == 200
+    response = client.patch("/api/providers/local", json={"default_model": "new"}, headers=headers)
+    assert response.json()["request_mode"] == "parallel"
+    assert client.patch("/api/providers/local", json={"request_mode": "invalid"}, headers=headers).status_code == 422
 
 
 def test_valid_auth_with_database_init_failure_is_db_503(monkeypatch):
@@ -329,6 +341,7 @@ const sandbox = {{
       'mgr-p-default': elements.defaultModel,
       'mgr-p-keyenv': elements.keyEnv,
       'mgr-p-kind': elements.kind,
+      'mgr-p-request-mode': {{value: 'sequential'}},
     }})[id] || null,
   }},
   fetch: (url, options) => new Promise(resolve => requests.push({{ url, options, resolve }})),

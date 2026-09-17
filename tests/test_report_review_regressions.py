@@ -131,6 +131,35 @@ def test_report_budget_is_not_swallowed_as_an_optional_memo_failure(report_run, 
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])
+@pytest.mark.parametrize("when", ["provider", "validation"])
+def test_explicit_stop_wins_over_pending_report_budget(report_run, profile, when):
+    pipeline = report_run(profile, "budget")
+    events = []
+    if when == "provider":
+        def stopped_budget(**kwargs):
+            pipeline._stop_event.set()
+            raise BudgetExceeded("offline observed budget")
+        pipeline.provider.chat_with_tools.side_effect = stopped_budget
+    else:
+        validator = pipeline._validator
+        def stopped_validator(name):
+            check = validator(name)
+            def validate(filename):
+                result = check(filename)
+                pipeline._stop_event.set()
+                return result
+            return validate
+        pipeline._validator = stopped_validator
+    assert run_phase(pipeline, AGENTS["report"], events.append) == "stopped"
+    metadata = json.loads((pipeline.run_dir / "run_meta.json").read_text())
+    assert metadata["phase6_status"] == metadata["phase6_cause"] == "stopped"
+    assert metadata["phase6_budget_exceeded"] is True
+    assert [e["status"] for e in events if e.get("type") == "phase_done"] == ["stopped"]
+    assert pipeline.provider.chat_with_tools.call_count == 1
+    assert pipeline.tracker.end_phase() is None
+
+
+@pytest.mark.parametrize("profile", ["compact", "full"])
 @pytest.mark.parametrize("when", ["before", "during"])
 def test_stop_never_becomes_a_successful_report(report_run, profile, when):
     pipeline = report_run(profile, "stop_during")

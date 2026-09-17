@@ -161,8 +161,9 @@ class ReportPhase:
                     summary_text = record["text"]
                     note_path.write_text(summary_text + "\n", encoding="utf-8")
             failures = [e["cause"] for e in manifest["sections"] if e["status"] != "usable"]
-            cause = ("budget_exceeded" if pending_budget_error is not None else
-                     "stopped" if stopped() else failures[0] if failures else "none")
+            cause = ("stopped" if stopped() else
+                     "budget_exceeded" if pending_budget_error is not None else
+                     failures[0] if failures else "none")
         except Exception as exc:
             cause, phase_error = "section_assembly_error", type(exc).__name__
             log.exception("Phase 6 section assembly failed")
@@ -183,16 +184,17 @@ class ReportPhase:
                 log.exception("Phase 6 deterministic rendering failed")
             self.tracker.record_validation_result(success=final_valid)
             usage = self.tracker.end_phase()
-            if pending_budget_error is not None:
-                status, cause = "budget_exceeded", "budget_exceeded"
-            elif stopped():
+            if stopped():
                 status, cause = "stopped", "stopped"
+            elif pending_budget_error is not None:
+                status, cause = "budget_exceeded", "budget_exceeded"
             elif not final_valid or phase_error:
                 status = f"failed:{validation_message if not final_valid else cause}"
             else:
                 status = "completed" if cause == "none" else f"partial:{cause}"
             self._update_run_meta({
                 "phase6_status": status, "phase6_cause": cause, "phase6_error": phase_error,
+                "phase6_budget_exceeded": pending_budget_error is not None,
                 "phase6_report_contract": "sectioned-report", "phase6_llm": "independent_sections",
                 "phase6_note_status": "usable" if summary_text else "unavailable",
                 "phase6_analysis": "06_report_analysis.md" if summary_text else None,
@@ -206,7 +208,7 @@ class ReportPhase:
                                  "status": status, "deliverable": config.deliverable_file,
                                  "cost_usd": round(usage.cost_usd(), 4) if usage else 0,
                                  "turns": usage.turns if usage else 0})
-        if pending_budget_error is not None:
+        if pending_budget_error is not None and status != "stopped":
             raise pending_budget_error
         return status
 

@@ -36,6 +36,10 @@ de cette fiche restent présents, avec la cause de rédaction incomplète, et le
 autres fiches peuvent être rédigées. Le statut de la phase est alors `partial`.
 Un arrêt ou un dépassement de budget conserve son statut propre ; une erreur
 d’assemblage ou de validation finale reste un échec.
+Si un arrêt explicite et un dépassement de budget surviennent ensemble, la
+phase termine avec `stopped` dans ses métadonnées et son événement de fin.
+`phase6_budget_exceeded` conserve séparément le dépassement observé ; aucune
+nouvelle génération n'est lancée.
 
 Une section tronquée (`finish_reason=length`) bénéficie d'une seule nouvelle
 tentative, depuis les mêmes faits et sans réinjecter le brouillon incomplet.

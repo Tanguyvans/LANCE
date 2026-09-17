@@ -129,6 +129,9 @@ def init_db() -> None:
     """Create tables and add backward-compatible model metadata columns."""
     with get_conn() as conn:
         conn.executescript(_SCHEMA)
+        provider_columns = {row["name"] for row in conn.execute("PRAGMA table_info(providers)")}
+        if "request_mode" not in provider_columns:
+            conn.execute("ALTER TABLE providers ADD COLUMN request_mode TEXT NOT NULL DEFAULT 'sequential'")
         existing = {
             row["name"] for row in conn.execute("PRAGMA table_info(models)")
         }
@@ -145,19 +148,23 @@ def upsert_provider(
     api_key_env: str | None = None,
     default_model: str | None = None,
     kind: str = "cloud",
+    request_mode: str = "sequential",
 ) -> None:
+    if request_mode not in {"sequential", "parallel"}:
+        raise ValueError("invalid provider request mode")
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO providers (name, base_url, api_key_env, default_model, kind)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO providers (name, base_url, api_key_env, default_model, kind, request_mode)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(name) DO UPDATE SET
                 base_url      = excluded.base_url,
                 api_key_env   = excluded.api_key_env,
                 default_model = excluded.default_model,
-                kind          = excluded.kind
+                kind          = excluded.kind,
+                request_mode  = excluded.request_mode
             """,
-            (name, base_url, api_key_env, default_model, kind),
+            (name, base_url, api_key_env, default_model, kind, request_mode),
         )
 
 
@@ -259,7 +266,7 @@ def get_provider(name: str) -> dict[str, Any] | None:
     try:
         with get_conn() as conn:
             row = conn.execute(
-                "SELECT name, base_url, api_key_env, default_model, kind "
+                "SELECT name, base_url, api_key_env, default_model, kind, request_mode "
                 "FROM providers WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -274,7 +281,7 @@ def list_providers() -> list[dict[str, Any]]:
     try:
         with get_conn() as conn:
             rows = conn.execute(
-                "SELECT name, base_url, api_key_env, default_model, kind "
+                "SELECT name, base_url, api_key_env, default_model, kind, request_mode "
                 "FROM providers ORDER BY name"
             ).fetchall()
             return [dict(r) for r in rows]

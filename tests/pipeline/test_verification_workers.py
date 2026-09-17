@@ -1,8 +1,55 @@
 """Phase 4: worker scheduling, instructions, and fallback."""
 import json
 from unittest.mock import MagicMock
+import httpx
+import openai
+import pytest
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
+
+
+@pytest.mark.parametrize("error", [
+    TimeoutError("private request content"),
+    openai.APITimeoutError(request=httpx.Request("POST", "https://example.invalid")),
+    ValueError("private request content"),
+])
+def test_full_worker_preserves_typed_error_without_changing_proof(error, mock_provider, output_dir, monkeypatch):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [])
+    finding = {"id": "V1", "device_id": "test-device", "device_ip": "192.0.2.1",
+               "type": "weak_cipher", "service": "ssh", "port": 22}
+    (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": [finding]}))
+    mock_provider.chat_with_tools.side_effect = error
+    pipeline._run_exploit_agents(AGENTS["exploitation"])
+    aggregate = json.loads((pipeline.run_dir / "04_exploitation.json").read_text())
+    entry = aggregate["tests"][0]
+    assert entry["status"] == "ERROR"
+    assert entry["evidence_level"] == 0
+    assert entry["evidence_refs"] == []
+    assert entry["execution_errors"] == [{
+        "stage": "verification_worker", "exception_type": type(error).__name__,
+        "kind": "exception" if isinstance(error, ValueError) else "timeout",
+    }]
+    assert "private request content" not in json.dumps(aggregate)
+    assert aggregate["summary"]["execution_state"] == "executed_with_worker_errors"
+    # A new invocation must not inherit a previous worker diagnostic.
+    mock_provider.chat_with_tools.side_effect = None
+    mock_provider.chat_with_tools.return_value = "No conclusion."
+    pipeline._run_exploit_agents(AGENTS["exploitation"])
+    fresh = json.loads((pipeline.run_dir / "04_exploitation.json").read_text())
+    assert "execution_errors" not in fresh["tests"][0]
+
+
+def test_model_cannot_inject_worker_diagnostic(mock_provider, output_dir):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    finding = {"id": "V1", "device_id": "test-device", "device_ip": "192.0.2.1",
+               "type": "weak_cipher", "service": "ssh", "port": 22}
+    artifact = pipeline.run_dir / "model.json"
+    artifact.write_text(json.dumps({"status": "CONFIRMED", "execution_errors": [{"kind": "invented"}]}))
+    pipeline._phase4_execution_errors = {"OTHER": [{"kind": "unrelated"}]}
+    entry = pipeline._resolve_exploit_verdict(finding, artifact, tool_records=[])
+    assert entry["status"] == "ERROR"
+    assert "execution_errors" not in entry
 
 
 class TestInformationPreservingArchitecture:
@@ -36,6 +83,9 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["skipped_count"] == 0
         assert aggregate["tests"][0]["status"] == "CONFIRMED"
         assert aggregate["tests"][0]["evidence_refs"]
+        assert aggregate["tests"][0]["execution_errors"] == [{
+            "stage": "provider_call", "kind": "timeout", "exception_type": "TimeoutError",
+        }]
 
     def test_phase4_empty_schedule_is_explicit_skip(
         self, mock_provider, output_dir

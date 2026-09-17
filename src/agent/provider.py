@@ -11,10 +11,12 @@ import hashlib
 import json
 import logging
 import os
+from time import monotonic
 from collections.abc import Callable
 from uuid import uuid4
 
 from src.agent.core.completion_policy import CompletionPolicy
+from src.agent.core.provider_concurrency import request_slot, RequestQueueStopped
 from src.agent.core.provider_transport import (
     MAX_RETRIES as _MAX_RETRIES,
     RETRYABLE_CODES as _RETRYABLE_CODES,
@@ -251,6 +253,7 @@ class LLMProvider:
             known = ", ".join(OPENAI_PROVIDERS)
             raise ValueError(f"Unknown provider: {provider}. Available: {known}")
         import openai
+        self.request_mode = cfg.get("request_mode", "sequential")
         api_key_env = cfg.get("api_key_env") or ""
         request_timeout = (
             _LOCAL_MOE_API_TIMEOUT
@@ -367,6 +370,9 @@ class LLMProvider:
                 reasoning_effort=reasoning_effort,
                 diagnostics=diagnostics,
             )
+        except RequestQueueStopped:
+            diagnostics.terminal("stop", turn=diagnostics.last_turn or 1)
+            return "(stopped by user)"
         except Exception as exc:
             # SDK-boundary failures have already been observed once by the
             # retry owner. Exceptions after that boundary (tool/callback/
@@ -525,7 +531,7 @@ class LLMProvider:
             force_any_tool_next_turn = True
             return False
 
-        def create_completion(**kwargs):
+        def admitted_completion(**kwargs):
             if cost_tracker is not None:
                 cost_tracker.check_budget()
             client = self.client
@@ -547,6 +553,20 @@ class LLMProvider:
             )
             request_context["request_started"] = True
             return client.chat.completions.create(**kwargs)
+
+        def create_completion(**kwargs):
+            with request_slot(
+                getattr(self.client, "base_url", self.provider),
+                sequential=getattr(self, "request_mode", "sequential") == "sequential",
+                stop_event=stop_event, deadline=deadline,
+            ) as queue_wait_s:
+                log.info("Model request admitted: mode=%s queue_wait_s=%.3f",
+                         getattr(self, "request_mode", "sequential"), queue_wait_s)
+                started = monotonic()
+                try:
+                    return admitted_completion(**kwargs)
+                finally:
+                    log.info("Model request finished: elapsed_s=%.3f", monotonic() - started)
 
         def note_attempt(attempt: int) -> None:
             request_context["attempt"] = attempt
@@ -625,6 +645,8 @@ class LLMProvider:
                     on_error=observe_request_error,
                     **request_kwargs,
                 )
+            except RequestQueueStopped:
+                return finish("(stopped by user)", "stop", current_turn=turn + 1)
             except Exception as exc:
                 if (
                     _is_missing_user_query_error(exc)

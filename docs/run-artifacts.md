@@ -12,6 +12,28 @@ Trois règles suffisent :
 2. Les outils et validateurs reçoivent ce dossier explicitement.
 3. Le nom du livrable attendu appartient à la transaction de la phase, pas au processus.
 
+## Appels au modèle : Séquentiel
+
+Dans **Modèles → fournisseur**, le réglage « Appels au modèle » sélectionne
+**Séquentiel** (par défaut) ou **Parallèle** (comportement antérieur).
+Il est indépendant de full/compact et du mode blind. La migration des fournisseurs
+existants sélectionne Séquentiel ; les prochains clients utilisent ce réglage.
+
+En séquentiel, un verrou par origine HTTP (hôte et port, tous modèles confondus)
+partage la capacité entre les runs et le juge du même processus serveur.
+Les outils ne tiennent pas ce verrou. L'attente est interruptible pour le pipeline,
+et les limites globales de phase restent applicables pendant l'attente.
+Le timeout HTTP ne commence qu'après admission. Les journaux distinguent
+`queue_wait_s` de `elapsed_s` pour les appels du pipeline.
+
+Limites : ce verrou n'est pas distribué entre plusieurs processus, machines ou
+clients externes d'Ollama. Utiliser une seule instance serveur pour ce réglage.
+Les alias d'une même origine doivent tous être configurés en séquentiel ;
+un fournisseur configuré en parallèle contourne explicitement cette protection.
+Des adresses différentes vers le même serveur ne sont pas automatiquement identifiées.
+Ce mode ne garantit pas l'absence de timeout et ne modifie ni les reprises,
+ni les preuves, ni les scores. Vérifier son effet avec un nouveau run contrôlé.
+
 ## Qui fait quoi ?
 
 | Code | Responsabilité |
@@ -72,6 +94,19 @@ Ne pas partager des fonctions d'outils déjà liées entre deux runs.
 - Les appels d'outils conservent leur journal, leurs références et leurs contrôles.
 - Une structure valide ne constitue pas une preuve de faille, d'accès ou de pivot.
 - Full/compact, budgets, scores et versions des contrats d'évaluation sont inchangés.
+
+## Diagnostic des erreurs de vérification
+
+Chaque test de `04_exploitation.json` peut inclure `execution_errors` : étape
+interrompue, catégorie (`timeout` ou `exception`), classe de l'exception et code
+HTTP éventuel. Ces données proviennent du code d'exécution, jamais du verdict
+ou du texte soumis par le modèle. Les messages bruts ne sont pas recopiés dans
+ce champ, car ils peuvent contenir des identifiants ou des charges de requête.
+
+Ces diagnostics sont enregistrés même si une preuve valide a été obtenue avant
+l'erreur, ou par le mécanisme de secours compact. Ils ne changent ni le statut
+issu des preuves, ni leur niveau, ni le score. Une nouvelle invocation de la
+phase remet ce diagnostic à zéro ; les anciens runs ne sont pas migrés.
 
 ## Limites : ce changement ne rend pas tout concurrent
 

@@ -383,13 +383,21 @@ def evaluate_with_llm(run_dir: Path, gt_file: Path, model: str, provider_name: s
             "temperature": 0.0,
             "response_format": {"type": "json_object"},
         }
+        def create_judge_completion():
+            from src.agent.core.provider_concurrency import request_slot
+            with request_slot(
+                getattr(provider.client, "base_url", provider_name),
+                sequential=getattr(provider, "request_mode", "sequential") == "sequential",
+            ):
+                return provider.client.chat.completions.create(**request_args)
+
         try:
-            response = provider.client.chat.completions.create(**request_args)
+            response = create_judge_completion()
         except Exception as exc:
             if not _json_mode_unsupported(exc):
                 raise
             request_args.pop("response_format")
-            response = provider.client.chat.completions.create(**request_args)
+            response = create_judge_completion()
         content = response.choices[0].message.content.strip()
         finish_reason = getattr(response.choices[0], "finish_reason", None)
 

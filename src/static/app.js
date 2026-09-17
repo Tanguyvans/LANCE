@@ -3464,6 +3464,10 @@ function _renderManager(version = _mgr.openVersion) {
       </select></label>
       <label>base_url<input id="mgr-p-baseurl" ${inp} value="${ep ? escapeHtml(ep.base_url || '') : ''}" placeholder="https://… ou http://localhost:11434/v1"></label>
       <label>default_model<input id="mgr-p-default" ${inp} value="${ep ? escapeHtml(ep.default_model || '') : ''}"></label>
+      <label>Appels au modèle<select id="mgr-p-request-mode" ${inp}>
+        <option value="sequential"${!ep || ep.request_mode !== 'parallel' ? ' selected' : ''}>Séquentiel</option>
+        <option value="parallel"${ep && ep.request_mode === 'parallel' ? ' selected' : ''}>Parallèle</option>
+      </select><span>Indépendant du profil full/compact. Séquentiel : un appel à la fois par serveur dans cette instance du pipeline.</span></label>
       <label class="full">Nom de la variable .env pour la clé (api_key_env) — <em>la clé elle-même se met dans <code>.env</code>, pas ici</em>
         <input id="mgr-p-keyenv" ${inp} value="${ep ? escapeHtml(ep.api_key_env || '') : ''}" placeholder="ex: MINIMAX_API_KEY"></label>
       <div class="full" style="display:flex;gap:8px">
@@ -3580,6 +3584,7 @@ async function _mgrOnSubmit(e, version = _mgr.openVersion) {
       default_model: document.getElementById('mgr-p-default').value.trim() || null,
       api_key_env: document.getElementById('mgr-p-keyenv').value.trim() || null,
       kind: document.getElementById('mgr-p-kind').value,
+      request_mode: document.getElementById('mgr-p-request-mode').value,
     };
     let r;
     if (_mgr.editProvider) {
