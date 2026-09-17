@@ -324,23 +324,31 @@
     <div id="bm-empty" hidden style="padding:32px;text-align:center;color:var(--muted);font-size:13px">
       Aucun run de scénario trouvé.<br>Lance un pentest avec un scénario sélectionné.
     </div>
+    <details id="bm-metrics-help">
+      <summary>Comprendre les métriques</summary>
+      <div class="bm-metrics-help-body">
+        <p>VP = failles attendues correctement identifiées · FP = hypothèses ou déclarations comptées à tort comme positives · FN = failles attendues sans résultat valide à cette étape.</p>
+        <p>Entonnoir de détection : 1. Failles potentielles — toutes les hypothèses proposées par l’agent · 2. Failles retenues — hypothèses sélectionnées pour vérification après filtrage, sans les confirmer · 3. Confirmations déclarées — l’agent les dit confirmées ; l’évaluation contrôle les preuves. Après vérification, un VP exige aussi une preuve acceptée.</p>
+        <p>Le F1 final est le score officiel d’audit ; les contrôles sans faille utilisent la spécificité. L’audit est indépendant de l’intrusion : Confirmées, Non concluantes et Non testées décrivent les preuves, pas des échecs d’exécution.</p>
+      </div>
+    </details>
+    <div id="bm-table-wrap">
     <table id="bm-table" hidden>
-      <caption>Une faille potentielle est une hypothèse à vérifier. Le filtrage sélectionne les failles à tester, sans les confirmer. VP = failles attendues correctement identifiées · FP = hypothèses ou déclarations comptées à tort comme positives · FN = failles attendues sans résultat valide à cette étape. Après vérification, un VP exige aussi une preuve acceptée. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
+      <caption>Résultats d’audit par run. Le F1 final est le score officiel ; les contrôles sans faille utilisent la spécificité.</caption>
       <thead>
         <tr>
-          <th>Run</th>
-          <th>Scénario</th>
-          <th scope="col"><span class="bm-stage-title">1. Failles potentielles</span><span class="bm-stage-help">Toutes les hypothèses proposées par l’agent</span></th>
-          <th scope="col"><span class="bm-stage-title">2. Failles retenues</span><span class="bm-stage-help">Hypothèses sélectionnées pour vérification après filtrage</span></th>
-          <th scope="col"><span class="bm-stage-title">3. Confirmations déclarées</span><span class="bm-stage-help">L’agent les dit confirmées ; l’évaluation contrôle les preuves</span></th>
-          <th>Modèle</th>
-          <th>Statut</th>
-          <th>Consommation</th>
-          <th>Vérification</th>
+          <th scope="col">Run</th>
+          <th scope="col">Modèle</th>
+          <th scope="col">Audit final</th>
+          <th scope="col">Statut</th>
+          <th scope="col">Coût</th>
+          <th scope="col">Vérification</th>
+          <th scope="col"><span class="sr-only">Détails</span></th>
         </tr>
       </thead>
       <tbody id="bm-tbody"></tbody>
     </table>
+    </div>
   </div>
 </div>
 

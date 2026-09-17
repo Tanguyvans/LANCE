@@ -61,18 +61,17 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
     javascript = (ROOT / "src/static/app.js").read_text(encoding="utf-8")
     table = html[html.index('<table id="bm-table"'):html.index('</table>', html.index('<table id="bm-table"'))]
     renderer = javascript[javascript.index("function bmNumber("):javascript.index("// ── Modal")]
-    for heading in ("1. Failles potentielles", "2. Failles retenues", "3. Confirmations déclarées", "Consommation", "Vérification"):
+    for heading in ("Run", "Modèle", "Audit final", "Statut", "Coût", "Vérification"):
         assert heading in table
-    assert "Une faille potentielle est une hypothèse à vérifier" in table
-    assert table.count('class="bm-stage-help"') == 3
-    for explanation in ("Toutes les hypothèses proposées par l’agent",
-                        "Hypothèses sélectionnées pour vérification après filtrage",
-                        "L’agent les dit confirmées ; l’évaluation contrôle les preuves",
+    help_block = html[html.index('id="bm-metrics-help"'):html.index('</details>', html.index('id="bm-metrics-help"'))]
+    for explanation in ("toutes les hypothèses proposées par l’agent",
+                        "hypothèses sélectionnées pour vérification après filtrage",
+                        "l’agent les dit confirmées ; l’évaluation contrôle les preuves",
                         "Après vérification, un VP exige aussi une preuve acceptée"):
-        assert explanation in table
+        assert explanation in help_block
     assert "3. Confirmations finales" not in table
     assert "Pred = prédictions" not in table
-    assert table.count("<th>") + table.count('<th scope="col">') == 9
+    assert table.count("<th>") + table.count('<th scope="col">') == 7
     for legacy in ("quality_adjusted_f1", "evidence_f1", "weighted_score", "turns_per_tp", "cost_per_expected_vulnerability"):
         assert legacy not in renderer
     for metric in ("cost_per_valid_confirmation", "turns_per_valid_confirmation", "d.proofs",
@@ -83,9 +82,9 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
         assert text in renderer
     assert "evidence_contract_compatible" in renderer
     assert "metrics_compatibility_reason" in renderer
-    assert "renderFunnelDiagnostics(compatible ? s.funnel : null, s)" in renderer
+    assert "renderFunnelDiagnostics(funnel, s)" in renderer
     assert "score_error" in renderer
-    assert '<details class="bm-funnel-diagnostics"><summary>' in renderer
+    assert '<details class="bm-proof-details"><summary>' in renderer
     assert 'data-bm-run=' in renderer
     assert "button.dataset.bmRun" in renderer
     assert "barMetric" not in renderer
@@ -120,6 +119,13 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(source, context);
+// The same detailed metric assertions now apply to the explicitly opened panel.
+// Collapsed-row and real toggle contracts are tested separately.
+const originalRender = context.renderBenchmarkTable;
+context.renderBenchmarkTable = () => {
+  vm.runInContext('_bmOpenRunId = _bmData?.[0]?.id ?? null;', context);
+  originalRender();
+};
 const stage = {available: true, predictions: 2, true_positives: 1,
   false_positives: 1, false_negatives: 0, precision: .5, recall: .5, f1: .5};
 const unavailable = {available: false, reason: 'Ancien contrat'};
