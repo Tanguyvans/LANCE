@@ -1,7 +1,7 @@
 """Details-toggle behavior for the compact benchmark comparison table.
 
-The comparison row stays compact (<=7 columns, one Details control per run);
-investigation happens in a single full-width panel beneath the selected run.
+The comparison row stays compact (8 columns, one Details control per run);
+investigation happens in a single full-width panel outside the comparison table.
 """
 import json
 import shutil
@@ -22,8 +22,8 @@ def _table_html():
 def test_benchmark_table_is_compact_with_explicit_details_control():
     table = _table_html()
     th_count = table.count("<th>") + table.count('<th scope="col">')
-    assert th_count == 7, f"expected 7 columns, found {th_count}"
-    for heading in ("Run", "Modèle", "Audit final", "Statut", "Coût", "Vérification"):
+    assert th_count == 8, f"expected 8 columns, found {th_count}"
+    for heading in ("Run", "Modèle", "Audit final", "Précision", "Rappel", "Statut", "Coût"):
         assert heading in table
     assert "Détails" in table
     # Identity cells are combined: no standalone scenario column anymore.
@@ -47,7 +47,9 @@ def test_benchmark_details_rendering_contracts():
     assert "data-bm-details=" in renderer
     assert "aria-expanded=" in renderer
     assert "aria-controls=" in renderer
-    assert '<tr class="bm-details-row"><td colspan="7"' in renderer
+    assert 'bm-details-row' not in renderer
+    assert 'role="tablist"' in renderer
+    assert 'role="tabpanel"' in renderer
     # Exactly one open panel at a time, retained across benign refresh.
     assert "_bmOpenRunId" in renderer
     assert "BM_OPEN_RUN_STORAGE_KEY" in renderer
@@ -81,7 +83,7 @@ const vm = require('vm');
 const assert = require('assert');
 const source = __BENCHMARK_RENDERER_SOURCE__;
 const elements = {};
-for (const id of ['bm-filter-scenario', 'bm-filter-model', 'bm-tbody']) {
+for (const id of ['bm-filter-scenario', 'bm-filter-model', 'bm-tbody', 'bm-selected-run']) {
   elements[id] = {value: '', innerHTML: '', querySelectorAll: () => []};
 }
 const context = {
@@ -114,41 +116,52 @@ context._bmData = [rowA, rowB];
 
 // Closed by default: compact rows only, one Details control each, stable panel ids.
 context.renderBenchmarkTable();
-let html = elements['bm-tbody'].innerHTML;
+let html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(!html.includes('bm-details-row'), 'no panel open initially');
 assert((html.match(/data-bm-details=/g) || []).length === 2);
 assert((html.match(/aria-expanded="false"/g) || []).length === 2);
-assert(html.includes(`aria-controls="${context.bmDetailsPanelId('run_a')}"`));
-assert(html.includes(`aria-controls="${context.bmDetailsPanelId('run_b')}"`));
+assert(html.includes('aria-controls="bm-selected-run"'));
+assert(!html.includes('bm-details-row'));
 assert.notEqual(context.bmDetailsPanelId('a/b'), context.bmDetailsPanelId('a-b'));
 assert(html.includes('<strong>F1 final 50 %</strong>'));
-assert(html.includes('3/4 testées'));
+assert(!html.includes('hypothèses testées'), 'verification lives in the selected panel');
 const firstRender = html;
 context.renderBenchmarkTable();
-assert.strictEqual(elements['bm-tbody'].innerHTML, firstRender, 'stable identity across renders');
+assert.strictEqual(elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML, firstRender, 'stable identity across renders');
 
 // Opening one run shows a single full-width panel with the funnel + groups.
 context.toggleBenchmarkDetails('run_a');
-html = elements['bm-tbody'].innerHTML;
-assert((html.match(/bm-details-row/g) || []).length === 1, 'one open panel at a time');
-assert(html.includes('colspan="7"'));
-assert(html.includes(`id="${context.bmDetailsPanelId('run_a')}"`));
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+assert(!elements['bm-selected-run'].hidden);
+assert((html.match(/role="tablist"/g) || []).length === 1);
+assert(html.includes(`id="${context.bmDetailsPanelId('run_a')}-audit"`));
 assert(html.includes('aria-expanded="true"'));
 assert((html.match(/aria-expanded="true"/g) || []).length === 1);
 assert(html.includes('Entonnoir de détection'));
-assert(html.includes('Failles potentielles <strong>2</strong>'));
-assert(html.includes('Failles retenues <strong>4</strong>'));
-assert(html.includes('Déclarations <strong>2</strong>'));
+assert(html.includes('Failles potentielles</th><td>2</td>'));
+assert(html.includes('Failles retenues</th><td>4</td>'));
+assert(html.includes('Confirmations déclarées</th><td>2</td>'));
 assert(html.includes('Vérification et preuves'));
 assert(html.includes('Consommation'));
+assert(!elements['bm-tbody'].innerHTML.includes('role="tabpanel"'), 'panels stay outside comparison rows');
+assert((elements['bm-selected-run'].innerHTML.match(/role="tabpanel"/g) || []).length === 4);
+assert((elements['bm-selected-run'].innerHTML.match(/tabindex="0" hidden/g) || []).length === 3);
+context.selectBenchmarkTab('proofs');
+context.renderBenchmarkTable();
+assert(elements['bm-selected-run'].innerHTML.includes('data-bm-tab="proofs" aria-selected="true"'));
+context.selectBenchmarkTab('invalid');
+context.renderBenchmarkTable();
+assert(elements['bm-selected-run'].innerHTML.includes('data-bm-tab="proofs" aria-selected="true"'));
 
 // Switching runs moves the single panel; toggling again closes it.
 context.toggleBenchmarkDetails('run_b');
-html = elements['bm-tbody'].innerHTML;
-assert((html.match(/bm-details-row/g) || []).length === 1);
-assert(html.includes(`id="${context.bmDetailsPanelId('run_b')}"`));
-assert(html.includes(`<tr hidden><td colspan="7" id="${context.bmDetailsPanelId('run_a')}"></td></tr>`));
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+assert(elements['bm-selected-run'].innerHTML.includes('data-bm-tab="audit" aria-selected="true"'));
+assert((html.match(/role="tablist"/g) || []).length === 1);
+assert(html.includes(`id="${context.bmDetailsPanelId('run_b')}-audit"`));
+assert(!elements['bm-selected-run'].innerHTML.includes(context.bmDetailsPanelId('run_a')));
 context.toggleBenchmarkDetails('run_b');
+assert(elements['bm-selected-run'].hidden);
 assert(!elements['bm-tbody'].innerHTML.includes('bm-details-row'));
 assert((elements['bm-tbody'].innerHTML.match(/aria-expanded="false"/g) || []).length === 2);
 assert(context.renderVerificationCompact({...funnel, diagnostics:{...funnel.diagnostics, verification_population:99}}).includes('incohérente'));
@@ -157,8 +170,8 @@ assert(context.renderVerificationCompact({...funnel, diagnostics:{...funnel.diag
 context._bmData = [{id: 'sealed', sealed: true, scenario: 'S9', model: 'm',
   status: 'done', score: {metrics: {overall_score: .5, cost_usd: 0}, total_tokens: 999}}];
 context.toggleBenchmarkDetails('sealed');
-html = elements['bm-tbody'].innerHTML;
-assert(html.includes('bm-details-row'));
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+assert(!elements['bm-selected-run'].hidden);
 assert(!html.includes('Failles potentielles'), 'no funnel detail leaks for sealed runs');
 assert(html.includes('Détails scellés'));
 
@@ -166,7 +179,7 @@ assert(html.includes('Détails scellés'));
 context._bmData = [{id: 'run_<evil>', scenario: 'S1', model: '<model>',
   status: 'done', cost: 0, score}];
 context.toggleBenchmarkDetails('run_<evil>');
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(!html.includes('<evil>') && !html.includes('<model>'));
 assert(html.includes('&lt;evil&gt;') && html.includes('&lt;model&gt;'));
 console.log('BENCHMARK_DETAILS_TOGGLE_VM_OK');

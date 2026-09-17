@@ -61,7 +61,7 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
     javascript = (ROOT / "src/static/app.js").read_text(encoding="utf-8")
     table = html[html.index('<table id="bm-table"'):html.index('</table>', html.index('<table id="bm-table"'))]
     renderer = javascript[javascript.index("function bmNumber("):javascript.index("// ── Modal")]
-    for heading in ("Run", "Modèle", "Audit final", "Statut", "Coût", "Vérification"):
+    for heading in ("Run", "Modèle", "Audit final", "Précision", "Rappel", "Statut", "Coût"):
         assert heading in table
     help_block = html[html.index('id="bm-metrics-help"'):html.index('</details>', html.index('id="bm-metrics-help"'))]
     for explanation in ("toutes les hypothèses proposées par l’agent",
@@ -71,7 +71,7 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
         assert explanation in help_block
     assert "3. Confirmations finales" not in table
     assert "Pred = prédictions" not in table
-    assert table.count("<th>") + table.count('<th scope="col">') == 7
+    assert table.count("<th>") + table.count('<th scope="col">') == 8
     for legacy in ("quality_adjusted_f1", "evidence_f1", "weighted_score", "turns_per_tp", "cost_per_expected_vulnerability"):
         assert legacy not in renderer
     for metric in ("cost_per_valid_confirmation", "turns_per_valid_confirmation", "d.proofs",
@@ -82,7 +82,7 @@ def test_benchmark_dashboard_renders_one_funnel_without_legacy_score_duplicates(
         assert text in renderer
     assert "evidence_contract_compatible" in renderer
     assert "metrics_compatibility_reason" in renderer
-    assert "renderFunnelDiagnostics(funnel, s)" in renderer
+    assert "renderFunnelDiagnostics(funnel, s, 'proofs')" in renderer
     assert "score_error" in renderer
     assert '<details class="bm-proof-details"><summary>' in renderer
     assert 'data-bm-run=' in renderer
@@ -105,7 +105,7 @@ const vm = require('vm');
 const assert = require('assert');
 const source = __BENCHMARK_RENDERER_SOURCE__;
 const elements = {};
-for (const id of ['bm-filter-scenario', 'bm-filter-model', 'bm-tbody']) {
+for (const id of ['bm-filter-scenario', 'bm-filter-model', 'bm-tbody', 'bm-selected-run']) {
   elements[id] = {value: '', innerHTML: '', querySelectorAll: () => []};
 }
 const context = {
@@ -141,25 +141,25 @@ const row = {id: 'run_<safe>', scenario: 'S1', model: '<model>', status: 'done',
   cost: 0, score};
 context._bmData = [row];
 context.renderBenchmarkTable();
-let html = elements['bm-tbody'].innerHTML;
-assert(html.includes('Failles potentielles <strong>2</strong>'));
-assert(html.includes('Failles retenues <strong>4</strong>'));
-assert(html.includes('Déclarations <strong>2</strong>'));
-assert((html.match(/class="bm-stage-count">Failles /g) || []).length === 2);
-assert((html.match(/class="bm-stage-count">Déclarations /g) || []).length === 1);
-assert(html.includes('VP 1 · FP 1 · FN 0'));
+let html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+assert(html.includes('Failles potentielles</th><td>2</td>'));
+assert(html.includes('Failles retenues</th><td>4</td>'));
+assert(html.includes('Confirmations déclarées</th><td>2</td>'));
+assert((html.match(/class="bm-step"/g) || []).length === 3);
+assert((html.match(/Confirmations déclarées<\/th>/g) || []).length === 1);
+assert(html.includes('<td>1</td><td>1</td><td>0</td>'));
 assert(html.includes('3/4 hypothèses testées'));
-assert(html.includes('Non concluantes 1'));
+assert(html.includes('<strong>1</strong><span>Non concluantes</span>'));
 assert(html.includes('Failles réelles écartées au filtrage : 1'));
 assert(html.includes('Coût $0'));
-assert(html.includes('Tokens 0'));
+assert(html.includes('Tokens</small><strong>0</strong>'));
 assert(html.includes('&lt;model&gt;'));
 assert(!html.includes('<model>'));
-assert((html.match(/bm-final-metrics/g) || []).length === 1);
+assert((html.match(/class="bm-audit-final"/g) || []).length === 1);
 assert(html.includes('<strong>F1 final 50 %</strong>'));
 assert(html.includes('>Terminé</span>'));
 assert(!html.includes('Vérification incomplète'));
-assert(html.includes('Non testées 1'));
+assert(html.includes('<strong>1</strong><span>Non testées</span>'));
 
 const queueCoverage = context.renderVerificationCoverage({...funnel,
   stages: {...funnel.stages, filtered: {...funnel.stages.filtered, predictions: 2}},
@@ -188,7 +188,7 @@ context._bmData = [{...row, score: {...score, funnel: completeFunnel,
   run_metric_contract_version: 'metric-v1', metric_contract_version: 'metric-v1',
 }}];
 context.renderBenchmarkTable();
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(html.includes('Analyse partielle (3/4 analysés, 1 en échec)'));
 assert(html.includes('Terminé avec incidents techniques'));
 assert(html.includes('evidence-v8'));
@@ -220,10 +220,10 @@ context._bmData = [{...row, id: 'legacy', score: {
   total_tokens: 12, total_cost_usd: null,
 }, cost: undefined}];
 context.renderBenchmarkTable();
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(html.includes('Indisponible'));
 assert(html.includes('Données de vérification indisponibles'));
-assert(html.includes('Tokens 12'));
+assert(html.includes('Tokens</small><strong>12</strong>'));
 assert(!html.includes('Coût $0'));
 assert(html.includes('Contrat historique — non comparable'));
 assert(html.includes('Audit final indisponible'));
@@ -241,19 +241,19 @@ context._bmData = [{...row, id: 'zero-gt', cost: null, score: {
   }, diagnostics: {verification: {confirmed: 0, inconclusive: 0, error: 0, not_tested: 0}},},
 }}];
 context.renderBenchmarkTable();
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(html.includes('Spécificité 100 %'));
 assert(html.includes('0/0 hypothèses testées'));
-assert(html.includes('Tokens —'));
+assert((html.includes('Tokens</small><strong>—</strong>') || html.includes('Tokens —')));
 
 for (const invalidTokens of [null, false, '']) {
   elements['bm-tbody'].innerHTML = '';
   context._bmData = [{...row, id: `invalid-${String(invalidTokens)}`, cost: null,
     score: {...score, total_tokens: invalidTokens, total_cost_usd: null}}];
   context.renderBenchmarkTable();
-  html = elements['bm-tbody'].innerHTML;
-  assert(html.includes('Tokens —'));
-  assert(!html.includes('Tokens 0'));
+  html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
+  assert((html.includes('Tokens</small><strong>—</strong>') || html.includes('Tokens —')));
+  assert(!html.includes('Tokens</small><strong>0</strong>'));
 }
 
 const invalidVerification = {...funnel,
@@ -265,7 +265,7 @@ for (const badFunnel of [invalidVerification, mismatchedPopulation]) {
   elements['bm-tbody'].innerHTML = '';
   context._bmData = [{...row, id: 'bad-coverage', score: {...score, funnel: badFunnel}}];
   context.renderBenchmarkTable();
-  html = elements['bm-tbody'].innerHTML;
+  html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
   assert(html.includes('Couverture de vérification indisponible'));
   assert(!html.includes('0/0 hypothèses testées'));
 }
@@ -274,7 +274,7 @@ elements['bm-tbody'].innerHTML = '';
 context._bmData = [{...row, id: 'missing-rate', score: {...score,
   funnel: {...funnel, diagnostics: {...funnel.diagnostics, verification_attempt_rate: null}}}}];
 context.renderBenchmarkTable();
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(html.includes('3/4 hypothèses testées'));
 assert(!html.includes('0,0 %'));
 const missingRateCoverage = context.renderVerificationCoverage(
@@ -286,9 +286,9 @@ elements['bm-tbody'].innerHTML = '';
 context._bmData = [{...row, id: 'sealed', sealed: true,
   score: {metrics: {overall_score: .5, cost_usd: 0}, total_tokens: 999}}];
 context.renderBenchmarkTable();
-html = elements['bm-tbody'].innerHTML;
+html = elements['bm-tbody'].innerHTML + elements['bm-selected-run'].innerHTML;
 assert(html.includes('Coût $0'));
-assert(html.includes('Tokens —'));
+assert((html.includes('Tokens</small><strong>—</strong>') || html.includes('Tokens —')));
 assert(!html.includes('Tokens 999'));
 assert(!html.includes('Déclarations <strong>'));
 console.log('BENCHMARK_DASHBOARD_VM_OK');

@@ -2470,6 +2470,8 @@ async function loadBenchmark() {
   const refresh = document.getElementById('bm-refresh');
   document.getElementById('bm-loading')?.remove();
   table.hidden = true;
+  const selectedPanel = document.getElementById('bm-selected-run');
+  if (selectedPanel) { selectedPanel.hidden = true; selectedPanel.innerHTML = ''; }
   empty.hidden = true;
   body.insertAdjacentHTML('afterbegin',
     '<div id="bm-loading" style="padding:32px;text-align:center;color:var(--muted);font-size:13px">Chargement…</div>');
@@ -2569,7 +2571,7 @@ function renderFunnelStage(stage, reportScore = null, { primary = false, filterL
   </div>`;
 }
 
-function renderVerificationCoverage(funnel) {
+function renderVerificationCoverage(funnel, expanded = false) {
   const verification = funnel?.diagnostics?.verification;
   if (!verification || typeof verification !== 'object') {
     return `<div class="bm-verification-coverage bm-unavailable" aria-label="Couverture de vérification indisponible">
@@ -2595,6 +2597,7 @@ function renderVerificationCoverage(funnel) {
   const tested = total - counts[3];
   const rate = bmFiniteNumber(funnel?.diagnostics?.verification_attempt_rate);
   const rateLabel = rate == null ? '' : ` · ${bmRate(rate)}`;
+  if (expanded) return `<div class="bm-verification-coverage"><strong>Résultat des vérifications</strong><span>${tested}/${total} hypothèses testées${rateLabel}</span><div class="bm-outcomes">${[[counts[0], 'Confirmées'], [counts[1] + counts[2], 'Non concluantes'], [counts[3], 'Non testées']].map(([n, label]) => `<div><strong>${n}</strong><span>${label}</span></div>`).join('')}</div></div>`;
   return `<div class="bm-verification-coverage" aria-label="${tested} hypothèses testées sur ${total}">
     <strong>Couverture</strong><span>${tested}/${total} hypothèses testées${rateLabel}</span>
     <small>Confirmées ${counts[0]} · Non concluantes ${counts[1] + counts[2]} · Non testées ${counts[3]}</small></div>`;
@@ -2626,7 +2629,7 @@ function renderClaimDiagnostics(diagnostic) {
     ${sources ? `<p><strong>Sources regroupées — exclues du décompte des doublons</strong></p><ul>${sources}</ul>` : ''}</details></div>`;
 }
 
-function renderFunnelDiagnostics(funnel, score = {}) {
+function renderFunnelDiagnostics(funnel, score = {}, section = 'all') {
   const d = funnel?.diagnostics || {};
   const v = d.verification;
   const p = d.proofs;
@@ -2663,15 +2666,14 @@ function renderFunnelDiagnostics(funnel, score = {}) {
   const opinion = judge ? `<section class="bm-group" aria-label="Avis LLM"><h4>Avis LLM — diagnostic</h4>
     <p>${escapeHtml(judge.model || 'Modèle non renseigné')} : ${bmRate(judge.scenario_score ?? judge.f1_score ?? judge.specificity)}<br>
     Avis sémantique historique, ni preuve d’exécution ni score officiel.</p></section>` : '';
-  return `<section class="bm-group" aria-label="Vérification et preuves"><h4>Vérification et preuves</h4>
+  return ((section === 'all' || section === 'proofs') ? `<section class="bm-group" aria-label="Vérification et preuves"><h4>Vérification et preuves</h4>
     <p><strong>Preuves du rapport final</strong><br>${proofs}</p>
     <details class="bm-proof-details"><summary>Explications et diagnostic</summary>
     <p><strong>Préparation du laboratoire</strong><br>${preparationText}</p>
     <p>Une trace acceptée doit aussi correspondre à la vérité terrain pour compter comme VP.</p>
-    ${renderClaimDiagnostics(d.claims)}${verification}${losses}<p>Une tentative infructueuse ne réfute pas une faille.</p></details></section>`
-    + (network ? `<section class="bm-group" aria-label="Intrusion">${network.replace('<p><strong>Chemins et intrusion — diagnostic</strong>', '<h4>Intrusion</h4><p>')}</section>` : '')
-    + (execution ? `<section class="bm-group" aria-label="Exécution">${execution.replace('<p><strong>Exécution</strong>', '<h4>Consommation et exécution</h4><p>')}</section>` : '')
-    + opinion;
+    ${renderClaimDiagnostics(d.claims)}${verification}${losses}<p>Une tentative infructueuse ne réfute pas une faille.</p></details></section>` : '')
+    + ((section === 'all' || section === 'intrusion') ? (network ? `<section class="bm-group" aria-label="Intrusion">${network.replace('<p><strong>Chemins et intrusion — diagnostic</strong>', '<h4>Intrusion</h4><p>')}</section>` : '<p class="bm-no-score">Données d’intrusion indisponibles.</p>') : '')
+    + ((section === 'all' || section === 'execution') ? (execution ? `<section class="bm-group" aria-label="Exécution">${execution.replace('<p><strong>Exécution</strong>', '<h4>Exécution</h4><p>')}</section>` : '') + opinion : '');
 }
 
 function renderBenchmarkContract(score) {
@@ -2698,6 +2700,7 @@ function renderBenchmarkStatus(row, score, sealed) {
 }
 
 let _bmOpenRunId = null; // run id with its full-width details panel open
+let _bmActiveTab = 'audit';
 const BM_OPEN_RUN_STORAGE_KEY = 'lance.bmOpenRun';
 
 function _bmReadStoredOpenRun() {
@@ -2736,7 +2739,6 @@ function renderAuditSummary(score) {
   const label = control ? 'Spécificité' : 'F1 final';
   const value = control ? score.specificity : stage.f1;
   return `<div class="bm-audit-final"><strong>${label} ${bmRate(value)}</strong>`
-    + `<small>Précision ${bmRate(stage.precision)} · Rappel ${bmRate(stage.recall)}</small>`
     + (control && value == null ? `<small>${escapeHtml(score.score_unavailable_reason || 'Contrôle incomplet')}</small>` : '')
     + '</div>';
 }
@@ -2767,43 +2769,54 @@ function bmDetailsPanelId(runId) {
   return 'bm-details-' + Array.from(String(runId ?? ''), c => c.codePointAt(0).toString(16)).join('-');
 }
 
-// Full-width details panel: detection funnel, verification/proofs, intrusion, consumption.
+function bmRunLabel(runId) {
+  return String(runId ?? '').replace(/^(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})(\d{2})$/, '$1 · $2:$3:$4');
+}
+
+// One selected run, outside the comparison table. Audit and intrusion stay independent.
 function renderBenchmarkDetails(r, s, sealed) {
-  if (sealed) {
-    return `<div class="bm-details-panel"><section class="bm-group" aria-label="Run scellé"><h4>Run scellé</h4>`
-      + `<p>Score agrégé signé uniquement — détails scellés.</p>${renderBenchmarkContract(s)}</section></div>`;
-  }
-  const compatible = s.evidence_contract_compatible !== false;
+  if (sealed) return `<div class="bm-panel-head"><h3>Run scellé</h3></div><div class="bm-tab-content"><p>Score agrégé signé uniquement — détails scellés.</p><p>Tokens ${bmNumber(s.metrics?.total_tokens)}</p>${renderBenchmarkContract(s)}</div>`;
+  const compatible = bmContractCompatible(s);
   const funnel = compatible ? s.funnel : null;
-  const stage = name => compatible ? s.funnel?.stages?.[name] : {
-    available: false, reason: s.metrics_compatibility_reason || 'Contrat métrique non comparable',
+  const efficiency = funnel?.diagnostics;
+  const panelId = bmDetailsPanelId(r.id);
+  const tabs = [['audit', 'Audit'], ['proofs', 'Preuves'], ['intrusion', 'Intrusion'], ['execution', 'Exécution et consommation']];
+  const stages = [['candidates', 'Failles potentielles'], ['filtered', 'Failles retenues'], ['confirmed', 'Confirmations déclarées']];
+  const audit = `<h4>De l’hypothèse à la confirmation</h4><div class="bm-funnel-scroll"><table class="bm-funnel-table" aria-label="Entonnoir de détection"><thead><tr><th scope="col">Étape</th><th scope="col">Total</th><th scope="col">VP</th><th scope="col">FP</th><th scope="col">FN</th><th scope="col">Rappel</th></tr></thead><tbody>${stages.map(([key, label], index) => {
+    const stage = funnel?.stages?.[key];
+    return `<tr><th scope="row"><span class="bm-step">${index + 1}</span>${label}</th>${stage?.available
+      ? ['predictions', 'true_positives', 'false_positives', 'false_negatives'].map(k => `<td>${bmNumber(stage[k])}</td>`).join('') + `<td>${bmRate(stage.recall)}</td>`
+      : `<td colspan="5" class="bm-unavailable">Indisponible — ${escapeHtml(stage?.reason || s.metrics_compatibility_reason || 'Données indisponibles')}</td>`}</tr>`;
+  }).join('')}</tbody></table></div>
+  <div class="bm-audit-foot"><span>Failles réelles écartées au filtrage : ${bmNumber(efficiency?.true_candidates_lost_in_filter)}</span><span>Une preuve acceptée ne suffit pas à compter comme VP.</span></div>
+  <details class="bm-stage-details"><summary>Détails métriques</summary>${stages.map(([key, label]) => `<p>${label} : Précision ${bmRate(funnel?.stages?.[key]?.available ? funnel.stages[key].precision : null)} · F1 ${bmRate(funnel?.stages?.[key]?.available ? funnel.stages[key].f1 : null)}</p>`).join('')}</details>`;
+  const content = {
+    audit,
+    proofs: `${renderVerificationCoverage(funnel, true)}<p class="bm-note">Non concluante : preuves insuffisantes, pas nécessairement un incident d’exécution.</p>${renderFunnelDiagnostics(funnel, s, 'proofs')}`,
+    intrusion: renderFunnelDiagnostics(null, s, 'intrusion'),
+    execution: `<div class="bm-consumption"><div><small>Coût${s.cost_is_estimate === true ? ' estimé' : ''}</small><strong>${bmDollars(r.cost ?? s.total_cost_usd)}</strong></div><div><small>Tokens</small><strong>${bmNumber(s.total_tokens)}</strong></div><div><small>Efficacité</small><span>${bmDollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</span></div></div>${renderFunnelDiagnostics(null, s, 'execution')}${renderBenchmarkContract(s)}`
   };
-  const efficiency = compatible ? s.funnel?.diagnostics : null;
-  return `<div class="bm-details-panel" role="region" aria-label="Détails du run ${escapeHtml(r.id)}">`
-    + `<section class="bm-group bm-group-funnel" aria-label="Entonnoir de détection"><h4>Entonnoir de détection</h4>`
-    + `<div class="bm-funnel-3col">`
-    + renderFunnelStage(stage('candidates'), null, {primary: true})
-    + renderFunnelStage(stage('filtered'), null, {
-      countLabel: 'Failles retenues',
-      filterLoss: bmFiniteNumber(s.funnel?.diagnostics?.true_candidates_lost_in_filter),
-    })
-    + renderFunnelStage(stage('confirmed'), s)
-    + `</div></section>`
-    + `<div class="bm-groups-grid">`
-    + `<section class="bm-group" aria-label="Couverture de vérification"><h4>Couverture</h4>${renderVerificationCoverage(funnel)}</section>`
-    + renderFunnelDiagnostics(funnel, s)
-    + `<section class="bm-group" aria-label="Consommation et efficacité"><h4>Consommation</h4>`
-    + `<div class="bm-efficiency"><span>Coût ${bmDollars(r.cost ?? s.total_cost_usd)}</span>`
-    + `<span>Tokens ${bmNumber(s.total_tokens)}</span>`
-    + (s.cost_is_estimate === true ? '<small>Coût estimé</small>' : '')
-    + `<small>${bmDollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>`
-    + `${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</small></div>`
-    + renderBenchmarkContract(s)
-    + `</section>`
-    + `</div></div>`;
+  return `<div class="bm-panel-head"><div><h3>${escapeHtml(r.scenario || 'Run')} <span> / ${escapeHtml(bmRunLabel(r.id))}</span></h3><small>${escapeHtml(r.model || '—')} · ${escapeHtml(r.execution_profile === 'full' ? 'Profil complet' : r.execution_profile || 'Profil non renseigné')}${r.commit ? ' · Commit ' + escapeHtml(r.commit) : ''}</small></div><div>${renderBenchmarkStatus(r, s, false)}</div></div>
+  <div class="bm-tabs" role="tablist" aria-label="Détails du run">${tabs.map(([key,label]) => `<button type="button" role="tab" id="${panelId}-tab-${key}" data-bm-tab="${key}" aria-selected="${_bmActiveTab === key}" tabindex="${_bmActiveTab === key ? 0 : -1}" aria-controls="${panelId}-${key}">${label}</button>`).join('')}</div>
+  ${tabs.map(([key]) => `<div role="tabpanel" class="bm-tab-content" id="${panelId}-${key}" aria-labelledby="${panelId}-tab-${key}" tabindex="0"${_bmActiveTab === key ? '' : ' hidden'}>${content[key]}</div>`).join('')}`;
+}
+
+function selectBenchmarkTab(key, focus = false) {
+  if (!['audit', 'proofs', 'intrusion', 'execution'].includes(key)) return;
+  _bmActiveTab = key;
+  const panel = document.getElementById('bm-selected-run');
+  panel?.querySelectorAll('[data-bm-tab]').forEach(button => {
+    const selected = button.dataset.bmTab === key;
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    const content = document.getElementById(button.getAttribute('aria-controls'));
+    if (content) content.hidden = !selected;
+    if (selected && focus) button.focus();
+  });
 }
 
 function toggleBenchmarkDetails(runId) {
+  if (_bmOpenRunId !== runId) _bmActiveTab = 'audit';
   _bmOpenRunId = (_bmOpenRunId === runId) ? null : runId;
   _bmStoreOpenRun(_bmOpenRunId);
   renderBenchmarkTable();
@@ -2826,37 +2839,49 @@ function renderBenchmarkTable() {
   const model = modelEl?.value || '';
   const rows = (_bmData || []).filter(r => (!scenario || r.scenario === scenario) && (!model || r.model === model));
   const tbody = document.getElementById('bm-tbody');
-  const noScore = '<span class="bm-no-score">—</span>';
   if (_bmOpenRunId == null) _bmOpenRunId = _bmReadStoredOpenRun();
   if (_bmOpenRunId != null && !rows.some(r => String(r.id) === String(_bmOpenRunId))) _bmOpenRunId = null;
   tbody.innerHTML = rows.map(r => {
     const s = r.score || {};
     const sealed = isSealedRun(r);
     const cost = sealed ? s.metrics?.cost_usd : (r.cost ?? s.total_cost_usd);
-    const tokens = sealed ? s.metrics?.total_tokens : s.total_tokens;
     const runId = escapeHtml(r.id);
     const open = _bmOpenRunId != null && String(_bmOpenRunId) === String(r.id);
-    const panelId = bmDetailsPanelId(r.id);
+    const stage = !sealed && !r.score_error && bmContractCompatible(s) && s.funnel?.stages?.confirmed?.available ? s.funnel.stages.confirmed : null;
     let audit;
     if (sealed) audit = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(s.metrics?.overall_score)}<small>Détails scellés</small></div>`;
     else if (r.score_error) audit = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;
     else audit = renderAuditSummary(s);
     const mainRow = `<tr${open ? ' class="bm-row-open"' : ''}>`
-      + `<td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(String(r.id).replace(/_/g, ' '))}</button>`
+      + `<td><button type="button" class="bm-run-link" data-bm-run="${runId}">${escapeHtml(bmRunLabel(r.id))}</button>`
       + `<small class="bm-scenario">${escapeHtml(r.scenario)}${sealed ? ' · scellé' : ''}</small>`
-      + (r.commit ? `<small class="bm-commit">${escapeHtml(r.commit)}</small>` : '') + `</td>`
-      + `<td class="bm-model" data-label="Modèle">${escapeHtml(r.model || '—')}${r.execution_profile ? `<small>${escapeHtml(r.execution_profile)}</small>` : ''}</td>`
+      + `</td>`
+      + `<td class="bm-model" data-label="Modèle">${escapeHtml(r.model || '—')}</td>`
       + `<td data-label="Audit final">${audit}</td>`
+      + `<td data-label="Précision">${bmRate(stage?.precision)}</td>`
+      + `<td data-label="Rappel">${bmRate(stage?.recall)}</td>`
       + `<td data-label="Exécution">${renderBenchmarkStatus(r, s, sealed)}</td>`
       + `<td data-label="Consommation"><div class="bm-efficiency"><span>Coût ${bmDollars(cost)}</span>`
-      + `<span>Tokens ${bmNumber(tokens)}</span>`
       + (s.cost_is_estimate === true ? '<small>Coût estimé</small>' : '') + `</div></td>`
-      + `<td data-label="Vérification">${sealed ? noScore : renderVerificationCompact(bmContractCompatible(s) ? s.funnel : null)}</td>`
-      + `<td><button type="button" class="bm-details-btn" data-bm-details="${runId}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${panelId}">Détails</button></td>`
+      + `<td><button type="button" class="bm-details-btn" data-bm-details="${runId}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="bm-selected-run">${open ? 'Sélectionné' : 'Consulter'}</button></td>`
       + `</tr>`;
-    if (!open) return mainRow + `<tr hidden><td colspan="7" id="${panelId}"></td></tr>`;
-    return mainRow + `<tr class="bm-details-row"><td colspan="7" id="${panelId}">${renderBenchmarkDetails(r, s, sealed)}</td></tr>`;
+    return mainRow;
   }).join('');
+  const panel = document.getElementById('bm-selected-run');
+  const selected = rows.find(r => String(r.id) === String(_bmOpenRunId));
+  if (panel) {
+    panel.hidden = !selected;
+    panel.innerHTML = selected ? renderBenchmarkDetails(selected, selected.score || {}, isSealedRun(selected)) : '';
+    panel.querySelectorAll('[data-bm-tab]').forEach(button => {
+      button.addEventListener('click', () => selectBenchmarkTab(button.dataset.bmTab));
+      button.addEventListener('keydown', event => {
+        const tabs = [...panel.querySelectorAll('[data-bm-tab]')];
+        const index = tabs.indexOf(button);
+        const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+        if (next != null) { event.preventDefault(); selectBenchmarkTab(tabs[next].dataset.bmTab, true); }
+      });
+    });
+  }
   tbody.querySelectorAll('[data-bm-run]').forEach(button => {
     button.addEventListener('click', () => { switchView('main'); viewRun(button.dataset.bmRun); });
   });
