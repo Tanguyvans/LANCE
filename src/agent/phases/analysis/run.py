@@ -8,8 +8,11 @@ import os
 import re
 import logging
 from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
+from src.agent.phases.analysis import block_recovery
 from src.agent.core.memo import _looks_unusable_model_memo
 from src.agent.core import runtime
+from src.agent.core.provider_transport import deadline_remaining
+from src.agent.cost_tracker import BudgetExceeded
 
 
 log = logging.getLogger(__name__)
@@ -325,6 +328,334 @@ class AnalysisPhase:
         except OSError:
             return False, f"missing_validated_deliverable: promoted file is unreadable for {device_id}"
         return True, ""
+
+    def _phase3_recovery_guard(
+        self, device_id: str, total: int, done: int, *, deadline: float | None,
+    ) -> None:
+        """Enforce the shared stop/deadline/budget before another recovery call."""
+        stop_event = getattr(self, "_stop_event", None)
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError(
+                f"truncated_output: block recovery stopped for {device_id} "
+                f"({done}/{total} blocks valid)"
+            )
+        try:
+            deadline_remaining(deadline)
+        except TimeoutError:
+            raise RuntimeError(
+                f"truncated_output: block recovery deadline exceeded for {device_id} "
+                f"({done}/{total} blocks valid)"
+            ) from None
+        try:
+            self.tracker.check_budget()
+        except BudgetExceeded:
+            raise RuntimeError(
+                f"truncated_output: block recovery budget exceeded for {device_id} "
+                f"({done}/{total} blocks valid)"
+            ) from None
+
+    def _read_validated_phase3_block(
+        self,
+        device: dict,
+        spec: dict,
+        block_receipts: list[dict],
+        *,
+        device_ports: set[int],
+        device_services: set[str],
+        finish_reason: str | None,
+    ) -> dict:
+        """Accept one saved block only after promotion and attribution checks."""
+        device_id = str(device.get("id") or "")
+        sidecar = str(spec["sidecar"])
+        if finish_reason not in ("tool_calls", "stop"):
+            raise RuntimeError(
+                f"missing_validated_deliverable: incomplete block response "
+                f"for {device_id} (finish_reason={finish_reason})"
+            )
+        if not block_receipts:
+            raise RuntimeError(
+                f"missing_validated_deliverable: no block save for {device_id} "
+                f"(finish_reason={finish_reason})"
+            )
+        promoted, promotion_error = self._phase3_promoted_deliverable(
+            device_id, sidecar, block_receipts[-1]
+        )
+        if not promoted:
+            raise RuntimeError(promotion_error)
+        try:
+            data = json.loads((self.run_dir / sidecar).read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"missing_validated_deliverable: unreadable block sidecar {sidecar}: {exc}"
+            ) from exc
+        valid, validation_error = block_recovery.validate_block_payload(
+            data,
+            device_id=device_id,
+            device_ip=str(device.get("ip") or ""),
+            spec=spec,
+            device_ports=device_ports,
+            device_services=device_services,
+        )
+        if not valid:
+            raise RuntimeError(
+                f"missing_validated_deliverable: rejected block sidecar {sidecar}: "
+                f"{validation_error}"
+            )
+        return data
+
+    def _run_phase3_block(
+        self,
+        device: dict,
+        scan_data: dict,
+        spec: dict,
+        caps: dict,
+        observations: list[dict],
+        *,
+        deadline: float | None,
+        stream_callback: Callable[[dict], None] | None,
+    ) -> dict:
+        """Finalize one block with save-only calls; retry only this block."""
+        device_id = str(device.get("id") or "")
+        device_ip = str(device.get("ip") or "")
+        total = max(1, int(caps.get("total_blocks", 1)))
+        services = [s for s in device.get("services", []) if isinstance(s, dict)]
+        device_ports = {
+            s["port"] for s in services
+            if isinstance(s.get("port"), int) and not isinstance(s.get("port"), bool)
+        }
+        device_services = {
+            str(s.get("name") or s.get("service") or "") for s in services
+        } - {""}
+        scoped = block_recovery.scope_scan_for_block(scan_data, spec)
+        automated_summary = "\n".join(
+            f"- {finding.get('id', '?')} | {finding.get('type', '?')} | "
+            f"{finding.get('severity', '?')} | {finding.get('service', '')} | "
+            f"{finding.get('port', '')}"
+            for finding in scoped["findings"]
+            if isinstance(finding, dict)
+        ) or "No automated findings in scope."
+        scan_json = json.dumps(scoped["scan_results"], ensure_ascii=False)
+        if len(scan_json) > 12000:
+            scan_json = scan_json[:12000] + '\n[truncated: see 03_scans/{}.json]'.format(device_id)
+        block_services = ", ".join(
+            f"{entry['name']}:{entry['port']}" if entry["name"] and entry["port"] is not None
+            else entry["name"] or f"port {entry['port']}"
+            for entry in spec["services"]
+        ) or "general scope (no declared services)"
+        variables = {
+            "device_id": device_id,
+            "device_ip": device_ip,
+            "block_index": spec["index"] + 1,
+            "block_count": total,
+            "block_services": block_services,
+            "allowed_services": ", ".join(spec["service_names"]) or "any declared service",
+            "allowed_ports": ", ".join(str(port) for port in spec["ports"]) or "any declared port",
+            "expected_block_file": spec["sidecar"],
+            "scan_results": scan_json,
+            "automated_findings_summary": automated_summary,
+            "prior_observations": block_recovery.render_observations(observations, spec),
+        }
+        system_prompt = runtime.load_prompt("analyze_device_block", variables)
+        save_base = next(
+            (tool for tool in runtime.DELIVERABLE_TOOLS if tool.get("name") == "save_deliverable"),
+            None,
+        )
+        if save_base is None:
+            raise RuntimeError(
+                f"truncated_output: save tool unavailable for {device_id} block recovery"
+            )
+        block_agent = f"analyze_{device_id}_block{spec['index']}"
+        block_config = runtime.AgentConfig(
+            name=block_agent,
+            phase=3,
+            prompt_template="analyze_device_block",
+            deliverable_file=str(spec["sidecar"]),
+            tools=[],
+            validator="json_device_vulns",
+        )
+        block_tools = self._apply_deliverable_transaction(
+            [self._wrap_tool(dict(save_base), phase=3, agent=block_agent)],
+            block_config,
+            stream_callback,
+        )
+        block_receipts: list[dict] = []
+        wrapped: list[dict] = []
+        for tool in block_tools:
+            if tool.get("name") != "save_deliverable":
+                wrapped.append(tool)
+                continue
+            original_save = tool["function"]
+
+            def capture_block_save(*args, _original=original_save, **kwargs):
+                raw_receipt = _original(*args, **kwargs)
+                try:
+                    receipt = json.loads(raw_receipt) if isinstance(raw_receipt, str) else raw_receipt
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    receipt = None
+                if isinstance(receipt, dict):
+                    block_receipts.append(receipt)
+                return raw_receipt
+
+            wrapped.append({**tool, "function": capture_block_save})
+        block_tools = wrapped
+
+        last_error = "no attempt made"
+        for attempt in range(1, caps["max_attempts"] + 1):
+            self._phase3_recovery_guard(
+                device_id, total, spec["index"], deadline=deadline
+            )
+            block_completion: dict = {}
+            block_receipts.clear()
+            self.provider.chat_with_tools(
+                system_prompt=system_prompt,
+                user_message=(
+                    f"Finalize block {spec['index'] + 1} for {device_id} ({device_ip}) "
+                    f"covering {block_services}. Then call save_deliverable("
+                    f"'{spec['sidecar']}', json_content)."
+                    + (f" Previous block attempt was rejected: {last_error[:800]}. Repair this block only."
+                       if attempt > 1 else "")
+                ),
+                tools=block_tools,
+                max_turns=caps["max_turns"],
+                max_tokens=caps["max_tokens"],
+                cost_tracker=self.tracker,
+                stream_callback=self._model_stream_callback(
+                    stream_callback, phase=3, agent=block_agent
+                ),
+                required_tool="save_deliverable",
+                terminate_after_tool="save_deliverable",
+                stop_event=self._stop_event,
+                deadline=deadline,
+                completion_metadata=block_completion,
+            )
+            self._phase3_recovery_guard(
+                device_id, total, spec["index"], deadline=deadline
+            )
+            try:
+                return self._read_validated_phase3_block(
+                    device, spec, block_receipts,
+                    device_ports=device_ports,
+                    device_services=device_services,
+                    finish_reason=block_completion.get("finish_reason"),
+                )
+            except RuntimeError as exc:
+                last_error = str(exc)
+                if block_completion.get("finish_reason") == "length":
+                    last_error += " [finish_reason=length]"
+                log.warning(
+                    "Phase 3 block %s for %s attempt %d/%d failed: %s",
+                    spec["sidecar"], device_id, attempt, caps["max_attempts"], last_error,
+                )
+        raise RuntimeError(
+            f"truncated_output: block {spec['index'] + 1}/{total} incomplete for "
+            f"{device_id} after {caps['max_attempts']} attempts ({last_error}); "
+            f"valid blocks preserved under {block_recovery.BLOCK_DIR}/"
+        )
+
+    def _recover_truncated_phase3_device(
+        self,
+        *,
+        device: dict,
+        scan_data: dict,
+        deliverable_file: str,
+        device_tools: list[dict],
+        save_receipts: list[dict],
+        observations: list[dict],
+        deadline: float | None,
+        stream_callback: Callable[[dict], None] | None,
+    ) -> None:
+        """Rebuild one truncated device from validated per-service blocks.
+
+        Raises RuntimeError with a ``truncated_output:`` cause when any
+        required block is missing or invalid. Scanner fallback and valid
+        sidecars are preserved by the caller; nothing here declares success
+        without every block validated and the assembled deliverable promoted.
+        """
+        device_id = str(device.get("id") or "")
+        caps = block_recovery.block_config()
+        specs = block_recovery.derive_blocks(
+            device,
+            max_blocks=caps["max_blocks"],
+            services_per_block=caps["services_per_block"],
+        )
+        caps = {**caps, "total_blocks": len(specs)}
+        self._phase3_recovery_guard(device_id, len(specs), 0, deadline=deadline)
+        self.tracker.start_phase(f"analyze_{device_id}_blocks")
+        try:
+            payloads: list[dict] = []
+            block_failures: list[str] = []
+            for position, spec in enumerate(specs):
+                try:
+                    payloads.append(
+                        self._run_phase3_block(
+                            device, scan_data, spec, caps, observations,
+                            deadline=deadline, stream_callback=stream_callback,
+                        )
+                    )
+                except RuntimeError as exc:
+                    # Keep attempting sibling blocks so valid sidecars are
+                    # preserved; the device still fails as incomplete below.
+                    block_failures.append(str(exc))
+                    log.warning(
+                        "Phase 3 block recovery skipping %s for %s: %s",
+                        spec["sidecar"], device_id, exc,
+                    )
+                    try:
+                        self._phase3_recovery_guard(
+                            device_id, len(specs), position + 1, deadline=deadline
+                        )
+                    except RuntimeError:
+                        block_failures.append(
+                            "truncated_output: block recovery aborted by stop/deadline/budget"
+                        )
+                        break
+            if block_failures:
+                raise RuntimeError(
+                    f"truncated_output: incomplete block recovery for {device_id} "
+                    f"({len(payloads)}/{len(specs)} blocks valid): {block_failures[0]}"
+                )
+            automated = scan_data.get("findings", []) if isinstance(scan_data, dict) else []
+            self._phase3_recovery_guard(
+                device_id, len(specs), len(payloads), deadline=deadline
+            )
+            try:
+                assembled = block_recovery.assemble_device_deliverable(
+                    device, automated if isinstance(automated, list) else [], payloads
+                )
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"truncated_output: cannot assemble {device_id} from blocks: {exc}"
+                ) from exc
+            device_save = next(
+                (tool["function"] for tool in device_tools
+                 if tool.get("name") == "save_deliverable"),
+                None,
+            )
+            if device_save is None:
+                raise RuntimeError(
+                    f"truncated_output: save tool unavailable for {device_id} assembly"
+                )
+            raw_receipt = device_save(
+                filename=deliverable_file,
+                content=json.dumps(assembled, ensure_ascii=False),
+            )
+            try:
+                receipt = json.loads(raw_receipt) if isinstance(raw_receipt, str) else raw_receipt
+            except (TypeError, ValueError, json.JSONDecodeError):
+                receipt = None
+            if isinstance(receipt, dict):
+                save_receipts.append(receipt)
+            promoted, promotion_error = self._phase3_promoted_deliverable(
+                device_id, deliverable_file, receipt if isinstance(receipt, dict) else None
+            )
+            if not promoted:
+                raise RuntimeError(promotion_error)
+            log.info(
+                "Phase 3 block recovery completed for %s (%d blocks)",
+                device_id, len(specs),
+            )
+        finally:
+            self.tracker.end_phase()
 
     def _run_phase3(
         self,
@@ -863,10 +1194,27 @@ class AnalysisPhase:
                 stream_callback,
             )
             save_receipts: list[dict] = []
+            observations: list[dict] = []
             captured_tools = []
             for tool in device_tools:
                 if tool.get("name") != "save_deliverable":
-                    captured_tools.append(tool)
+                    original_fn = tool["function"]
+
+                    def record_observation_call(*args, _original=original_fn,
+                                                _name=str(tool.get("name")), **kwargs):
+                        raw_result = _original(*args, **kwargs)
+                        try:
+                            block_recovery.record_observation(
+                                observations, _name,
+                                raw_result if isinstance(raw_result, str)
+                                else json.dumps(raw_result, ensure_ascii=False, default=str),
+                                kwargs=kwargs,
+                            )
+                        except Exception:
+                            log.debug("Could not retain Phase 3 observation", exc_info=True)
+                        return raw_result
+
+                    captured_tools.append({**tool, "function": record_observation_call})
                     continue
                 original_save = tool["function"]
 
@@ -890,6 +1238,8 @@ class AnalysisPhase:
             )
             variables["phase4_tool_catalog"] = ", ".join(phase4_tool_catalog)
             system_prompt = runtime.load_prompt("analyze_device", variables)
+            device_deadline = _time.monotonic() + phase3_timeout_s
+            full_completion: dict = {}
             self.tracker.start_phase(f"analyze_{device_id}")
             result_text = self.provider.chat_with_tools(
                 system_prompt=system_prompt,
@@ -908,13 +1258,51 @@ class AnalysisPhase:
                 required_tool="save_deliverable",
                 terminate_after_tool="save_deliverable",
                 stop_event=self._stop_event,
-                deadline=_time.monotonic() + phase3_timeout_s,
+                deadline=device_deadline,
+                completion_metadata=full_completion,
             )
             usage = self.tracker.end_phase()
             promoted, validation_error = self._phase3_promoted_deliverable(
                 device_id, deliverable_file, save_receipts[-1] if save_receipts else None
             )
+            if self.execution_profile.name == "full" and block_recovery.is_truncation(full_completion):
+                # A parseable save in a cut-short response is not a completed analysis.
+                promoted = False
             if not promoted:
+                if (self.execution_profile.name == "full"
+                        and block_recovery.is_truncation(full_completion)):
+                    log.warning(
+                        "Phase 3 analysis for %s truncated on the output budget; "
+                        "attempting bounded block recovery",
+                        device_id,
+                    )
+                    self._recover_truncated_phase3_device(
+                        device=device,
+                        scan_data=scan_data,
+                        deliverable_file=deliverable_file,
+                        device_tools=device_tools,
+                        save_receipts=save_receipts,
+                        observations=observations,
+                        deadline=device_deadline,
+                        stream_callback=stream_callback,
+                    )
+                    promoted, validation_error = self._phase3_promoted_deliverable(
+                        device_id, deliverable_file,
+                        save_receipts[-1] if save_receipts else None,
+                    )
+                    if promoted:
+                        if usage:
+                            print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns (block recovery)")
+                        if stream_callback:
+                            stream_callback({
+                                "type": "device_done", "device_id": device_id,
+                                "device_ip": device_ip, "phase": 3,
+                                "turns": usage.turns if usage else 0,
+                                "run_dir": str(self.run_dir),
+                                "recovered_from_truncation": True,
+                            })
+                        return
+                    raise RuntimeError(validation_error)
                 log.warning(
                     "Phase 3 analysis for %s did not produce a validated promoted deliverable; "
                     "scanner findings remain canonical",
@@ -951,7 +1339,10 @@ class AnalysisPhase:
             except Exception as exc:
                 device_id = str(device.get("id") or "unknown")
                 log.exception("Phase 3 analysis failed for %s; keeping scanner fallback", device_id)
-                phase3_failures.append({"device_id": device_id, "error": str(exc)})
+                failure = {"device_id": device_id, "error": str(exc)}
+                if str(exc).startswith("truncated_output:"):
+                    failure["cause"] = "truncated_output"
+                phase3_failures.append(failure)
                 phase3_status["devices_failed"] = phase3_failures
                 try:
                     self.tracker.end_phase()
@@ -959,11 +1350,14 @@ class AnalysisPhase:
                     log.debug("Could not close failed Phase 3 tracker for %s", device_id, exc_info=True)
                 self._persist_phase3_device_findings(device, scanner_results)
                 if stream_callback:
-                    stream_callback({
+                    device_event = {
                         "type": "device_done", "device_id": device_id,
                         "device_ip": device.get("ip", "unknown"), "phase": 3,
                         "turns": 0, "error": str(exc),
-                    })
+                    }
+                    if str(exc).startswith("truncated_output:"):
+                        device_event["cause"] = "truncated_output"
+                    stream_callback(device_event)
 
         with ThreadPoolExecutor(max_workers=worker_count) as pool:
             list(pool.map(_analyze_with_stagger, enumerate(surface)))
