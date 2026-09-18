@@ -60,6 +60,79 @@ def _finding(**overrides):
     return value
 
 
+@pytest.mark.parametrize("endpoint,matched", [
+    ("/archive/customer.sql", True), ("/archive/sub/customer.sql", True),
+    ("/archive/", False), ("/archive-neighbor/customer.sql", False),
+    ("/other/customer.sql", False), ("/archive/../other.sql", False),
+    ("/archive/%2e%2e/other.sql", False), ("/archive//other.sql", False),
+    ("/archive/file?redirect=/other.sql", False),
+])
+def test_explicit_directory_contract_has_bounded_scope(endpoint, matched):
+    gt = _gt(endpoints=[], endpoint_prefixes=["/archive/"])
+    finding, _ = match_vuln(gt, [_finding(endpoint=endpoint)])
+    assert (finding is not None) is matched
+
+
+def test_exact_endpoint_does_not_implicitly_become_directory_scope():
+    assert match_vuln(_gt(endpoints=["/archive/"]), [_finding(endpoint="/archive/file.sql")])[0] is None
+
+
+@pytest.mark.parametrize("override", [
+    {"device_ip": "192.0.2.11"}, {"service": "ssh"}, {"port": 8080},
+    {"protocol": "udp"}, {"type": "directory_listing"},
+])
+def test_directory_scope_preserves_other_matching_constraints(override):
+    gt = _gt(endpoints=[], endpoint_prefixes=["/archive/"])
+    assert match_vuln(gt, [_finding(endpoint="/archive/file.sql", **override)])[0] is None
+
+
+@pytest.mark.parametrize("prefix", ["/", "archive/", "/archive", "/archive/../", "/%61rchive/", "/archive//"])
+def test_invalid_directory_contract_fails_closed(prefix):
+    with pytest.raises(ValueError, match="endpoint_prefixes"):
+        match_vuln(_gt(endpoint_prefixes=[prefix]), [_finding()])
+
+
+@pytest.mark.parametrize("body,observed_path,credit", [
+    ("password=secret", "/archive/file.sql", 1),
+    ("Index of /archive/", "/archive/file.sql", 0),
+    ("password=secret", "/archive/other.sql", 0),
+])
+def test_directory_contract_still_requires_sensitive_content_on_claimed_file(tmp_path, body, observed_path, credit):
+    finding = _finding(endpoint="/archive/file.sql")
+    run, gt = _write(tmp_path, [finding], [_gt(endpoints=[], endpoint_prefixes=["/archive/"])])
+    (run / "04_exploitation.json").write_text(json.dumps({"tests": [{
+        "vuln_id": "F1", "device_ip": "192.0.2.10", "vuln_type": "data_exposure",
+        "service": "http", "port": 80, "protocol": "tcp", "endpoint": "/archive/file.sql",
+        "status": "CONFIRMED", "evidence_level": 3, "tool_used": "http_get",
+        "evidence_refs": ["tc-directory"], "evidence": body,
+    }]}))
+    (run / "tool_calls.jsonl").write_text(json.dumps({
+        "evidence_ref": "tc-directory", "vuln_id": "F1", "tool": "http_get",
+        "args": {"url": "http://192.0.2.10" + observed_path},
+        "result": {"return_code": 0, "status_code": 200, "body": body},
+    }) + "\n")
+    result = evaluate(run, gt)
+    assert result.funnel["stages"]["confirmed"]["true_positives"] == credit
+
+
+def test_previous_metric_contract_is_not_silently_rescored(tmp_path):
+    run, gt = _write(tmp_path, [_finding()])
+    (run / "run_meta.json").write_text(json.dumps({
+        "metric_contract_version": "strict-v3.13", "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+    }))
+    result = evaluate(run, gt)
+    assert result.evidence_contract_compatible is False
+    assert result.scenario_score_pct is None
+
+
+def test_s2_sensitive_files_contract_reflects_declared_scope():
+    catalog = yaml.safe_load((Path(__file__).resolve().parents[1] / "benchmarks/ground_truth/matching_contracts.yaml").read_text())
+    gt = {**_gt(), **catalog["scenarios"]["2"]["V8"]}
+    for path in ("/backup/db_backup_2024-01-15.sql", "/config/app.config"):
+        assert match_vuln(gt, [_finding(endpoint=path)])[0] is not None
+    assert match_vuln(gt, [_finding(endpoint="/unrelated/secret.sql")])[0] is None
+
+
 def _write(tmp_path: Path, findings, vulnerabilities=None, *, controls=None, bonus_types=None):
     run = tmp_path / "run"
     run.mkdir()

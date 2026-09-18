@@ -68,6 +68,8 @@ class ReportPhase:
                 prompt = sections.section_prompt(card)
                 token_limit = self.execution_profile.report_max_tokens
                 policy = sections.generation_policy(self.provider.provider, token_limit)
+                if card["kind"] == "summary":
+                    policy = {"renderer": "recorded-facts-summary"}
                 fingerprint = sections.digest({"card": card, "prompt": prompt,
                                                "provider": self.provider.provider, "model": self.provider.model,
                                                "generation": policy, "contract": manifest["contract"]})
@@ -86,6 +88,10 @@ class ReportPhase:
                         record["cause"] = "timeout"
                     elif card.get("source_issue"):
                         record["cause"] = card["source_issue"]
+                    elif card["kind"] == "summary":
+                        text = sections.render_summary(card["facts"])
+                        record.update(status="usable", cause="none", text=text,
+                                      text_digest=sections.digest(text), generated_by="pipeline")
                     elif len(prompt.encode("utf-8")) > sections.CONTEXT_MAX_BYTES:
                         record["cause"] = "context_too_large"
                     else:
@@ -177,6 +183,7 @@ class ReportPhase:
                 report_rendering.render_deterministic_report(
                     self.run_dir, self.context, model=self.provider.model,
                     analysis_status="usable" if summary_text else "unavailable", analysis_cause=cause,
+                    deterministic_summary=True,
                 )
                 final_valid, validation_message = self._validator("final_report_markdown")(config.deliverable_file)
             except Exception as exc:
@@ -197,6 +204,7 @@ class ReportPhase:
                 "phase6_budget_exceeded": pending_budget_error is not None,
                 "phase6_report_contract": "sectioned-report", "phase6_llm": "independent_sections",
                 "phase6_note_status": "usable" if summary_text else "unavailable",
+                "phase6_summary_source": "pipeline",
                 "phase6_analysis": "06_report_analysis.md" if summary_text else None,
                 "phase6_sections": sections.MANIFEST, "phase6_section_count": len(manifest["sections"]),
                 "phase6_sections_usable": sum(e["status"] == "usable" for e in manifest["sections"]),

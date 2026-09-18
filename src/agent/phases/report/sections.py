@@ -20,6 +20,43 @@ NOTE_MAX_CHARS = 4_000
 MANIFEST = "06_report_sections.json"
 
 
+def render_summary(facts: dict) -> str:
+    """Describe recorded facts only; never let prose invent ledger incidents."""
+    def count(value):
+        return str(value) if type(value) is int and value >= 0 else "inconnu"
+
+    analysis = facts.get("analysis_counts", {})
+    states = facts.get("recorded_verification_states", {})
+    lines = [
+        f"Analyse : {count(analysis.get('devices_analyzed'))}/{count(analysis.get('devices_total'))} machines analysées ; "
+        f"{count(analysis.get('devices_failed'))} en échec.",
+    ]
+    if facts.get("source_issues"):
+        lines.append("Sources manquantes ou invalides : les décomptes de vérification ne sont pas exhaustifs.")
+    else:
+        labels = {"confirmed": "confirmées selon la phase de vérification", "inconclusive": "non concluantes",
+                  "not_tested": "non testées", "error": "en erreur", "ambiguous": "à identité ambiguë"}
+        lines.append("Hypothèses : " + " ; ".join(
+            f"{count(states.get(key, 0))} {label}" for key, label in labels.items()) + ".")
+    lines.append("Ces décomptes ne sont ni un nombre de failles uniques ni les VP/FP du benchmark.")
+    intrusion = facts.get("intrusion", {})
+    if intrusion.get("available"):
+        lines.append(f"Intrusion : {count(intrusion.get('observed_access_count'))} accès observés. Un accès ne prouve pas un pivot.")
+    else:
+        lines.append("Intrusion : observations indisponibles ; couverture inconnue.")
+    if not intrusion.get("transition_evidence_available"):
+        lines.append("Aucune preuve de transition réseau disponible dans cette projection.")
+    ledger = facts.get("execution_facts", {})
+    if ledger.get("ledger_readable") is False:
+        lines.append("Le journal d’outils est absent, illisible ou mal formé ; sa complétude ne peut pas être établie.")
+    writing = facts.get("writing", {})
+    lines.append(f"Rédaction des fiches : {count(writing.get('usable'))} utilisables ; {count(writing.get('incomplete'))} incomplètes.")
+    for phase, status in sorted(facts.get("phase_statuses", {}).items()):
+        if status != "completed":
+            lines.append(f"État enregistré — {phase} : {status}.")
+    return "\n".join(lines)
+
+
 def generation_policy(provider: str, token_limit: int) -> dict:
     """Bound prose recovery without changing analysis/verification model settings.
 

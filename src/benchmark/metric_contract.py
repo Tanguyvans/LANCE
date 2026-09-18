@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 
 
-METRIC_CONTRACT_VERSION = "strict-v3.13"
+METRIC_CONTRACT_VERSION = "strict-v3.14"
 EVIDENCE_CONTRACT_VERSION = "evidence-v13"
 
 

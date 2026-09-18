@@ -14,6 +14,38 @@ def manifest(pipeline):
     return json.loads((pipeline.run_dir / sections.MANIFEST).read_text())
 
 
+def test_summary_never_uses_model_prose_or_invents_traceability_incidents(report_run):
+    p = report_run("full", "ok")
+    original = p.provider.chat_with_tools.side_effect
+    def generate(**kwargs):
+        assert prompt_card(kwargs)["kind"] != "summary"
+        return original(**kwargs)
+    p.provider.chat_with_tools.side_effect = generate
+    assert run_phase(p, AGENTS["report"]) == "completed"
+    entry = manifest(p)["sections"][-1]
+    saved = sections.read_object(p.run_dir, entry["artifact"])
+    assert saved["generated_by"] == "pipeline"
+    assert saved["attempts"] == []
+    text = (p.run_dir / "06_report_analysis.md").read_text()
+    assert "1 confirmées" in text and "1 non concluantes" in text
+    assert "références non conformes" not in text
+    assert "infirmée" not in text and "disparu" not in text
+    assert "faits enregistrés" in (p.run_dir / "06_report.md").read_text()
+
+
+def test_summary_missing_sources_are_unknown_not_zero_or_negative_proof():
+    text = sections.render_summary({
+        "source_issues": ["missing tests"], "analysis_counts": {},
+        "recorded_verification_states": {}, "execution_facts": {"ledger_readable": False},
+        "intrusion": {"available": False},
+    })
+    assert "inconnu/inconnu" in text
+    assert "ne sont pas exhaustifs" in text
+    assert "0 confirmées" not in text
+    assert "journal d’outils est absent" in text
+    assert "couverture inconnue" in text
+
+
 def prompt_card(kwargs):
     return json.loads(kwargs["system_prompt"].split("\n\n", 1)[1])
 
@@ -26,7 +58,8 @@ def test_isolated_contexts_include_indeterminate_and_summary_last(report_run, pr
     assert run_phase(p, AGENTS["report"]) == "completed"
     calls = p.provider.chat_with_tools.call_args_list
     cards = [prompt_card(c.kwargs) for c in calls]
-    assert [c["key"] for c in cards] == ["finding-0001", "finding-0002", "intrusion-limits", "summary"]
+    assert [c["key"] for c in cards] == ["finding-0001", "finding-0002", "intrusion-limits"]
+    cards.append(sections.read_object(p.run_dir, manifest(p)["sections"][-1]["artifact"])["card"])
     assert cards[0]["facts"]["hypothesis"]["id"] == "V1"
     assert "synthetic finding 2" not in calls[0].kwargs["system_prompt"]
     assert "synthetic finding 1" not in calls[1].kwargs["system_prompt"]
@@ -64,7 +97,7 @@ def test_truncated_card_does_not_abort_others_and_only_failed_card_is_retried(re
     p.provider.chat_with_tools.side_effect = original
     assert run_phase(p, AGENTS["report"]) == "completed"
     # Summary is invalidated because writing completeness changed; other cards remain intact.
-    assert [prompt_card(c.kwargs)["key"] for c in p.provider.chat_with_tools.call_args_list] == ["finding-0002", "summary"]
+    assert [prompt_card(c.kwargs)["key"] for c in p.provider.chat_with_tools.call_args_list] == ["finding-0002"]
     assert [e["reused"] for e in manifest(p)["sections"]] == [True, False, True, False]
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"
@@ -89,7 +122,7 @@ def test_one_truncation_recovers_without_rewriting_other_cards(report_run, profi
         return original(**kw)
     p.provider.chat_with_tools.side_effect = generate
     assert run_phase(p, AGENTS["report"]) == "completed"
-    assert counts == {"finding-0001": 2, "finding-0002": 1, "intrusion-limits": 1, "summary": 1}
+    assert counts == {"finding-0001": 2, "finding-0002": 1, "intrusion-limits": 1}
     calls = p.provider.chat_with_tools.call_args_list
     assert [c.kwargs["max_tokens"] for c in calls[:2]] == [p.execution_profile.report_max_tokens, p.execution_profile.report_max_tokens * 2]
     assert calls[0].kwargs["system_prompt"] == calls[1].kwargs["system_prompt"]
@@ -98,7 +131,7 @@ def test_one_truncation_recovers_without_rewriting_other_cards(report_run, profi
     record = sections.read_object(p.run_dir, entry["artifact"])
     assert entry["attempt_count"] == 2
     assert [a["cause"] for a in record["attempts"]] == ["memo_truncated", "none"]
-    assert p.tracker.total_tokens() == (1540, 140)
+    assert p.tracker.total_tokens() == (1040, 100)
     assert all((p.run_dir / name).read_bytes() == data for name, data in sources.items())
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"
@@ -164,7 +197,7 @@ def test_generation_settings_invalidate_cache(report_run):
     p.execution_profile = replace(p.execution_profile, report_max_tokens=1024)
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"
-    assert p.provider.chat_with_tools.call_count == 4
+    assert p.provider.chat_with_tools.call_count == 3
 
 
 def test_changed_source_invalidates_only_its_card(report_run):
@@ -293,7 +326,8 @@ def test_upstream_failure_reaches_summary_and_invalidates_intrusion_card(report_
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"  # report, not whole pipeline
     cards = [prompt_card(c.kwargs) for c in p.provider.chat_with_tools.call_args_list]
-    assert [c["key"] for c in cards] == ["intrusion-limits", "summary"]
+    assert [c["key"] for c in cards] == ["intrusion-limits"]
+    cards.append(sections.read_object(p.run_dir, manifest(p)["sections"][-1]["artifact"])["card"])
     assert cards[-1]["facts"]["intrusion"]["execution_status"].startswith("failed:")
     assert cards[-1]["facts"]["analysis_counts"]["devices_failed"] == 1
     assert "failed:phase5_completion_invalid" in (p.run_dir / "06_report.md").read_text()
@@ -305,7 +339,7 @@ def test_model_change_invalidates_cached_commentary(report_run):
     p.provider.model = "another-test-model"
     p.provider.chat_with_tools.reset_mock()
     assert run_phase(p, AGENTS["report"]) == "completed"
-    assert p.provider.chat_with_tools.call_count == 4
+    assert p.provider.chat_with_tools.call_count == 3
     assert not any(e["reused"] for e in manifest(p)["sections"])
 
 

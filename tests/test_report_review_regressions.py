@@ -98,7 +98,7 @@ def test_report_is_composed_once_and_keeps_all_verified_rows(report_run, profile
     events = []
     status = run_phase(pipeline, AGENTS["report"], events.append)
     assert status.partition(":")[0] == expected
-    assert pipeline.provider.chat_with_tools.call_count == 4  # two findings, intrusion limits, summary
+    assert pipeline.provider.chat_with_tools.call_count == 3  # summary is rendered without a model
     valid, reason = pipeline._validator("final_report_markdown")("06_report.md")
     assert valid, reason
     report = (pipeline.run_dir / "06_report.md").read_text()
@@ -117,7 +117,7 @@ def test_report_is_composed_once_and_keeps_all_verified_rows(report_run, profile
     assert len([e for e in events if e.get("type") == "phase_done"]) == 1
     assert events[-1]["status"].partition(":")[0] == expected
     assert pipeline.tracker.end_phase() is None
-    assert pipeline.tracker.total_tokens() == (2000, 160)
+    assert pipeline.tracker.total_tokens() == (1500, 120)
     if behavior != "ok":
         assert "partial" in report.lower() or "partiel" in report.lower()
 
@@ -230,11 +230,11 @@ def test_actual_prompt_projection_obeys_utf8_byte_bound_for_large_nested_fields(
 def test_usable_but_late_memo_is_not_promoted(report_run, profile):
     pipeline = report_run(profile, "late")
     assert run_phase(pipeline, AGENTS["report"]) == "partial:timeout"
-    assert not (pipeline.run_dir / "06_report_analysis.md").exists()
+    assert (pipeline.run_dir / "06_report_analysis.md").exists()
     report = (pipeline.run_dir / "06_report.md").read_text()
     assert "Prioritize remediation" not in report
     assert "timeout" in report
-    assert pipeline.tracker.total_tokens() == (2000, 160)
+    assert pipeline.tracker.total_tokens() == (1500, 120)
 
 
 def test_large_key_and_omission_metadata_cannot_overflow_prompt(report_run):

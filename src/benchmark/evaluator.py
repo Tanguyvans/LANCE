@@ -603,6 +603,25 @@ def _normalized_endpoints(value: object) -> set[str]:
     return normalized
 
 
+def _endpoint_contract_matches(contract: dict, actual: set[str]) -> bool:
+    """Exact by default; explicit directory scopes accept descendants only.
+
+    This matches a declaration, not a proof. Evidence is still validated
+    against the actual claimed file, host, service and vulnerability property.
+    Ambiguous/encoded paths never receive directory-scope credit.
+    """
+    if actual & _normalized_endpoints(contract["endpoints"]):
+        return True
+    for path in actual:
+        if (not path.startswith("/") or any(c in path for c in ("%", "?", "#", "\\"))
+                or "//" in path or any(p in {".", ".."} for p in path.split("/"))):
+            continue
+        if any(path.startswith(prefix) and len(path) > len(prefix)
+               for prefix in contract["endpoint_prefixes"]):
+            return True
+    return False
+
+
 def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
     """Return (method, credit, structural_match), or an empty non-match.
 
@@ -633,12 +652,13 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
             "service": _normalized_services(contract["services"]),
             "port": set(contract["ports"]),
             "protocol": set(contract["protocols"]),
-            "endpoint": _normalized_endpoints(contract["endpoints"]),
+            "endpoint": _normalized_endpoints(contract["endpoints"]) | set(contract["endpoint_prefixes"]),
             "product": set(contract["products"]),
         }
         for name, expected in constraints.items():
             actual = observed[name]
-            if expected and actual and not actual & expected:
+            matches = _endpoint_contract_matches(contract, actual) if name == "endpoint" else bool(actual & expected)
+            if expected and actual and not matches:
                 return "", 0.0, False
         finding_products = _normalized_values(
             finding.get("products", finding.get("product"))
@@ -688,7 +708,7 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
         "service": _normalized_services(contract["services"]),
         "port": set(contract["ports"]),
         "protocol": set(contract["protocols"]),
-        "endpoint": _normalized_endpoints(contract["endpoints"]),
+        "endpoint": _normalized_endpoints(contract["endpoints"]) | set(contract["endpoint_prefixes"]),
         "product": set(contract["products"]),
     }
     observed = {
@@ -706,9 +726,10 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
             continue
         declared += 1
         actual = observed[name]
-        if actual and not actual & expected:
+        matches = _endpoint_contract_matches(contract, actual) if name == "endpoint" else bool(actual & expected)
+        if actual and not matches:
             return "", 0.0, False
-        if actual & expected:
+        if matches:
             matched += 1
 
     structural_match = declared > 0 and matched == declared

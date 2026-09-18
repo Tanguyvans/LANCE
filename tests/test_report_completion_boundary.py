@@ -33,15 +33,17 @@ def test_real_provider_finish_reason_controls_note_promotion(report_run, profile
         assert run_phase(pipeline, AGENTS["report"]) == expected
     finally:
         provider.client.close()
-    assert len(requests) == (8 if reason == "length" else 4)
+    assert len(requests) == (6 if reason == "length" else 3)
     meta = json.loads((pipeline.run_dir / "run_meta.json").read_text())
-    assert meta["phase6_finish_reason"] == reason
+    assert meta["phase6_finish_reason"] is None  # last section is deterministic
+    assert meta["phase6_summary_source"] == "pipeline"
     assert meta["phase6_report_contract"] == "sectioned-report"
     assert meta["phase6_section_count"] == 4
-    assert (pipeline.run_dir / "06_report_analysis.md").exists() == (reason == "stop")
+    assert (pipeline.run_dir / "06_report_analysis.md").exists()
+    assert "Review the linked evidence." not in (pipeline.run_dir / "06_report_analysis.md").read_text()
     assert (pipeline.run_dir / "06_report.md").exists()
     assert (pipeline.run_dir / "04_exploitation.json").read_bytes() == original
-    assert pipeline.tracker.total_tokens() == ((80, 24) if reason == "length" else (40, 12))
+    assert pipeline.tracker.total_tokens() == ((60, 18) if reason == "length" else (30, 9))
 
 
 def test_completion_metadata_is_per_call_and_fallback_updates_reason():
@@ -101,6 +103,6 @@ def test_report_reasoning_request_is_limited_to_ollama(report_run, provider_name
         assert run_phase(p, AGENTS["report"]) == "completed"
     finally:
         provider.client.close()
-    assert len(requests) == 4
+    assert len(requests) == 3
     assert all(r.get("reasoning_effort") == effort for r in requests)
     assert all("tools" not in r for r in requests)

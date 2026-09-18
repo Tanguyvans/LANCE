@@ -13,13 +13,16 @@ La lecture des rapports historiques par le tableau de bord reste disponible.
    ou sans test. Le code y associe les tests et références de phase 4.
 2. Des fiches d’intrusion séparées : accès corroborés par la projection des
    observations, puis couverture et limites. Un accès ne devient pas un pivot.
-3. Une synthèse courte, produite en dernier à partir des compteurs, des statuts
-   d’exécution et des limites structurées, sans renvoyer toutes les fiches.
+3. Une synthèse courte, calculée par le code en dernier à partir des compteurs,
+   statuts d’exécution et limites structurées, sans appel au modèle. Elle ne peut
+   inventer une disparition de références ni transformer une donnée inconnue
+   en échec ou en absence de faille. Les confirmations enregistrées ne sont
+   pas présentées comme des VP du benchmark.
 4. Un assemblage déterministe avec les tableaux factuels existants. Aucun appel
    au modèle ne réécrit le rapport complet.
 
 Les faits, identifiants, états enregistrés et références sont rendus par le code.
-Le modèle fournit seulement un commentaire explicatif et des recommandations,
+Pour les fiches, le modèle fournit seulement un commentaire explicatif et des recommandations,
 explicitement marqués comme non validés. Une référence attribuée à la bonne
 hypothèse et à la bonne cible n’est pas encore une preuve de la propriété
 annoncée : les exigences de preuve et l’évaluation du benchmark restent inchangées.
@@ -98,7 +101,7 @@ fiches déjà exploitables. Les délais peuvent être ajustés au fournisseur.
 | `06_report_sections/<empreinte>.json` | Faits, commentaire ou brouillon rejeté et état de chaque fiche. |
 | `06_report_cards.md` | Fiches d’audit et diagnostics assemblés. |
 | `06_report_intrusion_cards.md` | Fiches d’intrusion assemblées. |
-| `06_report_analysis.md` | Synthèse courte, seulement si sa génération est exploitable. |
+| `06_report_analysis.md` | Synthèse factuelle calculée par le pipeline ; inconnues et rédaction partielle explicites. |
 | `06_report.md` | Rapport final déterministe. |
 
 Les instantanés conservent les tentatives de la dernière génération de leur

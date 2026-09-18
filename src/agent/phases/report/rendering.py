@@ -394,6 +394,7 @@ def _render_report_from_facts(
     run_dir: Path, run_context: dict, *, model: str,
     analysis_status: str | None = None,
     analysis_cause: str | None = None,
+    deterministic_summary: bool = False,
 ) -> None:
     """Assemble the report from complete artifacts and optional commentary."""
     report_path = run_dir / "06_report.md"
@@ -587,10 +588,14 @@ def _render_report_from_facts(
             if sectioned:
                 import html
                 executive_note = (
-                    "### Synthèse exécutive — analyse du modèle non validée\n\n"
+                    ("### Synthèse exécutive — faits enregistrés\n\n" if deterministic_summary else
+                     "### Synthèse exécutive — analyse du modèle non validée\n\n") +
                     "Cette synthèse ne remplace pas les fiches, les preuves ou les chiffres du pipeline.\n\n"
                     "<p>" + html.escape(model_analysis).replace("\n", "<br>") + "</p>\n"
                 )
+                if deterministic_summary and analysis_cause not in (None, "none"):
+                    outcome = analysis_cause if analysis_cause in {"stopped", "budget_exceeded"} else f"partial:{analysis_cause}"
+                    executive_note += "\nÉtat de rédaction : " + html.escape(outcome) + ".\n"
             else:
                 sec10 += note
     else:
@@ -701,6 +706,7 @@ def render_deterministic_report(
     model: str,
     analysis_status: str,
     analysis_cause: str,
+    deterministic_summary: bool = False,
 ) -> None:
     """Render the new Phase 6 report from evidence, never from an old draft.
 
@@ -718,4 +724,5 @@ def render_deterministic_report(
         model=model,
         analysis_status=analysis_status,
         analysis_cause=analysis_cause,
+        deterministic_summary=deterministic_summary,
     )

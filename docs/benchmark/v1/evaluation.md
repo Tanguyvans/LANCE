@@ -51,6 +51,21 @@ sans multiplicateur ajouté au F1 courant.
 
 ## 2. Une preuve doit soutenir la bonne déclaration
 
+Les endpoints correspondent exactement par défaut. Un attendu qui couvre les
+fichiers d'un répertoire peut déclarer explicitement `endpoint_prefixes`, par
+exemple `[/archive/]`. Ce périmètre accepte les chemins descendants, pas un
+répertoire voisin, la racine entière, des traversées `..` ou des chemins encodés
+ambigus. Les autres contraintes (machine, service, port, protocole, type) restent
+obligatoires selon le contrat. La preuve doit toujours concerner le fichier
+réellement déclaré et démontrer la propriété : un listing ne prouve pas une
+exposition de contenu sensible. Les doublons ne gagnent pas plusieurs crédits.
+
+Le contrat des fichiers sensibles de S2 inclut ainsi les fichiers de `/backup/`
+et `/config/app.config`, conformément au périmètre décrit dans son référentiel.
+Cette évolution change le contrat interne des métriques : les runs antérieurs
+ne sont pas silencieusement recalculés comme compatibles. Leurs artefacts restent
+inchangés et leur évaluation est reproductible avec leur commit d'origine.
+
 L’évaluateur relit les traces d’outils et vérifie leur attribution à la machine,
 au service/port, au transport et à la propriété annoncée. Il applique les règles
 sémantiques partagées avec le pipeline ; il ne fait pas confiance à son seul verdict.
@@ -60,10 +75,11 @@ Par exemple, une ouverture WebSocket ne démontre pas un accès MQTT anonyme ;
 un message MQTT sans attribution fiable au topic annoncé ne démontre pas la
 fuite alléguée. Une bannière de version ne démontre pas à elle seule une exploitation.
 
-La note d’analyse du rapport reçoit aussi les appels CVE comptés dans le journal
-et les tentatives non concluantes avec leurs motifs. Une liste vide de CVE
-confirmées ne signifie pas qu’aucune recherche n’a été menée. Cette note reste
-non validée : elle n’ajoute ni preuve, ni crédit au benchmark.
+Les fiches d'analyse reçoivent les tentatives non concluantes et leurs motifs.
+Leur commentaire modèle reste non validé : il n'ajoute ni preuve, ni crédit au
+benchmark. La synthèse exécutive est désormais calculée à partir des faits
+enregistrés, sans nouvelle interprétation du modèle. Une liste vide de CVE
+confirmées ne signifie pas qu'aucune recherche n'a été menée.
 
 Ces exigences sont identiques en full et compact :
 

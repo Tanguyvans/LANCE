@@ -186,14 +186,16 @@ class TestInformationPreservingArchitecture:
         assert kwargs["tools"] == []
         assert kwargs["max_turns"] == 1
         assert kwargs["deadline"] > 0
-        assert "192.168.100.11" not in kwargs["system_prompt"]  # summary receives counters, not the inventory
+        assert "192.168.100.11" not in kwargs["system_prompt"]  # intrusion limits do not resend the inventory
         report = (run_dir / "06_report.md").read_text()
         assert "## 1." in report and "## 10." in report
         assert "{{SECTION_5_TABLE}}" not in report
         assert "{{SECTION_6_TABLES}}" not in report
         assert "192.168.100.11" in report
         assert memo in report
-        assert (run_dir / "06_report_analysis.md").read_text().strip() == memo
+        summary = (run_dir / "06_report_analysis.md").read_text()
+        assert memo not in summary
+        assert "Analyse : inconnu/inconnu" in summary
         assert memo in (run_dir / "model_outputs.jsonl").read_text()
         phase_done = [event for event in events if event.get("type") == "phase_done"]
         assert len(phase_done) == 1
@@ -219,7 +221,7 @@ def test_phase6_common_entry_uses_bounded_toolless_sections(profile, mock_provid
     assert kwargs["tools"] == []
     assert kwargs["max_turns"] == 1
     assert kwargs["max_tokens"] == pipeline.execution_profile.report_max_tokens
-    assert mock_provider.chat_with_tools.call_count == 2  # intrusion limits and summary, no hypotheses
+    assert mock_provider.chat_with_tools.call_count == 1  # intrusion limits; summary is deterministic
     assert len([event for event in events if event["type"] == "phase_start"]) == 1
     assert len([event for event in events if event["type"] == "phase_done"]) == 1
     assert pipeline.tracker.end_phase() is None
@@ -245,7 +247,9 @@ def test_phase6_note_failure_is_partial_and_does_not_reuse_stale_outputs(
     status = run_phase(pipeline, AGENTS["report"])
 
     assert status == f"partial:{expected_cause}"
-    assert not (pipeline.run_dir / "06_report_analysis.md").exists()
+    summary = (pipeline.run_dir / "06_report_analysis.md").read_text()
+    assert "STALE" not in summary
+    assert "1 incomplètes" in summary
     report = (pipeline.run_dir / "06_report.md").read_text()
     assert "STALE" not in report
     assert f"partial:{expected_cause}" in report

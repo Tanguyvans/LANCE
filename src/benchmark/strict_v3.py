@@ -250,12 +250,19 @@ def derive_matching_contract(vulnerability: dict) -> dict:
     if not versions and not ("versions" in vulnerability or "version" in vulnerability) and products:
         versions = re.findall(r"\b\d{4}\.\d{1,3}\b", title)
 
+    prefixes = _strings(vulnerability.get("endpoint_prefixes"))
+    for prefix in prefixes:
+        if (not prefix.startswith("/") or not prefix.endswith("/") or prefix == "/"
+                or any(c in prefix for c in ("%", "?", "#", "\\"))
+                or "//" in prefix or any(p in {".", ".."} for p in prefix.split("/"))):
+            raise ValueError("endpoint_prefixes must be explicit non-root directory paths")
     return {
         "accepted_types": accepted_types,
         "services": list(dict.fromkeys(services)),
         "ports": list(dict.fromkeys(ports)),
         "protocols": list(dict.fromkeys(protocols)),
         "endpoints": list(dict.fromkeys(endpoints)),
+        "endpoint_prefixes": list(dict.fromkeys(prefixes)),
         "products": list(dict.fromkeys(products)),
         "versions": list(dict.fromkeys(versions)),
         "contract_source": source,
