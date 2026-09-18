@@ -91,9 +91,9 @@ class _Driver:
             if metadata is not None:
                 metadata.update(finish_reason="length", output_tokens=4096)
             return "truncated exploration without save"
-        # Block finalization must be save-only and strictly smaller.
+        # Block finalization keeps fewer turns and a scoped, save-only task.
         assert tools == ["save_deliverable"], tools
-        assert kwargs["max_tokens"] == 2048
+        assert kwargs["max_tokens"] == 4096
         assert kwargs["max_turns"] == 4
         assert kwargs["cost_tracker"] is self.pipeline.tracker
         assert kwargs["stop_event"] is self.pipeline._stop_event
@@ -121,7 +121,7 @@ class _Driver:
             return "block saved"
         if self.mode == "truncate_blocks":
             if metadata is not None:
-                metadata.update(finish_reason="length", output_tokens=2048)
+                metadata.update(finish_reason="length", output_tokens=4096)
             return "block truncated"
         if self.mode == "wrong_device":
             if metadata is not None:
@@ -514,12 +514,14 @@ def test_observation_log_is_bounded():
 def test_block_config_defaults_and_env_override(monkeypatch):
     defaults = block_recovery.block_config()
     assert defaults == {"max_blocks": 4, "services_per_block": 2,
-                        "max_attempts": 2, "max_tokens": 2048, "max_turns": 4}
+                        "max_attempts": 2, "max_tokens": 4096, "max_turns": 4}
     monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_BLOCKS", "2")
     monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_TOKENS", "0")
     overridden = block_recovery.block_config()
     assert overridden["max_blocks"] == 2
-    assert overridden["max_tokens"] == 2048
+    assert overridden["max_tokens"] == 4096
+    monkeypatch.setenv("LANCE_PHASE3_BLOCK_MAX_TOKENS", "8192")
+    assert block_recovery.block_config()["max_tokens"] == 8192
 
 
 def test_service_and_port_must_belong_to_the_same_observed_service():

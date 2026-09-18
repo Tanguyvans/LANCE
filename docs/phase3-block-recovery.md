@@ -57,14 +57,20 @@ when no truncation was observed.
 | `LANCE_PHASE3_BLOCK_MAX_BLOCKS` | 4 | Max sidecar blocks per device |
 | `LANCE_PHASE3_BLOCK_SERVICES_PER_BLOCK` | 2 | Services grouped per block |
 | `LANCE_PHASE3_BLOCK_MAX_ATTEMPTS` | 2 | Total attempts for one failing block |
-| `LANCE_PHASE3_BLOCK_MAX_TOKENS` | 2048 | Output cap per block attempt (below the full 4096) |
+| `LANCE_PHASE3_BLOCK_MAX_TOKENS` | 4096 | Output cap per response during block recovery (same as the initial full analysis) |
 | `LANCE_PHASE3_BLOCK_MAX_TURNS` | 4 | Turn cap per block attempt (below the full 10) |
 
 These bound this harness's requests. The remote provider's actual output
 cap is unknown from here and is never asserted; repeated truncation
 therefore ends in explicit incompleteness with valid blocks preserved, not
-in a declared success. Globally raising budgets or widening the context
-window was deliberately not used.
+in a declared success.
+
+Only the default block-recovery response cap was raised from 2048 to 4096.
+The initial analysis, other phases, retry count, shared deadline and run cost
+budget are unchanged. An explicit `LANCE_PHASE3_BLOCK_MAX_TOKENS` override still
+takes precedence (for example 8192 for a controlled comparison); there is no
+automatic escalation. This output allowance does not change the context window
+or guarantee that the remote provider can complete every block within it.
 
 ## Files
 
