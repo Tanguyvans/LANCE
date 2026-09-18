@@ -77,3 +77,20 @@ compteurs de tokens ne sont pas supprimés.
 Le backfill des anciens runs reprend le fournisseur et le statut des métadonnées.
 Sans fournisseur enregistré, il indique `unknown` ; sans statut, `partial`.
 La présence d’un rapport n’est pas une preuve de réussite.
+
+### Dialogue avec les outils
+
+L’endpoint `ollama-umons` a rejeté des historiques terminés par des résultats
+d’outils (`no user query found in messages`). Pour ce fournisseur, LANCE ajoute
+une courte continuation utilisateur après le groupe complet de résultats, avant
+la requête suivante. La demande initiale, les appels, leurs identifiants et leurs
+résultats restent inchangés ; les outils ne sont pas réexécutés par l’adaptation.
+La continuation demande au modèle d’utiliser les observations existantes sans
+répéter les actions terminées. Elle ne garantit pas que le modèle ne proposera
+jamais de recherche redondante.
+
+Cette compatibilité est limitée à cet endpoint, pas à tous les modèles Ollama.
+Les autres fournisseurs conservent le dialogue standard et la reprise bornée
+après un rejet reconnu. Si l’endpoint rejette aussi la continuation, l’erreur
+remonte sans boucle de reprise supplémentaire. Les limites de tours, de temps
+et de coût ne sont pas augmentées.

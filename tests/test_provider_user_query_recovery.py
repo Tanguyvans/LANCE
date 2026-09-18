@@ -303,3 +303,97 @@ def test_initial_empty_user_message_is_rejected_without_request():
     finally:
         provider.client.close()
     assert not requests
+
+
+@pytest.mark.parametrize("provider_name", ["ollama-umons", "qwen"])
+def test_consecutive_tool_groups_keep_history_without_rejections(provider_name):
+    """UMONS requires a user tail; ordinary endpoints keep standard tool tails."""
+    requests = []
+    executed = []
+    events = []
+
+    def transport(request):
+        payload = json.loads(request.content)
+        requests.append(payload)
+        messages = payload["messages"]
+        if len(requests) > 1:
+            if provider_name == "ollama-umons" and messages[-1]["role"] != "user":
+                return _error_response(500)
+            assert messages[-1]["role"] == (
+                "user" if provider_name == "ollama-umons" else "tool"
+            )
+        if len(requests) == 4:
+            return httpx.Response(200, json=_completion({
+                "role": "assistant", "content": "Done.",
+            }))
+        group = len(requests)
+        calls = [{
+            "id": f"call-{group}-{index}", "type": "function",
+            "function": {"name": "probe", "arguments": json.dumps({"item": f"{group}-{index}"})},
+        } for index in range(2)]
+        return httpx.Response(200, json=_completion({
+            "role": "assistant", "content": None, "tool_calls": calls,
+        }, finish_reason="tool_calls"))
+
+    def probe(item):
+        executed.append(item)
+        return json.dumps({"observation": item})
+
+    spec = _tool_spec(probe)
+    spec[0]["input_schema"] = {
+        "type": "object", "properties": {"item": {"type": "string"}},
+        "required": ["item"],
+    }
+    provider = _make_provider(transport)
+    provider.provider = provider_name
+    try:
+        assert provider.chat_with_tools(
+            "Keep evidence requirements", "Original request", spec,
+            max_turns=4, stream_callback=events.append,
+        ) == "Done."
+    finally:
+        provider.client.close()
+
+    assert len(requests) == 4
+    assert executed == [f"{group}-{index}" for group in range(1, 4) for index in range(2)]
+    assert not any(event["type"] == "provider_recovery" for event in events)
+    for previous, current in zip(requests, requests[1:]):
+        assert current["messages"][:len(previous["messages"])] == previous["messages"]
+    messages = requests[-1]["messages"]
+    assert messages[:2] == [
+        {"role": "system", "content": "Keep evidence requirements"},
+        {"role": "user", "content": "Original request"},
+    ]
+    for index, message in enumerate(messages):
+        if message["role"] == "assistant":
+            results = messages[index + 1:index + 3]
+            assert [result["tool_call_id"] for result in results] == [
+                call["id"] for call in message["tool_calls"]
+            ]
+            assert all(result["role"] == "tool" for result in results)
+            for call, result in zip(message["tool_calls"], results):
+                assert json.loads(result["content"]) == {
+                    "observation": json.loads(call["function"]["arguments"])["item"]
+                }
+
+
+def test_umons_rejection_after_preemptive_continuation_fails_without_loop():
+    requests = []
+
+    def transport(request):
+        requests.append(json.loads(request.content))
+        if len(requests) == 1:
+            return httpx.Response(200, json=_tool_completion())
+        return _error_response(500)
+
+    provider = _make_provider(transport)
+    provider.provider = "ollama-umons"
+    tool = MagicMock(return_value="ok")
+    try:
+        with pytest.raises(Exception, match="no user query found"):
+            provider.chat_with_tools("system", "request", _tool_spec(tool), max_turns=6)
+    finally:
+        provider.client.close()
+    assert len(requests) == 2
+    assert requests[-1]["messages"][-1]["role"] == "user"
+    tool.assert_called_once_with()

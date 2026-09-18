@@ -194,6 +194,16 @@ class _ProviderDiagnostics:
 
 REMOVED_PROVIDERS = frozenset({"anthropic", "openrouter", "codex"})
 
+# Observed endpoint compatibility, not a requirement of all Ollama models.
+# Keep the standard assistant/tool history and add a continuation only after
+# the entire tool-result group. Never convert tool results to user messages.
+_TOOL_CONTINUATION_PROVIDERS = frozenset({"ollama-umons"})
+_TOOL_CONTINUATION = (
+    "Continue the original user request using the tool results already present "
+    "above. Do not repeat completed actions merely because this continuation "
+    "is present. All original constraints and evidence requirements still apply."
+)
+
 
 def validate_provider_choice(provider: str) -> str:
     """Reject retired execution adapters even when historical DB rows exist."""
@@ -618,6 +628,14 @@ class LLMProvider:
             )
             try:
                 request_context["turn"] = turn + 1
+                if (
+                    self.provider in _TOOL_CONTINUATION_PROVIDERS
+                    and isinstance(messages[-1], dict)
+                    and messages[-1].get("role") == "tool"
+                ):
+                    # Adapt before sending: a rejected request would otherwise
+                    # consume a turn and time from the shared device deadline.
+                    messages.append({"role": "user", "content": _TOOL_CONTINUATION})
                 request_kwargs = {
                     "model": self.model,
                     "messages": messages,
@@ -665,12 +683,7 @@ class LLMProvider:
                     # key prevents repeated recovery of the same request state.
                     messages.append({
                         "role": "user",
-                        "content": (
-                            "Continue the original user request using the tool results "
-                            "already present above. Do not repeat completed actions merely "
-                            "because the previous model request was rejected. All original "
-                            "constraints and evidence requirements still apply."
-                        ),
+                        "content": _TOOL_CONTINUATION,
                     })
                     log.warning("Provider rejected tool-ended history; trying one bounded continuation")
                     if stream_callback:
