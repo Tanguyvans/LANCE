@@ -77,6 +77,26 @@ même lorsque leurs tentatives répétées satisfont le contrat d’exécution.
 Un inventaire généré n’est pas une certification de couverture exhaustive.
 L’adaptation locale compacte conserve sa restitution et ses contrôles existants.
 
+## Clôture d’intrusion et délais fournisseur
+
+En profil complet, `save_deliverable` en phase 5 reçoit un petit marqueur de fin
+(`{"finish":true}`), pas une copie de toute la campagne. Le contrôleur produit
+le JSON depuis le journal, filtre les accès avec les règles communes de preuve
+et valide la structure avant promotion. Le bilan porte `assessment.status=recorded`
+et `objectives_status=not_certified` : finir l’évaluation ne certifie pas un accès,
+un objectif ou un pivot. La projection actuelle ne reconstruit pas les transitions
+réseau ; les traces originales restent disponibles. Sans signal de fin accepté,
+les observations sont conservées mais la campagne reste incomplète. Les arrêts,
+budgets et journaux invalides ne sont pas convertis en succès.
+
+`LANCE_API_TIMEOUT_S` configure le délai maximal d’une requête (120 secondes par
+défaut, 90 pour `local-moe`). Le délai effectif est le minimum de ce délai et du
+temps restant dans la phase. `LANCE_PHASE3_DEVICE_TIMEOUT_S` conserve son plafond
+global configurable (240 secondes par défaut). Un timeout réseau/SDK autorise au
+plus une reprise de la même requête, sans rejouer les outils, uniquement s’il reste
+du temps et du budget. Les reprises des autres erreurs transitoires restent
+bornées par le mécanisme de transport existant.
+
 ## Limites conservées explicitement
 
 Les composants restent des mixins utilisant l'état du même `Pipeline`. Ce passage

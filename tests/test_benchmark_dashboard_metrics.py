@@ -205,6 +205,18 @@ context._bmData = [{...row, completion: {phase6_status: 'partial:memo_truncated'
 context.renderBenchmarkTable();
 assert(elements['bm-tbody'].innerHTML.includes('Rapport partiel — note tronquée'));
 
+const intrusionReservations = context._completionReservations({
+  phase5_status: 'failed', phase5_cause: 'completion_missing',
+  metrics: {phase3_metrics_available: true, phase3_devices_total: 8,
+    phase3_devices_analyzed: 7, phase3_devices_failed: 1},
+});
+assert.deepEqual(Array.from(intrusionReservations), [
+  'Intrusion non finalisée — bilan de fin absent',
+  'Analyse partielle (7/8 analysés, 1 en échec)',
+]);
+assert(context._completionReservations({phase5_status: 'completed'}).length === 0);
+assert(context._completionReservations({phase5_status: 'unknown'}).length === 0);
+
 for (const status of ['failed', 'running', 'stopped', 'partial']) {
   context._bmData = [{...row, status}];
   context.renderBenchmarkTable();
@@ -327,13 +339,15 @@ def test_benchmark_completion_metadata_is_allowlisted_and_never_exposes_sealed_d
     (tmp_path / "run_meta.json").write_text(json.dumps({
         "status": "completed", "phase6_status": "partial", "phase6_cause": "memo_truncated",
         "phase6_error": "private model text", "phase6_analysis": "private observation",
+        "results": {"intrusion": "failed:phase5_completion_missing"},
     }))
     monkeypatch.setattr(runs, "_load_sealed_summary", lambda *_: {"status": "done"})
     entry = runs._benchmark_entry({"run_dir": tmp_path, "scenario": "S1", "sealed": sealed, "model": "test"}, compact=True)
     if sealed:
         assert "completion" not in entry
     else:
-        assert entry["completion"] == {"phase6_status": "partial", "phase6_cause": "memo_truncated"}
+        assert entry["completion"] == {"phase6_status": "partial", "phase6_cause": "memo_truncated",
+                                       "phase5_status": "failed", "phase5_cause": "completion_missing"}
         assert entry["status"] == "done"
     assert "private" not in json.dumps(entry)
 
@@ -349,6 +363,20 @@ def test_benchmark_dashboard_requests_compact_paginated_results():
     assert "compact: 'true'" in javascript
     assert "offset: String(_bmOffset)" in javascript
     assert "Array.isArray(page.items)" in javascript
+
+
+@pytest.mark.parametrize("intrusion, expected", [
+    ("failed:private provider response", {"phase5_status": "failed"}),
+    ("failed:phase5_completion_invalid", {"phase5_status": "failed", "phase5_cause": "completion_invalid"}),
+    ("completed", {}), (None, {}), ({"private": "payload"}, {}),
+])
+def test_benchmark_intrusion_metadata_does_not_export_raw_errors(tmp_path, intrusion, expected):
+    from src.api.routes import runs
+
+    (tmp_path / "run_meta.json").write_text(json.dumps({"results": {"intrusion": intrusion}}))
+    entry = runs._benchmark_entry({"run_dir": tmp_path, "scenario": "S1", "sealed": False, "model": "test"}, compact=True)
+    assert entry["completion"] == expected
+    assert "private" not in json.dumps(entry)
 
 
 def test_benchmark_api_evaluates_cache_misses_with_strict_v3():

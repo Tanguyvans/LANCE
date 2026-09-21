@@ -600,14 +600,15 @@ class TestPhase5Context:
         }
         def save_model_output(**request):
             save = next(tool for tool in request["tools"] if tool["name"] == "save_deliverable")
-            save["function"](filename="05_intrusion.json", content=json.dumps(model_output))
+            receipt = json.loads(save["function"](filename="05_intrusion.json", content=json.dumps(model_output)))
+            assert receipt["error_kind"] == "invalid_intrusion_evidence"
             return "Done."
 
         mock_provider.chat_with_tools.side_effect = save_model_output
         results = {"intrusion": pipeline._run_agent(AGENTS["intrusion"])}
         pipeline._ensure_intrusion_deliverable(AGENTS["intrusion"], results)
 
-        assert json.loads(
-            (pipeline.run_dir / "05_intrusion.json").read_text()
-        ) == model_output
-        assert results["intrusion"] == "completed"
+        recorded = json.loads((pipeline.run_dir / "05_intrusion.json").read_text())
+        assert recorded["compromised_devices"] == []
+        assert recorded["summary"]["devices_compromised"] == 0
+        assert results["intrusion"] == "blocked:phase5_no_observable_actions"

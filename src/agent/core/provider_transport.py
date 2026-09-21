@@ -4,8 +4,9 @@ This layer retries the same request; it never edits the conversation, executes
 tools, decides phase completion, or validates evidence. Model continuations
 belong to completion_policy and remain distinct from these transport retries.
 
-The caller owns the SDK client and disables its implicit retries. Five retries
-mean at most six calls, with delays of 5, 10, 20, 40 and 80 seconds. A deadline
+The caller owns the SDK client and disables its implicit retries. Timeouts allow
+at most one retry. Other transient errors allow at most six calls, with delays
+of 5, 10, 20, 40 and 80 seconds. A deadline
 can shorten that sequence. Diagnostic callbacks must not alter its outcome.
 """
 from __future__ import annotations
@@ -21,7 +22,7 @@ RETRYABLE_CODES = {429, 500, 502, 503, 529}
 MAX_RETRIES = 5
 RETRY_BASE_DELAY = 5.0
 RETRYABLE_EXC_NAMES = {
-    "APIConnectionError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout",
+    "APIConnectionError", "APITimeoutError", "ConnectError", "ConnectionError", "ReadTimeout", "Timeout",
 }
 _MISSING_USER_QUERY_TEXT = "no user query found in messages"
 
@@ -129,6 +130,7 @@ def call_with_retry(
 ):
     """Retry transient HTTP/connection errors without changing request arguments."""
     last_exc = None
+    timeout_retries = 0
     retry_limit = max(0, int(max_retries))
     for attempt in range(retry_limit + 1):
         deadline_remaining(deadline)
@@ -151,6 +153,13 @@ def call_with_retry(
             retryable = (code in RETRYABLE_CODES) or (
                 code is None and is_network_error(exc)
             )
+            is_timeout = isinstance(exc, TimeoutError) or type(exc).__name__ in {
+                "APITimeoutError", "ReadTimeout", "Timeout",
+            }
+            if is_timeout:
+                if timeout_retries >= 1:
+                    raise
+                timeout_retries += 1
             if retryable and attempt < retry_limit:
                 delay = RETRY_BASE_DELAY * (2 ** attempt)
                 if deadline is not None:

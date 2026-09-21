@@ -250,60 +250,16 @@ do not add a successful hop.
 ## Phase F - {{intrusion_final_phase_title}} (turn <= {{intrusion_completion_turn}})
 
 {{intrusion_final_instruction}}
-Pass RAW JSON — do NOT wrap in markdown code blocks.
-The saved object must contain all four sections shown below: summary, credential_pool,
-compromised_devices, and chains. Include all five summary fields, using non-negative
-integer counters (not strings). A completed assessment with zero accesses is valid;
-use empty arrays and truthful counters, not an empty object or invented successes.
-devices_compromised must match the unique compromised_devices; devices_attempted
-cannot be smaller. total_hops counts network transitions: sum(max(0, len(hops)-1))
-across chains. This structural count does not establish that a pivot is proven.
-If a save is rejected, repair its structure using existing observations. Do not claim
-completion for a draft, incomplete, failed, or non-validated diagnostic artifact.
+The pipeline renders the factual assessment from recorded tool actions.
+Do not copy inventories, credentials, outputs or chains into a large final response.
+When the assessment is finished, call save_deliverable with the marker below.
+Recording an assessment does not certify any access, pivot or objective.
+If rejected, read the error; never invent evidence or repeat actions only to
+manufacture success. Stops and exhausted budgets remain interruptions.
 </instructions>
 
 <output>
-```json
-{
-  "summary": {
-    "devices_compromised": 0,
-    "devices_attempted": 0,
-    "credentials_harvested": 0,
-    "crown_jewels_reached": [],
-    "total_hops": 0
-  },
-  "credential_pool": [
-    {"user": "<user>", "password": "<password>", "service": "<ssh|http|mqtt|ftp|redis|mysql>", "source_ip": "<ip>", "source_device": "<device_id>"}
-  ],
-  "compromised_devices": [
-    {
-      "device_id": "<id>",
-      "device_ip": "<ip>",
-      "access_method": "<try_credential:ssh:admin:admin>",
-      "access_via": "<entry_point|pivot_from_ip>",
-      "data_exfiltrated": "<passwords/keys/configs found — max 500 chars>",
-      "credentials_found": [
-        {"user": "<u>", "password": "<p>", "service": "<s>", "target_ip": "<ip>"}
-      ]
-    }
-  ],
-  "chains": [
-    {
-      "id": "chain_1",
-      "hops": [
-        {
-          "hop_index": 1,
-          "device_id": "<id>",
-          "device_ip": "<ip>",
-          "access_method": "<method>",
-          "commands_run": ["<cmd1>", "<cmd2>"],
-          "output_summary": "<max 400 chars>",
-          "pivot_to": "<next_ip or null>"
-        }
-      ],
-      "crown_jewel_reached": "<device_id or null>"
-    }
-  ]
-}
-```
+Call save_deliverable(filename="05_intrusion.json", content="{\"finish\":true}").
+The controller builds and validates the fact-based document; no final narrative
+or campaign JSON is required from the model.
 </output>

@@ -3016,6 +3016,17 @@ function formatIntrusionDiagnostics(metrics) {
 
 function _completionReservations(event) {
   const reservations = [];
+  const intrusionLabels = {
+    failed: 'Intrusion en échec', blocked: 'Intrusion bloquée',
+    partial: 'Intrusion incomplète', stopped: 'Intrusion arrêtée',
+    budget_exceeded: 'Intrusion arrêtée — budget atteint',
+  };
+  if (Object.hasOwn(intrusionLabels, event?.phase5_status)) {
+    const cause = event?.phase5_cause;
+    reservations.push(cause === 'completion_missing' ? 'Intrusion non finalisée — bilan de fin absent'
+      : cause === 'completion_invalid' ? 'Intrusion non finalisée — bilan invalide'
+      : intrusionLabels[event.phase5_status]);
+  }
   const metrics = event?.metrics;
   const evaluationStatus = event?.evaluation_status;
   const reportStatus = typeof event?.phase6_status === 'string' ? event.phase6_status.split(':', 1)[0] : null;

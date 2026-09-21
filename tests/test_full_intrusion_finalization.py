@@ -74,6 +74,41 @@ SAVE = ("save_deliverable", {"filename": "05_intrusion.json", "content": json.du
 })})
 
 
+@pytest.mark.parametrize("case", ["attempt", "access", "new_access", "missing", "corrupt", "stopped", "refused", "integrity_failed"])
+def test_live_full_finish_marker_uses_ledger_not_model_claims(full, case):
+    full.dry_run = False
+    if case in {"access", "new_access"}:
+        full.offline_action.return_value = json.dumps({"success": True, "authenticated": True, "service": "ssh", "stdout": "uid=0(root) gid=0(root)", "return_code": 0})
+    if case == "access":
+        (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "recovered_credentials": [{"user": "test", "password": "test", "service": "ssh", "source_ip": "192.0.2.1"}],
+        }))
+    if case == "refused":
+        full.offline_action.return_value = json.dumps({"error": "out of scope", "error_kind": "scope"})
+    tools = full._resolve_tools(AGENTS["intrusion"])
+    if case != "missing":
+        tools[0]["function"](**ACTION[1])
+    if case == "corrupt":
+        with (full.run_dir / "tool_calls.jsonl").open("a") as handle:
+            handle.write("invalid\n")
+    if case == "stopped":
+        full._stop_event.set()
+    if case == "integrity_failed":
+        full._evidence_integrity_failed = True
+    save = full._apply_deliverable_transaction(tools, AGENTS["intrusion"])[1]["function"]
+    receipt = json.loads(save(filename="05_intrusion.json", content='{"finish":true,"devices_compromised":999}'))
+    if case in {"attempt", "access", "new_access"}:
+        assert receipt.get("validated") is True
+        data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+        assert data["summary"]["devices_compromised"] == (0 if case == "attempt" else 1)
+        assert data["summary"]["devices_attempted"] == 1
+        assert data["assessment"]["objectives_status"] == "not_certified"
+        assert data["chains"] == []
+    else:
+        assert receipt["error_kind"] == "invalid_intrusion_evidence"
+        assert not (full.run_dir / "05_intrusion.json").exists()
+
+
 def run_phase(full):
     events = []
     status = full._run_agent(AGENTS["intrusion"], events.append)

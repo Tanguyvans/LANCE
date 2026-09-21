@@ -131,6 +131,11 @@ class AgentRunner:
                     })
 
                 normalized = runtime._extract_json(content) if target.endswith(".json") else content
+                if config.name == "intrusion" and self.execution_profile.name == "full" and not self.dry_run:
+                    try:
+                        normalized = json.dumps(self._recorded_intrusion_report(), ensure_ascii=False)
+                    except (ValueError, OSError, TypeError) as exc:
+                        return json.dumps({"ok": False, "error_kind": "invalid_intrusion_evidence", "error": str(exc)})
                 strict_compact_graph = (
                     config.name == "graph_analysis"
                     and self._uses_compact_local_moe()
@@ -346,12 +351,12 @@ class AgentRunner:
                     "intrusion_final_instruction"
                 ] = "Call complete_intrusion_campaign after reading 05_intrusion_context.json and performing the required service-appropriate action for every listed target/service. Do not stop before the tool reports success."
             else:
-                variables["intrusion_save_tool"] = "- save_deliverable(filename=\"05_intrusion.json\", content=<full JSON>)"
-                variables["intrusion_completion_rule"] = "Finish with one successful save_deliverable call. If it returns ok=false, repair the archived draft and retry without repeating data gathering."
+                variables["intrusion_save_tool"] = '- save_deliverable(filename="05_intrusion.json", content="{\\"finish\\":true}")'
+                variables["intrusion_completion_rule"] = "Finish with one accepted save_deliverable marker. If rejected, inspect the evidence error; do not rewrite a campaign JSON or invent successes."
                 variables["intrusion_final_phase_title"] = "Save results"
                 variables[
                     "intrusion_final_instruction"
-                ] = "Call save_deliverable with the full JSON. Do not stop before the tool reports success."
+                ] = "Call save_deliverable with the small finish marker; the controller renders the factual assessment from recorded actions."
 
         # Recon remains model-driven: the expert calls every tool itself.  The
         # contract only constrains its tool surface and prevents completion

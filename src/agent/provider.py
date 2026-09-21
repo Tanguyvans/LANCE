@@ -129,7 +129,7 @@ class _ProviderDiagnostics:
             elif status_code in _RETRYABLE_CODES:
                 error_kind = "transient"
             elif _is_network_error(exc):
-                error_kind = "timeout" if isinstance(exc, TimeoutError) or type(exc).__name__ in {"ReadTimeout", "Timeout"} else "network"
+                error_kind = "timeout" if isinstance(exc, TimeoutError) or type(exc).__name__ in {"APITimeoutError", "ReadTimeout", "Timeout"} else "network"
         self.last_sdk_exception = exc
         self.response(
             response_type="providererror",
@@ -270,6 +270,10 @@ class LLMProvider:
             if provider == "local-moe"
             else API_TIMEOUT
         )
+        request_timeout = float(os.environ.get("LANCE_API_TIMEOUT_S", request_timeout))
+        if not 0 < request_timeout < float("inf"):
+            raise ValueError("LANCE_API_TIMEOUT_S must be a finite positive number")
+        self._request_timeout = request_timeout
         self.client = openai.OpenAI(
             base_url=cfg["base_url"],
             api_key=os.environ.get(api_key_env) or "not-needed",
@@ -542,6 +546,8 @@ class LLMProvider:
             return False
 
         def admitted_completion(**kwargs):
+            if stop_event is not None and stop_event.is_set():
+                raise RequestQueueStopped()
             if cost_tracker is not None:
                 cost_tracker.check_budget()
             client = self.client
@@ -552,7 +558,7 @@ class LLMProvider:
                 # conversation before our compatibility guard can inspect it.
                 options = {"max_retries": 0}
                 if remaining is not None:
-                    options["timeout"] = remaining
+                    options["timeout"] = min(remaining, getattr(self, "_request_timeout", API_TIMEOUT))
                 client = with_options(**options)
             # This is intentionally after budget/deadline/options checks and
             # immediately before the SDK call: it counts HTTP attempts, not

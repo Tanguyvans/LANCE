@@ -37,6 +37,73 @@ def test_provider_keeps_one_shared_retry_implementation():
     assert _call_with_retry is transport.call_with_retry
 
 
+def test_sdk_timeout_retries_same_request_once_only(clock):
+    from openai import APITimeoutError
+    error = APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
+    request = {"messages": [{"role": "user", "content": "unchanged"}]}
+    call = MagicMock(side_effect=[error, "ok"])
+    assert transport.call_with_retry(call, **request) == "ok"
+    assert call.call_count == 2
+    assert call.call_args_list[0] == call.call_args_list[1]
+    failed = MagicMock(side_effect=error)
+    with pytest.raises(APITimeoutError):
+        transport.call_with_retry(failed, **request)
+    assert failed.call_count == 2
+
+
+def test_sdk_timeout_does_not_retry_after_deadline(clock):
+    from openai import APITimeoutError
+    error = APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
+    def expired():
+        clock["now"] = 110.0
+        raise error
+    call = MagicMock(side_effect=expired)
+    with pytest.raises(TimeoutError):
+        transport.call_with_retry(call, deadline=105.0)
+    assert call.call_count == 1
+
+
+def test_timeout_after_tool_result_preserves_history_and_request_limit(monkeypatch):
+    import json
+    import time
+    import openai
+    monkeypatch.setattr(transport.time, "sleep", lambda _: None)
+    requests = []
+    def respond(request):
+        requests.append(request)
+        if len(requests) == 2:
+            raise httpx.ReadTimeout("offline timeout", request=request)
+        message = {"role": "assistant", "content": "finished"}
+        reason = "stop"
+        if len(requests) == 1:
+            message = {"role": "assistant", "content": None, "tool_calls": [{
+                "id": "call_probe", "type": "function",
+                "function": {"name": "probe", "arguments": "{}"},
+            }]}
+            reason = "tool_calls"
+        return httpx.Response(200, json={"id": "offline", "object": "chat.completion", "created": 0,
+            "model": "offline", "choices": [{"index": 0, "finish_reason": reason, "message": message}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+    provider = LLMProvider.__new__(LLMProvider)
+    provider.provider, provider.model = "ollama-umons", "offline"
+    provider._retry_limit, provider._request_timeout = 5, 12.0
+    provider.client = openai.OpenAI(api_key="offline", base_url="https://offline.invalid/v1",
+        http_client=httpx.Client(transport=httpx.MockTransport(respond)))
+    probe = MagicMock(return_value="recorded observation")
+    try:
+        provider.chat_with_tools("system", "question", [{"name": "probe", "description": "probe",
+            "input_schema": {"type": "object", "properties": {}}, "function": probe}],
+            max_turns=3, deadline=time.monotonic() + 60)
+    finally:
+        provider.client.close()
+    assert probe.call_count == 1
+    assert len(requests) == 3
+    assert requests[1].content == requests[2].content
+    messages = json.loads(requests[2].content)["messages"]
+    assert any(m.get("tool_call_id") == "call_probe" for m in messages)
+    assert all(r.extensions["timeout"]["read"] <= 12 for r in requests)
+
+
 @pytest.mark.parametrize("status", [429, 500, 502, 503, 529])
 @pytest.mark.parametrize("response_only", [False, True])
 def test_transient_status_retries_unchanged_request_and_returns_success(clock, status, response_only):

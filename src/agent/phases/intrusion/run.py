@@ -15,10 +15,67 @@ log = logging.getLogger(__name__)
 class IntrusionPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
+    def _recorded_intrusion_report(self) -> dict:
+        """Record an explicit end-of-assessment request, never model claims."""
+        if self._stop_event is not None and self._stop_event.is_set():
+            raise ValueError("Intrusion stopped by user")
+        observations = project_intrusion_observations(
+            self.run_dir,
+            evidence_integrity_failed=bool(getattr(self, "_evidence_integrity_failed", False)),
+        )
+        if not observations.get("available"):
+            raise ValueError("Intrusion evidence unavailable: " + str(observations.get("reason")))
+        from src.agent.evidence.records import observed_targets
+        attempted = set()
+        for line in (self.run_dir / "tool_calls.jsonl").read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if record.get("phase") not in (5, "5") or record.get("execution_origin") != "runner" or record.get("tool") not in {
+                "try_credential", "ssh_exec", "ssh_login", "mqtt_listen", "http_get", "curl_headers", "telnet_connect", "ftp_list",
+            }:
+                continue
+            args = record.get("args") or {}
+            if not isinstance(args, dict) or _intrusion_scope_violation(record["tool"], args, self.context.get("target_subnet", "")):
+                continue
+            result = record.get("result")
+            if isinstance(result, str):
+                result = json.loads(result)
+            if not isinstance(result, dict) or result.get("error") or result.get("error_kind"):
+                continue
+            attempted.update(observed_targets(record))
+        if not attempted:
+            raise ValueError("No observable intrusion actions recorded")
+        data = self._synthesize_intrusion_from_tools(
+            note="Assessment recorded from tool observations. This does not certify that objectives were reached."
+        )
+        data["summary"]["devices_attempted"] = len(attempted)
+        supported = {row["device_ip"]: row for row in observations["accesses"] if row["device_ip"] in attempted}
+        existing = {d["device_ip"]: d for d in data["compromised_devices"]}
+        devices = []
+        for ip, access in supported.items():
+            device = existing.get(ip, {
+                "device_id": ip, "device_ip": ip,
+                "access_method": "observed_authenticated_access", "access_via": "entry_point",
+                "credentials_found": [], "data_exfiltrated": "",
+            })
+            device["device_id"] = device.get("device_id") or ip
+            device["evidence_refs"] = access["evidence_refs"]
+            devices.append(device)
+        data["compromised_devices"] = devices
+        data["summary"]["devices_compromised"] = len(devices)
+        data["assessment"] = {
+            "status": "recorded", "source": "tool_calls.jsonl",
+            "objectives_status": "not_certified",
+            "transition_evidence_available": observations["transition_evidence_available"],
+        }
+        return data
+
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Finalize Phase 5 without hiding gaps or duplicating terminal events.
 
-        Full runs require a fresh accepted submission; a missing one leaves
+        Full runs require a fresh accepted end marker and ledger-built report;
+        a missing one leaves
         diagnostic observations and an incomplete outcome. Compact
         local-MoE runs use the tool ledger as the source of truth; a bounded
         fallback may complete missing actions, but incomplete coverage is

@@ -615,6 +615,19 @@ def _benchmark_entry(candidate: dict[str, Any], *, compact: bool) -> dict[str, A
             for key in ("phase6_status", "phase6_cause", "cleanup_status", "usage_status")
             if isinstance(metadata.get(key), str)
         }
+        results = metadata.get("results")
+        intrusion = results.get("intrusion") if isinstance(results, dict) else None
+        # Export a bounded diagnostic code, never provider/model error text.
+        if isinstance(intrusion, str):
+            status = intrusion.split(":", 1)[0]
+            if status in {"failed", "blocked", "partial", "stopped", "budget_exceeded"}:
+                entry["completion"]["phase5_status"] = status
+            causes = {
+                "failed:phase5_completion_missing": "completion_missing",
+                "failed:phase5_completion_invalid": "completion_invalid",
+            }
+            if intrusion in causes:
+                entry["completion"]["phase5_cause"] = causes[intrusion]
 
     vuln_file = run_dir / "03_vuln_analysis.json"
     scenario_id = scenario.removeprefix("S")
