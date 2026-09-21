@@ -766,7 +766,7 @@ class TestInformationPreservingArchitecture:
             AGENTS["recon"], [], None
         ) is False
 
-    def test_full_local_recon_does_not_rewrite_model_report(
+    def test_full_local_recon_rejects_model_report_without_observations(
         self, output_dir
     ):
         provider = MagicMock()
@@ -794,6 +794,6 @@ class TestInformationPreservingArchitecture:
             ),
         ))
 
-        assert result["error_kind"] == "deliverable_validation"
-        assert "found 0" in result["error"]
+        assert result["error_kind"] == "invalid_recon_evidence"
+        assert "missing or invalid" in result["error"]
         save.assert_not_called()

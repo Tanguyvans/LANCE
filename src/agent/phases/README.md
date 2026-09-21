@@ -60,6 +60,23 @@ indépendantes et un assemblage déterministe, communs aux deux profils.
 Voir la [rédaction du rapport](../../../docs/report-writing.md) pour les limites,
 les fichiers produits et la reprise des fiches.
 
+## Reconnaissance et restitution
+
+En profil complet (et hors adaptation locale compacte), `02_recon.md` est
+construit par `recon/rendering.py` depuis les observations du journal d’outils.
+Le modèle choisit toujours les sondes ; il ne recopie plus leur inventaire.
+Une note de fin suffit à demander la sauvegarde. Si le dialogue se termine sans
+sauvegarde, le contrôleur tente une seule sauvegarde locale, sans nouveau scan
+ni appel au modèle, via les mêmes contrôles de couverture et de validation.
+
+La finalisation exige le contrat de reconnaissance satisfait et des observations
+exploitables. Un journal invalide ou absent ne donne pas un succès. Un arrêt
+utilisateur reste un arrêt ; une exception fournisseur ou de budget n’est pas
+convertie en réussite. Les échecs de sondes restent explicitement signalés,
+même lorsque leurs tentatives répétées satisfont le contrat d’exécution.
+Un inventaire généré n’est pas une certification de couverture exhaustive.
+L’adaptation locale compacte conserve sa restitution et ses contrôles existants.
+
 ## Limites conservées explicitement
 
 Les composants restent des mixins utilisant l'état du même `Pipeline`. Ce passage

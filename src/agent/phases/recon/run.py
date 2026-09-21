@@ -18,24 +18,46 @@ class ReconPhase:
     def _build_recon_evidence_projection(self) -> dict:
         """Project raw Recon tool evidence into a compact, lossless-sidecar ledger."""
         devices: dict[str, dict] = {}
+        source_issues = []
         log_path = self.run_dir / "tool_calls.jsonl"
         if log_path.exists():
             for line in log_path.read_text(encoding="utf-8").splitlines():
                 try:
                     entry = json.loads(line)
                 except (TypeError, ValueError, json.JSONDecodeError):
+                    source_issues.append("Malformed ledger record")
+                    continue
+                if not isinstance(entry, dict):
+                    source_issues.append("Non-object ledger record")
+                    continue
+                if entry.get("phase") not in (None, 2, "2"):
                     continue
                 tool = entry.get("tool", "")
                 args = entry.get("args", {}) or {}
+                if not isinstance(args, dict):
+                    source_issues.append("Invalid tool arguments")
+                    continue
                 raw_result = entry.get("result", "")
                 try:
                     payload = json.loads(raw_result) if isinstance(raw_result, str) else raw_result
                 except (TypeError, ValueError, json.JSONDecodeError):
                     payload = {}
+                    if tool in {"arp_scan", "nmap_scan", "nmap_discovery"}:
+                        source_issues.append("Invalid scan result")
                 stdout = str(payload.get("stdout", "")) if isinstance(payload, dict) else ""
+                if tool in {"arp_scan", "nmap_scan", "nmap_discovery"} and not isinstance(payload, dict):
+                    source_issues.append("Non-object scan result")
+                    continue
 
                 if tool == "arp_scan" and isinstance(payload, dict):
-                    for host in payload.get("hosts", []):
+                    hosts = payload.get("hosts", [])
+                    if not isinstance(hosts, list):
+                        source_issues.append("Invalid discovery host list")
+                        continue
+                    for host in hosts:
+                        if not isinstance(host, dict):
+                            source_issues.append("Invalid discovery host")
+                            continue
                         ip = str(host.get("ip", "")).strip()
                         if not ip:
                             continue
@@ -100,6 +122,12 @@ class ReconPhase:
             row["sources"] = sorted(set(row["sources"]))
             row["open_ports"] = sorted(set(row["open_ports"]))
 
+        for ip in list(devices):
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                source_issues.append("Invalid observed IP")
+                del devices[ip]
         rows = sorted(devices.values(), key=lambda item: ipaddress.ip_address(item["ip"]))
         def _ports_label(row: dict) -> str:
             if row["open_ports"]:
@@ -128,19 +156,40 @@ class ReconPhase:
         ]
         projection = {
             "schema_version": "1",
+            "source_issues": source_issues,
             "source": "tool_calls.jsonl",
             "device_count": len(rows),
             "devices": rows,
             "markdown_service_rows": markdown_rows,
             "note": (
-                "Deterministic evidence projection; model narrative remains in "
-                "02_recon.md and raw outputs remain in tool_calls.jsonl."
+                "Deterministic evidence projection; raw outputs remain in tool_calls.jsonl. "
+                "Unobserved services are not proven absent."
             ),
         }
         (self.run_dir / "02_recon_evidence.json").write_text(
             json.dumps(projection, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         return projection
+
+    def _render_recorded_recon(self) -> str:
+        from .rendering import render_recon
+        progress = getattr(self, "_recon_progress", lambda: {})()
+        return render_recon(self._build_recon_evidence_projection(), progress)
+
+    def _finalize_recorded_recon(self, config, tools) -> bool:
+        """One local save through the existing coverage and transaction guards."""
+        if self._stop_event is not None and self._stop_event.is_set():
+            return False
+        if not getattr(self, "_recon_progress", lambda: {})().get("ready_to_save"):
+            return False
+        save = next((t["function"] for t in tools if t["name"] == "save_deliverable"), None)
+        if save is None:
+            return False
+        try:
+            result = json.loads(save(filename=config.deliverable_file, content="Recorded reconnaissance observations."))
+        except (ValueError, OSError, TypeError):
+            return False
+        return isinstance(result, dict) and not result.get("error") and self._validator(config.validator)(config.deliverable_file)[0]
 
     def _reconcile_phase2_attack_surface(self, projection: dict | None = None) -> dict:
         """Promote Phase 2 service observations into the Phase 3 scenario graph.
@@ -594,6 +643,9 @@ class ReconPhase:
                 }
             return json.dumps(payload, ensure_ascii=False, default=str)
 
+        # Caller-owned live contract, never inferred from model text or old files.
+        self._recon_progress = _progress
+
         def _scan_signature(kwargs: dict) -> str:
             """Canonicalize an nmap request so argument ordering cannot evade cache."""
             normalized = dict(kwargs)
@@ -705,6 +757,8 @@ class ReconPhase:
                     return _with_progress(result)
 
                 if name == "save_deliverable":
+                    if self._stop_event is not None and self._stop_event.is_set():
+                        return _error("stopped", "Reconnaissance stopped by user")
                     missing = _missing_requirements()
                     if missing:
                         return _error(

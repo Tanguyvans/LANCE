@@ -33,7 +33,7 @@ TURN BUDGET: You have at most 50 turns. Aim to call save_deliverable by turn 45.
 RULE: Reconnaissance must remain non-destructive. Credential use, remote execution,
 protocol writes, payload generation, and arbitrary code execution belong to later phases.
 RULE: Keep every explicit network target inside {{target_subnet}}.
-RULE: The report template is SHORT (3 sections, 3 tables). Fill it quickly — do not elaborate.
+RULE: The pipeline renders the inventory from recorded tool observations. Do not copy scan output or reconstruct tables in your response.
 
 ## Minimum evidence requirements
 Before saving, obtain all of the following. Their order is entirely your choice:
@@ -45,7 +45,7 @@ Before saving, obtain all of the following. Their order is entirely your choice:
 Read the Phase 1 deliverable once and keep that result in context. If a later turn
 reports that it is already loaded, do not request it again. As soon as
 `recon_progress.ready_to_save` is true, stop gathering evidence and call
-save_deliverable immediately with the completed report; do not announce or defer the save.
+save_deliverable immediately with a short completion note; do not announce or defer the save.
 
 ## Port coverage baseline
 The ledger is a minimum evidence baseline, not a prescribed sequence of calls.
@@ -62,24 +62,17 @@ The ledger is a minimum evidence baseline, not a prescribed sequence of calls.
   a minimum coverage requirement dynamically.
 
 ## Document and save
-For each IP: match against YAML model → classify as confirmed, undocumented, or unreachable.
-Document failures as evidence rather than inventing results. Then call save_deliverable.
+Call save_deliverable with a short completion note. The pipeline builds the factual document from the recorded observations, including failures and unknowns. Do not invent results.
 
 ## Completion checklist (MANDATORY before save_deliverable)
 - [ ] Every row has its minimum port coverage (possibly through wider or split scans)
 - [ ] Every discovered IP documented (scanned or noted from discovery)
 - [ ] All active probes remained non-destructive and inside scope
-Fill the template with ALL results, then call save_deliverable.
+Call save_deliverable; do not reproduce the inventory or scan transcripts.
 </instructions>
 
 <output>
 ## Deliverable: {{expected_deliverable}}
 
-Use this EXACT template. Fill every table row. Do not change headers or structure.
-
-```markdown
-{{deliverable_template}}
-```
-
-You are done when you have called save_deliverable("{{expected_deliverable}}", full_content).
+You are done when you have called save_deliverable("{{expected_deliverable}}", "Reconnaissance observations recorded."). The pipeline renders and validates the document; your completion note is not evidence and is not the inventory.
 </output>

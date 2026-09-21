@@ -142,6 +142,11 @@ class AgentRunner:
                     normalized = self._render_compact_graph_markdown()
                 elif strict_compact_recon:
                     normalized = self._finalize_compact_recon_markdown(normalized)
+                elif config.name == "recon" and not self.dry_run:
+                    try:
+                        normalized = self._render_recorded_recon()
+                    except (ValueError, OSError, TypeError) as exc:
+                        return json.dumps({"ok": False, "error_kind": "invalid_recon_evidence", "error": str(exc)})
                 safe_name = target.replace("/", "__").replace("\\", "__")
                 attempt_dir = resolve_run_artifact(self.run_dir, f".attempts/{safe_name}")
                 attempt_dir.mkdir(parents=True, exist_ok=True)
@@ -517,6 +522,10 @@ class AgentRunner:
             if recovered_compact_recon:
                 valid, msg = validator_fn(config.deliverable_file)
 
+        if not valid and config.name == "recon" and not compact_local_recon and not self.dry_run:
+            valid = self._finalize_recorded_recon(config, tools)
+            msg = "OK" if valid else "Recorded reconnaissance incomplete or invalid"
+
         recovered_full_graph = False
         graph_recovery_stopped = False
         if not valid and full_graph:
@@ -563,6 +572,8 @@ class AgentRunner:
                 else ("completed" if valid else f"failed:{msg}")
             )
         if full_intrusion and self._stop_event is not None and self._stop_event.is_set():
+            status = "stopped"
+        if config.name == "recon" and self._stop_event is not None and self._stop_event.is_set():
             status = "stopped"
         # Compact reconciliation keeps its existing completion contract.
         # Full Phase 5 defers its event below until reconciliation has recorded
