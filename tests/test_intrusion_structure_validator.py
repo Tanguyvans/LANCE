@@ -280,3 +280,54 @@ def test_errors_do_not_echo_payload_identifiers(clean_output):
     ok, message = write_json(clean_output, data)
     assert not ok
     assert "SUPER-SECRET-CHAIN-ID" not in message
+
+
+def _credential_pool_with(service):
+    data = zero_access()
+    data["summary"]["credentials_harvested"] = 1
+    data["credential_pool"] = [{
+        "user": "admin",
+        "password": "admin",
+        "service": service,
+        "source_ip": "192.0.2.10",
+        "source_device": "device-a",
+    }]
+    return data
+
+
+def test_accepts_explicit_null_credential_service(clean_output):
+    assert write_json(clean_output, _credential_pool_with(None)) == (True, "OK")
+
+
+@pytest.mark.parametrize(
+    "service",
+    ["ssh", "http", "mqtt", "telnet", "ftp", "redis", "mysql"],
+)
+def test_accepts_known_credential_services(clean_output, service):
+    assert write_json(clean_output, _credential_pool_with(service)) == (True, "OK")
+
+
+@pytest.mark.parametrize(
+    "service", ["", "   ", 22, 4.5, True, ["ssh"], {"name": "ssh"}]
+)
+def test_rejects_malformed_credential_service(clean_output, service):
+    ok, message = write_json(clean_output, _credential_pool_with(service))
+    assert not ok
+    assert "credential_pool[0]" in message
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("user", 7),
+        ("password", None),
+        ("source_ip", 10),
+        ("source_device", ["device-a"]),
+    ],
+)
+def test_rejects_malformed_credential_fields(clean_output, field, value):
+    data = _credential_pool_with("ssh")
+    data["credential_pool"][0][field] = value
+    ok, message = write_json(clean_output, data)
+    assert not ok
+    assert "credential_pool[0]" in message

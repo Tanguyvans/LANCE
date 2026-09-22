@@ -612,3 +612,76 @@ class TestPhase5Context:
         assert recorded["compromised_devices"] == []
         assert recorded["summary"]["devices_compromised"] == 0
         assert results["intrusion"] == "blocked:phase5_no_observable_actions"
+
+
+class TestFullIntrusionUnknownService:
+    """Full-profile synthesis: unknown service is null, never guessed."""
+
+    def _write_trace(self, run_dir, recovered):
+        (run_dir / "05_intrusion_context.json").write_text(json.dumps({
+            "entry_points": [],
+            "all_targets": [{"device_id": "web", "device_ip": "192.0.2.12"}],
+            "recovered_credentials": recovered,
+        }))
+        (run_dir / "tool_calls.jsonl").write_text(json.dumps({
+            "phase": 5,
+            "tool": "http_get",
+            "args": {"url": "http://192.0.2.12/"},
+            "result": json.dumps({"status_code": 200}),
+        }) + "\n")
+
+    def test_unknown_services_become_null_and_known_are_preserved(
+        self, mock_provider, output_dir
+    ):
+        from src.agent.validators import validate_json_intrusion
+
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
+        run_dir = pipeline.run_dir
+        self._write_trace(run_dir, [
+            {"user": "no-svc", "password": "pw1",
+             "source_ip": "192.0.2.12", "source_device": "web"},
+            {"user": "null-svc", "password": "pw2", "service": None,
+             "source_ip": "192.0.2.12", "source_device": "web"},
+            {"user": "blank-svc", "password": "pw3", "service": "   ",
+             "source_ip": "192.0.2.12", "source_device": "web"},
+            {"user": "known-svc", "password": "pw4", "service": "mqtt",
+             "source_ip": "192.0.2.12", "source_device": "web"},
+        ])
+
+        data = pipeline._synthesize_intrusion_from_tools()
+
+        services = {item["user"]: item["service"] for item in data["credential_pool"]}
+        assert services == {
+            "no-svc": None, "null-svc": None, "blank-svc": None,
+            "known-svc": "mqtt",
+        }
+        assert "None" not in {item["service"] for item in data["credential_pool"]}
+        # Credential discovery alone corroborates no access.
+        assert data["compromised_devices"] == []
+        assert data["chains"] == []
+        assert data["summary"]["devices_compromised"] == 0
+        assert data["summary"]["devices_attempted"] == 1
+        (run_dir / "check.json").write_text(json.dumps(data))
+        assert validate_json_intrusion("check.json", output_dir=run_dir) == (True, "OK")
+
+    def test_malformed_service_passes_through_for_validator_rejection(
+        self, mock_provider, output_dir
+    ):
+        from src.agent.validators import validate_json_intrusion
+
+        pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+        pipeline.context = {"target_subnet": "192.0.2.0/24"}
+        run_dir = pipeline.run_dir
+        self._write_trace(run_dir, [
+            {"user": "numeric", "password": "pw1", "service": 22,
+             "source_ip": "192.0.2.12", "source_device": "web"},
+        ])
+
+        data = pipeline._synthesize_intrusion_from_tools()
+
+        assert data["credential_pool"][0]["service"] == 22
+        (run_dir / "check.json").write_text(json.dumps(data))
+        ok, message = validate_json_intrusion("check.json", output_dir=run_dir)
+        assert not ok
+        assert "credential_pool[0]" in message

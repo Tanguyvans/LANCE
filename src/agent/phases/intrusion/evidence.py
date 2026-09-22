@@ -22,13 +22,17 @@ def block_without_actions(data: dict) -> str:
     return "blocked:phase5_no_observable_actions"
 
 
-def finalize_synthesis(data: dict, previous_status: str) -> str:
+def finalize_synthesis(data: dict, previous_status: str, *, submitted: bool = False) -> str:
     if previous_status.split(":", 1)[0] in {"stopped", "budget_exceeded"}:
         set_diagnostic(data, previous_status.split(":", 1)[0], "Phase 5 interrupted; observations retained without campaign completion.")
         return previous_status
     if not has_observable_actions(data):
         return block_without_actions(data)
-    missing = "not found" in previous_status or previous_status == "completed"
+    # The runner reports a missing file even when the model did submit a
+    # finish marker that validation rejected. Callers pass submitted=True
+    # when the attempts ledger (or the live transaction) recorded such a
+    # submission, so a rejected finalization stays invalid, never missing.
+    missing = ("not found" in previous_status or previous_status == "completed") and not submitted
     reason = "model_deliverable_missing" if missing else "model_deliverable_invalid"
     data["completion"] = {
         "status": "incomplete", "reason": reason,

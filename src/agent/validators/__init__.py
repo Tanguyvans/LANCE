@@ -406,9 +406,10 @@ def validate_json_intrusion(filename: str, *, output_dir: Path) -> tuple[bool, s
             return _intrusion_structure_error(
                 f"{path}.password", "must be a string"
             )
-        if not _non_empty_string(credential["service"]):
+        service = credential["service"]
+        if service is not None and not _non_empty_string(service):
             return _intrusion_structure_error(
-                f"{path}.service", "must be a non-empty string"
+                f"{path}.service", "must be a non-empty string or null"
             )
         for field in ("source_ip", "source_device"):
             if not isinstance(credential[field], str):

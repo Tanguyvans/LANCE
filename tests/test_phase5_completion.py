@@ -81,3 +81,49 @@ def test_full_profile_synthesis_preserves_failed_phase_status(pipeline):
     assert json.loads((pipeline.run_dir / "05_intrusion.json").read_text())["status"] == "incomplete"
     pipeline._run_compact_intrusion_fallback.assert_not_called()
     pipeline._run_compact_intrusion_post_access.assert_not_called()
+
+
+def _observed_ledger(attempted=1):
+    return {"summary": {
+        "devices_attempted": attempted, "devices_compromised": 0,
+        "credentials_harvested": 0,
+    }}
+
+
+def test_finalize_missing_without_submission():
+    from src.agent.phases.intrusion.evidence import finalize_synthesis
+    assert finalize_synthesis(
+        _observed_ledger(), "failed:Deliverable '05_intrusion.json' not found"
+    ) == "failed:phase5_completion_missing"
+
+
+def test_finalize_invalid_after_rejected_submission():
+    from src.agent.phases.intrusion.evidence import finalize_synthesis
+    assert finalize_synthesis(
+        _observed_ledger(), "failed:Deliverable '05_intrusion.json' not found",
+        submitted=True,
+    ) == "failed:phase5_completion_invalid"
+
+
+def test_finalize_interruptions_unchanged_even_when_submitted():
+    from src.agent.phases.intrusion.evidence import finalize_synthesis
+    assert finalize_synthesis(_observed_ledger(), "stopped", submitted=True) == "stopped"
+    assert finalize_synthesis(
+        _observed_ledger(), "budget_exceeded:phase5", submitted=True
+    ) == "budget_exceeded:phase5"
+
+
+def test_finalize_no_actions_stays_blocked_even_when_submitted():
+    from src.agent.phases.intrusion.evidence import finalize_synthesis
+    assert finalize_synthesis(
+        _observed_ledger(attempted=0), "failed:Deliverable '05_intrusion.json' not found",
+        submitted=True,
+    ) == "blocked:phase5_no_observable_actions"
+
+
+@pytest.mark.parametrize("phase,agent,expected", [(5, "intrusion", True), (3, "analysis", False)])
+def test_submission_archive_is_scoped_to_intrusion(pipeline, phase, agent, expected):
+    (pipeline.run_dir / "deliverable_attempts.jsonl").write_text(json.dumps({
+        "filename": "05_intrusion.json", "phase": phase, "agent": agent, "valid": False,
+    }) + "\n")
+    assert pipeline._phase5_finish_submitted("05_intrusion.json") is expected

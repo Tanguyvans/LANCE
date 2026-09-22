@@ -89,6 +89,14 @@ réseau ; les traces originales restent disponibles. Sans signal de fin accepté
 les observations sont conservées mais la campagne reste incomplète. Les arrêts,
 budgets et journaux invalides ne sont pas convertis en succès.
 
+Un identifiant récupéré sans protocole déclaré porte `service: null` (jamais un
+protocole deviné ni la chaîne `"None"`) ; les services connus sont conservés
+tels quels et les valeurs malformées restent refusées. La découverte
+d'identifiants ne constitue pas un accès corroboré. Un marqueur de fin soumis
+puis refusé donne `failed:phase5_completion_invalid` ; seul un marqueur absent
+donne `failed:phase5_completion_missing`. Un arrêt ou un budget épuisé gardent
+leur cause d'interruption.
+
 `LANCE_API_TIMEOUT_S` configure le délai maximal d’une requête (120 secondes par
 défaut, 90 pour `local-moe`). Le délai effectif est le minimum de ce délai et du
 temps restant dans la phase. `LANCE_PHASE3_DEVICE_TIMEOUT_S` conserve son plafond

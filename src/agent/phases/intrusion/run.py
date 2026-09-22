@@ -12,6 +12,23 @@ from src.agent.core import runtime
 
 log = logging.getLogger(__name__)
 
+
+def _normalize_credential_service(value: object) -> object:
+    """Map a genuinely unknown credential service to explicit null.
+
+    A missing, null, or blank service means the recovery source declared no
+    protocol: emit JSON null rather than guessing one (e.g. SSH) or writing
+    the string "None". Known service strings pass through untouched.
+    Non-string values pass through so structural validation rejects them
+    instead of silently coercing them into strings.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    return value
+
+
 class IntrusionPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
@@ -70,6 +87,37 @@ class IntrusionPhase:
             "transition_evidence_available": observations["transition_evidence_available"],
         }
         return data
+
+    def _phase5_finish_submitted(self, filename: str) -> bool:
+        """Return whether a Phase 5 finish marker was submitted in this run.
+
+        A rejected submission leaves no deliverable file, so the runner only
+        reports "not found". The archived attempts — or the live transaction
+        flag when rejection happened before archiving — preserve the fact
+        that a marker was submitted, keeping invalid distinct from missing.
+        """
+        if getattr(self, "_full_intrusion_save_attempted", False):
+            return True
+        log_path = self.run_dir / "deliverable_attempts.jsonl"
+        try:
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            return False
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if (
+                isinstance(entry, dict)
+                and entry.get("filename") == filename
+                and entry.get("phase") in (5, "5")
+                and entry.get("agent") == "intrusion"
+            ):
+                return True
+        return False
 
     def _ensure_intrusion_deliverable(self, config, results: dict, stream_callback=None) -> None:
         """Finalize Phase 5 without hiding gaps or duplicating terminal events.
@@ -154,7 +202,11 @@ class IntrusionPhase:
                 data, coverage_ok=coverage_ok, coverage=coverage,
             )
         else:
-            status = finalize_synthesis(data, results.get(config.name, "completed"))
+            status = finalize_synthesis(
+                data,
+                results.get(config.name, "completed"),
+                submitted=self._phase5_finish_submitted(config.deliverable_file),
+            )
 
         reason = data.get("blocked_reason")
         if reason:
@@ -278,9 +330,12 @@ class IntrusionPhase:
                         continue
                     user = str(cred.get("user", ""))
                     pwd = str(cred.get("password", ""))
-                    svc = str(cred.get("service", ""))
+                    svc = _normalize_credential_service(cred.get("service"))
                     source_ip = str(cred.get("source_ip", ""))
-                    ckey = (source_ip, user, pwd, svc)
+                    # Malformed non-string services pass through for the
+                    # validator to reject; keep the dedup key hashable.
+                    service_key = svc if svc is None or isinstance(svc, str) else repr(svc)
+                    ckey = (source_ip, user, pwd, service_key)
                     if user and pwd:
                         allowed_credentials.add((user, pwd))
                     if user and ckey not in seen_cred:

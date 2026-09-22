@@ -307,6 +307,130 @@ def test_empty_completion_keeps_reported_token_usage(full):
     assert next(e for e in events if e["type"] == "phase_done")["turns"] == 3
 
 
+def test_finish_marker_with_unknown_service_validates_as_null(full):
+    """S3 replay: recovered credentials without a service must validate."""
+    full.dry_run = False
+    (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+        "recovered_credentials": [{
+            "user": "vault", "password": "vault-pw",
+            "source_ip": "192.0.2.1", "source_device": "dev-1",
+        }],
+    }))
+    tools = full._resolve_tools(AGENTS["intrusion"])
+    tools[0]["function"](**ACTION[1])
+    save = full._apply_deliverable_transaction(tools, AGENTS["intrusion"])[1]["function"]
+    receipt = json.loads(save(filename="05_intrusion.json", content='{"finish":true}'))
+    assert receipt.get("validated") is True
+    data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+    assert data["credential_pool"] == [{
+        "user": "vault", "password": "vault-pw", "service": None,
+        "source_ip": "192.0.2.1", "source_device": "dev-1",
+    }]
+    assert data["summary"]["credentials_harvested"] == 1
+    # Discovery alone corroborates no access and no pivot.
+    assert data["compromised_devices"] == []
+    assert data["chains"] == []
+    assert data["summary"]["devices_compromised"] == 0
+    assert data["assessment"]["objectives_status"] == "not_certified"
+
+
+@pytest.mark.parametrize("service", ["ssh", "mqtt"])
+def test_finish_marker_preserves_known_service(full, service):
+    full.dry_run = False
+    (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+        "recovered_credentials": [{
+            "user": "vault", "password": "vault-pw", "service": service,
+            "source_ip": "192.0.2.1", "source_device": "dev-1",
+        }],
+    }))
+    tools = full._resolve_tools(AGENTS["intrusion"])
+    tools[0]["function"](**ACTION[1])
+    save = full._apply_deliverable_transaction(tools, AGENTS["intrusion"])[1]["function"]
+    receipt = json.loads(save(filename="05_intrusion.json", content='{"finish":true}'))
+    assert receipt.get("validated") is True
+    data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+    assert data["credential_pool"][0]["service"] == service
+
+
+@pytest.mark.parametrize("service", [22, ["ssh"], {"proto": "ssh"}])
+def test_finish_marker_with_malformed_service_is_rejected(full, service):
+    full.dry_run = False
+    (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+        "recovered_credentials": [{
+            "user": "vault", "password": "vault-pw", "service": service,
+            "source_ip": "192.0.2.1", "source_device": "dev-1",
+        }],
+    }))
+    tools = full._resolve_tools(AGENTS["intrusion"])
+    tools[0]["function"](**ACTION[1])
+    save = full._apply_deliverable_transaction(tools, AGENTS["intrusion"])[1]["function"]
+    receipt = json.loads(save(filename="05_intrusion.json", content='{"finish":true}'))
+    assert receipt.get("validated") is not True
+    assert "credential_pool[0]" in receipt.get("error", "")
+    assert not (full.run_dir / "05_intrusion.json").exists()
+
+
+def test_submitted_rejected_marker_yields_invalid_not_missing(full):
+    invalid = ("save_deliverable", {"filename": "05_intrusion.json", "content": "{}"})
+    full.provider.client.chat.completions.create.side_effect = [response(ACTION)] + [response(invalid)] * 6
+    status, _ = run_phase(full)
+    assert status == "failed:phase5_completion_invalid"
+    data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+    assert data["status"] == "incomplete"
+    assert data["completion"]["reason"] == "model_deliverable_invalid"
+
+
+def test_absent_marker_remains_missing(full):
+    create = full.provider.client.chat.completions.create
+    create.side_effect = [response(ACTION)] + [response(text="Done") for _ in range(6)]
+    status, _ = run_phase(full)
+    assert status == "failed:phase5_completion_missing"
+    data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+    assert data["status"] == "incomplete"
+    assert data["completion"]["reason"] == "model_deliverable_missing"
+
+
+def test_live_unknown_service_finishes_phase_without_certifying_access(full):
+    full.dry_run = False
+    (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+        "recovered_credentials": [{"user": "vault", "password": "pw",
+                                   "source_ip": "192.0.2.1", "source_device": "dev"}],
+    }))
+    marker = ("save_deliverable", {"filename": "05_intrusion.json", "content": '{"finish":true}'})
+    full.provider.client.chat.completions.create.side_effect = [response(ACTION), response(marker)]
+    status, events = run_phase(full)
+    assert status == "completed"
+    data = json.loads((full.run_dir / "05_intrusion.json").read_text())
+    assert data["credential_pool"][0]["service"] is None
+    assert data["summary"]["devices_compromised"] == 0
+    assert not [event for event in events if event["type"] == "intrusion_compromised"]
+
+
+def test_rejected_then_accepted_submission_finishes_normally(full):
+    invalid = ("save_deliverable", {"filename": "05_intrusion.json", "content": "{}"})
+    full.provider.client.chat.completions.create.side_effect = [response(ACTION), response(invalid), response(SAVE)]
+    status, _ = run_phase(full)
+    assert status == "completed"
+    assert full.offline_action.call_count == 1
+
+
+def test_known_credential_not_duplicated_when_seen_again_in_ssh_output(full, monkeypatch):
+    monkeypatch.setattr(full, "_uses_compact_local_moe", lambda: True)
+    credential = {"user": "vault", "password": "vault-pw", "service": "ssh",
+                  "source_ip": "192.0.2.1", "source_device": "dev"}
+    (full.run_dir / "05_intrusion_context.json").write_text(json.dumps({
+        "recovered_credentials": [credential],
+    }))
+    (full.run_dir / "tool_calls.jsonl").write_text(json.dumps({
+        "phase": 5, "tool": "ssh_exec",
+        "args": {"ip": "192.0.2.1", "user": "vault", "password": "vault-pw", "command": "cat config"},
+        "result": {"success": True, "authenticated": True, "stdout": "user=vault password=vault-pw"},
+    }) + "\n")
+    data = full._synthesize_intrusion_from_tools()
+    assert data["credential_pool"] == [credential]
+    assert data["summary"]["credentials_harvested"] == 1
+
+
 def test_sdk_does_not_retry_failed_closing_requests(full):
     import httpx
     import openai

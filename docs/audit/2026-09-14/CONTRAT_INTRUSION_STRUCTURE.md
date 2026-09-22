@@ -51,6 +51,24 @@ leurs règles de preuve ne changent pas.
 La correction du passage prématuré en finalisation et celle des reprises de
 contexte restent des étapes ultérieures.
 
+## Addendum — service inconnu et missing/invalid (22 septembre 2026)
+
+Un `credential_pool[].service` explicitement `null` est désormais valide : un
+identifiant récupéré sans protocole déclaré (contexte historique sans champ
+`service`, `null` ou chaîne blanche) est normalisé en `null` par la synthèse,
+jamais deviné (pas de SSH par défaut) ni écrit `"None"`. Les services connus
+sont conservés tels quels ; les services numériques, listes ou objets restent
+refusés, ainsi que les autres champs malformés. La découverte d'identifiants
+ne crée toujours aucun accès ni pivot.
+
+Côté cycle de vie, `finalize_synthesis` distingue le marqueur absent
+(`failed:phase5_completion_missing`) du marqueur soumis puis refusé
+(`failed:phase5_completion_invalid`), même quand le runner ne rapporte qu'un
+fichier introuvable : la soumission est attestée par le journal des tentatives
+ou par le marqueur de transaction. Arrêts, budgets, garde-fous sans action et
+contrôles d'intégrité sont inchangés, tout comme les codes `phase5_cause`
+exposés par l'API.
+
 ## Validation avant publication — 15 septembre 2026
 
 - Tests ciblés de structure, transaction, registre et profils d'intrusion :

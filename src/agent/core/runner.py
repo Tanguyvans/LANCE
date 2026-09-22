@@ -123,6 +123,8 @@ class AgentRunner:
                             f"not '{target}'."
                         ),
                     })
+                if config.name == "intrusion":
+                    self._full_intrusion_save_attempted = True
                 if not isinstance(content, str) or not content.strip():
                     return json.dumps({
                         "ok": False,
@@ -253,6 +255,7 @@ class AgentRunner:
             self._phase5_pending_event = None
             self._phase5_terminal_status = None
             self._full_intrusion_saved = False
+            self._full_intrusion_save_attempted = False
         # Set skill filter for this phase (hard filtering)
         filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
         runtime.set_skill_filter(filter_tags)
