@@ -95,9 +95,11 @@ La phase 3 utilise la matrice de scans, les suivis conditionnels à partir des
 observations et les extracteurs existants, puis l'agrégation commune. A1 exécute
 la même base déterministe et y ajoute les analyses et appels du modèle.
 
-En phase 4, D1 exécute **une sonde issue du plan de vérification par candidat**.
-Une preuve insuffisante reste indéterminée ; un plan indisponible est signalé.
-Il n'y a pas de boucle de reprise D1 supplémentaire dans cette version. Les
+En phase 4, D1 part du plan de vérification et applique une
+[matrice de décisions bornée](agent-vs-automation-campaign.md#décisions-d1-en-phase-4) :
+une reprise sur erreur transitoire admissible et une lecture HTTP structurée
+complémentaire au maximum, soit trois appels au plus par candidat. Une preuve
+insuffisante reste non confirmée ; un plan indisponible est signalé. Les
 confirmations viennent des traces d'exécution, avec les mêmes contrôles de
 cible, endpoint et contenu que pour A1.
 
@@ -135,9 +137,11 @@ motifs restent exportés. On peut omettre un des deux arguments de run pour
 consigner un bras manquant. Code de sortie : `0` pour une paire comparable,
 `2` sinon. Les valeurs indisponibles ne sont pas remplacées par zéro.
 
-Une paire n'autorise aucun intervalle de confiance par famille. Le calcul
-d'incertitude multi-familles, l'agrégation de campagnes, D0, A0 et D1-R restent
-à implémenter. `aggregate.py` conserve son rôle d'agrégation au sein d'une
+Une paire n'autorise aucun intervalle de confiance par famille. Le
+[bilan de campagne](agent-vs-automation-campaign.md) conserve désormais tous les
+essais prévus, leurs issues et leurs coûts, avec des écarts descriptifs par
+configuration et situation. Le calcul d'incertitude multi-familles, D0, A0 et
+D1-R restent à implémenter. `aggregate.py` conserve son rôle d'agrégation au sein d'une
 configuration et refuse de mélanger les politiques.
 
 ## Traces et compatibilité
@@ -153,6 +157,8 @@ configuration et refuse de mélanger les politiques.
   journalisés et reliés aux fichiers `03_scans`. Les projections dérivées d'une
   réponse conservent une référence d'origine et ne comptent pas comme un nouvel
   appel réseau.
+- `04_rules_decisions.jsonl` relie chaque décision D1 de phase 4 à l'observation
+  correspondante ; il ne remplace pas le journal brut des outils.
 - `cost_summary.json`, schéma `3`, compte les appels de l'exécuteur une fois,
   y compris les refus et erreurs, indépendamment des tours modèle. La durée
   murale couvre l'exécution jusqu'à la finalisation des mesures.

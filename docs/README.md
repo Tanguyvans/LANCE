@@ -13,11 +13,16 @@ Pour préparer une comparaison avec l'automatisation classique :
 [protocole proposé agent IA / scripts](benchmark/agent-vs-automation.md).
 Il distingue les hypothèses, les systèmes de référence et les mesures à ajouter ;
 il ne rapporte pas de résultats ni de campagne déjà exécutée.
+L'[état de l'art ciblé](benchmark/agent-vs-automation-state-of-the-art.md)
+rapproche les publications et outils du domaine des choix expérimentaux de LANCE.
 Le [plan d'implémentation](benchmark/agent-vs-automation-implementation.md)
 fixe les lots logiciels et leurs critères de validation.
 Le [guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) décrit le premier
 incrément disponible : analyse et vérification sur inventaire public commun,
 évaluation et comparaison d'une paire.
+Le [guide de campagne](benchmark/agent-vs-automation-campaign.md) décrit la
+politique D1 bornée, le manifeste du pilote de 24 essais, le bilan de tous les
+essais prévus et la revue indépendante des preuves.
 
 « V1 » nomme cette référence documentaire, pas une nouvelle version du catalogue
 ou du contrat de calcul. Sa date, sa base Git et ses limites sont précisées dans

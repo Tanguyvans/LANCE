@@ -1,6 +1,8 @@
 # Plan d'implémentation — comparaison règles / agent
 
 **Statut : premier incrément CLI D1/A1 implémenté et validé localement le 27 septembre 2026.**
+Extension du 28 septembre : décisions D1 bornées, bilan de campagne hors ligne
+et préparation du pilote ; voir le [guide de campagne](agent-vs-automation-campaign.md).
 Le [protocole scientifique](agent-vs-automation.md) définit les hypothèses,
 mesures et limites. Ce document fixe l'ordre des changements logiciels et
 leurs critères de validation. Le [guide CLI](agent-vs-automation-cli.md) décrit les options disponibles et leurs limites.
@@ -96,7 +98,8 @@ refusées avant toute action. Tester la non-régression des lancements LLM exist
 - [x] En phase 4, utiliser le
   [plan de vérification](../../src/agent/phases/verification/contract.py) comme
   point de départ : paramètres issus des observations autorisées, conditions
-  d'arrêt. La première version exécute une sonde par candidat, sans reprise D1.
+  d'arrêt. L'extension ajoute une reprise admissible et une lecture HTTP
+  complémentaire au maximum, avec un journal des décisions et des preuves communes.
 - [ ] Les chemins, identités ou paramètres propres aux fixtures sont soit
   documentés dans l'entrée publique commune, soit découverts par les outils.
   Aucun identifiant de scénario ne doit sélectionner une solution. Le runtime
@@ -129,12 +132,13 @@ avant d'interpréter un gain de A1.
   historiques avec leur contrat et leurs limites.
 - [x] Compléter les manifestes pour couvrir code, prompts, règles, compétences,
   outils et modifications locales réellement utilisés.
-- [ ] Exporter scores, écarts, coûts, statuts, essais manquants et motifs
-  d'incomparabilité. Les intervalles d'incertitude suivent le protocole et le
-  nombre de familles effectivement disponible. **Livré :** export d'une paire,
-  écarts, motifs, valeurs manquantes et contrôles sans faille. **Restant :**
-  campagnes de plusieurs paires et intervalles par famille ; aucune incertitude
-  statistique n'est annoncée pour une seule paire.
+- [x] Exporter scores, écarts, coûts, statuts, essais manquants et motifs
+  d'incomparabilité pour une paire et une campagne déclarée. Le
+  [bilan de campagne](../../src/benchmark/policy_campaign.py) conserve tous les
+  essais prévus, les consommations des échecs et les groupes de configuration.
+- [ ] Ajouter les intervalles d'incertitude selon le protocole et le nombre de
+  familles indépendantes effectivement disponible. Les moyennes actuelles
+  restent descriptives, conditionnelles aux paires admissibles.
 
 **Validation :** refus des paires incompatibles, absence de fusion entre systèmes,
 traitement explicite des contrôles sans faille, ratios indéfinis avec zéro VP
@@ -196,7 +200,36 @@ Validation sous Python 3.12 dans un environnement temporaire :
   `datasets`, absente de cet environnement.
 - Aide des deux CLI et `git diff --check` vérifiés.
 
-Restent hors de cet incrément : validation sur outils/laboratoire réels,
-inventaire exhaustif des connaissances propres aux simulateurs, campagnes
-appariées et intervalles par famille, interface/API et autres baselines du
-protocole. Les commandes de laboratoire exigent une demande explicite.
+Ce bilan historique décrit le premier incrément. L'extension ci-dessous ajoute
+la préparation et le calcul de campagnes appariées. Restent à réaliser :
+validation sur outils/laboratoire réels, inventaire exhaustif des connaissances
+propres aux simulateurs, intervalles par famille, interface/API et autres
+baselines du protocole. Les commandes de laboratoire exigent une demande explicite.
+
+## Extension : campagne et référence D1 bornée
+
+- Décisions D1 documentées et versionnées, sans changement des exigences de preuve.
+- Bilan JSON/CSV de tous les essais prévus, même absents ou échoués ; coûts connus
+  conservés, valeurs manquantes explicites, écarts séparés par configuration.
+- Modèle de 24 exécutions et grille de revue indépendante dans
+  [benchmarks/experiments/policy-comparison](../../benchmarks/experiments/policy-comparison/README.md).
+- Procédure de revue manuelle décrite ; aucune revue ni anonymisation prétendument
+  automatique. Contrôle sain, configuration finale et budgets encore à préparer.
+
+Les vérifications logicielles utilisent des outils simulés. Elles ne remplacent
+ni le pilote de laboratoire ni la mesure d'un avantage de la politique LLM.
+
+Validation du 28 septembre 2026, Python 3.12 :
+
+- `tests/test_audit_policy.py` : **50 cas réussis** après les derniers ajustements.
+  Les 29 cas ajoutés sont regroupés dans cinq fonctions de test, dont quatre
+  paramétrées, en réutilisant la préparation des runs simulés.
+- Suite complète avant publication, `python -m pytest -q -rs tests model_training/tests` :
+  **2 948 réussis, 4 ignorés**, deux avertissements de dépréciation dans des fixtures
+  existantes. Trois tests demandent des sockets locaux interdits par le sandbox ;
+  le test QLoRA dépend du paquet optionnel `datasets`, absent de cet environnement.
+- Export JSON/CSV du modèle : 12 paires prévues, 24 bras non exécutés, aucune
+  consommation inventée ; liens locaux de documentation et `git diff --check`
+  vérifiés.
+
+Aucun audit de laboratoire ni revue humaine n'a été réalisé dans cette extension.

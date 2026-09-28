@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "campaign_id": "lance-policy-pilot",
+  "configuration": {},
+  "trials": [
+    {
+      "trial_id": "s1-r1",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1-r2",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s1-r3",
+      "family_id": "flat-network",
+      "instance_id": "s1",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_1.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r1",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r2",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s14-r3",
+      "family_id": "mixed-hardening",
+      "instance_id": "s14",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_14.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r1",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r2",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "s15-r3",
+      "family_id": "tenant-isolation",
+      "instance_id": "s15",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": "../../ground_truth/dev/scenario_15.yaml",
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "healthy-r1",
+      "family_id": "healthy-control",
+      "instance_id": "healthy",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": null,
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "healthy-r2",
+      "family_id": "healthy-control",
+      "instance_id": "healthy",
+      "order": [
+        "rules",
+        "llm"
+      ],
+      "ground_truth": null,
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    },
+    {
+      "trial_id": "healthy-r3",
+      "family_id": "healthy-control",
+      "instance_id": "healthy",
+      "order": [
+        "llm",
+        "rules"
+      ],
+      "ground_truth": null,
+      "arms": {
+        "rules": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        },
+        "llm": {
+          "run_dir": null,
+          "preflight": {
+            "status": "pending",
+            "evidence_ref": null
+          }
+        }
+      }
+    }
+  ]
+}

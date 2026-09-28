@@ -35,5 +35,7 @@ de fonctions ne signifie donc pas réduire le nombre de cas vérifiés.
 `test_audit_policy.py` couvre la comparaison D1/A1 sur inventaire public avec
 les vrais composants de pipeline et des outils/fournisseurs simulés : preuves,
 budgets, contrôles sains, erreurs et refus des paires incompatibles. Ces tests
+vérifient aussi les reprises D1 et le bilan de campagne : essais manquants,
+coûts des échecs, précontrôles et identités incompatibles, exports JSON/CSV. Ils
 ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 [guide de comparaison](../docs/benchmark/agent-vs-automation-cli.md).

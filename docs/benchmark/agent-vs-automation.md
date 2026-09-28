@@ -5,6 +5,8 @@ Ce document prépare une comparaison ; il ne rapporte aucun résultat expérimen
 Un [premier incrément CLI D1/A1](agent-vs-automation-cli.md) implémente l'analyse,
 la vérification et la comparaison d'une paire sur inventaire public commun.
 Les autres systèmes et campagnes ci-dessous restent proposés.
+Le [guide de campagne](agent-vs-automation-campaign.md) décrit l'extension D1,
+le bilan de tous les essais et le modèle du pilote réduit à 24 exécutions.
 Aucun run de laboratoire n'a été lancé pour cette analyse.
 Le [contrat V1](v1/evaluation.md) reste la référence des mesures actuelles.
 
@@ -332,7 +334,7 @@ La lecture du code montre les points d'appui et les écarts suivants :
 | [Règles d'analyse](../../src/agent/phases/analysis/prompts.py) et [contrat de vérification](../../src/agent/phases/verification/contract.py) | Inventorier les connaissances déjà codées, construire D1 et documenter la parité de couverture ; ne pas confondre guidage et preuve |
 | [Évaluateur](../../src/benchmark/evaluator.py) | Conserver les exigences sémantiques ; adapter explicitement les artefacts des politiques sans LLM avec leur vraie provenance |
 | [Identité de configuration](../../src/benchmark/comparability.py) | Le schéma expérimental accepte un modèle/fournisseur nul pour `rules` et distingue politique, périmètre, limites et instrumentation |
-| [Agrégation](../../src/benchmark/aggregate.py) | Agrégation interne conservée ; [comparaison d'une paire](../../src/benchmark/compare_policies.py) distincte, agrégation de campagnes appariées restant à faire |
+| [Agrégation](../../src/benchmark/aggregate.py) | Agrégation interne conservée ; [comparaison d'une paire](../../src/benchmark/compare_policies.py) et [bilan de campagne](../../src/benchmark/policy_campaign.py) distincts, intervalles par famille restant à faire |
 | [Manifestes](../../src/agent/audit_experiment.py) | Empreinte des ressources Python, prompts, compétences, outils et état local sous `src/agent` / `src/benchmark` ; binaires et état du laboratoire à contrôler séparément |
 | [Altérations](../../src/benchmark/scenario_alterations.py) et [fournisseurs](../../src/benchmark/manual_execution.py) | Refuser une campagne réelle si une variation demandée n'est disponible qu'en aperçu |
 
@@ -376,6 +378,8 @@ premier incrément D1/A1, les dépendances et les critères de validation logici
    S15 et un contrôle sain vérifié, avec D0/D1/A1 et trois répétitions, soit
    36 essais planifiés. Ce volume est indicatif, sans estimation de coût validée
    et sans autorisation d'exécution implicite. Il sert à valider la mesure.
+   La première étape retenue utilise seulement D1/A1 : **24 exécutions prévues**,
+   décrites dans le [modèle de campagne](../../benchmarks/experiments/policy-comparison/README.md).
 4. **Expériences de mécanisme** : observations gelées, A0/A1 et premières
    variantes réellement prises en charge. Déterminer le budget et le nombre de
    familles/répétitions de l'évaluation finale sur ce développement.
@@ -396,6 +400,10 @@ en conséquence. Une victoire sur D1 ne démontre pas une supériorité sur tout
 forme d'automatisation classique.
 
 ## 11. Appuis bibliographiques et portée
+
+L'[état de l'art ciblé du 28 septembre 2026](agent-vs-automation-state-of-the-art.md)
+complète ces appuis avec les benchmarks de pentest, les références sans LLM et
+les travaux IoT, en distinguant résultats publiés et recommandations pour LANCE.
 
 - [ReAct, ICLR 2023](https://arxiv.org/abs/2210.03629) étudie l'alternance entre
   décisions et actions. Cette architecture motive H3, sans établir un gain

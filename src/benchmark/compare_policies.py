@@ -8,6 +8,8 @@ import math
 from dataclasses import asdict
 from pathlib import Path
 
+import yaml
+
 from src.agent.audit_experiment import digest, load_inventory
 from src.benchmark.comparability import configuration_identity
 from src.benchmark.evaluator import evaluate
@@ -80,7 +82,7 @@ def _arm(path: Path | None, policy: str, truth: Path) -> tuple[dict, dict | None
                     problems.append(f"{policy}: missing pairing field {key}")
             identity = {**identity, **{key: meta.get(key) for key in PAIR_FIELDS}}
         return arm, identity, problems
-    except (OSError, ValueError, TypeError, KeyError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, yaml.YAMLError) as exc:
         return arm, None, [*problems, f"{policy}: {type(exc).__name__}: {exc}"]
 
 
@@ -88,6 +90,8 @@ def compare_runs(rules_run: Path | None, llm_run: Path | None, ground_truth: Pat
     """Report both arms and missing data; only emit deltas for a valid pair."""
     rules, rules_id, problems = _arm(rules_run, "rules", ground_truth)
     llm, llm_id, llm_problems = _arm(llm_run, "llm", ground_truth)
+    rules["problems"] = list(problems)
+    llm["problems"] = list(llm_problems)
     problems.extend(llm_problems)
     if rules_id is not None and llm_id is not None:
         for key in sorted((set(rules_id) | set(llm_id)) - TREATMENT_FIELDS):

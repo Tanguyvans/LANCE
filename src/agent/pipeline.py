@@ -577,13 +577,13 @@ class Pipeline(
             **runtime.metric_contract_metadata(),
         }
         if self.experiment_scope:
-            from src.agent.audit_experiment import digest, resource_manifest, analysis_limits, POLICY_SCHEMA_VERSION
+            from src.agent.audit_experiment import digest, resource_manifest, analysis_limits, POLICY_SCHEMA_VERSION, RULES_VERSION
             self.experiment_analysis_limits = analysis_limits()
             run_meta.update({
                 "policy_schema_version": POLICY_SCHEMA_VERSION,
                 "decision_policy": self.decision_policy,
                 "experiment_scope": self.experiment_scope,
-                "rules_version": "shared-scanner-plans-v1",
+                "rules_version": RULES_VERSION,
                 "resource_manifest_sha256": resource_manifest(),
                 "inventory_sha256": digest(self.audit_inventory),
                 "experiment": self.audit_inventory["experiment"],

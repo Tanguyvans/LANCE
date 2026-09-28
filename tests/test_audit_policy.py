@@ -269,3 +269,243 @@ def test_unavailable_scanner_rule_cannot_certify_control(tmp_path, inventory, of
     run = make_run(tmp_path, inventory)
     run.run()
     assert evaluate(run.run_dir, truth_file(tmp_path)).specificity is None
+
+
+@pytest.mark.parametrize("case, expected_calls, confirmed", [
+    ("retry", 2, True), ("adapter_timeout", 2, True), ("process_timeout", 2, True),
+    ("structured_fallback", 2, True), ("retry_and_fallback", 3, True),
+    ("denied", 1, False), ("permanent_error", 1, False),
+    ("exhausted", 2, False), ("post_timeout", 1, False),
+    ("budget", 1, False), ("archive_failure", 1, False),
+])
+def test_bounded_rules_recovery_preserves_evidence_and_limits(
+    tmp_path, inventory, offline_tools, monkeypatch, case, expected_calls, confirmed,
+):
+    from src.agent.phases.verification import rules
+    run = make_run(tmp_path, inventory, max_tool_calls=1 if case == "budget" else 10)
+    run.context["target_subnet"] = inventory["target_network"]
+    finding = {"id": "V1", "device_id": "web", "device_ip": "192.0.2.10", "type": "directory_listing",
+               "service": "http", "port": 80, "protocol": "tcp", "endpoint": "/backup/", "severity": "LOW"}
+    (run.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": [finding]}))
+    url = "http://192.0.2.10/backup/"
+    if case == "post_timeout":
+        monkeypatch.setattr(rules, "_phase4_verification_plan", lambda *_, **__: {
+            "tool": "http_request", "args_hint": {"url": url, "method": "POST", "body": "test"},
+        })
+    calls = []
+
+    def probe(name, **args):
+        calls.append((name, args))
+        if case in {"exhausted", "budget", "post_timeout"} or (
+                case in {"retry", "retry_and_fallback"} and len(calls) == 1):
+            raise TimeoutError("simulated timeout")
+        if case == "adapter_timeout" and len(calls) == 1:
+            return json.dumps({"return_code": 28, "stderr": "curl timeout"})
+        if case == "process_timeout" and len(calls) == 1:
+            return json.dumps({"return_code": -1, "stderr": "Command timed out after 10s: curl"})
+        if case == "denied":
+            return json.dumps({"return_code": 0, "stdout": "HTTP/1.1 403 Forbidden\r\n\r\nAccess denied"})
+        if case == "permanent_error":
+            raise ValueError("invalid tool argument")
+        if case in {"structured_fallback", "retry_and_fallback"} and name == "http_get":
+            return json.dumps({"return_code": 0, "stdout": "Ambiguous short body"})
+        body = '<h1>Index of /backup/</h1><a href="credentials.txt">credentials.txt</a>'
+        return json.dumps({"status_code": 200, "body": body} if name == "http_request"
+                          else {"return_code": 0, "stdout": "HTTP/1.1 200 OK\r\n\r\n" + body})
+
+    probes = [run._wrap_tool({"name": name, "function": lambda _name=name, **args: probe(_name, **args)}, phase=4)
+              for name in ("http_get", "http_request")]
+    monkeypatch.setattr(run, "_resolve_tools", lambda _: probes)
+    if case == "archive_failure":
+        (run.run_dir / "04_rules_decisions.jsonl").mkdir()
+    terminal = {"budget": BudgetExceeded, "archive_failure": EvidenceWriteError}.get(case)
+    if terminal:
+        with pytest.raises(terminal):
+            rules.verify(run, AGENTS["exploitation"])
+        assert not (run.run_dir / "04_exploitation.json").exists()
+    else:
+        rules.verify(run, AGENTS["exploitation"])
+        result = json.loads((run.run_dir / "04_exploitation.json").read_text())["tests"][0]
+        assert (result["status"] == "CONFIRMED") is confirmed
+        assert (result["evidence_level"] >= 2) is confirmed
+        if case in {"exhausted", "post_timeout", "permanent_error"}:
+            assert "V1" in run._phase4_execution_errors
+    records = [json.loads(line) for line in (run.run_dir / "tool_calls.jsonl").read_text().splitlines()]
+    assert len(calls) == len(records) == expected_calls == run.tracker.summary()["total_tool_calls"]
+    assert all(args["url"] == url for _, args in calls)
+    if "fallback" in case:
+        assert calls[-1] == ("http_request", {"url": url, "method": "GET", "follow_redirects": False})
+    if case != "archive_failure":
+        decisions = [json.loads(line) for line in (run.run_dir / "04_rules_decisions.jsonl").read_text().splitlines()]
+        assert [d["evidence_ref"] for d in decisions] == [r["evidence_ref"] for r in records]
+        assert len(decisions) == expected_calls
+
+
+@pytest.fixture
+def campaign_pair(tmp_path, inventory, offline_tools):
+    """Real paired artifacts; every network/model operation is a test double."""
+    from src.benchmark.policy_campaign import CONFIG_FIELDS
+    rules = make_run(tmp_path, inventory)
+    rules.run()
+    llm = make_run(tmp_path, inventory, "llm", provider=SimpleNamespace(model="offline-model", provider="offline-test"))
+    simulated_llm(llm)
+    llm.run()
+    meta = json.loads((llm.run_dir / "run_meta.json").read_text())
+    preflight = tmp_path / "preflight.txt"
+    preflight.write_text("Independent environment check fixture; no actual laboratory")
+    trial = {key: inventory["experiment"][key] for key in ("trial_id", "family_id", "instance_id")}
+    trial.update(order=["rules", "llm"], ground_truth=truth_file(tmp_path).name, arms={
+        policy: {"run_dir": str(run.run_dir), "preflight": {"status": "valid", "evidence_ref": preflight.name}}
+        for policy, run in (("rules", rules), ("llm", llm))
+    })
+    manifest = {"schema_version": 1, "campaign_id": inventory["experiment"]["id"],
+                "configuration": {key: meta[key] for key in CONFIG_FIELDS}, "trials": [trial]}
+    return manifest, tmp_path / "campaign.json"
+
+
+def test_campaign_retains_all_planned_trials_and_failed_costs(campaign_pair, tmp_path, monkeypatch):
+    from src.benchmark.policy_campaign import main, summarize_campaign
+    manifest, path = campaign_pair
+    trial = json.loads(json.dumps(manifest["trials"][0]))
+    trial["trial_id"] = "failed"
+    failed_dir = tmp_path / "failed"
+    failed_dir.mkdir()
+    original = Path(trial["arms"]["llm"]["run_dir"])
+    meta = json.loads((original / "run_meta.json").read_text())
+    meta.update(status="failed", usage_status="incomplete")
+    meta["experiment"]["trial_id"] = "failed"
+    (failed_dir / "run_meta.json").write_text(json.dumps(meta))
+    (failed_dir / "cost_summary.json").write_text(json.dumps({"total_cost_usd": 0.4, "total_tool_calls": 3}))
+    trial["arms"]["llm"]["run_dir"] = str(failed_dir)
+    trial["arms"]["rules"]["run_dir"] = None
+    manifest["trials"].append(trial)
+    absent = json.loads(json.dumps(trial))
+    absent["trial_id"] = "not-ready"
+    absent["ground_truth"] = None
+    for arm in absent["arms"].values():
+        arm["run_dir"] = None
+        arm["preflight"]["status"] = "invalid"
+    manifest["trials"].append(absent)
+    path.write_text(json.dumps(manifest))
+    report = summarize_campaign(path)
+    assert report["planned_pairs"] == 3 and report["eligible_pairs"] == 1
+    assert len(report["trials"]) == 6
+    assert report["operational"]["rules"]["outcomes"] == {"usable": 1, "not_run": 1, "environment_invalid": 1}
+    assert report["operational"]["llm"]["outcomes"] == {"usable": 1, "failed": 1, "environment_invalid": 1}
+    for policy in ("rules", "llm"):
+        assert report["operational"][policy]["usable_fraction_of_planned"] == 1 / 3
+        assert report["operational"][policy]["resources"]["total_cost_usd"]["complete_total"] is None
+    costs = report["operational"]["llm"]["resources"]["total_cost_usd"]
+    first_cost = json.loads((original / "cost_summary.json").read_text())["total_cost_usd"]
+    assert costs["sum_observed"] == pytest.approx(first_cost + 0.4)
+    assert costs["observed_runs"] == 2
+    assert not report["uncertainty"]["available"]
+    assert report["unfixed_configuration_fields"] == []
+    assert report["technical_on_eligible_pairs"][0]["families"][0]["delta_means"]["confirmed.f1"]["mean"] is None
+    assert all(row["quality"]["confirmed.f1"] is None for row in report["trials"])
+    assert all(row["quality"]["specificity"] == 1 for row in report["trials"][:2])
+    output, csv_path = tmp_path / "report.json", tmp_path / "report.csv"
+    monkeypatch.setattr("sys.argv", ["campaign", "--manifest", str(path), "--output", str(output), "--csv", str(csv_path)])
+    assert main() == 0
+    assert json.loads(output.read_text())["eligible_pairs"] == 1
+    import csv
+    with csv_path.open() as handle:
+        assert len(list(csv.DictReader(handle))) == 6
+
+
+@pytest.mark.parametrize("change, outcome, eligible", [
+    ("missing_partner", "not_run", 0), ("wrong_model", "configuration_mismatch", 0),
+    ("wrong_trial", "configuration_mismatch", 0), ("missing_preflight", "environment_unverified", 0),
+    ("invalid_preflight", "protocol_violation", 0), ("over_budget", "budget_exceeded", 0),
+    ("missing_truth", "completed_unusable", 0), ("bad_truth", "completed_unusable", 0),
+    ("empty_truth", "completed_unusable", 0), ("corrupt_cost", "completed_unusable", 0),
+])
+def test_campaign_excludes_ineligible_pairs_without_losing_arms(campaign_pair, change, outcome, eligible):
+    from src.benchmark.policy_campaign import summarize_campaign
+    manifest, path = campaign_pair
+    trial = manifest["trials"][0]
+    arm = trial["arms"]["llm"]
+    if change == "missing_partner":
+        arm["run_dir"] = None
+    elif change == "wrong_model":
+        manifest["configuration"]["model"] = "different-model"
+    elif change == "wrong_trial":
+        trial["trial_id"] = "wrong"
+    elif change == "missing_preflight":
+        arm["preflight"]["evidence_ref"] = "absent.txt"
+    elif change == "invalid_preflight":
+        arm["preflight"]["status"] = "invalid"
+    elif change == "over_budget":
+        cost_path = Path(arm["run_dir"]) / "cost_summary.json"
+        cost = json.loads(cost_path.read_text())
+        cost["total_tool_calls"] = manifest["configuration"]["max_tool_calls"] + 1
+        cost_path.write_text(json.dumps(cost))
+    elif change == "missing_truth":
+        trial["ground_truth"] = None
+    elif change == "empty_truth":
+        (path.parent / trial["ground_truth"]).write_text("")
+    elif change == "corrupt_cost":
+        (Path(arm["run_dir"]) / "cost_summary.json").write_text("[]")
+    else:
+        (path.parent / trial["ground_truth"]).write_text("vulnerabilities: [unterminated")
+    path.write_text(json.dumps(manifest))
+    report = summarize_campaign(path)
+    assert report["eligible_pairs"] == eligible
+    assert len(report["trials"]) == 2 and report["technical_on_eligible_pairs"] == []
+    assert report["operational"]["llm"]["outcomes"] == {outcome: 1}
+    if change == "missing_partner":
+        assert report["operational"]["rules"]["outcomes"] == {"usable": 1}
+    assert all(summary["planned"] == 1 for summary in report["operational"].values())
+
+
+@pytest.mark.parametrize("change", ["duplicate_trial", "reused_run", "invalid_order", "bad_preflight", "invalid_budget"])
+def test_campaign_rejects_ambiguous_manifest(tmp_path, change):
+    from src.benchmark.policy_campaign import load_manifest
+    template = Path(__file__).parents[1] / "benchmarks/experiments/policy-comparison/pilot.example.json"
+    manifest = json.loads(template.read_text())
+    trial = manifest["trials"][0]
+    if change == "duplicate_trial":
+        manifest["trials"].append(trial)
+    elif change == "reused_run":
+        trial["arms"]["rules"]["run_dir"] = "same-run"
+        trial["arms"]["llm"]["run_dir"] = "same-run"
+    elif change == "invalid_order":
+        trial["order"] = ["rules", "rules"]
+    elif change == "invalid_budget":
+        manifest["configuration"] = {"max_tool_calls": True}
+    else:
+        trial["arms"]["llm"]["preflight"]["evidence_ref"] = []
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError):
+        load_manifest(path)
+
+
+@pytest.mark.parametrize("different_model", [False, True], ids=["same-configuration", "separate-models"])
+def test_campaign_groups_only_compatible_pairs(campaign_pair, tmp_path, inventory, different_model):
+    from src.benchmark.policy_campaign import summarize_campaign
+    manifest, path = campaign_pair
+    # An exploratory manifest can contain several configurations, but their
+    # technical deltas must stay separate. This is not a frozen single-model plan.
+    manifest["configuration"].pop("model")
+    inventory = json.loads(json.dumps(inventory))
+    inventory["experiment"]["trial_id"] = "second-pair"
+    trial = json.loads(json.dumps(manifest["trials"][0]))
+    trial["trial_id"] = "second-pair"
+    for policy in ("rules", "llm"):
+        settings = {} if policy == "rules" else {
+            "provider": SimpleNamespace(model="another-model" if different_model else "offline-model", provider="offline-test"),
+        }
+        run = make_run(tmp_path, inventory, policy, **settings)
+        if policy == "llm":
+            simulated_llm(run)
+        run.run()
+        trial["arms"][policy]["run_dir"] = str(run.run_dir)
+    manifest["trials"].append(trial)
+    path.write_text(json.dumps(manifest))
+    report = summarize_campaign(path)
+    assert report["eligible_pairs"] == 2
+    groups = report["technical_on_eligible_pairs"]
+    assert len(groups) == (2 if different_model else 1)
+    assert [group["families"][0]["evaluable_pairs"] for group in groups] == ([1, 1] if different_model else [2])
+    assert report["unfixed_configuration_fields"] == ["model"]
