@@ -9,6 +9,16 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d’entr
 - [Évaluation](benchmark/v1/evaluation.md) : détection, preuves, intrusion et interprétation des métriques.
 - [Exécution](benchmark/v1/execution.md) : lancer un run, lire son statut, ses coûts et ses diagnostics.
 
+Pour préparer une comparaison avec l'automatisation classique :
+[protocole proposé agent IA / scripts](benchmark/agent-vs-automation.md).
+Il distingue les hypothèses, les systèmes de référence et les mesures à ajouter ;
+il ne rapporte pas de résultats ni de campagne déjà exécutée.
+Le [plan d'implémentation](benchmark/agent-vs-automation-implementation.md)
+fixe les lots logiciels et leurs critères de validation.
+Le [guide CLI D1/A1](benchmark/agent-vs-automation-cli.md) décrit le premier
+incrément disponible : analyse et vérification sur inventaire public commun,
+évaluation et comparaison d'une paire.
+
 « V1 » nomme cette référence documentaire, pas une nouvelle version du catalogue
 ou du contrat de calcul. Sa date, sa base Git et ses limites sont précisées dans
 son introduction.

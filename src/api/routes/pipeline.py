@@ -12,7 +12,7 @@ from uuid import uuid4
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from src.agent.provider import validate_provider_choice
 from sse_starlette.sse import EventSourceResponse
 
@@ -67,6 +67,13 @@ class ModelSelection(BaseModel):
 
 
 class StartRequest(ModelSelection):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_cli_only_experiment(cls, value):
+        if isinstance(value, dict) and set(value) & {"decision_policy", "experiment_scope", "audit_inventory", "max_tool_calls", "max_duration_s"}:
+            raise ValueError("Inventory policy experiments and their action/time limits are CLI-only")
+        return value
+
     scenario_id: str | None = None
     phases: list[int] | None = None
     auto_teardown: bool = True

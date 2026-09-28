@@ -2084,7 +2084,7 @@ def evaluate(
         validation_attempts, validation_successes, total_tool_errors,
     )
     process_available = (
-        process_schema == 2
+        process_schema in {2, 3}
         and all(value is not None for value in required_process_counts)
         and format_fallbacks <= format_attempts
         and validation_successes + validation_failures == validation_attempts

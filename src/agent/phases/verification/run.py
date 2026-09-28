@@ -22,6 +22,8 @@ from src.agent.phases.verification.evidence import (
 )
 from src.agent.core import runtime
 from src.agent.report_evidence import verification_state
+from src.agent.core.executor import EvidenceWriteError, check_execution_limits
+from src.agent.cost_tracker import BudgetExceeded
 
 
 log = logging.getLogger(__name__)
@@ -76,7 +78,7 @@ class VerificationPhase:
         # Reset on each invocation so a successful rerun cannot inherit errors.
         self._phase4_execution_errors = {}
         if not exploit_tasks:
-            self._phase4_execution_status = "skipped:no_safely_exploitable_candidates"
+            self._phase4_execution_status = "completed" if getattr(self, "experiment_scope", None) else "skipped:no_safely_exploitable_candidates"
             log.info("Phase 4: no safely exploitable candidates — skipping agents")
             self._aggregate_exploit_results()
             return
@@ -282,6 +284,8 @@ class VerificationPhase:
                                 terminate_on_unavailable_tools={"save_deliverable"},
                                 stop_event=stop_event,
                             )
+                        except (BudgetExceeded, EvidenceWriteError):
+                            raise
                         except Exception as exc:
                             _record_execution_error(vuln_id, exc, "provider_call")
                             provider_error = f"{type(exc).__name__}: {exc}"
@@ -313,6 +317,8 @@ class VerificationPhase:
                             if fallback_tool is not None and fallback_args:
                                 try:
                                     fallback_tool["function"](**fallback_args)
+                                except (BudgetExceeded, EvidenceWriteError):
+                                    raise
                                 except Exception as exc:
                                     _record_execution_error(vuln_id, exc, "fallback_probe")
                                     log.warning(
@@ -369,6 +375,7 @@ class VerificationPhase:
                             required_tool="save_deliverable",
                             terminate_after_tool="save_deliverable",
                             stop_event=stop_event,
+                            deadline=(self._run_started + self.max_duration_s) if getattr(self, "max_duration_s", None) is not None else None,
                         )
                         if not deliverable_path.exists():
                             # The provider may be forced into completion-only
@@ -384,7 +391,10 @@ class VerificationPhase:
                                 json.dumps(result, indent=2, ensure_ascii=False),
                                 encoding="utf-8",
                             )
+                except (BudgetExceeded, EvidenceWriteError):
+                    raise
                 except Exception as exc:
+                    check_execution_limits(self)
                     _record_execution_error(vuln_id, exc, "verification_worker")
                     message = f"{phase_name}: {exc}"
                     _record_worker_error(message)
@@ -463,8 +473,9 @@ class VerificationPhase:
 
         # Launch exploit agents with small stagger to avoid API rate limits
         def _run_with_stagger(args):
+            check_execution_limits(self)
             idx, task = args
-            if idx > 0:
+            if idx > 0 and not getattr(self, "experiment_scope", None):
                 delay = min(idx * 0.5, 5)  # 0.5s stagger, max 5s
                 if stop_event is not None:
                     if stop_event.wait(delay):
@@ -480,6 +491,8 @@ class VerificationPhase:
             if self._uses_compact_local_moe()
             else 8
         )
+        if getattr(self, "experiment_scope", None):
+            max_workers = 1
         pool = ThreadPoolExecutor(max_workers=max(1, min(len(exploit_tasks), max_workers)))
         futures = [
             pool.submit(_run_with_stagger, item)
@@ -497,6 +510,8 @@ class VerificationPhase:
                         future.result()
                     except CancelledError:
                         pass
+                    except (BudgetExceeded, EvidenceWriteError):
+                        raise
                     except Exception as exc:
                         _record_worker_error(f"phase4 worker: {exc}")
         finally:

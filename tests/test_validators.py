@@ -1,6 +1,5 @@
 """Tests for validators module."""
 import json
-from pathlib import Path
 
 import pytest
 
@@ -24,40 +23,30 @@ def clean_output(tmp_path):
 
 
 class TestValidateDefault:
-    def test_missing_file(self, clean_output):
-        ok, msg = validate_default("nonexistent.md", output_dir=clean_output)
-        assert not ok
-        assert "not found" in msg
-
-    def test_empty_file(self, clean_output):
-        (clean_output / "empty.md").write_text("")
-        ok, msg = validate_default("empty.md", output_dir=clean_output)
-        assert not ok
-        assert "empty" in msg
-
-    def test_valid_file(self, clean_output):
-        (clean_output / "valid.md").write_text("content")
-        ok, msg = validate_default("valid.md", output_dir=clean_output)
-        assert ok
+    @pytest.mark.parametrize("content,expected,message", [
+        pytest.param(None, False, "not found", id="missing-file"),
+        pytest.param("", False, "empty", id="empty-file"),
+        pytest.param("content", True, "", id="valid-file"),
+    ])
+    def test_file_content(self, clean_output, content, expected, message):
+        if content is not None:
+            (clean_output / "deliverable.md").write_text(content)
+        ok, msg = validate_default("deliverable.md", output_dir=clean_output)
+        assert ok is expected, msg
+        assert message in msg
 
 
 class TestValidateMarkdown:
-    def test_no_headings(self, clean_output):
-        (clean_output / "bad.md").write_text("No headings here")
-        ok, msg = validate_markdown_with_sections("bad.md", output_dir=clean_output)
-        assert not ok
-        assert "0" in msg
-
-    def test_one_heading(self, clean_output):
-        (clean_output / "one.md").write_text("## Only one\nContent")
-        ok, msg = validate_markdown_with_sections("one.md", output_dir=clean_output)
-        assert not ok
-
-    def test_valid_markdown(self, clean_output):
-        content = "## Section 1\nText\n## Section 2\nMore text"
-        (clean_output / "good.md").write_text(content)
-        ok, msg = validate_markdown_with_sections("good.md", output_dir=clean_output)
-        assert ok
+    @pytest.mark.parametrize("content,expected,message", [
+        pytest.param("No headings here", False, "0", id="no-headings"),
+        pytest.param("## Only one\nContent", False, "", id="one-heading"),
+        pytest.param("## Section 1\nText\n## Section 2\nMore text", True, "", id="two-headings"),
+    ])
+    def test_section_count(self, clean_output, content, expected, message):
+        (clean_output / "sections.md").write_text(content)
+        ok, msg = validate_markdown_with_sections("sections.md", output_dir=clean_output)
+        assert ok is expected, msg
+        assert message in msg
 
     def test_recon_rejects_short_single_device_report(self, clean_output):
         content = (
@@ -78,203 +67,105 @@ class TestValidateMarkdown:
         assert not ok
         assert "sections" in msg
 
-    def test_final_report_accepts_assembled_report_without_placeholders(self, clean_output):
-        content = "# Pentest Report\n\n" + "\n\n".join(
-            f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
-            for number in range(1, 11)
-        )
-        (clean_output / "final.md").write_text(content)
-
-        ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
-
-        assert ok, msg
-
-    def test_final_report_rejects_unresolved_placeholders(self, clean_output):
-        content = "# Pentest Report\n\n" + "\n\n".join(
-            f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
-            for number in range(1, 11)
-        ) + "\n{{SECTION_5_TABLE}}\n"
-        (clean_output / "final.md").write_text(content)
-
-        ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
-
-        assert not ok
-        assert "Unresolved" in msg
-
-    def test_final_report_rejects_phase4_all_errors(self, clean_output):
-        (clean_output / "04_exploitation.json").write_text(json.dumps({
-            "summary": {
-                "total_tested": 1,
-                "confirmed": 0,
-                "not_exploitable": 0,
-                "errors": 1,
-            },
+    @pytest.mark.parametrize("suffix,phase4,expected,message", [
+        pytest.param("", None, True, "", id="assembled-report"),
+        pytest.param("\n{{SECTION_5_TABLE}}\n", None, False, "Unresolved", id="unresolved-placeholder"),
+        pytest.param("", {
+            "summary": {"total_tested": 1, "confirmed": 0, "not_exploitable": 0, "errors": 1},
             "tests": [{"vuln_id": "VULN-001", "status": "ERROR"}],
-        }))
+        }, False, "Phase 4", id="all-phase4-results-are-errors"),
+    ])
+    def test_final_report(self, clean_output, suffix, phase4, expected, message):
+        if phase4 is not None:
+            (clean_output / "04_exploitation.json").write_text(json.dumps(phase4))
         content = "# Pentest Report\n\n" + "\n\n".join(
             f"## {number}. Section {number}\n" + ("Evidence and analysis. " * 12)
             for number in range(1, 11)
-        )
+        ) + suffix
         (clean_output / "final.md").write_text(content)
-
         ok, msg = validate_final_report_markdown("final.md", output_dir=clean_output)
-
-        assert not ok
-        assert "Phase 4" in msg
+        assert ok is expected, msg
+        assert message in msg
 
 
 class TestValidateJsonQueue:
-    def test_invalid_json(self, clean_output):
-        (clean_output / "bad.json").write_text("not json")
-        ok, msg = validate_json_vuln_queue("bad.json", output_dir=clean_output)
-        assert not ok
-        assert "Invalid JSON" in msg
+    FINDING = {
+        "id": "VULN-001", "service": "http", "port": 80,
+        "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
+    }
 
-    def test_missing_key(self, clean_output):
-        (clean_output / "nokey.json").write_text('{"other": []}')
-        ok, msg = validate_json_vuln_queue("nokey.json", output_dir=clean_output)
-        assert not ok
-        assert "vulnerabilities" in msg
-
-    def test_valid_queue(self, clean_output):
-        data = {"vulnerabilities": [{
-            "id": "VULN-001", "service": "http", "port": 80,
-            "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
-        }], "summary": {"total": 1}}
-        (clean_output / "good.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("good.json", output_dir=clean_output)
-        assert ok
-
-
-    def test_queue_rejects_missing_structural_fields(self, clean_output):
-        data = {"vulnerabilities": [{"id": "VULN-001"}]}
-        (clean_output / "missing-structure.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("missing-structure.json", output_dir=clean_output)
-        assert not ok
-        assert "structural fields" in msg
-
-    def test_queue_rejects_duplicate_ids(self, clean_output):
-        finding = {
-            "id": "VULN-001", "service": "http", "port": 80,
-            "protocol": "tcp", "endpoint": "/", "product": "", "version": "",
-        }
-        (clean_output / "duplicates.json").write_text(json.dumps({
-            "vulnerabilities": [finding, dict(finding)],
-        }))
-        ok, msg = validate_json_vuln_queue("duplicates.json", output_dir=clean_output)
-        assert not ok
-        assert "Duplicate" in msg
-
-    def test_empty_queue(self, clean_output):
-        data = {"vulnerabilities": []}
-        (clean_output / "empty.json").write_text(json.dumps(data))
-        ok, msg = validate_json_vuln_queue("empty.json", output_dir=clean_output)
-        assert ok  # Valid structure, just empty
+    @pytest.mark.parametrize("content,expected,message", [
+        pytest.param("not json", False, "Invalid JSON", id="invalid-json"),
+        pytest.param('{"other": []}', False, "vulnerabilities", id="missing-key"),
+        pytest.param(json.dumps({"vulnerabilities": [FINDING], "summary": {"total": 1}}),
+                     True, "", id="valid-queue"),
+        pytest.param('{"vulnerabilities": [{"id": "VULN-001"}]}',
+                     False, "structural fields", id="missing-structural-fields"),
+        pytest.param(json.dumps({"vulnerabilities": [FINDING, dict(FINDING)]}),
+                     False, "Duplicate", id="duplicate-ids"),
+        pytest.param('{"vulnerabilities": []}', True, "", id="empty-queue"),
+    ])
+    def test_queue_validation(self, clean_output, content, expected, message):
+        (clean_output / "queue.json").write_text(content)
+        ok, msg = validate_json_vuln_queue("queue.json", output_dir=clean_output)
+        assert ok is expected, msg
+        assert message in msg
 
 
 class TestValidateJsonExploitation:
-    def test_invalid_json(self, clean_output):
-        (clean_output / "bad.json").write_text("not json")
-        ok, msg = validate_json_exploitation("bad.json", output_dir=clean_output)
-        assert not ok
-        assert "Invalid JSON" in msg
-
-    def test_missing_tests_key(self, clean_output):
-        (clean_output / "nokey.json").write_text('{"other": []}')
-        ok, msg = validate_json_exploitation("nokey.json", output_dir=clean_output)
-        assert not ok
-        assert "tests" in msg
-
-    def test_tests_not_array(self, clean_output):
-        (clean_output / "notarray.json").write_text('{"tests": "string"}')
-        ok, msg = validate_json_exploitation("notarray.json", output_dir=clean_output)
-        assert not ok
-        assert "array" in msg
-
-    def test_valid_exploitation(self, clean_output):
-        data = {
+    @pytest.mark.parametrize("content,expected,messages", [
+        pytest.param("not json", False, ("Invalid JSON",), id="invalid-json"),
+        pytest.param('{"other": []}', False, ("tests",), id="missing-tests-key"),
+        pytest.param('{"tests": "string"}', False, ("array",), id="tests-not-array"),
+        pytest.param(json.dumps({
             "summary": {"total_tested": 1, "confirmed": 1},
             "tests": [{"vuln_id": "VULN-001", "status": "CONFIRMED"}],
-        }
-        (clean_output / "good.json").write_text(json.dumps(data))
-        ok, msg = validate_json_exploitation("good.json", output_dir=clean_output)
-        assert ok
-
-    def test_exploitation_accepts_skipped_unscheduled_findings(self, clean_output):
-        data = {
-            "summary": {
-                "total_tested": 1,
-                "confirmed": 1,
-                "not_exploitable": 0,
-                "errors": 0,
-            },
+        }), True, ("",), id="confirmed-result"),
+        pytest.param(json.dumps({
+            "summary": {"total_tested": 1, "confirmed": 1, "not_exploitable": 0, "errors": 0},
             "tests": [
                 {"vuln_id": "VULN-001", "status": "CONFIRMED"},
                 {
-                    "vuln_id": "VULN-002",
-                    "status": "SKIPPED",
+                    "vuln_id": "VULN-002", "status": "SKIPPED",
                     "evidence": "Skipped Phase 4 exploit agent: configuration_or_detection_only",
                 },
             ],
-        }
-        (clean_output / "skipped.json").write_text(json.dumps(data))
-
-        ok, msg = validate_json_exploitation("skipped.json", output_dir=clean_output)
-
-        assert ok, msg
-
-    def test_exploitation_rejects_all_error_results(self, clean_output):
-        data = {
-            "summary": {
-                "total_tested": 1,
-                "confirmed": 0,
-                "not_exploitable": 0,
-                "errors": 1,
-            },
+        }), True, ("",), id="skipped-unscheduled-finding"),
+        pytest.param(json.dumps({
+            "summary": {"total_tested": 1, "confirmed": 0, "not_exploitable": 0, "errors": 1},
             "tests": [{
-                "vuln_id": "VULN-001",
-                "status": "ERROR",
+                "vuln_id": "VULN-001", "status": "ERROR",
                 "evidence": "No Phase 4 exploit result was produced",
             }],
-        }
-        (clean_output / "all-errors.json").write_text(json.dumps(data))
-
-        ok, msg = validate_json_exploitation("all-errors.json", output_dir=clean_output)
-
-        assert not ok
-        assert "Missing per-vulnerability" in msg or "Phase 4" in msg
+        }), False, ("Missing per-vulnerability", "Phase 4"), id="all-error-results"),
+    ])
+    def test_exploitation_validation(self, clean_output, content, expected, messages):
+        (clean_output / "exploitation.json").write_text(content)
+        ok, msg = validate_json_exploitation("exploitation.json", output_dir=clean_output)
+        assert ok is expected, msg
+        assert any(message in msg for message in messages), msg
 
 
 class TestValidateDeviceVulns:
-    def test_requires_vulnerability_envelope(self, clean_output):
-        (clean_output / "fragment.json").write_text(json.dumps({
-            "id": "CVE-001", "type": "known_cve",
-        }))
-        ok, msg = validate_json_device_vulns("fragment.json", output_dir=clean_output)
-        assert not ok
-        assert "vulnerabilities" in msg
-
-    def test_accepts_scanner_fallback_envelope(self, clean_output):
-        (clean_output / "device.json").write_text(json.dumps({
-            "device_id": "device-a",
-            "vulnerabilities": [{"type": "missing_header"}],
-        }))
+    @pytest.mark.parametrize("data,expected,message", [
+        pytest.param({"id": "CVE-001", "type": "known_cve"},
+                     False, "vulnerabilities", id="missing-envelope"),
+        pytest.param({"device_id": "device-a", "vulnerabilities": [{"type": "missing_header"}]},
+                     True, "", id="scanner-fallback-envelope"),
+    ])
+    def test_vulnerability_envelope(self, clean_output, data, expected, message):
+        (clean_output / "device.json").write_text(json.dumps(data))
         ok, msg = validate_json_device_vulns("device.json", output_dir=clean_output)
-        assert ok
+        assert ok is expected, msg
+        assert message in msg
 
 
 class TestValidatorsRegistry:
-    def test_all_validators_callable(self):
+    def test_expected_validators_are_available_and_callable(self):
+        assert {
+            "default", "markdown_with_sections", "recon_markdown", "report_markdown",
+            "final_report_markdown", "json_device_vulns", "json_vuln_queue",
+            "json_exploitation", "json_valid",
+        } <= VALIDATORS.keys()
         for name, fn in VALIDATORS.items():
-            assert callable(fn)
-
-    def test_expected_validators_exist(self):
-        assert "default" in VALIDATORS
-        assert "markdown_with_sections" in VALIDATORS
-        assert "recon_markdown" in VALIDATORS
-        assert "report_markdown" in VALIDATORS
-        assert "final_report_markdown" in VALIDATORS
-        assert "json_device_vulns" in VALIDATORS
-        assert "json_vuln_queue" in VALIDATORS
-        assert "json_exploitation" in VALIDATORS
-        assert "json_valid" in VALIDATORS
+            assert callable(fn), name

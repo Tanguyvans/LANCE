@@ -1,21 +1,19 @@
 """Tests for cost_tracker module."""
-import time
 from unittest.mock import patch
+import pytest
 
 from src.agent.cost_tracker import CostTracker, PhaseUsage
 
 
 class TestPhaseUsage:
-    def test_cost_calculation(self):
-        usage = PhaseUsage(agent_name="test", input_tokens=1000, output_tokens=500)
-        # Default pricing: 1.0 input + 3.0 output per million
-        cost = usage.cost_usd()
-        assert cost == (1000 * 1.0 + 500 * 3.0) / 1_000_000
-
-    def test_cost_with_model(self):
-        usage = PhaseUsage(agent_name="test", input_tokens=1_000_000, output_tokens=0)
-        cost = usage.cost_usd("claude-sonnet-4-20250514")
-        assert cost == 3.0  # $3 per million input tokens
+    @pytest.mark.parametrize("model,input_tokens,output_tokens,expected", [
+        pytest.param("", 1000, 500, (1000 * 1.0 + 500 * 3.0) / 1_000_000, id="default-rates"),
+        pytest.param("claude-sonnet-4-20250514", 1_000_000, 0, 3.0, id="model-rates"),
+    ])
+    def test_cost_calculation(self, model, input_tokens, output_tokens, expected):
+        usage = PhaseUsage(agent_name="test", input_tokens=input_tokens, output_tokens=output_tokens)
+        with patch("src.agent.cost_tracker.get_dynamic_pricing", return_value=None):
+            assert usage.cost_usd(model) == expected
 
 
 class TestCostTracker:
@@ -76,14 +74,11 @@ class TestCostTracker:
         assert len(s["phases"]) == 1
         assert s["phases"][0]["agent"] == "agent1"
 
-    def test_record_without_start(self):
+    def test_inactive_phase_ignores_usage_and_has_nothing_to_end(self):
         tracker = CostTracker()
-        tracker.record_turn(100, 50)  # Should not crash
-
-    def test_end_without_start(self):
-        tracker = CostTracker()
-        result = tracker.end_phase()
-        assert result is None
+        tracker.record_turn(100, 50)
+        assert tracker.total_tokens() == (0, 0)
+        assert tracker.end_phase() is None
 
     def test_print_summary(self, capsys):
         tracker = CostTracker(model="test")

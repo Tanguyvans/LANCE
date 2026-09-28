@@ -9,7 +9,7 @@ from src.agent.core.runtime import (
     _expand_phase_selection,
 )
 from src.agent.core.memo import _looks_unusable_model_memo
-from src.agent.registry import AgentConfig
+from src.agent.registry import AGENTS, AgentConfig
 
 
 def test_resolve_model_provider_uses_registry(monkeypatch):
@@ -39,24 +39,16 @@ def test_local_memo_guard_rejects_placeholders_and_empty_evidence_blocks():
 
 
 class TestResolveTools:
-    def test_resolve_graph_tools(self, mock_provider, output_dir):
+    @pytest.mark.parametrize("groups", [["graph"], ["graph", "deliverable"]],
+                             ids=["one-group", "multiple-groups"])
+    def test_resolve_tool_groups(self, mock_provider, output_dir, groups):
         pipeline = Pipeline(provider=mock_provider)
         config = AgentConfig(
             name="test", phase=1, prompt_template="t",
-            deliverable_file="t.md", tools=["graph"],
+            deliverable_file="t.md", tools=groups,
         )
         tools = pipeline._resolve_tools(config)
-        assert len(tools) == len(TOOL_GROUPS["graph"])
-
-    def test_resolve_multiple_groups(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="test", phase=1, prompt_template="t",
-            deliverable_file="t.md", tools=["graph", "deliverable"],
-        )
-        tools = pipeline._resolve_tools(config)
-        expected = len(TOOL_GROUPS["graph"]) + len(TOOL_GROUPS["deliverable"])
-        assert len(tools) == expected
+        assert len(tools) == sum(len(TOOL_GROUPS[group]) for group in groups)
 
     def test_dry_run_skips_recon(self, mock_provider, output_dir):
         pipeline = Pipeline(provider=mock_provider, dry_run=True)
@@ -79,105 +71,33 @@ class TestPrerequisites:
         )
         assert pipeline._check_prerequisites(config, {})
 
-    def test_completed_prerequisite(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="test", phase=2, prompt_template="t",
-            deliverable_file="t.md", tools=["graph"],
-            prerequisites=["graph_analysis"],
-        )
-        results = {"graph_analysis": "completed"}
-        (pipeline.run_dir / "01_graph_analysis.md").write_text("## S1\n## S2\n")
-        assert pipeline._check_prerequisites(config, results)
-
-    def test_synthesized_completed_prerequisite(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="t",
-            deliverable_file="03_vuln_analysis.json", tools=["graph"],
-            prerequisites=["recon"],
-        )
-        results = {"recon": "completed:synthesized"}
-        (pipeline.run_dir / "02_recon.md").write_text("## S1\n## S2\n")
-        assert pipeline._check_prerequisites(config, results)
-
-    def test_phase4_worker_errors_keep_validated_results_usable(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        (pipeline.run_dir / "04_exploitation.json").write_text('{"tests": []}')
-        config = AgentConfig(
-            name="intrusion", phase=5, prompt_template="t",
-            deliverable_file="05_intrusion.json", tools=["graph"],
-            prerequisites=["exploitation"],
-        )
-        assert pipeline._check_prerequisites(
-            config, {"exploitation": "executed_with_worker_errors"}
-        )
-
-    @pytest.mark.parametrize("status", [
-        "failed:Deliverable missing",
-        "blocked:phase_no_observable_actions",
-        "partial",
+    @pytest.mark.parametrize("prerequisite,status,artifact_present,allowed", [
+        pytest.param("graph_analysis", "completed", True, True, id="completed-with-artifact"),
+        pytest.param("recon", "completed:synthesized", True, True, id="synthesized-with-artifact"),
+        pytest.param("exploitation", "executed_with_worker_errors", True, True, id="worker-errors-with-results"),
+        pytest.param("recon", "failed:Deliverable missing", False, False, id="failed"),
+        pytest.param("recon", "blocked:phase_no_observable_actions", False, False, id="blocked"),
+        pytest.param("recon", "partial", False, False, id="partial"),
+        pytest.param("exploitation", "skipped:conditional", False, False, id="skipped-without-artifact"),
+        pytest.param("exploitation", "skipped:conditional", True, True, id="skipped-with-artifact"),
+        pytest.param("graph_analysis", None, False, False, id="not-run-no-artifact"),
+        pytest.param("exploitation", "failed:Missing per-vulnerability Phase 4 exploit result", True, False, id="failure-overrides-artifact"),
+        pytest.param("graph_analysis", None, True, True, id="existing-artifact-without-status"),
     ])
-    def test_unsuccessful_status_is_not_a_completed_prerequisite(
-        self, mock_provider, output_dir, status
+    def test_prerequisite_status_and_artifact(
+        self, mock_provider, output_dir, prerequisite, status, artifact_present, allowed
     ):
         pipeline = Pipeline(provider=mock_provider)
+        previous = AGENTS[prerequisite]
+        if artifact_present:
+            content = '{"tests": []}' if previous.deliverable_file.endswith(".json") else "## S1\n## S2\n"
+            (pipeline.run_dir / previous.deliverable_file).write_text(content)
         config = AgentConfig(
-            name="vuln_analysis", phase=3, prompt_template="t",
-            deliverable_file="03_vuln_analysis.json", tools=["graph"],
-            prerequisites=["recon"],
+            name="test", phase=previous.phase + 1, prompt_template="t",
+            deliverable_file="t.md", tools=["graph"], prerequisites=[prerequisite],
         )
-        assert not pipeline._check_prerequisites(config, {"recon": status})
-
-    def test_skipped_conditional_requires_artifact(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="test", phase=5, prompt_template="t",
-            deliverable_file="t.md", tools=["graph"],
-            prerequisites=["exploitation"],
-        )
-        results = {"exploitation": "skipped:conditional"}
-        assert not pipeline._check_prerequisites(config, results)
-        (pipeline.run_dir / "04_exploitation.json").write_text('{"tests": []}')
-        assert pipeline._check_prerequisites(config, results)
-
-    def test_failed_prerequisite(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        config = AgentConfig(
-            name="test", phase=2, prompt_template="t",
-            deliverable_file="t.md", tools=["graph"],
-            prerequisites=["graph_analysis"],
-        )
-        results = {}  # Not run, and no file on disk
-        assert not pipeline._check_prerequisites(config, results)
-
-    def test_failed_prerequisite_status_is_not_overridden_by_disk_file(
-        self, mock_provider, output_dir
-    ):
-        pipeline = Pipeline(provider=mock_provider)
-        (pipeline.run_dir / "04_exploitation.json").write_text(json.dumps({"tests": []}))
-        config = AgentConfig(
-            name="intrusion", phase=5, prompt_template="t",
-            deliverable_file="05_intrusion.json", tools=["graph"],
-            prerequisites=["exploitation"],
-        )
-
-        assert not pipeline._check_prerequisites(
-            config,
-            {"exploitation": "failed:Missing per-vulnerability Phase 4 exploit result"},
-        )
-
-    def test_prerequisite_on_disk(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        # Write the prerequisite deliverable to the pipeline's run dir
-        (pipeline.run_dir / "01_graph_analysis.md").write_text("## S1\n## S2\n")
-        config = AgentConfig(
-            name="test", phase=2, prompt_template="t",
-            deliverable_file="t.md", tools=["graph"],
-            prerequisites=["graph_analysis"],
-        )
-        results = {}  # Not in current run results, but file exists
-        assert pipeline._check_prerequisites(config, results)
+        results = {prerequisite: status} if status is not None else {}
+        assert pipeline._check_prerequisites(config, results) is allowed
 
 
 class TestConditional:
@@ -189,48 +109,22 @@ class TestConditional:
         )
         assert pipeline._check_conditional(config)
 
-    def test_missing_conditional_file(self, mock_provider, output_dir):
+    @pytest.mark.parametrize("content,allowed", [
+        pytest.param(None, False, id="missing-file"),
+        pytest.param('{"vulnerabilities": []}', False, id="empty-queue"),
+        pytest.param('{"vulnerabilities": [{"id": "VULN-001"}]}', True, id="nonempty-queue"),
+        pytest.param("not json", False, id="invalid-json"),
+    ])
+    def test_queue_condition(self, mock_provider, output_dir, content, allowed):
         pipeline = Pipeline(provider=mock_provider)
+        if content is not None:
+            (pipeline.run_dir / "03_vuln_analysis.json").write_text(content)
         config = AgentConfig(
             name="test", phase=4, prompt_template="t",
             deliverable_file="t.md", tools=["recon"],
             conditional="03_vuln_analysis.json",
         )
-        assert not pipeline._check_conditional(config)
-
-    def test_empty_queue(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        (pipeline.run_dir / "03_vuln_analysis.json").write_text(
-            json.dumps({"vulnerabilities": []})
-        )
-        config = AgentConfig(
-            name="test", phase=4, prompt_template="t",
-            deliverable_file="t.md", tools=["recon"],
-            conditional="03_vuln_analysis.json",
-        )
-        assert not pipeline._check_conditional(config)
-
-    def test_non_empty_queue(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        (pipeline.run_dir / "03_vuln_analysis.json").write_text(
-            json.dumps({"vulnerabilities": [{"id": "VULN-001"}]})
-        )
-        config = AgentConfig(
-            name="test", phase=4, prompt_template="t",
-            deliverable_file="t.md", tools=["recon"],
-            conditional="03_vuln_analysis.json",
-        )
-        assert pipeline._check_conditional(config)
-
-    def test_invalid_json(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider)
-        (pipeline.run_dir / "03_vuln_analysis.json").write_text("not json")
-        config = AgentConfig(
-            name="test", phase=4, prompt_template="t",
-            deliverable_file="t.md", tools=["recon"],
-            conditional="03_vuln_analysis.json",
-        )
-        assert not pipeline._check_conditional(config)
+        assert pipeline._check_conditional(config) is allowed
 
     def test_full_phase5_reconciles_executed_failed_phase4_but_compact_does_not(
         self, mock_provider, output_dir
@@ -339,27 +233,16 @@ class TestRunDir:
 
 
 class TestGitCommit:
-    def test_get_git_commit_returns_string_or_none(self):
+    @pytest.mark.parametrize("return_code,stdout,error,expected", [
+        pytest.param(0, "abc1234\n", None, "abc1234", id="success"),
+        pytest.param(1, "", None, None, id="git-failure"),
+        pytest.param(None, "", FileNotFoundError, None, id="git-unavailable"),
+    ])
+    def test_get_git_commit(self, return_code, stdout, error, expected):
         from src.agent.core.runtime import _get_git_commit
-        result = _get_git_commit()
-        assert result is None or (isinstance(result, str) and len(result) > 0)
-
-    def test_get_git_commit_mock_success(self):
-        from src.agent.core.runtime import _get_git_commit
-        with patch("src.agent.core.runtime.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="abc1234\n")
-            assert _get_git_commit() == "abc1234"
-
-    def test_get_git_commit_mock_failure(self):
-        from src.agent.core.runtime import _get_git_commit
-        with patch("src.agent.core.runtime.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="")
-            assert _get_git_commit() is None
-
-    def test_get_git_commit_exception(self):
-        from src.agent.core.runtime import _get_git_commit
-        with patch("src.agent.core.runtime.subprocess.run", side_effect=FileNotFoundError):
-            assert _get_git_commit() is None
+        with patch("src.agent.core.runtime.subprocess.run", side_effect=error) as mock_run:
+            mock_run.return_value = MagicMock(returncode=return_code, stdout=stdout)
+            assert _get_git_commit() == expected
 
     def test_run_meta_written_on_init(self, mock_provider, output_dir):
         with patch("src.agent.core.runtime._get_git_commit", return_value="deadbeef"):
@@ -379,21 +262,17 @@ class TestGitCommit:
 class TestBlindMode:
     """Blind mode: scenario VMs deployed, but topology hidden from the agent."""
 
-    def test_init_sets_target_network_when_blind_with_scenario(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider, scenario_id=1, blind=True)
-        assert pipeline.blind is True
-        assert pipeline.target_network == "192.168.100.0/24"
-
-    def test_init_no_target_network_when_blind_without_scenario(self, mock_provider, output_dir):
-        pipeline = Pipeline(provider=mock_provider, blind=True)
-        assert pipeline.target_network is None
-
-    def test_init_preserves_explicit_target_network(self, mock_provider, output_dir):
+    @pytest.mark.parametrize("scenario,target,expected", [
+        pytest.param(1, None, "192.168.100.0/24", id="scenario-default"),
+        pytest.param(None, None, None, id="no-scenario"),
+        pytest.param(1, "10.0.0.0/24", "10.0.0.0/24", id="explicit-target"),
+    ])
+    def test_blind_target_network(self, mock_provider, output_dir, scenario, target, expected):
         pipeline = Pipeline(
-            provider=mock_provider, scenario_id=1, blind=True,
-            target_network="10.0.0.0/24",
+            provider=mock_provider, scenario_id=scenario, blind=True, target_network=target,
         )
-        assert pipeline.target_network == "10.0.0.0/24"
+        assert pipeline.blind is True
+        assert pipeline.target_network == expected
 
     def test_blind_skips_scenario_context(self, mock_provider, output_dir):
         """In blind mode, _load_scenario_context must not be called — otherwise

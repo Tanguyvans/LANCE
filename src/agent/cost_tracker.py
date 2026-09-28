@@ -71,6 +71,8 @@ def _resolve_pricing(
     model: str, provider: str | None = None
 ) -> tuple[dict[str, float], str, bool]:
     """Resolve pricing once so a completed run cannot be repriced later."""
+    if not model:
+        return dict(DEFAULT_PRICING), "no_model", True
     if provider in {"codex", "minimax"}:
         return {"input": 0.0, "output": 0.0}, "subscription", False
     dynamic = get_dynamic_pricing(model)
@@ -121,6 +123,9 @@ class CostTracker:
     provider: str = ""
     max_cost_usd: float | None = None
     budget_exhausted: bool = False
+    execution_metrics: bool = False
+    _executed_calls: int = 0
+    _execution_errors: int = 0
     phases: list[PhaseUsage] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _thread_local: threading.local = field(default_factory=threading.local, repr=False)
@@ -128,12 +133,17 @@ class CostTracker:
     _last_phase_end: float | None = field(default=None, repr=False)
     _active: dict[int, float] = field(default_factory=dict, repr=False)
 
+    def start_run(self) -> None:
+        with self._lock:
+            self._first_phase_start = time.monotonic()
+
     def start_phase(self, agent_name: str) -> None:
         # Serialize pricing resolution so parallel agents share one catalog snapshot.
         started_at = time.monotonic()
         with self._lock:
-            pricing, pricing_source, estimated = _resolve_pricing(
-                self.model, self.provider
+            pricing, pricing_source, estimated = (
+                _resolve_pricing(self.model, self.provider) if self.model else
+                ({"input": 0.0, "output": 0.0}, "no_model", False)
             )
             if self._first_phase_start is None or started_at < self._first_phase_start:
                 self._first_phase_start = started_at
@@ -160,6 +170,17 @@ class CostTracker:
             current.output_tokens += output_tokens
             current.tool_calls += tool_call_count
             current.turns += 1
+
+    def record_execution(self, started: float, duration: float, *, error: bool = False) -> None:
+        """Count tool executions, including deterministic calls, independently of LLM turns."""
+        with self._lock:
+            self._executed_calls += 1
+            self._execution_errors += int(error)
+            if self._first_phase_start is None or started < self._first_phase_start:
+                self._first_phase_start = started
+            ended = started + duration
+            if self._last_phase_end is None or ended > self._last_phase_end:
+                self._last_phase_end = ended
 
 
     def record_format_attempt(self, fallback_used: bool = False) -> None:
@@ -230,6 +251,8 @@ class CostTracker:
         """Freeze even interrupted worker usage before cleanup begins."""
         ended = time.monotonic()
         with self._lock:
+            if self.execution_metrics:
+                self._last_phase_end = ended
             for phase in self.phases:
                 started = self._active.pop(id(phase), None)
                 if started is not None:
@@ -252,7 +275,7 @@ class CostTracker:
                 else 0.0
             )
             return {
-                "metrics_schema_version": METRICS_SCHEMA_VERSION,
+                "metrics_schema_version": 3 if self.execution_metrics else METRICS_SCHEMA_VERSION,
                 "model": self.model,
                 "models": list(dict.fromkeys(p.model for p in self.phases if p.model)),
                 "total_cost_usd": total_cost,
@@ -260,7 +283,7 @@ class CostTracker:
                 "total_input_tokens": in_tok,
                 "total_output_tokens": out_tok,
                 "total_turns": sum(p.turns for p in self.phases),
-                "total_tool_calls": sum(p.tool_calls for p in self.phases),
+                "total_tool_calls": self._executed_calls if self.execution_metrics else sum(p.tool_calls for p in self.phases),
                 # Historical total_duration_s is retained as agent-seconds.
                 "total_duration_s": round(agent_duration, 1),
                 "total_agent_duration_s": round(agent_duration, 1),
@@ -270,7 +293,7 @@ class CostTracker:
                 "total_validation_failures": sum(p.validation_failures for p in self.phases),
                 "total_validation_attempts": sum(p.validation_attempts for p in self.phases),
                 "total_validation_successes": sum(p.validation_successes for p in self.phases),
-                "total_tool_errors": sum(p.tool_errors for p in self.phases),
+                "total_tool_errors": self._execution_errors if self.execution_metrics else sum(p.tool_errors for p in self.phases),
                 "phases": [
                     {
                         "agent": p.agent_name,

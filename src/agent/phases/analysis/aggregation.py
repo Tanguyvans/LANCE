@@ -298,7 +298,7 @@ class FindingAggregation:
                 else:
                     vulns = []
                 model_vulns = vulns if isinstance(vulns, list) else []
-                add_candidates(model_vulns, f.name, "model")
+                add_candidates(model_vulns, f.name, "rules" if getattr(self, "decision_policy", "llm") == "rules" else "model")
                 add_scanner_candidates(device_id, model_vulns)
             except Exception as exc:
                 log.warning(

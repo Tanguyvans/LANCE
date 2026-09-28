@@ -15,6 +15,8 @@ from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 from src.benchmark.tool_registry import SERVICE_ALIASES
+from src.agent.cost_tracker import BudgetExceeded
+from src.agent.core.executor import EvidenceWriteError
 
 log = logging.getLogger(__name__)
 
@@ -437,7 +439,7 @@ def _phase2_recon_scan_entries(run_dir: Path, device: dict) -> list[dict]:
     }]
 
 
-def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]]:
+def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[str] | None = None) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
     device_id = device.get("id", "unknown")
@@ -453,20 +455,26 @@ def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]
         fn = tools_map.get(tool_name)
         if fn is None:
             log.warning("Tool %s not found, skipping", tool_name)
+            if diagnostics is not None:
+                diagnostics.append(f"{device_id}: required tool {tool_name} unavailable")
             return
 
         try:
             result_str = fn(**kwargs)
+        except (BudgetExceeded, EvidenceWriteError):
+            raise
         except Exception as e:
             log.warning("Tool %s failed for %s: %s", tool_name, device_id, e)
             result_str = json.dumps({"stdout": "", "stderr": str(e), "return_code": -1})
 
+        observation = fn.last_observation() if hasattr(fn, "last_observation") else None
         results.setdefault(svc_key, []).append({
             "tool": tool_name,
             "kwargs": kwargs,
             "result": result_str,
             "evidence_phase": 3,
             "authoritative": True,
+            **({"evidence_ref": observation["evidence_ref"]} if observation else {}),
         })
 
     # Scan each declared service
@@ -475,6 +483,8 @@ def scan_device(device: dict, tools_map: dict[str, Any]) -> dict[str, list[dict]
         port = svc.get("port", 0)
         matrix_key = SERVICE_ALIASES.get(svc_name)
         if not matrix_key or matrix_key not in SCAN_MATRIX:
+            if diagnostics is not None:
+                diagnostics.append(f"{device_id}: no scanner rule for service {svc_name}")
             continue
 
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
@@ -2124,6 +2134,8 @@ def run_scanner(
     compact: bool = False,
     allowed_tool_names: set[str] | None = None,
     stop_event=None,
+    tools: list[dict] | None = None,
+    max_workers: int = 6,
 ) -> dict[str, dict]:
     """Run Phase 3a: scan all devices, save raw results, extract trivial findings.
 
@@ -2132,7 +2144,7 @@ def run_scanner(
     from src.agent.tools.recon_tools import RECON_TOOLS
     from src.agent.tools.tool_loader import filter_unavailable_tools
 
-    available_tools, unavailable_tools = filter_unavailable_tools(RECON_TOOLS)
+    available_tools, unavailable_tools = filter_unavailable_tools(RECON_TOOLS if tools is None else tools)
     if unavailable_tools:
         log.info("Scanner hiding unavailable tools: %s", ", ".join(sorted(unavailable_tools)))
     tools_map = {
@@ -2159,8 +2171,9 @@ def run_scanner(
         # Run all tools. A run stop is cooperative and applies equally to
         # deterministic scanner subprocesses and model-selected tools.
         from src.agent.tools.runtime import tool_stop_context
+        errors = []
         with tool_stop_context(stop_event):
-            scan_results = scan_device(device, tools_map)
+            scan_results = scan_device(device, tools_map, diagnostics=errors)
         recon_entries = _phase2_recon_scan_entries(run_dir, device)
         if recon_entries:
             # Keep the old recon snapshot auditable, but do not merge it into
@@ -2201,11 +2214,22 @@ def run_scanner(
                 "findings_count": len(findings),
             })
 
-        return device_id, {"scan_results": scan_results, "findings": findings}
+        for entries in scan_results.values():
+            for entry in entries:
+                try:
+                    result = json.loads(entry["result"])
+                except (ValueError, TypeError):
+                    continue
+                if isinstance(result, dict) and (result.get("error") or result.get("return_code", 0) not in (0, None)):
+                    errors.append(f"{device_id}: {entry.get('tool') or 'unsupported service'} returned an error")
+        return device_id, {"scan_results": scan_results, "findings": findings,
+                           **({"error": "; ".join(errors)} if errors else {})}
 
     def _safe_scan_one(device: dict):
         try:
             return _scan_one(device)
+        except (BudgetExceeded, EvidenceWriteError):
+            raise
         except Exception as exc:
             device_id = str(device.get("id") or "unknown")
             device_ip = device.get("ip", "unknown")
@@ -2238,7 +2262,7 @@ def run_scanner(
     print(f"PHASE 3a: DETERMINISTIC SCANNING ({len(devices)} devices)")
     print(f"{'=' * 60}\n")
 
-    with ThreadPoolExecutor(max_workers=max(1, min(len(devices), 6))) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, min(len(devices), max_workers))) as pool:
         for device_id, data in pool.map(_safe_scan_one, devices):
             results[device_id] = data
 

@@ -29,6 +29,11 @@ COMPARABILITY_FIELDS = (
     "evidence_contract_version",
 )
 
+POLICY_FIELDS = (
+    "policy_schema_version", "decision_policy", "experiment_scope", "rules_version",
+    "resource_manifest_sha256", "max_duration_s", "workers", "execution_ledger_version", "analysis_limits",
+)
+
 
 def _canonical(value: Any) -> Any:
     if isinstance(value, Mapping):
@@ -59,6 +64,35 @@ def configuration_identity(
     if not isinstance(metadata, Mapping):
         return None, "configuration metadata is missing"
     values = dict(metadata)
+    policy_fields = ()
+    if "policy_schema_version" in values:
+        policy_fields = POLICY_FIELDS
+        missing = [key for key in policy_fields if key not in values]
+        if missing:
+            return None, "policy metadata missing: " + ", ".join(missing)
+        if type(values["policy_schema_version"]) is not int or values["policy_schema_version"] != 1:
+            return None, "unsupported policy schema"
+        if values["decision_policy"] not in {"rules", "llm"}:
+            return None, "unsupported decision policy"
+        if values["experiment_scope"] != "analysis-verification" or values.get("effective_phases") != [3, 4]:
+            return None, "unsupported experiment scope"
+        if values.get("execution_profile") != "full" or values.get("execution_profile_policy") != "full" or values.get("phase_models") != {}:
+            return None, "experiment profile must be explicitly full with no overrides"
+        if type(values["workers"]) is not int or values["workers"] != 1 or type(values["execution_ledger_version"]) is not int or values["execution_ledger_version"] != 2:
+            return None, "unsupported experiment execution settings"
+        for key in ("max_duration_s", "max_tool_calls"):
+            value = values.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                return None, f"experiment {key} must be positive and finite"
+        for key in ("rules_version", "resource_manifest_sha256"):
+            if not isinstance(values[key], str) or not values[key].strip():
+                return None, f"{key} is missing or empty"
+        if not isinstance(values["analysis_limits"], Mapping) or not values["analysis_limits"]:
+            return None, "analysis_limits is missing or invalid"
+        if values["decision_policy"] == "rules" and (values.get("model") is not None or values.get("provider") is not None):
+            return None, "rules policy must have null provider and model"
+    elif "decision_policy" in values or "experiment_scope" in values:
+        return None, "policy schema version is missing"
     if scoring_policy is not None:
         values["scoring_policy"] = scoring_policy
     missing = [key for key in COMPARABILITY_FIELDS if key not in values]
@@ -99,6 +133,8 @@ def configuration_identity(
         "prompt_manifest_sha256", "tool_manifest_sha256", "scoring_policy",
         "metric_contract_version", "evidence_contract_version",
     ):
+        if key in {"provider", "model"} and policy_fields and values["decision_policy"] == "rules":
+            continue
         if not isinstance(values[key], str) or not values[key].strip():
             return None, f"{key} is missing or empty"
     if values["metric_contract_version"] != METRIC_CONTRACT_VERSION:
@@ -106,7 +142,12 @@ def configuration_identity(
     if values["evidence_contract_version"] != EVIDENCE_CONTRACT_VERSION:
         return None, "evidence contract is legacy or incompatible"
     try:
-        identity = {key: _canonical(values[key]) for key in COMPARABILITY_FIELDS}
+        identity = {key: _canonical(values[key]) for key in (*COMPARABILITY_FIELDS, *policy_fields)}
+        # Preserve historical identities, but never merge changed instrumentation
+        # into the old model-turn-based accounting population.
+        for key in ("execution_ledger_version", "max_duration_s"):
+            if key in values:
+                identity[key] = _canonical(values[key])
     except (TypeError, ValueError) as exc:
         return None, f"configuration metadata is invalid: {exc}"
     return identity, None

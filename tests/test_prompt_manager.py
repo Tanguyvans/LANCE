@@ -1,27 +1,17 @@
 """Tests for prompt_manager module."""
 import pytest
-from pathlib import Path
-from unittest.mock import patch
-
-from src.agent.prompt_manager import load_prompt, _resolve_includes, _interpolate, PROMPT_DIR
+from src.agent.prompt_manager import load_prompt, _interpolate
 
 
 class TestInterpolation:
-    def test_basic_variable(self):
-        result = _interpolate("Hello {{name}}", {"name": "World"})
-        assert result == "Hello World"
-
-    def test_multiple_variables(self):
-        result = _interpolate("{{a}} and {{b}}", {"a": "X", "b": "Y"})
-        assert result == "X and Y"
-
-    def test_missing_variable(self):
-        result = _interpolate("{{missing}}", {})
-        assert "MISSING:missing" in result
-
-    def test_no_variables(self):
-        result = _interpolate("No vars here", {"a": "1"})
-        assert result == "No vars here"
+    @pytest.mark.parametrize("template,variables,expected", [
+        pytest.param("Hello {{name}}", {"name": "World"}, "Hello World", id="one-variable"),
+        pytest.param("{{a}} and {{b}}", {"a": "X", "b": "Y"}, "X and Y", id="multiple-variables"),
+        pytest.param("{{missing}}", {}, "{{MISSING:missing}}", id="missing-variable"),
+        pytest.param("No vars here", {"a": "1"}, "No vars here", id="plain-text"),
+    ])
+    def test_interpolation(self, template, variables, expected):
+        assert _interpolate(template, variables) == expected
 
 
 class TestLoadPrompt:

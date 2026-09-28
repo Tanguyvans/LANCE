@@ -13,6 +13,7 @@ from src.agent.core.memo import _looks_unusable_model_memo
 from src.agent.core import runtime
 from src.agent.core.provider_transport import deadline_remaining
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.core.executor import EvidenceWriteError, check_execution_limits
 
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,8 @@ class AnalysisPhase:
         # Use the active provider, including a Phase 3 model override. The
         # UMONS run with four workers exhausted every 240s device deadline;
         # serialize this provider without changing its prompts or deadline.
+        if getattr(self, "experiment_scope", None) == "analysis-verification":
+            return 1
         if self._uses_local_moe() or getattr(self.provider, "provider", "") == "ollama-umons":
             return 1
         configured = os.environ.get("LANCE_PHASE3_WORKERS", "").strip()
@@ -333,6 +336,8 @@ class AnalysisPhase:
         self, device_id: str, total: int, done: int, *, deadline: float | None,
     ) -> None:
         """Enforce the shared stop/deadline/budget before another recovery call."""
+        if getattr(self, "experiment_scope", None):
+            check_execution_limits(self)
         stop_event = getattr(self, "_stop_event", None)
         if stop_event is not None and stop_event.is_set():
             raise RuntimeError(
@@ -538,6 +543,8 @@ class AnalysisPhase:
                     device_services=device_services,
                     finish_reason=block_completion.get("finish_reason"),
                 )
+            except (BudgetExceeded, EvidenceWriteError):
+                raise
             except RuntimeError as exc:
                 last_error = str(exc)
                 if block_completion.get("finish_reason") == "length":
@@ -572,7 +579,7 @@ class AnalysisPhase:
         without every block validated and the assembled deliverable promoted.
         """
         device_id = str(device.get("id") or "")
-        caps = block_recovery.block_config()
+        caps = getattr(self, "experiment_analysis_limits", {}).get("block_recovery") or block_recovery.block_config()
         specs = block_recovery.derive_blocks(
             device,
             max_blocks=caps["max_blocks"],
@@ -592,6 +599,8 @@ class AnalysisPhase:
                             deadline=deadline, stream_callback=stream_callback,
                         )
                     )
+                except (BudgetExceeded, EvidenceWriteError):
+                    raise
                 except RuntimeError as exc:
                     # Keep attempting sibling blocks so valid sidecars are
                     # preserved; the device still fails as incomplete below.
@@ -604,6 +613,8 @@ class AnalysisPhase:
                         self._phase3_recovery_guard(
                             device_id, len(specs), position + 1, deadline=deadline
                         )
+                    except (BudgetExceeded, EvidenceWriteError):
+                        raise
                     except RuntimeError:
                         block_failures.append(
                             "truncated_output: block recovery aborted by stop/deadline/budget"
@@ -719,7 +730,16 @@ class AnalysisPhase:
             _save_phase3_status()
             return
 
-        scanner_kwargs = {"compact": self._uses_compact_local_moe()}
+        available, _ = runtime.filter_unavailable_tools(runtime.RECON_TOOLS)
+        scanner_tools = [
+            self._wrap_tool(tool, phase=3, agent="deterministic_scanner", decision_source="rules")
+            for tool in self._apply_scenario_tool_policy(available, 3)
+        ]
+        scanner_tool_map = {tool["name"]: tool["function"] for tool in scanner_tools}
+        scanner_kwargs = {
+            "compact": self._uses_compact_local_moe(), "tools": scanner_tools,
+            "max_workers": 1 if getattr(self, "experiment_scope", None) == "analysis-verification" else 6,
+        }
         recon_policy = runtime.tool_policy_for_phase(
             self.scenario_tool_policy, "recon"
         )
@@ -731,6 +751,8 @@ class AnalysisPhase:
                 stop_event=self._stop_event,
                 **scanner_kwargs,
             )
+        except (BudgetExceeded, EvidenceWriteError):
+            raise
         except Exception as exc:
             log.exception("Phase 3 scanner failed globally; preserving per-device fallbacks")
             scanner_results = {}
@@ -779,7 +801,7 @@ class AnalysisPhase:
                         bundle = payload
                         break
                 if bundle:
-                    from src.agent.tools.recon_tools import mtls_request
+                    mtls_request = scanner_tool_map["mtls_request"]
                     mtls_url = f"https://{pki_mtls.get('ip', '')}:8443/device/status"
                     mtls_result = mtls_request(
                         url=mtls_url,
@@ -795,6 +817,7 @@ class AnalysisPhase:
                         "tool": "mtls_request",
                         "kwargs": {"url": mtls_url, "method": "GET"},
                         "result": mtls_result,
+                        "evidence_ref": (mtls_request.last_observation() or {}).get("evidence_ref"),
                         "evidence_phase": 3,
                         "authoritative": True,
                     })
@@ -810,13 +833,14 @@ class AnalysisPhase:
                     self._persist_phase3_device_findings(pki_mtls, scanner_results)
             except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 log.warning("S16 bounded mTLS probe unavailable: %s", exc)
+                phase3_status["scanner_errors"].append(f"mTLS supplemental probe: {type(exc).__name__}")
 
         # Cross-device simulator checks for S17/S18. These are deliberately
         # derived from evidence already returned by the bounded probes: no
         # guessed signing secret, filesystem path, or out-of-scope target is
         # introduced by the harness.
         def _append_bounded_http_probe(
-            device: dict, kwargs: dict, result: str, *, service_key: str = "bounded"
+            device: dict, kwargs: dict, result: str, *, service_key: str = "bounded", derived_from: dict | None = None
         ) -> None:
             device_id = str(device.get("id") or "")
             if not device_id:
@@ -828,6 +852,7 @@ class AnalysisPhase:
                 "tool": "http_request",
                 "kwargs": kwargs,
                 "result": result,
+                **({"derived_from_evidence_ref": derived_from.get("evidence_ref")} if derived_from is not None else {"evidence_ref": (scanner_tool_map["http_request"].last_observation() or {}).get("evidence_ref")}),
                 "evidence_phase": 3,
                 "authoritative": True,
             })
@@ -853,7 +878,7 @@ class AnalysisPhase:
         ]
         if ota_repository and ota_devices:
             try:
-                from src.agent.tools.recon_tools import http_request
+                http_request = scanner_tool_map["http_request"]
                 repo_data = scanner_results.get(ota_repository.get("id", ""), {})
                 repo_entries = [
                     entry
@@ -925,8 +950,9 @@ class AnalysisPhase:
                             "body": json.dumps(current), "follow_redirects": False,
                         }
                         _append_bounded_http_probe(device_b, cross_kwargs, http_request(**cross_kwargs), service_key="ota_cross_device")
-            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 log.warning("S17 bounded OTA probes unavailable: %s", exc)
+                phase3_status["scanner_errors"].append(f"OTA supplemental probe: {type(exc).__name__}")
 
         cloud_metadata = next(
             (device for device in surface
@@ -945,7 +971,7 @@ class AnalysisPhase:
             ):
                 continue
             try:
-                from src.agent.tools.recon_tools import http_request
+                http_request = scanner_tool_map["http_request"]
                 web_data = scanner_results.get(cloud_web.get("id", ""), {})
                 fetch_entry = next(
                     (
@@ -973,7 +999,7 @@ class AnalysisPhase:
                         _append_bounded_http_probe(
                             cloud_metadata, metadata_kwargs,
                             json.dumps({"status_code": 200, "body": metadata_body}),
-                            service_key="cloud_ssrf",
+                            service_key="cloud_ssrf", derived_from=fetch_entry,
                         )
                         control_kwargs = {
                             "url": f"http://{cloud_control.get('ip', '')}:8080/bucket/city-secrets",
@@ -986,13 +1012,25 @@ class AnalysisPhase:
                             http_request(**control_kwargs),
                             service_key="cloud_ssrf",
                         )
-            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
                 log.warning("S18 bounded SSRF/IAM probes unavailable: %s", exc)
+                phase3_status["scanner_errors"].append(f"SSRF/IAM supplemental probe: {type(exc).__name__}")
 
         if self._uses_compact_local_moe():
             self._run_phase3_local_cve_validation(
                 scanner_results, surface, stream_callback
             )
+
+        if getattr(self, "decision_policy", "llm") == "rules":
+            phase3_status["devices_analyzed"] = len(surface)
+            phase3_status["worker_count"] = 1
+            phase3_status["decision_policy"] = "rules"
+            phase3_status["status"] = "completed_with_device_errors" if phase3_status["scanner_errors"] or phase3_status.get("surface_error") else "completed"
+            if phase3_status["status"] != "completed":
+                self._phase3_execution_status = "executed_with_worker_errors"
+            phase3_status["finished_at"] = datetime.now().astimezone().isoformat()
+            _save_phase3_status()
+            return
 
         # --- Phase 3b: LLM analysis micro-agents (per device) ---
         print(f"\n{'=' * 60}")
@@ -1027,6 +1065,8 @@ class AnalysisPhase:
             phase3_timeout_s = max(30.0, float(os.environ.get("LANCE_PHASE3_DEVICE_TIMEOUT_S", "240")))
         except (TypeError, ValueError):
             phase3_timeout_s = 240.0
+        if getattr(self, "experiment_analysis_limits", None):
+            phase3_timeout_s = self.experiment_analysis_limits["device_timeout_s"]
 
         def _analyze_device(device: dict):
             device_id = device["id"]
@@ -1056,6 +1096,8 @@ class AnalysisPhase:
             )
 
             variables = {**self.context}
+            if device.get("public_context"):
+                variables["scenario_context"] = "Public inventory context: " + device["public_context"]
             variables["device_id"] = device_id
             variables["device_ip"] = device_ip
             variables["device_type"] = device_type
@@ -1239,6 +1281,8 @@ class AnalysisPhase:
             variables["phase4_tool_catalog"] = ", ".join(phase4_tool_catalog)
             system_prompt = runtime.load_prompt("analyze_device", variables)
             device_deadline = _time.monotonic() + phase3_timeout_s
+            if getattr(self, "max_duration_s", None) is not None:
+                device_deadline = min(device_deadline, self._run_started + self.max_duration_s)
             full_completion: dict = {}
             self.tracker.start_phase(f"analyze_{device_id}")
             result_text = self.provider.chat_with_tools(
@@ -1330,13 +1374,19 @@ class AnalysisPhase:
         phase3_failures: list[dict] = []
 
         def _analyze_with_stagger(args):
+            if getattr(self, "experiment_scope", None):
+                check_execution_limits(self)
             idx, device = args
             if worker_count > 1 and idx > 0:
                 _time.sleep(min(idx * 2, 6))
             try:
                 _analyze_device(device)
                 phase3_status["devices_analyzed"] += 1
+            except (BudgetExceeded, EvidenceWriteError):
+                raise
             except Exception as exc:
+                if getattr(self, "experiment_scope", None):
+                    check_execution_limits(self)
                 device_id = str(device.get("id") or "unknown")
                 log.exception("Phase 3 analysis failed for %s; keeping scanner fallback", device_id)
                 failure = {"device_id": device_id, "error": str(exc)}

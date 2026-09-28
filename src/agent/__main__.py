@@ -20,8 +20,7 @@ def main():
     parser.add_argument(
         "--provider",
         default=os.environ.get("AGENT_PROVIDER") or None,
-        required=not bool(os.environ.get("AGENT_PROVIDER")),
-        help="Provider registered in LANCE, or minimax/glm/qwen. Required unless AGENT_PROVIDER is set.",
+        help="Provider registered in LANCE. Required for llm unless AGENT_PROVIDER is set.",
     )
     parser.add_argument(
         "--model",
@@ -45,6 +44,12 @@ def main():
         help="Run specific phases only (e.g. --phases 1 2)",
     )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--decision-policy", choices=["llm", "rules"], default="llm")
+    parser.add_argument("--experiment-scope", choices=["analysis-verification"])
+    parser.add_argument("--audit-inventory", help="Versioned public inventory JSON; no ground truth")
+    parser.add_argument("--max-tool-calls", type=int)
+    parser.add_argument("--max-duration-s", type=float)
+    parser.add_argument("--max-cost-usd", type=float)
     parser.add_argument(
         "--scenario",
         type=str,
@@ -79,9 +84,24 @@ def main():
         help="Benchmark split policy. Sealed runs must be launched by the controller worker.",
     )
     args = parser.parse_args()
+    from src.agent.audit_experiment import load_inventory, validate_configuration
     try:
-        validate_provider_choice(args.provider)
-    except ValueError as exc:
+        inventory = load_inventory(args.audit_inventory) if args.audit_inventory else None
+        validate_configuration(
+            decision_policy=args.decision_policy, experiment_scope=args.experiment_scope,
+            inventory=inventory, execution_profile=args.execution_profile,
+            phases=args.phases, max_tool_calls=args.max_tool_calls,
+            max_duration_s=args.max_duration_s, max_cost_usd=args.max_cost_usd,
+            incompatible=bool(args.scenario or args.batch or args.blind or args.dry_run
+                              or args.target_network or args.split != "auto"),
+        )
+        if args.decision_policy == "llm":
+            if not args.provider:
+                parser.error("--provider is required for the llm policy unless AGENT_PROVIDER is set")
+            validate_provider_choice(args.provider)
+        if args.batch and any(value is not None for value in (args.max_tool_calls, args.max_duration_s, args.max_cost_usd)):
+            parser.error("Explicit CLI budgets are not supported with --batch")
+    except (ValueError, OSError) as exc:
         parser.error(str(exc))
 
     logging.basicConfig(
@@ -127,7 +147,7 @@ def main():
 
     # Resolve all local-only validation before constructing a provider. This
     # keeps invalid/sealed invocations free of credentials and network setup.
-    provider = LLMProvider(provider=args.provider, model=args.model)
+    provider = LLMProvider(provider=args.provider, model=args.model) if args.decision_policy == "llm" else None
 
     # Batch mode: sequential multi-scenario run
     if args.batch is not None:
@@ -149,6 +169,9 @@ def main():
         target_network=args.target_network,
         benchmark_split=resolved_split,
         execution_profile=args.execution_profile,
+        decision_policy=args.decision_policy, experiment_scope=args.experiment_scope,
+        audit_inventory=inventory, max_tool_calls=args.max_tool_calls,
+        max_duration_s=args.max_duration_s, max_cost_usd=args.max_cost_usd,
     )
     results = pipeline.run()
 

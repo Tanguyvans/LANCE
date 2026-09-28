@@ -266,7 +266,7 @@ class TestInformationPreservingArchitecture:
             "summary": {"total": 1},
         }
 
-        def scanner_side_effect(run_dir_arg, devices, stream_callback=None, *, compact=False, stop_event=None):
+        def scanner_side_effect(run_dir_arg, devices, stream_callback=None, *, compact=False, stop_event=None, tools=None, max_workers=6):
             (run_dir / "03_device_s1-router.json").write_text(json.dumps(fallback))
             return {"s1-router": {"scan_results": {}, "findings": fallback["vulnerabilities"]}}
 

@@ -1,6 +1,5 @@
 """Tests for deliverable tools module."""
 import json
-from pathlib import Path
 
 import pytest
 
@@ -20,16 +19,13 @@ def clean_output(tmp_path):
 
 
 class TestSaveDeliverable:
-    def test_save_creates_file(self, clean_output):
-        result = json.loads(save_deliverable("test.md", "# Report\n## Section", output_dir=clean_output))
+    @pytest.mark.parametrize("content", ["# Report\n## Section", "x" * 100],
+                             ids=["markdown", "plain-text"])
+    def test_save_preserves_content_and_reports_size(self, clean_output, content):
+        result = json.loads(save_deliverable("test.md", content, output_dir=clean_output))
         assert result["status"] == "saved"
-        assert (clean_output / "test.md").exists()
-        assert (clean_output / "test.md").read_text() == "# Report\n## Section"
-
-    def test_save_returns_size(self, clean_output):
-        content = "x" * 100
-        result = json.loads(save_deliverable("big.md", content, output_dir=clean_output))
-        assert result["size"] == 100
+        assert (clean_output / "test.md").read_text() == content
+        assert result["size"] == len(content)
 
     def test_save_rejects_empty_content(self, clean_output):
         result = json.loads(save_deliverable("empty.md", "  \n", output_dir=clean_output))
@@ -50,7 +46,7 @@ class TestReadDeliverable:
         assert "error" in result
 
 
-class TestProviderDiagnosticIsolation:
+class TestPrivateArtifactIsolation:
     def test_unrelated_cwd_alias_does_not_hide_a_run_deliverable(self, clean_output, monkeypatch):
         (clean_output / "report.md").write_text("run report")
         other = clean_output / "unrelated-cwd"
@@ -64,35 +60,29 @@ class TestProviderDiagnosticIsolation:
         assert (clean_output / "report.md").read_text() == "updated"
         assert (other / "provider_events.jsonl").read_text() == "private"
 
-    def test_observer_file_is_hidden_and_cannot_be_overwritten(self, clean_output):
-        journal = clean_output / "provider_events.jsonl"
-        journal.write_text('{"event":"terminal","reason":"test-canary"}\n')
-        before = journal.read_bytes()
+    @pytest.mark.parametrize("filename", ["provider_events.jsonl", "ground_truth.yaml"],
+                             ids=["provider-diagnostics", "ground-truth"])
+    @pytest.mark.parametrize("use_alias", [False, True], ids=["direct", "symlink"])
+    def test_private_file_is_hidden_and_cannot_be_read_or_overwritten(
+        self, clean_output, filename, use_alias
+    ):
+        private = clean_output / filename
+        private.write_text("private-artifact-canary\n")
+        before = private.read_bytes()
+        requested = filename
+        if use_alias:
+            requested = "alias.md"
+            (clean_output / requested).symlink_to(private)
         (clean_output / "report.md").write_text("report")
+
+        read_result = read_deliverable(requested, output_dir=clean_output)
+        save_result = save_deliverable(requested, "overwritten", output_dir=clean_output)
+
         assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == ["report.md"]
-        assert "error" in json.loads(read_deliverable(journal.name, output_dir=clean_output))
-        assert "error" in json.loads(save_deliverable(journal.name, "overwritten", output_dir=clean_output))
-        assert journal.read_bytes() == before
-
-    def test_alias_cannot_expose_diagnostic_file(self, clean_output):
-        journal = clean_output / "provider_events.jsonl"
-        journal.write_text("private-observer-canary")
-        (clean_output / "alias.md").symlink_to(journal)
-        result = read_deliverable("alias.md", output_dir=clean_output)
-        assert "error" in json.loads(result)
-        assert "private-observer-canary" not in result
-        assert "error" in json.loads(save_deliverable("alias.md", "changed", output_dir=clean_output))
-        assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == []
-
-    def test_ground_truth_alias_cannot_be_read_or_overwritten(self, clean_output):
-        ground_truth = clean_output / "ground_truth.yaml"
-        ground_truth.write_text("answer-key")
-        (clean_output / "ground-truth-alias.md").symlink_to(ground_truth)
-
-        assert "error" in json.loads(read_deliverable("ground-truth-alias.md", output_dir=clean_output))
-        assert "error" in json.loads(save_deliverable("ground-truth-alias.md", "changed", output_dir=clean_output))
-        assert json.loads(list_deliverables(output_dir=clean_output))["deliverables"] == []
-        assert ground_truth.read_text() == "answer-key"
+        assert "error" in json.loads(read_result)
+        assert "private-artifact-canary" not in read_result
+        assert "error" in json.loads(save_result)
+        assert private.read_bytes() == before
 
     def test_reserved_name_cannot_redirect_writes(self, clean_output):
         target = clean_output / "report.md"
@@ -130,36 +120,18 @@ class TestDeliverablePathConfinement:
         assert "error" in save_result
         assert not target.exists()
 
-    def test_read_rejects_symlink_escape(self, clean_output):
+    def test_symlink_escape_cannot_be_read_or_overwritten(self, clean_output):
         outside = clean_output.parent / "outside-secret.txt"
         outside.write_text("secret-via-symlink")
         (clean_output / "link.txt").symlink_to(outside)
 
-        result = json.loads(read_deliverable("link.txt", output_dir=clean_output))
+        read_result = read_deliverable("link.txt", output_dir=clean_output)
+        save_result = save_deliverable("link.txt", "overwritten", output_dir=clean_output)
 
-        assert "error" in result
-        assert "secret-via-symlink" not in json.dumps(result)
-
-    def test_save_rejects_symlink_escape(self, clean_output):
-        outside = clean_output.parent / "outside-target.txt"
-        outside.write_text("original")
-        (clean_output / "link.txt").symlink_to(outside)
-
-        result = json.loads(save_deliverable("link.txt", "overwritten", output_dir=clean_output))
-
-        assert "error" in result
-        assert outside.read_text() == "original"
-
-    def test_hidden_ground_truth_cannot_be_read_or_overwritten(self, clean_output):
-        hidden = clean_output / "ground_truth.yaml"
-        hidden.write_text("answer-key")
-
-        read_result = json.loads(read_deliverable("ground_truth.yaml", output_dir=clean_output))
-        save_result = json.loads(save_deliverable("ground_truth.yaml", "tampered", output_dir=clean_output))
-
-        assert "error" in read_result
-        assert "error" in save_result
-        assert hidden.read_text() == "answer-key"
+        assert "error" in json.loads(read_result)
+        assert "secret-via-symlink" not in read_result
+        assert "error" in json.loads(save_result)
+        assert outside.read_text() == "secret-via-symlink"
 
     def test_list_omits_hidden_and_escaping_symlink(self, clean_output):
         (clean_output / "visible.md").write_text("ok")
@@ -180,16 +152,13 @@ class TestDeliverablePathConfinement:
 
 
 class TestListDeliverables:
-    def test_empty_dir(self, clean_output):
+    @pytest.mark.parametrize("filenames", [[], ["01_analysis.md", "02_recon.md"]],
+                             ids=["empty", "multiple-files"])
+    def test_lists_deliverables(self, clean_output, filenames):
+        for filename in filenames:
+            (clean_output / filename).write_text("content")
         result = json.loads(list_deliverables(output_dir=clean_output))
-        assert result["deliverables"] == []
-
-    def test_with_files(self, clean_output):
-        (clean_output / "01_analysis.md").write_text("a")
-        (clean_output / "02_recon.md").write_text("b")
-        result = json.loads(list_deliverables(output_dir=clean_output))
-        assert len(result["deliverables"]) == 2
-        assert "01_analysis.md" in result["deliverables"]
+        assert result["deliverables"] == filenames
 
 
 class TestAggregateDeviceResults:
@@ -198,14 +167,17 @@ class TestAggregateDeviceResults:
     def _write(self, path, content):
         path.write_text(content, encoding="utf-8")
 
-    def test_aggregates_valid_json(self, clean_output):
-        self._write(clean_output / "03_device_s2-web.json", json.dumps({
-            "device_id": "s2-web",
-            "vulnerabilities": [self.VULN],
+    @pytest.mark.parametrize("device,prefix,vulnerabilities", [
+        pytest.param("s2-web", "", [VULN], id="valid-json"),
+        pytest.param("s2-mqtt", "json\n", [VULN], id="code-fence-prefix"),
+        pytest.param("s2-db", "", [], id="empty-vulnerabilities"),
+    ])
+    def test_aggregates_device_json(self, clean_output, device, prefix, vulnerabilities):
+        self._write(clean_output / f"03_device_{device}.json", prefix + json.dumps({
+            "device_id": device, "vulnerabilities": vulnerabilities,
         }))
         result = json.loads(aggregate_device_results(output_dir=clean_output))
-        assert len(result["vulnerabilities"]) == 1
-        assert result["vulnerabilities"][0]["id"] == "VULN-001"
+        assert result["vulnerabilities"] == vulnerabilities
 
     def test_malformed_prose_yields_error_entry(self, clean_output):
         # Case: LLM output pure prose (s2-iot-gw / s2-jump pattern)
@@ -216,14 +188,6 @@ class TestAggregateDeviceResults:
         assert "error" in result["vulnerabilities"][0]
         assert "s2-jump" in result["vulnerabilities"][0]["error"]
 
-    def test_code_fence_prefix_parsed_by_aggregate(self, clean_output):
-        # aggregate_device_results must recover JSON even if file starts with "json\n{...}"
-        raw = 'json\n{"device_id": "s2-mqtt", "vulnerabilities": [' + json.dumps(self.VULN) + ']}'
-        self._write(clean_output / "03_device_s2-mqtt.json", raw)
-        result = json.loads(aggregate_device_results(output_dir=clean_output))
-        assert len(result["vulnerabilities"]) == 1
-        assert result["vulnerabilities"][0]["type"] == self.VULN["type"]
-
     def test_multiple_devices_merged(self, clean_output):
         for device in ("s2-web", "s2-db"):
             self._write(clean_output / f"03_device_{device}.json", json.dumps({
@@ -233,24 +197,14 @@ class TestAggregateDeviceResults:
         result = json.loads(aggregate_device_results(output_dir=clean_output))
         assert len(result["vulnerabilities"]) == 2
 
-    def test_empty_vulns_device_skipped_silently(self, clean_output):
-        self._write(clean_output / "03_device_s2-db.json", json.dumps({
-            "device_id": "s2-db",
-            "vulnerabilities": [],
-        }))
-        result = json.loads(aggregate_device_results(output_dir=clean_output))
-        assert result["vulnerabilities"] == []
-
 
 class TestToolDefinitions:
-    def test_all_tools_have_required_fields(self):
+    def test_expected_tools_have_required_fields(self):
+        names = {t["name"] for t in DELIVERABLE_TOOLS}
+        assert names == {"save_deliverable", "read_deliverable", "list_deliverables", "aggregate_device_results"}
         for tool in DELIVERABLE_TOOLS:
             assert "name" in tool
             assert "description" in tool
             assert "input_schema" in tool
             assert "function" in tool
             assert callable(tool["function"])
-
-    def test_tool_names(self):
-        names = {t["name"] for t in DELIVERABLE_TOOLS}
-        assert names == {"save_deliverable", "read_deliverable", "list_deliverables", "aggregate_device_results"}

@@ -8,17 +8,45 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import time
+import threading
 from uuid import uuid4
 
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.tools.deliverable import bind_deliverable_tool
+from src.agent.cost_tracker import BudgetExceeded
 
 
 class EvidenceWriteError(RuntimeError):
     """An executed action could not be archived reliably."""
 
 
-def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
+class RunStopped(KeyboardInterrupt):
+    """Cooperative cancellation crossing scanner and worker boundaries."""
+
+
+def check_execution_limits(run) -> None:
+    if getattr(run, "_evidence_integrity_failed", False):
+        raise EvidenceWriteError("Earlier tool evidence could not be archived")
+    stop = getattr(run, "_stop_event", None)
+    if stop is not None and stop.is_set() and getattr(run, "experiment_scope", None):
+        raise RunStopped("Run stopped")
+    if getattr(run, "_execution_limit_reason", None):
+        raise BudgetExceeded(run._execution_limit_reason)
+    limit = getattr(run, "max_duration_s", None)
+    started = getattr(run, "_run_started", None)
+    if limit is not None and started is not None and time.monotonic() - started >= limit:
+        run._execution_limit_reason = "Elapsed-time budget exhausted"
+        raise BudgetExceeded(run._execution_limit_reason)
+    tracker = getattr(run, "tracker", None)
+    if tracker is not None:
+        try:
+            tracker.check_budget()
+        except BudgetExceeded as exc:
+            run._execution_limit_reason = str(exc)
+            raise
+
+
+def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None) -> dict:
     tool = bind_deliverable_tool(tool, run.run_dir)
     original = tool["function"]
     if original is None:
@@ -26,12 +54,13 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
     name = tool["name"]
 
     def execute(**kwargs):
+        observation_local.last = None
+        check_execution_limits(run)
         tracker = getattr(run, "tracker", None)
-        if tracker is not None:
-            tracker.check_budget()
         with run._artifact_log_lock:
             if run.max_tool_calls is not None and run._tool_call_count >= run.max_tool_calls:
-                raise RuntimeError(f"Tool-call budget exhausted ({run.max_tool_calls} calls)")
+                run._execution_limit_reason = f"Tool-call budget exhausted ({run.max_tool_calls} calls)"
+                raise BudgetExceeded(run._execution_limit_reason)
             run._tool_call_count += 1
             sequence = run._tool_call_count
         started_at = datetime.now().astimezone().isoformat()
@@ -48,7 +77,20 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
                 "sequence": sequence, "tool": name, "args": kwargs,
                 "result": result, "phase": phase, "agent": agent,
                 "evidence_ref": evidence_ref, "execution_origin": "runner",
+                "decision_source": decision_source or getattr(run, "decision_policy", "llm"),
             }
+            if tracker is not None and hasattr(tracker, "record_execution"):
+                parsed = result
+                if isinstance(parsed, str):
+                    try:
+                        parsed = json.loads(parsed)
+                    except (ValueError, TypeError):
+                        pass
+                failed = isinstance(parsed, dict) and bool(
+                    parsed.get("error") or parsed.get("exception_type") or parsed.get("ok") is False
+                    or parsed.get("return_code", 0) not in (0, None)
+                )
+                tracker.record_execution(started, entry["duration_s"], error=failed)
             try:
                 with run._artifact_log_lock:
                     with (run.run_dir / "tool_calls.jsonl").open("a", encoding="utf-8") as handle:
@@ -56,12 +98,13 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
             except (OSError, TypeError, ValueError) as exc:
                 run._evidence_integrity_failed = True
                 raise EvidenceWriteError("Cannot archive tool evidence; run is not verifiable") from exc
+            observation_local.last = entry
 
         refusal = None
         stop = getattr(run, "_stop_event", None)
         if stop is not None and stop.is_set():
             refusal = {"ok": False, "error_kind": "run_stopped", "error": "Run stopped"}
-        elif getattr(run, "benchmark_split", "unassigned") not in (None, "unassigned") and (
+        elif (getattr(run, "benchmark_split", "unassigned") not in (None, "unassigned") or getattr(run, "experiment_scope", None)) and (
             name == "search_history" or name == "search_knowledge"
             and kwargs.get("collection", "cve_knowledge") != "skills"
         ):
@@ -89,4 +132,6 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None) -> dict:
         archive(result)
         return result
 
+    observation_local = threading.local()
+    execute.last_observation = lambda: getattr(observation_local, "last", None)
     return {**tool, "function": execute}

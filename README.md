@@ -9,6 +9,23 @@ per-vulnerability ground truth: S1–S19 for development and S20–S29 reserved 
 testing. Historical independence of the test set is not yet verified. See the
 [scenario guide](docs/benchmark/v1/scenarios.md).
 
+## Research objective
+
+Establish when, and at what cost, an LLM agent improves authorized IoT security
+audits compared with well-designed, rule-based automation. Evaluate detection
+supported by evidence, false positives, adaptation to independent scenario
+variations and execution reliability under comparable tools and resource budgets.
+Separate the contributions of observation interpretation, initial planning,
+adaptive decisions and report writing. Any claim of reduced human effort requires
+a dedicated measurement.
+
+This is a research objective, not a demonstrated advantage. The
+[proposed evaluation protocol](docs/benchmark/agent-vs-automation.md) defines the
+baselines, experiments and implementation work needed to assess it.
+The [D1/A1 CLI guide](docs/benchmark/agent-vs-automation-cli.md) documents the
+first implementation: analysis and verification from a shared public inventory,
+with a no-LLM policy and a separate paired comparator.
+
 ## Quick Start
 
 Use **Python 3.12**, the version validated by the test workflow.

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -80,7 +81,7 @@ class Pipeline(
 
     def __init__(
         self,
-        provider: runtime.LLMProvider,
+        provider: runtime.LLMProvider | None = None,
         dry_run: bool = False,
         phases: list[int] | None = None,
         scenario_id: int | str | None = None,
@@ -95,7 +96,34 @@ class Pipeline(
         manage_scenario: bool = True,
         execution_profile: str = "auto",
         output_dir: Path | None = None,  # Parent directory; each run gets its own child.
+        decision_policy: str = "llm",
+        experiment_scope: str | None = None,
+        audit_inventory: dict | None = None,
+        max_tool_calls: int | None = None,
+        max_duration_s: float | None = None,
     ):
+        from src.agent.audit_experiment import validate_configuration
+        self.audit_inventory = validate_configuration(
+            decision_policy=decision_policy, experiment_scope=experiment_scope,
+            inventory=audit_inventory, execution_profile=execution_profile,
+            phases=phases, max_tool_calls=max_tool_calls, max_duration_s=max_duration_s,
+            max_cost_usd=max_cost_usd,
+            incompatible=bool(scenario_id is not None or custom_config is not None or blind
+                              or execution_context is not None or phase_models or dry_run
+                              or benchmark_split is not None or target_network is not None),
+        )
+        if decision_policy == "llm" and provider is None:
+            raise ValueError("The llm policy requires a provider")
+        if decision_policy == "rules" and provider is not None:
+            raise ValueError("The rules policy must not receive a provider")
+        self.decision_policy = decision_policy
+        self.experiment_scope = experiment_scope
+        self.max_duration_s = max_duration_s
+        if self.audit_inventory is not None:
+            target_network = self.audit_inventory["target_network"]
+            manage_scenario = False
+            auto_teardown = False
+            phases = [3, 4]
         self.provider = provider
         self.execution_profile_resolution = runtime.resolve_execution_profile_for_model(
             execution_profile, getattr(provider, "model", None)
@@ -107,7 +135,7 @@ class Pipeline(
         self.requested_phases = (
             None if phases is None else sorted({int(phase) for phase in phases})
         )
-        self.phases = runtime._expand_phase_selection(self.requested_phases)
+        self.phases = [3, 4] if experiment_scope else runtime._expand_phase_selection(self.requested_phases)
         self.scenario_id = scenario_id
         self.execution_context = execution_context
         self.benchmark_split = benchmark_split or getattr(execution_context, "split", None)
@@ -124,7 +152,7 @@ class Pipeline(
         # Benchmark runs must not change the CVE knowledge source on a cache
         # miss. Development runs without a benchmark split keep live lookup.
         self.cve_lookup_policy = (
-            "cache_only" if self.benchmark_split != "unassigned" else "live_on_miss"
+            "cache_only" if self.benchmark_split != "unassigned" or experiment_scope else "live_on_miss"
         )
         runtime.set_cve_cache_only(self.cve_lookup_policy == "cache_only")
         self.manage_scenario = bool(manage_scenario)
@@ -139,7 +167,7 @@ class Pipeline(
         self.scenario_lab_config: dict = {}
         self.blind = blind
         self.target_network = target_network
-        self.max_tool_calls: int | None = None
+        self.max_tool_calls = max_tool_calls
         self._tool_call_count = 0
         self._artifact_log_lock = threading.Lock()
         _, self.runtime_unavailable_tools = runtime.filter_unavailable_tools(
@@ -180,8 +208,9 @@ class Pipeline(
             # Default benchmark subnet — covers S1-S12. S13 (multi-VLAN) will land
             # on the same /24 via the OpenWrt router's WAN, then must pivot.
             self.target_network = runtime.BENCHMARK_SUBNET
-        self.tracker = runtime.CostTracker(model=provider.model, provider=provider.provider,
+        self.tracker = runtime.CostTracker(model=getattr(provider, "model", ""), provider=getattr(provider, "provider", ""),
                                           max_cost_usd=self.max_cost_usd)
+        self.tracker.execution_metrics = True
         self.context: dict = {}
         # Set by run(); shared with phase workers so a dashboard stop request
         # can cancel queued work instead of waiting for the whole phase.
@@ -207,6 +236,8 @@ class Pipeline(
     ) -> dict[str, str]:
         """Own the run lifecycle; keep legacy results and events compatible."""
         self._termination = None
+        self._run_started = time.monotonic()
+        self.tracker.start_run()
         self._scenario_owned = False
         self._active_phase = None
         self._run_results: dict[str, str] = {}
@@ -448,6 +479,13 @@ class Pipeline(
         if self.target_network is not None:
             from src.agent.tools.graph_tools import load_discovery_context
             lab = load_discovery_context(self.target_network)
+            if self.audit_inventory is not None:
+                from src.agent.tools.graph_tools import update_discovery_hosts
+                update_discovery_hosts(self.audit_inventory["devices"])
+                lab["device_count"] = len(self.audit_inventory["devices"])
+                (self.run_dir / "audit_inventory.json").write_text(
+                    json.dumps(self.audit_inventory, indent=2), encoding="utf-8"
+                )
             target_subnet = self.target_network
         elif self.scenario_id is not None:
             from src.agent.tools.graph_tools import load_scenario_topology
@@ -513,6 +551,8 @@ class Pipeline(
             "blind": bool(self.blind),
             "max_cost_usd": self.max_cost_usd,
             "max_tool_calls": self.max_tool_calls,
+            "max_duration_s": self.max_duration_s,
+            "execution_ledger_version": 2,
             "phase_models": self._archived_phase_models(self.phase_models),
             "git_commit": self.git_commit,
             "benchmark_split": self.benchmark_split,
@@ -524,7 +564,7 @@ class Pipeline(
             ),
             "runtime_unavailable_tools": self.runtime_unavailable_tools,
             "oracle_access": False,
-            "episodic_memory_enabled": self.benchmark_split == "unassigned",
+            "episodic_memory_enabled": self.benchmark_split == "unassigned" and not self.experiment_scope,
             "requested_phases": (
                 self.requested_phases
                 if self.requested_phases is not None else [1, 2, 3, 4, 5, 6]
@@ -536,6 +576,20 @@ class Pipeline(
             "execution_profile_config": self.execution_profile.metadata(),
             **runtime.metric_contract_metadata(),
         }
+        if self.experiment_scope:
+            from src.agent.audit_experiment import digest, resource_manifest, analysis_limits, POLICY_SCHEMA_VERSION
+            self.experiment_analysis_limits = analysis_limits()
+            run_meta.update({
+                "policy_schema_version": POLICY_SCHEMA_VERSION,
+                "decision_policy": self.decision_policy,
+                "experiment_scope": self.experiment_scope,
+                "rules_version": "shared-scanner-plans-v1",
+                "resource_manifest_sha256": resource_manifest(),
+                "inventory_sha256": digest(self.audit_inventory),
+                "experiment": self.audit_inventory["experiment"],
+                "workers": 1,
+                "analysis_limits": self.experiment_analysis_limits,
+            })
         contract_hash = getattr(self.execution_context, "contract_hash", None)
         if not contract_hash and self.execution_context is not None:
             try:
@@ -692,6 +746,9 @@ class Pipeline(
             status = run_phase(self, agent_config, stream_callback)
 
             results[agent_config.name] = status
+            if self.max_duration_s is not None:
+                from src.agent.core.executor import check_execution_limits
+                check_execution_limits(self)
 
             if agent_config.phase == 1:
                 self._build_graph_evidence_projection()
@@ -749,7 +806,7 @@ class Pipeline(
 
         # All benchmark runs are independent trials, including public dev/test.
         # Never feed their findings into the persistent episodic memory.
-        if self.benchmark_split == "unassigned":
+        if self.benchmark_split == "unassigned" and not self.experiment_scope:
             try:
                 from src.agent.knowledge.ingest import ingest_run_findings
                 ingested = ingest_run_findings(self.run_dir, self.provider.model)
@@ -778,6 +835,10 @@ class Pipeline(
     ) -> bool:
         """Require an actual artifact, even when the producer was skipped."""
         for prereq_name in config.prerequisites:
+            if self.experiment_scope and config.phase == 3 and prereq_name == "recon":
+                if self.audit_inventory is None:
+                    return False
+                continue
             status = results.get(prereq_name)
             if not runtime.prerequisite_status_allows_artifact(status):
                 return False
@@ -803,6 +864,8 @@ class Pipeline(
             data = json.loads(path.read_text(encoding="utf-8"))
             # 03_vuln_analysis.json style
             if "vulnerabilities" in data:
+                if self.experiment_scope and config.phase == 4:
+                    return isinstance(data["vulnerabilities"], list)
                 return len(data["vulnerabilities"]) > 0
             # 04_exploitation.json style. Phase 5 is a reconciliation stage:
             # it must run after an executed Phase 4 even when every fresh probe

@@ -24,3 +24,16 @@ La CI exécute explicitement les deux dossiers. Les commandes qui précisent
 seulement `tests/` ne lancent pas les tests d’entraînement. Certaines dépendances
 optionnelles peuvent provoquer des tests ignorés : lire le résumé avant de
 conclure à une validation complète.
+
+Pour limiter les répétitions, regrouper avec `pytest.mark.parametrize` les cas
+qui partagent la même préparation et les mêmes assertions, en donnant un nom
+explicite à chaque cas. Garder des tests séparés pour les comportements distincts,
+et vérifier les résultats observables plutôt que reproduire l'implémentation.
+Une fonction paramétrée exécute plusieurs cas indépendants : réduire le nombre
+de fonctions ne signifie donc pas réduire le nombre de cas vérifiés.
+
+`test_audit_policy.py` couvre la comparaison D1/A1 sur inventaire public avec
+les vrais composants de pipeline et des outils/fournisseurs simulés : preuves,
+budgets, contrôles sains, erreurs et refus des paires incompatibles. Ces tests
+ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
+[guide de comparaison](../docs/benchmark/agent-vs-automation-cli.md).

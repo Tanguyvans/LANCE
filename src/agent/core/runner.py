@@ -250,6 +250,9 @@ class AgentRunner:
 
     def _run_agent(self, config: runtime.AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
+        if getattr(self, "decision_policy", "llm") == "rules":
+            from src.agent.phases.rules import run_phase
+            return run_phase(self, config, stream_callback)
         if config.name == "intrusion":
             self._compact_intrusion_runtime_tools = None
             self._phase5_pending_event = None
@@ -435,7 +438,7 @@ class AgentRunner:
             self._run_exploit_agents(config, stream_callback)
             # Check for newly discovered hosts and run a mini analysis cycle if found
             new_hosts = self._collect_new_hosts()
-            if new_hosts and not self.dry_run:
+            if new_hosts and not self.dry_run and not getattr(self, "experiment_scope", None):
                 self._run_discovery_followup(new_hosts, config, stream_callback)
             # Deterministic aggregation already wrote 04_exploitation.json
             validator_fn = self._validator(config.validator)
@@ -725,9 +728,9 @@ class AgentRunner:
         allowed.update(runtime.INTERNAL_TOOLS)
         return [tool for tool in tools if tool.get("name") in allowed]
 
-    def _wrap_tool(self, tool: dict, *, phase=None, agent=None) -> dict:
+    def _wrap_tool(self, tool: dict, *, phase=None, agent=None, decision_source=None) -> dict:
         from src.agent.core.executor import wrap_tool
-        return wrap_tool(self, tool, phase=phase, agent=agent)
+        return wrap_tool(self, tool, phase=phase, agent=agent, decision_source=decision_source)
 
     def _filter_skills(self, config: runtime.AgentConfig) -> str:
         """Filter skills by tag intersection with config.skill_filter.

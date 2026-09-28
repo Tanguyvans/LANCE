@@ -1200,6 +1200,8 @@ class LLMProvider:
 
     @staticmethod
     def _execute_tool(name: str, args: dict, tool_map: dict) -> str:
+        from src.agent.cost_tracker import BudgetExceeded
+        from src.agent.core.executor import EvidenceWriteError
         if name not in tool_map:
             return json.dumps({
                 "ok": False,
@@ -1211,5 +1213,7 @@ class LLMProvider:
         try:
             result = tool_map[name](**args)
             return result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+        except (BudgetExceeded, EvidenceWriteError):
+            raise
         except Exception as e:
             return f"Error executing {name}: {e}"

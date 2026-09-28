@@ -23,7 +23,8 @@ class TestAgentConfig:
 
 
 class TestAgentsRegistry:
-    def test_all_agents_have_required_fields(self):
+    def test_agent_definitions_reference_available_resources(self):
+        valid_groups = {"graph", "recon", "deliverable", "skill", "intrusion"}
         for name, config in AGENTS.items():
             assert config.name == name
             assert isinstance(config.phase, int)
@@ -34,62 +35,37 @@ class TestAgentsRegistry:
                 assert config.tools == []
             else:
                 assert len(config.tools) > 0
-
-    def test_unique_phases(self):
-        phases = [a.phase for a in AGENTS.values()]
-        assert len(phases) == len(set(phases)), "Duplicate phase numbers"
-
-    def test_unique_deliverables(self):
-        deliverables = [a.deliverable_file for a in AGENTS.values()]
-        assert len(deliverables) == len(set(deliverables)), "Duplicate deliverable files"
-
-    def test_six_agents(self):
-        assert len(AGENTS) == 6
-
-    def test_expected_agent_names(self):
-        expected = {"graph_analysis", "recon", "vuln_analysis", "exploitation", "intrusion", "report"}
-        assert set(AGENTS.keys()) == expected
-
-    def test_phases_sequential(self):
-        phases = sorted(a.phase for a in AGENTS.values())
-        assert phases == [1, 2, 3, 4, 5, 6]
-
-    def test_validators_exist(self):
-        for config in AGENTS.values():
             assert config.validator in VALIDATORS, (
                 f"Agent {config.name} uses unknown validator '{config.validator}'"
             )
-
-    def test_tool_groups_valid(self):
-        valid_groups = {"graph", "recon", "deliverable", "skill", "intrusion"}
-        for config in AGENTS.values():
             for tool in config.tools:
                 assert tool in valid_groups, (
                     f"Agent {config.name} uses unknown tool group '{tool}'"
                 )
 
-    def test_prerequisites_reference_existing_agents(self):
-        for config in AGENTS.values():
             for prereq in config.prerequisites:
                 assert prereq in AGENTS, (
                     f"Agent {config.name} has unknown prerequisite '{prereq}'"
                 )
 
-    def test_exploitation_has_conditional(self):
-        assert AGENTS["exploitation"].conditional == "03_vuln_analysis.json"
+    def test_registry_has_six_distinct_ordered_phases_and_outputs(self):
+        assert set(AGENTS) == {
+            "graph_analysis", "recon", "vuln_analysis", "exploitation", "intrusion", "report",
+        }
+        assert sorted(config.phase for config in AGENTS.values()) == [1, 2, 3, 4, 5, 6]
+        outputs = [config.deliverable_file for config in AGENTS.values()]
+        assert len(outputs) == len(set(outputs)), "Duplicate deliverable files"
 
-    def test_intrusion_has_conditional(self):
-        assert AGENTS["intrusion"].conditional == "04_exploitation.json"
-
-    def test_intrusion_requires_structured_submission(self):
-        assert AGENTS["intrusion"].validator == "json_intrusion"
-
-    def test_report_prerequisites(self):
-        assert AGENTS["report"].prerequisites == ["exploitation"]
-
-    def test_intrusion_prerequisites(self):
-        assert AGENTS["intrusion"].prerequisites == ["exploitation"]
-
-    def test_report_is_phase_6(self):
-        assert AGENTS["report"].phase == 6
-        assert AGENTS["report"].deliverable_file == "06_report.md"
+    @pytest.mark.parametrize("name,expected", [
+        pytest.param("exploitation", {"conditional": "03_vuln_analysis.json"}, id="verification-input"),
+        pytest.param("intrusion", {
+            "conditional": "04_exploitation.json", "validator": "json_intrusion",
+            "prerequisites": ["exploitation"],
+        }, id="intrusion-input-and-submission"),
+        pytest.param("report", {
+            "prerequisites": ["exploitation"], "phase": 6, "deliverable_file": "06_report.md",
+        }, id="report-input-and-output"),
+    ])
+    def test_downstream_phase_contract(self, name, expected):
+        config = AGENTS[name]
+        assert {field: getattr(config, field) for field in expected} == expected
