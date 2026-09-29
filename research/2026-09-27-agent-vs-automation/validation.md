@@ -91,8 +91,8 @@ fichier graphique ou bibliographique externe :
 | Étude | Source et PDF | Pages exportées |
 | --- | --- | --- |
 | Synthèse et apport LLM | [LaTeX](report.tex) · [PDF](report.pdf) | 9 |
-| Couverture et évaluation | [LaTeX](../benchmark-coverage/report.tex) · [PDF](../benchmark-coverage/report.pdf) | 10 |
-| Contexte du pipeline | [LaTeX](../context-scalability/report.tex) · [PDF](../context-scalability/report.pdf) | 10 |
+| Couverture et évaluation | [LaTeX](../2026-09-29-benchmark-coverage/report.tex) · [PDF](../2026-09-29-benchmark-coverage/report.pdf) | 10 |
+| Contexte du pipeline | [LaTeX](../2026-09-29-context-scalability/report.tex) · [PDF](../2026-09-29-context-scalability/report.pdf) | 10 |
 
 Les trois sources finales ont compilé avec succès dans l'éditeur LaTeX intégré
 de Codex. Ce compilateur ne fournit pas un export sur disque via son outil de
@@ -100,11 +100,12 @@ diagnostic ; les PDF conservés ont donc été générés avec l'installation Te
 existante : latexmk 4.88, pdfTeX 3.141592653-2.6-1.40.29, TeX Live 2026.
 Aucun package ni environnement LaTeX n'a été installé.
 
-Commande d'export, depuis la racine, en remplaçant `<sujet>` par le dossier :
+Commande d'export, depuis la racine, en remplaçant `<dossier-date>` par le nom
+complet du dossier de l'étude (par exemple `2026-09-27-agent-vs-automation`) :
 
 ```bash
 latexmk -pdf -interaction=nonstopmode -halt-on-error \
-  -outdir=/private/tmp/lance-research-pdf/<sujet> research/<sujet>/report.tex
+  -outdir=/private/tmp/lance-research-pdf/<dossier-date> research/<dossier-date>/report.tex
 ```
 
 Les PDF ont été rendus en PNG avec Poppler et inspectés visuellement : titre,
@@ -130,3 +131,25 @@ et images de contrôle restent temporaires, hors du dépôt.
 Cette livraison modifie la présentation et la navigation, pas les résultats
 expérimentaux ni le runtime. Les 381 tests ci-dessus ne sont pas présentés comme
 une validation scientifique des propositions ou de la mise en page.
+
+## Classement par date et étude
+
+Réorganisation du 29 septembre 2026 depuis la publication `a356d96` : les quatre
+dossiers suivent désormais `AAAA-MM-JJ-nom-etude`. La première date documentée de
+l'étude agent / automatisation est le 27 septembre ; les nouvelles études de
+couverture et de contexte commencent le 29 septembre. Pour IoMT, la date de
+classement est utilisée explicitement car le début reste inconnu. Les règles
+sont conservées dans l'index de recherche, avec un rappel dans `AGENTS.md`.
+
+Les liens des index, guides, notes et sources LaTeX ont été actualisés. Les trois
+sources ont de nouveau compilé dans l'éditeur intégré et les PDF ont été exportés
+avec l'installation TeX existante. Les 424 liens Markdown locaux contrôlés sont
+valides, sans ancienne référence aux dossiers déplacés. Les liens locaux des PDF
+et leurs 72 destinations de sommaire sont valides ; la pagination reste 9/10/10.
+
+Le rendu des 29 pages a été comparé à la publication précédente : seuls la page 8
+du rapport principal et les pages 6 et 7 du rapport contexte changent visuellement,
+en raison des chemins plus longs. Ces pages et les vues d'ensemble ont été
+inspectées, sans débordement ni glyphe manquant. Les six figures sont conservées.
+Aucun code d'exécution n'a changé ; les tests applicatifs n'ont pas été relancés
+pour ce classement documentaire.

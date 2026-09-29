@@ -16,8 +16,8 @@ Cette page sert à la navigation et ne maintient pas une seconde copie du rappor
 
 | Question | Rapport de lecture | Preuves et détails |
 | --- | --- | --- |
-| Que couvrent le corpus et les mesures ? | [PDF benchmark](../benchmark-coverage/report.pdf) · [LaTeX](../benchmark-coverage/report.tex) | [Analyse](../benchmark-coverage/analysis.md) |
-| Où les informations peuvent-elles disparaître ? | [PDF contexte](../context-scalability/report.pdf) · [LaTeX](../context-scalability/report.tex) | [Analyse](../context-scalability/analysis.md) |
+| Que couvrent le corpus et les mesures ? | [PDF benchmark](../2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](../2026-09-29-benchmark-coverage/report.tex) | [Analyse](../2026-09-29-benchmark-coverage/analysis.md) |
+| Où les informations peuvent-elles disparaître ? | [PDF contexte](../2026-09-29-context-scalability/report.pdf) · [LaTeX](../2026-09-29-context-scalability/report.tex) | [Analyse](../2026-09-29-context-scalability/analysis.md) |
 | Comment attribuer un bénéfice aux décisions LLM ? | [PDF principal](report.pdf) · [LaTeX](report.tex) | [Analyse](analysis.md), [protocole détaillé](protocol.md), [état de l'art](state-of-the-art.md) |
 
 Le [journal de validation](validation.md) conserve commandes, environnement,

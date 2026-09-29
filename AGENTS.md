@@ -24,9 +24,12 @@ l'entraînement des modèles constitue un volet distinct du projet.
 
 - Avant de créer un document, consulter les index de `research/` et `docs/` et
   compléter le sujet existant lorsqu'il couvre déjà la question.
-- Placer le travail exploratoire dans `research/<sujet>/`, avec un nom stable en
-  minuscules et tirets. Chaque dossier possède un `README.md` indiquant la question,
-  le statut, les dates, la synthèse, les documents et les points encore ouverts.
+- Placer le travail exploratoire dans `research/AAAA-MM-JJ-<sujet>/`, avec la date
+  de début de l'étude et un nom stable en minuscules et tirets. Si le début d'une
+  étude historique est inconnu, utiliser sa date de classement et le préciser.
+  Conserver ce dossier et sa date lors des révisions. Chaque dossier possède un
+  `README.md` indiquant la question, le statut, les dates, la synthèse, les
+  documents et les points encore ouverts.
   Suivre les [conventions de recherche](research/README.md).
 - Pour toute nouvelle étude ou révision de fond, fournir une source LaTeX éditable
   et son PDF compilé, avec des figures modifiables et un rendu vérifié. Adopter une

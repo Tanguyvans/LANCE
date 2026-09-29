@@ -6,22 +6,22 @@ présente les comportements implémentés, les contrats retenus et les procédur
 
 ## Sujets
 
-| Dossier | Question | Statut |
-| --- | --- | --- |
-| [Agent / automatisation](agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | Protocole proposé ; outils D1/A1 documentés ; résultats expérimentaux à établir |
-| [Couverture du benchmark](benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic et contre-exemples locaux reproduits ; corrections proposées |
-| [Scalabilité du contexte](context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
-| [Spécialisation IoMT](iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE |
+| Date du dossier | Étude | Question | Statut |
+| --- | --- | --- | --- |
+| 2026-09-27 | [Agent / automatisation](2026-09-27-agent-vs-automation/README.md) | Quel apport mesurable du LLM face à une automatisation à règles ? | Protocole proposé ; outils D1/A1 documentés ; résultats expérimentaux à établir |
+| 2026-09-29 | [Couverture du benchmark](2026-09-29-benchmark-coverage/README.md) | Que couvrent le corpus, les exécutions et les preuves admises ? | Diagnostic et contre-exemples locaux reproduits ; corrections proposées |
+| 2026-09-29 | [Scalabilité du contexte](2026-09-29-context-scalability/README.md) | Comment conserver les preuves utiles dans le contexte des six phases ? | Nouvelle revue du pipeline ; plan historique du rapport conservé comme archive |
+| 2026-09-29 (classement) | [Spécialisation IoMT](2026-09-29-iomt/README.md) | Comment adapter et évaluer LANCE sur des réseaux médicaux simulés ? | Proposition de sujet de TFE ; début inconnu |
 
 ## Lire les rapports
 
-Commencer par le [rapport principal en PDF](agent-vs-automation/report.pdf)
-([source LaTeX](agent-vs-automation/report.tex)) : il relie couverture du
+Commencer par le [rapport principal en PDF](2026-09-27-agent-vs-automation/report.pdf)
+([source LaTeX](2026-09-27-agent-vs-automation/report.tex)) : il relie couverture du
 benchmark, contexte et apport LLM, puis propose les comparaisons à réaliser.
 Les deux rapports spécialisés développent les constats et les protocoles :
 
-- [Couverture et validité de l'évaluation — PDF](benchmark-coverage/report.pdf) · [LaTeX](benchmark-coverage/report.tex).
-- [Conservation des preuves et contexte — PDF](context-scalability/report.pdf) · [LaTeX](context-scalability/report.tex).
+- [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
+- [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
 Version du 29 septembre 2026, avec titre centré, résumé, table des matières,
 sections numérotées et figures vectorielles modifiables dans les sources.
@@ -30,15 +30,28 @@ proposées ; ils ne rapportent pas de performance terrain ni de gain LLM démont
 
 ## Ouvrir ou poursuivre une recherche
 
-Réutiliser le dossier du sujet lorsqu'il existe. Pour un nouveau sujet, choisir
-un nom descriptif en minuscules et tirets, indépendant du modèle ou de l'outil
-ayant aidé à la recherche. Créer d'abord un `README.md` ; séparer les documents
-seulement lorsqu'ils ont assez de contenu pour le justifier.
+Réutiliser le dossier de l'étude lorsqu'il couvre déjà la question. Pour une
+nouvelle étude, créer `research/AAAA-MM-JJ-nom-etude/` : la date au format ISO
+correspond au début de l'étude, suivie d'un nom descriptif en minuscules et tirets,
+indépendant du modèle ou de l'outil ayant aidé à la recherche. Cette date et ce
+dossier restent fixes lors des révisions ; Git conserve l'historique et le README
+indique la dernière mise à jour. Une étude distincte reçoit son propre dossier,
+avec un lien vers les travaux antérieurs pertinents.
+
+Pour une étude historique dont le début n'est pas connu, utiliser la date de
+classement et signaler cette convention dans l'index et le README ; ne pas
+inventer une date de recherche. Le dossier agent / automatisation reprend ainsi
+la première date documentée, le 27 septembre 2026 ; la nouvelle revue du contexte
+commence le 29 septembre, tandis que le dossier IoMT utilise sa date de classement.
+
+Créer d'abord un `README.md` ; séparer les documents seulement lorsqu'ils ont
+assez de contenu pour le justifier. Les conventions générales restent dans cet
+index, et chaque dossier contient les documents propres à son étude.
 
 Structure possible, à adapter au sujet :
 
 ```text
-research/<sujet>/
+research/AAAA-MM-JJ-nom-etude/
   README.md                 question, statut, synthèse et navigation
   report.tex                source éditable du document de recherche
   report.pdf                version de lecture compilée depuis cette source

@@ -2,6 +2,8 @@
 
 **Statut : proposition de sujet de TFE.** Date initiale non renseignée dans la
 proposition ; dossier organisé le 29 septembre 2026.
+Le préfixe `2026-09-29` est donc la date de classement, pas une date de début
+de recherche établie ; il reste fixe lors des révisions.
 
 ## Question et synthèse
 

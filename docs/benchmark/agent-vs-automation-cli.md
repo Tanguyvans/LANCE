@@ -7,8 +7,8 @@ l'exécuteur, les agrégateurs et les validateurs de preuve existants. Le mode
 Les résultats restent à mesurer sur un laboratoire ; les tests locaux utilisent
 des outils simulés et ne démontrent aucun avantage de l'IA.
 
-Voir le [protocole scientifique](../../research/agent-vs-automation/protocol.md) et le
-[suivi d'implémentation](../../research/agent-vs-automation/implementation-plan.md).
+Voir le [protocole scientifique](../../research/2026-09-27-agent-vs-automation/protocol.md) et le
+[suivi d'implémentation](../../research/2026-09-27-agent-vs-automation/implementation-plan.md).
 
 ## Entrée publique commune
 

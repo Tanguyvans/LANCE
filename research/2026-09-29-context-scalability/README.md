@@ -22,7 +22,7 @@ déterministe. Ce fonctionnement constitue le point de départ de l'étude.
 - **[Source LaTeX éditable](report.tex)** : schémas TikZ de l'état actuel et de la proposition, avec bibliographie intégrée.
 - [Analyse actuelle et sources](analysis.md) : faits du code, hypothèses, architecture proposée et ablations.
 - [Reproductions locales](../../benchmarks/experiments/research-review/README.md).
-- [Synthèse transversale](../agent-vs-automation/research-review.md) et [validation](../agent-vs-automation/validation.md).
+- [Synthèse transversale](../2026-09-27-agent-vs-automation/research-review.md) et [validation](../2026-09-27-agent-vs-automation/validation.md).
 
 Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
 résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.

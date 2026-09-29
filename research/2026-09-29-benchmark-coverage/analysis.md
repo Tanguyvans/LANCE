@@ -8,7 +8,7 @@ Le premier besoin est de fiabiliser ce que le benchmark mesure avant d'ajouter d
 
 Les règles d'attribution et les tests existants sont substantiels : appariement un-à-un, preuves relues, contrats versionnés, absence différente de zéro, séparation des splits et macro-moyennes. Il ne faut pas présenter ces acquis comme absents. Leur présence ne constitue toutefois pas une validation indépendante de l'oracle ou de toutes les propriétés déployées.
 
-Cette étude complète le [protocole agent / automatisation](../agent-vs-automation/protocol.md). La [synthèse transversale](../agent-vs-automation/research-review.md) relie les priorités des trois sujets.
+Cette étude complète le [protocole agent / automatisation](../2026-09-27-agent-vs-automation/protocol.md). La [synthèse transversale](../2026-09-27-agent-vs-automation/research-review.md) relie les priorités des trois sujets.
 
 ## Méthode et reproductibilité
 
@@ -124,7 +124,7 @@ La projection [src/agent/phases/intrusion/observations.py:37–38](../../src/age
 
 **H2 (oracle)** : une part des confirmations vient de critères textuels trop larges. Calibration indépendante et adjudication des preuves en aveugle au système ; mêmes règles pour GPT et politique déterministe. Réfutation : les faux positifs du validateur sont négligeables au seuil prédéfini et n'altèrent pas les écarts comparatifs.
 
-**H3 (apport LLM)** : avantage éventuel sur combinaison d'indices/dépendances et adaptation, pas automatiquement sur reconnaissance/configurations répétées. Comparer dans `research/agent-vs-automation` les politiques à outils et inventaire identiques, puis des interventions d'adaptation. Mesurer delta F1 prouvé, coût total incluant échecs, fiabilité et macro-résultats par famille. Une différence issue d'outils ou d'oracles inégaux n'est pas un apport du LLM. Si avantage nul, résultat négatif recevable ; comparer hybride règles + LLM uniquement aux décisions ambiguës, sans concevoir a posteriori un test garantissant sa victoire.
+**H3 (apport LLM)** : avantage éventuel sur combinaison d'indices/dépendances et adaptation, pas automatiquement sur reconnaissance/configurations répétées. Comparer dans `research/2026-09-27-agent-vs-automation` les politiques à outils et inventaire identiques, puis des interventions d'adaptation. Mesurer delta F1 prouvé, coût total incluant échecs, fiabilité et macro-résultats par famille. Une différence issue d'outils ou d'oracles inégaux n'est pas un apport du LLM. Si avantage nul, résultat négatif recevable ; comparer hybride règles + LLM uniquement aux décisions ambiguës, sans concevoir a posteriori un test garantissant sa victoire.
 
 **H4 (généralisation)** : avantage sur corpus répété peut disparaître sur variantes indépendantes. Les intervalles doivent regrouper les répétitions par scénario/famille ; les 288 GT ne sont pas 288 observations indépendantes. Choisir répétitions et taille après pilote de variance, pas attribuer une puissance confirmatoire à 3 répétitions par convention. Préenregistrer métriques principales, échecs, exclusions et seuil minimum utile ; conserver les tests de laboratoire explicitement autorisés séparés des analyses statiques.
 
@@ -143,5 +143,5 @@ Limites bibliographiques : revue ciblée, pas état de l'art exhaustif ni compar
 - `python3 benchmarks/tools/compose_gt.py --validate` avec `PYTHONDONTWRITEBYTECODE=1` : **31 GT validées**, incluant S1h/S4h ; 13 `LEGACY-DIFF` descriptifs S1–S13, 18 correspondances strictes. Cela ne vérifie pas la réalité du laboratoire. Ne pas annoncer validation strict-all.
 - Inventaire YAML/sidecar et collision S18 : exécutés localement ; SHA sidecar des 29 GT vérifiés. Reproduction consolidée dans `/private/tmp/lance-reviewed-inventory.json` ; les totaux ci-dessus sont conservés dans cette étude, et le script permet de les régénérer.
 - Trois probes synthétiques : exécutés sous Python 3.12 avec résultats décrits ci-dessus. Reproduction consolidée dans `/private/tmp/lance-reviewed-evaluation.txt` ; les verdicts sont transcrits ci-dessus. Pas de modification de tests existants.
-- Tests logiciels ciblés : voir le [journal de validation consolidé](../agent-vs-automation/validation.md), qui distingue les incidents d’environnement des résultats finaux.
+- Tests logiciels ciblés : voir le [journal de validation consolidé](../2026-09-27-agent-vs-automation/validation.md), qui distingue les incidents d’environnement des résultats finaux.
 - Les chemins d'artefacts historiques ont été inventoriés, pas leurs scores consolidés ; ni taux de couverture atteint ni supériorité GPT/D1/A1 affirmés sur cette base. Les évaluations anciennes ne doivent pas être mélangées avec le contrat courant.

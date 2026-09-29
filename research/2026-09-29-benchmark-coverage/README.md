@@ -27,8 +27,8 @@ les tentatives et les contrôles doivent rester des dimensions distinctes.
 - **[Source LaTeX éditable](report.tex)** : figures TikZ, tableaux et bibliographie intégrés.
 - [Analyse et sources primaires](analysis.md) : inventaire, défauts, limites et priorités.
 - [Scripts locaux de reproduction](../../benchmarks/experiments/research-review/README.md).
-- [Validation effectuée](../agent-vs-automation/validation.md).
-- [Synthèse des trois recherches](../agent-vs-automation/research-review.md).
+- [Validation effectuée](../2026-09-27-agent-vs-automation/validation.md).
+- [Synthèse des trois recherches](../2026-09-27-agent-vs-automation/research-review.md).
 
 Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
 résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.

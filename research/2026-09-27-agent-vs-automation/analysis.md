@@ -4,7 +4,7 @@
 
 Recherche exploratoire, lecture du dépôt et de sources primaires. Aucune expérience de laboratoire, aucun déploiement, aucune connexion SSH et aucun test de performance LLM réalisés pour cette étude. Aucun résultat présenté ci-dessous ne démontre une supériorité de LANCE. Les changements livrés portent sur la recherche et ses reproductions locales.
 
-État lu : commit `45c8dab892ecb4e5f513813387090e0cded1b85d`, avec modifications locales notamment de classement documentaire et `research/` non suivi. Le commit seul ne décrit donc pas tous les documents consultés. Lecture d'AGENTS.md, des index [research/README.md](../../research/README.md) et [docs/README.md](../../docs/README.md), des quatre documents `research/agent-vs-automation/`, des guides D1/A1, du manifeste pilote et du code cité. Les comptes de tests anciens présents dans le plan n'ont pas été reproduits.
+État lu : commit `45c8dab892ecb4e5f513813387090e0cded1b85d`, avec modifications locales notamment de classement documentaire et `research/` non suivi. Le commit seul ne décrit donc pas tous les documents consultés. Lecture d'AGENTS.md, des index [research/README.md](../../research/README.md) et [docs/README.md](../../docs/README.md), des quatre documents `research/2026-09-27-agent-vs-automation/`, des guides D1/A1, du manifeste pilote et du code cité. Les comptes de tests anciens présents dans le plan n'ont pas été reproduits.
 
 Cette revue complète le [protocole existant](protocol.md), sans le remplacer. La [synthèse transversale](research-review.md) relie les priorités benchmark, contexte et comparaison.
 
@@ -14,7 +14,7 @@ LANCE possède déjà un protocole de comparaison bien plus rigoureux qu'une sim
 
 La question principale devrait rester : **dans quels cas l'ajout du modèle au socle déterministe donne-t-il un meilleur audit, à quelles conditions et à quel coût ?** « Montrer l'intérêt » signifie ici rechercher un effet falsifiable, y compris absent ou négatif. Une absence de gain dans le périmètre courant ne démontre ni que tous les LLM sont inutiles, ni qu'un gain de rédaction remplace le gain technique manquant.
 
-Les quatre mécanismes à séparer sont l'interprétation d'observations, la planification initiale, la révision à partir des retours et la restitution. Ils correspondent déjà aux hypothèses H1–H6 ([research/agent-vs-automation/protocol.md:82](../../research/agent-vs-automation/protocol.md)). Il faut maintenant relier chaque affirmation à une expérience réalisable, un seuil fixé avant test et une décision de produit.
+Les quatre mécanismes à séparer sont l'interprétation d'observations, la planification initiale, la révision à partir des retours et la restitution. Ils correspondent déjà aux hypothèses H1–H6 ([research/2026-09-27-agent-vs-automation/protocol.md:82](../../research/2026-09-27-agent-vs-automation/protocol.md)). Il faut maintenant relier chaque affirmation à une expérience réalisable, un seuil fixé avant test et une décision de produit.
 
 ## Faits vérifiés dans le dépôt
 

@@ -20,7 +20,7 @@ adaptive decisions and report writing. Any claim of reduced human effort require
 a dedicated measurement.
 
 This is a research objective, not a demonstrated advantage. The
-[proposed evaluation protocol](research/agent-vs-automation/protocol.md) defines the
+[proposed evaluation protocol](research/2026-09-27-agent-vs-automation/protocol.md) defines the
 baselines, experiments and implementation work needed to assess it.
 The [D1/A1 CLI guide](docs/benchmark/agent-vs-automation-cli.md) documents the
 first implementation: analysis and verification from a shared public inventory,
@@ -80,7 +80,7 @@ evaluation scenarios.
 
 - [Documentation index](docs/README.md)
 - [Research topics and conventions](research/README.md)
-- [Research report: benchmark coverage, context and LLM contribution (PDF)](research/agent-vs-automation/report.pdf) · [editable LaTeX](research/agent-vs-automation/report.tex)
+- [Research report: benchmark coverage, context and LLM contribution (PDF)](research/2026-09-27-agent-vs-automation/report.pdf) · [editable LaTeX](research/2026-09-27-agent-vs-automation/report.tex)
 - [Benchmark, scenarios and evaluation](docs/benchmark/v1/README.md)
 - [Pipeline structure](src/agent/phases/README.md)
 - [Run artifacts](docs/architecture/run-artifacts.md)

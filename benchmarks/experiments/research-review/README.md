@@ -24,7 +24,7 @@ comportement souhaité après correction**. Elles ne remplacent pas des tests de
 régression exprimant le contrat corrigé. Toute évolution exige de relire les
 probes et leurs résultats ; leur succès ne valide aucune performance LLM.
 
-Résultats, versions et limites : [validation de la recherche](../../../research/agent-vs-automation/validation.md).
-Analyses : [benchmark](../../../research/benchmark-coverage/analysis.md),
-[contexte](../../../research/context-scalability/analysis.md),
-[apport LLM](../../../research/agent-vs-automation/analysis.md).
+Résultats, versions et limites : [validation de la recherche](../../../research/2026-09-27-agent-vs-automation/validation.md).
+Analyses : [benchmark](../../../research/2026-09-29-benchmark-coverage/analysis.md),
+[contexte](../../../research/2026-09-29-context-scalability/analysis.md),
+[apport LLM](../../../research/2026-09-27-agent-vs-automation/analysis.md).

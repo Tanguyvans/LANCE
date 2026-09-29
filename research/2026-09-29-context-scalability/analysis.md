@@ -106,7 +106,7 @@ Script conservé : [probe-context.py](../../benchmarks/experiments/research-revi
 
 Résultats observés : P1 marqueur central perdu et zéro entrée omise ; P2 20 services → 6, 14 omis ; P3 16 dernières observations, plus aucun marqueur de fin, 1 200 caractères par observation ; P4 blocs `[2,2,2,14]` ; P5 les deux mémos incomplets non rejetés. Ces résultats établissent le fonctionnement des transformations sur données synthétiques, pas des faux négatifs du benchmark.
 
-La validation pytest consolidée est consignée dans le [journal de validation](../agent-vs-automation/validation.md). Tests existants lus pour les contrats : [tests/pipeline/test_analysis_block_recovery.py](../../tests/pipeline/test_analysis_block_recovery.py), [tests/test_execution_profiles.py](../../tests/test_execution_profiles.py), [tests/test_report_sections.py](../../tests/test_report_sections.py). Ils simulent des fournisseurs ; ne pas les compter comme expériences de qualité LLM.
+La validation pytest consolidée est consignée dans le [journal de validation](../2026-09-27-agent-vs-automation/validation.md). Tests existants lus pour les contrats : [tests/pipeline/test_analysis_block_recovery.py](../../tests/pipeline/test_analysis_block_recovery.py), [tests/test_execution_profiles.py](../../tests/test_execution_profiles.py), [tests/test_report_sections.py](../../tests/test_report_sections.py). Ils simulent des fournisseurs ; ne pas les compter comme expériences de qualité LLM.
 
 ### Artefacts historiques examinés, sans attribution abusive
 

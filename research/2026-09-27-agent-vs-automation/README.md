@@ -5,6 +5,8 @@ Travaux documentés les 27 et 28 septembre 2026. Dossier organisé le 29 septemb
 2026 ; ce classement n'ajoute aucune validation expérimentale.
 Revue complémentaire le 29 septembre 2026 : inspection du code, sources
 primaires et reproductions logicielles. Aucun résultat de campagne ajouté.
+Le préfixe du dossier reprend la première date documentée de l'étude, le
+27 septembre ; il reste fixe lors des révisions.
 
 ## Question et synthèse
 

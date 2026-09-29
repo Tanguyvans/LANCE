@@ -2,7 +2,7 @@
 
 Cette extension prépare le pilote de **24 exécutions** et calcule son bilan à
 partir d'artefacts existants. Elle ne déploie rien et ne lance aucun audit.
-Le [protocole](../../research/agent-vs-automation/protocol.md) fixe les questions scientifiques ; le
+Le [protocole](../../research/2026-09-27-agent-vs-automation/protocol.md) fixe les questions scientifiques ; le
 [guide CLI](agent-vs-automation-cli.md) décrit l'exécution d'un bras.
 
 ## Structure et responsabilités
@@ -15,7 +15,7 @@ benchmarks/experiments/policy-comparison/
   pilot.example.json                       plan de 12 paires, encore à préparer
   review.csv                               grille de revue indépendante
   README.md                                mode d'emploi des modèles
-research/agent-vs-automation/
+research/2026-09-27-agent-vs-automation/
   protocol.md                              protocole scientifique proposé
   state-of-the-art.md                      références et choix méthodologiques
   implementation-plan.md                   plan et suivi des lots logiciels

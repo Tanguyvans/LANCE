@@ -4,7 +4,7 @@ Ce dossier regroupe les descriptions du système, les contrats retenus et les
 guides d'utilisation. Les hypothèses, revues bibliographiques et protocoles
 proposés sont regroupés dans les [dossiers de recherche](../research/README.md).
 Les [archives d'audit](#archives-historiques) décrivent des états passés.
-Le [rapport de recherche en PDF](../research/agent-vs-automation/report.pdf)
+Le [rapport de recherche en PDF](../research/2026-09-27-agent-vs-automation/report.pdf)
 relie les diagnostics du benchmark et du contexte au protocole de comparaison
 LLM/règles ; les propositions restent distinctes de la référence implémentée.
 
@@ -34,9 +34,9 @@ La [documentation du benchmark V1](benchmark/v1/README.md) est le point d'entré
 ou du contrat de calcul. Sa date, sa base Git et ses limites sont précisées dans
 son introduction. Les guides D1/A1 décrivent les outils disponibles ; la présence
 d'un manifeste de pilote ne signifie pas que la campagne a été exécutée.
-Le [dossier agent / automatisation](../research/agent-vs-automation/README.md)
+Le [dossier agent / automatisation](../research/2026-09-27-agent-vs-automation/README.md)
 regroupe le protocole proposé, l'état de l'art et le plan d'implémentation.
-La [recherche sur la couverture](../research/benchmark-coverage/README.md)
+La [recherche sur la couverture](../research/2026-09-29-benchmark-coverage/README.md)
 analyse les limites du corpus et les contre-exemples de mesure ; ses propositions
 ne modifient pas le contrat de référence ci-dessus.
 
@@ -49,7 +49,7 @@ ne modifient pas le contrat de référence ci-dessus.
 - [Reprise de la phase 3 par blocs](architecture/phase3-block-recovery.md).
 - [Tests automatisés](../tests/README.md).
 
-La [recherche sur le contexte](../research/context-scalability/README.md)
+La [recherche sur le contexte](../research/2026-09-29-context-scalability/README.md)
 étudie les six phases et distingue les mécanismes présents des évolutions proposées.
 
 ## Utilisation et infrastructure
@@ -76,7 +76,7 @@ Pour les commandes de laboratoire et de déploiement, respecter la
 - [Extraction du transport fournisseur](audit/2026-09-15/STRUCTURE_FOURNISSEUR.md).
 - [Audit frontend historique](audit/README.md).
 - [Historique de la structure du pipeline](audit/pipeline_llmdfa.md).
-- [Ancienne étude de scalabilité du contexte](../research/context-scalability/plan.md).
+- [Ancienne étude de scalabilité du contexte](../research/2026-09-29-context-scalability/plan.md).
 
 Les audits datés et les plans conservés expliquent des décisions ou des états
 passés. Une correction annoncée dans une archive n'est pas, à elle seule, une
