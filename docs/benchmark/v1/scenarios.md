@@ -88,7 +88,7 @@ est désactivée en lecture et en écriture ; les méthodes restent accessibles.
 Le mineur et les exports d’apprentissage refusent les scénarios de test et leurs
 origines connues. Valider la cohérence de leurs fichiers en CI ne signifie pas
 utiliser leurs scores pour optimiser l’agent. Voir la
-[boucle d’apprentissage](../../LEARNING_LOOP.md).
+[boucle d’apprentissage](../../training/learning-loop.md).
 
 ## Faire évoluer le corpus
 
@@ -107,5 +107,5 @@ Cette commande compare les compositions : une dérive de schéma historique v1 p
 Cette vérification de fichiers ne prouve pas que les services réellement déployés
 possèdent toutes les propriétés attendues.
 
-Les [scénarios manuels](../../manual_scenarios.md) sont un parcours distinct hors
+Les [scénarios manuels](../../guides/manual-scenarios.md) sont un parcours distinct hors
 catalogue officiel : ne pas incorporer leurs résultats silencieusement aux scores dev/test.

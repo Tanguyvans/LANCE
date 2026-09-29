@@ -1,0 +1,416 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
+\usepackage{graphicx,booktabs,array,tabularx,longtable}
+\usepackage{xcolor,tikz}
+\usepackage{enumitem,titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=sfigBlue,citecolor=sfigBlue,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\makeatletter
+\long\def\@makecaption#1#2{\vskip 7pt\begingroup\small\textbf{#1} -- #2\par\endgroup\vskip 3pt}
+\def\ps@lance{%
+  \def\@oddhead{\small\sffamily LANCE / Recherche\hfil 29 septembre 2026}%
+  \let\@evenhead\@oddhead
+  \def\@oddfoot{\small\color{sfigMuted}Diagnostic logiciel et protocole proposé\hfil\thepage}%
+  \let\@evenfoot\@oddfoot
+}
+\makeatother
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
+\newcommand{\evidence}[1]{\par\smallskip{\small\color{sfigMuted}\textbf{Preuve / limite.} #1}\par\smallskip}
+\newcommand{\status}[1]{{\small\sffamily\color{sfigRaspberry}#1}}
+\titleformat{\section}{\Large\sffamily\bfseries\color{sfigInk}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\sffamily\bfseries\color{sfigInk}}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+\pagestyle{lance}
+\setlength{\headheight}{14pt}
+
+% Reusable TikZ styles for sober scientific figures.
+% Required packages: xcolor, tikz.
+% Required TikZ libraries: arrows.meta, positioning, fit, calc.
+
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+
+\definecolor{sfigInk}{HTML}{1F242C}
+\definecolor{sfigMuted}{HTML}{5C626C}
+\definecolor{sfigLine}{HTML}{D9DEE5}
+\definecolor{sfigNeutral}{HTML}{F7F8FA}
+\definecolor{sfigBlue}{HTML}{1D5C96}
+\definecolor{sfigBlueLine}{HTML}{93B1CD}
+\definecolor{sfigBlueFill}{HTML}{EFF6FC}
+\definecolor{sfigRaspberry}{HTML}{AF0032}
+\definecolor{sfigRoseLine}{HTML}{DB8CA3}
+\definecolor{sfigRoseFill}{HTML}{FDF0F4}
+
+\tikzset{
+  sfig diagram/.style={
+    >=Latex,
+    node distance=10mm and 12mm,
+    every node/.style={font=\sffamily\small,text=sfigInk}
+  },
+  sfig base/.style={
+    draw=sfigLine,
+    fill=white,
+    rounded corners=2pt,
+    line width=0.55pt,
+    inner xsep=6pt,
+    inner ysep=4pt,
+    align=center
+  },
+  sfig input/.style={
+    sfig base,
+    draw=sfigBlueLine,
+    fill=sfigBlueFill
+  },
+  sfig process/.style={
+    sfig base,
+    draw=sfigRoseLine,
+    fill=sfigRoseFill
+  },
+  sfig neutral/.style={
+    sfig base,
+    fill=sfigNeutral
+  },
+  sfig focal/.style={
+    sfig base,
+    draw=sfigRaspberry,
+    fill=sfigRoseFill,
+    line width=0.75pt,
+    font=\sffamily\small\bfseries,
+    text=sfigRaspberry
+  },
+  sfig output/.style={
+    sfig neutral,
+    font=\sffamily\small\bfseries
+  },
+  sfig group/.style={
+    draw=sfigLine,
+    fill=none,
+    dashed,
+    rounded corners=3pt,
+    line width=0.5pt,
+    inner sep=6pt
+  },
+  sfig flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigMuted,
+    line width=0.6pt
+  },
+  sfig blue flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigBlue,
+    line width=0.68pt
+  },
+  sfig primary flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigRaspberry,
+    line width=0.78pt
+  },
+  sfig blocked/.style={
+    draw=sfigRaspberry,
+    dashed,
+    line width=0.68pt
+  },
+  sfig annotation/.style={
+    font=\sffamily\scriptsize,
+    text=sfigMuted,
+    align=center
+  },
+  sfig formula/.style={
+    font=\small,
+    text=sfigInk,
+    align=center
+  }
+}
+
+\begin{document}
+\hypersetup{pdftitle={IoTChainBench : couverture et validité de l'évaluation}}
+
+{\LARGE\sffamily\bfseries\color{sfigInk}IoTChainBench : couverture\par et validité de l'évaluation\par}
+\vspace{4pt}
+\status{Étude exploratoire · 29 septembre 2026 · Contre-exemples logiciels reproduits}
+
+\textbf{Question.} Quelles propriétés le benchmark définit-il, lesquelles une exécution explore-t-elle, et lesquelles ses mesures permettent-elles réellement de valider ? Cette étude couvre le catalogue public, les contrats de preuve, l'évaluateur et les conditions de préparation du laboratoire.
+
+\textbf{Constat principal.} Le catalogue définit 29 scénarios et 288 vulnérabilités attendues. Ce volume ne mesure ni leur présence dans le laboratoire ni la couverture atteinte par LANCE. La revue reproduit un taux de tentative de 100\,\% sans tentative déclarée et deux admissions de preuves HTTP insuffisantes. Elle identifie aussi une collision d'attribution entre un contrôle négatif et un vrai positif attendu. La priorité proposée est donc de fiabiliser les mesures avant d'élargir le corpus.
+
+\textbf{Portée.} Il s'agit d'une lecture du code et de traces synthétiques locales : aucune campagne terrain, aucune mesure de performance LLM et aucun correctif du logiciel ne sont apportés ici. La contre-revue GPT a été intégrée ; la revue Muse n'a pas été exécutée. La comparaison avec l'automatisation est développée dans le \href{../agent-vs-automation/report.pdf}{rapport transversal sur l'apport des LLM}.
+
+\section{Trois couvertures, des dénominateurs distincts}
+\label{sec:denominators}
+La couverture du \emph{corpus} décrit les propriétés représentées. La couverture d'\emph{exécution} mesure les hypothèses effectivement tentées dans la file retenue. Le rappel \emph{prouvé} rapporte les vrais positifs étayés à la vérité terrain. La figure~\ref{fig:denominators} sépare les deux populations utilisées pendant un run.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram]
+  \node[sfig neutral,text width=36mm,minimum height=13mm] (c) at (0,0) {Candidats\\proposés};
+  \node[sfig process,text width=36mm,minimum height=13mm] (q) at (55mm,0) {File retenue\\$Q$ hypothèses};
+  \node[sfig focal,text width=36mm,minimum height=13mm] (t) at (110mm,0) {Tentatives\\effectives $T$};
+  \node[sfig neutral,text width=36mm,minimum height=13mm] (n) at (0,-30mm) {Déclarations finales\\$N$ prédictions};
+  \node[sfig output,text width=36mm,minimum height=13mm] (v) at (55mm,-30mm) {Vrais positifs\\étayés $V$};
+  \node[sfig input,text width=36mm,minimum height=13mm] (g) at (110mm,-30mm) {Vérité terrain\\$G$ propriétés};
+  \draw[sfig flow] (c) -- (q);
+  \draw[sfig primary flow] (q) -- (t);
+  \draw[sfig flow] (n) -- (v);
+  \draw[sfig blue flow] (g) -- (v);
+\end{tikzpicture}
+\caption{Deux lectures d'un même run, sans données de performance. En haut, la file effective et ses identifiants déterminent $T/Q$. En bas, les prédictions dédupliquées sont appariées un-à-un à la référence ; les preuves sont exigées pour créditer $V$. Les deux dénominateurs ne sont pas interchangeables.}
+\label{fig:denominators}
+\end{figure}
+
+Pour un scénario positif évaluable, le rappel final vaut $V/G$ et le F1 final $2V/(N+G)$. Le taux de tentative vaut $T/Q$ lorsque cette population est connue et non vide. Un taux de tentative élevé peut coexister avec un faible rappel : les failles jamais proposées sont absentes de $Q$. Un résultat indisponible reste distinct d'un zéro.
+
+\clearpage
+\section{Ce que le catalogue représente}
+\label{sec:corpus}
+L'inventaire suit le catalogue 3.2.0 et fusionne les vérités terrain avec leur fichier commun de contrats, comme l'évaluateur. Les 29 empreintes SHA des références concordent. Le tableau~\ref{tab:corpus} compte des \emph{instances définies}, pas des équipements uniques ni des propriétés observées dans le laboratoire.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{Yrrr}
+\toprule
+Population & Dev S1--S19 & Test S20--S29 & Total \\
+\midrule
+Scénarios officiels & 19 & 10 & 29 \\
+Vulnérabilités attendues (GT) & 252 & 36 & 288 \\
+Contrôles déclarés & 24 & 64 & 88 \\
+Contrôles avec types interdits & 15 & 62 & 77 \\
+Instances de services, hors routeurs & 161 & 88 & 249 \\
+Chemins déclarés & 58 & 9 & 67 \\
+\bottomrule
+\end{tabularx}
+\caption{Inventaire statique du 29 septembre 2026. GT désigne la vérité terrain. Un contrôle doté de types interdits est classable par l'évaluateur, sans être pour autant testé ou validé.}
+\label{tab:corpus}
+\end{table}
+
+\textbf{Aucun scénario officiel n'est entièrement sans faille attendue.} Les scénarios clairsemés S14, S21 et S29 contiennent respectivement 4, 2 et 3 GT positives, pour 10, 16 et 20 services. Les variantes historiques S1h/S4h sont hors catalogue officiel et hors parcours de déploiement Ansible documenté. Elles ne compensent pas cette absence.
+
+S1--S13 concentrent 229 des 288 GT, soit 79,5\,\%, sans contrôles négatifs explicites. Ils partagent plusieurs packs de configuration, authentification et exposition de données. La macro-moyenne par scénario limite leur domination numérique, mais ne rend pas ces mécanismes indépendants. La figure~\ref{fig:services} montre une autre asymétrie : le test est fortement concentré sur HTTP et SSH.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram,x=1mm,y=1mm]
+  % Largeurs calculées sur les associations GT-service : 251 dev, 36 test.
+  \node[anchor=east,align=right] at (-4,0) {Dev\\251 associations};
+  \node[anchor=east,align=right] at (-4,-17) {Test\\36 associations};
+  \path[fill=sfigBlueFill,draw=sfigBlueLine,line width=.55pt] (0,-4) rectangle (62.749,4);
+  \path[fill=white,draw=sfigMuted,line width=.55pt] (62.749,-4) rectangle (78.227,4);
+  \path[fill=sfigNeutral,draw=sfigMuted,line width=.55pt] (78.227,-4) rectangle (105,4);
+  \path[fill=sfigBlueFill,draw=sfigBlueLine,line width=.55pt] (0,-21) rectangle (90.417,-13);
+  \path[fill=white,draw=sfigMuted,line width=.55pt] (90.417,-21) rectangle (96.25,-13);
+  \path[fill=sfigNeutral,draw=sfigMuted,line width=.55pt] (96.25,-21) rectangle (105,-13);
+  \node[anchor=north,align=center] at (12,-28) {HTTP + SSH\\150 dev / 31 test};
+  \node[anchor=north,align=center] at (53,-28) {MQTT\\37 dev / 2 test};
+  \node[anchor=north,align=center] at (92,-28) {Autres\\64 dev / 3 test};
+\end{tikzpicture}
+\caption{Composition des associations GT--service, de gauche à droite : HTTP/SSH, MQTT, autres. Les barres sont normalisées séparément à 100\,\% ; HTTP/SSH représentent 59,8\,\% du dev et 86,1\,\% du test. Données issues de l'inventaire des contrats, sans estimation de performance.}
+\label{fig:services}
+\end{figure}
+
+Les associations ne sont pas nécessairement bijectives avec les GT : le dev en contient 251 pour 252 GT. Les autres associations dev comprennent Telnet~12, MySQL~10, Modbus~10, Redis~9, FTP~8, CoAP~4, BACnet~3, SNMP~3, MQTT-WebSocket~2, OPC~UA~2 et HTTPS~1. Le test n'en conserve que Redis~1 et deux découvertes simulées. Il ne mesure donc pas la généralisation sur plusieurs familles IoT minoritaires.
+
+\clearpage
+\section{Représentativité et limites de généralisation}
+\label{sec:representativity}
+La diversité d'instances doit être distinguée de celle des mécanismes. PKI, OTA avancée, IAM cloud et OT multi-protocole n'ont chacun qu'un scénario dev. Les neuf GT dev de catégorie CVE se rapportent au seul identifiant autorisé dans le catalogue hors ligne, Terrapin. Ces répétitions sont utiles pour varier les contextes, mais ne constituent pas neuf vulnérabilités logicielles indépendantes.
+
+Les étiquettes de difficulté décrivent une intention de conception : le dev contient 1 scénario \emph{easy}, 5 \emph{medium}, 8 \emph{hard} et 5 \emph{expert} ; le test contient 2 \emph{hard} et 8 \emph{expert}. Aucun étalonnage humain ni taux de résolution associé n'est établi par cette étude. Taille du réseau, difficulté protocolaire, dépendance de secrets et nombre de pivots doivent être analysés séparément.
+
+Pour S20 et S24--S27, 12 GT renseignent une profondeur réseau positive : 7 à profondeur~1, 4 à profondeur~2 et 1 à profondeur~3. Ce champ est absent des GT S1--S19 et S29 ; son absence ne signifie pas profondeur zéro. Les 67 chemins YAML mêlent aussi des dépendances applicatives et des étapes sur une même machine : leur nombre ne dénombre pas des chaînes de pivots démontrables.
+
+La fidélité varie selon les composants : services réseau, simulateurs API/PKI/OTA/cloud/OT, façades caméra/NVR et découverte UDP tenant lieu de sans-fil. La documentation distingue déjà ces représentations. Aucun résultat de cette revue ne démontre une couverture radio réelle, une extraction matérielle, un service vidéo constructeur RTSP/ONVIF ou un automate industriel physique.
+
+\evidence{Sources locales : \code{benchmarks/catalog.yaml}, vérités terrain et contrats communs ; catalogue des attaques dans \code{docs/benchmark/}. Les limites de fidélité et l'indépendance historique non vérifiée du test sont déjà documentées.}
+
+\subsection{Une extension guidée par les questions}
+Le prochain incrément devrait combiner quatre types de variations, chacun avec un contraste précis. Le tableau~\ref{tab:extensions} définit des propositions et non des scénarios déjà validés.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{p{31mm}YY}
+\toprule
+Axe proposé & Variation contrôlée & Ce qu'elle permet de tester \\
+\midrule
+Faible prévalence & Cas entièrement durcis et paires vulnérable/durci proches & Faux positifs, silence injustifié et reconnaissance des témoins \\
+\addlinespace
+Charge de contexte & Propriétés constantes, distracteurs et taille croissants & Pertes d'observation et coût sous charge \\
+\addlinespace
+Surface et indices & Emplacement ou format changé ; observations normalisées dans un bras & Robustesse du parseur, distincte de la décision \\
+\addlinespace
+Dépendances et retours & Nouvel indice ou échec imposant une révision des actions & Adaptation de la politique et usage des prérequis \\
+\bottomrule
+\end{tabularx}
+\caption{Axes expérimentaux proposés. Le pivot réseau exige en plus une preuve causale de transition, traitée en section~\ref{sec:environment}.}
+\label{tab:extensions}
+\end{table}
+
+Les familles OTA, PKI, OT et MQTT-WebSocket gagneraient ensuite des variantes dev/test indépendantes, lorsque leurs outils et oracles sont disponibles. Le test public actuel reste provisoire : aucun groupe scellé n'est présent dans le catalogue. Une revendication de généralisation exige un nouveau test créé après gel des méthodes, avec provenance et règle d'accès. Les scores de ce test ne doivent pas servir à ajuster prompts ou budgets.
+
+\clearpage
+\section{Deux défauts des diagnostics}
+\label{sec:diagnostics}
+\subsection{La couverture peut compter une non-tentative}
+\textbf{Observation reproduite.} Dans \code{src/benchmark/funnel.py}, vers les lignes 196--214 de la révision étudiée, plusieurs résultats liés au même candidat sont classés \code{inconclusive} avant l'appel au calcul de son état de vérification. La formule suivante compte alors toute inconclusion comme une tentative :
+\[
+  \mathrm{taux\ de\ tentative} =
+  \frac{Q-\mathrm{non\ testees}}{Q}.
+\]
+Le script local fournit un candidat et deux résultats \code{TIMEOUT} portant le même identifiant. Les deux contiennent explicitement \code{verification_attempted:false}. Le résultat observé est pourtant : population~1, inconclusif~1, non testé~0, taux~1,0.
+
+L'ambiguïté d'attribution ne prouve aucun démarrage effectif. Le contre-exemple établit un défaut de calcul pour ces entrées ; il n'établit pas leur fréquence dans les campagnes. Même corrigé, le taux restera limité à la file retenue et ne renseignera pas les services oubliés ou les GT jamais proposées.
+
+\textbf{Correction proposée, P0.} Séparer quatre dimensions : attribution, tentative, conclusion et incident. Si toutes les entrées indiquent une absence de tentative, le numérateur ne peut pas augmenter. Si les entrées se contredisent, conserver un état inconnu et une convention explicite de taux ou d'intervalle. Les cas d'identifiants dupliqués, résultats orphelins, contradictions et ancien champ absent doivent avoir des tests distincts.
+
+\evidence{Critère d'acceptation : un ensemble d'entrées entièrement marqué non tenté ne produit jamais 100\,\% de tentative. La correction nécessitera un contrat versionné si elle change les résultats comparables.}
+
+\subsection{Un contrôle S18 confond deux identités}
+\textbf{Constat statique.} Dans \code{src/benchmark/evaluator.py}, lignes 2388--2415, l'attribution d'une violation de contrôle ne compare que l'IP et un type interdit. Elle ne compare ni le point d'accès, ni l'identité, ni la condition de la tentative. Elle porte sur une population plus large que les seules confirmations officielles.
+
+Dans S18, le contrôle \code{C14-LIMITED-TOKEN} attend un refus pour un jeton aux droits limités. La GT \code{F14-SECRET-BUCKET} attend une exposition avec un autre jeton, surprivilégié. Les deux concernent la même cible et le type \code{data_exposure}. Une déclaration correcte de cette GT satisfait donc aussi la condition de violation du contrôle.
+
+\textbf{Impact circonscrit.} Le diagnostic de spécificité des contrôles est faussé ; aucune pénalité additionnelle directe sur le F1 principal actuel n'est démontrée. Le test existant sur les contrôles confirme l'absence de double pénalité. Le commentaire source annonçant une réduction du score primaire est obsolète. Une file vide donne également une absence de violation sans exiger la sonde correspondante : ce n'est pas une preuve de durcissement.
+
+\textbf{Correction proposée, P0.} Décrire chaque contrôle par cible, service, endpoint, identité, prérequis, action et observation attendue. Distinguer non testé, accepté, violé et indéterminé. Le vrai positif obtenu avec le jeton surprivilégié ne doit jamais violer le contrôle du jeton limité ; une tentative attribuable à ce dernier et retournant un accès peut le violer.
+
+\clearpage
+\section{Validité des preuves HTTP}
+\label{sec:oracles}
+L'évaluateur relit les traces et n'accepte pas le seul verdict du modèle. Néanmoins, il appelle le même synthétiseur de preuves que le pipeline : \code{synthesize_exploit_result}, via \code{evaluator.py} vers la ligne~1516. Ce partage assure une cohérence des règles, mais ne constitue pas une validation indépendante de leur justesse.
+
+\subsection{Une trace déclarant une signature valide}
+\textbf{Entrée synthétique.} Une requête HTTP de mise à jour contient un corps non vide décrivant une image signée. La réponse contient le marqueur \code{update accepted} et le champ \code{signature_verified:true}.
+
+\textbf{Résultat observé.} Le synthétiseur retourne \code{EXPLOITED}, niveau de preuve~2, avec une explication d'acceptation sans preuve de signature. La branche de \code{src/agent/exploit_evidence.py}, lignes 1067--1082, exige essentiellement une méthode d'écriture, un corps et un marqueur textuel. Elle ne démontre ni signature absente ou invalide, ni transition d'état illicite.
+
+\textbf{Interprétation.} La trace ne démontre aucune faille d'intégrité ; elle contient même une déclaration de signature vérifiée. Aucun calcul cryptographique ni serveur réel n'est testé dans cette reproduction. Le défaut établi est l'admission d'une observation insuffisante par le synthétiseur.
+
+\subsection{Un texte d'aide pris pour une exécution}
+\textbf{Entrée synthétique.} Une requête non vide demande une aide. La réponse comporte un exemple de sortie de commande contenant \code{uid=1000(user)}.
+
+\textbf{Résultat observé.} La branche \code{code_injection} retourne \code{EXPLOITED}, niveau~3. Aux lignes 1055--1064 du même module, les marqueurs \code{uid=} ou \code{command output} peuvent suffire ; aucun lien causal entre l'action demandée et un effet exécuté n'est exigé.
+
+\textbf{Interprétation.} Une chaîne de caractères citée dans une page d'aide ne démontre pas une exécution. Le probe isole cette faiblesse, sans établir un succès d'exploitation ni un faux crédit dans le score complet. Ce dernier exige encore l'appariement à la GT et la provenance des traces.
+
+\subsection{Calibrer des oracles propres aux propriétés}
+\textbf{Proposition P0.} Pour OTA, comparer état avant/après, tentative sans signature ou avec signature invalide, contrôle signé valide et transition persistée. Pour l'exécution, rechercher un effet distinguable d'une simple réflexion de la requête ou d'un exemple statique, avec contrôle différentiel ou attestation d'état serveur. Un nonce seul ne suffit pas : une réponse peut le réfléchir sans exécuter l'action.
+
+Le corpus de calibration doit réunir vraies preuves, pages d'aide, contenus réfléchis, erreurs comportant les marqueurs attendus et contre-exemples proches. Son annotation doit être indépendante de la politique évaluée. Mesurer la sensibilité et les fausses admissions de l'oracle précède l'optimisation des prompts.
+
+\evidence{Critère minimal : les deux entrées synthétiques restent non concluantes après correction. Leur existence ne donne ni une fréquence d'erreur terrain ni l'ampleur d'un biais de comparaison LLM/automatisation. Les scripts de reproduction sont référencés en section~\ref{sec:repro}.}
+
+\clearpage
+\section{Environnement, accès et preuves de chemins}
+\label{sec:environment}
+\subsection{Un précontrôle utile, encore partiel}
+Le précontrôle actuel vérifie notamment contrat, statut, phase et scénario lorsqu'une attestation existe. Son absence reste acceptée pour les anciens runs, conformément au code de \code{evaluator.py}, lignes 2726--2735. Le cycle de déploiement conserve une déclaration de vérification incomplète de toutes les propriétés GT, même après succès ; un test logiciel l'exige explicitement.
+
+Les vérifications Ansible couvrent des rôles et plusieurs comportements. Certaines restent indirectes : configuration SSH et présence d'un compte ne démontrent pas un login réussi ; listing d'un répertoire ne démontre pas tous les fichiers sensibles attendus. D'autres vérifications, notamment sur les scénarios récents, sont comportementales. Il serait donc inexact de les réduire toutes à des tests de ports.
+
+\textbf{Proposition.} Produire un manifeste par GT et contrôle : version, empreinte, point d'observation réseau, preuve et état de validité. Les précontrôles qui modifient OTA, identité ou état applicatif doivent être suivis d'une remise à zéro attestée, puis d'un contrôle final non perturbateur. Pour une campagne confirmatoire nouvelle, un précontrôle absent ne devrait pas rendre l'essai admissible.
+
+Si une propriété attendue manque, le traitement doit être fixé avant l'exécution agent : réparation et nouvel essai, ou échec de laboratoire documenté. Adapter le dénominateur après avoir vu le résultat crée un biais. Les anciens artefacts restent consultables sans être réétiquetés comme comparables.
+
+\subsection{Un accès n'est pas un pivot}
+La projection actuelle des observations d'intrusion expose des transitions vides et une preuve de transition indisponible. Ce comportement est explicite dans \code{observations.py}, sous \code{src/agent/phases/intrusion/}, lignes 37--38. Les objectifs centraux S20/S24--S27 ne peuvent donc pas être validés comme chemins de pivots par ces observations.
+
+\textbf{Proposition P1.} Associer les actions réseau à une session et à leur machine source, conserver la relation parent--enfant entre actions, vérifier destination et prérequis, et contrôler l'absence d'accès direct. Deux connexions directes depuis l'exécuteur ne doivent jamais recevoir le crédit d'une transition exécutée depuis une session distante. Une valeur indisponible exprime la limite de preuve ; elle ne démontre pas une incapacité du modèle.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{p{12mm}p{41mm}Y}
+\toprule
+Priorité & Objet & Condition avant conclusion expérimentale \\
+\midrule
+P0 & Tentatives et contrôles & Dénominateurs et identités corrects ; non-tentatives non comptées \\
+\addlinespace
+P0 & Oracles HTTP & Contre-exemples rejetés et calibration indépendante documentée \\
+\addlinespace
+P0/P1 & État du laboratoire & Propriétés requises présentes ; remise à zéro attestée \\
+\addlinespace
+P1 & Pivot et diversité & Transitions causales observables ; variantes indépendantes par famille \\
+\bottomrule
+\end{tabularx}
+\caption{Priorités proposées. Elles ne décrivent pas des corrections déjà livrées. Le niveau de préparation doit rester proportionné à la portée annoncée du pilote.}
+\label{tab:priorities}
+\end{table}
+
+\clearpage
+\section{Hypothèses et protocole de décision}
+\label{sec:protocol}
+L'amélioration du benchmark doit permettre de conclure aussi à l'absence d'apport du LLM. Les hypothèses suivantes guident des expériences futures, après correction des défauts de mesure.
+
+\textbf{H1 --- Les pertes précèdent parfois la vérification.} Une couverture élevée de la file peut masquer des observations absentes ou des GT jamais proposées. Il faut enregistrer chaque dénominateur : actifs attendus lorsqu'ils sont connus, services observés, GT proposées et retenues, candidats tentés, preuves admises et GT confirmées. L'hypothèse serait affaiblie si les principales fausses négatives subsistaient malgré observation pertinente, candidat retenu et tentative valide.
+
+\textbf{H2 --- L'oracle peut contribuer aux confirmations indues.} Une calibration indépendante et une adjudication des traces, en aveugle à la politique évaluée, permettraient d'estimer ce risque. L'hypothèse serait affaiblie si les fausses admissions restaient sous un seuil prédéfini et ne changeaient pas les écarts comparatifs. Le même oracle doit s'appliquer aux politiques LLM et déterministes.
+
+\textbf{H3 --- L'apport peut dépendre de la tâche.} Un gain éventuel du LLM est à chercher sur combinaison d'indices, gestion de dépendances ou révision d'actions, sans le présumer sur des configurations répétées. Comparer à outils, inventaire et budgets compatibles ; distinguer robustesse du parseur et adaptation. Mesurer le F1 étayé, le coût total incluant les échecs, la fiabilité et les résultats par famille. En cas de gain absent, conserver cette conclusion ; un hybride règles/LLM limité aux décisions ambiguës constitue une hypothèse suivante, pas une justification a posteriori.
+
+\textbf{H4 --- La répétition du corpus peut masquer une faible généralisation.} Les répétitions doivent être regroupées par scénario ou famille dans l'analyse d'incertitude. Les 288 GT ne sont pas 288 observations indépendantes. La taille de campagne dépend d'un pilote de variance et d'un gain minimal utile préenregistré ; trois répétitions par convention ne suffisent pas à établir une puissance confirmatoire.
+
+Les plans doivent fixer à l'avance métriques principales, budgets, interruptions, exclusions, données manquantes et critères d'arrêt. Les runs nécessitent une demande explicite et ciblent nato/pve-nato. Cette étude ne propose aucun repli vers le homelab personnel.
+
+\subsection{Ce que les travaux externes apportent à ce protocole}
+Cybench distingue progression par sous-tâches et réussite complète sur 40 tâches CTF ; sa note de correction liée à une fuite dans un port d'Inspect rappelle l'importance de l'empreinte du dispositif d'évaluation et de la recherche de raccourcis~\cite{cybench}. Ces tâches ne valident pas une couverture IoT.
+
+AutoPenBench définit 33 tâches et des jalons génériques/spécifiques ; ses conditions autonomes et assistées diffèrent par l'intervention humaine~\cite{autopenbench}. LANCE peut reprendre la séparation étapes/objectif final, sans traiter un résultat assisté comme preuve d'avantage sur une automatisation à règles.
+
+L'analyse Docent montre, dans un port précis de Cybench, une résolution par lecture d'une réponse divulguée et des échecs liés à l'environnement~\cite{docent}. Elle motive une revue de trajectoires et des interventions contrefactuelles ; elle rappelle aussi que les résumés produits par LLM nécessitent eux-mêmes validation. Aucun de ces résultats externes n'a été reproduit ici.
+
+\clearpage
+\section{Provenance, reproduction et limites}
+\label{sec:repro}
+La base source est le commit \code{45c8dab892ecb4e5f513813387090e0cded1b85d}. Le checkout comportait déjà une réorganisation documentaire ; le SHA seul ne représente donc pas tous les documents lus. Les notes détaillées restent dans \href{analysis.md}{\code{analysis.md}}, et la validation consolidée dans \href{../agent-vs-automation/validation.md}{le journal transversal de validation}.
+
+Les scripts sont conservés sous \code{benchmarks/experiments/research-review/}. Depuis la racine, exécuter avec Python~3.12 et les dépendances du projet :
+\begin{itemize}
+  \item \code{inventory.py} : fusion des contrats, empreintes GT, comptages et collision S18 ;
+  \item \code{probe-evaluation.py} : trois contre-exemples locaux, sans connexion réseau ni score complet simulé.
+\end{itemize}
+Leur \href{../../benchmarks/experiments/research-review/README.md}{README de reproduction} donne les commandes exactes avec le chemin d'import du projet. Les observations importantes sont conservées dans les notes ; leur disponibilité ne dépend pas des fichiers temporaires de cette session.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{p{35mm}YY}
+\toprule
+Vérification & Résultat disponible & Limite \\
+\midrule
+Inventaire et empreintes & 29 GT concordantes avec le contrat commun & Définitions seulement \\
+\addlinespace
+Composition des GT & 31 examinées ; 13 écarts historiques descriptifs et 18 correspondances strictes & Variantes incluses ; option stricte globale non utilisée \\
+\addlinespace
+Probes d'évaluation & Taux~1,0 indu ; deux verdicts HTTP \code{EXPLOITED} & Contre-exemples synthétiques, pas fréquence terrain \\
+\addlinespace
+Validation transversale & 381 tests ciblés réussis en 8,35~s & Fournisseurs simulés ; suite complète non exécutée \\
+\bottomrule
+\end{tabularx}
+\caption{Vérifications logicielles rapportées dans le journal du 29 septembre 2026. Le succès des tests existants ne couvre pas tous les contre-exemples identifiés.}
+\label{tab:validation}
+\end{table}
+
+Les artefacts historiques n'ont pas servi à calculer une performance actuelle ; des contrats et provenances différents ne sont pas agrégés. La revue bibliographique est ciblée, sans prétention d'exhaustivité ni comparaison des meilleurs scores de 2026. La mise en forme de cette étude ne transforme pas les pistes proposées en capacités implémentées ou démontrées.
+
+\begingroup
+\small
+\begin{thebibliography}{9}
+\bibitem{cybench}
+A. K. Zhang et al., \emph{Cybench: A Framework for Evaluating Cybersecurity Capabilities and Risks of Language Models}. Prépublication du 15 août 2024 ; ICLR 2025. \href{https://arxiv.org/abs/2408.08926}{Notice et résumé} ; \href{https://cybench.github.io/}{site des auteurs}. Consultés le 29 septembre 2026. Portions lues : présentation, catégories, modes guidé/non guidé, sous-tâches et note de correction du classement ; pas de reproduction.
+
+\bibitem{autopenbench}
+L. Gioacchini et al., \emph{AutoPenBench: Benchmarking Generative Agents for Penetration Testing}. arXiv:2410.03225, v2 du 28 octobre 2024. \href{https://arxiv.org/html/2410.03225v2}{Article original}. Consulté le 29 septembre 2026. Portions lues : résumé, sections 2.2--2.3, section 3.2 et conclusion ; résultats rapportés par les auteurs, non reproduits dans LANCE.
+
+\bibitem{docent}
+K. Meng, V. Huang, J. Steinhardt et S. Schwettmann, \emph{Introducing Docent}. Transluce, 24 mars 2025. \href{https://transluce.org/docent/blog/introducing-docent}{Rapport original}. Consulté le 29 septembre 2026. Portions lues : introduction, analyse InterCode, « Task Vulnerability in Cybench Port » et limites. Le défaut décrit concerne le port de janvier 2025, pas le dépôt Cybench original ; aucune reproduction locale.
+\end{thebibliography}
+\endgroup
+\end{document}

@@ -1,0 +1,410 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{lmodern,microtype}
+\usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
+\usepackage{graphicx,booktabs,array,tabularx,longtable}
+\usepackage{xcolor,tikz}
+\usepackage{enumitem,titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=sfigBlue,citecolor=sfigBlue,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\urlstyle{same}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=5mm,topsep=3pt}
+\makeatletter
+\long\def\@makecaption#1#2{\vskip 7pt\begingroup\small\textbf{#1} -- #2\par\endgroup\vskip 3pt}
+\def\ps@lance{%
+  \def\@oddhead{\small\sffamily LANCE / Recherche\hfil 29 septembre 2026}%
+  \let\@evenhead\@oddhead
+  \def\@oddfoot{\small\color{sfigMuted}Diagnostic logiciel et protocole proposé\hfil\thepage}%
+  \let\@evenfoot\@oddfoot
+}
+\makeatother
+\def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
+\newcommand{\evidence}[1]{\par\smallskip{\small\color{sfigMuted}\textbf{Preuve / limite.} #1}\par\smallskip}
+\newcommand{\status}[1]{{\small\sffamily\color{sfigRaspberry}#1}}
+\titleformat{\section}{\Large\sffamily\bfseries\color{sfigInk}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\sffamily\bfseries\color{sfigInk}}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{16pt}{7pt}
+\titlespacing*{\subsection}{0pt}{11pt}{5pt}
+\pagestyle{lance}
+\setlength{\headheight}{14pt}
+
+% Reusable TikZ styles for sober scientific figures.
+% Required packages: xcolor, tikz.
+% Required TikZ libraries: arrows.meta, positioning, fit, calc.
+
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+
+\definecolor{sfigInk}{HTML}{1F242C}
+\definecolor{sfigMuted}{HTML}{5C626C}
+\definecolor{sfigLine}{HTML}{D9DEE5}
+\definecolor{sfigNeutral}{HTML}{F7F8FA}
+\definecolor{sfigBlue}{HTML}{1D5C96}
+\definecolor{sfigBlueLine}{HTML}{93B1CD}
+\definecolor{sfigBlueFill}{HTML}{EFF6FC}
+\definecolor{sfigRaspberry}{HTML}{AF0032}
+\definecolor{sfigRoseLine}{HTML}{DB8CA3}
+\definecolor{sfigRoseFill}{HTML}{FDF0F4}
+
+\tikzset{
+  sfig diagram/.style={
+    >=Latex,
+    node distance=10mm and 12mm,
+    every node/.style={font=\sffamily\small,text=sfigInk}
+  },
+  sfig base/.style={
+    draw=sfigLine,
+    fill=white,
+    rounded corners=2pt,
+    line width=0.55pt,
+    inner xsep=6pt,
+    inner ysep=4pt,
+    align=center
+  },
+  sfig input/.style={
+    sfig base,
+    draw=sfigBlueLine,
+    fill=sfigBlueFill
+  },
+  sfig process/.style={
+    sfig base,
+    draw=sfigRoseLine,
+    fill=sfigRoseFill
+  },
+  sfig neutral/.style={
+    sfig base,
+    fill=sfigNeutral
+  },
+  sfig focal/.style={
+    sfig base,
+    draw=sfigRaspberry,
+    fill=sfigRoseFill,
+    line width=0.75pt,
+    font=\sffamily\small\bfseries,
+    text=sfigRaspberry
+  },
+  sfig output/.style={
+    sfig neutral,
+    font=\sffamily\small\bfseries
+  },
+  sfig group/.style={
+    draw=sfigLine,
+    fill=none,
+    dashed,
+    rounded corners=3pt,
+    line width=0.5pt,
+    inner sep=6pt
+  },
+  sfig flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigMuted,
+    line width=0.6pt
+  },
+  sfig blue flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigBlue,
+    line width=0.68pt
+  },
+  sfig primary flow/.style={
+    -{Latex[length=2mm,width=1.2mm]},
+    draw=sfigRaspberry,
+    line width=0.78pt
+  },
+  sfig blocked/.style={
+    draw=sfigRaspberry,
+    dashed,
+    line width=0.68pt
+  },
+  sfig annotation/.style={
+    font=\sffamily\scriptsize,
+    text=sfigMuted,
+    align=center
+  },
+  sfig formula/.style={
+    font=\small,
+    text=sfigInk,
+    align=center
+  }
+}
+
+
+\begin{document}
+\thispagestyle{lance}
+{\LARGE\sffamily\bfseries\color{sfigInk}Conserver les preuves,\par
+borner le contexte du pipeline LANCE\par}
+\vspace{3mm}
+{\large\sffamily Diagnostic actuel et protocole d'évaluation}\par
+\vspace{2mm}
+\status{Exploration rouverte — 29 septembre 2026}\par
+\textbf{Question.} Comment conserver les observations, contradictions et décisions utiles tout en bornant les requêtes des six phases, puis mesurer la contribution réelle du modèle ?
+
+\section{Périmètre et résultat de la revue}
+La difficulté ne se réduit pas à la fenêtre du modèle. Le code présente des pertes possibles \emph{avant} archivage, des conversations outils sans budget d'entrée, des projections sans accès de récupération et des transmissions entre phases qui retirent certaines alternatives. Un plafond de sortie plus élevé ne répare pas ces pertes.
+
+La priorité proposée est de préserver la capture native, rendre les omissions observables et comparer des représentations récupérables. Cette priorité est une conclusion de conception issue du code ; \textbf{aucun gain de rappel, coût ou réussite réseau n'est démontré}. Les cinq probes locales caractérisent les transformations, sans appeler de modèle ni de cible.
+
+\subsection{Base inspectée et méthode}
+La révision source étudiée est \code{45c8dab892ecb4e5f513813387090e0cded1b85d}. Le checkout contenait déjà une réorganisation documentaire ; le SHA ne représente donc pas seul tous les documents lus. La revue combine lecture du code, contrats actuels, probes synthétiques et sources primaires ciblées. Les corrections proposées ne sont pas implémentées.
+
+L'ancien \code{plan.md} de ce dossier reste archivé. Il concernait surtout la rédaction globale du rapport ; ses estimations et anciens numéros de phase ne décrivent plus l'architecture actuelle. Les notes détaillées sont conservées dans \code{analysis.md}. Dans les références de code ci-dessous, \code{analysis/}, \code{verification/}, \code{intrusion/} et \code{report/} désignent les sous-dossiers de \code{src/agent/phases/}.
+
+\subsection{Acquis à préserver}
+\begin{tabularx}{\linewidth}{@{}p{30mm}Y@{}}
+\toprule
+\textbf{Frontière} & \textbf{Comportement vérifié dans le code} \\
+\midrule
+Conversations & Chaque appel modèle démarre un historique indépendant ; il n'existe pas une conversation unique transmise des phases 1 à 6. \\
+Analyse et preuve & Phase 3 par équipement ; phase 4 par hypothèse et équipement. La preuve de phase 3 reste un contexte, pas un verdict de vérification. \\
+Traçabilité & Journal avec références, arguments, phase, agent et origine ; les livrables sont liés explicitement au dossier du run. \\
+Rapport & Phase 6 par fiches, cache et reprises bornées ; assemblage et synthèse factuelle déterministes. Les commentaires ne sont pas des preuves validées. \\
+\bottomrule
+\end{tabularx}
+\evidence{\code{src/agent/provider.py:415} ; \code{analysis/run.py:1092--1128} ; \code{verification/run.py:137--173} ; \code{src/agent/core/executor.py:49--100} ; \code{report/sections.py:97--220}.}
+
+\clearpage
+\section{Capture et historique : deux limites différentes}
+La figure~\ref{fig:current} localise deux endroits où une information peut disparaître. Une réduction avant archivage et une vue abrégée d'une source conservée n'offrent pas la même possibilité de réparation. Ce schéma décrit des transformations présentes ; il ne signifie pas que chaque outil emprunte tous ces chemins.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram]
+\node[sfig input,text width=22mm,minimum height=16mm] (native) at (0,0) {Sortie\\native};
+\node[sfig focal,text width=23mm,minimum height=16mm] (cut) at (3.25,0) {Filtre et\\coupe};
+\node[sfig neutral,text width=22mm,minimum height=16mm] (ledger) at (6.5,0) {Journal\\d'outils};
+\node[sfig neutral,text width=22mm,minimum height=16mm] (view) at (9.75,0) {Vue ou\\transmission};
+\node[sfig output,text width=22mm,minimum height=16mm] (model) at (13,0) {Requête\\modèle};
+\draw[sfig flow] (native) -- (cut);
+\draw[sfig primary flow] (cut) -- (ledger);
+\draw[sfig flow] (ledger) -- (view);
+\draw[sfig flow] (view) -- (model);
+\node[sfig annotation,text width=51mm] at (3.25,-1.45) {C1 : suffixe natif potentiellement perdu\\avant l'archivage};
+\node[sfig annotation,text width=51mm] at (10.7,-1.45) {C3--C5 : nouvelles omissions ;\\lecture ciblée parfois indisponible};
+\end{tikzpicture}
+\caption{État courant : le chemin YAML peut archiver un résultat déjà filtré ou tronqué. Les projections ultérieures peuvent encore réduire ce résultat. Les références existantes ne recréent pas un brut jamais conservé.}
+\label{fig:current}
+\end{figure}
+
+\subsection{C1 — Capture native perdue avant journalisation}
+\textbf{Priorité P0.} Le chargeur YAML filtre les lignes puis applique \code{stdout[:max_output]} avant de retourner son résultat. Le wrapper d'exécution archive ce retour. Le journal peut donc conserver intégralement le \emph{résultat transformé}, sans conserver le stdout natif. Les plafonds déclarés comprennent 4\,000 caractères pour HTTP GET et nmap, 2\,000 pour SSH exec.
+
+Le suffixe \code{[truncated]} indique une coupure, mais ne rend pas son suffixe récupérable. Ce constat porte sur le chemin de chargement inspecté ; il ne doit pas être étendu à tout le catalogue d'outils sans vérifier leurs gestionnaires. L'effet sur le rappel réel reste une hypothèse. Une expérience de compression exige une capture de référence complète, ou doit déclarer qu'elle est indisponible.
+\evidence{\code{src/agent/tools/tool_loader.py:228--243} ; \code{src/agent/core/executor.py:128--132}.}
+
+\subsection{C2 — Historique croissant sans admission par taille}
+\textbf{P0 pour la mesure, P1 pour la correction.} La boucle générique ajoute réponses et résultats à \code{messages}, puis renvoie la liste entière au fournisseur. La limite de 2\,000 caractères concerne l'événement d'interface, pas le contenu transmis. \code{read_deliverable} renvoie également un fichier entier. Les profils fixent surtout tours et sortie : reconnaissance jusqu'à 50 tours, intrusion full jusqu'à 80.
+
+Aucune admission par budget d'entrée, réserve de contexte ou lecture paginée n'a été trouvée dans cette boucle. Le routage automatique compact/full dépend du nombre de paramètres déclaré ; il ne mesure pas la fenêtre effectivement disponible. Cela établit un risque de requêtes volumineuses, \emph{pas} la cause des timeouts observés ailleurs. Une fin \code{length} indique une troncature de sortie ; elle ne démontre pas une saturation de l'entrée.
+\evidence{\code{src/agent/provider.py:647,986,1181--1182} ; \code{src/agent/tools/deliverable.py:139--140} ; \code{src/agent/execution_profiles.py:100--141,281--298}.}
+
+\clearpage
+\section{Projections et reprises : conserver moins, retrouver quoi ?}
+\subsection{C3 — Compact peut retirer une preuve sans recours}
+\textbf{Priorité P1.} La projection de phase 3 borne chaque résultat à environ 700 caractères en tête et queue, et le cumul des entrées à 5\,000 caractères. Elle suit l'ordre d'insertion ; des services entiers peuvent disparaître. Le compteur \code{omitted_entries} couvre les entrées supprimées, pas chaque résultat raccourci ni le volume retiré à l'intérieur d'une entrée.
+
+Le plafond ne couvre pas les findings déterministes et les voisins ajoutés à côté. Il ne constitue donc pas un budget global du prompt. Surtout, la branche locale compacte mentionne l'artefact de scan mais reçoit \code{tools=[]}. Cette référence est utilisable par un lecteur humain ; le modèle ne peut pas la consulter pendant cet appel.
+
+Le même écart existe dans la récupération par blocs : les scans sérialisés sont coupés à 12\,000 caractères, avec renvoi vers l'artefact complet, alors que seule la sauvegarde est exposée. Une coupe de chaîne peut aussi interrompre la représentation JSON. L'agent doit finaliser avec ce qu'il voit, même si la référence indique qu'une information supplémentaire existe.
+\evidence{\code{analysis/compact.py:15--69} ; \code{analysis/run.py:442--444,481--484,1142--1184}. Les probes P1 et P2, section~\ref{sec:probes}, caractérisent ces transformations sans mesurer un score de détection.}
+
+\subsection{C4 — Récupération bornée en appels, pas en difficulté}
+\textbf{Priorité P1.} La reprise de phase 3 garde les 16 dernières observations et les 1\,200 premiers caractères de chacune. Les enregistrements conservés contiennent l'outil, les arguments et le résultat ; ils ne portent pas la référence du journal ni un indicateur de cette coupe. La représentation finale est limitée à 6\,000 caractères. Son classement utilise les ports ou services trouvés dans le nom de l'outil et son résultat, sans exploiter les arguments pour ce score.
+
+Cette politique peut retirer une observation initiale, la fin décisive d'un résultat ou un élément négatif. L'arrêt au premier élément qui ne rentre pas peut également empêcher l'ajout d'éléments suivants plus courts. Ce sont des comportements déterministes dépendant de l'ordre, dont l'impact sur une hypothèse reste à établir.
+
+Le découpage vise deux services par bloc, avec quatre blocs maximum. Les services supplémentaires sont fusionnés dans le dernier bloc. Pour un équipement synthétique de 20 services, la distribution est \code{[2,2,2,14]}. Le nombre d'appels est borné, mais le dernier sous-problème peut rester volumineux. Les preuves non attribuables à un service sont conservées dans plusieurs blocs, ce qui peut augmenter leur poids.
+\evidence{\code{analysis/block_recovery.py:104--151,195--262}. Les probes P3 et P4 reproduisent ces propriétés.}
+
+\subsection{La frontière de validation reste nécessaire}
+Le pipeline actuel ne promeut pas arbitrairement une analyse tronquée. Il distingue \code{finish_reason=length} de l'absence de livrable et assemble les blocs seulement après validation. Les reprises utilisent les preuves existantes sans relancer de scan. Cette protection doit rester en place lors d'une nouvelle politique de contexte.
+
+La proposition consiste à comparer une meilleure sélection déterministe, un découpage par poids des preuves et des lectures ciblées. Elle ne présuppose pas qu'un résumé LLM serait meilleur. Les tâches multi-services ou multi-équipements demandent en outre une évaluation propre : trop découper peut empêcher une corrélation utile.
+\evidence{\code{analysis/run.py:1312--1332} ; \code{analysis/block_recovery.py:91--101}. Un succès de validation structurelle ne certifie pas que la sélection a préservé tout le sens pertinent.}
+
+\clearpage
+\section{Transmission, attribution et isolation}
+\subsection{C5 — Alternatives retirées entre phases}
+\textbf{P1.} Phase 4 reçoit les 500 premiers caractères de \code{evidence}, sans marqueur de coupe. Les champs structurés et le plan peuvent compenser certaines pertes ; leur présence interdit de conclure que toute attribution disparaît. Phase 5 garde une meilleure entrée par IP, 200 ou 400 caractères de preuve et les 30 premiers identifiants récupérés. Les omissions correspondantes ne sont pas comptées, tandis que les listes de cibles et chaînes n'ont pas de plafond global explicite.
+
+Sur le chemin \textbf{full}, le prompt décrit cette source comme complète, demande une lecture unique du contexte et interdit le gros livrable précédent ; le guidage injecté autorise pourtant les lectures des phases 3/4. Le compact local remplace guidage et template : cette contradiction ne lui est pas automatiquement applicable.
+\evidence{\code{verification/run.py:169--172} ; \code{intrusion/run.py:644--718,814--828} ; \code{src/agent/prompts/intrusion.txt:25--41} ; \code{src/agent/core/runner.py:317,327,383}.}
+
+\subsection{C6 — Le mémo compact local n'ajoute pas de findings}
+\textbf{P0 pour l'interprétation.} Dans \code{_uses_compact_local_moe()}, le scanner écrit le JSON canonique, puis le modèle rédige un mémo Markdown. Les chemins inspectés d'agrégation, vérification et rapport ne consomment pas ce mémo pour ajouter des findings. Le score de détection de cette branche ne mesure donc pas un apport de nouvelles hypothèses issues du mémo.
+
+Cette limite \textbf{ne caractérise pas directement D1/A1}, dont le contraste actuel exige full. Elle concerne un autre mode d'exécution. Un mémo jugé inutilisable peut néanmoins faire échouer l'étape d'analyse, alors que le résultat scanner existe. L'appel local ne demande pas les métadonnées de complétion ; son contrôle de texte reste heuristique.
+\evidence{\code{analysis/run.py:1162--1216} ; \code{analysis/compact.py:72--180} ; \code{src/agent/core/memo.py:5--26}. Séparer validité canonique, complétude agent et qualité rédactionnelle.}
+
+\subsection{C7 — État de contexte encore global}
+\textbf{P1 avant concurrence.} Graphe, topologie et mode découverte restent dans des variables de module ; le voisinage de phase 3 y est lu. La politique CVE et les filtres de skills sont également globaux. L'isolation des livrables ne garantit donc pas celle de toutes les dépendances de deux Pipeline dans un même processus. L'existence d'un incident réel n'est pas établie : il faut vérifier les modes déployés et tester un entrelacement A/B.
+\evidence{\code{src/agent/tools/graph_tools.py:31--54} ; \code{src/agent/tools/skill_tools.py:31--37,63--75} ; \code{analysis/run.py:1113--1115}.}
+
+\subsection{C8 — Rapport : bonne frontière factuelle, prose à évaluer}
+\textbf{P2.} Les fiches conservent des extraits de 1\,600 caractères avec référence et empreinte. Une fiche supérieure à 24\,000 octets perd son commentaire, pas ses faits. Le filtre de contradiction ne vise que quelques expressions anglaises et reçoit un contexte vide : il peut manquer une contradiction ou rejeter une expression pourtant étayée. Aucune fréquence n'est mesurée. Les commentaires sont déjà marqués non validés ; leur utilité doit être évaluée séparément du score d'audit.
+\evidence{\code{report/sections.py:132--148} ; \code{report/run.py:95--96,136--138} ; \code{report/validation.py:4--20}.}
+
+\clearpage
+\section{Résultats locaux disponibles et ce qu'ils ne prouvent pas}
+\label{sec:probes}
+\subsection{Cinq probes synthétiques reproductibles}
+Les probes utilisent seulement la bibliothèque standard, une extraction AST de la fonction de projection et les modules purs de récupération et de mémo. Elles n'importent pas Pipeline et ne déclenchent ni fournisseur ni scanner. Les assertions décrivent la version étudiée ; elles ne sont pas les critères d'un futur correctif.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}p{8mm}p{54mm}Y@{}}
+\toprule
+\textbf{ID} & \textbf{Entrée synthétique} & \textbf{Observation reproduite} \\
+\midrule
+P1 & Un marqueur entre deux segments de 2\,000 caractères. & Marqueur central absent après projection ; \code{omitted_entries=0}. Le compteur n'annonce pas cette perte interne. \\
+\addlinespace
+P2 & 20 services, un résultat de 1\,000 caractères chacun. & 6 services conservés ; 14 entrées omises. Le cas établit une dépendance au budget et à l'ordre. \\
+\addlinespace
+P3 & 17 observations, chacune avec marqueur après 1\,300 caractères. & 16 observations conservées ; tous les marqueurs tardifs absents ; 1\,200 caractères par résultat, sans référence de journal dans cette copie. \\
+\addlinespace
+P4 & Un équipement décrivant 20 services. & Quatre blocs de tailles 2, 2, 2 et 14 : la borne d'appels ne borne pas la taille de chaque bloc. \\
+\addlinespace
+P5 & Deux phrases interrompues, en français et en anglais. & Ni « nécessite une » ni « caused by an » ne déclenche l'heuristique de mémo inutilisable. \\
+\bottomrule
+\end{tabularx}
+\caption{Mesures de caractérisation logicielle sur des entrées construites. Aucun taux de faux négatifs ou de qualité LLM n'en découle.}
+\label{tab:probes}
+\end{table}
+
+\textbf{Reproduction depuis la racine du dépôt :}\par
+\code{python3.12 -B}\par
+\code{benchmarks/experiments/research-review/probe-context.py}\par
+Les deux lignes ci-dessus forment une seule commande. Le script et ses entrées sont conservés ; il affiche la réussite des cinq probes.
+
+\subsection{Validation logicielle consolidée}
+Le journal \code{research/agent-vs-automation/validation.md} consigne \textbf{381 tests ciblés réussis en 8,35 secondes}, après préparation d'un environnement Python 3.12.2 et pytest 9.1.1 temporaire. La sélection couvre aussi l'évaluation, le chargeur d'outils, les fiches, les blocs et les statuts. Les fournisseurs et outils sont simulés ; la suite complète n'a pas été exécutée. Le détail des dépendances et tentatives initiales reste dans ce journal, sans les confondre avec des régressions.
+
+\subsection{Artefacts historiques exclus des performances}
+Les exemples \code{2026-09-11_185118}, \code{2026-09-12_172518} et \code{2026-09-12_203157}, sous \code{output/agent/}, portent d'anciens modes de rapport. Leurs métadonnées ne documentent pas ensemble révision, modèle, fournisseur et résultats globaux. Des notes répétitives peuvent provenir de fixtures ou probes.
+
+Le fichier de contexte de 981\,930 octets du premier exemple ne prouve pas que ce volume a été envoyé au modèle : la métadonnée d'entrée indique 15\,319 octets. Ces dossiers ne permettent ni un taux actuel d'échec ni l'attribution d'un timeout au contexte. Le récit documentaire d'une reprise de neuf sections le 16 septembre reste un résultat rapporté ; ses preuves primaires n'ont pas été inspectées ici.
+
+\clearpage
+\section{Architecture proposée : une preuve, plusieurs vues}
+\label{sec:architecture}
+La figure~\ref{fig:proposal} distingue la source durable et sa présentation temporaire. La projection demeure révocable : elle peut être reconstruite ou complétée sans refaire une action réseau. Le modèle n'obtient pas pour autant un accès illimité ; les lectures et l'entrée restent bornées.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[sfig diagram]
+\node[sfig input,text width=28mm,minimum height=17mm] (capture) at (0,0) {Capture avant\\les coupes};
+\node[sfig focal,text width=28mm,minimum height=17mm] (raw) at (4.25,0) {Preuve\\versionnée};
+\node[sfig neutral,text width=28mm,minimum height=17mm] (projection) at (8.5,0) {Vue et budget\\d'entrée};
+\node[sfig output,text width=28mm,minimum height=17mm] (model) at (12.75,0) {Modèle};
+\node[sfig neutral,text width=30mm,minimum height=15mm] (read) at (8.5,-2.9) {Lecture ciblée\\par référence};
+\draw[sfig flow] (capture) -- (raw);
+\draw[sfig primary flow] (raw) -- (projection);
+\draw[sfig flow] (projection) -- (model);
+\draw[sfig blue flow] (raw.south) |- (read.west);
+\draw[sfig flow] (model.south) |- (read.east);
+\draw[sfig blue flow] (read.north) -- (projection.south);
+\node[sfig annotation] at (12.1,-2.4) {demande};
+\node[sfig annotation] at (5.4,-2.4) {source conservée};
+\end{tikzpicture}
+\caption{Architecture proposée, non implémentée. La capture porte son statut de complétude ; la vue indique ses omissions. Une lecture ciblée récupère une source existante, sans rejouer l'action qui l'a produite.}
+\label{fig:proposal}
+\end{figure}
+
+\subsection{P0 — Mesurer avant de compresser davantage}
+Capturer le résultat natif avant filtrage, avec empreinte, taille, encodage, quota et statut complet/incomplet. Le journal référence cet artefact. Chaque vue indique sa source, sa version, les offsets ou chemins JSON retenus, les éléments omis et le motif. Un quota dépassé ne doit jamais produire une déclaration de capture complète.
+
+Pour chaque requête, mesurer séparément instructions, schémas outils, faits, historique et résultats. Distinguer estimation locale, usage retourné, plafond configuré et capacité fournisseur connue ou inconnue. L'admission doit respecter une réserve de sortie dans la fenêtre disponible ; augmenter \code{max_tokens} peut réduire l'espace restant pour l'entrée. Séparer aussi attente en file et temps fournisseur.
+
+\subsection{P1 — Contexte explicite par run et phase}
+Conserver observations, hypothèses, essais, contradictions et états \emph{candidat, confirmé, inconclusif, erreur, non testé}. Fournir une lecture par référence et cible, limitée par taille. Comparer d'abord une sélection déterministe forte à une sélection augmentée par le modèle. Le découpage par poids des preuves devra préserver les corrélations multi-services.
+
+Un registre de campagne explicite peut remplacer la seule mémoire implicite du dialogue. L'isolation exige soit des dépendances par run, soit une isolation de processus vérifiée. Une répétition d'action peut être légitime ; elle doit être justifiée, attribuée, comptée et admissible selon l'état et la répétabilité de l'action. L'objectif est d'éviter le rejeu involontaire, pas d'interdire toute répétition.
+
+\subsection{P2 — Donner au modèle un rôle mesurable}
+Attribuer chaque décision au scanner, aux règles, au modèle ou au fallback. Si le mémo compact doit modifier la détection, créer des propositions structurées séparées, soumises à vérification. Si aucun bénéfice valide n'apparaît, réserver le modèle à une explication utile ou retirer l'appel du chemin critique. L'assemblage factuel reste disponible sans génération.
+
+\clearpage
+\section{Protocole proposé : isoler les causes du changement}
+\label{sec:protocol}
+\subsection{A. Fidélité de représentation, hors ligne}
+Geler un corpus synthétique, puis des traces historiques dont la provenance est vérifiée. Annoter \emph{avant} le test les informations nécessaires : cible, service, résultat positif ou négatif, contradiction et référence. Varier la position début/milieu/fin, l'ordre des services, le volume, les doublons, les erreurs et la dispersion des preuves. La sensibilité à la position et les tâches de combinaison motivent ces facteurs~\cite{liu,ruler} ; elles ne préjugent pas du comportement des modèles actuels.
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}p{12mm}Yp{52mm}@{}}
+\toprule
+\textbf{Bras} & \textbf{Représentation comparée} & \textbf{Interprétation} \\
+\midrule
+R0 & Données intégrales lorsque leur taille respecte le budget. & Référence ; exclusions hors budget explicites. \\
+R1 & Projection actuellement utilisée. & Mesure de la politique existante. \\
+R2 & Projection déterministe améliorée, références et omissions. & Effet d'une meilleure sélection sans résumé LLM. \\
+R3 & R2, avec résumé LLM additionnel. & Exploration distincte : qualité et coût du résumé. \\
+\bottomrule
+\end{tabularx}
+\caption{Ablation proposée de représentation. R0--R3 évitent de confondre ces bras expérimentaux avec les constats C1--C8.}
+\label{tab:ablation}
+\end{table}
+
+Le modèle, la politique de décision et les plafonds restent identiques. \textbf{Tous les bras disposent des mêmes outils de lecture.} Une seconde ablation retire ces outils de tous les bras ; changer leur disponibilité pour un seul bras mélangerait deux facteurs. Le nombre de lectures choisi est une mesure. Un témoin recevant seulement les preuves annotées sert de référence contrôlée, sans être présenté comme système déployable.
+
+\subsection{B. Décision et utilité marginale}
+À preuves initiales communes, comparer un routage à règles, le même routage avec résumé LLM, un agent choisissant ses lectures/actions, puis cet agent avec R2. Les profils compact et full ne sont pas un contraste causal propre : ils changent outils, budgets, obligations, reprises et rôle du modèle à la fois.
+
+\begin{tabularx}{\linewidth}{@{}p{38mm}Y@{}}
+\toprule
+\textbf{Dimension} & \textbf{Mesures à préenregistrer} \\
+\midrule
+Conservation & Rappel des preuves requises ; omissions silencieuses ; contradictions conservées ; références résolubles. \\
+Attribution & Précision cible/service/référence ; origine des décisions ; nouvelles hypothèses LLM effectivement vérifiées. \\
+Efficience & Coût, tokens et délai par preuve acceptable ; lectures ; actions redondantes ; reprises et échecs. \\
+Robustesse & Stabilité aux permutations et paraphrases ; abstention ; fidélité des justifications revue en aveugle. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{C. Validation ultérieure en laboratoire}
+Le replay hors ligne ne reproduit pas l'effet d'un choix sur le réseau. Les futurs runs contrôlés exigent une demande explicite, la cible nato/pve-nato, des resets, le même inventaire public et snapshot CVE, des budgets comparables et des versions gelées. Prévoir répétitions par famille et variantes tenues à l'écart des ajustements. Une source commune n'est pas une nouvelle observation indépendante. Un juge LLM ne devient pas seul arbitre de la preuve.
+
+\clearpage
+\section{Décisions à prendre et limites de lecture}
+\subsection{Critères d'acceptation proposés}
+Avant le pilote, fixer la marge de non-infériorité, les plafonds coût/délai et l'unité d'analyse. Aucun seuil universel de gain n'est justifié par cette revue. L'hypothèse nulle est admissible : le LLM peut ne pas améliorer la tâche testée.
+
+\begin{tabularx}{\linewidth}{@{}p{24mm}Y@{}}
+\toprule
+\textbf{Étape} & \textbf{Barre d'acceptation à vérifier} \\
+\midrule
+Capture & Toute coupe est déclarée ; chaque extrait renvoie à une source disponible ou explicitement incomplète. \\
+Contexte & Budget d'entrée respecté lorsqu'il est connu ; omissions et inconnues visibles ; aucune confusion entre bytes, tokens et sortie. \\
+Reprise & Références résolubles ; pas de rejeu involontaire ; ambiguïtés conservées ; tests d'entrelacement sans mélange A/B. \\
+Utilité & Gain éventuel attribuable aux décisions du modèle, au-delà du scanner et des règles, avec coûts et résultats négatifs inclus. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Incertitudes à garder ouvertes}
+Il reste à inventorier quels outils conservent déjà un brut, à identifier quelles familles souffrent réellement des coupes inter-phases, et à vérifier la concurrence possible dans les modes déployés. Une bonne projection déterministe peut suffire ; les lectures ciblées peuvent être lentes ou manquer la source utile. Ajouter un résumé ou des agents peut donc augmenter le coût sans gain.
+
+Les propositions de registre et de chargement à la demande s'appuient sur un retour d'ingénierie~\cite{anthropic}, pas sur une validation LANCE. Les documents de référence demeurent \code{docs/architecture/report-writing.md}, \code{docs/architecture/run-artifacts.md} et \code{src/agent/phases/README.md}. Les notes, scripts et le journal de validation permettent de retrouver les constats ; cette étude n'atteste aucune nouvelle performance réseau.
+
+\subsection{Sources primaires : versions et portions effectivement lues}
+Consultation le 29 septembre 2026. Revue ciblée, non systématique. Pour Liu et al. et RULER, seules les pages de résumé, auteurs et historique de versions ont été lues, pas les articles complets. Ces travaux portent sur les tâches et modèles de leur époque ; aucun résultat numérique n'est transféré au pipeline.
+
+Pour Anthropic, le corps principal a été lu, notamment les sections sur la composition du contexte, la recherche à la demande, la compression et les notes structurées. Il s'agit d'un retour fournisseur ; ses recommandations doivent être comparées à une solution déterministe et à budgets identiques.
+
+\clearpage
+\begin{thebibliography}{9}
+\small
+\bibitem{liu} N. F. Liu et al. \emph{Lost in the Middle: How Language Models Use Long Contexts}. arXiv:2307.03172v3, 20 novembre 2023 ; publication TACL. Résumé : dépendance à la position en QA multi-documents et récupération clé-valeur.\par
+\url{https://arxiv.org/abs/2307.03172v3}
+
+\bibitem{ruler} C.-P. Hsieh et al. \emph{RULER: What's the Real Context Size of Your Long-Context Language Models?} arXiv:2404.06654v3, 6 août 2024 ; COLM 2024. Résumé : benchmark synthétique de récupération, suivi multi-étapes et agrégation.\par
+\url{https://arxiv.org/abs/2404.06654v3}
+
+\bibitem{anthropic} Anthropic Engineering. \emph{Effective context engineering for AI agents}. 29 septembre 2025. Recommandations : références légères, chargement à la demande, notes et compression évaluée sur la conservation d'informations utiles.\par
+\url{https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents}
+\end{thebibliography}
+\end{document}

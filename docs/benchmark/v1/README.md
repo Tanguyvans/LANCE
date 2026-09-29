@@ -71,7 +71,7 @@ familles de menaces aux objectifs S1–S29 et sépare implémentations, simulati
 et propositions historiques.
 
 Pour intervenir dans le code : [guide des phases](../../../src/agent/phases/README.md)
-et [contrat des livrables](../../run-artifacts.md).
+et [contrat des livrables](../../architecture/run-artifacts.md).
 
 ## Limites à garder visibles
 

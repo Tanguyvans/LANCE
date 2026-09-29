@@ -111,7 +111,7 @@ Le mineur et les exports SFT refusent les scénarios test, même avec un faux la
 dev ou un marqueur custom. Les origines de variantes exportées sont aussi
 contrôlées. Le mode custom nécessite une autorisation explicite au minage ;
 il ne permet pas de réutiliser un scénario de test.
-Voir la [boucle d’apprentissage](../../LEARNING_LOOP.md).
+Voir la [boucle d’apprentissage](../../training/learning-loop.md).
 
 ## Métriques
 

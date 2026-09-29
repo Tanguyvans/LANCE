@@ -4,9 +4,9 @@
 l'évaluation de LANCE. Elle ne constitue ni une revue systématique exhaustive,
 ni une campagne expérimentale, ni une preuve d'avantage de notre agent.
 
-Elle complète le [protocole scientifique](agent-vs-automation.md), le
-[plan d'implémentation](agent-vs-automation-implementation.md) et le
-[guide CLI D1/A1](agent-vs-automation-cli.md). Les recommandations ci-dessous
+Elle complète le [protocole scientifique](protocol.md), le
+[plan d'implémentation](implementation-plan.md) et le
+[guide CLI D1/A1](../../docs/benchmark/agent-vs-automation-cli.md). Les recommandations ci-dessous
 sont proposées ; elles ne décrivent pas des fonctions déjà toutes disponibles.
 
 ## 1. La question à étudier
@@ -160,7 +160,7 @@ les répétitions d'un même scénario ne sont pas de nouvelles familles.
 Rapporter les écarts appariés avec leur incertitude, et conserver les runs arrêtés,
 non évaluables et leurs coûts dans un bilan séparé. Le F1 parmi les seules paires
 complètes ne suffit pas à conclure à une meilleure fiabilité opérationnelle.
-Le [protocole existant, sections 6–8](agent-vs-automation.md) détaille ces règles.
+Le [protocole existant, sections 6–8](protocol.md) détaille ces règles.
 
 ## 7. Priorités concrètes dans le code actuel
 
@@ -169,7 +169,7 @@ une étude destinée à soutenir une conclusion scientifique :
 
 1. **Consolider D1.** Le premier incrément de
    [verification/rules.py](../../src/agent/phases/verification/rules.py) exécutait
-   une sonde par candidat. L'[extension de campagne](agent-vs-automation-campaign.md)
+   une sonde par candidat. L'[extension de campagne](../../docs/benchmark/agent-vs-automation-campaign.md)
    ajoute une reprise bornée sur erreur transitoire et une lecture HTTP
    complémentaire ; sa couverture reste à examiner sur le pilote. Les politiques peuvent
    choisir des stratégies différentes sous un même budget ; l'égalité du nombre

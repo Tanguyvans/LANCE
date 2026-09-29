@@ -2,7 +2,7 @@
 
 Cette extension prépare le pilote de **24 exécutions** et calcule son bilan à
 partir d'artefacts existants. Elle ne déploie rien et ne lance aucun audit.
-Le [protocole](agent-vs-automation.md) fixe les questions scientifiques ; le
+Le [protocole](../../research/agent-vs-automation/protocol.md) fixe les questions scientifiques ; le
 [guide CLI](agent-vs-automation-cli.md) décrit l'exécution d'un bras.
 
 ## Structure et responsabilités
@@ -15,9 +15,11 @@ benchmarks/experiments/policy-comparison/
   pilot.example.json                       plan de 12 paires, encore à préparer
   review.csv                               grille de revue indépendante
   README.md                                mode d'emploi des modèles
+research/agent-vs-automation/
+  protocol.md                              protocole scientifique proposé
+  state-of-the-art.md                      références et choix méthodologiques
+  implementation-plan.md                   plan et suivi des lots logiciels
 docs/benchmark/
-  agent-vs-automation.md                    protocole scientifique
-  agent-vs-automation-state-of-the-art.md    références et choix méthodologiques
   agent-vs-automation-campaign.md            ce guide opérationnel
 tests/test_audit_policy.py                  vérifications logicielles hors ligne
 output/                                    artefacts locaux, ignorés par Git
@@ -28,6 +30,11 @@ l'inventaire public validé du guide CLI. Les outils, limites et validateurs de
 preuve restent communs. Aucun pipeline parallèle n'est créé pour D1.
 
 ## Mise à jour sur nato
+
+La cible est **nato / pve-nato**. Le **homelab personnel est exclu** des transferts,
+déploiements et audits de cette campagne, même si un inventaire local y pointe.
+Respecter la [consigne de ciblage du dépôt](../../AGENTS.md) ; un accès à nato
+indisponible ne justifie pas un repli vers le homelab.
 
 Le push sur `main` déclenche [Benchmark integrity](../../.github/workflows/benchmark-integrity.yml).
 Après réussite des tests et de la construction de l'image isolée, le workflow

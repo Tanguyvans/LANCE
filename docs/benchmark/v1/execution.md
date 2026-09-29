@@ -4,6 +4,11 @@
 
 ## Avant de lancer
 
+Le laboratoire de ce projet est **nato / pve-nato** (runner `nato-master`). Le
+homelab personnel est exclu des déploiements et audits : respecter la
+[consigne de ciblage du dépôt](../../../AGENTS.md), y compris lorsqu'un inventaire
+local désigne une autre machine.
+
 Les runs avec scénario peuvent déployer des services volontairement vulnérables,
 consommer un budget modèle et supprimer les machines du scénario au nettoyage.
 Utiliser uniquement le laboratoire autorisé, isolé du réseau de gestion et
@@ -167,4 +172,4 @@ python -m pytest --rootdir=. -q tests model_training/tests --tb=short
 Les tests locaux ne prouvent pas la disponibilité de l’endpoint réel ni la bonne
 injection du laboratoire. Après un essai S1, contrôler préparation, phases, preuves,
 statut et nettoyage avant d’étendre la campagne. Pour les limites de concurrence
-et les tests d’isolation : [livrables par run](../../run-artifacts.md).
+et les tests d’isolation : [livrables par run](../../architecture/run-artifacts.md).

@@ -57,7 +57,7 @@ Les conditions liées au moteur local restent inchangées. Choisir compact sur u
 modèle distant n'active pas les récupérations locales ; utiliser un moteur local
 avec full ne force pas compact. Le rapport utilise une rédaction par fiches
 indépendantes et un assemblage déterministe, communs aux deux profils.
-Voir la [rédaction du rapport](../../../docs/report-writing.md) pour les limites,
+Voir la [rédaction du rapport](../../../docs/architecture/report-writing.md) pour les limites,
 les fichiers produits et la reprise des fiches.
 
 ## Reconnaissance et restitution
@@ -116,7 +116,7 @@ Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurren
 
 L'API, le CLI et les workers passent par `Pipeline`. Le worker fournit son dossier
 parent via `Pipeline(output_dir=...)`, sans modifier une variable globale.
-Voir le [contrat d'isolation des livrables](../../../docs/run-artifacts.md) pour
+Voir le [contrat d'isolation des livrables](../../../docs/architecture/run-artifacts.md) pour
 les responsabilités, les exemples et les limites. Les helpers internes doivent être importés
 depuis leur module propriétaire, pas depuis la façade. Les réexportations ajoutées
 pendant la migration et les fichiers relais `agent/report_context.py` et

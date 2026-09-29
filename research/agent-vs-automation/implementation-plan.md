@@ -2,10 +2,10 @@
 
 **Statut : premier incrément CLI D1/A1 implémenté et validé localement le 27 septembre 2026.**
 Extension du 28 septembre : décisions D1 bornées, bilan de campagne hors ligne
-et préparation du pilote ; voir le [guide de campagne](agent-vs-automation-campaign.md).
-Le [protocole scientifique](agent-vs-automation.md) définit les hypothèses,
+et préparation du pilote ; voir le [guide de campagne](../../docs/benchmark/agent-vs-automation-campaign.md).
+Le [protocole scientifique](protocol.md) définit les hypothèses,
 mesures et limites. Ce document fixe l'ordre des changements logiciels et
-leurs critères de validation. Le [guide CLI](agent-vs-automation-cli.md) décrit les options disponibles et leurs limites.
+leurs critères de validation. Le [guide CLI](../../docs/benchmark/agent-vs-automation-cli.md) décrit les options disponibles et leurs limites.
 
 ## Périmètre du premier incrément
 

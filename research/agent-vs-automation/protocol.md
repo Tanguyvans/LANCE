@@ -2,13 +2,13 @@
 
 **Statut : objectif de recherche retenu ; protocole proposé, 27 septembre 2026.**
 Ce document prépare une comparaison ; il ne rapporte aucun résultat expérimental.
-Un [premier incrément CLI D1/A1](agent-vs-automation-cli.md) implémente l'analyse,
+Un [premier incrément CLI D1/A1](../../docs/benchmark/agent-vs-automation-cli.md) implémente l'analyse,
 la vérification et la comparaison d'une paire sur inventaire public commun.
 Les autres systèmes et campagnes ci-dessous restent proposés.
-Le [guide de campagne](agent-vs-automation-campaign.md) décrit l'extension D1,
+Le [guide de campagne](../../docs/benchmark/agent-vs-automation-campaign.md) décrit l'extension D1,
 le bilan de tous les essais et le modèle du pilote réduit à 24 exécutions.
 Aucun run de laboratoire n'a été lancé pour cette analyse.
-Le [contrat V1](v1/evaluation.md) reste la référence des mesures actuelles.
+Le [contrat V1](../../docs/benchmark/v1/evaluation.md) reste la référence des mesures actuelles.
 
 ## 1. Objectif scientifique du projet
 
@@ -113,7 +113,7 @@ pas être décrite comme un simple changement de présentation.
 
 ## 4. Jeux d'expériences
 
-Le [catalogue actuel](v1/scenarios.md) sert de base de développement. Un intitulé
+Le [catalogue actuel](../../docs/benchmark/v1/scenarios.md) sert de base de développement. Un intitulé
 de scénario ne constitue ni une validation du déploiement ni une capacité
 démontrée. Les groupes suivants sont des catégories expérimentales à organiser.
 
@@ -213,7 +213,7 @@ validée. Une même graine de génération ne garantit pas une réponse LLM iden
 
 ## 6. Mesures et présentation des résultats
 
-Réutiliser les définitions du [contrat de preuves](v1/evaluation.md), sans
+Réutiliser les définitions du [contrat de preuves](../../docs/benchmark/v1/evaluation.md), sans
 créer de score global mélangeant détection, intrusion, rapidité et style.
 
 | Dimension | Mesure | Disponibilité / travail nécessaire |
@@ -364,7 +364,7 @@ système préféré.
 
 ## 10. Ordre de réalisation et livrables
 
-Le [plan d'implémentation](agent-vs-automation-implementation.md) détaille le
+Le [plan d'implémentation](implementation-plan.md) détaille le
 premier incrément D1/A1, les dépendances et les critères de validation logiciels.
 
 1. **Protocole et inventaire** : fixer les hypothèses, la référence D1, les
@@ -401,7 +401,7 @@ forme d'automatisation classique.
 
 ## 11. Appuis bibliographiques et portée
 
-L'[état de l'art ciblé du 28 septembre 2026](agent-vs-automation-state-of-the-art.md)
+L'[état de l'art ciblé du 28 septembre 2026](state-of-the-art.md)
 complète ces appuis avec les benchmarks de pentest, les références sans LLM et
 les travaux IoT, en distinguant résultats publiés et recommandations pour LANCE.
 

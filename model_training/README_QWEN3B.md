@@ -19,7 +19,7 @@ python3 scripts/training_workspace.py push --apply
 ```
 
 The Leo workspace contains datasets, environments and model outputs, but is
-never used to commit or push code. See `docs/TRAINING_WORKSPACES.md`.
+never used to commit or push code. See `docs/training/workspaces.md`.
 
 ## Prepared datasets
 

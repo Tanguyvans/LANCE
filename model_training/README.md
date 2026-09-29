@@ -26,8 +26,8 @@ données, ni les chemins des checkpoints et adaptateurs existants.
 
 - [Experts Qwen2.5-3B](README_QWEN3B.md) : préparation, préflight et entraînement.
 - [Feedback relu et accepté](README_FEEDBACK_TRAINING.md).
-- [Synchronisation du workspace GPU](../docs/TRAINING_WORKSPACES.md).
-- [Service HMoE / OpenWebUI](../docs/lance_hmoe_openwebui.md).
+- [Synchronisation du workspace GPU](../docs/training/workspaces.md).
+- [Service HMoE / OpenWebUI](../docs/training/hmoe-openwebui.md).
 - [Scénarios d’évaluation](../docs/benchmark/v1/scenarios.md).
 
 ## Trois notions différentes

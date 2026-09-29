@@ -1,5 +1,10 @@
 # Plan : Scalabilité contexte Phase 5 + nettoyage dead code
 
+Classement : [étude archivée](README.md). Pour le fonctionnement actuel, voir la
+[rédaction du rapport](../../docs/architecture/report-writing.md). Les indications
+d'implémentation ci-dessous sont celles de la note historique, non revalidées lors
+de son déplacement le 29 septembre 2026.
+
 > **⚠️ Document historique — plan intégralement implémenté (autrement).**
 > Les trois correctifs de ce plan ont été livrés, mais sous une forme différente et
 > après une renumérotation des phases :
