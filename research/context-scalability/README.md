@@ -24,6 +24,9 @@ déterministe. Ce fonctionnement constitue le point de départ de l'étude.
 - [Reproductions locales](../../benchmarks/experiments/research-review/README.md).
 - [Synthèse transversale](../agent-vs-automation/research-review.md) et [validation](../agent-vs-automation/validation.md).
 
+Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
+résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.
+
 Le [plan historique](plan.md) conserve les constats, estimations et propositions
 de l'époque. Il indique que les corrections ont été livrées sous une autre forme.
 Ses numéros de phase, noms de fonctions et commandes ne constituent pas une

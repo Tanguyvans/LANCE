@@ -30,6 +30,9 @@ les tentatives et les contrôles doivent rester des dimensions distinctes.
 - [Validation effectuée](../agent-vs-automation/validation.md).
 - [Synthèse des trois recherches](../agent-vs-automation/research-review.md).
 
+Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
+résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.
+
 ## Suite et références
 
 Priorité proposée : corriger les mesures et calibrer les validateurs sur des

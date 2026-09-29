@@ -85,14 +85,14 @@ que l'autorisation de transmission reste en attente ; voir les
 ## Livraison LaTeX et PDF
 
 Version de lecture du 29 septembre 2026, rédigée depuis les analyses et
-contre-revues conservées. Chaque étude fournit un document autonome, sans
+contre-revues conservées, puis remise en forme depuis la publication `26431ad`. Chaque étude fournit un document autonome, sans
 fichier graphique ou bibliographique externe :
 
 | Étude | Source et PDF | Pages exportées |
 | --- | --- | --- |
-| Synthèse et apport LLM | [LaTeX](report.tex) · [PDF](report.pdf) | 7 |
-| Couverture et évaluation | [LaTeX](../benchmark-coverage/report.tex) · [PDF](../benchmark-coverage/report.pdf) | 8 |
-| Contexte du pipeline | [LaTeX](../context-scalability/report.tex) · [PDF](../context-scalability/report.pdf) | 9 |
+| Synthèse et apport LLM | [LaTeX](report.tex) · [PDF](report.pdf) | 9 |
+| Couverture et évaluation | [LaTeX](../benchmark-coverage/report.tex) · [PDF](../benchmark-coverage/report.pdf) | 10 |
+| Contexte du pipeline | [LaTeX](../context-scalability/report.tex) · [PDF](../context-scalability/report.pdf) | 10 |
 
 Les trois sources finales ont compilé avec succès dans l'éditeur LaTeX intégré
 de Codex. Ce compilateur ne fournit pas un export sur disque via son outil de
@@ -107,12 +107,24 @@ latexmk -pdf -interaction=nonstopmode -halt-on-error \
   -outdir=/private/tmp/lance-research-pdf/<sujet> research/<sujet>/report.tex
 ```
 
-Les PDF ont été rendus en PNG avec Poppler et inspectés visuellement : figures,
-tableaux, légendes, références et pagination. Aucun débordement `Overfull` dans
-les journaux finaux ; texte extractible, en-têtes et pieds de page contrôlés sur
-les 24 pages. Les journaux de l'installation locale signalent une substitution
-de graisse petites capitales et l'absence de motifs français préchargés ; le
-rendu livré a été vérifié, sans glyphes manquants. Les fichiers de compilation
+Les PDF ont été rendus en PNG avec Poppler et inspectés visuellement : titre,
+résumé, sommaire, figures, tableaux, légendes, références et pagination.
+Les 29 pages finales sont numérotées ; les 72 destinations du sommaire existent
+et correspondent aux pages annoncées. Les identifiants de figures/tableaux et
+les clés bibliographiques de la première version sont conservés, ainsi que
+les six figures TikZ. Aucun débordement `Overfull` ni glyphe manquant détecté.
+
+La présentation suit les [conventions scientifiques](../README.md#structure-scientifique-classique) :
+titre centré, résumé bref, table des matières cliquable, sections numérotées,
+méthode identifiable, conclusion et références. Le PDF de référence fourni par
+l'utilisateur a servi uniquement à étudier la présentation ; ses données et
+instructions scientifiques ne font pas partie du travail LANCE.
+Les résumés et conclusions synthétisent les constats existants, sans ajouter
+une mesure ou présenter un protocole proposé comme exécuté.
+
+L'exporteur local signale toujours l'absence de motifs français préchargés ;
+le rendu livré a été vérifié. La substitution de graisse petites capitales
+observée lors du premier export a été supprimée. Les fichiers de compilation
 et images de contrôle restent temporaires, hors du dépôt.
 
 Cette livraison modifie la présentation et la navigation, pas les résultats

@@ -28,6 +28,9 @@ laboratoire. Les autres systèmes et extensions du protocole restent proposés.
 - [Contre-revue et arbitrages](adversarial-review.md) : corrections GPT retenues et état de la demande Muse.
 - [Validation du 29 septembre](validation.md) : commandes, environnement, résultats et limites.
 
+Le rapport suit la [structure scientifique classique](../README.md#structure-scientifique-classique) :
+résumé, sommaire cliquable, méthode, constats, limites, conclusion et références.
+
 ## Références opérationnelles
 
 - [Contrat d'évaluation actuel](../../docs/benchmark/v1/evaluation.md).

@@ -23,8 +23,9 @@ Les deux rapports spécialisés développent les constats et les protocoles :
 - [Couverture et validité de l'évaluation — PDF](benchmark-coverage/report.pdf) · [LaTeX](benchmark-coverage/report.tex).
 - [Conservation des preuves et contexte — PDF](context-scalability/report.pdf) · [LaTeX](context-scalability/report.tex).
 
-Version du 29 septembre 2026, avec figures vectorielles modifiables dans les
-sources. Ces rapports contiennent un diagnostic logiciel et des expériences
+Version du 29 septembre 2026, avec titre centré, résumé, table des matières,
+sections numérotées et figures vectorielles modifiables dans les sources.
+Ces rapports contiennent un diagnostic logiciel et des expériences
 proposées ; ils ne rapportent pas de performance terrain ni de gain LLM démontré.
 
 ## Ouvrir ou poursuivre une recherche
@@ -71,11 +72,57 @@ ce statut dans le PDF ; la mise en page ne le transforme pas en résultat terrai
 Les références restent consultables depuis le document, avec les dates/versions
 et limites de lecture prévues ci-dessous.
 
+### Structure scientifique classique
+
+Adopter un article ou rapport LaTeX sobre : A4, corps de 11 ou 12 points,
+typographie avec empattements, titres noirs, marges régulières et pagination.
+Utiliser les mécanismes LaTeX (`\maketitle`, `abstract`, `\tableofcontents`,
+`\section`, `\label` et `\ref`) pour garder une structure cohérente. Le titre
+est centré, suivi d'un sous-titre éventuel, de l'auteur ou de l'équipe réellement
+responsable, de la date et du statut. Une couverture séparée n'est pas nécessaire.
+
+Ordre attendu, à adapter à la question scientifique :
+
+1. **Titre et métadonnées**, avec le statut explicite : exploration, protocole
+   proposé, résultats obtenus ou étude conclue.
+2. **Résumé**, en un paragraphe bref : question, méthode, constats principaux,
+   limites essentielles et implication. Ne pas y annoncer de gain non mesuré.
+3. **Table des matières automatique et cliquable**, incluant les références.
+   Ajouter les sous-sections si elles aident la navigation ; une note de deux
+   pages ou moins peut s'en passer si ce choix est expliqué dans son README.
+4. **Objectif et périmètre**, puis **méthode** : code et données inspectés,
+   sources lues, protocole, mesures et conditions de reproduction.
+5. **Constats ou résultats**, avec figures et tableaux introduits dans le texte.
+   Distinguer faits du code, observations synthétiques, résultats terrain et
+   hypothèses ; nommer « protocole proposé » les expériences non exécutées.
+6. **Discussion et limites**, avec les explications alternatives et les
+   conditions nécessaires avant de généraliser.
+7. **Conclusion et prochaines étapes**, reliées aux preuves disponibles.
+   Une conclusion négative ou indéterminée est un résultat admissible.
+8. **Références**, puis des **annexes** seulement si elles sont utiles.
+
+Les titres précis peuvent varier selon le sujet ; ces rôles doivent rester
+identifiables. Garder un corps de texte continu et des sections numérotées.
+Laisser LaTeX gérer les sauts de page, puis corriger les titres orphelins et les
+figures mal placées après inspection. Ne pas imposer une nouvelle page à chaque
+section ni ajouter de panneaux décoratifs. Une liste des figures/tableaux est
+facultative et ne remplace pas la table des matières.
+
+Ces règles sont maintenues **ici comme référence unique**. `AGENTS.md` contient
+un rappel et un lien ; les README des sujets servent à la navigation et au statut,
+sans recopier les conventions. Les trois `report.tex` liés dans l'index illustrent
+le format et restent autonomes pour l'éditeur LaTeX intégré.
+
+### Compilation et vérification
+
 Pour travailler dans Codex, ouvrir par défaut le `.tex` dans l'éditeur LaTeX
 intégré et garder ce fichier pour les retouches. Privilégier un document autonome,
 avec schémas et bibliographie intégrés lorsque possible. Compiler après les
 modifications, exporter le PDF correspondant, puis vérifier visuellement les
 pages : débordements, lisibilité des figures et tableaux, légendes et références.
+Compiler autant que nécessaire pour stabiliser la table des matières, la
+pagination et les renvois ; vérifier que les destinations du sommaire existent
+et que les numéros correspondent au PDF final.
 Conserver la source et le PDF livrable ; ne pas ajouter les fichiers temporaires
 de compilation au dossier de recherche. Si compilation ou export indisponible,
 signaler précisément la limite et ne pas présenter un ancien PDF comme actualisé.

@@ -2,39 +2,33 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
 \usepackage{lmodern,microtype}
 \usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
 \usepackage{graphicx,booktabs,array,tabularx,longtable}
 \usepackage{xcolor,tikz}
 \usepackage{enumitem,titlesec}
 \usepackage{hyperref}
-\hypersetup{colorlinks=true,linkcolor=sfigBlue,citecolor=sfigBlue,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
 \urlstyle{same}
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{5pt}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{3pt}
 \setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
 \setlist{nosep,leftmargin=5mm,topsep=3pt}
-\makeatletter
-\long\def\@makecaption#1#2{\vskip 7pt\begingroup\small\textbf{#1} -- #2\par\endgroup\vskip 3pt}
-\def\ps@lance{%
-  \def\@oddhead{\small\sffamily LANCE / Recherche\hfil 29 septembre 2026}%
-  \let\@evenhead\@oddhead
-  \def\@oddfoot{\small\color{sfigMuted}Diagnostic logiciel et protocole proposé\hfil\thepage}%
-  \let\@evenfoot\@oddfoot
-}
-\makeatother
 \def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
 \newcommand{\evidence}[1]{\par\smallskip{\small\color{sfigMuted}\textbf{Preuve / limite.} #1}\par\smallskip}
-\newcommand{\status}[1]{{\small\sffamily\color{sfigRaspberry}#1}}
-\titleformat{\section}{\Large\sffamily\bfseries\color{sfigInk}}{\thesection}{0.7em}{}
-\titleformat{\subsection}{\large\sffamily\bfseries\color{sfigInk}}{\thesubsection}{0.7em}{}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.7em}{}
 \titlespacing*{\section}{0pt}{16pt}{7pt}
 \titlespacing*{\subsection}{0pt}{11pt}{5pt}
-\pagestyle{lance}
-\setlength{\headheight}{14pt}
+\pagestyle{plain}
+\setcounter{tocdepth}{2}
 
 % Reusable TikZ styles for sober scientific figures.
 % Required packages: xcolor, tikz.
@@ -134,18 +128,39 @@
   }
 }
 
-\begin{document}
+% Classical article front matter; standalone source for the native editor.
+\renewenvironment{abstract}
+  {\begin{quote}\small\noindent\textbf{Résumé.}\ }
+  {\par\end{quote}}
+\title{\bfseries IoTChainBench : couverture et validité de l'évaluation\\[0.5em]\large\mdseries\itshape Corpus, mesures, preuves et protocole de validation}
+\author{Projet LANCE}
+\date{29 septembre 2026\\[0.4em]\small Exploration ; contre-exemples logiciels reproduits}
 \hypersetup{pdftitle={IoTChainBench : couverture et validité de l'évaluation}}
+\begin{document}
+\maketitle
+\begin{abstract}
+Le catalogue IoTChainBench définit 29 scénarios et 288 vulnérabilités attendues. Ces nombres ne mesurent ni leur présence dans le laboratoire ni la couverture effectivement atteinte par LANCE. Cette étude distingue couverture du corpus, tentatives et rappel prouvé, à partir des contrats, de l'évaluateur et de reproductions synthétiques. Elle observe un taux de tentative de 100\,\% sans tentative déclarée, deux admissions de preuves HTTP insuffisantes et une collision d'attribution d'un contrôle négatif. Le test est concentré sur HTTP/SSH et aucun scénario officiel n'est entièrement sain. La priorité proposée est de fiabiliser les mesures et les oracles, puis d'élargir les familles et les contrôles vérifiables. Aucun correctif du runtime, résultat de campagne ou gain LLM n'est démontré par cette revue.
+\end{abstract}
+\clearpage
 
-{\LARGE\sffamily\bfseries\color{sfigInk}IoTChainBench : couverture\par et validité de l'évaluation\par}
-\vspace{4pt}
-\status{Étude exploratoire · 29 septembre 2026 · Contre-exemples logiciels reproduits}
+\begingroup
+\small
+\tableofcontents
+\endgroup
+\clearpage
 
-\textbf{Question.} Quelles propriétés le benchmark définit-il, lesquelles une exécution explore-t-elle, et lesquelles ses mesures permettent-elles réellement de valider ? Cette étude couvre le catalogue public, les contrats de preuve, l'évaluateur et les conditions de préparation du laboratoire.
+\section{Objectif et méthode}
+L'étude cherche à déterminer ce que le benchmark définit, ce qu'une exécution
+explore et ce que ses preuves permettent de conclure. Son périmètre couvre le
+catalogue public, les contrats, l'évaluateur et les conditions de préparation
+du laboratoire.
 
-\textbf{Constat principal.} Le catalogue définit 29 scénarios et 288 vulnérabilités attendues. Ce volume ne mesure ni leur présence dans le laboratoire ni la couverture atteinte par LANCE. La revue reproduit un taux de tentative de 100\,\% sans tentative déclarée et deux admissions de preuves HTTP insuffisantes. Elle identifie aussi une collision d'attribution entre un contrôle négatif et un vrai positif attendu. La priorité proposée est donc de fiabiliser les mesures avant d'élargir le corpus.
-
-\textbf{Portée.} Il s'agit d'une lecture du code et de traces synthétiques locales : aucune campagne terrain, aucune mesure de performance LLM et aucun correctif du logiciel ne sont apportés ici. La contre-revue GPT a été intégrée ; la revue Muse n'a pas été exécutée. La comparaison avec l'automatisation est développée dans le \href{../agent-vs-automation/report.pdf}{rapport transversal sur l'apport des LLM}.
+La méthode combine inventaire statique avec fusion des contrats, inspection du
+code, trois probes synthétiques et revue ciblée de sources primaires.
+Aucune campagne terrain, mesure de performance LLM ou correction du runtime
+n'est apportée ici. La contrelecture GPT a été intégrée ; la revue Muse n'a pas
+été exécutée. La comparaison avec l'automatisation est développée dans le
+\href{../agent-vs-automation/report.pdf}{rapport transversal sur l'apport des LLM}.
 
 \section{Trois couvertures, des dénominateurs distincts}
 \label{sec:denominators}
@@ -171,14 +186,13 @@ La couverture du \emph{corpus} décrit les propriétés représentées. La couve
 
 Pour un scénario positif évaluable, le rappel final vaut $V/G$ et le F1 final $2V/(N+G)$. Le taux de tentative vaut $T/Q$ lorsque cette population est connue et non vide. Un taux de tentative élevé peut coexister avec un faible rappel : les failles jamais proposées sont absentes de $Q$. Un résultat indisponible reste distinct d'un zéro.
 
-\clearpage
 \section{Ce que le catalogue représente}
 \label{sec:corpus}
 L'inventaire suit le catalogue 3.2.0 et fusionne les vérités terrain avec leur fichier commun de contrats, comme l'évaluateur. Les 29 empreintes SHA des références concordent. Le tableau~\ref{tab:corpus} compte des \emph{instances définies}, pas des équipements uniques ni des propriétés observées dans le laboratoire.
 
 \begin{table}[htbp]
 \centering\small
-\begin{tabularx}{\linewidth}{Yrrr}
+\noindent\begin{tabularx}{\linewidth}{Yrrr}
 \toprule
 Population & Dev S1--S19 & Test S20--S29 & Total \\
 \midrule
@@ -220,7 +234,6 @@ S1--S13 concentrent 229 des 288 GT, soit 79,5\,\%, sans contrôles négatifs exp
 
 Les associations ne sont pas nécessairement bijectives avec les GT : le dev en contient 251 pour 252 GT. Les autres associations dev comprennent Telnet~12, MySQL~10, Modbus~10, Redis~9, FTP~8, CoAP~4, BACnet~3, SNMP~3, MQTT-WebSocket~2, OPC~UA~2 et HTTPS~1. Le test n'en conserve que Redis~1 et deux découvertes simulées. Il ne mesure donc pas la généralisation sur plusieurs familles IoT minoritaires.
 
-\clearpage
 \section{Représentativité et limites de généralisation}
 \label{sec:representativity}
 La diversité d'instances doit être distinguée de celle des mécanismes. PKI, OTA avancée, IAM cloud et OT multi-protocole n'ont chacun qu'un scénario dev. Les neuf GT dev de catégorie CVE se rapportent au seul identifiant autorisé dans le catalogue hors ligne, Terrapin. Ces répétitions sont utiles pour varier les contextes, mais ne constituent pas neuf vulnérabilités logicielles indépendantes.
@@ -238,7 +251,7 @@ Le prochain incrément devrait combiner quatre types de variations, chacun avec 
 
 \begin{table}[htbp]
 \centering\small
-\begin{tabularx}{\linewidth}{p{31mm}YY}
+\noindent\begin{tabularx}{\linewidth}{p{31mm}YY}
 \toprule
 Axe proposé & Variation contrôlée & Ce qu'elle permet de tester \\
 \midrule
@@ -257,8 +270,7 @@ Dépendances et retours & Nouvel indice ou échec imposant une révision des act
 
 Les familles OTA, PKI, OT et MQTT-WebSocket gagneraient ensuite des variantes dev/test indépendantes, lorsque leurs outils et oracles sont disponibles. Le test public actuel reste provisoire : aucun groupe scellé n'est présent dans le catalogue. Une revendication de généralisation exige un nouveau test créé après gel des méthodes, avec provenance et règle d'accès. Les scores de ce test ne doivent pas servir à ajuster prompts ou budgets.
 
-\clearpage
-\section{Deux défauts des diagnostics}
+\section{Résultats locaux : défauts des diagnostics}
 \label{sec:diagnostics}
 \subsection{La couverture peut compter une non-tentative}
 \textbf{Observation reproduite.} Dans \code{src/benchmark/funnel.py}, vers les lignes 196--214 de la révision étudiée, plusieurs résultats liés au même candidat sont classés \code{inconclusive} avant l'appel au calcul de son état de vérification. La formule suivante compte alors toute inconclusion comme une tentative :
@@ -283,8 +295,7 @@ Dans S18, le contrôle \code{C14-LIMITED-TOKEN} attend un refus pour un jeton au
 
 \textbf{Correction proposée, P0.} Décrire chaque contrôle par cible, service, endpoint, identité, prérequis, action et observation attendue. Distinguer non testé, accepté, violé et indéterminé. Le vrai positif obtenu avec le jeton surprivilégié ne doit jamais violer le contrôle du jeton limité ; une tentative attribuable à ce dernier et retournant un accès peut le violer.
 
-\clearpage
-\section{Validité des preuves HTTP}
+\section{Résultats locaux : validité des preuves HTTP}
 \label{sec:oracles}
 L'évaluateur relit les traces et n'accepte pas le seul verdict du modèle. Néanmoins, il appelle le même synthétiseur de preuves que le pipeline : \code{synthesize_exploit_result}, via \code{evaluator.py} vers la ligne~1516. Ce partage assure une cohérence des règles, mais ne constitue pas une validation indépendante de leur justesse.
 
@@ -309,7 +320,6 @@ Le corpus de calibration doit réunir vraies preuves, pages d'aide, contenus ré
 
 \evidence{Critère minimal : les deux entrées synthétiques restent non concluantes après correction. Leur existence ne donne ni une fréquence d'erreur terrain ni l'ampleur d'un biais de comparaison LLM/automatisation. Les scripts de reproduction sont référencés en section~\ref{sec:repro}.}
 
-\clearpage
 \section{Environnement, accès et preuves de chemins}
 \label{sec:environment}
 \subsection{Un précontrôle utile, encore partiel}
@@ -328,7 +338,7 @@ La projection actuelle des observations d'intrusion expose des transitions vides
 
 \begin{table}[htbp]
 \centering\small
-\begin{tabularx}{\linewidth}{p{12mm}p{41mm}Y}
+\noindent\begin{tabularx}{\linewidth}{p{12mm}p{41mm}Y}
 \toprule
 Priorité & Objet & Condition avant conclusion expérimentale \\
 \midrule
@@ -345,7 +355,6 @@ P1 & Pivot et diversité & Transitions causales observables ; variantes indépen
 \label{tab:priorities}
 \end{table}
 
-\clearpage
 \section{Hypothèses et protocole de décision}
 \label{sec:protocol}
 L'amélioration du benchmark doit permettre de conclure aussi à l'absence d'apport du LLM. Les hypothèses suivantes guident des expériences futures, après correction des défauts de mesure.
@@ -367,7 +376,6 @@ AutoPenBench définit 33 tâches et des jalons génériques/spécifiques ; ses c
 
 L'analyse Docent montre, dans un port précis de Cybench, une résolution par lecture d'une réponse divulguée et des échecs liés à l'environnement~\cite{docent}. Elle motive une revue de trajectoires et des interventions contrefactuelles ; elle rappelle aussi que les résumés produits par LLM nécessitent eux-mêmes validation. Aucun de ces résultats externes n'a été reproduit ici.
 
-\clearpage
 \section{Provenance, reproduction et limites}
 \label{sec:repro}
 La base source est le commit \code{45c8dab892ecb4e5f513813387090e0cded1b85d}. Le checkout comportait déjà une réorganisation documentaire ; le SHA seul ne représente donc pas tous les documents lus. Les notes détaillées restent dans \href{analysis.md}{\code{analysis.md}}, et la validation consolidée dans \href{../agent-vs-automation/validation.md}{le journal transversal de validation}.
@@ -381,7 +389,7 @@ Leur \href{../../benchmarks/experiments/research-review/README.md}{README de rep
 
 \begin{table}[htbp]
 \centering\small
-\begin{tabularx}{\linewidth}{p{35mm}YY}
+\noindent\begin{tabularx}{\linewidth}{p{35mm}YY}
 \toprule
 Vérification & Résultat disponible & Limite \\
 \midrule
@@ -400,6 +408,23 @@ Validation transversale & 381 tests ciblés réussis en 8,35~s & Fournisseurs si
 
 Les artefacts historiques n'ont pas servi à calculer une performance actuelle ; des contrats et provenances différents ne sont pas agrégés. La revue bibliographique est ciblée, sans prétention d'exhaustivité ni comparaison des meilleurs scores de 2026. La mise en forme de cette étude ne transforme pas les pistes proposées en capacités implémentées ou démontrées.
 
+\begin{samepage}
+\section{Conclusion et prochaines étapes}
+Le volume du corpus ne suffit pas à démontrer une couverture effective.
+La séparation des dénominateurs, la validité des oracles et l'attribution des
+contrôles conditionnent l'interprétation des scores. Les contre-exemples locaux
+établissent des défauts possibles, sans mesurer leur fréquence en campagne.
+
+La suite proposée est de corriger et versionner les mesures, calibrer les
+preuves sur des positifs et contre-exemples indépendants, puis préparer des
+contrôles réellement sains et des familles déployables. Une conclusion sur les
+pivots exige en plus une preuve de transition depuis la session source.
+Ces propositions ne changent pas le contrat actuellement implémenté.
+
+\par\end{samepage}
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{Références}
 \begingroup
 \small
 \begin{thebibliography}{9}

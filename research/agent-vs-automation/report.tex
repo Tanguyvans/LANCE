@@ -2,39 +2,33 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[french]{babel}
+\frenchsetup{SmallCapsFigTabCaptions=false}
 \usepackage{lmodern,microtype}
 \usepackage[left=22mm,right=22mm,top=23mm,bottom=24mm]{geometry}
 \usepackage{graphicx,booktabs,array,tabularx,longtable}
 \usepackage{xcolor,tikz}
 \usepackage{enumitem,titlesec}
 \usepackage{hyperref}
-\hypersetup{colorlinks=true,linkcolor=sfigBlue,citecolor=sfigBlue,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=sfigBlue,pdfauthor={Projet LANCE},pdflang={fr-FR}}
 \urlstyle{same}
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{5pt}
+\setlength{\parindent}{1.2em}
+\setlength{\parskip}{3pt}
 \setlength{\emergencystretch}{2em}
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
 \setlist{nosep,leftmargin=5mm,topsep=3pt}
-\makeatletter
-\long\def\@makecaption#1#2{\vskip 7pt\begingroup\small\textbf{#1} -- #2\par\endgroup\vskip 3pt}
-\def\ps@lance{%
-  \def\@oddhead{\small\sffamily LANCE / Recherche\hfil 29 septembre 2026}%
-  \let\@evenhead\@oddhead
-  \def\@oddfoot{\small\color{sfigMuted}Diagnostic logiciel et protocole proposé\hfil\thepage}%
-  \let\@evenfoot\@oddfoot
-}
-\makeatother
 \def\UrlBreaks{\do\/\do\-\do\_\do\.\do\?\do\&\do\=\do\:\do\,}
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \newcommand{\code}[1]{{\small\ttfamily\path{#1}}}
 \newcommand{\evidence}[1]{\par\smallskip{\small\color{sfigMuted}\textbf{Preuve / limite.} #1}\par\smallskip}
-\newcommand{\status}[1]{{\small\sffamily\color{sfigRaspberry}#1}}
-\titleformat{\section}{\Large\sffamily\bfseries\color{sfigInk}}{\thesection}{0.7em}{}
-\titleformat{\subsection}{\large\sffamily\bfseries\color{sfigInk}}{\thesubsection}{0.7em}{}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.7em}{}
 \titlespacing*{\section}{0pt}{16pt}{7pt}
 \titlespacing*{\subsection}{0pt}{11pt}{5pt}
-\pagestyle{lance}
-\setlength{\headheight}{14pt}
+\pagestyle{plain}
+\setcounter{tocdepth}{2}
 
 % Reusable TikZ styles for sober scientific figures.
 % Required packages: xcolor, tikz.
@@ -134,30 +128,43 @@
   }
 }
 
-\hypersetup{pdftitle={LANCE : couverture, contexte et apport mesurable des LLM}}
+% Classical article front matter; standalone source for the native editor.
+\renewenvironment{abstract}
+  {\begin{quote}\small\noindent\textbf{Résumé.}\ }
+  {\par\end{quote}}
+\title{\bfseries LANCE : mesurer l'apport des LLM\\[0.5em]\large\mdseries\itshape Couverture du benchmark, contexte du pipeline et protocole de comparaison}
+\author{Projet LANCE}
+\date{29 septembre 2026\\[0.4em]\small Exploration et protocole proposés}
+\hypersetup{pdftitle={LANCE : mesurer l'apport des LLM}}
 \begin{document}
-{\sffamily\small\color{sfigMuted}ÉTUDE DE RECHERCHE / RAPPORT PRINCIPAL}\par
-{\sffamily\LARGE\bfseries LANCE : mesurer l'apport des LLM}\par
-{\sffamily\large Couverture du benchmark, contexte du pipeline\par et protocole de comparaison}\par
-\medskip
-\status{Exploration et protocole proposés / 29 septembre 2026}\par
-\smallskip
-\textbf{Question.} Dans quelles situations un modèle de langage améliore-t-il
-un audit IoT autorisé, à outils et budgets comparables à une automatisation
-conditionnelle bien conçue ?\par
-\textbf{État de la recherche.} Trois inspections GPT et une contrelecture
-croisée ont identifié des limites concrètes. Huit probes synthétiques ont été
-rejouées localement ; 381 tests logiciels ciblés passent. Aucun résultat de
-campagne ne démontre encore un gain technique ou humain du modèle.
+\maketitle
+\begin{abstract}
+Cette étude examine dans quelles situations un modèle de langage améliore un audit IoT autorisé, à outils et budgets comparables à une automatisation conditionnelle. Une revue du code, des contrats et de sources primaires met en évidence trois difficultés : validité des mesures, conservation du contexte et attribution des succès au modèle. Le corpus définit 29 scénarios et 288 vulnérabilités attendues ; le contraste D1/A1 disponible reste borné aux phases 3--4 sur inventaire fourni. Huit probes synthétiques ont été rejouées et 381 tests ciblés réussissent, sans démontrer un gain en campagne. Le protocole proposé sépare interprétation, adaptation et restitution, conserve les échecs et les coûts, et prévoit des règles de décision avant le test. Un résultat négatif ou indéterminé reste admissible.
+\end{abstract}
+\clearpage
 
-\section{Lecture d'ensemble}
+\begingroup
+\small
+\tableofcontents
+\endgroup
+\clearpage
+
+\section{Objectif, périmètre et méthode}
 Le projet dispose déjà d'un socle de collecte, de contrats de preuve et d'une
 comparaison D1/A1 bornée. La prochaine étape consiste à rendre les mesures et
 l'attribution suffisamment fiables pour qu'un résultat positif, négatif ou
 indéterminé ait un sens. Le tableau~\ref{tab:axes} résume les trois études.
 
+\subsection{Méthode de la revue}
+La recherche combine inspection du code et des contrats, inventaire statique,
+probes synthétiques locales et revue ciblée de sources primaires. Les trois
+analyses ont été relues de manière croisée. Les résultats logiciels et leurs
+limites sont détaillés en fin de rapport ; aucune campagne réseau n'est réalisée.
+Le périmètre des sources et les portions effectivement lues figurent dans les
+références et les notes complémentaires.
+
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}p{25mm}YY@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}p{25mm}YY@{}}\toprule
 Axe & Faits établis dans le périmètre inspecté & Question encore ouverte \\\midrule
 Benchmark & 29 scénarios ; 288 vulnérabilités attendues ; aucun scénario officiel entièrement sain. Défauts locaux de taux de tentative et d'admission de preuves. & Quelles propriétés sont réellement déployées, observées et prouvées ? Quelle fréquence d'erreur en campagne ? \\
 Contexte & Certaines sorties coupées avant archivage ; historique outils renvoyé sans budget d'entrée ; projections parfois sans récupération. & Quel effet sur les décisions, le rappel, la fiabilité et les ressources ? \\
@@ -244,7 +251,7 @@ Le score d'intrusion reste séparé du F1 d'audit.
 
 \subsection{Contre-exemples locaux et portée exacte}
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}p{30mm}YY@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}p{30mm}YY@{}}\toprule
 Contre-exemple & Observation reproduite & Portée du constat \\\midrule
 Tentatives ambiguës & Un candidat, deux TIMEOUT marqués non tentés : taux de tentative 1,0. & Défaut du diagnostic d'entonnoir ; fréquence en campagne inconnue. \\
 Contrôle S18 & Une exposition avec jeton surprivilégié partage IP/type avec un contrôle exigeant le refus d'un autre jeton limité. & Contrôle déclaré violé avec le mauvais jeton ; aucune pénalité additionnelle directe démontrée sur le F1 principal. \\
@@ -304,7 +311,7 @@ permutations~\cite{lost}; elles ne valident aucun modèle actuel de LANCE.
 \section{Expériences proposées : isoler les contributions}
 \subsection{Politiques et mécanismes}
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}p{15mm}YY@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}p{15mm}YY@{}}\toprule
 Politique & Décisions & Rôle expérimental \\\midrule
 D0 & Procédure fixe. & Référence simple secondaire. \\
 D1 & Règles, état partagé, branchements et reprises bornées. & Référence principale sans LLM ; premier incrément disponible. \\
@@ -316,7 +323,7 @@ D1-R & Même audit D1, rédaction LLM après clôture. & Étudier restitution et
 \end{table}
 
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}p{28mm}YY@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}p{28mm}YY@{}}\toprule
 Question & Contraste & Conclusion permise \\\midrule
 Interprétation & Règles / LLM sur dossiers identiques, collecte désactivée. & Qualité d'interprétation et fidélité des preuves. \\
 Audit borné & D1 / A1, mêmes inventaire, outils, état initial et plafonds. & Gain marginal au-dessus du socle partagé. \\
@@ -427,7 +434,7 @@ avant le test ; une moyenne favorable ne suffit pas.
 \par\end{samepage}
 
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}YY@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}YY@{}}\toprule
 Résultat selon critères préfixés & Décision proposée \\\midrule
 Gain supérieur au minimum utile, FP/fiabilité/coût acceptables. & Conserver le LLM sur le périmètre établi ; rechercher ensuite le mécanisme. \\
 D1 non inférieur selon marge fixée, moins coûteux et plus fiable. & Utiliser D1 pour les décisions ; évaluer D1-R séparément si nécessaire. \\
@@ -448,7 +455,7 @@ puis exécuter le workflow déterministe ; ce n'est pas un gain d'agent à chaqu
 
 \section{Validation disponible et limites de la revue}
 \begin{table}[htbp]\centering\small
-\begin{tabularx}{\linewidth}{@{}p{36mm}Y@{}}\toprule
+\noindent\begin{tabularx}{\linewidth}{@{}p{36mm}Y@{}}\toprule
 Vérification & Résultat disponible au 29 septembre 2026 \\\midrule
 Inventaire statique & 29 SHA de vérités terrain concordants ; totaux du corpus vérifiés avec fusion des sidecars. \\
 Composition GT & 31 fichiers examinés, dont S1h/S4h ; 13 différences descriptives historiques acceptées et 18 correspondances strictes. Pas de validation \code{strict-all}. \\
@@ -482,6 +489,22 @@ ne lui est attribué. Les questions et arbitrages figurent dans
 \code{adversarial-review.md}.
 \par\end{samepage}
 
+\begin{samepage}
+\section{Conclusion et prochaines étapes}
+La contribution marginale du modèle reste à établir. Les constats locaux
+justifient d'abord une calibration des mesures et une traçabilité du contexte,
+puis des comparaisons appariées à référence déterministe renforcée. Le pilote
+prévu peut fournir un premier signal sur les phases 3--4 ; une conclusion
+générale exige des familles réservées et des preuves admissibles.
+
+La décision doit suivre les critères fixés avant test : conserver le modèle
+sur un périmètre utile, restreindre son usage aux cas où un gain est établi,
+ou retenir les règles si elles suffisent. Les coûts, échecs et incertitudes
+font partie de ce bilan. Les expériences proposées restent à exécuter.
+
+\par\end{samepage}
+\phantomsection
+\addcontentsline{toc}{section}{Références}
 \begin{thebibliography}{9}\small
 \bibitem{matter} S. Kapoor et al. \emph{AI Agents That Matter}. arXiv:2407.01502v1, 1 juillet 2024. Revue initiale : sections 2, 5, 6 et passages d'annexe lus ; tâches programmation/navigation, pas audit IoT. Consulté le 29 septembre 2026. \url{https://arxiv.org/html/2407.01502v1}.
 \bibitem{nuclei} ProjectDiscovery. \emph{Template Workflows Overview}. Documentation vivante, version/date de publication non précisées. Workflows conditionnels et contexte partagé lus ; consultation le 29 septembre 2026. \url{https://docs.projectdiscovery.io/templates/workflows/overview}.

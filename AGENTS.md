@@ -29,8 +29,10 @@ l'entraînement des modèles constitue un volet distinct du projet.
   le statut, les dates, la synthèse, les documents et les points encore ouverts.
   Suivre les [conventions de recherche](research/README.md).
 - Pour toute nouvelle étude ou révision de fond, fournir une source LaTeX éditable
-  et son PDF compilé, avec des figures modifiables et un rendu vérifié. Suivre les
-  [règles de format et de figures](research/README.md#format-de-lecture--latex-et-pdf).
+  et son PDF compilé, avec des figures modifiables et un rendu vérifié. Adopter une
+  structure scientifique classique : titre, résumé, table des matières, méthode,
+  constats, limites, conclusion et références. Suivre les
+  [règles de structure et de format](research/README.md#structure-scientifique-classique).
 - Distinguer les hypothèses, les faits sourcés, les résultats observés et les
   conclusions. Citer les sources primaires avec leur date/version et préciser les
   limites de lecture ou de reproduction. Pour une expérience, référencer le code,
