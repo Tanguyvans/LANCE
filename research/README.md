@@ -23,8 +23,12 @@ Les deux rapports spécialisés développent les constats et les protocoles :
 - [Couverture et validité de l'évaluation — PDF](2026-09-29-benchmark-coverage/report.pdf) · [LaTeX](2026-09-29-benchmark-coverage/report.tex).
 - [Conservation des preuves et contexte — PDF](2026-09-29-context-scalability/report.pdf) · [LaTeX](2026-09-29-context-scalability/report.tex).
 
-Version du 29 septembre 2026, avec titre centré, résumé, table des matières,
-sections numérotées et figures vectorielles modifiables dans les sources.
+Dernière révision des trois rapports : **2026-09-30 21:55
+(Europe/Brussels, UTC+02:00)**. L'heure apparaît sur leur première page et dans
+leur README. Les constats, sources et reproductions restent ceux du 29 septembre
+2026 ; cette révision ajoute leur horodatage de présentation.
+Les rapports ont un titre centré, un résumé, une table des matières,
+des sections numérotées et des figures vectorielles modifiables dans les sources.
 Ces rapports contiennent un diagnostic logiciel et des expériences
 proposées ; ils ne rapportent pas de performance terrain ni de gain LLM démontré.
 
@@ -73,7 +77,8 @@ une empreinte permettant de retrouver les preuves, pas une copie dans ce dossier
 Toute nouvelle étude ou révision de fond doit fournir un **document LaTeX éditable
 et son PDF compilé**, dans le dossier du sujet. Utiliser par défaut les noms
 stables `report.tex` et `report.pdf`, puis modifier ces mêmes fichiers au fil des
-itérations. Le README du sujet lie les deux et précise leur date et leur statut.
+itérations. Le README du sujet lie les deux et précise leur statut ainsi que la
+date et l'heure de dernière révision du rapport, avec son fuseau horaire.
 Le PDF est le support de lecture et de discussion ; le LaTeX est sa source de
 référence. Les notes Markdown servent à la navigation, aux preuves détaillées
 ou au suivi, sans entretenir une seconde copie complète du rapport.
@@ -92,7 +97,23 @@ typographie avec empattements, titres noirs, marges régulières et pagination.
 Utiliser les mécanismes LaTeX (`\maketitle`, `abstract`, `\tableofcontents`,
 `\section`, `\label` et `\ref`) pour garder une structure cohérente. Le titre
 est centré, suivi d'un sous-titre éventuel, de l'auteur ou de l'équipe réellement
-responsable, de la date et du statut. Une couverture séparée n'est pas nécessaire.
+responsable, de la date et l'heure de dernière révision et du statut.
+Une couverture séparée n'est pas nécessaire.
+
+Sur la première page, afficher **« Dernière révision »** avec la date, l'heure
+sur 24 heures (précision à la minute), le fuseau `Europe/Brussels` et son décalage
+UTC effectif à cette date, par exemple `2026-09-30 21:55 (Europe/Brussels,
+UTC+02:00)`. La date peut être écrite en français dans le PDF. Consigner le même
+instant dans la source LaTeX et le README ; le recopier dans l'index lorsqu'il
+annonce une version. Fixer cette valeur lors de la révision plutôt qu'utiliser
+une date dynamique à chaque compilation. Un simple export ne constitue pas une
+nouvelle révision. Pour une ancienne version dont l'heure est inconnue, le préciser
+sans l'inventer.
+
+Cet horodatage identifie la version du document. Les dates de début de l'étude,
+de consultation des sources et d'exécution des expériences restent distinctes ;
+ne pas les actualiser lors d'une retouche de présentation. Les dossiers gardent
+leur nom `AAAA-MM-JJ-nom-etude` lors de ces révisions.
 
 Ordre attendu, à adapter à la question scientifique :
 
@@ -167,8 +188,10 @@ supprimer les anciennes notes avant vérification de la reprise de leur contenu.
 - **Question et périmètre** : ce que l'étude cherche à établir.
 - **Statut** : exploration, protocole proposé, expérimentation, conclu ou archivé.
   Une étude conclue peut aboutir à un résultat négatif ou indéterminé.
-- **Dates** : début si connu et dernière mise à jour ; distinguer la date de
-  classement d'une ancienne note de celle de sa recherche ou de sa validation.
+- **Dates** : début si connu, dernière mise à jour et horodatage de dernière
+  révision du rapport (date, heure et fuseau). Distinguer le classement d'une
+  ancienne note de sa recherche ou de sa validation ; ne pas inventer une heure
+  historique inconnue.
 - **Synthèse** : faits établis, propositions et incertitudes, sans les confondre.
 - **Documents et sources** : liens vers les analyses, références et preuves.
 - **Suite et documentation liée** : points ouverts, décision retenue si elle

@@ -34,7 +34,9 @@ l'entraînement des modèles constitue un volet distinct du projet.
 - Pour toute nouvelle étude ou révision de fond, fournir une source LaTeX éditable
   et son PDF compilé, avec des figures modifiables et un rendu vérifié. Adopter une
   structure scientifique classique : titre, résumé, table des matières, méthode,
-  constats, limites, conclusion et références. Suivre les
+  constats, limites, conclusion et références. Indiquer la date et l'heure de
+  dernière révision du rapport avec le fuseau horaire, également dans son README.
+  Suivre les
   [règles de structure et de format](research/README.md#structure-scientifique-classique).
 - Distinguer les hypothèses, les faits sourcés, les résultats observés et les
   conclusions. Citer les sources primaires avec leur date/version et préciser les

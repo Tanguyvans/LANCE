@@ -153,3 +153,21 @@ en raison des chemins plus longs. Ces pages et les vues d'ensemble ont été
 inspectées, sans débordement ni glyphe manquant. Les six figures sont conservées.
 Aucun code d'exécution n'a changé ; les tests applicatifs n'ont pas été relancés
 pour ce classement documentaire.
+
+## Horodatage des rapports
+
+Révision de présentation : **2026-09-30 21:55 (Europe/Brussels, UTC+02:00)**.
+Les trois premières pages affichent désormais la date et l'heure de dernière
+révision, avec le fuseau horaire. Les README et l'index reprennent ce même instant ;
+les règles demandent un horodatage fixé dans la source, distinct des dates de
+recherche, de consultation et d'expérience. Les noms des dossiers restent fixes.
+
+Les trois sources compilent avec succès dans l'éditeur LaTeX intégré. Les PDF ont
+été exportés avec l'installation TeX existante et leurs premières pages rendues
+en PNG ont été inspectées. La comparaison des 29 pages avec la version précédente
+montre un changement sur la première page de chaque rapport seulement : les 26
+autres pages sont identiques visuellement et textuellement. Aucun débordement ni
+glyphe manquant détecté ; pagination 9/10/10 et 72 destinations de sommaire
+conservées. Les liens locaux des PDF sont valides et les six figures TikZ restent
+inchangées. Cette retouche ne renouvelle pas les constats ni les résultats de
+validation logicielle du 29 septembre ; aucun test applicatif n'a été relancé.

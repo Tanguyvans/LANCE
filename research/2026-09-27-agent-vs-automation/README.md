@@ -8,6 +8,10 @@ primaires et reproductions logicielles. Aucun résultat de campagne ajouté.
 Le préfixe du dossier reprend la première date documentée de l'étude, le
 27 septembre ; il reste fixe lors des révisions.
 
+**Dernière révision du rapport : 2026-09-30 21:55
+(Europe/Brussels, UTC+02:00).** Ajout de l'heure de révision ; les constats et
+reproductions restent ceux de la revue du 29 septembre.
+
 ## Question et synthèse
 
 À outils, observations et budgets comparables, quel bénéfice mesurable apporte
@@ -20,7 +24,7 @@ laboratoire. Les autres systèmes et extensions du protocole restent proposés.
 
 ## Documents et sources
 
-- **[Rapport principal — PDF](report.pdf)** : synthèse des trois axes, comparaisons, règles de décision et limites ; version du 29 septembre 2026.
+- **[Rapport principal — PDF](report.pdf)** : synthèse des trois axes, comparaisons, règles de décision et limites ; révision horodatée ci-dessus.
 - **[Source LaTeX éditable](report.tex)** : document autonome, avec figures TikZ et bibliographie intégrées ; support des prochaines retouches.
 - [Protocole scientifique](protocol.md) : hypothèses, comparateurs, mesures et limites.
 - [État de l'art ciblé](state-of-the-art.md) : références primaires, périmètre de lecture et implications méthodologiques.

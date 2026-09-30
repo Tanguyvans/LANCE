@@ -1,9 +1,13 @@
 # Gestion et scalabilité du contexte du pipeline
 
 **Statut : exploration rouverte sur le pipeline actuel.** Nouvelle étude et
-dernière mise à jour : 29 septembre 2026. Le plan initial du rapport reste
+revue des constats : 29 septembre 2026. Le plan initial du rapport reste
 archivé ; sa date d'origine n'est pas renseignée. Son classement à cette date
 n'a pas validé ses anciennes estimations.
+
+**Dernière révision du rapport : 2026-09-30 21:55
+(Europe/Brussels, UTC+02:00).** Ajout de l'heure de révision ; les constats et
+reproductions restent ceux de la revue du 29 septembre.
 
 ## Question et synthèse
 
@@ -18,7 +22,7 @@ déterministe. Ce fonctionnement constitue le point de départ de l'étude.
 
 ## Documents et preuves
 
-- **[Rapport de lecture — PDF](report.pdf)** : diagnostic C1–C8, résultats synthétiques et architecture/protocole proposés ; version du 29 septembre 2026.
+- **[Rapport de lecture — PDF](report.pdf)** : diagnostic C1–C8, résultats synthétiques et architecture/protocole proposés ; révision horodatée ci-dessus.
 - **[Source LaTeX éditable](report.tex)** : schémas TikZ de l'état actuel et de la proposition, avec bibliographie intégrée.
 - [Analyse actuelle et sources](analysis.md) : faits du code, hypothèses, architecture proposée et ablations.
 - [Reproductions locales](../../benchmarks/experiments/research-review/README.md).

@@ -5,8 +5,12 @@ effectivement observées, et lesquelles ses mesures permettent-elles de valider 
 Périmètre : catalogue public, contrats, évaluateur et préparation expérimentale.
 
 **Statut : exploration avec contre-exemples logiciels reproduits ; corrections
-et expériences proposées.** Début et dernière mise à jour : 29 septembre 2026.
+et expériences proposées.** Début et revue des constats : 29 septembre 2026.
 Aucune mesure de couverture réelle en laboratoire n'a été réalisée ici.
+
+**Dernière révision du rapport : 2026-09-30 21:55
+(Europe/Brussels, UTC+02:00).** Ajout de l'heure de révision ; les constats et
+reproductions restent ceux de la revue du 29 septembre.
 
 ## Synthèse
 
@@ -23,7 +27,7 @@ les tentatives et les contrôles doivent rester des dimensions distinctes.
 
 ## Documents et preuves
 
-- **[Rapport de lecture — PDF](report.pdf)** : couverture, dénominateurs, contre-exemples et améliorations proposées ; version du 29 septembre 2026.
+- **[Rapport de lecture — PDF](report.pdf)** : couverture, dénominateurs, contre-exemples et améliorations proposées ; révision horodatée ci-dessus.
 - **[Source LaTeX éditable](report.tex)** : figures TikZ, tableaux et bibliographie intégrés.
 - [Analyse et sources primaires](analysis.md) : inventaire, défauts, limites et priorités.
 - [Scripts locaux de reproduction](../../benchmarks/experiments/research-review/README.md).
