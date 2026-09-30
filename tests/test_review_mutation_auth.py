@@ -11,7 +11,8 @@ from src.api.routes import pipeline
 
 MUTATIONS = [(method.upper(), re.sub(r'\{[^}]+\}', '1', path))
     for path, operations in app.openapi()['paths'].items()
-    for method in operations if method in {'post', 'put', 'patch', 'delete'}]
+    for method in operations if method in {'post', 'put', 'patch', 'delete'}
+    and not (method == 'post' and path in {'/api/pipeline/start', '/api/pipeline/batch'})]
 assert len(MUTATIONS) >= 15
 
 
@@ -43,3 +44,20 @@ def test_status_remains_readable_and_cross_origin_mutations_are_not_allowed():
     response = client.options('/api/pipeline/start', headers={
         'Origin': 'https://other.invalid', 'Access-Control-Request-Method': 'POST'})
     assert 'access-control-allow-origin' not in response.headers
+
+
+@pytest.mark.parametrize("token", [None, "test-admin-key"])
+@pytest.mark.parametrize("path,payload", [
+    ("/api/pipeline/start", {"provider": "local", "model": "test", "scenario_id": "1"}),
+    ("/api/pipeline/start", {"provider": "local", "model": "test", "scenario_id": "1", "deploy_only": True}),
+    ("/api/pipeline/batch", {"provider": "local", "model": "test", "batch_ids": ["1"]}),
+])
+def test_launch_without_key_reaches_handler(monkeypatch, token, path, payload):
+    if token is None:
+        monkeypatch.delenv("LANCE_ADMIN_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("LANCE_ADMIN_TOKEN", token)
+    with patch.dict(pipeline._state, {"running": True}):
+        response = TestClient(app).post(path, json=payload)
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"] == "Pipeline already running or stopping"

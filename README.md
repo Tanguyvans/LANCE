@@ -42,7 +42,8 @@ authorized laboratory using the [execution guide](docs/benchmark/v1/execution.md
 and [Ansible setup](benchmarks/ansible/README.md). Runs can deploy vulnerable
 services, consume model budget and remove scenario machines during cleanup.
 
-Dashboard actions require an administrator key; see
+Scenario and batch launches require no administrator key. Other dashboard
+mutations require administrator access; see
 [administrator access](docs/guides/provider-auth.md).
 
 ## Dashboard

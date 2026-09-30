@@ -119,6 +119,10 @@ def require_admin_auth(request: Request) -> None:
 
 
 def require_mutation_auth(request: Request) -> None:
-    """All API mutations are administrative; reads remain unchanged."""
+    """Scenario launches are public; other mutations require admin access."""
+    if request.method == "POST" and request.url.path in {
+        "/api/pipeline/start", "/api/pipeline/batch",
+    }:
+        return
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         require_admin_auth(request)

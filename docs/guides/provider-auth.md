@@ -1,6 +1,10 @@
 # Authentification des actions administratives
 
-Toutes les routes API de mutation (`POST`, `PUT`, `PATCH`, `DELETE`) exigent
+Les lancements (`POST /api/pipeline/start`, y compris le déploiement seul,
+et `POST /api/pipeline/batch`) sont accessibles sans clé ni session, même
+sans `LANCE_ADMIN_TOKEN`. Les validations et contrôles de concurrence restent actifs.
+
+Les autres routes API de mutation (`POST`, `PUT`, `PATCH`, `DELETE`) exigent
 une authentification : session navigateur valide ou en-tête :
 
 ```text
@@ -15,10 +19,11 @@ en-tête absent, mal formé ou invalide renvoie `401` avec
 `WWW-Authenticate: Bearer`. La comparaison du jeton est constante et le jeton
 n’est jamais inclus dans une réponse.
 
-Cela couvre les runs et batches, leur arrêt, le déploiement et le nettoyage,
+Cela couvre l’arrêt des runs et batches, le nettoyage,
 la génération de scénarios, l'évaluation LLM et les modifications de modèles
 et fournisseurs. La dépendance est posée sur l'application FastAPI : les
-nouvelles mutations sont également protégées par défaut. Les lectures restent
+nouvelles mutations sont également protégées par défaut, sauf les deux routes
+de lancement explicitement exemptées. Les lectures restent
 accessibles sans clé : les rapports et journaux ne sont pas rendus confidentiels.
 
 ## Tableau de bord
@@ -52,8 +57,8 @@ le gestionnaire de secrets ou l’environnement du service. Ne l’ajoutez jamai
 gestionnaire uniquement derrière HTTPS ou un tunnel de confiance avec contrôle
 d’accès ; ce jeton ne remplace pas cette protection réseau.
 
-Sans configuration de `LANCE_ADMIN_TOKEN`, les actions du dashboard sont
-volontairement bloquées. La CLI locale n'utilise pas cette authentification HTTP.
+Sans configuration de `LANCE_ADMIN_TOKEN`, les actions administratives restent
+bloquées ; les lancements de scénarios et batches restent accessibles. La CLI locale n'utilise pas cette authentification HTTP.
 
 ## Fournisseurs d’exécution
 
