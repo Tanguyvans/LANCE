@@ -163,38 +163,6 @@ function resetDeviceProgress() {
 // ── Scenario config state ─────────────────────────────────────────────────
 let _scenariosData = { architectures: [], packs: [], scenarios: [] };
 
-document.getElementById('btn-judge-run').onclick = async () => {
-    if (!activeRunId) return;
-    const modelSel = document.getElementById('sel-judge-model');
-    const opt = modelSel.options[modelSel.selectedIndex];
-    if (!opt || !opt.value || opt.disabled || !opt.dataset.provider) return;
-    
-    document.getElementById('btn-judge-run').disabled = true;
-    document.getElementById('btn-judge-run').textContent = 'Évaluation...';
-    try {
-        const res = await adminFetch(`/api/runs/${activeRunId}/evaluate/llm`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                model: opt.value,
-                provider: opt.dataset.provider
-            })
-        });
-        if (!res.ok) {
-            let detail = res.statusText;
-            try { detail = (await res.json()).detail || detail; } catch (_) {}
-            throw new Error(detail);
-        }
-        await loadBenchmark();
-        viewRun(activeRunId);
-    } catch (e) {
-        alert('Erreur LLM Judge: ' + e.message);
-    } finally {
-        document.getElementById('btn-judge-run').disabled = false;
-        document.getElementById('btn-judge-run').textContent = 'Évaluer';
-    }
-};
-
 // Fallback data if API is unavailable
 const FALLBACK_SCENARIOS = {
   architectures: [
@@ -450,10 +418,6 @@ async function loadModels(forceRefresh = false) {
   document.querySelectorAll('.sel-phase-model').forEach(phaseSelect => {
     renderModelSelect(phaseSelect, _modelCatalog, phaseSelect.value, true);
   });
-  const judgeSel = document.getElementById('sel-judge-model');
-  if (judgeSel) {
-    renderModelSelect(judgeSel, _modelCatalog, judgeSel.value);
-  }
   renderModelProviderStatus();
 
   const search = document.getElementById('model-search');
@@ -2091,8 +2055,6 @@ async function loadRuns() {
 
 async function viewRun(runId) {
   activeRunId = runId;
-  const btnJudge = document.getElementById('btn-judge-run');
-  if (btnJudge) btnJudge.disabled = false;
 
   // Highlight active run
   document.querySelectorAll('.run-item').forEach(el => {

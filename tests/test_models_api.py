@@ -97,10 +97,10 @@ class Element {
 (async () => {
   for (const removed of ['openrouter/auto', 'gpt-current']) {
     let stored = removed;
-    const elements = Object.fromEntries(['sel-model', 'sel-judge-model', 'model-provider-status', 'btn-refresh-models']
+    const elements = Object.fromEntries(['sel-model', 'model-provider-status', 'btn-refresh-models']
       .map(id => [id, new Element()]));
     const phases = [new Element(), new Element(), new Element()];
-    for (const select of [elements['sel-model'], elements['sel-judge-model'], ...phases]) select.value = removed;
+    for (const select of [elements['sel-model'], ...phases]) select.value = removed;
     const requests = [];
     const context = {
       console,
@@ -119,14 +119,13 @@ class Element {
     vm.runInContext(__SOURCE__, context);
     await context.loadModels(true);
     assert.deepStrictEqual(requests, ['/api/models?refresh=true']);
-    for (const select of [elements['sel-model'], elements['sel-judge-model'], ...phases]) {
+    for (const select of [elements['sel-model'], ...phases]) {
       const options = select.options.filter(option => option.value);
       assert.deepStrictEqual(options.map(option => option.value), ['local-model', 'MiniMax-M2.7']);
       assert.strictEqual(options[0].dataset.provider, 'local');
       assert.strictEqual(options[1].disabled, true);
     }
     assert.strictEqual(elements['sel-model'].value, 'local-model');
-    assert.strictEqual(elements['sel-judge-model'].value, 'local-model');
     assert(phases.every(select => select.value === ''));
     assert.strictEqual(stored, 'local-model');
     assert.strictEqual(elements['model-provider-status'].textContent, '1 modèle disponible sur 2');
