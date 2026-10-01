@@ -28,7 +28,8 @@ global.fetch = async (url, options) => {
 };
 async function check() {
   for (const [url, method, allowed] of [
-    ['/api/pipeline/start', 'POST', true], ['/api/models/1', 'DELETE', true],
+    ['/api/pipeline/start', 'POST', false], ['/api/pipeline/batch', 'POST', false],
+    ['/api/pipeline/stop', 'POST', true], ['/api/models/1', 'DELETE', true],
     ['/api/providers/1', 'PATCH', true], ['/api/pipeline/status', 'GET', false],
     ['https://other.test/api/start', 'POST', false], ['/static/test', 'POST', false]
   ]) {
@@ -39,19 +40,37 @@ async function check() {
     assert.equal(request.options.headers.Authorization, allowed ? 'Bearer explicit' : undefined);
     assert.equal(request.options.headers.aUtHoRiZaTiOn, undefined);
   }
+  for (const url of ['/api/pipeline/start', '/api/pipeline/batch']) {
+    for (const responseStatus of [200, 401, 503]) {
+      status = responseStatus;
+      error = {detail: {code: 'admin_auth_not_configured'}};
+      await adminFetch(url, {method: 'POST', credentials: 'include',
+        headers: {'Authorization': 'Bearer stale', 'Content-Type': 'application/json'}, body: '{}'});
+      assert.equal(request.options.headers.Authorization, undefined);
+      assert.equal(request.options.headers['X-Lance-Admin-Session'], undefined);
+      assert.equal(request.options.credentials, 'omit');
+      assert.equal(request.options.redirect, 'error');
+      assert.equal(request.options.headers['Content-Type'], 'application/json');
+      assert.equal(request.options.body, '{}');
+      assert.equal(details.open, false);
+      assert.equal(field.focused, undefined);
+      assert.equal(help.textContent, '');
+    }
+  }
+  error = {};
   status = 401;
-  await adminFetch('/api/pipeline/start', {method: 'POST'});
+  await adminFetch('/api/pipeline/stop', {method: 'POST'});
   assert.equal(details.open, true);
   assert.equal(field.focused, true);
   assert.match(help.textContent, /invalide/);
   status = 503; help.textContent = 'unchanged';
-  await adminFetch('/api/pipeline/start', {method: 'POST'});
+  await adminFetch('/api/pipeline/stop', {method: 'POST'});
   assert.equal(help.textContent, 'unchanged');
   error = {detail: {code: 'admin_auth_not_configured'}};
-  await adminFetch('/api/pipeline/start', {method: 'POST'});
+  await adminFetch('/api/pipeline/stop', {method: 'POST'});
   assert.match(help.textContent, /LANCE_ADMIN_TOKEN/);
   field.value = ''; status = 200;
-  await adminFetch('/api/pipeline/start', {method: 'POST'});
+  await adminFetch('/api/pipeline/stop', {method: 'POST'});
   assert.equal(request.options.headers.Authorization, undefined);
   setCost(null); assert.equal(badge.textContent, 'Indisponible');
   setCost(0); assert.equal(badge.textContent, '$0.0000');
