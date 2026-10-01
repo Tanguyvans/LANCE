@@ -31,7 +31,13 @@ soumis ne sont pas transférés d’un environnement à l’autre.
 La barre se rafraîchit toutes les cinq secondes quand l’onglet est visible.
 L’attente du laboratoire, le déploiement d’un scénario, le nettoyage et l’arrêt
 sont distingués. Une réponse absente, invalide ou d’une identité inattendue est
-marquée **Indisponible**, jamais « Disponible ». Si le serveur de l’interface
+marquée **Indisponible**. Si un environnement exécute une opération ou attend le
+laboratoire, les environnements sans exécution affichent **Laboratoire occupé** :
+ils restent consultables, mais un lancement attendra la libération du laboratoire.
+Si une instance est injoignable sans activité connue ailleurs, les instances
+inactives affichent **Disponibilité du labo inconnue**. « Disponible » n’apparaît
+que lorsque les trois instances déclarent n’avoir aucune opération active.
+Si le serveur de l’interface
 courante ne répond plus, les anciens états sont retirés au prochain échec de
 rafraîchissement. Il s’agit de l’activité déclarée par les applications : cette
 vue ne montre pas les opérations CLI, Proxmox ou les jobs de déploiement du code.

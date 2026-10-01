@@ -5,7 +5,7 @@
   const ports = {'main': 8501, 'dev-1': 8502, 'dev-2': 8503};
   const states = {idle: 'Disponible', running: 'En cours', waiting: 'En attente du labo',
     stopping: 'Arrêt en cours', deploying: 'Déploiement du scénario', teardown: 'Nettoyage',
-    unavailable: 'Indisponible'};
+    unavailable: 'Indisponible', blocked: 'Laboratoire occupé', unknown: 'Disponibilité du labo inconnue'};
   const cards = new Map();
   let pending = false;
   let lastCurrent = null;
@@ -15,6 +15,11 @@
     if (!data.enabled) { section.hidden = true; return; }
     section.hidden = false;
     lastCurrent = data.current;
+    const activities = Object.keys(names).map(id =>
+      data.instances.find(item => item.instance === id) || {instance: id, state: 'unavailable'});
+    const occupied = activities.filter(item => ['running', 'stopping', 'deploying', 'teardown'].includes(item.state));
+    const labBusy = occupied.length > 0 || activities.some(item => item.state === 'waiting');
+    const missing = activities.some(item => !['idle', 'running', 'waiting', 'stopping', 'deploying', 'teardown'].includes(item.state));
     for (const id of Object.keys(names)) {
       const activity = data.instances.find(item => item.instance === id) || {state: 'unavailable'};
       let card = cards.get(id);
@@ -31,13 +36,19 @@
       url.port = ports[id];
       if (current) { card.removeAttribute('href'); card.setAttribute('aria-current', 'page'); }
       else { card.href = url.href; card.removeAttribute('aria-current'); }
-      const state = Object.hasOwn(states, activity.state) ? activity.state : 'unavailable';
+      let state = Object.hasOwn(states, activity.state) ? activity.state : 'unavailable';
+      if (state === 'idle') state = labBusy ? 'blocked' : missing ? 'unknown' : 'idle';
       card.dataset.state = state;
       card.querySelector('strong').textContent = names[id];
       card.querySelector('.activity-current').textContent = current ? 'Vous êtes ici' : 'Ouvrir →';
       card.querySelector('.activity-state').textContent = states[state];
       const details = [];
-      if (!['idle', 'unavailable'].includes(state)) {
+      if (state === 'blocked') {
+        details.push(occupied.length ? `Activité sur ${occupied.map(item => names[item.instance]).join(', ')}` : 'Une exécution attend le laboratoire');
+        details.push('Tout lancement attendra sa libération');
+      } else if (state === 'unknown') {
+        details.push('Impossible de vérifier tous les environnements');
+      } else if (!['idle', 'unavailable'].includes(state)) {
         details.push(activity.scenario_id ? (/^\d+[a-z]?$/.test(activity.scenario_id) ? `Scénario S${activity.scenario_id}` : activity.scenario_id) : 'Audit réseau');
         if (activity.model) details.push(activity.model);
         if (state === 'running' && activity.phase > 0) details.push(`Phase ${activity.phase}`);
@@ -46,7 +57,6 @@
       detail.textContent = details.join(' · ') || (state === 'idle' ? 'Aucune exécution active' : 'État impossible à vérifier');
       detail.title = detail.textContent;
     }
-    const missing = data.instances.some(item => item.state === 'unavailable');
     document.getElementById('activity-freshness').textContent = missing
       ? 'Vue partielle · actualisation toutes les 5 s' : 'Actualisation toutes les 5 s';
   }

@@ -1928,7 +1928,8 @@ button:disabled { opacity: .35; cursor: default; }
 .activity-state { margin-top: 5px; font-size: 12px; color: var(--green); }
 .activity-card[data-state="running"] .activity-state, .activity-card[data-state="deploying"] .activity-state { color: var(--sev-info-fg); }
 .activity-card[data-state="waiting"] .activity-state, .activity-card[data-state="stopping"] .activity-state, .activity-card[data-state="teardown"] .activity-state { color: var(--orange); }
-.activity-card[data-state="unavailable"] .activity-state { color: var(--muted); }
+.activity-card[data-state="blocked"] .activity-state { color: var(--orange); }
+.activity-card[data-state="unavailable"] .activity-state, .activity-card[data-state="unknown"] .activity-state { color: var(--muted); }
 .activity-detail { margin-top: 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 600px) {
   .shared-activity { padding: 8px; }
