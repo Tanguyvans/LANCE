@@ -3356,66 +3356,9 @@ async function adminFetch(url, options = {}) {
     return fetch(url, {...options, headers, credentials: 'omit', redirect: 'error'});
   }
   headers['X-Lance-Admin-Session'] = '1';
-  const field = typeof document !== 'undefined' ? document.getElementById('admin-action-token') : null;
   const suppliedToken = suppliedHeaders.find(([name]) => name.toLowerCase() === 'authorization');
   if (suppliedToken) headers.Authorization = suppliedToken[1];
-  if (!headers.Authorization && field?.value) headers.Authorization = `Bearer ${field.value}`;
-  const response = await fetch(url, {...options, headers, redirect: 'error'});
-  if ([401, 503].includes(response.status) && field) {
-    const help = document.getElementById('admin-action-help');
-    if (response.status === 401) {
-      document.getElementById('admin-access').open = true;
-      help.textContent = 'Session absente ou expirée, ou clé invalide : connectez-vous puis relancez votre action.';
-      field.focus();
-    } else {
-      const error = await response.clone().json().catch(() => ({}));
-      if (error.detail?.code === 'admin_auth_not_configured') {
-        document.getElementById('admin-access').open = true;
-        help.textContent = 'Configurez LANCE_ADMIN_TOKEN sur le serveur avant de lancer une action.';
-      }
-    }
-  }
-  return response;
-}
-
-async function loginAdminSession() {
-  const field = document.getElementById('admin-action-token');
-  const help = document.getElementById('admin-action-help');
-  try {
-    const response = await adminFetch('/api/admin/session', {method: 'POST'});
-    if (!response.ok) return;
-    field.value = '';
-    _mgr.adminToken = '';
-    const providerField = document.getElementById('mgr-admin-token');
-    if (providerField) providerField.value = '';
-    help.textContent = 'Connecté pour 8 heures, même après actualisation.';
-  } catch (_) { help.textContent = 'Connexion impossible. Vérifiez l’accès au serveur.'; }
-}
-
-async function logoutAdminSession() {
-  const help = document.getElementById('admin-action-help');
-  try {
-    const response = await adminFetch('/api/admin/session', {method: 'DELETE'});
-    if (!response.ok) return;
-    document.getElementById('admin-action-token').value = '';
-    _mgr.adminToken = '';
-    const providerField = document.getElementById('mgr-admin-token');
-    if (providerField) providerField.value = '';
-    help.textContent = 'Déconnecté.';
-  } catch (_) { help.textContent = 'Déconnexion non confirmée : serveur inaccessible.'; }
-}
-
-async function refreshAdminSession() {
-  try {
-    const response = await fetch('/api/admin/session', {cache: 'no-store'});
-    if (response.ok && (await response.json()).authenticated) {
-      document.getElementById('admin-action-help').textContent = 'Session administrateur active.';
-    }
-  } catch (_) { /* Normal actions retain their authentication checks. */ }
-}
-
-if (typeof document !== 'undefined' && document.addEventListener) {
-  document.addEventListener('DOMContentLoaded', refreshAdminSession);
+  return fetch(url, {...options, headers, redirect: 'error'});
 }
 
 async function apiSend(method, url, body, options = {}) {

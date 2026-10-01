@@ -16,10 +16,8 @@ def test_admin_ui_only_sends_key_to_same_origin_mutations():
     cost = 'function setCost' + source.split('function setCost', 1)[1].split('// ── Event log', 1)[0]
     script = r'''
 const assert = require('node:assert/strict');
-const field = {value: 'test-key', focus() {this.focused = true;}};
-const help = {textContent: ''}, details = {open: false}, badge = {};
-global.document = {getElementById: id => ({'admin-action-token': field,
-  'admin-action-help': help, 'admin-access': details, 'cost-val': badge})[id]};
+const badge = {};
+global.document = {getElementById: id => id === 'cost-val' ? badge : null};
 global.window = {location: {href: 'https://dashboard.test/'}};
 let request, status = 200, error = {};
 global.fetch = async (url, options) => {
@@ -34,7 +32,7 @@ async function check() {
     ['https://other.test/api/start', 'POST', false], ['/static/test', 'POST', false]
   ]) {
     await adminFetch(url, {method});
-    assert.equal(request.options.headers.Authorization, allowed ? 'Bearer test-key' : undefined);
+    assert.equal(request.options.headers.Authorization, undefined);
     if (allowed) assert.equal(request.options.redirect, 'error');
     await adminFetch(url, {method, headers: {'aUtHoRiZaTiOn': 'Bearer explicit'}});
     assert.equal(request.options.headers.Authorization, allowed ? 'Bearer explicit' : undefined);
@@ -52,26 +50,13 @@ async function check() {
       assert.equal(request.options.redirect, 'error');
       assert.equal(request.options.headers['Content-Type'], 'application/json');
       assert.equal(request.options.body, '{}');
-      assert.equal(details.open, false);
-      assert.equal(field.focused, undefined);
-      assert.equal(help.textContent, '');
     }
   }
-  error = {};
-  status = 401;
-  await adminFetch('/api/pipeline/stop', {method: 'POST'});
-  assert.equal(details.open, true);
-  assert.equal(field.focused, true);
-  assert.match(help.textContent, /invalide/);
-  status = 503; help.textContent = 'unchanged';
-  await adminFetch('/api/pipeline/stop', {method: 'POST'});
-  assert.equal(help.textContent, 'unchanged');
-  error = {detail: {code: 'admin_auth_not_configured'}};
-  await adminFetch('/api/pipeline/stop', {method: 'POST'});
-  assert.match(help.textContent, /LANCE_ADMIN_TOKEN/);
-  field.value = ''; status = 200;
-  await adminFetch('/api/pipeline/stop', {method: 'POST'});
-  assert.equal(request.options.headers.Authorization, undefined);
+  for (const responseStatus of [401, 503]) {
+    status = responseStatus;
+    const response = await adminFetch('/api/pipeline/stop', {method: 'POST'});
+    assert.equal(response.status, responseStatus);
+  }
   setCost(null); assert.equal(badge.textContent, 'Indisponible');
   setCost(0); assert.equal(badge.textContent, '$0.0000');
   setCost(1.25); assert.equal(badge.textContent, '$1.2500');

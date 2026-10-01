@@ -29,25 +29,14 @@ accessibles sans clé : les rapports et journaux ne sont pas rendus confidentiel
 
 ## Tableau de bord
 
-Saisissez la clé dans « Accès administrateur », puis **Se connecter pour 8 h**.
-Une [session HttpOnly](admin-session.md) conserve l'accès après actualisation ;
-la clé est effacée du champ après connexion. **Déconnexion** révoque la session.
-Le champ s'ouvre après un refus `401`. La clé n'a aucun stockage persistant.
-Elle n'est envoyée que pour les mutations API de même origine ; les redirections
-de ces requêtes sont refusées. Le navigateur et l'API doivent être servis sur
-la même origine ; les mutations depuis une autre origine sont refusées par CORS.
+Le tableau de bord ne présente plus de bandeau de connexion administrateur.
+Les runs et batches se lancent directement, sans clé ni session.
 
-Dans le gestionnaire « Modèles & Providers », la clé est saisie dans un champ
-mot de passe facultatif si une session est déjà ouverte, et peut être collée. Elle reste uniquement en mémoire
-JavaScript de la page, n’est pas persistée. L’action « Effacer la clé et
-fermer », la croix, Échap et la fermeture par le fond la suppriment de la
-mémoire et du DOM.
-Ces actions d'effacement du champ ne ferment pas la session : utiliser
-**Déconnexion** dans « Accès administrateur » pour la révoquer.
-
-Ce champ historique prime sur le champ global pour les mutations de fournisseurs
-uniquement. Sa fermeture n'efface pas le champ global. Utilisez le champ global
-pour les autres actions, notamment les modifications des modèles.
+Le gestionnaire « Modèles & Providers » conserve son champ de clé pour les
+mutations de fournisseurs. Cette clé reste uniquement en mémoire et est effacée
+à la fermeture du gestionnaire. Les autres mutations protégées peuvent être
+appelées avec une authentification API ; voir la [session administrateur](admin-session.md).
+Les lectures restent accessibles sans connexion.
 
 ## Déploiement
 

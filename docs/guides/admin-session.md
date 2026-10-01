@@ -1,17 +1,17 @@
 # Session administrateur
 
-Dans « Accès administrateur », saisir la clé puis cliquer sur **Se connecter
-pour 8 h**. Les lancements de runs et de batches sont accessibles à tous, sans
-clé ni session. La session permet de gérer la configuration et les autres actions administratives
-après actualisation, sans ressaisir la clé. **Déconnexion** révoque la session.
-Les clients API peuvent toujours utiliser `Authorization: Bearer`.
+Le bandeau de connexion administrateur a été supprimé du tableau de bord.
+Les lancements de runs et de batches sont accessibles sans clé ni session.
 
-La clé saisie est effacée du formulaire après connexion. Seul un identifiant
-aléatoire de session est placé dans un cookie HttpOnly, SameSite=Strict,
-limité au chemin `/api`. Aucune clé n'est enregistrée dans localStorage ou
-sessionStorage. La durée est fixe (8 heures), sans renouvellement silencieux.
-Les mutations par cookie exigent un en-tête non simple et rejettent les origines
-différentes ; CORS ne doit pas autoriser des sites externes avec credentials.
+L’API de session reste disponible pour les clients : `POST /api/admin/session`
+avec `Authorization: Bearer <LANCE_ADMIN_TOKEN>` et `X-Lance-Admin-Session: 1`
+crée une session ; `DELETE /api/admin/session` la révoque. Les autres actions
+administratives restent protégées.
+
+Un identifiant aléatoire de session est placé dans un cookie HttpOnly,
+SameSite=Strict, limité au chemin `/api`. La durée est fixe (8 heures), sans
+renouvellement silencieux. Les mutations par cookie exigent l’en-tête
+`X-Lance-Admin-Session: 1` et rejettent les origines différentes.
 
 En HTTPS, le cookie est Secure. En HTTP, ce flag ne peut pas être activé :
 le transport HTTP ne chiffre ni la clé ni la session. Réserver cet accès à un

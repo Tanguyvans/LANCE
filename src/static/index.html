@@ -31,16 +31,6 @@
 </div>
 
 <!-- ── Sub-agent progress bar (phase 3) ─────────────────────────────────── -->
-<details id="admin-access" class="admin-access">
-  <summary>Accès administrateur — lancement des scénarios et batches sans clé</summary>
-  <div class="admin-access-fields">
-    <label for="admin-action-token">Clé administrateur</label>
-    <input id="admin-action-token" type="password" autocomplete="off" spellcheck="false" aria-describedby="admin-action-help">
-    <button type="button" onclick="loginAdminSession()">Se connecter pour 8 h</button>
-    <button type="button" onclick="logoutAdminSession()">Déconnexion</button>
-    <span id="admin-action-help" role="status">Aucune connexion nécessaire pour lancer un run ou un batch. Pour les actions administratives, la connexion reste active 8 h.</span>
-  </div>
-</details>
 <div id="sub-agent-bar" hidden>
   <span id="sub-agent-count" class="sa-count"></span>
   <div id="sub-agent-chips"></div>
