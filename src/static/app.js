@@ -3351,6 +3351,10 @@ async function adminFetch(url, options = {}) {
     // Never forward credentials explicitly supplied by a caller to another origin.
     return fetch(url, {...options, headers});
   }
+  // Launches are public, independently of the administrator form or session.
+  if (method === 'POST' && ['/api/pipeline/start', '/api/pipeline/batch'].includes(target.pathname)) {
+    return fetch(url, {...options, headers, credentials: 'omit', redirect: 'error'});
+  }
   headers['X-Lance-Admin-Session'] = '1';
   const field = typeof document !== 'undefined' ? document.getElementById('admin-action-token') : null;
   const suppliedToken = suppliedHeaders.find(([name]) => name.toLowerCase() === 'authorization');

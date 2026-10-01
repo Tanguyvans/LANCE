@@ -3,6 +3,7 @@
 Les lancements (`POST /api/pipeline/start`, y compris le déploiement seul,
 et `POST /api/pipeline/batch`) sont accessibles sans clé ni session, même
 sans `LANCE_ADMIN_TOKEN`. Les validations et contrôles de concurrence restent actifs.
+Le navigateur envoie ces lancements sans clé ni cookie de session administrateur.
 
 Les autres routes API de mutation (`POST`, `PUT`, `PATCH`, `DELETE`) exigent
 une authentification : session navigateur valide ou en-tête :

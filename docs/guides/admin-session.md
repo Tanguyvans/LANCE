@@ -1,7 +1,8 @@
 # Session administrateur
 
 Dans « Accès administrateur », saisir la clé puis cliquer sur **Se connecter
-pour 8 h**. La session permet de lancer les runs et de gérer la configuration
+pour 8 h**. Les lancements de runs et de batches sont accessibles à tous, sans
+clé ni session. La session permet de gérer la configuration et les autres actions administratives
 après actualisation, sans ressaisir la clé. **Déconnexion** révoque la session.
 Les clients API peuvent toujours utiliser `Authorization: Bearer`.
 
@@ -22,5 +23,5 @@ Les sessions sont en mémoire, limitées à 256, partagées dans un processus.
 Un redémarrage ou une rotation de la clé serveur invalide les sessions.
 Ce mécanisme nécessite une seule instance de serveur ; plusieurs workers
 nécessiteraient un stockage de sessions partagé. Une clé serveur absente
-continue de bloquer les mutations. Ne pas exposer cette API sur Internet sans
+continue de bloquer les mutations administratives, mais pas les lancements. Ne pas exposer cette API sur Internet sans
 protection réseau et limitation des tentatives d'authentification.
