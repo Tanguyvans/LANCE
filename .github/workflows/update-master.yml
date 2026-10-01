@@ -1,67 +1,33 @@
-name: Update Master VM
+name: Update LANCE instance
 
-# Appelé par Benchmark integrity après validation du commit sur main.
-# Le master self-hosted déploie ce commit exact, puis redémarre nato-fastapi.
-# La box unique est pve-nato
-# (runner nato-master, 192.168.88.165 / Tailscale 100.103.253.86). Elle remplace
-# les anciennes pve + pve-benchmark (décommissionnées). fail-fast: false conservé.
-# Les fichiers env-spécifiques (inventory.yml, main.yml, vault_master.yml) sont en
-# skip-worktree sur le master → le pull ne les écrase pas. Ne jamais commiter ces 3.
+# Only called after validation of the exact commit by Benchmark integrity.
 on:
   workflow_call:
+    inputs:
+      slot:
+        type: string
+        default: main
 
 permissions:
   contents: read
 
+# Shared across all three instances, including manual deployments.
 concurrency:
   group: deploy-nato-master
   cancel-in-progress: false
 
 jobs:
   update:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [nato-master]
-    runs-on: [self-hosted, "${{ matrix.runner }}"]
-
+    runs-on: [self-hosted, nato-master]
     steps:
-      - name: Fast-forward to tested commit
-        working-directory: /opt/nato-smartcity-iot
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Deploy validated commit with shared laboratory reservation
         shell: bash
         env:
+          DEPLOY_SLOT: ${{ inputs.slot }}
           DEPLOY_SHA: ${{ github.sha }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
           DEPLOY_REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Tanguyvans/LANCE.git
-        run: |
-          git fetch "$DEPLOY_REMOTE" "$DEPLOY_SHA"
-          git merge --ff-only "$DEPLOY_SHA"
-          if [[ "$(git rev-parse HEAD)" != "$DEPLOY_SHA" ]]; then
-            echo "::error::The checkout is ahead of the tested commit; refusing to deploy."
-            exit 1
-          fi
-
-      - name: Install Codex CLI when missing
-        shell: bash
-        run: |
-          set -o pipefail
-          if [[ ! -x /root/.local/bin/codex ]]; then
-            curl -fsSL https://chatgpt.com/codex/install.sh | sh
-          fi
-          /root/.local/bin/codex --version
-
-      - name: Install Python dependencies
-        run: /opt/nato-smartcity-iot/venv/bin/pip install -r /opt/nato-smartcity-iot/requirements.txt --quiet
-
-      - name: Reconcile LANCE MoE registry
-        working-directory: /opt/nato-smartcity-iot
-        run: venv/bin/python -m src.db.inject_moe
-
-      - name: Restart FastAPI
-        run: systemctl restart nato-fastapi
-
-      - name: Warm benchmark score cache
-        run: >-
-          curl --fail --silent --show-error
-          --retry 12 --retry-connrefused --retry-delay 1
-          --max-time 180 --output /dev/null
-          http://127.0.0.1:8501/api/runs/benchmark
+        run: bash scripts/deployment/deploy-instance.sh "$DEPLOY_SLOT" "$DEPLOY_SHA" "$DEPLOY_BRANCH"

@@ -1,6 +1,7 @@
 """NATO Smart City IoT — FastAPI application entry point."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
@@ -82,3 +83,14 @@ def index():
 def redirect_legacy_dashboard():
     """Keep old monitor bookmarks pointing to the canonical dashboard."""
     return RedirectResponse(url="/", status_code=308)
+
+
+@app.get("/api/environment")
+def environment():
+    """Deployment identity and cooperative laboratory locking capability."""
+    return {
+        "instance": os.environ.get("LANCE_INSTANCE", "standalone"),
+        "branch": os.environ.get("LANCE_BRANCH"),
+        "commit": os.environ.get("LANCE_COMMIT"),
+        "lab_lock_enabled": bool(os.environ.get("LANCE_LAB_LOCK")),
+    }

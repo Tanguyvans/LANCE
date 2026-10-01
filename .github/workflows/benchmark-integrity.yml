@@ -2,10 +2,16 @@ name: Benchmark integrity
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev/1, dev/2]
   pull_request:
-    branches: [main]
+    branches: [main, dev/1, dev/2]
   workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Development instance for the selected branch (none = checks only)'
+        type: choice
+        default: none
+        options: [none, dev-1, dev-2]
 
 permissions:
   contents: read
@@ -79,3 +85,13 @@ jobs:
     needs: [contracts-and-scenarios, sealed-worker-image]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     uses: ./.github/workflows/update-master.yml
+
+  deploy-development:
+    needs: [contracts-and-scenarios, sealed-worker-image]
+    if: >-
+      github.event_name != 'pull_request' &&
+      ((github.event_name == 'push' && (github.ref == 'refs/heads/dev/1' || github.ref == 'refs/heads/dev/2')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.slot != 'none' && github.ref != 'refs/heads/main'))
+    uses: ./.github/workflows/update-master.yml
+    with:
+      slot: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || (github.ref == 'refs/heads/dev/1' && 'dev-1' || 'dev-2') }}

@@ -57,6 +57,7 @@ La [recherche sur le contexte](../research/2026-09-29-context-scalability/README
 - [Authentification et fournisseurs d'exécution](guides/provider-auth.md).
 - [Session administrateur de 8 heures](guides/admin-session.md).
 - [Scénarios manuels hors catalogue](guides/manual-scenarios.md).
+- [Branches et instances de développement sur nato](guides/development-instances.md).
 - [Infrastructure Ansible](../benchmarks/ansible/README.md).
 
 Pour les commandes de laboratoire et de déploiement, respecter la

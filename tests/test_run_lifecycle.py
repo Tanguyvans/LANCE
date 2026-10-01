@@ -400,3 +400,26 @@ def test_failed_phase_below_budget_does_not_change_phase_flow(tmp_path, monkeypa
     assert phases == [1, 2]
     assert result == {"graph_analysis": "failed:validation", "recon": "completed"}
     assert json.loads((pipeline.run_dir / "run_meta.json").read_text())["status"] == "failed"
+
+
+def test_shared_lab_reservation_covers_execution_and_cleanup(pipeline, monkeypatch, tmp_path):
+    import fcntl
+    path = tmp_path / "host-lab.lock"
+    monkeypatch.setenv("LANCE_LAB_LOCK", str(path))
+    def assert_reserved():
+        with path.open("a+") as competitor:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(competitor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    def execute(*_):
+        assert_reserved()
+        pipeline._scenario_owned = True
+        return {"recon": "completed"}
+    def cleanup(*_):
+        assert_reserved()
+        return True
+    pipeline._execute_run = execute
+    pipeline._run_teardown.side_effect = cleanup
+    pipeline.run()
+    pipeline._run_teardown.assert_called_once()
+    with path.open("a+") as competitor:
+        fcntl.flock(competitor, fcntl.LOCK_EX | fcntl.LOCK_NB)

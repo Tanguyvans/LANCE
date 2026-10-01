@@ -9,6 +9,7 @@ import time
 import yaml
 import logging
 from src.agent.core import runtime
+from src.benchmark.lab_lock import serialized_lab
 
 
 log = logging.getLogger(__name__)
@@ -17,7 +18,8 @@ log = logging.getLogger(__name__)
 class ScenarioLifecycle:
     """Phase operations using the shared run state; no independent lifecycle."""
 
-    def run_deploy_only(self, stream_callback: Callable[[dict], None] | None = None) -> None:
+    @serialized_lab
+    def run_deploy_only(self, stream_callback: Callable[[dict], None] | None = None, stop_event=None) -> None:
         """Deploy benchmark scenario VMs without running any pentest phase.
 
         Runs Ansible deploy + inject + verify, then emits pipeline_done so the

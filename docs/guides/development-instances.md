@@ -1,0 +1,123 @@
+# Branches de développement sur nato
+
+## Périmètre
+
+Le workflow `Benchmark integrity` valide `main`, `dev/1` et `dev/2`, puis
+appelle `Update LANCE instance` sur le runner **nato-master**. Les pull requests
+vers ces branches exécutent les validations sans déploiement. Aucun benchmark
+réel n'est lancé par ces workflows. Le homelab personnel reste hors périmètre.
+
+| Emplacement | Branche automatique | Port | Checkout | Service |
+| --- | --- | --- | --- | --- |
+| Stable | `main` | 8501 | `/opt/nato-smartcity-iot` | `nato-fastapi` |
+| Développement 1 | `dev/1` | 8502 | `/opt/lance-dev-1` | `lance-dev-1` |
+| Développement 2 | `dev/2` | 8503 | `/opt/lance-dev-2` | `lance-dev-2` |
+
+Les accès utilisent l'adresse Tailscale de nato-master `100.103.253.86`, par
+exemple `http://100.103.253.86:8502`. Le code ne modifie pas le pare-feu : les
+ports doivent être accessibles depuis le réseau autorisé. `/api/environment`
+renvoie l'emplacement, la branche, le commit réellement déployé et l'activation
+du verrou commun.
+
+## Première activation
+
+1. Publier cette implémentation sur `main` avec l'autorisation de publication.
+   Attendre la validation et le déploiement réussi sur `nato-master`, sans run
+   ni opération de laboratoire en cours. Le premier déploiement vérifie aussi
+   l'état de l'ancienne application qui ne connaissait pas encore le verrou.
+2. Créer `dev/1` et `dev/2` depuis cette version de `main` et publier les branches.
+3. Vérifier les jobs de déploiement puis `/api/environment` sur les trois ports.
+   Le déploiement d'une instance de développement refuse de démarrer si la
+   version stable n'annonce pas le verrou commun.
+
+Les scripts ne prouvent pas, à eux seuls, que les instances sont installées :
+seuls les jobs réussis et les vérifications HTTP sur nato le confirment.
+Le script vérifie le nom du runner et son adresse Tailscale avant toute mutation.
+Il utilise la configuration Ansible déjà présente sur nato, jamais un inventaire
+local du poste de développement.
+
+## Déploiement et isolation
+
+Chaque emplacement possède son venv, sa base `data/lance.db`, son `.env` et ses
+artefacts `output/`. À la première installation d'une instance de développement,
+seuls les registres fournisseurs/modèles sont copiés depuis la base stable ;
+les runs et scores ne le sont pas. Les réglages ultérieurs restent indépendants.
+Le `.env` et les trois fichiers de configuration Ansible de nato sont copiés
+pour permettre l'accès aux mêmes fournisseurs et au laboratoire autorisé.
+Le `.env` existant est conservé ; la configuration Ansible est reprise de la
+version stable à chaque déploiement.
+
+Les instances sont réservées aux branches de collaborateurs de confiance :
+comme l'instance actuelle, elles exécutent des outils d'audit avec les droits
+et les secrets du serveur. Une pull request ne lance jamais le déploiement.
+
+Le déploiement prend le verrou de laboratoire, vérifie que l'instance n'a pas
+de travail actif ou en attente, puis arrête son service avant de changer le
+code et les dépendances. `main` conserve la mise à jour fast-forward stricte ;
+les instances de développement utilisent le commit validé en HEAD détachée.
+Le service redémarre et sa réponse HTTP doit annoncer ce même commit. En cas
+d'échec après l'arrêt, inspecter et réparer l'instance avant de la redémarrer :
+aucun retour automatique vers une ancienne base ou d'anciennes dépendances
+n'est effectué. Les fichiers de données ne sont pas supprimés.
+
+## Attente commune pour le laboratoire
+
+`LANCE_LAB_LOCK=/var/lib/lance/lab.lock` active une réservation interprocessus.
+Elle couvre le pipeline entier, son déploiement et son nettoyage, le mode
+« déployer seulement », le nettoyage manuel de l'API et les déploiements de
+code. Chaque scénario d'un batch réserve séparément le laboratoire.
+
+Une instance occupée conserve sa protection habituelle contre un second run
+local. Une autre instance peut accepter un lancement, qui attend le verrou
+sans utiliser le réseau de laboratoire. `/api/pipeline/status` expose
+`lab_waiting`, et les événements SSE `lab_waiting` / `lab_acquired` signalent
+l'attente et la reprise. Le bouton Arrêter annule un pipeline en attente.
+Le nettoyage manuel attend également ; il n'a pas de bouton d'annulation.
+
+L'attente est coopérative, sans garantie FIFO, et conservée en mémoire : elle
+ne survit pas à un redémarrage du processus. Le fichier de verrou ne doit jamais
+être supprimé ou remplacé. Une erreur de verrou bloque l'opération.
+
+Les VM, réseaux et scénarios restent partagés. Un scénario conservé après un
+run ou un déploiement seul n'est pas réservé indéfiniment ; le prochain run
+peut nettoyer ou remplacer ces machines. Les allocations de VMID générées
+partagent donc aussi `LANCE_DEPLOYMENT_ROOT`, pointant sur
+`/opt/nato-smartcity-iot/output/scenario_deployments`. Les résultats et les
+exports de scénarios restent propres à chaque checkout.
+
+Le CLI doit recevoir les mêmes variables d'environnement que le service.
+Un script Ansible lancé directement, un ancien checkout sans verrou, une
+intervention Proxmox manuelle ou un contrôleur externe ne sont pas protégés
+par cette réservation. Pour une opération de maintenance autorisée, utiliser
+le même verrou, par exemple :
+
+```bash
+flock -x /var/lib/lance/lab.lock ansible-playbook ...
+```
+
+Ne pas combiner ce `flock` externe avec un CLI qui acquiert déjà ce même
+verrou. Après un arrêt brutal, vérifier qu'aucun sous-processus de laboratoire
+ne continue avant de reprendre les runs. Le verrou n'est pas un ordonnanceur
+distribué ni une isolation de sécurité entre collaborateurs.
+
+## Choisir une autre branche et ajouter des emplacements
+
+Dans **Actions → Benchmark integrity → Run workflow**, choisir une branche
+contenant cette implémentation et l'emplacement `dev-1` ou `dev-2`. Les tests
+s'exécutent avant son déploiement. `none` ne lance que les validations sur une
+branche de développement ; une exécution sur `main` reste un déploiement stable.
+Un prochain push sur `dev/1` ou `dev/2` reprend l'emplacement correspondant.
+
+Pour ajouter un emplacement, ajouter son nom, son port, son checkout et son
+service à `scripts/deployment/deploy-instance.sh`, puis l'option et le routage
+correspondants dans le workflow. Il faut conserver le même verrou et le même
+registre d'allocations de laboratoire. Aucun environnement n'est créé à partir
+d'un nom arbitraire reçu dans une requête.
+
+## Validation
+
+Les tests `test_lab_lock.py` utilisent des processus et threads réels sans
+appeler le laboratoire. Ils couvrent l'exclusion, l'attente, l'annulation et la
+libération après erreur. `test_deployment_workflow.py` vérifie les conditions
+CI et les mises à jour de vrais dépôts Git temporaires. La validation logicielle
+ne constitue pas un test de benchmark ni une confirmation du déploiement sur nato.

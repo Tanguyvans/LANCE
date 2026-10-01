@@ -3093,6 +3093,8 @@ function addLog(ev) {
 
   if (t === 'phase_start')   text = `▶ Phase ${ev.phase} — ${PHASE_NAMES[ev.phase] || ''}`;
   else if (t === 'phase_done') text = `✓ Phase ${ev.phase} done (${ev.status}) — $${(ev.cost_usd||0).toFixed(4)}`;
+  else if (t === 'lab_waiting') text = 'En attente du laboratoire partagé — une autre instance l’utilise.';
+  else if (t === 'lab_acquired') text = 'Laboratoire disponible — exécution autorisée.';
   else if (t === 'pipeline_start') text = `Pipeline démarré — ${ev.device_count} devices, ${ev.cve_count} CVEs`;
   else if (t === 'pipeline_done') {
     const cost = typeof ev.total_cost_usd === 'number' && Number.isFinite(ev.total_cost_usd)
@@ -3250,6 +3252,7 @@ async function pollStatus() {
   setCost(status.cost);
 
   if (status.teardown_running) {
+    if (status.lab_waiting) addLog({type: 'lab_waiting'});
     document.getElementById('btn-start').disabled = true;
     document.getElementById('btn-batch-start').disabled = true;
     document.getElementById('btn-teardown').disabled = true;
@@ -3283,7 +3286,7 @@ async function pollStatus() {
 
   // — Replay real log events (most informative: skip text_chunk noise) —
   const replayTypes = new Set([
-    'pipeline_start', 'phase_start', 'phase_done',
+    'pipeline_start', 'phase_start', 'phase_done', 'lab_waiting', 'lab_acquired',
     'device_start', 'device_done', 'reflector_start', 'reflector_done',
     'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
     'inject_start', 'inject_done', 'verify_start', 'verify_done',

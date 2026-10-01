@@ -38,11 +38,16 @@ indisponible ne justifie pas un repli vers le homelab.
 
 Le push sur `main` déclenche [Benchmark integrity](../../.github/workflows/benchmark-integrity.yml).
 Après réussite des tests et de la construction de l'image isolée, le workflow
-[Update Master VM](../../.github/workflows/update-master.yml) s'exécute sur le
+[Update LANCE instance](../../.github/workflows/update-master.yml) s'exécute sur le
 runner `nato-master` de `pve-nato` : récupération du commit exact, mise à jour des
 dépendances et redémarrage de LANCE. Un accès SSH depuis le poste de développement
 n'est donc pas requis pour cette publication. La réussite du job de déploiement
 doit être vérifiée dans GitHub Actions.
+
+Les [instances de développement](../guides/development-instances.md) utilisent
+le même laboratoire avec une réservation commune. Pour une campagne CLI,
+charger également `LANCE_LAB_LOCK=/var/lib/lance/lab.lock` et
+`LANCE_DEPLOYMENT_ROOT=/opt/nato-smartcity-iot/output/scenario_deployments`.
 
 Ce déploiement **ne lance pas la campagne**. Le périmètre D1/A1 reste accessible
 par CLI, avec inventaire public, modèle et budgets renseignés. L'inventaire

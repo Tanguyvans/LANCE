@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import fcntl
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +25,7 @@ from src.benchmark.scenario_exports import (
 )
 
 
-DEPLOYMENT_ROOT = REPO_ROOT / "output" / "scenario_deployments"
+DEPLOYMENT_ROOT = Path(os.environ.get("LANCE_DEPLOYMENT_ROOT", str(REPO_ROOT / "output" / "scenario_deployments")))
 MANUAL_SCENARIO_ROOT = REPO_ROOT / "output" / "generated_scenarios"
 MANUAL_SCENARIO_ID_RE = re.compile(r"^gen-custom-[a-f0-9]{10}$")
 LEASES_DIRNAME = "leases"

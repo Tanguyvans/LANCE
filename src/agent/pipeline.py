@@ -32,6 +32,7 @@ from src.agent.core.run_diagnostics import (
 )
 from src.agent.core.runtime import OUTPUT_DIR, log
 from src.agent.cost_tracker import BudgetExceeded
+from src.benchmark.lab_lock import serialized_lab
 
 
 class Pipeline(
@@ -229,6 +230,7 @@ class Pipeline(
                 self.run_dir = output_root / f"{timestamp}_{uuid4().hex[:12]}"
         self.git_commit = runtime._get_git_commit()
 
+    @serialized_lab
     def run(
         self,
         stream_callback: Callable[[dict], None] | None = None,

@@ -39,3 +39,8 @@ vérifient aussi les reprises D1 et le bilan de campagne : essais manquants,
 coûts des échecs, précontrôles et identités incompatibles, exports JSON/CSV. Ils
 ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 [guide de comparaison](../docs/benchmark/agent-vs-automation-cli.md).
+
+`test_lab_lock.py` vérifie la réservation du laboratoire entre processus et son
+annulation sans opération réseau. `test_deployment_workflow.py` vérifie les
+déploiements par branche dans des dépôts temporaires ; voir le
+[guide des instances](../docs/guides/development-instances.md).

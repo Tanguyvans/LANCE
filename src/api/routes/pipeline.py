@@ -19,6 +19,7 @@ from sse_starlette.sse import EventSourceResponse
 from src.benchmark.scenario_exports import default_export_store, resolve_ground_truth_path
 from src.benchmark.scenario_deployment import GeneratedScenarioDeployment
 from src.agent.batch_outcomes import batch_run_status
+from src.benchmark.lab_lock import reserve_lab
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ if str(ROOT) not in sys.path:
 # Global pipeline state (single concurrent run)
 _state: dict[str, Any] = {
     "running": False,
+    "lab_waiting": False,
     "stopping": False,
     "teardown_running": False,
     "phase": 0,
@@ -54,6 +56,16 @@ _state: dict[str, Any] = {
 _state_lock = threading.Lock()
 
 _MAX_RECENT_EVENTS = 200
+
+
+def _lab_event(event: dict, *, publish: bool = False) -> None:
+    if event.get("type") in {"lab_waiting", "lab_acquired"}:
+        _state["lab_waiting"] = event["type"] == "lab_waiting"
+        _state["phase_name"] = "En attente du laboratoire" if _state["lab_waiting"] else ""
+        if publish:
+            loop, q = _state.get("loop"), _state.get("queue")
+            if loop and q:
+                loop.call_soon_threadsafe(q.put_nowait, event)
 
 
 class ModelSelection(BaseModel):
@@ -224,6 +236,7 @@ def _pipeline_thread(req: StartRequest):
 
         def callback(event: dict):
             nonlocal pending_pipeline_done
+            _lab_event(event)
             # Evaluation must happen before pipeline_done reaches the browser;
             # the frontend closes the SSE stream as soon as it receives that
             # event. Keep the original event until evaluation is complete.
@@ -277,7 +290,7 @@ def _pipeline_thread(req: StartRequest):
                 _state["cost"] = event.get("total_cost_usd", _state["cost"])
 
         if req.deploy_only:
-            pipeline.run_deploy_only(stream_callback=callback)
+            pipeline.run_deploy_only(stream_callback=callback, stop_event=_state["stop_event"])
         else:
             run_results = pipeline.run(stream_callback=callback, stop_event=_state["stop_event"])
             evaluation_event = _evaluate_single_run(pipeline, req)
@@ -307,6 +320,7 @@ def _pipeline_thread(req: StartRequest):
     finally:
         with _state_lock:
             _state["running"] = False
+            _state["lab_waiting"] = False
             _state["stopping"] = False
         # Signal stream end
         q = _state["queue"]
@@ -385,6 +399,7 @@ def get_status():
     """Return full pipeline state — used by frontend on load to sync UI."""
     return {
         "running": _state["running"],
+        "lab_waiting": _state.get("lab_waiting", False),
         "stopping": _state.get("stopping", False),
         "teardown_running": _state.get("teardown_running", False),
         "phase": _state["phase"],
@@ -435,6 +450,7 @@ def _batch_thread(req: BatchRequest):
         from src.benchmark.evaluator import evaluate
 
         def _push(event: dict):
+            _lab_event(event)
             loop = _state["loop"]
             q = _state["queue"]
             if loop and q:
@@ -612,6 +628,7 @@ def _batch_thread(req: BatchRequest):
     finally:
         with _state_lock:
             _state["running"] = False
+            _state["lab_waiting"] = False
             _state["stopping"] = False
         q = _state["queue"]
         loop = _state["loop"]
@@ -701,7 +718,7 @@ async def teardown_scenario(req: TeardownRequest):
     _state["queue"] = asyncio.Queue()
     _state["loop"] = asyncio.get_running_loop()
 
-    def _run():
+    def _run_locked():
         deployment = GeneratedScenarioDeployment.from_lease(req.scenario_id)
         exported = default_export_store().exists(req.scenario_id)
         cmd = [
@@ -712,42 +729,54 @@ async def teardown_scenario(req: TeardownRequest):
             "--extra-vars", f"scenario_id={req.scenario_id}",
         ]
         try:
-            try:
-                if exported and deployment is None:
-                    success = False
-                    output = "Aucun lease de déploiement actif pour cet export Scenario Lab"
+            if exported and deployment is None:
+                success = False
+                output = "Aucun lease de déploiement actif pour cet export Scenario Lab"
+            else:
+                if deployment is not None:
+                    cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
+                    source_scenario_id = deployment.source_scenario_id
                 else:
-                    if deployment is not None:
-                        cmd.extend(["--extra-vars", f"@{deployment.overlay_path}"])
-                        source_scenario_id = deployment.source_scenario_id
-                    else:
-                        source_scenario_id = str(req.scenario_id)
-                    cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
-                    result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
-                    success = result.returncode == 0
-                    output = (result.stdout + result.stderr).strip()
-            except subprocess.TimeoutExpired:
-                success = False
-                output = "Teardown timeout (300s)"
-            except FileNotFoundError:
-                success = False
-                output = "ansible-playbook not found"
+                    source_scenario_id = str(req.scenario_id)
+                cmd.extend(["--extra-vars", f"source_scenario_id={source_scenario_id}"])
+                result = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+                success = result.returncode == 0
+                output = (result.stdout + result.stderr).strip()
+        except subprocess.TimeoutExpired:
+            success = False
+            output = "Teardown timeout (300s)"
+        except FileNotFoundError:
+            success = False
+            output = "ansible-playbook not found"
 
-            if success and deployment is not None:
-                deployment.release()
-            loop = _state.get("loop")
-            q = _state.get("queue")
+        if success and deployment is not None:
+            deployment.release()
+        loop = _state.get("loop")
+        q = _state.get("queue")
+        if loop and q:
+            loop.call_soon_threadsafe(q.put_nowait, {
+                "type": "teardown_done",
+                "scenario_id": req.scenario_id,
+                "success": success,
+                "manual": True,
+                "output": output,
+            })
+
+    def _run():
+        try:
+            with reserve_lab(callback=lambda event: _lab_event(event, publish=True)):
+                _run_locked()
+        except Exception as exc:
+            loop, q = _state.get("loop"), _state.get("queue")
             if loop and q:
                 loop.call_soon_threadsafe(q.put_nowait, {
-                    "type": "teardown_done",
-                    "scenario_id": req.scenario_id,
-                    "success": success,
-                    "manual": True,
-                    "output": output,
+                    "type": "teardown_done", "scenario_id": req.scenario_id,
+                    "success": False, "manual": True, "output": str(exc),
                 })
         finally:
             with _state_lock:
                 _state["teardown_running"] = False
+                _state["lab_waiting"] = False
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
