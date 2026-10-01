@@ -44,3 +44,7 @@ ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 annulation sans opération réseau. `test_deployment_workflow.py` vérifie les
 déploiements par branche dans des dépôts temporaires ; voir le
 [guide des instances](../docs/guides/development-instances.md).
+
+`test_shared_activity.py` couvre les résumés locaux, l’agrégation en lecture
+seule des trois instances, les erreurs de pairs, l’absence de transmission
+d’identifiants et le mode standalone sans accès réseau.

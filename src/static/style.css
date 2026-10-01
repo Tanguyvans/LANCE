@@ -1909,3 +1909,31 @@ button:disabled { opacity: .35; cursor: default; }
   #sl-details-panel { min-height: 360px; }
   #sl-preview-panel { min-height: 480px; }
 }
+
+/* Shared activity remains visible across dashboard, benchmark and Scenario Lab. */
+.shared-activity { flex-shrink: 0; padding: 10px 14px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.shared-activity[hidden] { display: none; }
+.activity-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 11px; }
+.activity-heading strong { font-weight: 600; }
+#activity-freshness { color: var(--muted); }
+#activity-instances { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.activity-card { min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; background: var(--bg); color: var(--text); text-decoration: none; }
+.activity-card[aria-current="page"] { border-color: var(--accent); background: var(--accent-bg); }
+.activity-card[href]:hover { border-color: var(--accent); }
+.activity-card[href]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.activity-card[href]:active { transform: scale(.99); }
+.activity-card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.activity-card-title strong { font-size: 12px; }
+.activity-current { color: var(--muted); font-size: 10px; }
+.activity-state { margin-top: 5px; font-size: 12px; color: var(--green); }
+.activity-card[data-state="running"] .activity-state, .activity-card[data-state="deploying"] .activity-state { color: var(--sev-info-fg); }
+.activity-card[data-state="waiting"] .activity-state, .activity-card[data-state="stopping"] .activity-state, .activity-card[data-state="teardown"] .activity-state { color: var(--orange); }
+.activity-card[data-state="unavailable"] .activity-state { color: var(--muted); }
+.activity-detail { margin-top: 4px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 600px) {
+  .shared-activity { padding: 8px; }
+  .activity-heading { align-items: flex-start; }
+  .activity-card { padding: 7px; }
+  .activity-card-title { flex-direction: column; gap: 3px; }
+  .activity-state { min-height: 30px; }
+}

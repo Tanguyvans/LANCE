@@ -19,6 +19,39 @@ ports doivent être accessibles depuis le réseau autorisé. `/api/environment`
 renvoie l'emplacement, la branche, le commit réellement déployé et l'activation
 du verrou commun.
 
+## Vue commune de l’activité
+
+Les trois interfaces affichent une barre **Activité partagée** avec un accès à
+Main, Dev 1 et Dev 2. L’interface courante porte la mention « Vous êtes ici ».
+Chaque carte montre l’état courant, le scénario et le modèle lorsqu’un run est
+actif, ainsi que la phase pendant l’exécution. Cliquer sur un autre environnement
+ouvre son dashboard, qui reprend son suivi en direct. Les formulaires non
+soumis ne sont pas transférés d’un environnement à l’autre.
+
+La barre se rafraîchit toutes les cinq secondes quand l’onglet est visible.
+L’attente du laboratoire, le déploiement d’un scénario, le nettoyage et l’arrêt
+sont distingués. Une réponse absente, invalide ou d’une identité inattendue est
+marquée **Indisponible**, jamais « Disponible ». Si le serveur de l’interface
+courante ne répond plus, les anciens états sont retirés au prochain échec de
+rafraîchissement. Il s’agit de l’activité déclarée par les applications : cette
+vue ne montre pas les opérations CLI, Proxmox ou les jobs de déploiement du code.
+
+`GET /api/activity/local` expose un résumé sans journaux, fichiers ni secrets.
+`GET /api/activity` regroupe le résumé local et ceux des deux autres services,
+interrogés en parallèle sur les ports fixes 8501–8503 de `127.0.0.1`. Les appels
+ne transmettent pas les identifiants du navigateur, ne suivent pas de redirection
+et n’utilisent pas de proxy d’environnement. Les deux réponses sont sans cache.
+Les données SQLite et les historiques restent séparés ; aucune commande ne peut
+être lancée sur une autre instance par cette API.
+
+Cette vue s’active quand `LANCE_INSTANCE` vaut `main`, `dev-1` ou `dev-2`.
+En mode standalone, aucune autre instance n’est contactée et la barre est masquée.
+Les liens conservent le protocole et l’hôte du navigateur et changent uniquement
+le port : ils correspondent à l’accès direct actuel via Tailscale. Un déploiement
+derrière des chemins de reverse proxy nécessiterait une configuration des liens.
+Les trois branches doivent contenir cette fonctionnalité ; une ancienne version
+sans `/api/activity/local` apparaît indisponible jusqu’à sa mise à jour.
+
 ## Première activation
 
 1. Publier cette implémentation sur `main` avec l'autorisation de publication.

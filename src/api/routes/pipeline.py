@@ -711,6 +711,7 @@ async def teardown_scenario(req: TeardownRequest):
         if _state["teardown_running"]:
             raise HTTPException(status_code=409, detail="Scenario teardown is already running")
         _state["teardown_running"] = True
+        _state["teardown_scenario_id"] = req.scenario_id
 
     # A completed pipeline may have left its __done__ marker in the old queue
     # after the browser consumed pipeline_done and closed SSE. Always isolate a
