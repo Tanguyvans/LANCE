@@ -20,7 +20,10 @@ python -m pytest -q tests
 python -m pytest -q model_training/tests
 ```
 
-La CI exécute explicitement les deux dossiers. Les commandes qui précisent
+La CI exécute explicitement les deux dossiers pour les changements de code et
+les exécutions manuelles. Les changements uniquement documentaires connus
+suivent un [parcours léger](../docs/guides/development-instances.md#validation-ci-selon-les-fichiers-modifiés).
+Les commandes qui précisent
 seulement `tests/` ne lancent pas les tests d’entraînement. Certaines dépendances
 optionnelles peuvent provoquer des tests ignorés : lire le résumé avant de
 conclure à une validation complète.
@@ -44,6 +47,9 @@ ne mesurent pas les performances d'un modèle sur un laboratoire réel ; voir le
 annulation sans opération réseau. `test_deployment_workflow.py` vérifie les
 déploiements par branche dans des dépôts temporaires ; voir le
 [guide des instances](../docs/guides/development-instances.md).
+`test_ci_scope.py` vérifie le classement des fichiers et de vrais intervalles Git
+(pushs multiples, fusion de PR, suppressions, renommages et historique peu profond),
+le repli vers tous les contrôles en cas d'incertitude et les conditions des workflows.
 
 `test_shared_activity.py` couvre les résumés locaux, l’agrégation en lecture
 seule des trois instances, les erreurs de pairs, l’absence de transmission

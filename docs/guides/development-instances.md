@@ -19,6 +19,37 @@ ports doivent être accessibles depuis le réseau autorisé. `/api/environment`
 renvoie l'emplacement, la branche, le commit réellement déployé et l'activation
 du verrou commun.
 
+## Validation CI selon les fichiers modifiés
+
+Les workflows restent déclenchés sur chaque push et pull request. Les changements
+limités aux documents connus passent par un parcours léger : classification du
+diff et contrôle des espaces, sans installation de dépendances, tests Python,
+construction Docker ni déploiement. Les jobs restent présents dans les checks.
+Ce parcours couvre les README explicitement listés et les fichiers Markdown,
+LaTeX, PDF, bibliographie et images sous `docs/` et `research/`.
+
+Tout code, configuration ou chemin inconnu conserve les tests complets de
+`tests/` et `model_training/tests/`, les contrôles de scénario et Ansible, la
+construction du worker et son contrôle d'absence de vérité terrain. Les prompts
+Markdown sous `src/` et les scripts d'expérience sous `research/` suivent donc
+le parcours complet. Une exécution manuelle lance également tous les contrôles ;
+les tags de version déclenchent la construction complète de l'image applicative.
+
+Le classement compare tout le push depuis son commit précédent déclaré par
+GitHub, ou le commit de base d'une PR avec son checkout de fusion. Il conserve
+les suppressions et les deux chemins d'un renommage. Un historique ou événement
+indéterminé déclenche le parcours complet ; un échec du job bloque le déploiement.
+Un push documentaire n'entraîne pas de redémarrage des instances.
+
+Les anciennes validations d'une même PR peuvent être annulées par une nouvelle
+version. Les pushes, tags et exécutions manuelles utilisent des groupes distincts ;
+la sérialisation des déploiements sur nato reste gérée par `Update LANCE instance`.
+Le worker possède un cache Docker dédié et reste chargé puis contrôlé localement.
+L'image applicative conserve aussi les couches intermédiaires de compilation dans
+son cache de registre. Le gain de durée dépend des couches réutilisables ; il doit
+être mesuré dans les prochains runs. Les deux architectures AMD64 et ARM64 de
+l'image applicative restent construites sur le parcours complet.
+
 ## Vue commune de l’activité
 
 Les trois interfaces affichent une barre **Activité partagée** avec un accès à
