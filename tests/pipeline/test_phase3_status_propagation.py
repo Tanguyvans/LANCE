@@ -26,6 +26,7 @@ def _run_aggregated_case(monkeypatch, output_dir, mock_provider, phase3_status, 
     pipeline = Pipeline(provider=mock_provider, execution_profile="full")
     events = []
 
+    monkeypatch.setattr(runtime, "get_attack_surface", lambda: "[]")
     monkeypatch.setattr(analysis, "scan_phase", lambda _context: ScanResult([], {}))
     monkeypatch.setattr(analysis, "analyze_devices", lambda *_args: DeviceAnalysisResult(
         (DeviceResult("device", "worker failed"),) if phase3_status else (),

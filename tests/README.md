@@ -65,7 +65,9 @@ scénario invalide ne se rabat jamais sur le laboratoire physique.
 effectif, dry-run sans découverte active, agrégation seule, comptage avec des
 workers terminant dans un ordre différent, interruptions propagées, suivi fermé,
 consommation limitée à la phase et deux contextes ayant les mêmes identifiants
-d'appareil. `pipeline/test_analysis_supplemental.py`, issu de la relecture
+d'appareil. Les tests de frontière et de statut fournissent une surface simulée
+pour éviter le chargement implicite du laboratoire et les recherches NVD.
+`pipeline/test_analysis_supplemental.py`, issu de la relecture
 indépendante, caractérise l'ordre des sondes mTLS/OTA/cloud et leur provenance,
 avec des outils simulés. Les tests de sauvegarde, récupération et agrégation
 conservent les contrôles de preuves ; le test UMONS mesure les appels simultanés

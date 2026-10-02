@@ -16,13 +16,21 @@ from src.agent.phases.analysis.context import AnalysisContext, AnalysisServices,
 from src.agent.phases.contracts import PhaseStatus
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
+from src.agent.tools import graph_tools
 
 
 @pytest.fixture(autouse=True)
 def aggregation(monkeypatch):
+    # These tests exercise phase outcomes, not graph initialization or NVD.
+    monkeypatch.setattr(runtime, "get_attack_surface", lambda: "[]")
+    lab_loader = Mock(
+        side_effect=AssertionError("phase boundary test initialized the lab context"),
+    )
+    monkeypatch.setattr(graph_tools, "load_lab_context", lab_loader)
     operation = Mock(wraps=analysis.aggregate)
     monkeypatch.setattr(analysis, "aggregate", operation)
-    return operation
+    yield operation
+    lab_loader.assert_not_called()
 
 
 def context_for(path, **overrides):
