@@ -154,7 +154,7 @@ def test_a_conventional_path_or_port_is_not_a_proof_gate(aggregate, extra):
     ({"CVE-2025-10000": "incompatible"}, 1),
 ])
 def test_unknown_cve_compatibility_is_not_incompatibility(aggregate, monkeypatch, assessments, expected):
-    monkeypatch.setattr(Pipeline, "_load_cve_search_evidence", lambda self: {
+    monkeypatch.setattr("src.agent.phases.analysis.aggregation_loading.load_cve_search_evidence", lambda run_dir: {
         ("review-product", cve): {"status": status, "reason": "Synthetic offline compatibility assessment"}
         for cve, status in assessments.items()
     })
@@ -192,7 +192,7 @@ def test_cve_hypothesis_with_unknown_fingerprint_remains_schedulable(aggregate, 
 
 
 def test_partial_cve_validation_does_not_drop_unknown_ids(aggregate, monkeypatch):
-    monkeypatch.setattr(Pipeline, "_load_cve_search_evidence", lambda self: {
+    monkeypatch.setattr("src.agent.phases.analysis.aggregation_loading.load_cve_search_evidence", lambda run_dir: {
         ("review-product", "CVE-2025-10000"): {"status": "compatible"}
     })
     canonical, _ = aggregate([finding(

@@ -18,7 +18,7 @@ def setup_phase(tmp_path):
         discover_surface=MagicMock(), persist_findings=MagicMock(),
         promoted_deliverable=MagicMock(), recover_device=MagicMock(),
         validate_cves=MagicMock(), check_limits=MagicMock(),
-        aggregate=MagicMock(), validate=MagicMock(),
+        validate=MagicMock(),
     )
     context = AnalysisContext(
         run_dir=tmp_path, config=AGENTS['vuln_analysis'], provider=None,

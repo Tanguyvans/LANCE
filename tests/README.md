@@ -71,3 +71,8 @@ avec des outils simulés. Les tests de sauvegarde, récupération et agrégation
 conservent les contrôles de preuves ; le test UMONS mesure les appels simultanés
 sans réduire les preuves ni le délai. Aucun de ces tests ne mesure un modèle
 sur le laboratoire réel.
+
+`pipeline/test_aggregation_stages.py` vérifie l'agrégation avec un contexte
+explicite, les preuves chargées avant la projection, la provenance MQTT et les
+identifiants repris d'un membre du groupe. Les tests existants d'agrégation,
+de sémantique, de planification et de reprise restent applicables aux adaptateurs.

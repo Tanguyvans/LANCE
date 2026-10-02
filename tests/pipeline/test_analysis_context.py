@@ -18,6 +18,13 @@ from src.agent.pipeline import Pipeline
 from src.agent.registry import AGENTS
 
 
+@pytest.fixture(autouse=True)
+def aggregation(monkeypatch):
+    operation = Mock(wraps=analysis.aggregate)
+    monkeypatch.setattr(analysis, "aggregate", operation)
+    return operation
+
+
 def context_for(path, **overrides):
     path.mkdir(exist_ok=True)
     operations = {field.name: Mock() for field in fields(AnalysisServices)}
@@ -37,13 +44,16 @@ def test_context_captures_effective_provider_profile_and_variables(output_dir, m
     pipeline = Pipeline(provider=mock_provider, execution_profile="full")
     effective = Mock(provider="ollama-umons", model="selected-phase-model")
     pipeline.provider = effective
+    pipeline.benchmark_split = "dev"
     pipeline.context["selected"] = "phase input"
     context = analysis.build_context(pipeline, AGENTS["vuln_analysis"])
     pipeline.provider = mock_provider
+    pipeline.benchmark_split = "test"
     pipeline.execution_profile = resolve_execution_profile("compact")
     pipeline.context["selected"] = "later change"
 
     assert context.provider is effective
+    assert context.benchmark_split == "dev"
     assert context.profile.name == "full"
     assert context.variables["selected"] == "phase input"
     assert devices.analysis_worker_count(context, 4) == 1
@@ -51,7 +61,7 @@ def test_context_captures_effective_provider_profile_and_variables(output_dir, m
     assert devices.project_scan(context.profile, scan, "same") is scan
 
 
-def test_dry_run_skips_active_discovery_scanner_model_and_aggregation(tmp_path, monkeypatch):
+def test_dry_run_skips_active_discovery_scanner_model_and_aggregation(tmp_path, monkeypatch, aggregation):
     events = []
     context = context_for(tmp_path, dry_run=True, target_network="192.0.2.0/24", emit=events.append)
     monkeypatch.setattr(runtime, "get_attack_surface", lambda: "[]")
@@ -65,12 +75,12 @@ def test_dry_run_skips_active_discovery_scanner_model_and_aggregation(tmp_path, 
     assert events[-1]["status"] == "skipped"
     assert json.loads((tmp_path / "03_phase3_status.json").read_text())["status"] == "skipped"
     context.services.discover_surface.assert_not_called()
-    context.services.aggregate.assert_not_called()
+    aggregation.assert_not_called()
     context.provider.chat_with_tools.assert_not_called()
     scanner.assert_not_called()
 
 
-def test_aggregation_only_configuration_does_not_scan_or_analyze(tmp_path, monkeypatch):
+def test_aggregation_only_configuration_does_not_scan_or_analyze(tmp_path, monkeypatch, aggregation):
     context = context_for(tmp_path)
     context = replace(context, config=replace(context.config, has_device_agents=False))
     scan = Mock(side_effect=AssertionError("scan must not run"))
@@ -81,14 +91,14 @@ def test_aggregation_only_configuration_does_not_scan_or_analyze(tmp_path, monke
     result = analysis.execute(context)
 
     assert result.status is PhaseStatus.COMPLETED
-    context.services.aggregate.assert_called_once()
+    aggregation.assert_called_once()
     scan.assert_not_called()
     analyze.assert_not_called()
 
 
 @pytest.mark.parametrize("error_type", [BudgetExceeded, EvidenceWriteError, RunStopped])
 @pytest.mark.parametrize("stage", ["scanner", "device"])
-def test_terminal_error_blocks_aggregation(tmp_path, monkeypatch, error_type, stage):
+def test_terminal_error_blocks_aggregation(tmp_path, monkeypatch, error_type, stage, aggregation):
     events = []
     context = context_for(tmp_path, emit=events.append)
     monkeypatch.setattr(runtime, "get_attack_surface", lambda: '[{"id":"same"}]')
@@ -107,7 +117,7 @@ def test_terminal_error_blocks_aggregation(tmp_path, monkeypatch, error_type, st
 
     with pytest.raises(error_type, match="terminal"):
         analysis.execute(context)
-    context.services.aggregate.assert_not_called()
+    aggregation.assert_not_called()
     context.services.persist_findings.assert_not_called()
     if stage == "scanner":
         device.assert_not_called()
@@ -147,6 +157,7 @@ def test_reverse_worker_completion_preserves_exact_partial_accounting(tmp_path, 
 
 
 def test_two_contexts_with_same_device_id_keep_artifacts_callbacks_and_usage_isolated(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "get_attack_surface", lambda: "[]")
     contexts = []
     events = [[], []]
     for index in range(2):
@@ -157,10 +168,14 @@ def test_two_contexts_with_same_device_id_keep_artifacts_callbacks_and_usage_iso
         context.tracker.end_phase()
         context = replace(context, tokens_before=context.tracker.total_tokens())
 
-        def aggregate(config, emit, *, root=context.run_dir):
-            (root / config.deliverable_file).write_text(json.dumps({"owner": root.name}))
-
-        context.services.aggregate.side_effect = aggregate
+        (context.run_dir / "03_device_same.json").write_text(json.dumps({
+            "vulnerabilities": [{
+                "device_id": "same", "device_ip": f"192.0.2.{10 + index}",
+                "type": "data_exposure", "severity": "MEDIUM", "service": "http",
+                "port": 80, "protocol": "tcp", "endpoint": "/config",
+                "details": f"Configuration may be public on run {index}",
+            }],
+        }))
         contexts.append(context)
     monkeypatch.setattr(analysis, "scan_phase", lambda _: ScanResult([{"id": "same"}], {}))
     monkeypatch.setattr(devices, "prepare_analysis", lambda _: object())
@@ -178,12 +193,13 @@ def test_two_contexts_with_same_device_id_keep_artifacts_callbacks_and_usage_iso
         assert result.consumption.input_tokens == 7 + index
         assert result.consumption.output_tokens == 3
         assert result.consumption.duration_s >= 0
-        assert json.loads((context.run_dir / context.config.deliverable_file).read_text())["owner"] == str(index)
+        canonical = json.loads((context.run_dir / context.config.deliverable_file).read_text())
+        assert canonical["vulnerabilities"][0]["device_ip"] == f"192.0.2.{10 + index}"
         assert [event["type"] for event in events[index]] == ["phase_start", "phase_done"]
         assert all((context.run_dir / name).is_file() for name in result.artifacts)
 
 
-def test_rules_without_provider_counts_validation_and_closes_tracking(tmp_path, monkeypatch):
+def test_rules_without_provider_counts_validation_and_closes_tracking(tmp_path, monkeypatch, aggregation):
     events = []
     context = replace(context_for(tmp_path, emit=events.append), decision_policy="rules", provider=None)
     monkeypatch.setattr(runtime, "get_attack_surface", lambda: '[{"id":"same"}]')
@@ -194,7 +210,7 @@ def test_rules_without_provider_counts_validation_and_closes_tracking(tmp_path, 
 
     assert result.status is PhaseStatus.COMPLETED
     scanner.assert_called_once()
-    context.services.aggregate.assert_called_once()
+    aggregation.assert_called_once()
     assert [event["type"] for event in events] == ["phase_start", "phase_done"]
     assert [usage.agent_name for usage in context.tracker.phases] == ["rules_analysis", "rules_validate_3"]
     assert context.tracker.phases[-1].validation_successes == 1

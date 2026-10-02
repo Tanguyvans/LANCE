@@ -32,7 +32,6 @@ class AnalysisServices:
     recover_device: Callable[..., None]
     validate_cves: Callable[..., None]
     check_limits: Callable[[], None]
-    aggregate: Callable[[AgentConfig, EventCallback | None], None]
     validate: Callable[[str], tuple[bool, str]]
 
 
@@ -52,6 +51,7 @@ class AnalysisContext:
     target_network: str | None = None
     stop_event: Event | None = None
     decision_policy: str = "llm"
+    benchmark_split: str = "unassigned"
     experiment_scope: str | None = None
     tool_policy: Mapping = field(default_factory=dict)
     analysis_limits: Mapping = field(default_factory=dict)

@@ -20,6 +20,7 @@ from src.agent.phases.analysis.context import (
 )
 from src.agent.phases.analysis.scan import scan_phase
 from src.agent.phases.analysis.devices import analyze_devices, analysis_worker_count, project_scan
+from src.agent.phases.analysis.aggregation import aggregate, capture_context as capture_aggregation_context
 from src.agent.phases.contracts import PhaseConsumption, PhaseResult, PhaseStatus
 
 log = logging.getLogger(__name__)
@@ -669,7 +670,7 @@ class AnalysisPhase:
 def build_context(run, config, stream_callback=None) -> AnalysisContext:
     """Capture the effective phase provider/profile after any model override.
 
-    Transaction, recovery and aggregation services are incremental adapters.
+    Transaction and recovery services are incremental adapters.
     They still use the run engine; the ordinary phase stages accept only this
     explicit context. Its lifetime is one phase invocation.
     """
@@ -687,13 +688,13 @@ def build_context(run, config, stream_callback=None) -> AnalysisContext:
             recover_device=run._recover_truncated_phase3_device,
             validate_cves=run._run_phase3_local_cve_validation,
             check_limits=lambda: check_execution_limits(run),
-            aggregate=run._aggregate_device_vulns,
             validate=run._validator(config.validator),
         ),
         variables=dict(run.context), compact_local=run._uses_compact_local_moe(),
         local_moe=run._uses_local_moe(), dry_run=run.dry_run, sealed=run.sealed,
         target_network=run.target_network, stop_event=run._stop_event,
-        decision_policy=run.decision_policy, experiment_scope=run.experiment_scope,
+        decision_policy=run.decision_policy, benchmark_split=run.benchmark_split,
+        experiment_scope=run.experiment_scope,
         tool_policy=deepcopy(run.scenario_tool_policy),
         analysis_limits=dict(getattr(run, "experiment_analysis_limits", None) or {}),
         max_duration_s=run.max_duration_s, run_started=getattr(run, "_run_started", None),
@@ -743,7 +744,10 @@ def aggregate_phase(
             artifacts=tuple(name for name in artifacts if (context.run_dir / name).is_file()),
             errors=tuple(errors), consumption=_consumption(context),
         )
-    context.services.aggregate(context.config, context.emit)
+    aggregate(capture_aggregation_context(
+        context.run_dir, compact_local=context.compact_local,
+        decision_policy=context.decision_policy, benchmark_split=context.benchmark_split,
+    ))
     if context.decision_policy == "rules":
         context.tracker.start_phase("rules_validate_3")
     try:

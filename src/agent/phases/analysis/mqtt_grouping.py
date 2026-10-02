@@ -294,12 +294,19 @@ def _stable_key(finding: dict) -> str:
 
 
 def group_mqtt_producer_findings(
-    findings: list[dict], *, run_dir: Path,
+    findings: list[dict], *, observations: list[dict] | None = None,
+    run_dir: Path | None = None,
 ) -> list[tuple[list[dict], bool]]:
-    """Combine only one unambiguous model/scanner pair per observation."""
+    """Combine one unambiguous model/scanner pair from a supplied observation snapshot.
+
+    Standalone callers can still load that snapshot with the run_dir adapter.
+    """
     from src.agent.finding_identity import finding_identity_key, group_equivalent_findings
 
-    observations = load_authoritative_mqtt_observations(run_dir)
+    if observations is None:
+        if run_dir is None:
+            raise TypeError("observations or run_dir is required")
+        observations = load_authoritative_mqtt_observations(run_dir)
     matched = {id(finding): _candidate_keys(finding, observations) for finding in findings}
     components: list[dict[str, Any]] = [
         {"findings": list(group), "producer": False}

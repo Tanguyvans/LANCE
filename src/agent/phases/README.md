@@ -74,7 +74,8 @@ L'exécution suit trois étapes explicites :
    Chaque worker renvoie un `DeviceResult` ; le coordinateur calcule les nombres
    de réussites et d'échecs. Les preuves intégrales du profil full, les mémos
    locaux en fichiers annexes et la récupération par blocs restent inchangés.
-3. `run.aggregate_phase` agrège les fichiers puis valide le livrable. Il renvoie
+3. `run.aggregate_phase` appelle l'agrégation avec des entrées explicites puis
+   valide le livrable. Il renvoie
    un `PhaseResult` avec statut, erreurs, références d'artefacts existants et
    consommation de cette phase (tokens, coût et durée). Les fichiers de diagnostic
    référencés ne sont pas des certifications ; le livrable principal n'est inclus
@@ -145,12 +146,51 @@ plus une reprise de la même requête, sans rejouer les outils, uniquement s’i
 du temps et du budget. Les reprises des autres erreurs transitoires restent
 bornées par le mécanisme de transport existant.
 
+### Agrégation et reprise des découvertes
+
+`aggregation.capture_context` capture la surface et la topologie au moment de
+l'agrégation, après les analystes : identité publique des appareils, rôles, liens,
+profil compact, politique de décision, split du benchmark et catalogue d'outils.
+Le cœur reçoit un `AggregationContext`, sans `Pipeline` ni callback métier.
+Le traitement suit quatre étapes :
+
+1. `aggregation_loading.load_inputs` lit les candidats dans un ordre stable,
+   promeut les observations scanner admises par le profil et charge les preuves
+   CVE/MQTT archivées ainsi que les identifiants du précédent agrégat.
+2. `aggregation_normalization.normalize_candidates` travaille sur des copies,
+   conserve le candidat avant la normalisation sémantique et inscrit les motifs
+   d'exclusion dans le registre brut. Une CVE non vérifiée reste planifiable ; sa
+   compatibilité pour le score reste distincte. Une incompatibilité explicite
+   exclut la revendication de la file canonique.
+3. `aggregation_projection.project_candidates` déduplique, conserve la provenance
+   de chaque membre et reprend les identifiants existants. Ce stade utilise les
+   preuves MQTT déjà chargées : il ne relit pas le disque et ne transfère pas la
+   preuve du scanner au candidat modèle retenu dans un groupe MQTT.
+4. `aggregation.render_projection` construit les résultats, puis
+   `write_projection` écrit les fichiers `03_vuln_analysis.json`,
+   `03_vuln_analysis_raw.json` et, en compact, `03_config_observations.json`.
+
+La reprise de découverte conserve l'adaptateur `_aggregate_device_vulns` et ces
+noms de fichiers, même lorsqu'elle est déclenchée depuis la phase 4. Le remapping
+des identifiants `discovered-*` conserve son comportement historique : il utilise
+les surfaces contenant une clé `nodes`, pas les surfaces représentées par une
+liste. Le snapshot est local à cette agrégation ; sa capture dépend encore du
+contexte global de graphe. Les étapes de normalisation et de projection modifient
+les copies de travail et le registre de décisions reçus, sans modifier les
+fichiers d'entrée ni les valeurs originales conservées dans `raw_finding`.
+
+Limite PKI préexistante : la promotion d'une clé clonée compte les observations
+de fingerprint, sans dédupliquer les identifiants d'appareil. Deux observations
+identiques d'un seul `pki_device` peuvent donc produire une déclaration confirmée
+de clé partagée. Le découpage conserve ce comportement ; sa correction exige un
+test distinguant observations répétées et appareils distincts.
+
 ## Limites conservées explicitement
 
 Les autres phases et plusieurs services de phase 3 restent des mixins utilisant
 l'état du même `Pipeline`. La phase 3 rend ses dépendances visibles et ses étapes
-testables avec un contexte explicite, mais les transactions, récupérations,
-validations CVE et agrégations utilisent encore des callbacks liés au moteur.
+testables avec un contexte explicite, mais les transactions, récupérations
+et validations CVE locales utilisent encore des callbacks liés au moteur.
 Ce contexte est construit pour une invocation de phase ; modifier le moteur
 pendant cette invocation n'est pas pris en charge. Le runner coordonne encore
 certaines adaptations des autres phases. Les livrables et

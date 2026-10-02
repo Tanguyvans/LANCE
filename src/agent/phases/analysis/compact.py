@@ -9,6 +9,49 @@ from src.agent.core import runtime
 from src.agent.tools.skill_tools import skill_tool_context
 
 
+def apply_compact_finding_policy(finding: dict) -> None:
+    """Apply compact evidence metadata without changing full-mode findings."""
+    vuln_type = str(finding.get("type") or "").casefold()
+    service = str(finding.get("service") or "").casefold()
+    try:
+        port = int(finding.get("port"))
+    except (TypeError, ValueError):
+        port = None
+    status = str(finding.get("exploitation_status") or "").casefold()
+    evidence = str(finding.get("evidence") or "")
+    direct = status == "confirmed" and bool(evidence.strip())
+    finding.setdefault("compact_confidence", "direct" if direct else "suspected")
+    finding.setdefault("compact_evidence_kind", "direct_observation" if direct else "heuristic")
+    finding.setdefault("compact_requires_verification", not direct)
+
+    if vuln_type == "no_auth" and (
+        port in {102, 502, 44818, 5683}
+        or service in {"modbus", "s7comm", "ethernet/ip", "coap"}
+    ):
+        finding["exploitation_status"] = "suspected"
+        finding["compact_confidence"] = "suspected"
+        finding["compact_evidence_kind"] = "open_service"
+        finding["compact_requires_verification"] = True
+        finding["compact_required_probe"] = "protocol_response"
+
+    if vuln_type == "code_injection" and not re.search(
+        r"(?i)(?:uid=|command\s+output|executed|shell\s+opened|rce\s+confirmed)",
+        evidence,
+    ):
+        finding["exploitation_status"] = "suspected"
+        finding["compact_confidence"] = "suspected"
+        finding["compact_evidence_kind"] = "endpoint_presence"
+        finding["compact_requires_verification"] = True
+        finding["compact_required_probe"] = "safe_http_validation"
+
+    if vuln_type == "insecure_update":
+        finding["exploitation_status"] = "suspected"
+        finding["compact_confidence"] = "suspected"
+        finding["compact_evidence_kind"] = "endpoint_presence"
+        finding["compact_requires_verification"] = True
+        finding["compact_required_probe"] = "safe_http_validation"
+
+
 class CompactAnalysisPhase:
     """Phase operations using the shared run state; no independent lifecycle."""
 
@@ -184,46 +227,3 @@ class CompactAnalysisPhase:
         (self.run_dir / "03_cve_validation.json").write_text(
             json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-
-    @staticmethod
-    def _apply_compact_finding_policy(finding: dict) -> None:
-        """Apply compact evidence metadata without changing full-mode findings."""
-        vuln_type = str(finding.get("type") or "").casefold()
-        service = str(finding.get("service") or "").casefold()
-        try:
-            port = int(finding.get("port"))
-        except (TypeError, ValueError):
-            port = None
-        status = str(finding.get("exploitation_status") or "").casefold()
-        evidence = str(finding.get("evidence") or "")
-        direct = status == "confirmed" and bool(evidence.strip())
-        finding.setdefault("compact_confidence", "direct" if direct else "suspected")
-        finding.setdefault("compact_evidence_kind", "direct_observation" if direct else "heuristic")
-        finding.setdefault("compact_requires_verification", not direct)
-
-        if vuln_type == "no_auth" and (
-            port in {102, 502, 44818, 5683}
-            or service in {"modbus", "s7comm", "ethernet/ip", "coap"}
-        ):
-            finding["exploitation_status"] = "suspected"
-            finding["compact_confidence"] = "suspected"
-            finding["compact_evidence_kind"] = "open_service"
-            finding["compact_requires_verification"] = True
-            finding["compact_required_probe"] = "protocol_response"
-
-        if vuln_type == "code_injection" and not re.search(
-            r"(?i)(?:uid=|command\s+output|executed|shell\s+opened|rce\s+confirmed)",
-            evidence,
-        ):
-            finding["exploitation_status"] = "suspected"
-            finding["compact_confidence"] = "suspected"
-            finding["compact_evidence_kind"] = "endpoint_presence"
-            finding["compact_requires_verification"] = True
-            finding["compact_required_probe"] = "safe_http_validation"
-
-        if vuln_type == "insecure_update":
-            finding["exploitation_status"] = "suspected"
-            finding["compact_confidence"] = "suspected"
-            finding["compact_evidence_kind"] = "endpoint_presence"
-            finding["compact_requires_verification"] = True
-            finding["compact_required_probe"] = "safe_http_validation"

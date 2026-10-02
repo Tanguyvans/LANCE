@@ -30,7 +30,7 @@ def _run_aggregated_case(monkeypatch, output_dir, mock_provider, phase3_status, 
     monkeypatch.setattr(analysis, "analyze_devices", lambda *_args: DeviceAnalysisResult(
         (DeviceResult("device", "worker failed"),) if phase3_status else (),
     ))
-    monkeypatch.setattr(pipeline, "_aggregate_device_vulns", lambda *_args: None)
+    monkeypatch.setattr(analysis, "aggregate", lambda *_args: None)
     monkeypatch.setattr(runtime, "filter_profile_tools", lambda _profile, _phase, tools: tools)
     monkeypatch.setattr(runtime, "load_prompt", lambda *_args: "prompt")
     monkeypatch.setitem(
