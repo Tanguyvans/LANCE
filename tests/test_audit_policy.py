@@ -58,7 +58,6 @@ def offline_tools(monkeypatch):
     yield calls, behavior
     from src.agent.tools.graph_tools import _reset_graph_context
     _reset_graph_context()
-    runtime.set_cve_cache_only(False)
 
 
 def make_run(tmp_path, inventory, policy="rules", **overrides):

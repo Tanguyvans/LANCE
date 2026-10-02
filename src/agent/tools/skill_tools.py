@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -26,15 +28,13 @@ SKILLS_DIR = Path(__file__).parent.parent / "skills"
 
 # Official benchmark runs must be reproducible: a cache miss must not silently
 # change the CVE knowledge source by querying NVD and ingesting fresh results.
-# This is configured by Pipeline for benchmark-scoped runs and deliberately
-# remains opt-in for ordinary development/tool use.
-_CVE_CACHE_ONLY = False
+# Tool execution binds these policies explicitly, including in worker threads.
+_CVE_CACHE_ONLY: ContextVar[bool] = ContextVar("cve_cache_only", default=False)
 
 
 def set_cve_cache_only(enabled: bool) -> None:
-    """Use only the persistent CVE cache until the next pipeline is started."""
-    global _CVE_CACHE_ONLY
-    _CVE_CACHE_ONLY = bool(enabled)
+    """Select the frozen snapshot for standalone calls in the current context."""
+    _CVE_CACHE_ONLY.set(bool(enabled))
 
 
 # ── Frontmatter parsing ─────────────────────────────────────────
@@ -60,26 +60,40 @@ def _parse_skill_file(path: Path) -> dict[str, Any]:
     return {"meta": meta, "content": content}
 
 
-# ── Active skill filter (set by pipeline per phase) ─────────────
+# ── Invocation-local skill filter ──────────────────────────────
 
-_active_filter_tags: set[str] | None = None
+_active_filter_tags: ContextVar[frozenset[str] | None] = ContextVar(
+    "skill_filter_tags", default=None,
+)
 
 
 def set_skill_filter(tags: list[str] | None) -> None:
-    """Set the active skill filter (called by pipeline before each phase).
+    """Set the skill filter for standalone calls in the current context.
 
     When set, list_skills() and load_skill() only expose skills
     whose tags intersect with the filter. Pass None to clear.
     """
-    global _active_filter_tags
-    _active_filter_tags = set(tags) if tags else None
+    _active_filter_tags.set(frozenset(tags) if tags else None)
+
+
+@contextmanager
+def skill_tool_context(*, cache_only: bool, tags: list[str] | None = None):
+    """Bind a run's source and phase filter for one invocation, then restore."""
+    cve_token = _CVE_CACHE_ONLY.set(bool(cache_only))
+    tags_token = _active_filter_tags.set(frozenset(tags) if tags else None)
+    try:
+        yield
+    finally:
+        _active_filter_tags.reset(tags_token)
+        _CVE_CACHE_ONLY.reset(cve_token)
 
 
 def _skill_matches_filter(skill_tags: list[str]) -> bool:
     """Check if a skill's tags pass the active filter."""
-    if _active_filter_tags is None:
+    tags = _active_filter_tags.get()
+    if tags is None:
         return True
-    return bool(set(skill_tags) & _active_filter_tags)
+    return bool(set(skill_tags) & tags)
 
 
 # ── Skill functions ──────────────────────────────────────────────
@@ -169,7 +183,7 @@ def search_knowledge(
         results = search(collection, query, top_k=top_k, where=where)
 
         # Hard filter: when searching skills, only return chunks from allowed skills
-        if collection == "skills" and _active_filter_tags is not None:
+        if collection == "skills" and _active_filter_tags.get() is not None:
             allowed_names = {
                 s["name"] for s in get_skills_metadata()
                 if _skill_matches_filter(s["tags"])
@@ -317,7 +331,6 @@ def cve_search(query: str, top_k: int = 5) -> str:
     read only the versioned snapshot and never consult ChromaDB or NVD.
     """
     try:
-        from src.agent.knowledge.store import get_or_fetch
         from src.cve_lookup import (
             classify_cve_compatibility,
             query_nvd,
@@ -367,7 +380,7 @@ def cve_search(query: str, top_k: int = 5) -> str:
         # useful compatible candidate out of a small top_k response.
         cache_k = max(top_k * 4, 20)
         try:
-            if _CVE_CACHE_ONLY:
+            if _CVE_CACHE_ONLY.get():
                 # Benchmark runs must be independent of the mutable ChromaDB
                 # cache on nato-master. The frozen snapshot is the only source.
                 results = _benchmark_cve_results(query, cache_k)
@@ -378,12 +391,13 @@ def cve_search(query: str, top_k: int = 5) -> str:
                         query,
                     )
             else:
+                from src.agent.knowledge.store import get_or_fetch
                 results = get_or_fetch(
                     "cve_knowledge", query, fetch_fn=fetch_from_nvd, top_k=cache_k,
                     threshold=0.62,
                 )
         except Exception as store_err:
-            if _CVE_CACHE_ONLY:
+            if _CVE_CACHE_ONLY.get():
                 log.warning(
                     "CVE cache unavailable (%s); live NVD lookup disabled",
                     store_err,

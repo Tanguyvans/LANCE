@@ -250,6 +250,9 @@ class AgentRunner:
 
     def _run_agent(self, config: runtime.AgentConfig, stream_callback: Callable[[dict], None] | None = None) -> str:
         """Run a single agent phase."""
+        if config.phase == 3 and config.deterministic_aggregation:
+            from src.agent.phases.analysis.run import run
+            return run(self, config, stream_callback).legacy_status
         if getattr(self, "decision_policy", "llm") == "rules":
             from src.agent.phases.rules import run_phase
             return run_phase(self, config, stream_callback)
@@ -259,10 +262,6 @@ class AgentRunner:
             self._phase5_terminal_status = None
             self._full_intrusion_saved = False
             self._full_intrusion_save_attempted = False
-        # Set skill filter for this phase (hard filtering)
-        filter_tags = config.skill_filter.get("tags") if config.skill_filter else None
-        runtime.set_skill_filter(filter_tags)
-
         tools = self._resolve_tools(config)
         tools = runtime.filter_profile_tools(self.execution_profile, config.phase, tools)
         max_turns, max_tokens = self.execution_profile.limits_for_phase(
@@ -405,33 +404,6 @@ class AgentRunner:
         # If this phase has device sub-agents, run scanner + LLM analysis (Phase 3a+3b)
         if config.has_device_agents:
             self._run_phase3(config, stream_callback)
-
-        # If this phase uses deterministic aggregation, skip the LLM and merge directly
-        if config.deterministic_aggregation:
-            self._aggregate_device_vulns(config, stream_callback)
-            validator_fn = self._validator(config.validator)
-            valid, msg = validator_fn(config.deliverable_file)
-            if valid and config.name == "vuln_analysis":
-                status = getattr(self, "_phase3_execution_status", None) or "completed"
-            else:
-                status = "completed" if valid else f"failed:{msg}"
-            if valid:
-                log.info("Phase %d deterministic aggregation validated: %s", config.phase, msg)
-                print(f"  Deliverable validated: {config.deliverable_file}")
-            else:
-                log.error("Phase %d deterministic aggregation FAILED: %s", config.phase, msg)
-                print(f"  Deliverable FAILED validation: {msg}")
-            if stream_callback:
-                stream_callback({
-                    "type": "phase_done",
-                    "phase": config.phase,
-                    "name": config.name,
-                    "status": status,
-                    "deliverable": config.deliverable_file,
-                    "cost_usd": 0,
-                    "turns": 0,
-                })
-            return status
 
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
@@ -682,7 +654,7 @@ class AgentRunner:
                     if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
                         continue
                     if tool["name"] not in seen_names:
-                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
                         seen_names.add(tool["name"])
                 continue
 
@@ -692,7 +664,7 @@ class AgentRunner:
                     if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
-                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name))
+                        tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
                         seen_names.add(ref)
                         break
 
@@ -728,9 +700,9 @@ class AgentRunner:
         allowed.update(runtime.INTERNAL_TOOLS)
         return [tool for tool in tools if tool.get("name") in allowed]
 
-    def _wrap_tool(self, tool: dict, *, phase=None, agent=None, decision_source=None) -> dict:
+    def _wrap_tool(self, tool: dict, *, phase=None, agent=None, decision_source=None, config=None) -> dict:
         from src.agent.core.executor import wrap_tool
-        return wrap_tool(self, tool, phase=phase, agent=agent, decision_source=decision_source)
+        return wrap_tool(self, tool, phase=phase, agent=agent, decision_source=decision_source, config=config)
 
     def _filter_skills(self, config: runtime.AgentConfig) -> str:
         """Filter skills by tag intersection with config.skill_filter.

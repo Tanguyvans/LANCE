@@ -120,6 +120,7 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
 
     Vulnerability counts and risk labels deliberately remain empty: they belong
     to the evaluator-side oracle, not to the worker.
+    Missing scenario data is an error; it must never select another lab.
     """
     global _scenario_topology
     _reset_graph_context()
@@ -127,15 +128,21 @@ def load_scenario_topology(scenario_id: int | str) -> dict:
     sid = str(scenario_id)
     scenario_path = resolve_scenario_path(sid)
     if not scenario_path.exists():
-        return load_lab_context()
+        raise FileNotFoundError(f"Scenario {sid!r} definition not found: {scenario_path}")
 
     scenario = _yaml.safe_load(scenario_path.read_text()) or {}
+    if not isinstance(scenario, dict):
+        raise ValueError(f"Scenario {sid!r} definition must be a YAML mapping")
     topology_id = scenario.get("topology")
-    topology_path = resolve_topology_path(sid, str(topology_id or ""))
-    if not topology_id or not topology_path.exists():
-        return load_lab_context()
+    if not topology_id:
+        raise ValueError(f"Scenario {sid!r} does not declare a topology")
+    topology_path = resolve_topology_path(sid, str(topology_id))
+    if not topology_path.exists():
+        raise FileNotFoundError(f"Topology for scenario {sid!r} not found: {topology_path}")
 
     topology = _yaml.safe_load(topology_path.read_text()) or {}
+    if not isinstance(topology, dict):
+        raise ValueError(f"Topology for scenario {sid!r} must be a YAML mapping")
     router = topology.get("router", {})
     services = topology.get("services", [])
 

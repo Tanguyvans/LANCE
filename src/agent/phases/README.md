@@ -21,7 +21,7 @@ agent/
     ├── registry.py             # Routage par numéro de phase, pas par profil
     ├── graph/                  # Phase 1 : run.py, compact.py, recovery.py
     ├── recon/                  # Phase 2 : run.py, compact.py
-    ├── analysis/               # Phase 3 : run, compact, aggregation, evidence, prompts
+    ├── analysis/               # Phase 3 : contexte, scan, appareils, sondes, agrégation
     ├── verification/           # Phase 4 : run, contract, evidence, prompts
     ├── intrusion/              # Phase 5 : run, compact, evidence, scope
     └── report/                 # Phase 6 : run, sections, context, rendering, validation…
@@ -59,6 +59,46 @@ avec full ne force pas compact. Le rapport utilise une rédaction par fiches
 indépendantes et un assemblage déterministe, communs aux deux profils.
 Voir la [rédaction du rapport](../../../docs/architecture/report-writing.md) pour les limites,
 les fichiers produits et la reprise des fiches.
+
+## Frontières d'exécution de la phase 3
+
+`analysis/run.py` construit un `AnalysisContext` au début de la phase, après
+l'application d'un éventuel changement de modèle. Il capture le fournisseur,
+le profil, le dossier de run, les variables de prompt et les politiques.
+L'exécution suit trois étapes explicites :
+
+1. `scan.scan_phase` produit les observations et les erreurs de scanner.
+   `supplemental.py` conserve les sondes mTLS, OTA et cloud dérivées de preuves
+   déjà observées, avec leur provenance.
+2. `devices.analyze_devices` prépare les prompts et appelle les analystes.
+   Chaque worker renvoie un `DeviceResult` ; le coordinateur calcule les nombres
+   de réussites et d'échecs. Les preuves intégrales du profil full, les mémos
+   locaux en fichiers annexes et la récupération par blocs restent inchangés.
+3. `run.aggregate_phase` agrège les fichiers puis valide le livrable. Il renvoie
+   un `PhaseResult` avec statut, erreurs, références d'artefacts existants et
+   consommation de cette phase (tokens, coût et durée). Les fichiers de diagnostic
+   référencés ne sont pas des certifications ; le livrable principal n'est inclus
+   dans ce résultat que si sa validation réussit.
+
+Une agrégation valide conserve le statut partiel si un appareil, le scanner ou
+l'inventaire a échoué. Une validation invalide donne un échec. Les budgets,
+arrêts et erreurs d'archivage restent des interruptions propagées ; ils ne
+deviennent pas des résultats partiels réussis. Le suivi de coût du worker est
+fermé même lors d'une interruption.
+
+`03_phase3_status.json` décrit le scan et les analyses par appareil ; le résultat
+de validation de l'agrégat reste porté par le statut de phase. La registry et le
+runner de compatibilité traduisent le résultat structuré vers les chaînes déjà
+utilisées par l'API et le CLI. Les champs publics des événements sont conservés.
+La politique `rules` n'appelle aucun modèle. Le dry-run renvoie `skipped` avant
+toute découverte active, scan, analyse ou agrégation.
+
+Les configurations internes personnalisées peuvent encore demander une
+agrégation seule (`has_device_agents=False`) ou un agrégateur maître LLM
+(`deterministic_aggregation=False`). Les méthodes `_run_phase3` et
+`_aggregate_device_vulns` restent des adaptateurs internes, notamment pour la
+découverte complémentaire après vérification. Le chemin courant de phase 3
+n'utilise plus la boucle générique pour son agrégation déterministe.
 
 ## Reconnaissance et restitution
 
@@ -107,12 +147,27 @@ bornées par le mécanisme de transport existant.
 
 ## Limites conservées explicitement
 
-Les composants restent des mixins utilisant l'état du même `Pipeline`. Ce passage
-clarifie la propriété du code ; il n'isole pas encore les phases dans des contextes
-indépendants. Le runner coordonne encore certaines adaptations. Les livrables et
+Les autres phases et plusieurs services de phase 3 restent des mixins utilisant
+l'état du même `Pipeline`. La phase 3 rend ses dépendances visibles et ses étapes
+testables avec un contexte explicite, mais les transactions, récupérations,
+validations CVE et agrégations utilisent encore des callbacks liés au moteur.
+Ce contexte est construit pour une invocation de phase ; modifier le moteur
+pendant cette invocation n'est pas pris en charge. Le runner coordonne encore
+certaines adaptations des autres phases. Les livrables et
 validateurs utilisent désormais un dossier explicite par run ; d'autres outils
-conservent des états globaux, notamment le contexte de graphe et la politique CVE.
+conservent des états globaux, notamment le contexte de graphe.
 Ce ne sont pas six moteurs autonomes, ni une garantie de runs complets concurrents.
+
+La source CVE appartient au run (`cve_lookup_policy`) et le filtre de connaissances
+à la configuration de la phase. La frontière d'exécution des outils les lie pour
+chaque appel, y compris dans les threads des sous-agents, puis restaure le contexte
+précédent. Créer un autre pipeline ne change plus ces politiques. Le passage CVE
+compact applique la même liaison ; le snapshot figé ne dépend pas de ChromaDB.
+Les setters de `tools/skill_tools.py` servent seulement aux appels autonomes dans
+leur contexte, et ne configurent plus le pipeline.
+
+Un scénario absent, sans topologie déclarée ou avec un fichier de topologie absent
+échoue explicitement au chargement. Il ne se rabat pas sur le laboratoire physique.
 
 L'API, le CLI et les workers passent par `Pipeline`. Le worker fournit son dossier
 parent via `Pipeline(output_dir=...)`, sans modifier une variable globale.

@@ -155,7 +155,6 @@ class Pipeline(
         self.cve_lookup_policy = (
             "cache_only" if self.benchmark_split != "unassigned" or experiment_scope else "live_on_miss"
         )
-        runtime.set_cve_cache_only(self.cve_lookup_policy == "cache_only")
         self.manage_scenario = bool(manage_scenario)
         self._generated_deployment: runtime.GeneratedScenarioDeployment | runtime.ManualScenarioDeployment | None = None
         self.auto_teardown = auto_teardown

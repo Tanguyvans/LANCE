@@ -17,7 +17,7 @@ def test_phase_routing_covers_the_configured_agents():
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])
-@pytest.mark.parametrize("phase", range(1, 7))
+@pytest.mark.parametrize("phase", [1, 2, 4, 5, 6])
 def test_both_profiles_use_the_phase_entry(profile, phase):
     module = PHASE_MODULES[phase]
     assert callable(module.run)
@@ -38,6 +38,28 @@ def test_both_profiles_use_the_phase_entry(profile, phase):
     else:
         context._run_agent.assert_called_once_with(config, callback)
         context._run_local_report_phase.assert_not_called()
+
+
+@pytest.mark.parametrize("profile", ["compact", "full"])
+def test_analysis_entry_adapts_structured_result_without_generic_runner(profile, monkeypatch):
+    from src.agent.phases.analysis import run as analysis
+    from src.agent.phases.contracts import PhaseResult, PhaseStatus
+
+    context = SimpleNamespace(
+        execution_profile=SimpleNamespace(name=profile), decision_policy="llm",
+        _run_agent=Mock(side_effect=AssertionError("generic runner must not run")),
+    )
+    config = AGENTS["vuln_analysis"]
+    explicit_context = object()
+    build = Mock(return_value=explicit_context)
+    execute = Mock(return_value=PhaseResult(PhaseStatus.WORKER_ERRORS))
+    monkeypatch.setattr(analysis, "build_context", build)
+    monkeypatch.setattr(analysis, "execute", execute)
+    callback = Mock()
+    assert run_phase(context, config, callback) == "executed_with_worker_errors"
+    build.assert_called_once_with(context, config, callback)
+    execute.assert_called_once_with(explicit_context)
+    context._run_agent.assert_not_called()
 
 
 @pytest.mark.parametrize("profile", ["compact", "full"])

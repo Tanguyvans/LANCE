@@ -48,3 +48,20 @@ déploiements par branche dans des dépôts temporaires ; voir le
 `test_shared_activity.py` couvre les résumés locaux, l’agrégation en lecture
 seule des trois instances, les erreurs de pairs, l’absence de transmission
 d’identifiants et le mode standalone sans accès réseau.
+
+`test_knowledge_policy_isolation.py` vérifie que la source CVE reste liée au run
+quel que soit l'ordre de création des pipelines, que les filtres de connaissances
+restent distincts dans les threads et que le snapshot fonctionne sans importer
+la base de connaissances en ligne. `test_agent_tools.py` vérifie aussi qu'un
+scénario invalide ne se rabat jamais sur le laboratoire physique.
+
+`pipeline/test_analysis_context.py` vérifie les frontières de phase 3 : fournisseur
+effectif, dry-run sans découverte active, agrégation seule, comptage avec des
+workers terminant dans un ordre différent, interruptions propagées, suivi fermé,
+consommation limitée à la phase et deux contextes ayant les mêmes identifiants
+d'appareil. `pipeline/test_analysis_supplemental.py`, issu de la relecture
+indépendante, caractérise l'ordre des sondes mTLS/OTA/cloud et leur provenance,
+avec des outils simulés. Les tests de sauvegarde, récupération et agrégation
+conservent les contrôles de preuves ; le test UMONS mesure les appels simultanés
+sans réduire les preuves ni le délai. Aucun de ces tests ne mesure un modèle
+sur le laboratoire réel.

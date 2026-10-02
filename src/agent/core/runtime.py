@@ -64,8 +64,6 @@ from src.agent.tools.skill_tools import (
     SKILL_TOOLS,
     cve_search,
     get_skills_metadata,
-    set_cve_cache_only,
-    set_skill_filter,
 )
 from src.agent.scanner import run_scanner
 from src.agent.validators import VALIDATORS

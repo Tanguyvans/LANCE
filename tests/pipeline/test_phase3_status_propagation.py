@@ -6,6 +6,8 @@ from src.agent.core import runtime
 from src.agent.pipeline import Pipeline
 from src.agent.registry import AgentConfig
 from src.agent.results import run_status
+from src.agent.phases.analysis import run as analysis
+from src.agent.phases.analysis.context import ScanResult, DeviceAnalysisResult, DeviceResult
 
 
 CONFIG = AgentConfig(
@@ -24,10 +26,10 @@ def _run_aggregated_case(monkeypatch, output_dir, mock_provider, phase3_status, 
     pipeline = Pipeline(provider=mock_provider, execution_profile="full")
     events = []
 
-    def run_phase3(*_args):
-        pipeline._phase3_execution_status = phase3_status
-
-    monkeypatch.setattr(pipeline, "_run_phase3", run_phase3)
+    monkeypatch.setattr(analysis, "scan_phase", lambda _context: ScanResult([], {}))
+    monkeypatch.setattr(analysis, "analyze_devices", lambda *_args: DeviceAnalysisResult(
+        (DeviceResult("device", "worker failed"),) if phase3_status else (),
+    ))
     monkeypatch.setattr(pipeline, "_aggregate_device_vulns", lambda *_args: None)
     monkeypatch.setattr(runtime, "filter_profile_tools", lambda _profile, _phase, tools: tools)
     monkeypatch.setattr(runtime, "load_prompt", lambda *_args: "prompt")

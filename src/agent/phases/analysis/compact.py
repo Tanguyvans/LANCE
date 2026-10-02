@@ -6,6 +6,7 @@ from uuid import uuid4
 import json
 import re
 from src.agent.core import runtime
+from src.agent.tools.skill_tools import skill_tool_context
 
 
 class CompactAnalysisPhase:
@@ -120,7 +121,10 @@ class CompactAnalysisPhase:
                     })
                     continue
                 try:
-                    raw_result = runtime.cve_search(query=query, top_k=5)
+                    with skill_tool_context(
+                        cache_only=self.cve_lookup_policy == "cache_only",
+                    ):
+                        raw_result = runtime.cve_search(query=query, top_k=5)
                 except Exception as exc:
                     raw_result = json.dumps({"error": str(exc)}, ensure_ascii=False)
                 entry = {

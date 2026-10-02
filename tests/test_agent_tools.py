@@ -519,6 +519,21 @@ class TestGraphTools:
         assert graph_tools._weighted_graph is None
         assert graph_tools._last_disbalance_report is None
 
+    @pytest.mark.parametrize("case", ["scenario_missing", "topology_missing", "topology_unset"])
+    def test_invalid_scenario_never_falls_back_to_the_physical_lab(self, tmp_path, monkeypatch, case):
+        import src.agent.tools.graph_tools as graph_tools
+
+        scenario = tmp_path / "scenario.yaml"
+        topology = tmp_path / "topology.yaml"
+        if case != "scenario_missing":
+            scenario.write_text("{}" if case == "topology_unset" else "topology: unavailable\n")
+        monkeypatch.setattr(graph_tools, "resolve_scenario_path", lambda *_: scenario)
+        monkeypatch.setattr(graph_tools, "resolve_topology_path", lambda *_: topology)
+        with patch.object(graph_tools, "load_lab_context") as physical_lab:
+            with pytest.raises((FileNotFoundError, ValueError), match="[Ss]cenario|[Tt]opology"):
+                graph_tools.load_scenario_topology("missing")
+        physical_lab.assert_not_called()
+
     def test_loading_discovery_context_clears_scenario_and_weighted_state(
         self, monkeypatch
     ):

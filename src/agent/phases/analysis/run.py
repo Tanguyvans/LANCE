@@ -1,20 +1,26 @@
 """Analysis phase: common execution and evidence handling."""
 from __future__ import annotations
 from collections.abc import Callable
-from datetime import datetime
-from urllib.parse import urlsplit
 import json
 import os
 import re
 import logging
-from src.agent.phases.analysis.prompts import ROLE_SPECIFIC_RULES
+import time
+from copy import deepcopy
 from src.agent.phases.analysis import block_recovery
-from src.agent.core.memo import _looks_unusable_model_memo
 from src.agent.core import runtime
 from src.agent.core.provider_transport import deadline_remaining
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.core.executor import EvidenceWriteError, check_execution_limits
 
+
+from src.agent.phases.analysis.context import (
+    AnalysisContext, AnalysisServices, AnalysisExecutionResult,
+    DeviceAnalysisResult, ScanResult, save_execution_status,
+)
+from src.agent.phases.analysis.scan import scan_phase
+from src.agent.phases.analysis.devices import analyze_devices, analysis_worker_count, project_scan
+from src.agent.phases.contracts import PhaseConsumption, PhaseResult, PhaseStatus
 
 log = logging.getLogger(__name__)
 
@@ -24,32 +30,14 @@ class AnalysisPhase:
 
     def _phase3_worker_count(self, device_count: int) -> int:
         """Limit local MoE and UMONS device analysis to one in-flight worker."""
-        # Use the active provider, including a Phase 3 model override. The
-        # UMONS run with four workers exhausted every 240s device deadline;
-        # serialize this provider without changing its prompts or deadline.
-        if getattr(self, "experiment_scope", None) == "analysis-verification":
-            return 1
-        if self._uses_local_moe() or getattr(self.provider, "provider", "") == "ollama-umons":
-            return 1
-        configured = os.environ.get("LANCE_PHASE3_WORKERS", "").strip()
-        if configured.isdigit() and int(configured) > 0:
-            return min(int(configured), max(1, device_count))
-        # Keep extended scenarios moving without one request per device.
-        if device_count >= 12:
-            return min(2, device_count)
-        return max(1, min(device_count, 6))
+        from types import SimpleNamespace
+        return analysis_worker_count(SimpleNamespace(
+            provider=self.provider, local_moe=self._uses_local_moe(),
+            experiment_scope=self.experiment_scope,
+        ), device_count)
 
-    def _phase3_scan_results_for_prompt(
-        self, scan_data: dict, device_id: str
-    ) -> dict:
-        """Keep complete Phase 3 evidence for full, project it for compact."""
-        if not self.execution_profile.routed_tools:
-            return scan_data
-        compact = self._compact_phase3_scan_results(scan_data)
-        compact["_evidence_projection"]["full_scan_artifact"] = (
-            f"03_scans/{device_id}.json"
-        )
-        return compact
+    def _phase3_scan_results_for_prompt(self, scan_data: dict, device_id: str) -> dict:
+        return project_scan(self.execution_profile, scan_data, device_id)
 
     @staticmethod
     def _parse_phase3_tool_result(raw_result) -> dict:
@@ -668,764 +656,153 @@ class AnalysisPhase:
         finally:
             self.tracker.end_phase()
 
-    def _run_phase3(
-        self,
-        config: runtime.AgentConfig,
-        stream_callback: Callable[[dict], None] | None = None,
-    ) -> None:
-        """Phase 3 split: 3a (deterministic scanner) → 3b (LLM analysis) → 3c (merge)."""
-        import time as _time
-        from concurrent.futures import ThreadPoolExecutor
-
-        # This is run-local state consumed by deterministic aggregation; never
-        # infer it from an older status artifact.
+    def _run_phase3(self, config, stream_callback=None) -> AnalysisExecutionResult:
+        """Compatibility entry for custom LLM aggregators and device tests."""
         self._phase3_execution_status = None
-        phase3_status_path = self.run_dir / "03_phase3_status.json"
-        phase3_status = {
-            "status": "running",
-            "started_at": datetime.now().astimezone().isoformat(),
-            "devices_total": 0,
-            "devices_analyzed": 0,
-            "devices_failed": [],
-            "scanner_errors": [],
-            "worker_count": 0,
-        }
-
-        def _save_phase3_status() -> None:
-            phase3_status_path.write_text(
-                json.dumps(phase3_status, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-
-        _save_phase3_status()
-
-        # --- Phase 3a: Deterministic scanning ---
-        try:
-            surface = json.loads(runtime.get_attack_surface())
-        except Exception as exc:
-            log.exception("Could not load Phase 3 attack surface: %s", exc)
-            surface = []
-            phase3_status["surface_error"] = str(exc)
-        if isinstance(surface, dict):
-            # Discovery mode returns {"note": ..., "target_network": ...} — no pre-defined nodes
-            surface = surface.get("nodes", [])
-
-        # Discovery/blind mode: no pre-defined topology — actively discover the
-        # attack surface by nmap-scanning the target network, then register the
-        # hosts so get_attack_surface(), get_device_info() and
-        # get_network_neighbors() resolve them for Phase 3b agents.
-        if self.target_network and not surface:
-            surface = self._discover_attack_surface(self.target_network, stream_callback)
-            from src.agent.tools.graph_tools import update_discovery_hosts
-            update_discovery_hosts(surface)
-            # Initialize weighted graph for disbalance computation
-            runtime.init_weighted_graph()
-
-        phase3_status["devices_total"] = len(surface)
-        if self.dry_run:
-            log.info("Dry run: skipping Phase 3a scanner")
-            print("  [dry-run] Skipping scanner")
-            phase3_status["status"] = "skipped"
-            phase3_status["finished_at"] = datetime.now().astimezone().isoformat()
-            _save_phase3_status()
-            return
-
-        available, _ = runtime.filter_unavailable_tools(runtime.RECON_TOOLS)
-        scanner_tools = [
-            self._wrap_tool(tool, phase=3, agent="deterministic_scanner", decision_source="rules")
-            for tool in self._apply_scenario_tool_policy(available, 3)
-        ]
-        scanner_tool_map = {tool["name"]: tool["function"] for tool in scanner_tools}
-        scanner_kwargs = {
-            "compact": self._uses_compact_local_moe(), "tools": scanner_tools,
-            "max_workers": 1 if getattr(self, "experiment_scope", None) == "analysis-verification" else 6,
-        }
-        recon_policy = runtime.tool_policy_for_phase(
-            self.scenario_tool_policy, "recon"
+        execution = run_execution(build_context(self, config, stream_callback))
+        self._phase3_execution_status = (
+            execution.status.value if execution.status is PhaseStatus.WORKER_ERRORS else None
         )
-        if recon_policy is not None:
-            scanner_kwargs["allowed_tool_names"] = recon_policy
-        try:
-            scanner_results = runtime.run_scanner(
-                self.run_dir, surface, stream_callback,
-                stop_event=self._stop_event,
-                **scanner_kwargs,
-            )
-        except (BudgetExceeded, EvidenceWriteError):
-            raise
-        except Exception as exc:
-            log.exception("Phase 3 scanner failed globally; preserving per-device fallbacks")
-            scanner_results = {}
-            phase3_status["scanner_errors"] = [str(exc)]
-            for device in surface:
-                scanner_results[device.get("id", "")] = {
-                    "scan_results": {}, "findings": [], "error": str(exc),
-                }
-                self._persist_phase3_device_findings(device, scanner_results)
-        phase3_status["scanner_errors"].extend(
-            str(data.get("error")) for data in scanner_results.values()
-            if isinstance(data, dict) and data.get("error")
+        return execution
+
+
+def build_context(run, config, stream_callback=None) -> AnalysisContext:
+    """Capture the effective phase provider/profile after any model override.
+
+    Transaction, recovery and aggregation services are incremental adapters.
+    They still use the run engine; the ordinary phase stages accept only this
+    explicit context. Its lifetime is one phase invocation.
+    """
+    return AnalysisContext(
+        run_dir=run.run_dir, config=config, provider=run.provider,
+        tracker=run.tracker, profile=run.execution_profile,
+        services=AnalysisServices(
+            wrap_tool=run._wrap_tool,
+            apply_tool_policy=run._apply_scenario_tool_policy,
+            save_transaction=run._apply_deliverable_transaction,
+            model_callback=run._model_stream_callback,
+            discover_surface=run._discover_attack_surface,
+            persist_findings=run._persist_phase3_device_findings,
+            promoted_deliverable=run._phase3_promoted_deliverable,
+            recover_device=run._recover_truncated_phase3_device,
+            validate_cves=run._run_phase3_local_cve_validation,
+            check_limits=lambda: check_execution_limits(run),
+            aggregate=run._aggregate_device_vulns,
+            validate=run._validator(config.validator),
+        ),
+        variables=dict(run.context), compact_local=run._uses_compact_local_moe(),
+        local_moe=run._uses_local_moe(), dry_run=run.dry_run, sealed=run.sealed,
+        target_network=run.target_network, stop_event=run._stop_event,
+        decision_policy=run.decision_policy, experiment_scope=run.experiment_scope,
+        tool_policy=deepcopy(run.scenario_tool_policy),
+        analysis_limits=dict(getattr(run, "experiment_analysis_limits", None) or {}),
+        max_duration_s=run.max_duration_s, run_started=getattr(run, "_run_started", None),
+        emit=stream_callback, tokens_before=run.tracker.total_tokens(),
+        cost_before=run.tracker.total_cost(),
+    )
+
+
+def run_execution(context: AnalysisContext) -> AnalysisExecutionResult:
+    save_execution_status(context)
+    if context.config.has_device_agents:
+        scan = scan_phase(context)
+        analysis = analyze_devices(context, scan)
+    else:
+        # Custom deterministic configurations can aggregate existing files.
+        scan = ScanResult([], {}, skipped=context.dry_run)
+        analysis = DeviceAnalysisResult()
+    execution = AnalysisExecutionResult(scan, analysis)
+    save_execution_status(context, execution, finished=True)
+    if not scan.skipped and context.decision_policy != "rules":
+        print(f"\n{'=' * 60}\n  All {len(scan.devices)} analysis agents finished.\n{'=' * 60}\n")
+    return execution
+
+
+def _consumption(context: AnalysisContext) -> PhaseConsumption:
+    input_tokens, output_tokens = context.tracker.total_tokens()
+    return PhaseConsumption(
+        input_tokens=input_tokens - context.tokens_before[0],
+        output_tokens=output_tokens - context.tokens_before[1],
+        cost_usd=context.tracker.total_cost() - context.cost_before,
+        duration_s=time.monotonic() - context.started_monotonic,
+    )
+
+
+def aggregate_phase(
+    context: AnalysisContext, execution: AnalysisExecutionResult,
+) -> PhaseResult:
+    errors = list(execution.scan.scanner_errors)
+    if execution.scan.surface_error:
+        errors.append(execution.scan.surface_error)
+    errors.extend(f"{device.device_id}: {device.error}"
+                  for device in execution.analysis.devices if device.error is not None)
+    artifacts = ["03_phase3_status.json"]
+    if execution.scan.skipped:
+        return PhaseResult(
+            PhaseStatus.SKIPPED,
+            artifacts=tuple(name for name in artifacts if (context.run_dir / name).is_file()),
+            errors=tuple(errors), consumption=_consumption(context),
         )
+    context.services.aggregate(context.config, context.emit)
+    if context.decision_policy == "rules":
+        context.tracker.start_phase("rules_validate_3")
+    try:
+        valid, message = context.services.validate(context.config.deliverable_file)
+        if context.decision_policy == "rules":
+            context.tracker.record_validation_result(valid)
+    finally:
+        if context.decision_policy == "rules":
+            context.tracker.end_phase()
+    status = execution.status if valid else PhaseStatus.FAILED
+    if not valid:
+        errors.append(message)
+        log.error("Phase 3 deterministic aggregation FAILED: %s", message)
+    else:
+        log.info("Phase 3 deterministic aggregation validated: %s", message)
+        artifacts.append(context.config.deliverable_file)
+    for device in execution.scan.devices:
+        device_id = str(device.get("id") or "")
+        artifacts.extend((f"03_device_{device_id}.json", f"03_scans/{device_id}.json",
+                          f"03_device_{device_id}_analysis.md"))
+    return PhaseResult(
+        status, artifacts=tuple(name for name in artifacts if (context.run_dir / name).is_file()),
+        errors=tuple(errors), reason=message if not valid else None,
+        consumption=_consumption(context),
+    )
 
-        # S16 enrollment returns the authorized disposable client identity.
-        # Use that in-memory bundle for one bounded mTLS request against the
-        # API; this avoids guessing filesystem paths or inventing a revoked
-        # certificate. The response itself is enough to prove the contract.
-        pki_enrollment = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "pki_enrollment_server"),
-            None,
-        )
-        pki_mtls = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "pki_mtls_server"),
-            None,
-        )
-        if pki_enrollment and pki_mtls:
-            try:
-                enrollment_data = scanner_results.get(pki_enrollment.get("id", ""), {})
-                enrollment_entries = [
-                    entry
-                    for values in (enrollment_data.get("scan_results", {}) or {}).values()
-                    if isinstance(values, list)
-                    for entry in values
-                    if entry.get("tool") == "http_request"
-                ]
-                bundle = None
-                for entry in enrollment_entries:
-                    result = json.loads(str(entry.get("result") or ""))
-                    if result.get("status_code") != 201:
-                        continue
-                    payload = json.loads(str(result.get("body") or ""))
-                    if payload.get("certificate_pem") and payload.get("private_key_pem"):
-                        bundle = payload
-                        break
-                if bundle:
-                    mtls_request = scanner_tool_map["mtls_request"]
-                    mtls_url = f"https://{pki_mtls.get('ip', '')}:8443/device/status"
-                    mtls_result = mtls_request(
-                        url=mtls_url,
-                        certificate_pem=str(bundle["certificate_pem"]),
-                        private_key_pem=str(bundle["private_key_pem"]),
-                        method="GET",
-                    )
-                    mtls_id = pki_mtls.get("id", "")
-                    mtls_data = scanner_results.setdefault(
-                        mtls_id, {"scan_results": {}, "findings": []}
-                    )
-                    mtls_data.setdefault("scan_results", {}).setdefault("pki_mtls", []).append({
-                        "tool": "mtls_request",
-                        "kwargs": {"url": mtls_url, "method": "GET"},
-                        "result": mtls_result,
-                        "evidence_ref": (mtls_request.last_observation() or {}).get("evidence_ref"),
-                        "evidence_phase": 3,
-                        "authoritative": True,
-                    })
-                    from src.agent.scanner import extract_findings
-                    mtls_data["findings"] = extract_findings(
-                        mtls_data["scan_results"], pki_mtls,
-                        compact=self._uses_compact_local_moe(),
-                    )
-                    (self.run_dir / "03_scans" / f"{mtls_id}.json").write_text(
-                        json.dumps(mtls_data["scan_results"], indent=2, ensure_ascii=False),
-                        encoding="utf-8",
-                    )
-                    self._persist_phase3_device_findings(pki_mtls, scanner_results)
-            except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
-                log.warning("S16 bounded mTLS probe unavailable: %s", exc)
-                phase3_status["scanner_errors"].append(f"mTLS supplemental probe: {type(exc).__name__}")
 
-        # Cross-device simulator checks for S17/S18. These are deliberately
-        # derived from evidence already returned by the bounded probes: no
-        # guessed signing secret, filesystem path, or out-of-scope target is
-        # introduced by the harness.
-        def _append_bounded_http_probe(
-            device: dict, kwargs: dict, result: str, *, service_key: str = "bounded", derived_from: dict | None = None
-        ) -> None:
-            device_id = str(device.get("id") or "")
-            if not device_id:
-                return
-            data = scanner_results.setdefault(
-                device_id, {"scan_results": {}, "findings": []}
-            )
-            data.setdefault("scan_results", {}).setdefault(service_key, []).append({
-                "tool": "http_request",
-                "kwargs": kwargs,
-                "result": result,
-                **({"derived_from_evidence_ref": derived_from.get("evidence_ref")} if derived_from is not None else {"evidence_ref": (scanner_tool_map["http_request"].last_observation() or {}).get("evidence_ref")}),
-                "evidence_phase": 3,
-                "authoritative": True,
-            })
-            from src.agent.scanner import extract_findings
-            data["findings"] = extract_findings(
-                data["scan_results"], device,
-                compact=self._uses_compact_local_moe(),
-            )
-            (self.run_dir / "03_scans" / f"{device_id}.json").write_text(
-                json.dumps(data["scan_results"], indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            self._persist_phase3_device_findings(device, scanner_results)
-
-        ota_repository = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "ota_repository"),
-            None,
-        )
-        ota_devices = [
-            device for device in surface
-            if str(device.get("role") or "").casefold() == "ota_device"
-        ]
-        if ota_repository and ota_devices:
-            try:
-                http_request = scanner_tool_map["http_request"]
-                repo_data = scanner_results.get(ota_repository.get("id", ""), {})
-                repo_entries = [
-                    entry
-                    for values in (repo_data.get("scan_results", {}) or {}).values()
-                    if isinstance(values, list)
-                    for entry in values
-                    if entry.get("tool") == "http_request"
-                ]
-                fixtures: dict[str, dict] = {}
-                for entry in repo_entries:
-                    kwargs = entry.get("kwargs") or {}
-                    if urlsplit(str(kwargs.get("url") or "")).path != "/firmware":
-                        continue
-                    try:
-                        result = json.loads(str(entry.get("result") or ""))
-                        body = json.loads(str(result.get("body") or ""))
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        continue
-                    for item in body.get("artifacts", []):
-                        if isinstance(item, dict) and item.get("version") and item.get("payload") and item.get("signature"):
-                            fixtures[str(item["version"])] = item
-                old = fixtures.get("1")
-                current = fixtures.get("2")
-                if old and current:
-                    device_a = next(
-                        (device for device in ota_devices
-                         if str(device.get("id") or "").endswith("device-a")),
-                        ota_devices[0],
-                    )
-                    device_b = next(
-                        (device for device in ota_devices
-                         if str(device.get("id") or "").endswith("device-b")),
-                        None,
-                    )
-                    base_url = lambda device: f"http://{device.get('ip', '')}:8080/install"
-                    # The vulnerable device signs payload bytes only. Test the
-                    # metadata mutation, then rollback, and restore v2.
-                    metadata_body = json.dumps({
-                        "version": "999", "payload": old["payload"], "signature": old["signature"],
-                    })
-                    metadata_kwargs = {
-                        "url": base_url(device_a), "method": "POST",
-                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "metadata"},
-                        "body": metadata_body, "follow_redirects": False,
-                    }
-                    _append_bounded_http_probe(device_a, metadata_kwargs, http_request(**metadata_kwargs), service_key="ota_cross_device")
-                    rollback_body = json.dumps({
-                        "version": old["version"], "payload": old["payload"], "signature": old["signature"],
-                    })
-                    rollback_kwargs = {
-                        "url": base_url(device_a), "method": "POST",
-                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "rollback"},
-                        "body": rollback_body, "follow_redirects": False,
-                    }
-                    _append_bounded_http_probe(device_a, rollback_kwargs, http_request(**rollback_kwargs), service_key="ota_cross_device")
-                    restore_kwargs = {
-                        "url": base_url(device_a), "method": "POST",
-                        "headers": {"Content-Type": "application/json", "X-Benchmark-OTA-Test": "restore"},
-                        "body": json.dumps(current), "follow_redirects": False,
-                    }
-                    _append_bounded_http_probe(device_a, restore_kwargs, http_request(**restore_kwargs), service_key="ota_cross_device")
-                    if device_b:
-                        cross_kwargs = {
-                            "url": base_url(device_b), "method": "POST",
-                            "headers": {
-                                "Content-Type": "application/json",
-                                "X-Benchmark-Cross-Device": "s17-device-a",
-                            },
-                            "body": json.dumps(current), "follow_redirects": False,
-                        }
-                        _append_bounded_http_probe(device_b, cross_kwargs, http_request(**cross_kwargs), service_key="ota_cross_device")
-            except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
-                log.warning("S17 bounded OTA probes unavailable: %s", exc)
-                phase3_status["scanner_errors"].append(f"OTA supplemental probe: {type(exc).__name__}")
-
-        cloud_metadata = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "cloud_metadata_server"),
-            None,
-        )
-        cloud_control = next(
-            (device for device in surface
-             if str(device.get("role") or "").casefold() == "cloud_control_plane"),
-            None,
-        )
-        for cloud_web in surface:
-            if (
-                str(cloud_web.get("role") or "").casefold() != "cloud_web_server"
-                or not cloud_metadata or not cloud_control
-            ):
-                continue
-            try:
-                http_request = scanner_tool_map["http_request"]
-                web_data = scanner_results.get(cloud_web.get("id", ""), {})
-                fetch_entry = next(
-                    (
-                        entry for values in (web_data.get("scan_results", {}) or {}).values()
-                        if isinstance(values, list)
-                        for entry in values
-                        if entry.get("tool") == "http_request"
-                        and urlsplit(str((entry.get("kwargs") or {}).get("url") or "")).path == "/fetch"
-                    ),
-                    None,
-                )
-                if fetch_entry:
-                    fetch_result = json.loads(str(fetch_entry.get("result") or ""))
-                    fetch_body = json.loads(str(fetch_result.get("body") or ""))
-                    metadata_body = str(fetch_body.get("body") or "")
-                    metadata_payload = json.loads(metadata_body)
-                    token = str(metadata_payload.get("access_token") or "")
-                    if fetch_result.get("status_code") == 200 and token and metadata_payload.get("scope") == "object-admin":
-                        metadata_kwargs = {
-                            "url": f"http://{cloud_metadata.get('ip', '')}:8080/credentials",
-                            "method": "GET",
-                            "headers": {"X-Benchmark-Vantage": "ssrf"},
-                            "follow_redirects": False,
-                        }
-                        _append_bounded_http_probe(
-                            cloud_metadata, metadata_kwargs,
-                            json.dumps({"status_code": 200, "body": metadata_body}),
-                            service_key="cloud_ssrf", derived_from=fetch_entry,
-                        )
-                        control_kwargs = {
-                            "url": f"http://{cloud_control.get('ip', '')}:8080/bucket/city-secrets",
-                            "method": "GET",
-                            "headers": {"Authorization": f"Bearer {token}"},
-                            "follow_redirects": False,
-                        }
-                        _append_bounded_http_probe(
-                            cloud_control, control_kwargs,
-                            http_request(**control_kwargs),
-                            service_key="cloud_ssrf",
-                        )
-            except (OSError, TypeError, ValueError, json.JSONDecodeError, KeyError) as exc:
-                log.warning("S18 bounded SSRF/IAM probes unavailable: %s", exc)
-                phase3_status["scanner_errors"].append(f"SSRF/IAM supplemental probe: {type(exc).__name__}")
-
-        if self._uses_compact_local_moe():
-            self._run_phase3_local_cve_validation(
-                scanner_results, surface, stream_callback
-            )
-
-        if getattr(self, "decision_policy", "llm") == "rules":
-            phase3_status["devices_analyzed"] = len(surface)
-            phase3_status["worker_count"] = 1
-            phase3_status["decision_policy"] = "rules"
-            phase3_status["status"] = "completed_with_device_errors" if phase3_status["scanner_errors"] or phase3_status.get("surface_error") else "completed"
-            if phase3_status["status"] != "completed":
-                self._phase3_execution_status = "executed_with_worker_errors"
-            phase3_status["finished_at"] = datetime.now().astimezone().isoformat()
-            _save_phase3_status()
-            return
-
-        # --- Phase 3b: LLM analysis micro-agents (per device) ---
-        print(f"\n{'=' * 60}")
-        print(f"PHASE 3b: LLM ANALYSIS ({len(surface)} devices)")
-        print(f"{'=' * 60}\n")
-
-        # Limited, protocol-aware tool access. Device analyzers may perform
-        # bounded application checks but cannot open a general shell.
-        skill_tools = [t for t in runtime.SKILL_TOOLS if t["name"] == "cve_search"]
-        analysis_tool_names = {
-            "curl_headers", "http_get", "http_request", "redis_cmd", "tcp_send",
-            "udp_send", "mtls_request", "tls_inspect",
-        }
-        available_recon_tools, _ = runtime.filter_unavailable_tools(runtime.RECON_TOOLS)
-        recon_limited = [t for t in available_recon_tools if t["name"] in analysis_tool_names]
-        analysis_candidates = self._apply_scenario_tool_policy(
-            recon_limited + skill_tools + runtime.DELIVERABLE_TOOLS, 3
-        )
-        analysis_tools = [
-            self._wrap_tool(t, phase=3, agent="vuln_analysis")
-            for t in analysis_candidates
-        ]
-        phase4_tool_catalog = sorted({
-            str(tool.get("name"))
-            for tool in [*available_recon_tools, *runtime.SKILL_TOOLS, *runtime.DELIVERABLE_TOOLS]
-            if tool.get("name") and not (
-                self.sealed and tool.get("name") in runtime.SEALED_FORBIDDEN_TOOLS
-            )
+def execute(context: AnalysisContext) -> PhaseResult:
+    config = context.config
+    if context.emit:
+        context.emit({
+            "type": "phase_start", "phase": 3, "name": config.name,
+            "description": config.description, "deliverable": config.deliverable_file,
         })
-
-        try:
-            phase3_timeout_s = max(30.0, float(os.environ.get("LANCE_PHASE3_DEVICE_TIMEOUT_S", "240")))
-        except (TypeError, ValueError):
-            phase3_timeout_s = 240.0
-        if getattr(self, "experiment_analysis_limits", None):
-            phase3_timeout_s = self.experiment_analysis_limits["device_timeout_s"]
-
-        def _analyze_device(device: dict):
-            device_id = device["id"]
-            device_ip = device.get("ip", "unknown")
-            device_type = device.get("type", "unknown")
-            device_role = device.get("role", device_type)
-            services = device.get("services", [])
-            services_str = ", ".join(
-                f"{s.get('name', 'unknown')}:{s.get('port', '?')}"
-                for s in services
-            )
-            try:
-                device_detail = json.loads(runtime.get_device_info(device_id))
-            except Exception as exc:
-                # A missing graph record should not cancel every sibling agent.
-                log.warning("No detailed graph record for %s: %s", device_id, exc)
-                device_detail = device
-            device_os = device_detail.get("os_version", device_detail.get("firmware", "unknown"))
-
-            scan_data = scanner_results.get(device_id, {})
-            deliverable_file = f"03_device_{device_id}.json"
-
-            # Compact models receive a bounded projection with an artifact
-            # reference. Full models receive the complete scanner evidence.
-            scan_for_prompt = self._phase3_scan_results_for_prompt(
-                scan_data, device_id
-            )
-
-            variables = {**self.context}
-            if device.get("public_context"):
-                variables["scenario_context"] = "Public inventory context: " + device["public_context"]
-            variables["device_id"] = device_id
-            variables["device_ip"] = device_ip
-            variables["device_type"] = device_type
-            variables["device_role"] = device_role
-            variables["device_services"] = services_str
-            variables["device_os"] = device_os
-            variables["expected_deliverable"] = deliverable_file
-            variables["scan_results"] = json.dumps(scan_for_prompt, separators=(',', ':'), ensure_ascii=False)
-            variables["trivial_findings"] = json.dumps(
-                scan_data.get("findings", []), separators=(',', ':'), ensure_ascii=False
-            )
-
-            # Inject network position context so the agent can reason about lateral movement
-            from src.agent.tools.graph_tools import get_network_neighbors
-            nbrs = get_network_neighbors(device_id)
-
-            def _fmt_neighbor(n: dict) -> str:
-                svcs = ", ".join(
-                    f"{s.get('name','?')}:{s.get('port','?')}"
-                    for s in n.get("services", [])
-                )
-                return f"{n.get('id', '?')} ({n.get('ip', '?')}){' [' + svcs + ']' if svcs else ''}"
-
-            upstream_str = ", ".join(_fmt_neighbor(n) for n in nbrs["upstream"]) or "none (entry point)"
-            downstream_str = ", ".join(_fmt_neighbor(n) for n in nbrs["downstream"]) or "none (dead end)"
-            variables["network_neighbors_upstream"] = upstream_str
-            variables["network_neighbors_downstream"] = downstream_str
-            variables["network_role"] = nbrs["role"]
-            variables["role_specific_rules"] = ROLE_SPECIFIC_RULES.get(
-                device_role,
-                "- No specific priority rules defined for this role. Follow general best practices."
-            )
-
-            print(f"  [+] Analyzing: {device_id} ({device_ip})")
-            if stream_callback:
-                stream_callback({
-                    "type": "device_start", "device_id": device_id,
-                    "device_ip": device_ip, "phase": 3,
-                })
-
-            if self._uses_compact_local_moe():
-                local_context = {
-                    "device": {
-                        "id": device_id,
-                        "ip": device_ip,
-                        "type": device_type,
-                        "role": device_role,
-                        "os": device_os,
-                        "services": services,
-                        "neighbors": {
-                            "upstream": upstream_str,
-                            "downstream": downstream_str,
-                            "role": nbrs["role"],
-                        },
-                    },
-                    "scanner_projection": scan_for_prompt,
-                    "deterministic_findings": scan_data.get("findings", []),
-                    "canonical_json": deliverable_file,
-                    "full_scan_artifact": f"03_scans/{device_id}.json",
-                }
-                local_prompt = (
-                    "You are a Phase 3 device analyst for a local small model. "
-                    "Produce a concise evidence-based analyst memo, not JSON and not a tool call. "
-                    "Do not claim that you saved anything. The deterministic scanner has already "
-                    "written the canonical JSON file; your complete memo will be preserved as a "
-                    "sidecar artifact. Discuss likely vulnerabilities, rejected/uncertain CVEs, "
-                    "and any useful nuance. Only call a CVE applicable when both the detected "
-                    "product/version and vulnerable range are explicit in the supplied evidence. "
-                    "Never invent facts.\n\nEVIDENCE:\n"
-                    + json.dumps(local_context, ensure_ascii=False)
-                )
-                self.tracker.start_phase(f"analyze_{device_id}")
-                result_text = self.provider.chat_with_tools(
-                    system_prompt=local_prompt,
-                    user_message=f"Write the Phase 3 analyst memo for {device_id} now.",
-                    tools=[],
-                    max_turns=self.execution_profile.phase3_local_max_turns,
-                    max_tokens=self.execution_profile.phase3_local_max_tokens,
-                    cost_tracker=self.tracker,
-                    stream_callback=self._model_stream_callback(
-                        stream_callback, phase=3, agent=f"analyze_{device_id}"
-                    ),
-                    repeat_guard=False,
-                    stop_event=self._stop_event,
-                )
-                analysis_text = ""
-                if result_text and result_text.strip() not in {
-                    "(max turns reached)", "(malformed tool call JSON — max retries)",
-                }:
-                    analysis_text = result_text.strip()
-                    if _looks_unusable_model_memo(analysis_text):
-                        log.warning(
-                            "Phase 3 local memo for %s appears unusable; keeping canonical JSON only",
-                            device_id,
-                        )
-                    else:
-                        sidecar = self.run_dir / f"03_device_{device_id}_analysis.md"
-                        sidecar.write_text(analysis_text + "\n", encoding="utf-8")
-                        self._model_stream_callback(
-                            None, phase=3, agent=f"analyze_{device_id}_result"
-                        )({"type": "text_chunk", "text": analysis_text})
-                usage = self.tracker.end_phase()
-                if not analysis_text or _looks_unusable_model_memo(analysis_text):
-                    raise RuntimeError(
-                        "missing_validated_deliverable: no usable Phase 3 analysis memo"
-                    )
-                if usage:
-                    print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
-                if stream_callback:
-                    stream_callback({
-                        "type": "device_done", "device_id": device_id,
-                        "device_ip": device_ip, "phase": 3,
-                        "turns": usage.turns if usage else 0,
-                        "run_dir": str(self.run_dir),
-                    })
-                return
-
-            allowed_tool_names = runtime.phase3_tool_names(
-                self.execution_profile, device, scan_data
-            )
-
-            device_config = runtime.AgentConfig(
-                name=f"analyze_{device_id}",
-                phase=3,
-                prompt_template="analyze_device",
-                deliverable_file=deliverable_file,
-                tools=[],
-                validator="json_device_vulns",
-            )
-            device_tools = self._apply_deliverable_transaction(
-                [
-                    tool for tool in analysis_tools
-                    if tool.get("name") in allowed_tool_names
-                ],
-                device_config,
-                stream_callback,
-            )
-            save_receipts: list[dict] = []
-            observations: list[dict] = []
-            captured_tools = []
-            for tool in device_tools:
-                if tool.get("name") != "save_deliverable":
-                    original_fn = tool["function"]
-
-                    def record_observation_call(*args, _original=original_fn,
-                                                _name=str(tool.get("name")), **kwargs):
-                        raw_result = _original(*args, **kwargs)
-                        try:
-                            block_recovery.record_observation(
-                                observations, _name,
-                                raw_result if isinstance(raw_result, str)
-                                else json.dumps(raw_result, ensure_ascii=False, default=str),
-                                kwargs=kwargs,
-                            )
-                        except Exception:
-                            log.debug("Could not retain Phase 3 observation", exc_info=True)
-                        return raw_result
-
-                    captured_tools.append({**tool, "function": record_observation_call})
-                    continue
-                original_save = tool["function"]
-
-                def capture_save(*args, _original=original_save, **kwargs):
-                    raw_receipt = _original(*args, **kwargs)
-                    try:
-                        receipt = json.loads(raw_receipt) if isinstance(raw_receipt, str) else raw_receipt
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        receipt = None
-                    if isinstance(receipt, dict):
-                        save_receipts.append(receipt)
-                    return raw_receipt
-
-                captured_tools.append({**tool, "function": capture_save})
-            device_tools = captured_tools
-            variables["phase3_allowed_tools"] = ", ".join(
-                sorted({
-                    str(tool.get("name")) for tool in device_tools
-                    if tool.get("name")
-                })
-            )
-            variables["phase4_tool_catalog"] = ", ".join(phase4_tool_catalog)
-            system_prompt = runtime.load_prompt("analyze_device", variables)
-            device_deadline = _time.monotonic() + phase3_timeout_s
-            if getattr(self, "max_duration_s", None) is not None:
-                device_deadline = min(device_deadline, self._run_started + self.max_duration_s)
-            full_completion: dict = {}
-            self.tracker.start_phase(f"analyze_{device_id}")
-            result_text = self.provider.chat_with_tools(
-                system_prompt=system_prompt,
-                user_message=(
-                    f"Review scan results for {device_id} ({device_ip}). "
-                    f"Add confirmed CVE, data exposure, authorization, identity, update, and protocol findings. "
-                    f"Then call save_deliverable('{deliverable_file}', json_content)."
-                ),
-                tools=device_tools,
-                max_turns=self.execution_profile.phase3_max_turns,
-                max_tokens=self.execution_profile.phase3_max_tokens,
-                cost_tracker=self.tracker,
-                stream_callback=self._model_stream_callback(
-                    stream_callback, phase=3, agent=f"analyze_{device_id}"
-                ),
-                required_tool="save_deliverable",
-                terminate_after_tool="save_deliverable",
-                stop_event=self._stop_event,
-                deadline=device_deadline,
-                completion_metadata=full_completion,
-            )
-            usage = self.tracker.end_phase()
-            promoted, validation_error = self._phase3_promoted_deliverable(
-                device_id, deliverable_file, save_receipts[-1] if save_receipts else None
-            )
-            if self.execution_profile.name == "full" and block_recovery.is_truncation(full_completion):
-                # A parseable save in a cut-short response is not a completed analysis.
-                promoted = False
-            if not promoted:
-                if (self.execution_profile.name == "full"
-                        and block_recovery.is_truncation(full_completion)):
-                    log.warning(
-                        "Phase 3 analysis for %s truncated on the output budget; "
-                        "attempting bounded block recovery",
-                        device_id,
-                    )
-                    self._recover_truncated_phase3_device(
-                        device=device,
-                        scan_data=scan_data,
-                        deliverable_file=deliverable_file,
-                        device_tools=device_tools,
-                        save_receipts=save_receipts,
-                        observations=observations,
-                        deadline=device_deadline,
-                        stream_callback=stream_callback,
-                    )
-                    promoted, validation_error = self._phase3_promoted_deliverable(
-                        device_id, deliverable_file,
-                        save_receipts[-1] if save_receipts else None,
-                    )
-                    if promoted:
-                        if usage:
-                            print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns (block recovery)")
-                        if stream_callback:
-                            stream_callback({
-                                "type": "device_done", "device_id": device_id,
-                                "device_ip": device_ip, "phase": 3,
-                                "turns": usage.turns if usage else 0,
-                                "run_dir": str(self.run_dir),
-                                "recovered_from_truncation": True,
-                            })
-                        return
-                    raise RuntimeError(validation_error)
-                log.warning(
-                    "Phase 3 analysis for %s did not produce a validated promoted deliverable; "
-                    "scanner findings remain canonical",
-                    device_id,
-                )
-                raise RuntimeError(validation_error)
-            if usage:
-                print(f"  [+] Done: analyze_{device_id} in {usage.turns} turns")
-            if stream_callback:
-                stream_callback({
-                    "type": "device_done", "device_id": device_id,
-                    "device_ip": device_ip, "phase": 3,
-                    "turns": usage.turns if usage else 0,
-                    "run_dir": str(self.run_dir),
-                })
-
-        worker_count = self._phase3_worker_count(len(surface))
-        if worker_count == 1 and len(surface) > 1:
-            log.info(
-                "Phase 3: serial device analysis (provider=%s, workers=1)",
-                getattr(self.provider, "provider", "unknown"),
-            )
-
-        phase3_status["worker_count"] = worker_count
-        phase3_failures: list[dict] = []
-
-        def _analyze_with_stagger(args):
-            if getattr(self, "experiment_scope", None):
-                check_execution_limits(self)
-            idx, device = args
-            if worker_count > 1 and idx > 0:
-                _time.sleep(min(idx * 2, 6))
-            try:
-                _analyze_device(device)
-                phase3_status["devices_analyzed"] += 1
-            except (BudgetExceeded, EvidenceWriteError):
-                raise
-            except Exception as exc:
-                if getattr(self, "experiment_scope", None):
-                    check_execution_limits(self)
-                device_id = str(device.get("id") or "unknown")
-                log.exception("Phase 3 analysis failed for %s; keeping scanner fallback", device_id)
-                failure = {"device_id": device_id, "error": str(exc)}
-                if str(exc).startswith("truncated_output:"):
-                    failure["cause"] = "truncated_output"
-                phase3_failures.append(failure)
-                phase3_status["devices_failed"] = phase3_failures
-                try:
-                    self.tracker.end_phase()
-                except Exception:
-                    log.debug("Could not close failed Phase 3 tracker for %s", device_id, exc_info=True)
-                self._persist_phase3_device_findings(device, scanner_results)
-                if stream_callback:
-                    device_event = {
-                        "type": "device_done", "device_id": device_id,
-                        "device_ip": device.get("ip", "unknown"), "phase": 3,
-                        "turns": 0, "error": str(exc),
-                    }
-                    if str(exc).startswith("truncated_output:"):
-                        device_event["cause"] = "truncated_output"
-                    stream_callback(device_event)
-
-        with ThreadPoolExecutor(max_workers=worker_count) as pool:
-            list(pool.map(_analyze_with_stagger, enumerate(surface)))
-
-        phase3_status["status"] = (
-            "completed_with_device_errors"
-            if phase3_failures or phase3_status["scanner_errors"] or phase3_status.get("surface_error")
-            else "completed"
-        )
-        if phase3_status["status"] == "completed_with_device_errors":
-            self._phase3_execution_status = "executed_with_worker_errors"
-        phase3_status["finished_at"] = datetime.now().astimezone().isoformat()
-        _save_phase3_status()
-
-        print(f"\n{'=' * 60}")
-        print(f"  All {len(surface)} analysis agents finished.")
-        print(f"{'=' * 60}\n")
+    if context.decision_policy == "rules":
+        context.tracker.start_phase("rules_analysis")
+    try:
+        execution = run_execution(context)
+    finally:
+        if context.decision_policy == "rules":
+            context.tracker.end_phase()
+    result = aggregate_phase(context, execution)
+    if context.emit:
+        # Keep the existing public event fields; detailed usage is in result.
+        context.emit({
+            "type": "phase_done", "phase": 3, "name": config.name,
+            "status": result.legacy_status, "deliverable": config.deliverable_file,
+            "cost_usd": 0, "turns": 0,
+        })
+    return result
 
 
-def run(context, config, stream_callback=None):
-    return context._run_agent(config, stream_callback)
+def run(run, config, stream_callback=None) -> PhaseResult | str:
+    # Custom legacy configurations can still ask for a model master aggregator.
+    if not config.deterministic_aggregation and run.decision_policy != "rules":
+        return run._run_agent(config, stream_callback)
+    run._phase3_execution_status = None
+    result = execute(build_context(run, config, stream_callback))
+    run._phase3_execution_status = (
+        result.status.value if result.status is PhaseStatus.WORKER_ERRORS else None
+    )
+    return result

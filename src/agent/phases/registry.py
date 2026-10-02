@@ -5,6 +5,7 @@ from src.agent.phases.analysis import run as analysis
 from src.agent.phases.verification import run as verification
 from src.agent.phases.intrusion import run as intrusion
 from src.agent.phases.report import run as report
+from src.agent.phases.contracts import PhaseResult
 
 
 PHASE_MODULES = {
@@ -21,4 +22,5 @@ def run_phase(context, config, stream_callback=None):
     profile = context.execution_profile.name
     if profile not in {"compact", "full"}:
         raise ValueError(f"Unsupported execution profile: {profile}")
-    return PHASE_MODULES[config.phase].run(context, config, stream_callback)
+    result = PHASE_MODULES[config.phase].run(context, config, stream_callback)
+    return result.legacy_status if isinstance(result, PhaseResult) else result

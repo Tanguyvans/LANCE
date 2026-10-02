@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from src.agent.phases.intrusion.scope import _intrusion_scope_violation
 from src.agent.tools.deliverable import bind_deliverable_tool
+from src.agent.tools.skill_tools import skill_tool_context
+from src.agent.registry import AGENTS
 from src.agent.cost_tracker import BudgetExceeded
 
 
@@ -46,12 +48,17 @@ def check_execution_limits(run) -> None:
             raise
 
 
-def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None) -> dict:
+def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None, config=None) -> dict:
     tool = bind_deliverable_tool(tool, run.run_dir)
     original = tool["function"]
     if original is None:
         return tool
     name = tool["name"]
+    if config is None:
+        config = next((item for item in AGENTS.values() if item.phase == phase), None)
+    skill_filter = getattr(config, "skill_filter", None) or {}
+    skill_tags = list(skill_filter.get("tags") or [])
+    cache_only = getattr(run, "cve_lookup_policy", "live_on_miss") == "cache_only"
 
     def execute(**kwargs):
         observation_local.last = None
@@ -125,7 +132,8 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None) 
             archive(result)
             return result
         try:
-            result = original(**kwargs)
+            with skill_tool_context(cache_only=cache_only, tags=skill_tags):
+                result = original(**kwargs)
         except Exception as exc:
             archive({"error": str(exc), "exception_type": type(exc).__name__})
             raise
