@@ -664,12 +664,11 @@ class VerificationPhase:
                 {
                     "summary": {
                         "total_tested": sum(verification_state(test) != "not_tested" for test in tests),
-                        "candidate_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("candidate_count", len(tests)),
-                        "skipped_count": getattr(
-                            self, "_phase4_schedule", {}
-                        ).get("skipped_count", 0),
+                        # Discovery followup can add canonical findings after
+                        # scheduling. Summarize the current projection while
+                        # retaining the original schedule as execution history.
+                        "candidate_count": len(tests),
+                        "skipped_count": sum(test["status"] == "SKIPPED" for test in tests),
                         "execution_state": (
                             getattr(self, "_phase4_execution_status", None)
                             or "executed"

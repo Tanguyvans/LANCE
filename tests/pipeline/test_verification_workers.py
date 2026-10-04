@@ -295,3 +295,24 @@ def test_phase_completion_includes_worker_usage_but_excludes_previous_phases(
     assert len(done) == 1
     assert done[0]["cost_usd"] == pytest.approx(0.004)
     assert done[0]["turns"] == 2
+
+
+def test_followup_candidates_are_counted_without_claiming_they_were_scheduled(mock_provider, output_dir):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    pipeline._phase4_schedule = {
+        "candidate_count": 1, "scheduled_count": 1, "scheduled_vuln_ids": ["V1"],
+        "skipped_count": 0, "skipped_candidates": [],
+    }
+    findings = [{"id": identifier, "device_id": "test-device", "device_ip": "192.0.2.1",
+                 "type": "weak_cipher", "service": "ssh", "port": 22}
+                for identifier in ["V1", "LATE"]]
+    (pipeline.run_dir / "03_vuln_analysis.json").write_text(json.dumps({"vulnerabilities": findings}))
+    pipeline._aggregate_exploit_results()
+    result = json.loads((pipeline.run_dir / "04_exploitation.json").read_text())
+    assert result["summary"]["candidate_count"] == 2
+    assert result["summary"]["skipped_count"] == 1
+    assert result["summary"]["total_tested"] == 0
+    assert result["scheduling"] == pipeline._phase4_schedule
+    assert result["scheduling"]["scheduled_vuln_ids"] == ["V1"]
+    assert result["tests"][1]["status"] == "SKIPPED"
+    assert result["tests"][1]["evidence_refs"] == []

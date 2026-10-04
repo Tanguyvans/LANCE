@@ -160,6 +160,21 @@ Exemples d’interprétation :
 Le journal d’outils peut contenir des données du laboratoire : ne pas publier
 les artefacts bruts sans revue des informations sensibles.
 
+### Compteurs après découverte complémentaire
+
+Une découverte après la vérification peut ajouter des hypothèses au livrable
+canonique. Dans `04_exploitation.json`, `scheduling` conserve la file réellement
+planifiée ; `summary.candidate_count` compte les hypothèses présentes dans la
+projection finale et `summary.skipped_count` celles explicitement ignorées.
+Une hypothèse ajoutée après planification reste `SKIPPED` et non testée :
+actualiser les compteurs ne lui attribue aucune preuve.
+
+Le test MySQL de `try_credential` utilise une connexion TCP avec mot de passe
+explicite, y compris vide, sans demande de saisie interactive ni options client
+héritées. Il vérifie la connexion avec `SELECT CURRENT_USER()` ; la lecture de
+la table administrative `mysql.user` n'est pas nécessaire pour tester un compte.
+Une connexion réussie ne certifie pas les privilèges sur les autres tables.
+
 ## Consommation et validation
 
 Conserver tokens, temps et coûts même lorsque les scores sont indisponibles.
