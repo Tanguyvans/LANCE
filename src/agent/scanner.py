@@ -440,6 +440,24 @@ def _phase2_recon_scan_entries(run_dir: Path, device: dict) -> list[dict]:
     }]
 
 
+def _closed_optional_mqtt_ws_probe(device: dict, results: dict[str, list[dict]]) -> dict | None:
+    """Return the fresh closed-port observation for an undeclared WS listener."""
+    if any(str(service.get("port")) == "9001" for service in device.get("services", [])):
+        return None
+    for entries in results.values():
+        for entry in entries:
+            args = entry.get("kwargs", {})
+            if (entry.get("tool") != "nmap_scan" or args.get("target") != device.get("ip")
+                    or str(args.get("ports")) != "9001"):
+                continue
+            result = _parse_result(entry)
+            if (type(result.get("return_code")) is int and result["return_code"] == 0
+                    and not tool_execution_failed("nmap_scan", result)
+                    and re.search(r"(?m)^9001/tcp\s+closed\s", str(result.get("stdout", "")))):
+                return entry
+    return None
+
+
 def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[str] | None = None) -> dict[str, list[dict]]:
     """Run all applicable tools for a device. Returns {service: [{tool, kwargs, result}]}."""
     ip = device.get("ip", "")
@@ -490,6 +508,17 @@ def scan_device(device: dict, tools_map: dict[str, Any], *, diagnostics: list[st
 
         for tool_name, kwargs_tmpl in SCAN_MATRIX[matrix_key]:
             kwargs = _resolve_kwargs(kwargs_tmpl, ip, port)
+            if matrix_key == "mqtt" and tool_name == "http_request":
+                closed = _closed_optional_mqtt_ws_probe(device, results)
+                if closed is not None:
+                    # Keep the actual port probe and the scheduling decision,
+                    # without inventing an HTTP response or hiding a failed call.
+                    decision = {"tool": tool_name, "kwargs": kwargs,
+                                "reason": "optional_listener_observed_closed"}
+                    decisions = closed.setdefault("skipped_followups", [])
+                    if decision not in decisions:
+                        decisions.append(decision)
+                    continue
             _call(tool_name, kwargs, svc_name)
 
     # Role-based extra scans

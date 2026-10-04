@@ -208,6 +208,13 @@ est terminée. Les interruptions du processus, refus d'authentification et
 erreurs de connexion restent comptés comme erreurs. Une écoute sans message
 reste non concluante : cette distinction ne confirme aucune vulnérabilité.
 Les résultats et codes d'origine sont conservés dans le journal des outils.
+Pour le listener WebSocket MQTT optionnel sur 9001, le scanner conserve d'abord
+la sonde de port. Si elle réussit et observe explicitement un port fermé qui
+n'était pas déclaré, la négociation HTTP est omise et cette décision figure
+sur l'observation (`skipped_followups`). Un port ouvert, filtré, inconnu, une
+sonde en erreur ou un listener déclaré restent soumis à la vérification HTTP.
+Ce choix n'établit ni accès MQTT ni absence durable de vulnérabilité ; les
+anciens refus de connexion restent inchangés dans leurs runs d'origine.
 Le catalogue présenté au modèle exclut `python_exec`, toujours refusé par le
 moteur, ainsi que `search_history` pendant les benchmarks et expériences.
 Le contrôle à l'exécution reste actif si un appel interdit est néanmoins soumis.
