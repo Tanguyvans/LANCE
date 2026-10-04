@@ -548,7 +548,9 @@ class VerificationPhase:
         # host. Re-scanning it under discovered-* can replace canonical
         # findings after their verification IDs have already been scheduled.
         # Both public scenario and discovery surfaces can be list-shaped.
-        seen_ips: set[str] = set()
+        # A service may echo the audit client's address (for example MySQL
+        # USER()). It must not turn the runner into a newly discovered target.
+        seen_ips: set[str] = runtime.local_interface_ips()
         try:
             surface = json.loads(runtime.get_attack_surface())
             nodes = surface.get("nodes", []) if isinstance(surface, dict) else surface

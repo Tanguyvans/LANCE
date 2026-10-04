@@ -319,12 +319,7 @@ class ReconPhase:
         print(f"{'=' * 60}\n")
 
         # Own IPs — the master VM must never appear as a target.
-        local_ips: set[str] = set()
-        try:
-            hn = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5)
-            local_ips = {ip for ip in hn.stdout.split() if ip}
-        except (OSError, subprocess.SubprocessError):
-            pass
+        local_ips = runtime.local_interface_ips()
 
         tcp_cmd = ["nmap", "-Pn", "-sT", "-p", tcp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]
         udp_cmd = ["nmap", "-Pn", "-sU", "-p", udp_ports, "--open", "-T4", "-oG", "-", *target_network.split()]

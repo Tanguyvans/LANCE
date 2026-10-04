@@ -328,12 +328,16 @@ def test_discovery_followup_excludes_existing_hosts_but_keeps_new_hosts(
              {"id": "known-ipv6", "ip": "2001:db8::1"}]
     surface = {"nodes": nodes} if surface_as_mapping else nodes
     monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: json.dumps(surface))
+    monkeypatch.setattr("src.agent.core.runtime.subprocess.run", lambda *args, **kwargs:
+                        MagicMock(returncode=0, stdout="192.0.2.200 2001:db8::200 invalid-address"))
     path = pipeline.run_dir / "04_exploits" / "observations.json"
     path.parent.mkdir(exist_ok=True)
     new_host = {"ip": "192.0.2.11", "open_ports": [1883], "discovered_via": "observed endpoint"}
     contents = json.dumps({"new_hosts_discovered": [
         {"ip": "192.0.2.10", "open_ports": [1883]},
         {"ip": "2001:0db8:0:0:0:0:0:1", "open_ports": [22]},
+        {"ip": "192.0.2.200", "discovered_via": "client address echoed by MySQL"},
+        {"ip": "2001:0db8:0:0:0:0:0:200", "open_ports": [22]},
         new_host, dict(new_host), {"ip": "not-an-address"},
     ]})
     path.write_text(contents)

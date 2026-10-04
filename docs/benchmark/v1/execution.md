@@ -167,7 +167,12 @@ nouvel hôte lorsqu'un livrable de vérification la mentionne. Ces références
 restent dans les traces, mais ne déclenchent pas une seconde analyse sous un
 identifiant `discovered-*`. La découverte complémentaire concerne les nouvelles
 adresses ; elle ne constitue pas un mécanisme de réanalyse des services d'un
-hôte déjà connu.
+hôte déjà connu. Les adresses des interfaces de la machine d'audit sont aussi
+exclues, comme en reconnaissance initiale : une adresse client renvoyée par un
+service (par exemple `USER()` dans MySQL) ne crée pas une cible. Cette exclusion
+utilise les interfaces locales du runner, sans adresse fixe ni vérité terrain.
+Si leur lecture échoue, un avertissement est émis ; cette exclusion ne remplace
+pas les contrôles de périmètre.
 
 Une découverte après la vérification peut ajouter des hypothèses au livrable
 canonique. Dans `04_exploitation.json`, `scheduling` conserve la file réellement
