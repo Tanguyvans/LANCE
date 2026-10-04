@@ -185,6 +185,9 @@ est terminée. Les interruptions du processus, refus d'authentification et
 erreurs de connexion restent comptés comme erreurs. Une écoute sans message
 reste non concluante : cette distinction ne confirme aucune vulnérabilité.
 Les résultats et codes d'origine sont conservés dans le journal des outils.
+Le catalogue présenté au modèle exclut `python_exec`, toujours refusé par le
+moteur, ainsi que `search_history` pendant les benchmarks et expériences.
+Le contrôle à l'exécution reste actif si un appel interdit est néanmoins soumis.
 
 Un échec de phase reste visible dans le suivi API après nettoyage : le dossier
 du run est disponible dès sa création et l'événement terminal conserve le statut

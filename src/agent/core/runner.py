@@ -643,6 +643,16 @@ class AgentRunner:
         """
         tools = []
         seen_names: set[str] = set()
+        # Match the shared executor's unconditional refusals before presenting
+        # tools to the model. Keep the execution boundary as defense in depth.
+        forbidden = {"python_exec"}
+        if self.sealed:
+            forbidden.update(runtime.SEALED_FORBIDDEN_TOOLS)
+        if (
+            getattr(self, "benchmark_split", "unassigned") not in (None, "unassigned")
+            or getattr(self, "experiment_scope", None)
+        ):
+            forbidden.add("search_history")
 
         for ref in config.tools:
             if ref == "recon" and self.dry_run:
@@ -651,7 +661,7 @@ class AgentRunner:
             # Try group resolution first
             if ref in runtime.TOOL_GROUPS:
                 for tool in runtime.TOOL_GROUPS[ref]:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))
@@ -661,7 +671,7 @@ class AgentRunner:
             # Fall back to individual tool name lookup
             for group in runtime.TOOL_GROUPS.values():
                 for tool in group:
-                    if self.sealed and tool["name"] in runtime.SEALED_FORBIDDEN_TOOLS:
+                    if tool["name"] in forbidden:
                         continue
                     if tool["name"] == ref and ref not in seen_names:
                         tools.append(self._wrap_tool(tool, phase=config.phase, agent=config.name, config=config))

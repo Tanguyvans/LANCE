@@ -169,19 +169,21 @@ def test_save_ground_truth_noop_preserves_existing_file(custom_gt_context, prese
     assert gt_file.read_text() == "historical: unchanged\n"
 
 
-def test_sealed_tool_groups_remove_history_and_python(tmp_path, monkeypatch):
+@pytest.mark.parametrize("scenario_id,split", [("20", "eval-sealed"), ("1", "dev-public")])
+def test_benchmark_tool_groups_remove_history_and_python(tmp_path, monkeypatch, scenario_id, split):
     monkeypatch.chdir(tmp_path)
     import src.agent.pipeline as pipeline_module
     from src.agent.registry import AgentConfig
 
     monkeypatch.setattr(pipeline_module, "OUTPUT_DIR", tmp_path / "output")
     pipeline = Pipeline(
-        provider=_provider(), scenario_id="20", execution_context=_contract(),
-        benchmark_split="eval-sealed", phases=[99], dry_run=True,
+        provider=_provider(), scenario_id=scenario_id,
+        execution_context=_contract() if split == "eval-sealed" else None,
+        benchmark_split=split, phases=[99], dry_run=True,
     )
     config = AgentConfig(
         name="sealed", phase=1, prompt_template="x", deliverable_file="x.md",
-        tools=["recon", "skill"],
+        tools=["recon", "skill", "python_exec", "search_history"],
     )
     names = {tool["name"] for tool in pipeline._resolve_tools(config)}
     assert "python_exec" not in names
