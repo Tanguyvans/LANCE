@@ -173,3 +173,23 @@ Les tests locaux ne prouvent pas la disponibilité de l’endpoint réel ni la b
 injection du laboratoire. Après un essai S1, contrôler préparation, phases, preuves,
 statut et nettoyage avant d’étendre la campagne. Pour les limites de concurrence
 et les tests d’isolation : [livrables par run](../../architecture/run-artifacts.md).
+
+### Interprétation des erreurs d'outils
+
+Le statut du scanner et le compteur global `total_tool_errors` distinguent
+l'échec d'exécution du résultat d'un audit. Les codes 2/3 de `ssh-audit`, avec
+une sortie d'audit, signalent des avertissements/faiblesses ; ils ne rendent pas
+la phase partielle à eux seuls. Le code 27 de `mqtt_listen`, accompagné de
+l'interprétation de fin d'écoute du wrapper, signifie que la fenêtre d'écoute
+est terminée. Les interruptions du processus, refus d'authentification et
+erreurs de connexion restent comptés comme erreurs. Une écoute sans message
+reste non concluante : cette distinction ne confirme aucune vulnérabilité.
+Les résultats et codes d'origine sont conservés dans le journal des outils.
+
+Un échec de phase reste visible dans le suivi API après nettoyage : le dossier
+du run est disponible dès sa création et l'événement terminal conserve le statut
+et le nettoyage calculés par le pipeline. Une exécution interrompue avant
+l'évaluation ne reçoit pas de score automatique ; ses artefacts restent consultables.
+
+Références des codes de sortie : [manuel ssh-audit](https://github.com/jtesta/ssh-audit/blob/master/ssh-audit.1)
+et [client Mosquitto 2.0.21](https://github.com/eclipse-mosquitto/mosquitto/blob/v2.0.21/client/sub_client.c).

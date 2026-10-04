@@ -1,4 +1,5 @@
 """Offline diagnostics tests: no scenario, SSH connection or model is started."""
+import asyncio
 import json
 from pathlib import Path
 import shutil
@@ -218,8 +219,21 @@ assert(log.children.length === 300);
     assert result.returncode == 0, result.stderr
 
 
-def test_reload_replays_scenario_diagnostics():
-    source = (ROOT / "src/static/app.js").read_text()
-    replay = source[source.index("const replayTypes"):source.index("// — Sync scenario")]
-    for kind in ("info", "warn", "verify_start", "verify_done", "teardown_start", "teardown_done"):
-        assert f"'{kind}'" in replay
+def test_reload_replays_scenario_diagnostics(monkeypatch):
+    from src.api.events import EventJournal
+    from src.api.routes import pipeline
+
+    async def check():
+        journal = EventJournal()
+        events = [{"type": kind, "output": "offline diagnostic"} for kind in (
+            "info", "warn", "verify_start", "verify_done", "teardown_start", "teardown_done",
+        )]
+        for event in [*events, {"type": "__done__"}]:
+            journal.put_nowait(event)
+        monkeypatch.setitem(pipeline._state, "queue", journal)
+        # Initial viewing and a page reload both retain the actual diagnostics.
+        for _ in range(2):
+            response = await pipeline.stream_events()
+            assert [json.loads(item["data"]) async for item in response.body_iterator] == events
+
+    asyncio.run(check())

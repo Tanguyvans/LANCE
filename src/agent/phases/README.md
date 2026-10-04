@@ -179,11 +179,14 @@ contexte global de graphe. Les étapes de normalisation et de projection modifie
 les copies de travail et le registre de décisions reçus, sans modifier les
 fichiers d'entrée ni les valeurs originales conservées dans `raw_finding`.
 
-Limite PKI préexistante : la promotion d'une clé clonée compte les observations
-de fingerprint, sans dédupliquer les identifiants d'appareil. Deux observations
-identiques d'un seul `pki_device` peuvent donc produire une déclaration confirmée
-de clé partagée. Le découpage conserve ce comportement ; sa correction exige un
-test distinguant observations répétées et appareils distincts.
+La promotion PKI exige une même empreinte SHA-256 sur au moins deux appareils
+ayant des identifiants et des adresses IP distincts. Les requêtes répétées, lignes
+de topologie dupliquées et alias d'une même IP ne comptent qu'une fois. Chaque
+observation doit provenir d'une réponse HTTP 2xx de `/identity/fingerprint` sur
+l'IP de l'appareil ; erreurs, redirections, réponses attribuées à une autre origine
+et valeurs malformées sont ignorées sans perdre les observations valides voisines.
+Ce contrôle porte sur les empreintes déclarées par les services du laboratoire ;
+il ne démontre pas la possession de la clé privée correspondante.
 
 ## Limites conservées explicitement
 

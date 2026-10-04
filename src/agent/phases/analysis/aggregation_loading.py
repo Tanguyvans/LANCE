@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 from pathlib import Path
 import re
@@ -191,36 +192,73 @@ def add_scanner_candidates(
 def add_pki_candidates(context: AggregationContext, registry: CandidateRegistry) -> None:
     # A single PKI fingerprint is metadata. Promote a cloned identity only
     # after the same SHA-256 value is observed on two declared devices.
-    pki_fingerprints: dict[str, list[dict]] = {}
+    pki_fingerprints: dict[str, dict[str, dict]] = {}
     for node in context.surface_nodes:
         if not isinstance(node, dict) or str(node.get("role") or "").casefold() != "pki_device":
             continue
-        scan_path = context.run_dir / "03_scans" / f"{node.get('id', '')}.json"
+        device_id = node.get("id")
+        if not isinstance(device_id, str) or not device_id.strip():
+            continue
+        try:
+            device_ip = str(ipaddress.ip_address(node.get("ip")))
+        except ValueError:
+            continue
+        scan_path = context.run_dir / "03_scans" / f"{device_id}.json"
         try:
             scan_data = json.loads(scan_path.read_text(encoding="utf-8"))
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(scan_data, dict):
             continue
         entries = [
             entry for values in scan_data.values() if isinstance(values, list)
             for entry in values
         ]
         for entry in entries:
-            if entry.get("tool") != "http_request":
+            if not isinstance(entry, dict) or entry.get("tool") != "http_request":
                 continue
-            url = str((entry.get("kwargs") or {}).get("url") or "")
-            if urlsplit(url).path != "/identity/fingerprint":
+            kwargs = entry.get("kwargs")
+            if not isinstance(kwargs, dict):
                 continue
             try:
+                url = urlsplit(str(kwargs.get("url") or ""))
+                if (
+                    url.scheme not in {"http", "https"}
+                    or url.path != "/identity/fingerprint"
+                    or str(ipaddress.ip_address(url.hostname)) != device_ip
+                ):
+                    continue
                 result = json.loads(str(entry.get("result") or ""))
+                if not isinstance(result, dict) or result.get("error"):
+                    continue
+                status = result.get("status_code")
+                if type(status) is not int or not 200 <= status < 300:
+                    continue
+                # The archive filename alone cannot bind a response to a device.
+                # Redirects are disabled by the HTTP tool; reject any other origin.
+                final_url = urlsplit(str(result.get("final_url") or url.geturl()))
+                if (
+                    final_url.scheme != url.scheme
+                    or final_url.hostname != url.hostname
+                    or final_url.port != url.port
+                    or final_url.path != url.path
+                    or result.get("redirect_chain")
+                ):
+                    continue
                 payload = json.loads(str(result.get("body") or ""))
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
+            if not isinstance(payload, dict):
+                continue
             fingerprint = str(payload.get("public_key_fingerprint") or "").strip().casefold()
             if re.fullmatch(r"[0-9a-f]{64}", fingerprint):
-                pki_fingerprints.setdefault(fingerprint, []).append({
-                    "id": node.get("id", ""), "ip": node.get("ip", ""),
-                })
-    for fingerprint, observations in pki_fingerprints.items():
+                devices = pki_fingerprints.setdefault(fingerprint, {})
+                # Repeated requests, duplicate topology rows and aliases for one
+                # IP must not become independent device observations.
+                if device_id not in devices and not any(item["ip"] == device_ip for item in devices.values()):
+                    devices[device_id] = {"id": device_id, "ip": device_ip}
+    for fingerprint, devices in pki_fingerprints.items():
+        observations = list(devices.values())
         if len(observations) < 2:
             continue
         clone = next(

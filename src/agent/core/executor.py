@@ -16,6 +16,7 @@ from src.agent.tools.deliverable import bind_deliverable_tool
 from src.agent.tools.skill_tools import skill_tool_context
 from src.agent.registry import AGENTS
 from src.agent.cost_tracker import BudgetExceeded
+from src.agent.tools.outcomes import tool_execution_failed
 
 
 class EvidenceWriteError(RuntimeError):
@@ -87,16 +88,7 @@ def wrap_tool(run, tool: dict, *, phase=None, agent=None, decision_source=None, 
                 "decision_source": decision_source or getattr(run, "decision_policy", "llm"),
             }
             if tracker is not None and hasattr(tracker, "record_execution"):
-                parsed = result
-                if isinstance(parsed, str):
-                    try:
-                        parsed = json.loads(parsed)
-                    except (ValueError, TypeError):
-                        pass
-                failed = isinstance(parsed, dict) and bool(
-                    parsed.get("error") or parsed.get("exception_type") or parsed.get("ok") is False
-                    or parsed.get("return_code", 0) not in (0, None)
-                )
+                failed = tool_execution_failed(name, result)
                 tracker.record_execution(started, entry["duration_s"], error=failed)
             try:
                 with run._artifact_log_lock:

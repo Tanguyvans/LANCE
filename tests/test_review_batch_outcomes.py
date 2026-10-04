@@ -7,6 +7,7 @@ import pytest
 from src.agent.batch import _aggregate_batch_results
 from src.agent.batch_outcomes import batch_run_status, batch_cost_summary
 from src.api.routes import pipeline
+from src.api.events import EventJournal
 
 
 @pytest.mark.parametrize('status', ['partial', 'failed', 'stopped', 'blocked', 'budget_exceeded', 'skipped'])
@@ -60,12 +61,15 @@ def test_stream_keeps_errors_cleanup_and_all_batch_events():
                   {'type': 'teardown_done', 'success': True},
                   {'type': 'batch_scenario_done', 'scenario_id': '2'},
                   {'type': 'batch_done'}]
-        queue = asyncio.Queue()
+        queue = EventJournal()
         for event in [*events, {'type': '__done__'}]:
             queue.put_nowait(event)
         with patch.dict(pipeline._state, {'queue': queue}):
             response = await pipeline.stream_events()
             seen = [json.loads(event['data']) async for event in response.body_iterator]
         assert seen == events
-        assert queue.empty()
+        # Reading does not consume the history needed by another dashboard.
+        with patch.dict(pipeline._state, {'queue': queue}):
+            second = await pipeline.stream_events()
+            assert [json.loads(event['data']) async for event in second.body_iterator] == events
     asyncio.run(check())

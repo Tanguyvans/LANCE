@@ -61,6 +61,10 @@ def test_cleanup_runs_on_phase_exception_and_preserves_exception(pipeline):
     assert pipeline._update_run_meta.call_args.args[0]["status"] == "failed"
     assert pipeline._update_run_meta.call_args.args[0]["results"] == {"recon": "failed:exception"}
     pipeline._persist_run.assert_called_once_with("failed")
+    assert pipeline.terminal_event["status"] == "failed"
+    assert pipeline.terminal_event["cleanup_status"] == "completed"
+    assert pipeline.terminal_event["run_dir"] == str(pipeline.run_dir)
+    assert pipeline.terminal_event["results"] == {"recon": "failed:exception"}
 
 
 @pytest.mark.parametrize("owned,auto,dry", [(False, True, False), (True, False, False), (True, True, True)])

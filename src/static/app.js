@@ -1648,26 +1648,39 @@ async function teardownScenario() {
 
 let _sseRetryDelay = 1000;
 let _sseRetryTimer = null;
+let _sseLastEventId = null;
+let _sseGeneration = 0;
 
-function startSSE() {
+function startSSE(resume = false) {
   if (eventSource) eventSource.close();
   if (_sseRetryTimer) { clearTimeout(_sseRetryTimer); _sseRetryTimer = null; }
+  if (!resume) _sseLastEventId = null;
+  const generation = ++_sseGeneration;
+  const cursor = _sseLastEventId ? `?after=${encodeURIComponent(_sseLastEventId)}` : '';
+  const source = new EventSource(`/api/pipeline/stream${cursor}`);
+  eventSource = source;
 
-  eventSource = new EventSource('/api/pipeline/stream');
-
-  eventSource.onmessage = (e) => {
+  source.onmessage = (e) => {
+    if (generation !== _sseGeneration) return;
+    if (e.lastEventId && e.lastEventId === _sseLastEventId) return;
     _sseRetryDelay = 1000; // reset backoff on successful message
-    try { handleEvent(JSON.parse(e.data)); }
+    try {
+      handleEvent(JSON.parse(e.data));
+      if (e.lastEventId) _sseLastEventId = e.lastEventId;
+    }
     catch(err) { console.warn('SSE parse error', err); }
   };
 
-  eventSource.onerror = async () => {
-    eventSource.close();
+  source.onerror = async () => {
+    if (generation !== _sseGeneration) return;
+    source.close();
     eventSource = null;
     const status = await fetchJSON('/api/pipeline/status');
-    if (status?.running || status?.teardown_running) {
+    if (generation !== _sseGeneration) return;
+    const unseenEvents = status?.event_cursor && status.event_cursor !== _sseLastEventId;
+    if (!status || status.running || status.teardown_running || unseenEvents) {
       addLog({type:'error', message:`Connexion SSE perdue — reconnexion dans ${_sseRetryDelay / 1000}s`});
-      _sseRetryTimer = setTimeout(() => { startSSE(); }, _sseRetryDelay);
+      _sseRetryTimer = setTimeout(() => { startSSE(true); }, _sseRetryDelay);
       _sseRetryDelay = Math.min(_sseRetryDelay * 2, 16000); // 1s → 2s → 4s → 8s → 16s max
       return;
     }
@@ -3284,18 +3297,6 @@ async function pollStatus() {
     updateDeviceProgress();
   }
 
-  // — Replay real log events (most informative: skip text_chunk noise) —
-  const replayTypes = new Set([
-    'pipeline_start', 'phase_start', 'phase_done', 'lab_waiting', 'lab_acquired',
-    'device_start', 'device_done', 'reflector_start', 'reflector_done',
-    'tool_call', 'tool_result', 'deploy_start', 'deploy_done',
-    'inject_start', 'inject_done', 'verify_start', 'verify_done',
-    'teardown_start', 'teardown_done', 'deliverable_attempt', 'error', 'info', 'warn',
-  ]);
-  for (const ev of (status.recent_events || [])) {
-    if (replayTypes.has(ev.type)) addLog(ev);
-  }
-
   // — Sync scenario dropdown & topology —
   if (status.scenario_id) {
     if (isSealedScenarioId(status.scenario_id)) {
@@ -3307,7 +3308,7 @@ async function pollStatus() {
     }
   }
 
-  // — Reconnect to SSE stream —
+  // SSE replays retained events itself, then follows the live operation.
   startSSE();
 }
 

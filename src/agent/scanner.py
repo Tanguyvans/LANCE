@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlsplit
 from src.benchmark.tool_registry import SERVICE_ALIASES
 from src.agent.cost_tracker import BudgetExceeded
 from src.agent.core.executor import EvidenceWriteError
+from src.agent.tools.outcomes import tool_execution_failed
 
 log = logging.getLogger(__name__)
 
@@ -2216,11 +2217,7 @@ def run_scanner(
 
         for entries in scan_results.values():
             for entry in entries:
-                try:
-                    result = json.loads(entry["result"])
-                except (ValueError, TypeError):
-                    continue
-                if isinstance(result, dict) and (result.get("error") or result.get("return_code", 0) not in (0, None)):
+                if tool_execution_failed(entry.get("tool", ""), entry["result"]):
                     errors.append(f"{device_id}: {entry.get('tool') or 'unsupported service'} returned an error")
         return device_id, {"scan_results": scan_results, "findings": findings,
                            **({"error": "; ".join(errors)} if errors else {})}
