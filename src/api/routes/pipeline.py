@@ -69,6 +69,43 @@ def _lab_event(event: dict, *, publish: bool = False) -> None:
                 loop.call_soon_threadsafe(q.put_nowait, event)
 
 
+def _update_pipeline_progress(event: dict, *, previous_cost: float = 0.0) -> None:
+    """Keep reload state consistent for single runs and batch sub-pipelines."""
+    t = event.get("type")
+    if t == "phase_start":
+        _state["phase"] = event.get("phase", _state["phase"])
+        _state["phase_name"] = event.get("name") or event.get("agent", "")
+        _state["current_devices"] = []
+        _state["devices_done"] = []
+    elif t == "phase_done":
+        cost = event.get("cost_usd", 0.0)
+        _state["cost"] += cost
+        _state["phases_done"].append({
+            "phase": event.get("phase"),
+            "name": event.get("name") or event.get("agent", ""),
+            "cost": cost,
+            "duration_s": event.get("duration_s", 0),
+        })
+    elif t == "device_start":
+        dev = event.get("device_id", "")
+        if dev and dev not in _state["current_devices"]:
+            _state["current_devices"].append(dev)
+    elif t == "device_done":
+        dev = event.get("device_id", "")
+        if dev and dev not in _state["devices_done"]:
+            _state["devices_done"].append(dev)
+    elif t == "deploy_start":
+        _state["deploy_status"] = "deploying"
+    elif t == "deploy_done":
+        _state["deploy_status"] = "deployed" if event.get("success") else "failed"
+    elif t in {"inject_done", "verify_done"} and not event.get("success"):
+        _state["deploy_status"] = "failed"
+    elif t == "pipeline_done":
+        _state["run_dir"] = event.get("run_dir")
+        if event.get("total_cost_usd") is not None:
+            _state["cost"] = previous_cost + event["total_cost_usd"]
+
+
 class ModelSelection(BaseModel):
     model: str = Field(min_length=1)
     provider: str = Field(min_length=1)
@@ -258,39 +295,7 @@ def _pipeline_thread(req: StartRequest):
                 _state["recent_events"].append(event)
                 if len(_state["recent_events"]) > _MAX_RECENT_EVENTS:
                     _state["recent_events"] = _state["recent_events"][-_MAX_RECENT_EVENTS:]
-            # Update shared state from events
-            t = event.get("type")
-            if t == "phase_start":
-                _state["phase"] = event.get("phase", _state["phase"])
-                _state["phase_name"] = event.get("name") or event.get("agent", "")
-                _state["current_devices"] = []
-                _state["devices_done"] = []
-            elif t == "phase_done":
-                cost = event.get("cost_usd", 0.0)
-                _state["cost"] += cost
-                _state["phases_done"].append({
-                    "phase": event.get("phase"),
-                    "name": event.get("name") or event.get("agent", ""),
-                    "cost": cost,
-                    "duration_s": event.get("duration_s", 0),
-                })
-            elif t == "device_start":
-                dev = event.get("device_id", "")
-                if dev and dev not in _state["current_devices"]:
-                    _state["current_devices"].append(dev)
-            elif t == "device_done":
-                dev = event.get("device_id", "")
-                if dev and dev not in _state["devices_done"]:
-                    _state["devices_done"].append(dev)
-            elif t == "deploy_start":
-                _state["deploy_status"] = "deploying"
-            elif t == "deploy_done":
-                _state["deploy_status"] = "deployed" if event.get("success") else "failed"
-            elif t in {"inject_done", "verify_done"} and not event.get("success"):
-                _state["deploy_status"] = "failed"
-            elif t == "pipeline_done":
-                _state["run_dir"] = event.get("run_dir")
-                _state["cost"] = event.get("total_cost_usd", _state["cost"])
+            _update_pipeline_progress(event)
 
         if req.deploy_only:
             pipeline.run_deploy_only(stream_callback=callback, stop_event=_state["stop_event"])
@@ -481,6 +486,7 @@ def _batch_thread(req: BatchRequest):
 
         results = []
         evaluation_results = []
+        completed_cost = 0.0
         total = len(batch_ids)
         batch_id = f"batch-{uuid4().hex[:12]}"
 
@@ -500,6 +506,11 @@ def _batch_thread(req: BatchRequest):
 
             gt_file = resolve_ground_truth_path(sid)
             benchmark_split = resolve_scenario_split(sid)
+            _state.update({
+                "phase": 0, "phase_name": "", "run_dir": None,
+                "phases_done": [], "current_devices": [], "devices_done": [],
+                "deploy_status": None,
+            })
             _push({
                 "type": "batch_scenario_start",
                 "batch_id": batch_id,
@@ -515,15 +526,7 @@ def _batch_thread(req: BatchRequest):
                     ev["batch_id"] = batch_id
                     ev["batch_scenario_id"] = scenario_id
                     _push(ev)
-                    t = ev.get("type")
-                    if t == "phase_start":
-                        _state["phase"] = ev.get("phase", _state["phase"])
-                        _state["phase_name"] = ev.get("agent", "")
-                    elif t == "phase_done":
-                        cost = ev.get("cost_usd", 0.0)
-                        _state["cost"] += cost
-                    elif t == "pipeline_done":
-                        _state["run_dir"] = ev.get("run_dir")
+                    _update_pipeline_progress(ev, previous_cost=completed_cost)
                 return callback
 
             pipeline = None
@@ -539,6 +542,7 @@ def _batch_thread(req: BatchRequest):
                     execution_profile=req.execution_profile,
                     manage_scenario=True,
                 )
+                _state["run_dir"] = str(pipeline.run_dir)
                 run_results = pipeline.run(
                     stream_callback=make_callback(sid),
                     stop_event=_state.get("stop_event"),
@@ -558,6 +562,8 @@ def _batch_thread(req: BatchRequest):
                 failed_run_dir = getattr(pipeline, "run_dir", None)
                 tracker = getattr(pipeline, "tracker", None)
                 cost = round(tracker.total_cost(), 4) if tracker is not None else 0.0
+                completed_cost += cost
+                _state["cost"] = completed_cost
                 entry = {
                     "batch_id": batch_id,
                     "batch_index": idx,
@@ -586,6 +592,8 @@ def _batch_thread(req: BatchRequest):
 
             run_dir = pipeline.run_dir
             cost = round(pipeline.tracker.total_cost(), 4)
+            completed_cost += cost
+            _state["cost"] = completed_cost
 
             metrics = None
             evaluation_error = None

@@ -27,6 +27,9 @@ contenant une query ou un fragment. Ces cas restent explicitement non vérifiabl
 par cette sonde, sans remplacement silencieux du chemin.
 
 Le dashboard lance le pipeline sur la VM maître, pas sur le navigateur client.
+En mode lot, le suivi après rechargement identifie le scénario et le dossier
+du worker actif, avec ses phases, ses machines et sa préparation. La consommation
+cumulée du lot inclut également les runs interrompus par une erreur.
 Choisir un scénario de développement, le modèle voulu et explicitement `full`
 pour une campagne full. Consigner les paramètres et le commit effectivement exécuté.
 
