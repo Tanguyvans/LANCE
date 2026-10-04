@@ -513,6 +513,13 @@ def _run_status(run_dir: Path) -> str:
     metadata falls back to conservative artifact diagnostics: reports alone
     never prove a successful run.
     """
+    from src.api.routes.pipeline import active_run_directory
+
+    # During execution, terminal metadata has not been written yet. Only the
+    # live worker can establish this state; old unfinished runs stay incomplete.
+    if active_run_directory() == str(run_dir):
+        return "running"
+
     lifecycle_statuses = {
         "completed", "done", "failed", "stopped", "partial",
         "budget_exceeded", "running", "blocked", "skipped", "incomplete",

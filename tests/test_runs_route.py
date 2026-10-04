@@ -274,6 +274,25 @@ class TestSealedSummaryTrustBoundary:
 
 
 class TestRunEndpoints:
+    def test_live_worker_marks_only_its_run_running_without_rewriting_metadata(self, tmp_path, monkeypatch):
+        from src.api.routes import pipeline
+
+        run_dir = tmp_path / "active-run"
+        run_dir.mkdir()
+        (run_dir / "scenario_meta.json").write_text('{"scenario_id":"1"}')
+        unfinished = tmp_path / "old-unfinished-run"
+        unfinished.mkdir()
+        monkeypatch.setattr(runs, "OUTPUT_DIR", tmp_path)
+        monkeypatch.setattr(pipeline, "_state", {"running": True, "run_dir": str(run_dir)})
+        assert get_run("active-run")["status"] == "running"
+        assert get_benchmark()[0]["status"] == "running"
+        assert {row["id"]: row["status"] for row in list_runs()} == {
+            "active-run": "running", "old-unfinished-run": "incomplete",
+        }
+        pipeline._state["running"] = False
+        assert get_run("active-run")["status"] == "incomplete"
+        assert not (run_dir / "run_meta.json").exists()
+
     @pytest.mark.parametrize("sealed", [False, True])
     def test_provider_diagnostics_follow_existing_run_visibility(self, tmp_path, monkeypatch, sealed):
         run_dir = tmp_path / "diagnostic-run"

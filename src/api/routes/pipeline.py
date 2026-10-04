@@ -405,6 +405,13 @@ async def stop_pipeline():
     return {"status": "stopping"}
 
 
+def active_run_directory() -> str | None:
+    """Identify the live worker without persisting a stale running status."""
+    with _state_lock:
+        directory = _state.get("run_dir")
+        return directory if _state.get("running") and isinstance(directory, str) else None
+
+
 @router.get("/status")
 def get_status():
     """Return full pipeline state — used by frontend on load to sync UI."""

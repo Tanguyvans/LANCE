@@ -2721,6 +2721,7 @@ function benchmarkFailureReason(row) {
 
 function renderBenchmarkStatus(row, score, sealed) {
   const status = sealed && score.status ? score.status : row.status;
+  if (status === 'running') return '<span class="run-badge running">En cours</span>';
   const reservations = sealed ? [] : _completionReservations({
     ...row.completion, metrics: score,
     evaluation_status: row.score_error ? 'failed' : 'completed',
@@ -2760,6 +2761,9 @@ function bmDollars(value) {
 
 // Compact final-audit cell: F1 (or specificity for no-fault controls) + precision/recall.
 function renderAuditSummary(score, row = null) {
+  if (row?.status === 'running') {
+    return '<div class="bm-unavailable">Audit en cours<small>Résultats définitifs après la fin du run</small></div>';
+  }
   if (!score || score.evidence_contract_compatible === false) {
     return '<span class="bm-no-score">Non comparable</span>';
   }
@@ -2833,6 +2837,7 @@ function renderBenchmarkDetails(r, s, sealed) {
     execution: `<div class="bm-consumption"><div><small>Coût${s.cost_is_estimate === true ? ' estimé' : ''}</small><strong>${bmDollars(r.cost ?? s.total_cost_usd)}</strong></div><div><small>Tokens</small><strong>${bmNumber(s.total_tokens)}</strong></div><div><small>Efficacité</small><span>${bmDollars(efficiency?.cost_per_valid_confirmation)} / VP final<br>${bmNumber(efficiency?.turns_per_valid_confirmation, 1)} tours / VP final</span></div></div>${renderFunnelDiagnostics(null, s, 'execution')}${renderBenchmarkContract(s)}`
   };
   return `<div class="bm-panel-head"><div><h3>${escapeHtml(r.scenario || 'Run')} <span> / ${escapeHtml(bmRunLabel(r.id))}</span></h3><small>${escapeHtml(r.model || '—')} · ${escapeHtml(r.execution_profile === 'full' ? 'Profil complet' : r.execution_profile || 'Profil non renseigné')}${r.commit ? ' · Commit ' + escapeHtml(r.commit) : ''}</small></div><div>${renderBenchmarkStatus(r, s, false)}</div></div>
+  ${r.status === 'running' ? '<p class="bm-note" role="status">Exécution en cours. Les données affichées sont intermédiaires.</p>' : ''}
   <div class="bm-tabs" role="tablist" aria-label="Détails du run">${tabs.map(([key,label]) => `<button type="button" role="tab" id="${panelId}-tab-${key}" data-bm-tab="${key}" aria-selected="${_bmActiveTab === key}" tabindex="${_bmActiveTab === key ? 0 : -1}" aria-controls="${panelId}-${key}">${label}</button>`).join('')}</div>
   ${tabs.map(([key]) => `<div role="tabpanel" class="bm-tab-content" id="${panelId}-${key}" aria-labelledby="${panelId}-tab-${key}" tabindex="0"${_bmActiveTab === key ? '' : ' hidden'}>${content[key]}</div>`).join('')}`;
 }
@@ -2886,7 +2891,7 @@ function renderBenchmarkTable() {
     const cost = sealed ? s.metrics?.cost_usd : (r.cost ?? s.total_cost_usd);
     const runId = escapeHtml(r.id);
     const open = _bmOpenRunId != null && String(_bmOpenRunId) === String(r.id);
-    const stage = !sealed && !r.score_error && bmContractCompatible(s) && s.funnel?.stages?.confirmed?.available ? s.funnel.stages.confirmed : null;
+    const stage = !sealed && r.status !== 'running' && !r.score_error && bmContractCompatible(s) && s.funnel?.stages?.confirmed?.available ? s.funnel.stages.confirmed : null;
     let audit;
     if (sealed) audit = `<div class="bm-funnel-stage">Score agrégé signé : ${bmRate(s.metrics?.overall_score)}<small>Détails scellés</small></div>`;
     else if (r.score_error) audit = `<div class="bm-unavailable">Évaluation indisponible<small>${escapeHtml(r.score_error)}</small></div>`;

@@ -22,11 +22,10 @@ point d’accès UMONS. Un test réussi depuis un ordinateur personnel ne prouve
 pas que l’accès fonctionne depuis nato-master. Les ports 8501/8502/8503 servent
 les interfaces LANCE ; le port 11435 sert l’API des modèles.
 
-La connexion en aval de pve-nato (tunnel, machine GPU, service ou allocation de
-cluster) n’a pas pu être inspectée : SSH a refusé la clé du poste lors de cette
-vérification. Ne pas supposer que le processus Ollama tourne sur pve-nato lui-même.
-Les noms du service de relais et de la machine GPU restent à confirmer avec
-l’administrateur avant de donner une commande exacte de redémarrage.
+Le relais SSH en aval de pve-nato a été identifié et rétabli le 4 octobre 2026 ;
+sa commande est conservée dans le dépannage ci-dessous. Aucun service de démarrage
+automatique n'a été identifié ni installé. L'administration de la machine GPU
+en aval reste à confirmer avec l'administrateur UMONS.
 
 ## Choisir un modèle dans LANCE
 
@@ -146,6 +145,43 @@ les événements du run et les journaux de l’instance concernée.
 | Modèle introuvable | Identifiant exact dans le catalogue, puis entrée du registre LANCE |
 | Catalogue accessible, génération bloquée | Charge GPU, modèle chargé, file d’attente et journaux en aval |
 | Appel direct réussi, LANCE en erreur | Configuration de l’instance et historique d’outils ; voir [compatibilité UMONS](provider-auth.md#dialogue-avec-les-outils) |
+
+### Tunnel SSH identifié le 4 octobre 2026
+
+Le relais observé est un transfert local SSH lancé sur **pve-nato** :
+`100.76.206.65:11435` → `cluster.ig.umons.ac.be:22000` →
+`192.168.10.12:11434`. L'historique de l'administrateur et la trace de connexion
+ont identifié ce trajet. Après son rétablissement, le catalogue a exposé
+`qwen3.8:27b` et une génération minimale a renvoyé `OK` le 4 octobre 2026.
+Cela confirme l'accès au modèle, pas la réussite d'un audit complet.
+
+Si le port n'écoute plus, se connecter à **pve-nato** avec le compte administrateur
+prévu, confirmer son identité et vérifier `ss -ltnp 'sport = :11435'` avant de
+relancer le tunnel. Utiliser son compte UMONS autorisé :
+
+```bash
+UMONS_USER='votre_compte_umons'
+ssh -fN -p 22000 \
+  -o ConnectTimeout=10 \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -L 100.76.206.65:11435:192.168.10.12:11434 \
+  "$UMONS_USER@cluster.ig.umons.ac.be"
+```
+
+L'authentification observée est interactive (`keyboard-interactive`). `-f`
+place SSH en arrière-plan **après** authentification ; `-N` n'exécute aucune
+commande distante. Aucun `nohup` supplémentaire n'est nécessaire. Si l'invite
+ne revient pas, interrompre cette tentative puis ajouter `-v` pour voir l'étape
+bloquante. Refaire le catalogue et une génération une fois le tunnel établi.
+Voir le [manuel OpenSSH](https://man.openbsd.org/ssh).
+
+Cette commande ne configure pas de démarrage au boot ni de reconnexion après
+la fin du processus. Aucun service automatique n'a été identifié par la
+recherche de noms effectuée. Une exploitation sans intervention demande une
+méthode d'authentification autorisée adaptée et un service supervisé ; ne pas
+placer un mot de passe dans une commande ou un fichier de service.
 
 ### Sur pve-nato : identifier le relais avant de le relancer
 

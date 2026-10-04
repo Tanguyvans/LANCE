@@ -197,6 +197,9 @@ Dans le tableau Benchmark, une exception connue est présentée avec sa phase et
 une cause bornée (connexion, délai, authentification ou erreur d'exécution).
 Un run sans audit évaluable affiche « Audit non produit », sans transformer
 les métriques absentes en zéros. Le détail rappelle le nettoyage s'il est confirmé.
+Pendant l’exécution, le worker actif fait autorité pour le statut « En cours » ;
+les scores définitifs attendent sa fin. Les données intermédiaires restent
+consultables dans le détail. Ce statut ne réécrit pas les anciens runs inachevés.
 
 Références des codes de sortie : [manuel ssh-audit](https://github.com/jtesta/ssh-audit/blob/master/ssh-audit.1)
 et [client Mosquitto 2.0.21](https://github.com/eclipse-mosquitto/mosquitto/blob/v2.0.21/client/sub_client.c).
