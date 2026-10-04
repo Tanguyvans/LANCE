@@ -10,10 +10,13 @@ from urllib.parse import urlsplit
 _INTRUSION_DIRECT_TARGET_FIELDS = frozenset({"ip", "host", "broker", "target", "url"})
 
 
+# A slash after a command name identifies a directory component (e.g.
+# .ssh/authorized_keys), not that executable. Absolute executable paths such
+# as /usr/bin/ssh still match; later network commands remain checked.
 _INTRUSION_NETWORK_COMMAND_RE = re.compile(
     r"\b(?:ping6?|nmap|nc|ncat|netcat|ssh|scp|sftp|curl|wget|telnet|ftp|"
     r"mosquitto_(?:sub|pub)|mysql|redis-cli|snmp(?:get|walk)?|smbclient|"
-    r"rpcclient|traceroute|tracepath|dig|host|python(?:3)?|perl|ruby|node)\b",
+    r"rpcclient|traceroute|tracepath|dig|host|python(?:3)?|perl|ruby|node)\b(?!/)",
     re.IGNORECASE,
 )
 

@@ -138,6 +138,13 @@ L’adaptation locale compacte conserve sa restitution et ses contrôles existan
 
 ## Clôture d’intrusion et délais fournisseur
 
+Le garde de destination commun refuse les actions réseau hors des CIDR du
+scénario. Un nom de programme suivi de `/` dans un chemin, comme le répertoire
+`.ssh/`, ne constitue pas à lui seul une action réseau. Les exécutables comme
+`/usr/bin/ssh` et les actions ajoutées ensuite à la commande restent contrôlés.
+Cette reconnaissance lexicale ne certifie pas le comportement d'un binaire
+personnalisé ni les droits obtenus par son exécution.
+
 En profil complet, `save_deliverable` en phase 5 reçoit un petit marqueur de fin
 (`{"finish":true}`), pas une copie de toute la campagne. Le contrôleur produit
 le JSON depuis le journal, filtre les accès avec les règles communes de preuve

@@ -158,3 +158,18 @@ def test_network_names_in_static_local_inventory_are_data(command, allowed):
         "ssh_exec", {"ip": "192.0.2.11", "command": command}, SUBNET,
     )
     assert (refusal is None) is allowed
+
+
+@pytest.mark.parametrize("command,allowed", [
+    ("/usr/local/bin/iot-diag /home/admin/.ssh/authorized_keys", True),
+    ("cat ~/.ssh/authorized_keys", True),
+    ("cat ~/.ssh/authorized_keys; /usr/bin/ssh $DESTINATION", False),
+    ("cat ~/.ssh/authorized_keys; curl http://198.51.100.7/", False),
+    ("cat ~/.ssh/$(ssh $DESTINATION)", False),
+    ("/usr/bin/ssh $DESTINATION", False),
+])
+def test_network_named_directory_does_not_hide_a_real_network_command(command, allowed):
+    refusal = _intrusion_scope_violation(
+        "ssh_exec", {"ip": "192.0.2.11", "command": command}, SUBNET,
+    )
+    assert (refusal is None) is allowed
