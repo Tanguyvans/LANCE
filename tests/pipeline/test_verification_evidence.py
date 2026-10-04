@@ -1,5 +1,6 @@
 """Phase 4: observable proof and exploit verdicts."""
 import json
+import pytest
 from pathlib import Path
 from src.agent.pipeline import Pipeline
 from src.agent.exploit_evidence import (
@@ -476,3 +477,35 @@ class TestExploitEvidenceGuard:
 
         assert verdict["status"] == "CONFIRMED"
         assert verdict["data_extracted"]
+
+
+def test_http_response_timeout_words_are_not_transport_failures():
+    # Observed on LuCI in the 2026-10-04 S1 Qwen run; response arrived in 12 ms.
+    record = {"tool": "curl_headers", "args": {"url": "http://192.0.2.20/"},
+              "result": json.dumps({"return_code": 0, "stderr": "", "stdout": (
+                  "HTTP/1.1 403 Forbidden\nKeep-Alive: timeout=20\n\n"
+                  "<script>apply_timeout = 5</script>"
+              )})}
+    verdict = _synthesize_exploit_result(
+        {"type": "insecure_protocol", "service": "http", "port": 80}, [record],
+    )
+    assert verdict["status"] == "FAILED"
+    assert "forbidden" in verdict["evidence"]
+    assert "timed out" not in verdict["evidence"]
+
+
+@pytest.mark.parametrize("diagnostics,expected", [
+    ({"return_code": 0, "stderr": ""}, "EXPLOITED"),
+    ({"return_code": 28, "stderr": ""}, "ERROR"),
+    ({"return_code": -1, "stderr": "Command timed out after 10s"}, "ERROR"),
+    ({"return_code": 0, "timed_out": True}, "ERROR"),
+    ({"return_code": 7, "stderr": "Connection refused"}, "ERROR"),
+])
+def test_transport_diagnostics_remain_authoritative_over_response_content(diagnostics, expected):
+    verdict = _synthesize_exploit_result(
+        {"type": "data_exposure", "service": "http", "port": 80}, [{
+            "tool": "http_get", "args": {"url": "http://192.0.2.20/"},
+            "result": json.dumps({"stdout": "password=example\ntimeout=20\nlast_error=connection refused", **diagnostics}),
+        }],
+    )
+    assert verdict["status"] == expected

@@ -77,6 +77,9 @@ Un rapport enregistré ou une validation de format réussie ne démontre ni une
 intrusion réussie ni une exécution intégralement terminée. Les événements de fin
 des phases 3 et 4 publient les coûts et tours de tous leurs workers, y compris
 ceux en échec, sans recompter les phases précédentes.
+Les diagnostics réseau de vérification proviennent des champs d'erreur et codes
+de retour des outils. Un mot comme `timeout` dans une page HTTP ou un en-tête
+`Keep-Alive` ne constitue pas une erreur d'exécution.
 
 En full, une intrusion sans livrable requis peut entrer dans une clôture limitée
 à la sauvegarde : au plus trois requêtes, dans le budget de tours existant, sans
