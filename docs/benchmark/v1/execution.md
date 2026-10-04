@@ -187,6 +187,12 @@ héritées. Il vérifie la connexion avec `SELECT CURRENT_USER()` ; la lecture d
 la table administrative `mysql.user` n'est pas nécessaire pour tester un compte.
 Une connexion réussie ne certifie pas les privilèges sur les autres tables.
 
+Une chaîne statique de consultation locale composée de `ls`, `grep`, `head`,
+`tail` ou `which` ne devient pas une action réseau parce qu'un argument nomme
+`mysql` ou `curl`. Les substitutions, interpréteurs, commandes supplémentaires,
+redirections autres que `2>/dev/null` et syntaxes ambiguës conservent le contrôle
+conservateur. Les contrôles des destinations explicites restent appliqués.
+
 ## Consommation et validation
 
 Conserver tokens, temps et coûts même lorsque les scores sont indisponibles.

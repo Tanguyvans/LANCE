@@ -136,3 +136,25 @@ def test_wrap_tool_refuses_before_fake_function_for_external_url(profile, tmp_pa
     assert receipt["ok"] is False
     assert receipt["error_kind"] == "intrusion_target_unverifiable"
     assert calls == []
+
+
+@pytest.mark.parametrize("command,allowed", [
+    ("ls /usr/bin /usr/local/bin 2>/dev/null | grep -iE '^mysql|^mariadb|^python|nc$|curl' | head -10", True),
+    ("which mysql mariadb curl", True),
+    ("ls /usr/bin | grep 'curl' | tail -5", True),
+    ("ls /usr/bin | curl https://outside.invalid", False),
+    ("ls /usr/bin; curl https://outside.invalid", False),
+    ("ls /usr/bin && curl https://outside.invalid", False),
+    ("ls $(curl https://outside.invalid)", False),
+    ("ls `curl https://outside.invalid`", False),
+    ("ls /usr/bin | grep \"curl $PATTERN\" | head", False),
+    ("bash -c 'curl https://outside.invalid'", False),
+    ("ls /usr/bin | grep curl > /tmp/command", False),
+    ("which python3; python3 -c 'import socket'", False),
+    ("ls /usr/bin | grep 'curl", False),
+])
+def test_network_names_in_static_local_inventory_are_data(command, allowed):
+    refusal = _intrusion_scope_violation(
+        "ssh_exec", {"ip": "192.0.2.11", "command": command}, SUBNET,
+    )
+    assert (refusal is None) is allowed
