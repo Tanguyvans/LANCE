@@ -1736,6 +1736,12 @@ function handleEvent(ev) {
   else if (t === 'pipeline_done') {
     // Ignore pipeline_done events that are part of a batch run (they come from sub-pipelines)
     if (ev.batch_scenario_id !== undefined) return;
+    // Exceptions can end a phase without phase_done; no activity remains
+    // running once the pipeline has reported its terminal outcome.
+    document.querySelectorAll('.phase-pill.running').forEach(pill => {
+      setPhasePill(pill.dataset.phase, ev.status === 'completed' ? 'done' : (ev.status || 'interrupted'));
+    });
+    document.getElementById('sub-agent-bar').hidden = true;
     setCost(ev.total_cost_usd || 0);
     document.getElementById('btn-start').disabled = false;
     const stopBtn = document.getElementById('btn-stop');

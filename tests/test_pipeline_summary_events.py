@@ -148,6 +148,7 @@ const document = {
     return elements.get(id);
   },
   createElement: () => new Element(),
+  querySelectorAll: () => [],
   addEventListener() {},
 };
 const context = vm.createContext({
