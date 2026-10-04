@@ -237,7 +237,7 @@ class ReconPhase:
             if row:
                 observed_services.extend(row.get("services") or [])
             normalized_services: list[dict] = []
-            seen_services: set[tuple[int, str, str]] = set()
+            seen_services: dict[tuple[int, str, str], dict] = {}
             for service in observed_services:
                 if not isinstance(service, dict):
                     continue
@@ -254,15 +254,20 @@ class ReconPhase:
                 version = str(service.get("version") or "")
                 key = (port, protocol, name)
                 if key in seen_services:
+                    # Declared services are the coverage floor, but must not
+                    # discard a version actually observed on the same endpoint.
+                    if version.strip():
+                        seen_services[key]["version"] = version
                     continue
-                seen_services.add(key)
-                normalized_services.append({
+                normalized = {
                     "name": name,
                     "port": port,
                     "protocol": protocol,
                     "version": version,
                     "source": "phase2_recon",
-                })
+                }
+                seen_services[key] = normalized
+                normalized_services.append(normalized)
 
             if normalized_services:
                 normalized_services.sort(

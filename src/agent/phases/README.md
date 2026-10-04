@@ -122,6 +122,12 @@ Une note de fin suffit à demander la sauvegarde. Si le dialogue se termine sans
 sauvegarde, le contrôleur tente une seule sauvegarde locale, sans nouveau scan
 ni appel au modèle, via les mêmes contrôles de couverture et de validation.
 
+Lors de la fusion avec les services déclarés, une version non vide observée sur
+le même port, protocole et service complète ou remplace la version de l'inventaire.
+Une observation sans version n'efface pas celle déjà collectée. Les analyses
+suivantes retrouvent cette information via le graphe ; les observations originales
+restent dans `02_recon_evidence.json`.
+
 La finalisation exige le contrat de reconnaissance satisfait et des observations
 exploitables. Un journal invalide ou absent ne donne pas un succès. Un arrêt
 utilisateur reste un arrêt ; une exception fournisseur ou de budget n’est pas

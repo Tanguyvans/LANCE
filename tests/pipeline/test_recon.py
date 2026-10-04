@@ -511,6 +511,8 @@ class TestInformationPreservingArchitecture:
                 {
                     "ip": "192.0.2.11",
                     "services": [
+                        {"port": 1883, "protocol": "tcp", "service": "mosquitto", "version": "version 2.0.21"},
+                        {"port": 1883, "protocol": "tcp", "service": "mqtt", "version": ""},
                         {"port": 8080, "protocol": "tcp", "service": "http-proxy"},
                     ],
                 },
@@ -531,6 +533,8 @@ class TestInformationPreservingArchitecture:
         assert result["unresolved_nodes"] == ["s22-unobserved"]
         by_id = {node["id"]: node for node in nodes}
         assert [service["name"] for service in by_id["s22-custom-a"]["services"]] == ["mqtt", "http"]
+        assert by_id["s22-custom-a"]["services"][0]["version"] == "version 2.0.21"
+        assert json.loads(graph_tools.get_device_info("s22-custom-a"))["services"][0]["version"] == "version 2.0.21"
         assert [service["name"] for service in by_id["s22-router"]["services"]] == [
             "http", "https",
         ]
