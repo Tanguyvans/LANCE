@@ -407,6 +407,7 @@ class AgentRunner:
 
         # If this phase has exploit sub-agents, run them and skip the LLM aggregator
         if config.has_exploit_agents:
+            usage_before = self.tracker.summary()
             self._run_exploit_agents(config, stream_callback)
             # Check for newly discovered hosts and run a mini analysis cycle if found
             new_hosts = self._collect_new_hosts()
@@ -426,14 +427,15 @@ class AgentRunner:
                 log.error("Phase %d exploit aggregation FAILED: %s", config.phase, msg)
                 print(f"  Deliverable FAILED validation: {msg}")
             if stream_callback:
+                usage_after = self.tracker.summary()
                 stream_callback({
                     "type": "phase_done",
                     "phase": config.phase,
                     "name": config.name,
                     "status": status,
                     "deliverable": config.deliverable_file,
-                    "cost_usd": 0,
-                    "turns": 0,
+                    "cost_usd": usage_after["total_cost_usd"] - usage_before["total_cost_usd"],
+                    "turns": usage_after["total_turns"] - usage_before["total_turns"],
                 })
             return status
 

@@ -263,3 +263,35 @@ class TestInformationPreservingArchitecture:
         assert aggregate["summary"]["confirmed"] == 1
         assert aggregate["summary"]["errors"] == 0
         assert aggregate["tests"][0]["evidence_refs"]
+
+
+def test_phase_completion_includes_worker_usage_but_excludes_previous_phases(
+    mock_provider, output_dir, monkeypatch,
+):
+    monkeypatch.setattr("src.agent.cost_tracker._resolve_pricing", lambda *args: (
+        {"input": 1.0, "output": 2.0}, "local-test", False,
+    ))
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    monkeypatch.setattr(pipeline, "_resolve_tools", lambda config: [])
+    monkeypatch.setattr("src.agent.core.runtime.load_prompt", lambda *args: "prompt")
+    monkeypatch.setattr(pipeline, "_collect_new_hosts", lambda: [])
+    monkeypatch.setattr(pipeline, "_validator", lambda name: lambda path: (True, "valid"))
+    pipeline.tracker.start_phase("previous")
+    pipeline.tracker.record_turn(9000, 4000)
+    pipeline.tracker.end_phase()
+
+    def workers(*args):
+        for name in ("completed_worker", "failed_worker"):
+            pipeline.tracker.start_phase(name)
+            pipeline.tracker.record_turn(1000, 500)
+            pipeline.tracker.end_phase()
+        pipeline._phase4_execution_status = "executed_with_worker_errors"
+
+    monkeypatch.setattr(pipeline, "_run_exploit_agents", workers)
+    events = []
+    status = pipeline._run_agent(AGENTS["exploitation"], events.append)
+    done = [event for event in events if event["type"] == "phase_done"]
+    assert status == "executed_with_worker_errors"
+    assert len(done) == 1
+    assert done[0]["cost_usd"] == pytest.approx(0.004)
+    assert done[0]["turns"] == 2
