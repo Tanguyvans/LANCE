@@ -248,3 +248,10 @@ principal et les chemins dans `endpoints`. Les virgules internes aux chemins
 et les chaînes de requête restent inchangées. La preuve doit toujours correspondre
 à l’hôte, au port et au chemin principal ; une réponse sur un autre chemin
 ne confirme pas automatiquement toute la liste. Le candidat brut reste archivé.
+
+
+Le nom de service Nmap `mbap` est normalisé en `modbus` lors de la fusion de
+reconnaissance et du choix des outils. Le service déclaré et son alias observé
+ne produisent qu’une entrée par port et transport. Cette correspondance de nom
+ne constitue ni une preuve de lecture de registres, ni une preuve d’absence
+d’authentification ; les verdicts restent fondés sur les réponses aux sondes.

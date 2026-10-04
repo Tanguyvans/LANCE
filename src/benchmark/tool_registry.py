@@ -175,6 +175,7 @@ SERVICE_ALIASES: dict[str, str] = {
     "mariadb": "mysql",
     "mariadb?": "mysql",
     "modbus": "modbus",
+    "mbap": "modbus",  # Nmap service name: Modbus Application Protocol.
     "redis": "redis",
     "ftp": "ftp",
     "snmp": "snmp",

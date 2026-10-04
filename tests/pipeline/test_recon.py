@@ -801,3 +801,29 @@ class TestInformationPreservingArchitecture:
         assert result["error_kind"] == "invalid_recon_evidence"
         assert "missing or invalid" in result["error"]
         save.assert_not_called()
+
+
+def test_nmap_mbap_alias_preserves_one_modbus_scan(mock_provider, output_dir, monkeypatch):
+    from src.agent import scanner
+    from src.agent.tools import graph_tools
+
+    node = {"id": "plc", "ip": "192.0.2.15", "role": "modbus_server",
+            "services": [{"name": "modbus", "port": 502, "protocol": "tcp"}]}
+    monkeypatch.setattr(graph_tools, "_scenario_topology", {
+        "nodes": [node], "node_index": {"plc": node},
+    })
+    pipeline = Pipeline(provider=mock_provider, scenario_id=4)
+    pipeline._reconcile_phase2_attack_surface({"devices": [{
+        "ip": node["ip"], "services": [{"service": "mbap?", "port": 502, "protocol": "tcp"}],
+    }]})
+    assert len(node["services"]) == 1
+    calls = []
+    def nmap_scan(**kwargs):
+        calls.append(kwargs)
+        return json.dumps({"stdout": "502/tcp open mbap", "stderr": "", "return_code": 0})
+    diagnostics = []
+    scanner.scan_device(node, {"nmap_scan": nmap_scan}, diagnostics=diagnostics)
+    assert diagnostics == []
+    assert len(calls) == 1
+    assert calls[0]["target"] == node["ip"]
+    assert calls[0]["scripts"] == "modbus-discover"
