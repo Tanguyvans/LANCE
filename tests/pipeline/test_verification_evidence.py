@@ -534,3 +534,24 @@ def test_http_path_list_retains_a_strict_primary_endpoint():
     for endpoint in ("/reports/a,b", "/search?q=a,b", "/search?q=a, /config/"):
         normalized = _enrich_finding_structure({"service": "http", "endpoint": endpoint})
         assert normalized["endpoint"] == endpoint
+
+
+@pytest.mark.parametrize("body,status", [
+    ("User-agent: *\nDisallow: /admin/\nDisallow: /backup/", "EXPLOITED"),
+    ("User-agent: *\nDisallow:", "FAILED"),
+    ("User-agent: *\nDisallow: /", "FAILED"),
+    ("Server: nginx/1.26.3", "FAILED"),
+    ("User-agent: *\n# Disallow: /admin/", "FAILED"),
+    ("User-agent: *\nDisallow:\n/admin/", "FAILED"),
+])
+def test_robots_paths_require_directives_on_the_declared_resource(body, status):
+    result = _synthesize_exploit_result(
+        {"type": "info_disclosure", "service": "http", "port": 80,
+         "device_ip": "192.0.2.20", "endpoint": "/robots.txt"},
+        [{"tool": "curl_headers", "args": {"url": "http://192.0.2.20/robots.txt"},
+          "result": {"stdout": "HTTP/1.1 200 OK\nServer: nginx/1.26.3\n\n" + body,
+                     "return_code": 0}}],
+    )
+    assert result["status"] == status
+    if status == "EXPLOITED":
+        assert "not established" in result["evidence"]

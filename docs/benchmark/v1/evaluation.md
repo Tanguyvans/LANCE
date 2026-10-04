@@ -60,6 +60,29 @@ obligatoires selon le contrat. La preuve doit toujours concerner le fichier
 réellement déclaré et démontrer la propriété : un listing ne prouve pas une
 exposition de contenu sensible. Les doublons ne gagnent pas plusieurs crédits.
 
+À partir de `strict-v3.15`, un attendu lié à un endpoint ou un préfixe de
+chemin exige que la déclaration porte ce périmètre. L'absence d'endpoint ne
+reçoit plus de crédit partiel pour cette propriété : une version nginx à la
+racine ne démontre pas la divulgation de chemins par `/robots.txt`.
+Dans l'étape confirmée, le crédit d'un constat de divulgation de contenu,
+de chemins ou de listing HTTP exige une réponse attribuée à la ressource
+attendue et soutenant cette propriété. Un fichier secondaire déclaré
+peut être crédité s'il possède sa propre preuve fraîche ; la preuve du fichier
+principal ne s'étend pas à toute la liste. Les constats d'opérations comme
+la mise à jour OTA restent évalués par leur contrat de preuve d'opération.
+Le crédit partiel pour les autres champs structurels manquants reste un diagnostic.
+
+Le contrat de preuve `evidence-v14` distingue la version HTTP des chemins
+publiés par `robots.txt`. Ce dernier cas exige une réponse fraîche sur le
+chemin déclaré, avec `User-agent` et au moins une directive `Disallow` portant
+un chemin ou motif non vide et plus précis que la racine. Les noms publiés
+ne prouvent ni l'existence des ressources, ni leur contenu, ni leur accès.
+Une version dans l'en-tête ne remplace pas cette preuve de chemins.
+Cette correction vient de la revue des runs S4/S6 de la
+[campagne Qwen UMONS](../../../research/2026-09-29-benchmark-coverage/README.md).
+Les scores historiques restent archivés sous leur contrat d'origine ; les
+nouveaux contrats ne les rendent pas directement comparables aux nouveaux runs.
+
 Le contrat des fichiers sensibles de S2 inclut ainsi les fichiers de `/backup/`
 et `/config/app.config`, conformément au périmètre décrit dans son référentiel.
 Cette évolution change le contrat interne des métriques : les runs antérieurs

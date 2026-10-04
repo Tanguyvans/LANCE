@@ -625,9 +625,10 @@ def _endpoint_contract_matches(contract: dict, actual: set[str]) -> bool:
 def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
     """Return (method, credit, structural_match), or an empty non-match.
 
-    Conflicting explicit structure fails closed. Missing structure receives
-    partial credit, while a non-primary but explicitly accepted semantic type
-    receives categorical credit. No broad global category table is consulted.
+    Conflicting explicit structure fails closed. Missing non-location structure
+    receives partial credit; a required endpoint must be declared. A non-primary
+    but explicitly accepted semantic type receives categorical credit.
+    No broad global category table is consulted.
     """
     if finding.get("device_ip", "") != gt_vuln.get("ip", ""):
         return "", 0.0, False
@@ -657,6 +658,8 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
         }
         for name, expected in constraints.items():
             actual = observed[name]
+            if name == "endpoint" and expected and not actual:
+                return "", 0.0, False
             matches = _endpoint_contract_matches(contract, actual) if name == "endpoint" else bool(actual & expected)
             if expected and actual and not matches:
                 return "", 0.0, False
@@ -726,6 +729,10 @@ def _strict_v3_match(gt_vuln: dict, finding: dict) -> tuple[str, float, bool]:
             continue
         declared += 1
         actual = observed[name]
+        # Endpoint-bound properties cannot borrow a generic confirmation on
+        # the same service (e.g. a version banner for robots.txt disclosure).
+        if name == "endpoint" and not actual:
+            return "", 0.0, False
         matches = _endpoint_contract_matches(contract, actual) if name == "endpoint" else bool(actual & expected)
         if actual and not matches:
             return "", 0.0, False
@@ -759,9 +766,53 @@ def match_vuln(
 
 # ── Multi-Hop Reach (MHR) ──────────────────────────────────────────────────────
 
+def _http_disclosure_reference_scope_proved(gt: dict, finding: dict, records: list[dict]) -> bool:
+    """Read-disclosure credit needs its own proof on the referenced resource."""
+    if canonicalize(str(finding.get("type") or "")) not in {
+        "data_exposure", "info_disclosure", "directory_listing",
+    }:
+        # Operation findings such as OTA describe a paired read/write mechanism;
+        # their shared proof contract, not a read-resource rule, is authoritative.
+        return True
+    contract = derive_matching_contract(gt)
+    if not (contract["endpoints"] or contract["endpoint_prefixes"]):
+        return True
+    if not _normalized_services(contract["services"]) & {"http", "https", "luci"}:
+        return True
+    declared = _normalized_endpoints(finding.get("endpoints")) | _normalized_endpoints(finding.get("endpoint"))
+    owned_refs = set(finding.get("_resolved_evidence_refs") or [])
+    finding_id = str(finding.get("id") or "")
+    for record in records:
+        if _canonical_tool_name(record.get("tool", "")) not in {"http_get", "http_request", "curl_headers", "mtls_request"}:
+            continue
+        if record.get("phase") not in (None, 4):
+            continue
+        # Only an explicitly bound claim ID or an already unambiguous assignment
+        # may supply a secondary-resource proof; never borrow another finding's call.
+        record_id = str(record.get("vuln_id") or "")
+        ref = str(record.get("_evidence_ref") or "")
+        if not ((finding_id and record_id == finding_id) or ref in owned_refs):
+            continue
+        for endpoint in _record_implied_endpoints(record) & declared:
+            if not _endpoint_contract_matches(contract, {endpoint}):
+                continue
+            scoped = {**finding, "endpoint": endpoint, "endpoints": [endpoint]}
+            result = _tool_result_data(record)
+            if (_tool_call_matches_finding(scoped, record)
+                    and _tool_call_outcome(record, scoped) is True
+                    and isinstance(result, dict)
+                    and _semantic_output_supports_finding(
+                        str(record.get("tool") or ""), result, scoped,
+                        args=record.get("args"),
+                    )):
+                return True
+    return False
+
+
 def _match_predictions(
     gt_vulns: list[dict], findings: list[dict], policy: EvaluationPolicy,
     bonus_types: set[str] | None = None,
+    *, tool_calls: list[dict] | None = None,
 ) -> dict[int, tuple[int, str, float, bool]]:
     """One-to-one global matching shared by every stage and legacy diagnostics."""
     graph = nx.Graph()
@@ -785,6 +836,8 @@ def _match_predictions(
                 continue
             method, credit, structural = _strict_v3_match(gt, finding)
             if credit < policy.min_match_credit:
+                continue
+            if tool_calls is not None and not _http_disclosure_reference_scope_proved(gt, finding, tool_calls):
                 continue
             severity_bonus = 100 if str(finding.get("severity", "")).lower() == str(gt.get("severity", "")).lower() else 0
             finding_type = str(finding.get("type", ""))
@@ -2697,6 +2750,11 @@ def evaluate(
             gt_vulns, findings, resolved_policy,
         ).items()}
 
+    def confirmed_stage_match(findings: list[dict]) -> dict[int, int]:
+        return {entry[0]: gi for gi, entry in _match_predictions(
+            gt_vulns, findings, resolved_policy, tool_calls=tool_calls,
+        ).items()}
+
     def validated_indices(findings: list[dict]) -> set[int]:
         _assign_evidence_refs(findings, tool_calls)
         supported = set()
@@ -2740,7 +2798,7 @@ def evaluate(
     ) if not preflight_ok else None
     result.funnel = evaluate_funnel(
         run_dir, gt_count=len(gt_vulns), filtered=filtered, confirmations=confirmations,
-        match=stage_match, validate=validated_indices,
+        match=stage_match, match_confirmed=confirmed_stage_match, validate=validated_indices,
         compatible=evidence_compatible and preflight_ok, provenance_available=provenance_log_available,
         compatibility_reason=preflight_reason or compatibility_reason, total_cost=total_cost_usd,
         total_turns=total_turns,
