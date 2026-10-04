@@ -316,3 +316,27 @@ def test_followup_candidates_are_counted_without_claiming_they_were_scheduled(mo
     assert result["scheduling"]["scheduled_vuln_ids"] == ["V1"]
     assert result["tests"][1]["status"] == "SKIPPED"
     assert result["tests"][1]["evidence_refs"] == []
+
+
+@pytest.mark.parametrize("surface_as_mapping", [False, True])
+def test_discovery_followup_excludes_existing_hosts_but_keeps_new_hosts(
+    mock_provider, output_dir, monkeypatch, surface_as_mapping,
+):
+    pipeline = Pipeline(provider=mock_provider, execution_profile="full")
+    nodes = [{"id": "invalid-address", "ip": "not-an-address"},
+             {"id": "known-device", "ip": "192.0.2.10"},
+             {"id": "known-ipv6", "ip": "2001:db8::1"}]
+    surface = {"nodes": nodes} if surface_as_mapping else nodes
+    monkeypatch.setattr("src.agent.core.runtime.get_attack_surface", lambda: json.dumps(surface))
+    path = pipeline.run_dir / "04_exploits" / "observations.json"
+    path.parent.mkdir(exist_ok=True)
+    new_host = {"ip": "192.0.2.11", "open_ports": [1883], "discovered_via": "observed endpoint"}
+    contents = json.dumps({"new_hosts_discovered": [
+        {"ip": "192.0.2.10", "open_ports": [1883]},
+        {"ip": "2001:0db8:0:0:0:0:0:1", "open_ports": [22]},
+        new_host, dict(new_host), {"ip": "not-an-address"},
+    ]})
+    path.write_text(contents)
+
+    assert pipeline._collect_new_hosts() == [new_host]
+    assert path.read_text() == contents

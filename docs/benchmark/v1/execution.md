@@ -162,6 +162,13 @@ les artefacts bruts sans revue des informations sensibles.
 
 ### Compteurs après découverte complémentaire
 
+Une adresse déjà présente dans la surface publique connue ne devient pas un
+nouvel hôte lorsqu'un livrable de vérification la mentionne. Ces références
+restent dans les traces, mais ne déclenchent pas une seconde analyse sous un
+identifiant `discovered-*`. La découverte complémentaire concerne les nouvelles
+adresses ; elle ne constitue pas un mécanisme de réanalyse des services d'un
+hôte déjà connu.
+
 Une découverte après la vérification peut ajouter des hypothèses au livrable
 canonique. Dans `04_exploitation.json`, `scheduling` conserve la file réellement
 planifiée ; `summary.candidate_count` compte les hypothèses présentes dans la
